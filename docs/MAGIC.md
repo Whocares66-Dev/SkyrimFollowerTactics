@@ -174,11 +174,12 @@ Each of these cost at least one test round.
   a few hundred game days. Hour-of-day stays precise; count midnight yourself.
 - **Two spells can share a display name.** Marcurio's heal is `0007231C`; the
   vanilla one is `0002F3B8`. Both are "Fast Healing". Compare FormIDs.
-- **Where a package's inputs live**, found by canary rather than guessed. A
-  named input's 8-byte data slot is at `IPackageData + 0x08`: the CastTime
-  floats are there. The Spell and Target inputs keep that slot empty and hold
-  a pointer at `+0x10` to a `PackageTarget` (mapped by CommonLibSSE: type at
-  00, form-or-handle union at 08). Self read as type **6** in the engine, not
+- **Where a package's inputs live**, found by canary rather than guessed. An
+  input's payload is at `IPackageData + 0x10`, whatever its kind: a float
+  input holds the float there (CastTime read 0.5 and 1.0 at +10, measured;
+  the +08 slot the headers suggested read 0 / 0), and the Spell and Target
+  inputs hold a pointer there to a `PackageTarget` (mapped by CommonLibSSE:
+  type at 00, form-or-handle union at 08). Self read as type **6** in the engine, not
   the 5 the record library's ordering implies -- which is why the type values
   are read from authored records, not assumed. The template's name map spells
   it `SPELL`; compare case-insensitively. The map lives on the template, not
