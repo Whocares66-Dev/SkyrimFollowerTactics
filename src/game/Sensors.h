@@ -42,6 +42,17 @@ struct SpellOption
     std::string name;
 };
 
+// One drinkable potion a follower carries, for the editor's menu.
+struct PotionOption
+{
+    std::uint32_t form{0};
+    std::string name;
+    int count{0};
+};
+
+// Every drinkable potion she carries, sorted by name. Menu content only.
+[[nodiscard]] std::vector<PotionOption> ScanCarriedPotions(RE::Actor *actor);
+
 // Every spell the follower can actually cast, sorted by name.
 //
 // Sorted here rather than in the UI because the order is a property of the

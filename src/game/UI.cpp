@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <functional>
@@ -451,6 +452,28 @@ bool TakesSpell(ft::ActionKind action)
     return action == ft::ActionKind::CastSpell || action == ft::ActionKind::EquipSpell;
 }
 
+// The four ways of drinking share one "Drink potion" submenu: the three
+// "strongest of a kind" policies at the top, then every potion she carries
+// by name. One entry in the action list, not four.
+bool IsDrinkKind(ft::ActionKind action)
+{
+    return action == ft::ActionKind::DrinkHealthPotion || action == ft::ActionKind::DrinkMagickaPotion ||
+           action == ft::ActionKind::DrinkStaminaPotion || action == ft::ActionKind::DrinkPotion;
+}
+
+// "Drink strongest health potion" -> "Strongest health potion", for use under
+// a menu already headed "Drink potion".
+std::string DrinkSubmenuLabel(ft::ActionKind action)
+{
+    std::string name(ft::DisplayName(action));
+    constexpr std::string_view prefix = "Drink ";
+    if (name.rfind(prefix, 0) == 0)
+        name.erase(0, prefix.size());
+    if (!name.empty())
+        name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+    return name;
+}
+
 // The Then cell's text: the spell by NAME, never by id.
 //
 // A FormID in the table would be unreadable and, worse, unstable to look at --
@@ -460,6 +483,17 @@ bool TakesSpell(ft::ActionKind action)
 std::string ActionText(const ft::Rule &rule, const FollowerView &view)
 {
     const std::string base(ft::DisplayName(rule.action));
+
+    if (rule.action == ft::ActionKind::DrinkPotion)
+    {
+        if (rule.actionForm == 0)
+            return base + "...";
+        for (const auto &option : view.potions)
+            if (option.form == rule.actionForm)
+                return "Drink " + option.name;
+        return base + " (not carried)";
+    }
+
     if (!TakesSpell(rule.action))
         return base;
 
@@ -503,6 +537,48 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
     {
         const auto action = static_cast<ft::ActionKind>(i);
         const std::string name(ft::DisplayName(action));
+
+        // The drink actions collapse into one submenu, drawn where the first
+        // of them falls in the list; the others are skipped.
+        if (IsDrinkKind(action))
+        {
+            if (action != ft::ActionKind::DrinkHealthPotion)
+                continue;
+            if (!Im::BeginMenu("Drink potion", true))
+                continue;
+
+            for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkMagickaPotion,
+                              ft::ActionKind::DrinkStaminaPotion})
+            {
+                const bool selected = rule.action == kind;
+                if (Im::MenuItem(DrinkSubmenuLabel(kind).c_str(), nullptr, selected, true))
+                {
+                    rule.action = kind;
+                    rule.actionForm = 0;
+                    changed = true;
+                }
+                if (Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+            }
+
+            if (!view.potions.empty())
+            {
+                Im::Separator();
+                for (const auto &option : view.potions)
+                {
+                    const std::string label = option.name + " (" + std::to_string(option.count) + ")";
+                    const bool selected = rule.action == ft::ActionKind::DrinkPotion && rule.actionForm == option.form;
+                    if (Im::MenuItem(label.c_str(), nullptr, selected, true))
+                    {
+                        rule.action = ft::ActionKind::DrinkPotion;
+                        rule.actionForm = option.form;
+                        changed = true;
+                    }
+                }
+            }
+            Im::EndMenu();
+            continue;
+        }
 
         if (!TakesSpell(action))
         {

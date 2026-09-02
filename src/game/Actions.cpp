@@ -159,6 +159,11 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
         return DrinkPotion(actor, choice.magicka);
     case ft::ActionKind::DrinkStaminaPotion:
         return DrinkPotion(actor, choice.stamina);
+    case ft::ActionKind::DrinkPotion:
+        // One named potion. The evaluator only fires this when the snapshot
+        // says she carries it, so a null here is a form that stopped being a
+        // potion between snapshot and dispatch.
+        return DrinkPotion(actor, RE::TESForm::LookupByID<RE::AlchemyItem>(decision.actionForm));
 
     case ft::ActionKind::CastSpell: {
         // The package route, on its own. The combat-AI hook is off by default

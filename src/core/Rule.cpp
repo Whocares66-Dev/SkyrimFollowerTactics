@@ -10,6 +10,7 @@ double MinimumCooldown(ActionKind action) noexcept
     case ActionKind::DrinkHealthPotion:
     case ActionKind::DrinkMagickaPotion:
     case ActionKind::DrinkStaminaPotion:
+    case ActionKind::DrinkPotion:
         // The measured queue-to-effect latency is about two seconds, plus a
         // margin so the next evaluation sees the result of this one.
         // Deliberately not longer: one potion is often not enough, and a

@@ -75,6 +75,24 @@ struct PotionStock
     bool healthEffectActive{false};
     bool magickaEffectActive{false};
     bool staminaEffectActive{false};
+
+    // Every drinkable potion she carries, by form, with its count -- what a
+    // DrinkPotion rule (one named potion) checks against. Names are display
+    // and live on the game side.
+    struct Carried
+    {
+        std::uint32_t form{0};
+        int count{0};
+    };
+    std::vector<Carried> carried;
+
+    [[nodiscard]] int CountOf(std::uint32_t form) const
+    {
+        for (const auto &c : carried)
+            if (c.form == form)
+                return c.count;
+        return 0;
+    }
 };
 
 // Spells the follower knows, and the ones whose effects are running right now.

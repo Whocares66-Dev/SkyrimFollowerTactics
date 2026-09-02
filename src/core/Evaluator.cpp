@@ -284,6 +284,8 @@ bool HasResource(const Rule &r, const Snapshot &s)
         return s.potions.magickaCount > 0;
     case ActionKind::DrinkStaminaPotion:
         return s.potions.staminaCount > 0;
+    case ActionKind::DrinkPotion:
+        return r.actionForm != 0 && s.potions.CountOf(r.actionForm) > 0;
 
     case ActionKind::CastSpell:
     case ActionKind::EquipSpell:
@@ -310,6 +312,10 @@ bool EffectAlreadyActive(const Rule &r, const Snapshot &s)
         return s.potions.magickaEffectActive;
     case ActionKind::DrinkStaminaPotion:
         return s.potions.staminaEffectActive;
+    case ActionKind::DrinkPotion:
+        // A named potion could restore anything or nothing; only the per-form
+        // cooldown spaces it.
+        return false;
 
     case ActionKind::CastSpell:
         // The sustained-buff case. Oakflesh runs sixty seconds and no cooldown
@@ -448,6 +454,8 @@ const char *Explain(Verdict v, ActionKind action) noexcept
     switch (v)
     {
     case Verdict::NoResource:
+        if (action == ActionKind::DrinkPotion)
+            return "does not carry that potion";
         return spell ? "does not know that spell" : "no potion";
 
     case Verdict::EffectActive:

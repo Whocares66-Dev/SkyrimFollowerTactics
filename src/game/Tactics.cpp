@@ -154,6 +154,7 @@ ft::Capabilities SpikeCapabilities(const RE::Actor *actor)
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkHealthPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkMagickaPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkStaminaPotion)] = true;
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipSpell)] = true;
 
     // Casting needs the ESL. Without it the action reports Unsupported and the
@@ -257,6 +258,7 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     // set this test up is exactly such a change), so it is re-read rather than
     // cached until something invalidates it.
     v.spells = ScanCastableSpells(actor);
+    v.potions = ScanCarriedPotions(actor);
 }
 
 void PublishOne(FollowerView v)

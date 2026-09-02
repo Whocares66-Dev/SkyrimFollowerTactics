@@ -734,6 +734,46 @@ TEST_CASE("a cast she cannot afford is reported and spends no cooldown", "[resou
     REQUIRE(Evaluate(rs, t, ctx2).ruleIndex == 0);
 }
 
+TEST_CASE("a named potion is drunk only while carried, and cools down per potion", "[potions]")
+{
+    constexpr std::uint32_t kStamina = 0x00039BE8;
+    constexpr std::uint32_t kResistFire = 0x0003EB3E;
+
+    auto drink = [](std::uint32_t form) {
+        Rule r;
+        r.subject = SubjectKind::Self;
+        r.predicate = PredicateKind::InCombat;
+        r.actionTarget = ActionTargetKind::Self;
+        r.action = ActionKind::DrinkPotion;
+        r.actionForm = form;
+        return r;
+    };
+
+    RuleSet rs;
+    rs.rules.push_back(drink(kStamina));
+    rs.rules.push_back(drink(kResistFire));
+
+    Snapshot s = Healthy();
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+
+    // Carries neither: both report it, nothing fires.
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+    REQUIRE(trace.at(1) == Verdict::NoResource);
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkPotion)) == "does not carry that potion");
+
+    // Carries both: the first fires, and its cooldown is its own -- the
+    // second potion fires on the next turn.
+    s.potions.carried.push_back({kStamina, 6});
+    s.potions.carried.push_back({kResistFire, 1});
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+    s.now += 0.5;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+}
+
 TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
 {
     // The log said "previous dose still active" about an EQUIP rule, which is

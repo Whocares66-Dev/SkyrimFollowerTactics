@@ -102,6 +102,7 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock, PotionChoice &choice)
         if (alch->IsPoison() || alch->IsFood())
             continue;
 
+        stock.carried.push_back({alch->GetFormID(), static_cast<int>(count)});
         RecordPotion(alch, count, stock, choice);
     }
 }
@@ -284,6 +285,25 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
 
     // enemies / allies deliberately left empty -- see the header.
     return s;
+}
+
+std::vector<PotionOption> ScanCarriedPotions(RE::Actor *actor)
+{
+    std::vector<PotionOption> out;
+    if (!actor)
+        return out;
+
+    auto inventory = actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::AlchemyItem); });
+    for (auto &[object, entry] : inventory)
+    {
+        const auto count = entry.first;
+        auto *alch = object->As<RE::AlchemyItem>();
+        if (count <= 0 || !alch || alch->IsPoison() || alch->IsFood())
+            continue;
+        out.push_back({alch->GetFormID(), alch->GetName() ? alch->GetName() : "?", static_cast<int>(count)});
+    }
+    std::sort(out.begin(), out.end(), [](const PotionOption &a, const PotionOption &b) { return a.name < b.name; });
+    return out;
 }
 
 std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)

@@ -61,6 +61,8 @@ struct FollowerView
     // Lives on the view rather than in Snapshot because it is menu content, not
     // a rule input -- the evaluator only ever compares FormIDs.
     std::vector<SpellOption> spells;
+    // The potions she carries, for the drink menu. Same reasoning.
+    std::vector<PotionOption> potions;
 
     std::uint16_t level{0};
     float carriedWeight{0.0f};

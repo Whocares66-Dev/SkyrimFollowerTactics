@@ -68,9 +68,10 @@ enum class ActionTargetKind : std::uint8_t
 enum class ActionKind : std::uint8_t
 {
     None,
-    DrinkHealthPotion,
-    DrinkMagickaPotion,
-    DrinkStaminaPotion,
+    DrinkHealthPotion,  // the strongest carried
+    DrinkMagickaPotion, // the strongest carried
+    DrinkStaminaPotion, // the strongest carried
+    DrinkPotion,        // one specific potion, named by actionForm
     CastSpell,
     EquipSpell,
     StopCombat,
@@ -92,7 +93,8 @@ struct Rule
     ActionKind action{ActionKind::None};
     float actionArg{0.0f};
 
-    // Which spell, for EquipSpell. A FormID, and deliberately opaque here: core
+    // Which spell, for EquipSpell and CastSpell; which potion, for DrinkPotion.
+    // A FormID, and deliberately opaque here: core
     // has no idea what a spell is, it only compares this against the ids the
     // snapshot reports as known and as currently running.
     //

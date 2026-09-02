@@ -81,16 +81,17 @@ constexpr std::array<Entry<ActionTargetKind>, 4> kActionTargets{{
     {ActionTargetKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 9> kActions{{
+constexpr std::array<Entry<ActionKind>, 10> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. It also
     // leaves room: "drink-health-potion-weakest" -- don't burn a strong potion
     // on a scratch -- becomes a new value rather than a breaking change to an
     // existing one.
     {ActionKind::None, "none", "Do nothing"},
-    {ActionKind::DrinkHealthPotion, "drink-health-potion-strongest", "Drink health potion"},
-    {ActionKind::DrinkMagickaPotion, "drink-magicka-potion-strongest", "Drink magicka potion"},
-    {ActionKind::DrinkStaminaPotion, "drink-stamina-potion-strongest", "Drink stamina potion"},
+    {ActionKind::DrinkHealthPotion, "drink-health-potion-strongest", "Drink strongest health potion"},
+    {ActionKind::DrinkMagickaPotion, "drink-magicka-potion-strongest", "Drink strongest magicka potion"},
+    {ActionKind::DrinkStaminaPotion, "drink-stamina-potion-strongest", "Drink strongest stamina potion"},
+    {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
     {ActionKind::CastSpell, "cast-spell", "Cast spell"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
     {ActionKind::StopCombat, "stop-combat", "Stop fighting"},
@@ -254,6 +255,8 @@ std::string_view Describe(ActionKind v) noexcept
         return "Drink the strongest magicka potion carried.";
     case ActionKind::DrinkStaminaPotion:
         return "Drink the strongest stamina potion carried.";
+    case ActionKind::DrinkPotion:
+        return "Drink one particular potion she carries, chosen by name.";
     case ActionKind::CastSpell:
         return "Tell the follower to cast it now, through the game's own casting behaviour -- with "
                "the animation, and interruptible. Needs the FollowerTactics plugin enabled.";
