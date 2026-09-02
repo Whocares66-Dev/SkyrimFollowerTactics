@@ -22,7 +22,8 @@ enum class ActionResult : std::uint8_t
     MissingItem,    // the potion or spell vanished between snapshot and dispatch
     NoEquipManager, // the game singleton was unavailable
     NoCaster,       // the actor has no magic caster for that source
-    CannotCast      // the game says she could not cast it: cost, timing, skill
+    CannotCast,     // the game says she could not cast it: cost, timing, skill
+    Busy            // the package pool was exhausted between evaluation and dispatch
 };
 
 // Why the game refused a cast, in its own words. Kept separate from

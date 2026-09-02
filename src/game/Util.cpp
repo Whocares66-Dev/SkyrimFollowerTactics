@@ -3,6 +3,31 @@
 namespace ft::game
 {
 
+namespace
+{
+double g_lastHour = -1.0; // hour-of-day at the previous read, or -1
+double g_seconds = 0.0;   // accumulated real seconds of game time
+} // namespace
+
+double TacticsSeconds()
+{
+    auto *calendar = RE::Calendar::GetSingleton();
+    if (!calendar || !calendar->gameHour)
+        return NowSeconds(); // before the game is up; nothing is timed then anyway
+
+    const double hour = calendar->gameHour->value;
+    if (g_lastHour >= 0.0)
+    {
+        double deltaHours = hour - g_lastHour;
+        if (deltaHours < 0.0)
+            deltaHours += 24.0; // crossed midnight
+        const double timescale = calendar->GetTimescale() > 0.0f ? calendar->GetTimescale() : 20.0;
+        g_seconds += deltaHours * 3600.0 / timescale;
+    }
+    g_lastHour = hour;
+    return g_seconds;
+}
+
 std::string Describe(RE::Actor *actor)
 {
     if (!actor)

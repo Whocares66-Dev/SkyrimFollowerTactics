@@ -1,6 +1,5 @@
 #include "game/Actions.h"
 
-#include "game/CombatHook.h"
 #include "game/Packages.h"
 
 namespace ft::game
@@ -139,6 +138,8 @@ const char *ToString(ActionResult r) noexcept
         return "actor has no magic caster";
     case ActionResult::CannotCast:
         return "the game would refuse the cast";
+    case ActionResult::Busy:
+        return "every package slot is mid-cast";
     }
     return "?";
 }
@@ -157,14 +158,28 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
     case ft::ActionKind::DrinkStaminaPotion:
         return DrinkPotion(actor, choice.stamina);
 
-    case ft::ActionKind::CastSpell:
-        // ONE mechanism, deliberately. The package route is left in place but
-        // not called: running both would mean a cast could not be attributed to
-        // either, which is the mistake that made the animation-event experiment
-        // worthless. If this fails, the package route is still there to return
-        // to -- with its priority problem intact.
-        RequestCombatCast(actor, decision.actionForm);
-        return ActionResult::Performed;
+    case ft::ActionKind::CastSpell: {
+        // The package route, on its own. The combat-AI hook is off by default
+        // and not called here: running two mechanisms would mean a cast could
+        // not be attributed to either, which is what made the earlier
+        // animation-event experiment worthless.
+        const auto request = RequestCast(actor, decision.actionForm, decision.targetId);
+        logger::info("  cast: {}", ToString(request));
+        switch (request)
+        {
+        case CastRequest::Armed:
+            return ActionResult::Performed;
+        case CastRequest::SpellNotInSlot:
+            return ActionResult::MissingItem;
+        case CastRequest::PoolBusy:
+        case CastRequest::AlreadyCasting:
+            return ActionResult::Busy;
+        case CastRequest::NotSelfTarget:
+        case CastRequest::NoPackages:
+            return ActionResult::NoSuchAction;
+        }
+        return ActionResult::NoSuchAction;
+    }
 
     case ft::ActionKind::EquipSpell:
         return EquipKnownSpell(actor, FindSpell(decision.actionForm));

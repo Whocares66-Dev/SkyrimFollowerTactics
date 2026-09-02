@@ -1,85 +1,149 @@
 #pragma once
-// The UseMagic package pool, and the one unmapped structure standing between us
-// and rule-driven casting.
+// The UseMagic package pool: how a rule makes a follower CAST a spell rather
+// than merely hold it.
 //
-// WHY THIS EXISTS
-// Nothing in the game's API makes an NPC cast a spell on demand. Verified, not
-// assumed: CastSpellImmediate never animates an actor (the CK wiki says so and
-// DynamicAnimationCasting uses exactly that call), MRh_SpellFire_Event is an
-// event the game EMITS rather than accepts (NPC Spell Variance hooks it to
-// detect casts), and there is no Actor.Cast in Papyrus at all. The sanctioned
-// route is an AI package carrying the UseMagic procedure -- which is content,
-// not code, hence FollowerTactics.esp.
+// THE MECHANISM, AND WHY IT IS THIS ONE
+// Nothing in the game's API makes an NPC cast a chosen spell at a chosen
+// moment (docs/MAGIC.md walks the seven ways that was established). The AI
+// casts when one of ITS packages says to, so the only honest route is to give
+// the AI a package and a reason to pick it.
+//
+// The first attempt pushed the package straight onto the actor and lost on
+// priority. The fix is not a higher-priority quest: it is that the follower is
+// IN COMBAT, and an actor in combat does not run her package stack at all. She
+// runs her alias's COMBAT OVERRIDE package list, which the vanilla follower
+// alias already has (PlayerFollowerCombatOverridePackageList, 0005C852). The
+// game's own worked example is Mercer Frey, whose "cast Nightingale Strife at
+// the player" UseMagic package sits in exactly such a list, gated by a
+// condition on quest stage. Ours are gated by a faction rank instead, because a
+// faction rank is something this plugin can set in one call.
+//
+// So the bridge from a rule to a cast is:
+//
+//     load        our eight packages are inserted at the FRONT of the vanilla
+//                 follower combat-override list
+//     rule fires  repoint the slot's Spell input, set the follower's rank in
+//                 FT_CastNow to her slot number, ask the AI to re-evaluate
+//     the AI      finds the first list entry whose condition passes -- ours --
+//                 and runs the UseMagic procedure: animation, cost, interrupts
+//     afterwards  the tick clears the rank, so the condition fails again and
+//                 the list falls through to the vanilla entries exactly as
+//                 before
 //
 // WHAT THE PLUGIN HOLDS
-// Eight copies of a vanilla UseMagic package, FT_CastSlot1..8, local FormIDs
-// 0x800..0x807. Eight because the spell lives IN the record: one shared record
-// would mean two followers casting different spells overwrite each other, and
-// eight matches the follower cap the engine already enforces.
+// Eight UseMagic packages FT_CastSlot1..8 (0x800..0x807) and the faction
+// FT_CastNow (0x808) with ranks 0..15. Slot k's condition is
+// GetFactionRank(FT_CastNow) == k.
 //
-// THE GAP
-// Repointing a package's Spell input means writing through
-// BGSPackageDataTargetSelector, whose layout CommonLibSSE does not map. This
-// header exposes a PROBE rather than a setter, because writing through a
-// guessed layout is how you corrupt a live game, and guessed layouts are
-// exactly what has already cost this project several rounds.
+// THE POOL
+// The eight records are a resource pool. A follower takes a free record when
+// a cast rule fires, the record is HERS ALONE until the cast has run (or the
+// window has passed), and then it goes back. Never shared, even for the same
+// spell: every input in the record -- spell now, target later -- belongs to
+// the holder, so the pool cannot be caught out by an input it did not think to
+// compare. The limit is eight followers mid-cast at the same instant. When
+// that is exceeded, the tick reports the pool busy and the rule engine skips
+// cast rules for that evaluation -- no cooldown is spent, and the next rule in
+// the list gets its turn.
 //
-// The probe is decisive because the plugin ships a CANARY: we wrote Fast
-// Healing (0x0002F3B8) into that slot ourselves, so the correct interpretation
-// is the one that reads that exact form back. Nothing is written until it does.
+// LIMITS, STATED
+// - Only a follower the vanilla DialogueFollower alias holds is covered: the
+//   override list belongs to that alias. A follower recruited by a framework
+//   (NFF, EFF, AFT) runs its own alias. RequestCast reports which case she is.
+// - The packages cast on SELF. Casting on the player or an ally needs a
+//   second pool with a different Target input; the rule engine already names
+//   the target, so that is content, not design.
 
 #include <cstdint>
+#include <vector>
 
 namespace RE
 {
 class Actor;
-class TESPackage;
 } // namespace RE
 
 namespace ft::game
 {
 
-// Local FormIDs of the pool, as authored by tools/xEdit. Verified by parsing
-// the plugin rather than assumed from creation order.
 inline constexpr std::uint32_t kFirstPackageLocalID = 0x000800;
+inline constexpr std::uint32_t kCastFactionLocalID = 0x000808;
 inline constexpr std::size_t kPackageSlots = 8;
 inline constexpr const char *kPluginName = "FollowerTactics.esp";
 
-// The spell the plugin ships in every slot's Spell input. Its only job is to be
-// a value we already know, so a memory probe has something to be right about.
-inline constexpr std::uint32_t kCanarySpellID = 0x0002F3B8; // Fast Healing
+// The quest that owns the vanilla follower alias.
+inline constexpr std::uint32_t kDialogueFollowerQuestID = 0x000750BA;
 
-// Resolve the pool. Safe to call when the plugin is absent -- everything simply
-// reports unavailable and the cast action stays unsupported, which is the
-// correct behaviour for a mod whose ESL was not enabled.
+// The combat-override lists our packages are spliced into, front of each. A
+// plugin that is not loaded is skipped. Only the vanilla follower list today;
+// docs/MAGIC.md "Follower frameworks" records what SFF and NFF use (SFF the
+// same vanilla list, NFF its own nwsFollowerCombatPkList 007429), for when
+// integrating with them is on the table.
+struct OverrideList
+{
+    const char *plugin;
+    std::uint32_t localID;
+};
+inline constexpr OverrideList kOverrideLists[] = {
+    {"Skyrim.esm", 0x0005C852}, // PlayerFollowerCombatOverridePackageList
+};
+
+// The spell every slot ships with, so the memory probe has a known value to
+// find. Fast Healing.
+inline constexpr std::uint32_t kCanarySpellID = 0x0002F3B8;
+
+// Resolve the pool and splice it into the follower combat-override list. Safe
+// when the plugin is absent: everything reports unavailable and cast rules stay
+// unsupported, which is the right behaviour for a mod whose ESL is unticked.
 void InitPackages();
 
 [[nodiscard]] bool PackagesAvailable();
 
-// Dump what a package's Spell input actually looks like in memory, and say
-// whether the canary was found. Logs only; writes nothing.
+// Could a cast be started right now? False while every slot is mid-cast, so
+// the rule engine can skip cast rules for this evaluation instead of firing
+// one that cannot be honoured.
+[[nodiscard]] bool HasFreeSlot();
+
+// Is this follower holding a record right now? The rule engine treats her
+// cast rules as busy while she is, so a second request during a cast is
+// skipped for that turn without spending a cooldown.
+[[nodiscard]] bool IsMidCast(const RE::Actor *actor);
+
+// Locate the Spell input in memory by finding the canary. Logs only.
 void ProbeSpellInput();
 
-// Ask a follower to cast, by pushing her slot's UseMagic package.
-//
-// Which spell is NOT chosen here yet -- every slot ships casting the canary,
-// and repointing that field needs the layout the probe is still establishing.
-// So this refuses any other spell rather than casting the wrong one silently,
-// which is the failure the whole exercise has been trying to avoid.
-//
-// Slots are assigned per actor and kept, because the spell lives in the record:
-// two followers sharing a slot would overwrite each other's spell the moment
-// repointing works.
 enum class CastRequest : std::uint8_t
 {
-    Pushed,        // the package is on her; the game decides the rest
-    NoPackages,    // the ESL is not enabled
-    NoSlot,        // more followers than slots
-    SpellNotInSlot // asked for a spell the package does not hold
+    Armed,          // her slot's condition now passes; the AI decides the rest
+    NoPackages,     // the ESL is not enabled
+    PoolBusy,       // every record is held by a follower mid-cast
+    AlreadyCasting, // this follower already holds a record; one cast at a time
+    SpellNotInSlot, // the Spell input could not be repointed at that spell
+    NotSelfTarget   // the rule names a target this pool cannot cast on
 };
 
 [[nodiscard]] const char *ToString(CastRequest r) noexcept;
 
-[[nodiscard]] CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID);
+// Ask a follower to cast a spell on herself. targetId is the rule's resolved
+// target; anything other than the follower herself is refused, honestly,
+// rather than cast on the wrong actor.
+[[nodiscard]] CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId);
+
+// Called every tick from the game thread. Watches held slots: reports when
+// the AI picks our package up, and releases the record -- rank back to -1 --
+// once the cast has run or the window has passed. A record is never held
+// longer than the window while the tick runs; that is the backstop that keeps
+// the pool from draining.
+//
+// `followers` is everyone under management. Any of them carrying a rank while
+// holding no record has a STALE rank -- typically loaded from a save made
+// mid-cast -- and would otherwise pass her slot's condition forever. It is
+// cleared here, so the faction can never wedge a follower into casting on
+// every evaluation.
+void TickPackages(double now, const std::vector<RE::Actor *> &followers);
+
+// Forget every held record. For a game load: the handles are meaningless in
+// the new session and the ranks, if any survived in the save, are swept by the
+// first tick.
+void ResetPackages();
 
 } // namespace ft::game

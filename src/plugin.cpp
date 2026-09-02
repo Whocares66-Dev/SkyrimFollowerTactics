@@ -211,6 +211,13 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
     SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message *message) {
         if (message->type == SKSE::MessagingInterface::kDataLoaded)
             OnDataLoaded();
+
+        // A load or a new game invalidates every handle the package pool
+        // holds, and a save made mid-cast can carry a follower's rank into
+        // the new session. Drop the pool; the first tick sweeps the ranks.
+        if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
+            message->type == SKSE::MessagingInterface::kNewGame)
+            ft::game::ResetPackages();
     });
 
     return true;
