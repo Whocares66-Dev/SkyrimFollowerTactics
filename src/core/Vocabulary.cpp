@@ -57,42 +57,40 @@ template <typename Enum, std::size_t N>
 
 constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
     {SubjectKind::Self, "self", "Self"},
-    {SubjectKind::Player, "player", "The player"},
-    {SubjectKind::Ally, "ally", "An ally"},
-    {SubjectKind::Enemy, "enemy", "An enemy"},
-    {SubjectKind::CurrentTarget, "current-target", "Current target"},
+    {SubjectKind::Player, "player", "Player"},
+    {SubjectKind::Ally, "ally", "Ally"},
+    {SubjectKind::Enemy, "enemy", "Enemy"},
+    {SubjectKind::CurrentTarget, "current-target", "Target"},
 }};
 
 constexpr std::array<Entry<PredicateKind>, 8> kPredicates{{
-    {PredicateKind::Always, "always", "always"},
-    {PredicateKind::HealthPctBelow, "health-pct-below", "health below"},
-    {PredicateKind::MagickaPctBelow, "magicka-pct-below", "magicka below"},
-    {PredicateKind::StaminaPctBelow, "stamina-pct-below", "stamina below"},
-    {PredicateKind::InBleedout, "in-bleedout", "is bleeding out"},
-    {PredicateKind::InCombat, "in-combat", "is in combat"},
-    {PredicateKind::WithinDistance, "within-distance", "is within"},
-    {PredicateKind::CountAtLeast, "count-at-least", "number of them is at least"},
+    {PredicateKind::Always, "always", "Always"},
+    {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
+    {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
+    {PredicateKind::MagickaPctBelow, "magicka-pct-below", "Magicka"},
+    {PredicateKind::InBleedout, "in-bleedout", "Bleeding out"},
+    {PredicateKind::InCombat, "in-combat", "In combat"},
+    {PredicateKind::WithinDistance, "within-distance", "Distance"},
+    {PredicateKind::CountAtLeast, "count-at-least", "Count"},
 }};
 
 constexpr std::array<Entry<ActionTargetKind>, 4> kActionTargets{{
-    {ActionTargetKind::ConditionSubject, "condition-subject", "whoever matched"},
-    {ActionTargetKind::Self, "self", "self"},
-    {ActionTargetKind::Player, "player", "the player"},
-    {ActionTargetKind::CurrentTarget, "current-target", "current target"},
+    {ActionTargetKind::ConditionSubject, "condition-subject", "Whoever matched"},
+    {ActionTargetKind::Self, "self", "Self"},
+    {ActionTargetKind::Player, "player", "Player"},
+    {ActionTargetKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 9> kActions{{
+constexpr std::array<Entry<ActionKind>, 7> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. It also
     // leaves room: "drink-health-potion-weakest" -- don't burn a strong potion
     // on a scratch -- becomes a new value rather than a breaking change to an
     // existing one.
     {ActionKind::None, "none", "Do nothing"},
-    {ActionKind::DrinkHealthPotion, "drink-health-potion-strongest", "Drink strongest healing potion"},
-    {ActionKind::DrinkMagickaPotion, "drink-magicka-potion-strongest", "Drink strongest magicka potion"},
-    {ActionKind::DrinkStaminaPotion, "drink-stamina-potion-strongest", "Drink strongest stamina potion"},
-    {ActionKind::SetCombatStyle, "set-combat-style", "Change combat style"},
-    {ActionKind::SetAggression, "set-aggression", "Change aggression"},
+    {ActionKind::DrinkHealthPotion, "drink-health-potion-strongest", "Drink health potion"},
+    {ActionKind::DrinkMagickaPotion, "drink-magicka-potion-strongest", "Drink magicka potion"},
+    {ActionKind::DrinkStaminaPotion, "drink-stamina-potion-strongest", "Drink stamina potion"},
     {ActionKind::StopCombat, "stop-combat", "Stop fighting"},
     {ActionKind::Flee, "flee", "Flee"},
     {ActionKind::HoldPosition, "hold-position", "Hold position"},
@@ -254,10 +252,6 @@ std::string_view Describe(ActionKind v) noexcept
         return "Drink the strongest magicka potion carried.";
     case ActionKind::DrinkStaminaPotion:
         return "Drink the strongest stamina potion carried.";
-    case ActionKind::SetCombatStyle:
-        return "Switch to one of the combat styles this mod supplies.";
-    case ActionKind::SetAggression:
-        return "Change how readily the follower picks a fight.";
     case ActionKind::StopCombat:
         return "Break off the current fight.";
     case ActionKind::Flee:

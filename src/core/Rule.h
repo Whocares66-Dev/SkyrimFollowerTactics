@@ -43,8 +43,8 @@ enum class PredicateKind : std::uint8_t
 {
     Always,
     HealthPctBelow,
-    MagickaPctBelow,
     StaminaPctBelow,
+    MagickaPctBelow,
     InBleedout,
     InCombat,
     WithinDistance,
@@ -71,8 +71,6 @@ enum class ActionKind : std::uint8_t
     DrinkHealthPotion,
     DrinkMagickaPotion,
     DrinkStaminaPotion,
-    SetCombatStyle, // actionArg = style index into the ESP's CSTY palette
-    SetAggression,  // actionArg = 0..3
     StopCombat,
     Flee,
     HoldPosition,

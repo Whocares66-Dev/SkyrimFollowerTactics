@@ -26,16 +26,6 @@ double MinimumCooldown(ActionKind action) noexcept
         // re-pushing a package every tick would give it no chance to run.
         return 1.0;
 
-    case ActionKind::SetCombatStyle:
-    case ActionKind::SetAggression:
-        // Nothing a condition reads changes, so strictly nothing goes stale --
-        // but zero here is worse, not better: with first-match-wins and a
-        // condition that stays true, the rule would re-fire every single tick.
-        // This value is purely anti-thrash. Letting a second rule with the same
-        // condition have a turn is NOT a cooldown problem; see the note on
-        // complementary preparations in Rule.h.
-        return 1.0;
-
     default:
         return 0.0;
     }

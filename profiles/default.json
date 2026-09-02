@@ -29,7 +29,7 @@
       "predicate": "health-pct-below",
       "conditionArg": 0.25,
       "actionTarget": "condition-subject",
-      "action": "set-combat-style",
+      "action": "stop-combat",
       "actionArg": 0,
       "cooldown": 5.0
     },

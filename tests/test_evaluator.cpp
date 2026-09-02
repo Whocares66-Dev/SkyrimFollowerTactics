@@ -554,9 +554,9 @@ TEST_CASE("a different situation is still free to draw a response", "[cooldown]"
 TEST_CASE("a rule whose action is already in effect starves the rules below it", "[cooldown]")
 {
     // Documents a constraint rather than a feature, because the obvious guess
-    // is wrong. Two complementary preparations for one persistent situation --
-    //     enemy nearby -> set a defensive combat style
-    //     enemy nearby -> raise aggression
+    // is wrong. Two different standing responses to one persistent situation --
+    //     enemy nearby -> hold position
+    //     enemy nearby -> break off
     // -- cannot both happen by tuning cooldowns. Rules are first-match-wins, so
     // while the first is available it wins every time; a zero settle makes it
     // re-fire every tick and a non-zero one only slows the monopoly.
@@ -567,19 +567,19 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
     // what happens.
     RuleSet rs;
 
-    Rule style;
-    style.subject = SubjectKind::Enemy;
-    style.predicate = PredicateKind::WithinDistance;
-    style.conditionArg = 1000.0f;
-    style.actionTarget = ActionTargetKind::Self;
-    style.action = ActionKind::SetCombatStyle;
-    style.label = "brace: combat style";
-    rs.rules.push_back(style);
+    Rule hold;
+    hold.subject = SubjectKind::Enemy;
+    hold.predicate = PredicateKind::WithinDistance;
+    hold.conditionArg = 1000.0f;
+    hold.actionTarget = ActionTargetKind::Self;
+    hold.action = ActionKind::HoldPosition;
+    hold.label = "brace: hold position";
+    rs.rules.push_back(hold);
 
-    Rule aggression = style;
-    aggression.action = ActionKind::SetAggression;
-    aggression.label = "brace: aggression";
-    rs.rules.push_back(aggression);
+    Rule disengage = hold;
+    disengage.action = ActionKind::StopCombat;
+    disengage.label = "brace: break off";
+    rs.rules.push_back(disengage);
 
     Snapshot s = Healthy();
     s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
@@ -589,15 +589,15 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
 
     // Rule 0 wins now, and keeps winning every time it comes off cooldown.
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
-    s.now += MinimumCooldown(ActionKind::SetCombatStyle) + 0.01;
+    s.now += MinimumCooldown(ActionKind::HoldPosition) + 0.01;
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
 
     // Make rule 0's action unavailable -- which is what an "already in effect"
     // check will do -- and rule 1 gets its turn. Note the wait: rule 0's fire
     // also blocked the condition they share, so the settle has to elapse first.
     // Availability decides WHO acts; the cooldown decides WHEN.
-    ctx.caps.supported[static_cast<std::size_t>(ActionKind::SetCombatStyle)] = false;
-    s.now += MinimumCooldown(ActionKind::SetCombatStyle) + 0.01;
+    ctx.caps.supported[static_cast<std::size_t>(ActionKind::HoldPosition)] = false;
+    s.now += MinimumCooldown(ActionKind::HoldPosition) + 0.01;
 
     Trace trace;
     const auto d = Evaluate(rs, s, ctx, &trace);
