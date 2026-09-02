@@ -1,0 +1,32 @@
+; ============================================================
+;  FollowerTactics - step 2: make the SELECTED actor a follower
+;  Run:  click the spawned NPC in the console, then  bat ftmake
+;
+;  Every command here acts on the console's current selection,
+;  NOT on a hardcoded RefID. That is deliberate: it works on any
+;  actor you click, at any point in any save, and it is what let
+;  this harness stop depending on Lydia being initialized.
+;
+;  If nothing happens, you probably have nothing selected. The
+;  console shows the selected reference's name and FormID just
+;  above the input line - check it says an NPC and not a chair.
+; ============================================================
+
+; --- Make them a follower -------------------------------------
+; setplayerteammate sets the kPlayerTeammate bool bit (1 << 26),
+; which is exactly the flag the mod's registry will key on in
+; Phase 1 - so this is the real thing, not an approximation.
+setplayerteammate 1
+setrelationshiprank player 4
+
+; CurrentFollowerFaction, for the vanilla-only cross-check.
+addtofaction 0005C84E 1
+
+; --- Give them potions to actually drink ----------------------
+; 0003EADD = Potion of Minor Healing, 0003EADE = Potion of Healing
+additem 0003EADD 10
+additem 0003EADE 5
+
+; --- Confirm it took ------------------------------------------
+getavinfo health
+getitemcount 0003EADD

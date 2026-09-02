@@ -1,0 +1,76 @@
+<#
+.SYNOPSIS
+    Deploy the console batch files from test/ to everywhere Skyrim might look for them.
+
+.DESCRIPTION
+    Two things about `bat` are easy to get wrong, and both fail the same way -- the
+    command appears to do nothing at all:
+
+    1. LINE ENDINGS. These files are authored on a repo that stores LF. Bethesda's
+       console parser is Windows-native; feeding it LF-only text is asking for
+       trouble. Everything is written out as CRLF here regardless of what is in git.
+
+    2. LOCATION. Sources disagree about where `bat <name>` looks: the game root, the
+       game root without a .txt extension, or Data\ with one. Rather than litigate
+       it, deploy to all three. They are a few KB of text and the ambiguity is not
+       worth one more debugging session.
+
+    The game folder is under C:\Program Files (x86), so this needs an elevated shell.
+
+.EXAMPLE
+    .\tools\deploy-tests.ps1
+    .\tools\deploy-tests.ps1 -Check      # report drift without writing
+#>
+[CmdletBinding()]
+param(
+    [string] $GameFolder = "C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition",
+    [switch] $Check
+)
+
+$ErrorActionPreference = 'Stop'
+$repo = Split-Path -Parent $PSScriptRoot
+$src = Join-Path $repo 'test'
+
+if (-not (Test-Path (Join-Path $GameFolder 'SkyrimSE.exe'))) {
+    throw "$GameFolder does not look like the Skyrim root (no SkyrimSE.exe)."
+}
+
+$dataFolder = Join-Path $GameFolder 'Data'
+if (-not (Test-Path $dataFolder)) { throw "No Data folder under $GameFolder" }
+
+$files = Get-ChildItem (Join-Path $src '*.txt')
+if (-not $files) { throw "No .txt files found in $src" }
+
+function Write-Crlf([string]$Path, [string]$Text) {
+    # Normalise to LF first so an already-CRLF source does not become CRCRLF.
+    $normalised = ($Text -replace "`r`n", "`n") -replace "`n", "`r`n"
+    [System.IO.File]::WriteAllText($Path, $normalised, [System.Text.UTF8Encoding]::new($false))
+}
+
+$written = 0
+foreach ($f in $files) {
+    $text = Get-Content $f.FullName -Raw
+    $stem = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+
+    $destinations = @(
+        (Join-Path $GameFolder $f.Name),   # root, with extension  (most common)
+        (Join-Path $GameFolder $stem),     # root, no extension    (documented variant)
+        (Join-Path $dataFolder $f.Name)    # Data\, with extension (documented variant)
+    )
+
+    foreach ($d in $destinations) {
+        if ($Check) {
+            $state = if (Test-Path $d) { 'present' } else { 'MISSING' }
+            Write-Host ("  {0,-8} {1}" -f $state, $d) -ForegroundColor DarkGray
+            continue
+        }
+        Write-Crlf -Path $d -Text $text
+        $written++
+    }
+    if (-not $Check) { Write-Host ("  deployed  {0}  (3 locations, CRLF)" -f $f.Name) -ForegroundColor Green }
+}
+
+if (-not $Check) {
+    Write-Host "`n$written files written." -ForegroundColor Cyan
+    Write-Host "Sequence:  bat ftsetup  ->  click her in the console  ->  bat ftmake  ->  bat ftspawn  ->  bat fthurt" -ForegroundColor Cyan
+}

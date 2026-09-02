@@ -1,0 +1,24 @@
+; ============================================================
+;  FollowerTactics - print the SELECTED actor's state
+;  Run:  bat ftstatus    (with the follower selected)
+;
+;  Answers "is the scenario actually set up?" before you spend
+;  time wondering why nothing is happening. Scroll the console
+;  with Page Up to read it all.
+; ============================================================
+
+; --- Resources the rule engine reads --------------------------
+getavinfo health
+getavinfo magicka
+getavinfo stamina
+
+; --- Combat state ---------------------------------------------
+; 1 = in combat. This is Snapshot::inCombat in Phase 1.
+isincombat
+
+; --- Who are they fighting? -----------------------------------
+getcombattarget
+
+; --- Do they have anything to drink? --------------------------
+getitemcount 0003EADD
+getitemcount 0003EADE

@@ -1,32 +1,30 @@
 ; ============================================================
-;  FollowerTactics - test scenario setup
-;  Run from the in-game console:  bat ftsetup
-;  File must sit in the Skyrim root, NEXT TO SkyrimSE.exe
-;  (if "bat" can't find it, try Data\ instead - sources conflict)
+;  FollowerTactics - step 1: spawn a test follower
+;  Run:  bat ftsetup
 ;
-;  DO NOT put coc in a batch file. Community reports say coc
-;  inside a bat either silently fails or freezes the game.
-;  Travel to the test cell manually FIRST, then run this.
+;  WHY A SPAWNED COPY AND NOT THE REAL LYDIA:
+;  the real Lydia (RefID 000A2C94) is NOT reachable early in a
+;  playthrough. She is not initialized until you are Thane of
+;  Whiterun and have entered Breezehome; before that, `prid
+;  000A2C94` selects nothing and every command after it silently
+;  does nothing. An earlier version of this harness was built on
+;  her persistent reference and failed exactly that way on a
+;  level-1 save.
+;
+;  placeatme with her BASE id (000A2C8E) sidesteps all of it:
+;  it works at any point in any save, in any cell, regardless of
+;  quest state. The copy is disposable, which is what you want in
+;  a test anyway.
+;
+;  NEXT STEP, and it cannot be batched: click her in the console
+;  to select her, then run  bat ftmake
+;  (Console commands act on the selected reference, and there is
+;  no console command to select the thing placeatme just made.)
 ; ============================================================
 
-; --- Follower: Lydia, by her persistent placed RefID ---------
-; Using a persistent ref instead of placeatme means every
-; command below targets a known actor. No RefID guessing.
-prid 000A2C94
-enable
-resurrect 1
-moveto player
-setrelationshiprank player 4
-setplayerteammate 1
-addtofaction 0005C84E 1
-
-; --- Give her potions to actually drink ----------------------
-additem 0003EADD 10
-additem 0003EADE 5
-
-; --- Report her health so you can compute thresholds ---------
-getavinfo health
-
-; --- Player survivability while testing ----------------------
-; (comment these out when you want a real fight)
+; --- Player survivability while testing -----------------------
 player.tgm
+
+; --- Spawn the test follower ----------------------------------
+; 000A2C8E = Lydia's BaseID. Any humanoid NPC base works here.
+player.placeatme 000A2C8E 1
