@@ -94,7 +94,7 @@ found" rather than proof of absence.
                                    │ reads/writes
                     ┌──────────────▼──────────────────────┐
    profiles/*.json ─┤  RuleSet (pure C++, no RE:: types)  │  ← unit testable
-                    │  Rule{ cond, target, action, args } │
+                    │  Rule{ subj, pred, action, target }  │
                     └──────────────┬──────────────────────┘
                                    │ evaluated against
                     ┌──────────────▼──────────────────────┐
@@ -187,15 +187,55 @@ know them:
 - One action per tick per follower, plus a short global cooldown (default 500 ms) to stop
   a rule from thrashing.
 
-A rule is `{ enabled, condition, condition_args, target, action, action_args, cooldown_ms }`.
+A rule is `{ enabled, subject, predicate, condition_arg, action_target, action, action_arg,
+cooldown, label }`.
 
-Conditions (v1 set): `Always`, `SelfHealthPctBelow`, `SelfMagickaPctBelow`,
-`SelfStaminaPctBelow`, `AllyHealthPctBelow`, `PlayerHealthPctBelow`, `EnemyCountAbove`,
-`EnemyWithinDistance`, `TargetIsActorType`, `TargetHealthPctBelow`, `SelfHasMagicEffect`,
-`SelfInBleedout`, `InCombat`, `PlayerSneaking`.
+**Subject and predicate are separate fields, and that split matters.** Dragon Age's editor
+cascades *subject → predicate → argument* ("Enemy → Health → below 30%"), and the data model
+has to match or the UI's two columns become secretly dependent on one another. An earlier
+draft of this document baked the subject into the predicate name — `SelfHealthPctBelow`,
+`AllyHealthPctBelow`, `PlayerHealthPctBelow` — which multiplies every new predicate by every
+subject. The symptom showed up immediately: health existed for three subjects while magicka
+and stamina existed only for `Self`.
 
-Targets (v1): `Self`, `Player`, `CurrentTarget`, `NearestEnemy`, `FarthestEnemy`,
-`LowestHealthEnemy`, `LowestHealthAlly`, `EnemyAttackingPlayer`, `NearestCaster`.
+Subjects (v1): `Self`, `Player`, `Ally`, `Enemy`, `CurrentTarget`.
+
+Predicates (v1): `Always`, `HealthPctBelow`, `MagickaPctBelow`, `StaminaPctBelow`,
+`InBleedout`, `InCombat`, `WithinDistance`, `CountAtLeast`.
+
+Action targets (v1): `ConditionSubject` (the default), `Self`, `Player`, `CurrentTarget`.
+
+### 3.4.1 Binding — the reason the split pays for itself
+
+`Ally` and `Enemy` are **group** subjects: the predicate holds if any member satisfies it,
+and the member that best satisfies it becomes the rule's **binding**. Actions default to
+`ConditionSubject`, meaning they apply to whatever the condition matched. So "enemy below
+25% health → finish it" names the enemy once, in the condition, and the action lands on that
+same enemy. The old model could not express this at all: its target field selected an actor
+independently of the condition, so nothing guaranteed the two agreed.
+
+When several members match, the binding is chosen **by the predicate's own dimension**, which
+is what makes it intuitive rather than arbitrary:
+
+| Predicate | Binds |
+|---|---|
+| `HealthPctBelow` / `MagickaPctBelow` / `StaminaPctBelow` | the lowest of that stat |
+| everything else | the nearest |
+| `CountAtLeast` | the nearest member (the predicate is about the group, not a member) |
+
+Ties keep the earlier member in snapshot order, so evaluation is deterministic and testable.
+
+### 3.4.2 Validity — an impossible pair is an authoring error, not a false condition
+
+Not every predicate means anything about every subject. Distance to oneself is meaningless;
+the `Snapshot` carries no magicka for allies. `IsPredicateValidFor(subject, predicate)` is the
+single source of truth, and it does double duty: the UI builds its cascading menu from it, so
+an impossible pair is never offered, and the evaluator reports `InvalidCondition` rather than
+`ConditionFalse`.
+
+That distinction is worth the extra verdict. "Your rule is broken" and "your rule is fine but
+the world is not in that state right now" look identical from a rule that simply never fires,
+and they send you to completely different places to debug.
 
 ### 3.5 Actions — tiered by how much they fight the engine
 
@@ -230,6 +270,74 @@ or perform a discrete one-shot the AI does not contest.
 - `StopCombat()` / `StartCombat(target)` / `SetAttackActorOnSight(bool)` — hold fire /
   free fire.
 - `MoveToOffset(anchor, distance)` — `KeepOffsetFromActor` for spacing.
+
+### 3.5.1 Availability: don't repeat what is already done
+
+A rule fires only when its condition holds **and its action is available**. Availability is
+doing more work than it looks, and it is the answer to two separate problems that cooldowns
+cannot solve.
+
+**Starvation.** Rules are first-match-wins, so a rule whose action stays available wins
+every time and starves everything below it. Two complementary preparations for one standing
+situation --
+
+```
+enemy is high level -> equip the shield
+enemy is high level -> equip the heavy helm
+```
+
+-- cannot both happen by tuning cooldowns. A zero settle makes the first rule re-fire every
+tick; a non-zero one merely slows the monopoly. The helm is never equipped either way. The
+only fix is for "equip the shield" to report itself **unavailable once the shield is
+equipped**, at which point evaluation falls through exactly as it does for "no potion in
+the bag".
+
+So **every state-setting action owes an is-this-already-done check**, or it will starve
+every rule beneath it. This is a hard requirement, not a polish item.
+
+**Naming a specific item, not a superlative.** That check is only tractable if actions name
+concrete things. `EquipItem(<specific armour>)` has an exact answer to "is it already
+equipped". `EquipBestArmour` does not: "best" needs a definition, the answer can change as
+the inventory changes, and two different definitions can flip-flop against each other every
+tick. Prefer the specific form in the v1 vocabulary; a "best available" helper can be a UI
+convenience that resolves to a specific item at authoring time.
+
+**Checking whether a previous effect is still running.** The ideal test for "have I already
+done this" is whether the last thing we applied is still in effect. There is no single
+mechanism for that, but there are three, and between them they cover the vocabulary:
+
+| Kind | Example | How to tell | Status |
+|---|---|---|---|
+| Instant, changes what a condition reads | vanilla Restore Health potion | **the condition itself** -- once health rises the rule stops matching. Bridge the ~2 s until it updates with `MinimumCooldown` | done |
+| Lingering magic effect | an over-time restore, fortify, regeneration | `MagicTarget::GetActiveEffectList()`; `ActiveEffect` carries `duration` and `elapsedSeconds`, so "still running" is exact | **implemented** for restores |
+| Persistent equipment or AV state | equipped shield, combat style, aggression | read the state back off the actor | Phase 4 |
+
+**The two compose as a max, and both are needed.** The settle time is a floor; a running
+effect extends the block for as long as it runs:
+
+- **Vanilla** alchemy `Restore Health` is instant -- duration 0, nothing appears in the
+  active-effect list -- so the flag is always false and the settle time does all the work.
+- **Potion overhauls** (Potions Restore Over Time, Apothecary, and others) convert restores
+  to over-time effects, where a fixed settle is pure guesswork: the dose might run for ten
+  seconds. Asking the game whether it is still running is exact, and costs one walk of a
+  list we can already reach.
+
+Neither alone is right. Without the floor an instant potion would be re-drunk on the next
+tick, since nothing lingers to inspect. Without the effect check an over-time potion would
+be stacked three deep. `Verdict::EffectActive` is reported separately from
+`Verdict::NoResource` because the fix differs -- the follower has plenty of potions, she is
+simply still absorbing the last one, and "no potion" would send the player to check an
+inventory that is fine.
+
+Note the first row needs no new machinery and is why the marquee potion rule works today:
+an instant effect never appears in the active-effect list, and does not need to, because
+the condition it changes *is* the check.
+
+The second row is a genuinely general mechanism and is where lingering effects should be
+handled when Phase 4 adds them. It belongs in the `Snapshot` as flags (section 3.3 already
+lists active magic effects there), so the availability check stays above the `RE::` line
+and unit testable.
+
 
 **Tier B — works but contests the AI. Prototype the technique before promising the feature.**
 

@@ -1,0 +1,120 @@
+#include "Rule.h"
+
+namespace ft
+{
+
+double MinimumCooldown(ActionKind action) noexcept
+{
+    switch (action)
+    {
+    case ActionKind::DrinkHealthPotion:
+    case ActionKind::DrinkMagickaPotion:
+    case ActionKind::DrinkStaminaPotion:
+        // The measured queue-to-effect latency is about two seconds, plus a
+        // margin so the next evaluation sees the result of this one.
+        // Deliberately not longer: one potion is often not enough, and a
+        // follower who is still badly hurt should drink again promptly.
+        return 3.0;
+
+    case ActionKind::StopCombat:
+        // Changes whether the follower is in combat, which conditions read.
+        return 1.0;
+
+    case ActionKind::Flee:
+    case ActionKind::HoldPosition:
+        // Movement takes time to change any distance a condition reads, and
+        // re-pushing a package every tick would give it no chance to run.
+        return 1.0;
+
+    case ActionKind::SetCombatStyle:
+    case ActionKind::SetAggression:
+        // Nothing a condition reads changes, so strictly nothing goes stale --
+        // but zero here is worse, not better: with first-match-wins and a
+        // condition that stays true, the rule would re-fire every single tick.
+        // This value is purely anti-thrash. Letting a second rule with the same
+        // condition have a turn is NOT a cooldown problem; see the note on
+        // complementary preparations in Rule.h.
+        return 1.0;
+
+    default:
+        return 0.0;
+    }
+}
+
+bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
+{
+    // The matrix is driven by what Snapshot actually carries. When a sensor is
+    // added -- ally magicka, say -- this table is the one place to widen, and
+    // the UI menu widens with it for free.
+    switch (subject)
+    {
+    case SubjectKind::Self:
+        switch (predicate)
+        {
+        case PredicateKind::Always:
+        case PredicateKind::HealthPctBelow:
+        case PredicateKind::MagickaPctBelow:
+        case PredicateKind::StaminaPctBelow:
+        case PredicateKind::InBleedout:
+        case PredicateKind::InCombat:
+            return true;
+        default:
+            // WithinDistance is meaningless (distance to what?) and CountAtLeast
+            // needs a group.
+            return false;
+        }
+
+    case SubjectKind::Player:
+        switch (predicate)
+        {
+        case PredicateKind::Always:
+        case PredicateKind::HealthPctBelow:
+        case PredicateKind::InCombat:
+        case PredicateKind::WithinDistance:
+            return true;
+        default:
+            return false;
+        }
+
+    case SubjectKind::Ally:
+        switch (predicate)
+        {
+        case PredicateKind::Always:
+        case PredicateKind::HealthPctBelow:
+        case PredicateKind::InBleedout:
+        case PredicateKind::WithinDistance:
+        case PredicateKind::CountAtLeast:
+            return true;
+        default:
+            return false;
+        }
+
+    case SubjectKind::Enemy:
+        switch (predicate)
+        {
+        case PredicateKind::Always:
+        case PredicateKind::HealthPctBelow:
+        case PredicateKind::WithinDistance:
+        case PredicateKind::CountAtLeast:
+            return true;
+        default:
+            return false;
+        }
+
+    case SubjectKind::CurrentTarget:
+        switch (predicate)
+        {
+        case PredicateKind::Always:
+        case PredicateKind::HealthPctBelow:
+        case PredicateKind::WithinDistance:
+            return true;
+        default:
+            return false;
+        }
+
+    default:
+        return false;
+    }
+}
+
+} // namespace ft

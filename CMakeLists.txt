@@ -47,6 +47,9 @@ if(FT_SANITIZE)
     message(STATUS "FT_SANITIZE: AddressSanitizer enabled for the whole build tree")
 endif()
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(ClangTools)
+
 # ---------------------------------------------------------------------------
 # ft_core -- the rule engine.
 #
@@ -58,6 +61,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(ft_core STATIC
     src/core/Evaluator.cpp
+    src/core/Rule.cpp
 )
 target_include_directories(ft_core PUBLIC src)
 target_compile_features(ft_core PUBLIC cxx_std_23)
@@ -78,7 +82,14 @@ if(FT_BUILD_PLUGIN)
 
     find_package(CommonLibSSE CONFIG REQUIRED)
 
-    add_commonlibsse_plugin(${PROJECT_NAME} SOURCES src/plugin.cpp)
+    # src/game/ -- every RE:: call lives here. Thin, imperative, verified by
+    # playing. Nothing in here may be #included from src/core/.
+    add_commonlibsse_plugin(${PROJECT_NAME} SOURCES
+        src/plugin.cpp
+        src/game/Sensors.cpp
+        src/game/Actions.cpp
+        src/game/Tactics.cpp
+        src/game/Util.cpp)
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
     # These are Skyrim/Windows-API concerns and belong to THIS target only.

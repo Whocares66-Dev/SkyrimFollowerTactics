@@ -1,48 +1,78 @@
 #pragma once
-// A rule is one row of the tactics grid: IF <condition> THEN <action> ON <target>.
-// Deliberately flat and POD-ish so it round-trips to JSON without ceremony.
+// A rule is one row of the tactics grid:
+//
+//     IF <subject> <predicate> <arg>   THEN <action> ON <target>
+//
+// The subject/predicate split is deliberate and mirrors Dragon Age: Origins,
+// whose editor cascades subject -> predicate -> argument. Baking the subject
+// into the predicate name -- the earlier SelfHealthPctBelow / AllyHealthPctBelow
+// / PlayerHealthPctBelow -- multiplied every new predicate by every subject and
+// left the two UI columns secretly dependent on one another. Split, the menu is
+// a genuine cascade and the engine composes: any valid subject may be paired
+// with any valid predicate, and IsPredicateValidFor says which pairs are valid.
 
 #include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace ft {
+namespace ft
+{
 
-enum class ConditionKind : std::uint8_t {
-    Always,
-    SelfHealthPctBelow,
-    SelfMagickaPctBelow,
-    SelfStaminaPctBelow,
-    SelfInBleedout,
-    InCombat,
-    PlayerHealthPctBelow,
-    AllyHealthPctBelow,
-    EnemyCountAtLeast,
-    EnemyWithinDistance,
-    TargetHealthPctBelow,
+// Who the condition asks about.
+//
+// Ally and Enemy are *group* subjects: the predicate holds if any member
+// satisfies it, and the member that best satisfies it becomes the rule's
+// binding (see Evaluator.h). That binding is what lets "enemy below 30% health
+// -> attack it" be written without naming the enemy twice.
+enum class SubjectKind : std::uint8_t
+{
+    Self,
+    Player,
+    Ally,
+    Enemy,
+    CurrentTarget,
 
     COUNT
 };
 
-enum class TargetKind : std::uint8_t {
+// What is being asked about the subject. Rule::conditionArg carries the
+// threshold where one applies: a 0..1 fraction for the Pct predicates, game
+// units for WithinDistance, a plain count for CountAtLeast.
+enum class PredicateKind : std::uint8_t
+{
+    Always,
+    HealthPctBelow,
+    MagickaPctBelow,
+    StaminaPctBelow,
+    InBleedout,
+    InCombat,
+    WithinDistance,
+    CountAtLeast,
+
+    COUNT
+};
+
+// Who the action is applied to. ConditionSubject -- the default -- means
+// whoever the condition matched.
+enum class ActionTargetKind : std::uint8_t
+{
+    ConditionSubject,
     Self,
     Player,
     CurrentTarget,
-    NearestEnemy,
-    LowestHealthEnemy,
-    LowestHealthAlly,
 
     COUNT
 };
 
-enum class ActionKind : std::uint8_t {
+enum class ActionKind : std::uint8_t
+{
     None,
     DrinkHealthPotion,
     DrinkMagickaPotion,
     DrinkStaminaPotion,
-    SetCombatStyle,   // actionArg = style index into the ESP's CSTY palette
-    SetAggression,    // actionArg = 0..3
+    SetCombatStyle, // actionArg = style index into the ESP's CSTY palette
+    SetAggression,  // actionArg = 0..3
     StopCombat,
     Flee,
     HoldPosition,
@@ -50,38 +80,100 @@ enum class ActionKind : std::uint8_t {
     COUNT
 };
 
-struct Rule {
-    bool          enabled{true};
-    ConditionKind condition{ConditionKind::Always};
-    float         conditionArg{0.0f};
-    TargetKind    target{TargetKind::Self};
-    ActionKind    action{ActionKind::None};
-    float         actionArg{0.0f};
-    double        cooldown{0.0};  // seconds; 0 = only the global cooldown applies
-    std::string   label;          // free text, shown in the UI, ignored by the engine
+struct Rule
+{
+    bool enabled{true};
+
+    SubjectKind subject{SubjectKind::Self};
+    PredicateKind predicate{PredicateKind::Always};
+    float conditionArg{0.0f};
+
+    ActionTargetKind actionTarget{ActionTargetKind::ConditionSubject};
+    ActionKind action{ActionKind::None};
+    float actionArg{0.0f};
+
+    double cooldown{0.0}; // seconds; 0 = only the global cooldown applies
+    std::string label;    // free text, shown in the UI, ignored by the engine
 };
 
-struct RuleSet {
-    int               schemaVersion{1};
-    std::string       name{"unnamed"};
+struct RuleSet
+{
+    int schemaVersion{1};
+    std::string name{"unnamed"};
     std::vector<Rule> rules;
 };
+
+// How long the world takes to reflect this action, in seconds.
+//
+// This one number governs two things after a rule fires: the same ACTION cannot
+// be repeated, and the same CONDITION -- the (subject, predicate) pair -- cannot
+// draw another response. Both for the same reason, which is worth stating
+// plainly because it is not a policy about remedies:
+//
+//     we acted, the world has not caught up, so do not decide again on
+//     numbers that predate what we just did.
+//
+// Drinking a potion is the case that needs it. Measured in game, about two
+// seconds pass between the equip call and health changing. Without a block,
+//     health < 25% -> drink a potion
+//     health < 25% -> cast a healing spell
+//     health < 25% -> eat food
+// applies all three inside 450 ms, each deciding on the same stale health.
+// With one, the follower drinks and waits; if the potion worked, health is now
+// above 25%, the other two conditions are false, and they never fire at all.
+//
+// What this number CANNOT do, and it is worth being explicit because the
+// obvious guess is wrong:
+//
+//     enemy is high level -> equip the best armour
+//     enemy is high level -> equip the best shield
+//
+// are complementary preparations rather than competing remedies, and no value
+// here lets both happen. Rules are first-match-wins, so while the armour rule
+// is available it wins every time: a zero settle makes it re-fire every tick,
+// and a non-zero one merely slows the monopoly. The shield is never equipped.
+//
+// The mechanism that does solve it is AVAILABILITY. An action that is already
+// in effect must report itself unavailable -- "equip the best armour" is not
+// available when the best armour is already worn -- and evaluation then falls
+// through to the next rule exactly as it does for "no potion in the bag". So
+// every state-setting action added in Phase 4 owes an is-this-already-done
+// check, or it will starve every rule beneath it.
+//
+// The number also doubles as an anti-thrash limit, which is why the state
+// setters carry one despite nothing going stale. Those two concerns could want
+// different values; they have not yet, so this stays a single table.
+[[nodiscard]] double MinimumCooldown(ActionKind action) noexcept;
+
+// Not every predicate means anything about every subject. The Snapshot carries
+// no magicka for allies, and "distance" is meaningless for Self. Rather than
+// quietly answering false -- which would look identical to a condition that was
+// simply untrue -- the pair is rejected outright.
+//
+// This drives two things: the UI builds its cascading menu from it, so an
+// impossible pair is never offered; and the evaluator reports InvalidCondition,
+// so a rule that cannot work says so instead of never firing for no visible
+// reason.
+[[nodiscard]] bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept;
 
 // Which actions the current runtime can actually perform. src/game/ fills this
 // in at startup. The UI greys out unsupported actions rather than letting
 // someone author a rule that silently never fires -- see docs/PLAN.md 3.5.
-struct Capabilities {
+struct Capabilities
+{
     std::array<bool, static_cast<std::size_t>(ActionKind::COUNT)> supported{};
 
-    [[nodiscard]] bool Supports(ActionKind a) const noexcept {
+    [[nodiscard]] bool Supports(ActionKind a) const noexcept
+    {
         return supported[static_cast<std::size_t>(a)];
     }
 
-    static Capabilities All() noexcept {
+    static Capabilities All() noexcept
+    {
         Capabilities c;
         c.supported.fill(true);
         return c;
     }
 };
 
-}  // namespace ft
+} // namespace ft

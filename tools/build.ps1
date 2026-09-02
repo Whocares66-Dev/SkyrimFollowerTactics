@@ -140,6 +140,25 @@ if ($Preset -in 'debug', 'release') {
     }
 }
 
+# An SKSE plugin cannot hot-reload, and while the game is running it holds the
+# deployed DLL open -- so the post-build copy into the MO2 mod folder fails with
+# a wall of linker command line and a terse "Error copying file". Catch it here
+# and say what is actually wrong.
+if ($Preset -in 'debug', 'release') {
+    $game = Get-Process -Name 'SkyrimSE', 'SkyrimVR' -ErrorAction SilentlyContinue
+    if ($game) {
+        throw @"
+Skyrim is running (PID $($game.Id -join ', ')), which locks the deployed DLL.
+
+The build would link fine and then fail copying to
+  $env:SKYRIM_MODS_FOLDER\FollowerTactics\SKSE\Plugins\
+
+Close the game and re-run. SKSE plugins cannot hot-reload, so a rebuild always
+means a restart of the game anyway.
+"@
+    }
+}
+
 $buildDir = Join-Path $repo "build\$Preset"
 if ($Fresh -and (Test-Path $buildDir)) {
     Write-Host "Removing $buildDir" -ForegroundColor Yellow

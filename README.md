@@ -80,11 +80,33 @@ verifies it and reports drift.
 
 ## Semantics
 
+A rule reads:
+
+```
+IF <subject> <predicate> <arg>   THEN <action> ON <target>
+   Enemy     HealthPctBelow 0.25      SetCombatStyle  ConditionSubject
+```
+
+Subject and predicate are **separate**, mirroring Dragon Age's cascading editor. Baking the
+subject into the predicate name (`SelfHealthPctBelow`, `AllyHealthPctBelow`, …) multiplies
+every new predicate by every subject and makes the UI's two columns secretly dependent.
+`IsPredicateValidFor(subject, predicate)` is the single source of truth for which pairs mean
+anything; the menu is built from it, so an impossible pair is never offered.
+
+`Ally` and `Enemy` are **group** subjects. The member that best satisfies the predicate
+becomes the rule's **binding**, and actions target it by default — so "enemy below 25% health
+→ finish it" names the enemy once and the action lands on that same enemy. When several
+members match, the binding follows the predicate's own dimension: health predicates bind the
+weakest, everything else binds the nearest, ties resolved by snapshot order.
+
 Rules are evaluated top to bottom every tick. The **first** rule whose condition holds and
 whose action is actually available fires — then evaluation stops. If nothing fires, nothing
 happens and the native combat AI carries on: an empty rule set behaves exactly like vanilla.
 This is an override layer, never a replacement.
 
 Every rule that doesn't fire records *why* (`condition false`, `on cooldown`, `no potion`,
-`no target`, `unsupported`). That trace drives the UI's debug column, which is what makes
-authoring rules against an opaque engine tractable.
+`no target`, `unsupported`, `invalid condition`). That trace drives the UI's debug column,
+which is what makes authoring rules against an opaque engine tractable. `invalid condition`
+is deliberately distinct from `condition false`: "your rule is broken" and "your rule is fine
+but the world isn't in that state" look identical from a rule that never fires, and they send
+you to entirely different places to debug.

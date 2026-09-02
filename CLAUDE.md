@@ -84,6 +84,31 @@ Last verified: 10 cases / 32 assertions green under MSVC 19.42 (`core` preset).
   `main` under `_UNICODE`, and the test executable then fails to link with
   `unresolved external symbol main` -- an error pointing nowhere near the cause.
 
+## SKSE gotchas already hit
+
+- **A task must never re-arm itself via `AddTask`.** This hangs the game on the first
+  frame, with no crash log and no error -- the process simply stops responding.
+
+  SKSE drains its task queue to empty inside one call
+  (`skse64/Hooks_Threads.cpp`):
+
+  ```cpp
+  void BSTaskPool::ProcessTasks() {
+      CALL_MEMBER_FN(this, ProcessTaskQueue_HookTarget)();
+      while (!IsTaskQueueEmpty()) { cmd->Run(); cmd->Dispose(); }
+  }
+  ```
+
+  A task that calls `AddTask` from inside its own `Run()` refills the queue faster than
+  the loop drains it, so `ProcessTasks` never returns and the main thread spins forever.
+  **`AddTask` is a "do this once, on the game thread" primitive, not a scheduler.**
+
+  For periodic work: pace on a separate thread and have it `AddTask` once per interval.
+  The task does the game-thread work and returns. See `src/game/Tactics.cpp`.
+
+  SKSE ships its own source in `SKSE/src/`, which is how this was diagnosed rather than
+  guessed at. Worth remembering it is there.
+
 ## CommonLibSSE gotchas already hit
 
 Verified against the 3.7.0 headers. Do not "simplify" these away:
@@ -103,21 +128,37 @@ alandtse/CommonLibSSE-NG v7.0.0 — see `docs/COMMONLIB.md` for when and how to 
 
 ## Current phase
 
-**Phase 0 — COMPLETE** (verified 2026-09-01 16:55). `FollowerTactics loaded (core
-self-check: ok)` appeared in the `~` console, with the matching log:
+**Phase 0 — COMPLETE** (2026-09-01 16:55). Build, deploy, load under SKSE at 1.6.1170.
+
+**Phase 1 — COMPLETE** (2026-09-01 19:07). The go/no-go risk is retired: a follower
+reliably drinks a health potion when her health crosses 50%, driven by the rule engine.
+Measured in-game, from `FollowerTactics.log`:
 
 ```
-[16:55:34.753] [info] FollowerTactics starting up
-[16:55:41.894] [info] core self-check: rule 0 fired=true
+Lydia (FF000DE0) health 25/42 (59%) combat=true potions=13     <- above threshold, no fire
+Lydia (FF000DE0) FIRED rule 0 "emergency heal" -> performed [health 21/42 = 49%]
+Lydia (FF000DE0) health 42/42 (100%) combat=true potions=12    <- drank, count dropped
+tactics: 23 evaluations, avg 47 us, max 50 us
 ```
 
-**Phase 1 — current.** The go/no-go risk spike: one hardcoded rule — follower health < 50%
-→ drink the best health potion, at most once every 10s — proving follower identification,
-the tick loop, actor value reads, inventory scan, and reliable potion consumption. This is
-where `src/game/` gets written; it is empty today. Reference implementation:
-github.com/muenchk/NPCsUsePotions. Confirmed API:
-`RE::ActorEquipManager::GetSingleton()->EquipObject(actor, alchemyItem, ...)`.
-Per `docs/PLAN.md`: **if this takes more than a week, stop and reconsider the project.**
+`docs/PLAN.md` section 5 rated "forcing an NPC to drink a potion isn't reliable" as the
+highest risk in the project, the one that would kill the marquee feature. It works, via
+`ActorEquipManager::EquipObject` with NPCsUsePotions' parameters.
+
+### Performance: measured, and no optimisation needed
+
+**47 us average, 68 us worst case** per follower evaluation, including the inventory scan.
+At 150 ms ticks that is ~0.3 ms/second for one follower; eight followers is ~2.6 ms/second,
+about **0.04 ms/frame amortised at 60 fps** against a 0.5 ms/frame budget.
+
+So the three things `PLAN.md` 3.2/3.3 called for -- staggered scheduling, cached expensive
+sensors, dependency-driven sensor activation -- are **not needed yet**, and building them
+now would be optimising a cost that is two orders of magnitude under budget. Revisit only
+if this number moves. It is logged every 5 s of combat, so drift is visible.
+
+**Phase 2 — next.** The rule engine already has the subject/predicate model and is unit
+tested; what is missing is JSON load/save (the shareable profile format), per-follower
+profiles, and populating `Snapshot::enemies` / `allies` so group subjects work at all.
 
 ## Where the log actually is — not where you would guess
 
