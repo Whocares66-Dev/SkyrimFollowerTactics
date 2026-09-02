@@ -12,6 +12,7 @@
 // rethinking.
 
 #include "core/Evaluator.h"
+#include "game/Sensors.h"
 
 #include <string>
 #include <vector>
@@ -56,6 +57,11 @@ struct FollowerView
     // Display only -- not rule inputs, so they stay out of Snapshot, which is
     // the RE::-free contract the evaluator reads. All three are cheap reads and
     // are filled in and out of combat alike.
+    // The spells this follower can be told to cast or equip, sorted by name.
+    // Lives on the view rather than in Snapshot because it is menu content, not
+    // a rule input -- the evaluator only ever compares FormIDs.
+    std::vector<SpellOption> spells;
+
     std::uint16_t level{0};
     float carriedWeight{0.0f};
     float carryCapacity{0.0f};

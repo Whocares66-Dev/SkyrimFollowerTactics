@@ -38,6 +38,8 @@ namespace Im = ImGuiMCP;
 
 // --- status ----------------------------------------------------------------
 
+bool TakesSpell(ft::ActionKind action);
+
 // One short word for the Status column, and the colour to say it in.
 //
 // Deliberately terse. This column sits beside two editable cells in a narrow
@@ -59,7 +61,7 @@ struct Status
     Im::ImVec4 color;
 };
 
-Status StatusFor(ft::Verdict v)
+Status StatusFor(ft::Verdict v, ft::ActionKind action)
 {
     constexpr Im::ImVec4 acted{0.55f, 0.90f, 0.55f, 1.0f};  // it happened
     constexpr Im::ImVec4 quiet{0.55f, 0.55f, 0.58f, 1.0f};  // nothing to say
@@ -79,10 +81,13 @@ Status StatusFor(ft::Verdict v)
     case ft::Verdict::GlobalCooldown:
         return {"cooldown", held};
 
+    // The same verdict means different things to different actions, and the
+    // word has to match or it sends someone looking in the wrong place: a
+    // spell rule reporting "no potion" is worse than reporting nothing.
     case ft::Verdict::NoResource:
-        return {"no potion", held};
+        return {TakesSpell(action) ? "no spell" : "no potion", held};
     case ft::Verdict::EffectActive:
-        return {"active", held};
+        return {action == ft::ActionKind::EquipSpell ? "equipped" : "active", held};
     case ft::Verdict::NoTarget:
         return {"no target", held};
 
@@ -439,11 +444,52 @@ bool ConditionCascade(const char *id, ft::Rule &rule)
 // The action side. Flat for now: actions have no sub-options until selectors
 // land (docs/PLAN.md 3.5.2), at which point "equip item" grows a submenu of
 // what to equip and this becomes a cascade too.
-bool ActionMenu(const char *id, ft::Rule &rule)
+// Does this action name a spell?
+bool TakesSpell(ft::ActionKind action)
+{
+    return action == ft::ActionKind::CastSpell || action == ft::ActionKind::EquipSpell;
+}
+
+// The Then cell's text: the spell by NAME, never by id.
+//
+// A FormID in the table would be unreadable and, worse, unstable to look at --
+// the point of naming the spell is that a rule reads as an instruction. The id
+// is what the rule stores; this is what the player sees. Same split as wire
+// names versus display names.
+std::string ActionText(const ft::Rule &rule, const FollowerView &view)
+{
+    const std::string base(ft::DisplayName(rule.action));
+    if (!TakesSpell(rule.action))
+        return base;
+
+    if (rule.actionForm == 0)
+        return base + "...";
+
+    for (const auto &option : view.spells)
+    {
+        if (option.form != rule.actionForm)
+            continue;
+        return (rule.action == ft::ActionKind::CastSpell ? "Cast " : "Equip ") + option.name;
+    }
+
+    // Named a spell this follower does not know. Says so rather than showing a
+    // plausible-looking action that can never fire -- the status column will
+    // report "no spell", and the two need to agree.
+    return base + " (not known)";
+}
+
+// The action side of the cascade.
+//
+// Flat for everything that takes no argument; a submenu of the follower's own
+// spells for the two that do. The list is hers, so a rule cannot name a spell
+// she does not have -- the same guarantee the condition side gets from the
+// validity matrix, and for the same reason: an unfireable rule should be
+// unauthorable, not merely discouraged.
+bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
 {
     bool changed = false;
 
-    CellButtonOpensPopup(id, std::string(ft::DisplayName(rule.action)));
+    CellButtonOpensPopup(id, ActionText(rule, view));
 
     PushPopupChrome();
     if (!Im::BeginPopup(id, 0))
@@ -455,14 +501,44 @@ bool ActionMenu(const char *id, ft::Rule &rule)
     for (std::size_t i = 0; i < static_cast<std::size_t>(ft::ActionKind::COUNT); ++i)
     {
         const auto action = static_cast<ft::ActionKind>(i);
-        const bool selected = rule.action == action;
-        if (Im::MenuItem(std::string(ft::DisplayName(action)).c_str(), nullptr, selected, true))
+        const std::string name(ft::DisplayName(action));
+
+        if (!TakesSpell(action))
         {
-            rule.action = action;
-            changed = true;
+            const bool selected = rule.action == action;
+            if (Im::MenuItem(name.c_str(), nullptr, selected, true))
+            {
+                rule.action = action;
+                rule.actionForm = 0;
+                changed = true;
+            }
+            if (Im::IsItemHovered(0))
+                Im::SetTooltip("%s", std::string(ft::Describe(action)).c_str());
+            continue;
         }
-        if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", std::string(ft::Describe(action)).c_str());
+
+        // A follower with no castable spells is offered nothing rather than an
+        // empty submenu that looks broken.
+        if (view.spells.empty())
+        {
+            Im::MenuItem((name + " (knows none)").c_str(), nullptr, false, false);
+            continue;
+        }
+
+        if (!Im::BeginMenu(name.c_str(), true))
+            continue;
+
+        for (const auto &option : view.spells)
+        {
+            const bool selected = rule.action == action && rule.actionForm == option.form;
+            if (Im::MenuItem(option.name.c_str(), nullptr, selected, true))
+            {
+                rule.action = action;
+                rule.actionForm = option.form;
+                changed = true;
+            }
+        }
+        Im::EndMenu();
     }
 
     Im::EndPopup();
@@ -559,7 +635,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             changed = true;
 
         Im::TableSetColumnIndex(3);
-        if (ActionMenu(("##act" + rowId).c_str(), rule))
+        if (ActionMenu(("##act" + rowId).c_str(), rule, view))
             changed = true;
 
         Im::TableSetColumnIndex(4);
@@ -572,7 +648,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         else
         {
             const auto verdict = i < view.trace.size() ? view.trace[i] : ft::Verdict::NotReached;
-            const Status status = StatusFor(verdict);
+            const Status status = StatusFor(verdict, rule.action);
             Im::TextColored(status.color, "%s", status.text);
             if (Im::IsItemHovered(0))
                 Im::SetTooltip("%s", ft::ToString(verdict));

@@ -7,6 +7,42 @@ namespace ft::game
 namespace
 {
 
+// Walk every spell an actor has, from both places the game keeps them.
+//
+// Two sources, and missing either loses spells that are plainly there:
+//   TESNPC::GetSpellList()  what the character was authored with -- Marcurio's
+//                           destruction spells come from here.
+//   addedSpells             everything granted at runtime, which is what the
+//                           console's addspell writes to.
+template <typename Fn> void ForEachSpell(RE::Actor *actor, Fn &&fn)
+{
+    if (auto *npc = actor->GetActorBase())
+    {
+        if (auto *list = npc->GetSpellList())
+        {
+            for (std::uint32_t i = 0; i < list->numSpells; ++i)
+            {
+                if (list->spells[i])
+                    fn(list->spells[i]);
+            }
+        }
+    }
+
+    for (auto *spell : actor->GetActorRuntimeData().addedSpells)
+    {
+        if (spell)
+            fn(spell);
+    }
+}
+
+// Castable means SpellType::kSpell. An actor's spell list also carries
+// abilities, diseases and passive racial effects, none of which a follower can
+// choose to cast, so a rule naming one could never fire.
+bool IsCastable(RE::SpellItem *spell)
+{
+    return spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell;
+}
+
 // Highest restore magnitude this potion offers for the given actor value, or 0
 // if it does not restore it at all. Poisons and food are filtered out by the
 // caller, so anything reaching here that restores health is a healing potion.
@@ -184,8 +220,76 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     s.potions.magickaEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kMagicka);
     s.potions.staminaEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kStamina);
 
+    // Spells: what she knows, what is running, what is in hand. All three are
+    // ids only -- Snapshot never sees an RE:: type -- and all three are needed
+    // to tell "cannot", "already up" and "already held" apart in the status
+    // column.
+    ForEachSpell(actor, [&s](RE::SpellItem *spell) {
+        if (IsCastable(spell))
+            s.spells.known.push_back(spell->GetFormID());
+    });
+
+    if (auto *target = actor->AsMagicTarget())
+    {
+        if (auto *effects = target->GetActiveEffectList())
+        {
+            for (auto *ae : *effects)
+            {
+                if (!ae || !ae->spell)
+                    continue;
+                // Instant effects have already happened and never lapse, so
+                // treating them as "still up" would block the rule forever.
+                if (ae->duration <= 0.0f)
+                    continue;
+                if (ae->elapsedSeconds >= ae->duration)
+                    continue;
+                s.spells.active.push_back(ae->spell->GetFormID());
+            }
+        }
+    }
+
+    // selectedSpells is indexed by Actor::SlotTypes, NOT by
+    // MagicSystem::CastingSource. The two enums start with the same two names
+    // in the same order, which makes mixing them up easy and silent.
+    for (const auto slot : {RE::Actor::SlotTypes::kLeftHand, RE::Actor::SlotTypes::kRightHand})
+    {
+        if (auto *held = actor->GetActorRuntimeData().selectedSpells[slot])
+            s.spells.equipped.push_back(held->GetFormID());
+    }
+
     // enemies / allies deliberately left empty -- see the header.
     return s;
+}
+
+std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
+{
+    std::vector<SpellOption> out;
+    if (!actor)
+        return out;
+
+    ForEachSpell(actor, [&out](RE::SpellItem *spell) {
+        if (!IsCastable(spell))
+            return;
+        // The same spell can appear in both sources; show it once.
+        const std::uint32_t id = spell->GetFormID();
+        if (std::any_of(out.begin(), out.end(), [id](const SpellOption &o) { return o.form == id; }))
+            return;
+
+        std::string name = spell->GetName() ? spell->GetName() : "";
+        if (name.empty())
+            return; // nameless entries are internal; nothing to show a player
+        out.push_back(SpellOption{id, std::move(name)});
+    });
+
+    std::sort(out.begin(), out.end(), [](const SpellOption &a, const SpellOption &b) { return a.name < b.name; });
+    return out;
+}
+
+RE::SpellItem *FindSpell(std::uint32_t form)
+{
+    if (form == 0)
+        return nullptr;
+    return RE::TESForm::LookupByID<RE::SpellItem>(form);
 }
 
 } // namespace ft::game

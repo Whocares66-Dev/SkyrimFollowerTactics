@@ -7,10 +7,14 @@
 
 #include "core/Snapshot.h"
 
+#include <string>
+#include <vector>
+
 namespace RE
 {
 class Actor;
 class AlchemyItem;
+class SpellItem;
 } // namespace RE
 
 namespace ft::game
@@ -25,6 +29,32 @@ struct PotionChoice
     RE::AlchemyItem *magicka{nullptr};
     RE::AlchemyItem *stamina{nullptr};
 };
+
+// One castable spell a follower knows, for the editor's menu.
+//
+// Name and id together because the menu shows one and stores the other: the
+// name is what a player picks by and is translated, the FormID is what the
+// rule keeps and what survives a language change. Same split as wire names
+// versus display names, for the same reason.
+struct SpellOption
+{
+    std::uint32_t form{0};
+    std::string name;
+};
+
+// Every spell the follower can actually cast, sorted by name.
+//
+// Sorted here rather than in the UI because the order is a property of the
+// list, not of how it is drawn, and doing it once per rebuild beats doing it
+// every frame the menu is open.
+//
+// Filtered to SpellType::kSpell. Abilities, diseases and passive effects also
+// live in an actor's spell list and none of them are castable, so offering
+// them would be offering rules that can never work.
+[[nodiscard]] std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor);
+
+// Resolve a FormID from a rule back to the spell it names, or nullptr.
+[[nodiscard]] RE::SpellItem *FindSpell(std::uint32_t form);
 
 // Dump the actor's active magic effects to the log: source item, archetype,
 // elapsed/duration, magnitude.
