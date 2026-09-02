@@ -9,6 +9,38 @@ The short version: Skyrim has **no API that makes an NPC cast a chosen spell at 
 chosen moment.** That is a design property, not a gap in the bindings. NPCs
 decide for themselves, and every route in is indirect.
 
+## Why a potion is easy and a spell is not
+
+This is the one idea that explains every dead end below, and it is worth reading
+before any of them.
+
+**A potion is a state change. A cast is a performance.**
+
+Drinking is an inventory operation. `ActorEquipManager::EquipObject` is the
+game's own equip routine, equipping a potion consumes it, and the magic system
+applies the effect at once. No animation to schedule, no AI decision, no state
+machine. The engine exposes it because inventory manipulation is a normal
+external operation -- quests, scripts and the player's own UI all do it.
+
+Casting is something an actor *does over time*: charge, release, magicka drawn at
+a particular instant, interruptible by a stagger, aimed at something. All of that
+lives in the animation graph and the combat AI. There is no "perform this" entry
+point because performing is not a state you can set.
+
+The clincher is that the potion-equivalent for spells exists and works
+perfectly -- `GetMagicCaster(kInstant)->Cast(...)` is reliable and instant. It is
+exactly `EquipObject` for a potion: bypass the actor's agency and apply the
+result. It simply is not a cast.
+
+So the accurate statement is not "an NPC cannot be made to cast a spell". It is:
+**the spell can be made to happen; the follower cannot be made to perform it.**
+For a potion nobody notices the difference. For a spell the performance is the
+whole point.
+
+That is also why AI packages exist: behaviours go through the AI because
+behaviours are the AI's job. Which is why the package route below is the
+conventional answer and the recommended next path.
+
 ---
 
 ## What already works
