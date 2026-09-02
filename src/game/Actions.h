@@ -23,7 +23,8 @@ enum class ActionResult : std::uint8_t
     NoEquipManager, // the game singleton was unavailable
     NoCaster,       // the actor has no magic caster for that source
     CannotCast,     // the game says she could not cast it: cost, timing, skill
-    Busy            // the package pool was exhausted between evaluation and dispatch
+    Busy,           // the package pool was exhausted between evaluation and dispatch
+    NoTarget        // a targeted spell with no enemy engaged
 };
 
 // Why the game refused a cast, in its own words. Kept separate from

@@ -50,9 +50,10 @@
 // - Only a follower the vanilla DialogueFollower alias holds is covered: the
 //   override list belongs to that alias. A follower recruited by a framework
 //   (NFF, EFF, AFT) runs its own alias. RequestCast reports which case she is.
-// - The packages cast on SELF. Casting on the player or an ally needs a
-//   second pool with a different Target input; the rule engine already names
-//   the target, so that is content, not design.
+// - The Target input is repointed per request, like the Spell input: Self
+//   for the follower herself, a specific reference for anyone else. Both
+//   writes go through PackageTarget, which CommonLibSSE maps, behind the one
+//   pointer the canary probe locates.
 
 #include <cstdint>
 #include <vector>
@@ -118,14 +119,15 @@ enum class CastRequest : std::uint8_t
     PoolBusy,       // every record is held by a follower mid-cast
     AlreadyCasting, // this follower already holds a record; one cast at a time
     SpellNotInSlot, // the Spell input could not be repointed at that spell
-    NotSelfTarget   // the rule names a target this pool cannot cast on
+    TargetGone      // the rule's target no longer resolves to a loaded actor
 };
 
 [[nodiscard]] const char *ToString(CastRequest r) noexcept;
 
-// Ask a follower to cast a spell on herself. targetId is the rule's resolved
-// target; anything other than the follower herself is refused, honestly,
-// rather than cast on the wrong actor.
+// Ask a follower to cast a spell. targetId is the rule's resolved target: her
+// own id (or zero) casts on herself; any other actor is written into the
+// record's Target input for the duration of the lease, so an offensive spell
+// goes at the enemy she is engaging and a heal can go to the player.
 [[nodiscard]] CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId);
 
 // Called every tick from the game thread. Watches held slots: reports when

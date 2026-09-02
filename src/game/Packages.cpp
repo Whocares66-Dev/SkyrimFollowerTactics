@@ -193,6 +193,22 @@ constexpr std::size_t kNotCalibrated = static_cast<std::size_t>(-1);
 std::size_t g_spellOuter = kNotCalibrated;
 std::size_t g_spellInner = kNotCalibrated;
 
+// PackageTarget::targType values, from the PTDA type field. The record ships
+// every slot's Target as Self, which is the canary for this input: the
+// pointer at the same outer offset as the Spell input must lead to a
+// PackageTarget whose type reads kSelf before anything is written through it.
+// LEARNED from game data rather than assumed: the first version took Self =
+// 5 from the record library's arm order and the engine read 6. Two authored
+// records are the canaries: every one of our slots ships with Target = Self,
+// so its type byte IS the Self value; Mercer's
+// TG08BMercerCombatOverrideCastAtPlayer ships with Target = PlayerRef, so its
+// type byte is the specific-reference value -- confirmed by its handle
+// matching the player's. Nothing is written until both read consistently.
+constexpr std::uint32_t kMercerCastAtPlayerID = 0x000FDBC3;
+std::int8_t g_typeSpecificReference = -1;
+std::int8_t g_typeSelf = -1;
+bool g_targetCalibrated = false;
+
 bool LooksLikePointer(std::uintptr_t value)
 {
     return value > 0x10000 && value < 0x7FFFFFFFFFFFULL && (value % 8) == 0;
@@ -380,6 +396,47 @@ void SetRank(RE::Actor *actor, std::int8_t rank, const char *why)
         logger::info("  {:08X} rank {} ({}, read back {})", actor->GetFormID(), rank, why, readBack);
 }
 
+// The PackageTarget behind a named input, or null if the layout has not been
+// established. Same shape as the Spell input: IPackageData + outer -> a
+// PackageTarget, which CommonLibSSE maps (targType at 00, target union at 08).
+RE::PackageTarget *TargetOfInput(RE::TESPackage *pkg, const char *inputName)
+{
+    if (g_spellOuter == kNotCalibrated || !pkg)
+        return nullptr;
+    auto *custom = skyrim_cast<RE::TESCustomPackageData *>(pkg->data);
+    if (!custom)
+        return nullptr;
+    std::int8_t uid = 0;
+    if (!FindInputUID(custom, inputName, uid))
+        return nullptr;
+    auto *input = InputByUID(custom, uid);
+    if (!input)
+        return nullptr;
+    const std::uintptr_t p =
+        *reinterpret_cast<std::uintptr_t *>(reinterpret_cast<std::uintptr_t>(input) + g_spellOuter);
+    return LooksLikePointer(p) ? reinterpret_cast<RE::PackageTarget *>(p) : nullptr;
+}
+
+// Aim a slot's Target input at an actor, or back at Self with nullptr.
+bool SetPackageTarget(RE::TESPackage *pkg, RE::Actor *target)
+{
+    auto *pt = g_targetCalibrated ? TargetOfInput(pkg, "Target") : nullptr;
+    if (!pt)
+        return false;
+
+    if (target)
+    {
+        pt->targType = g_typeSpecificReference;
+        pt->target.handle = RE::ObjectRefHandle(target);
+    }
+    else
+    {
+        pt->targType = g_typeSelf;
+        pt->target.object = nullptr;
+    }
+    return true;
+}
+
 // Is this actor already casting through some slot? A second request from the
 // same follower before the first resolves would put two ranks on her.
 bool AlreadyCasting(const RE::Actor *actor)
@@ -395,6 +452,7 @@ bool AlreadyCasting(const RE::Actor *actor)
 void Release(std::size_t i)
 {
     g_pool[i].lease.reset();
+    SetPackageTarget(g_slots[i], nullptr); // no target handle outlives its lease
     g_pool[i].fired.store(false, std::memory_order_relaxed);
     g_pool[i].seenRunning = false;
 }
@@ -465,8 +523,8 @@ const char *ToString(CastRequest r) noexcept
         return "she is already mid-cast; skipped this turn";
     case CastRequest::SpellNotInSlot:
         return "could not repoint the package at that spell";
-    case CastRequest::NotSelfTarget:
-        return "packages cast on self only";
+    case CastRequest::TargetGone:
+        return "the target is no longer a loaded actor";
     }
     return "?";
 }
@@ -491,10 +549,22 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
     if (!g_available || !actor)
         return CastRequest::NoPackages;
 
+    // Self, or someone else. Anyone else must be a loaded actor right now;
+    // the record will hold a handle to her for the duration of the lease.
+    RE::Actor *target = nullptr;
     if (targetId != 0 && targetId != actor->GetFormID())
     {
-        logger::info("  target {:08X} is not the caster; the self-cast pool cannot reach it", targetId);
-        return CastRequest::NotSelfTarget;
+        target = RE::TESForm::LookupByID<RE::Actor>(targetId);
+        if (!target || !target->Is3DLoaded())
+        {
+            logger::info("  target {:08X} is not a loaded actor", targetId);
+            return CastRequest::TargetGone;
+        }
+        if (!g_targetCalibrated)
+        {
+            logger::info("  target input not calibrated; only self-casts are possible");
+            return CastRequest::TargetGone;
+        }
     }
 
     if (AlreadyCasting(actor))
@@ -530,6 +600,11 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
         }
         slot.spell = spellFormID;
     }
+
+    SetPackageTarget(g_slots[chosen], target);
+    logger::info("  slot {} aims at {}", chosen,
+                 target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), target->GetName() ? target->GetName() : "?")
+                        : std::string("self"));
 
     // The diagnostic that decides what a silence means. Not in the alias: our
     // list was never consulted and no amount of package tuning will help.
@@ -753,11 +828,56 @@ void ProbeSpellInput()
     }
 
     if (g_spellOuter == kNotCalibrated)
+    {
         logger::info("probe: layout NOT identified -- cast rules will refuse anything but the "
                      "spell each slot was authored with. Nothing will be written.");
-    else
-        logger::info("probe: calibrated (+{:02X} -> +{:02X}); cast rules can name any spell", g_spellOuter,
-                     g_spellInner);
+        return;
+    }
+    logger::info("probe: calibrated (+{:02X} -> +{:02X}); cast rules can name any spell", g_spellOuter, g_spellInner);
+
+    // The Target input, same outer offset, two canaries. Ours all ship as
+    // Self: their type byte is the Self value, and all eight must agree.
+    std::int8_t self = -1;
+    for (std::size_t i = 0; i < kPackageSlots; ++i)
+    {
+        auto *pt = TargetOfInput(g_slots[i], "Target");
+        if (!pt || (i > 0 && pt->targType != self))
+        {
+            logger::info("probe: Target input of slot {} {} -- targets other than self stay off", i,
+                         pt ? fmt::format("reads type {} where slot 0 read {}", pt->targType, self) : "unreachable");
+            return;
+        }
+        self = pt->targType;
+    }
+
+    // Mercer's cast-at-player package is authored with a specific reference,
+    // the player. Its type byte is the specific-reference value, and its
+    // handle must be the player's or the union is not where we think.
+    auto *mercer = RE::TESForm::LookupByID<RE::TESPackage>(kMercerCastAtPlayerID);
+    auto *mpt = TargetOfInput(mercer, "Target");
+    auto *player = RE::PlayerCharacter::GetSingleton();
+    if (!mpt || !player || mpt->target.handle.native_handle() != player->GetHandle().native_handle())
+    {
+        logger::info("probe: Mercer's Target input {} -- targets other than self stay off",
+                     mpt ? fmt::format("type {} handle {:08X}, player handle {:08X}", mpt->targType,
+                                       mpt->target.handle.native_handle(),
+                                       player ? player->GetHandle().native_handle() : 0)
+                         : "unreachable");
+        return;
+    }
+    if (mpt->targType == self)
+    {
+        logger::info("probe: Self and specific-reference read the same type {} -- targets other than self stay off",
+                     self);
+        return;
+    }
+
+    g_typeSelf = self;
+    g_typeSpecificReference = mpt->targType;
+    g_targetCalibrated = true;
+    logger::info("probe: Target input calibrated: Self = {}, specific reference = {} (from Mercer's package); cast "
+                 "rules can name any loaded actor",
+                 g_typeSelf, g_typeSpecificReference);
 }
 
 } // namespace ft::game

@@ -140,6 +140,8 @@ const char *ToString(ActionResult r) noexcept
         return "the game would refuse the cast";
     case ActionResult::Busy:
         return "every package slot is mid-cast";
+    case ActionResult::NoTarget:
+        return "the spell needs a target and she is fighting no one";
     }
     return "?";
 }
@@ -163,7 +165,27 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
         // and not called here: running two mechanisms would mean a cast could
         // not be attributed to either, which is what made the earlier
         // animation-event experiment worthless.
-        const auto request = RequestCast(actor, decision.actionForm, decision.targetId);
+        // Who the spell goes at is decided by the SPELL, not by the rule. A
+        // Self-delivery spell (Fast Healing, Oakflesh) cannot take a target;
+        // anything else goes at the enemy she is engaging. No target picker in
+        // the editor yet, and this is what one would default to. A non-hostile
+        // targeted spell (Healing Hands) will need the player instead -- that
+        // is the case to revisit when such a spell is authored.
+        std::uint32_t targetId = actor->GetFormID();
+        if (auto *spell = FindSpell(decision.actionForm);
+            spell && spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
+        {
+            auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
+            if (!enemy)
+            {
+                logger::info("  cast: {} needs a target and she is fighting no one",
+                             spell->GetName() ? spell->GetName() : "?");
+                return ActionResult::NoTarget;
+            }
+            targetId = enemy->GetFormID();
+        }
+
+        const auto request = RequestCast(actor, decision.actionForm, targetId);
         logger::info("  cast: {}", ToString(request));
         switch (request)
         {
@@ -174,7 +196,8 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
         case CastRequest::PoolBusy:
         case CastRequest::AlreadyCasting:
             return ActionResult::Busy;
-        case CastRequest::NotSelfTarget:
+        case CastRequest::TargetGone:
+            return ActionResult::MissingItem;
         case CastRequest::NoPackages:
             return ActionResult::NoSuchAction;
         }

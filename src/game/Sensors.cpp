@@ -214,6 +214,27 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         s.distanceToPlayer = actor->GetPosition().GetDistance(player->GetPosition());
     }
 
+    // Whom she is fighting, as the engine sees it. This is what "current
+    // target" resolves to, and the one enemy the snapshot carries until the
+    // combat group is read in full (Phase 2).
+    if (auto target = actor->GetActorRuntimeData().currentCombatTarget.get(); target && !target->IsDead())
+    {
+        s.currentTarget = target->GetFormID();
+
+        ft::EnemyView enemy;
+        enemy.id = target->GetFormID();
+        enemy.health = ReadStat(target.get(), RE::ActorValue::kHealth);
+        enemy.distance = actor->GetPosition().GetDistance(target->GetPosition());
+        if (auto *player = RE::PlayerCharacter::GetSingleton())
+        {
+            auto theirTarget = target->GetActorRuntimeData().currentCombatTarget.get();
+            enemy.isAttackingPlayer = theirTarget && theirTarget.get() == player;
+        }
+        bool losArg = false;
+        enemy.hasLineOfSight = actor->HasLineOfSight(target.get(), losArg);
+        s.enemies.push_back(enemy);
+    }
+
     ScanPotions(actor, s.potions, choice);
 
     s.potions.healthEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kHealth);

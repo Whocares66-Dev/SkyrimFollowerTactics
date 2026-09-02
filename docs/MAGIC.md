@@ -37,7 +37,7 @@ Records say *what* she does; the C++ says *when*. No Papyrus.
 
 | record | FormID | contents |
 |---|---|---|
-| `FT_CastSlot1..8` | 0x800..0x807 | UseMagic template. Spell = Fast Healing (a canary, repointed at runtime), Target = **Self**, Location = NearSelf r10000, CastTime 0.5..1, Cooldown 1..1, NumToCast 1..1, DualCast off, flags **IgnoreCombat**. One condition: `GetFactionRank(FT_CastNow) == slot` |
+| `FT_CastSlot1..8` | 0x800..0x807 | UseMagic template. Spell = Fast Healing and Target = Self (both canaries, both repointed at runtime), Location = NearSelf r10000, CastTime 0.5..1, Cooldown 1..1, NumToCast 1..1, DualCast off, flags **IgnoreCombat**. One condition: `GetFactionRank(FT_CastNow) == slot` |
 | `FT_CastNow` | 0x808 | a faction with ranks 0..15, used for nothing but that condition |
 
 Edit them with houseCARL (`housecarl_bulk_apply`, `target=FollowerTactics.esp`,
@@ -67,7 +67,11 @@ set in one call and `GetFactionRank` is a standard condition function.
 ### The C++ (`src/game/Packages.cpp`)
 
 1. **A cast rule fires.** Take a free record from the pool. Repoint its Spell
-   input at the rule's spell (found by canary, see below). Create a
+   input at the rule's spell and its Target input by the spell's **delivery**:
+   a Self-delivery spell casts on her, anything else goes at the enemy she is
+   engaging (a non-hostile targeted spell such as Healing Hands will need the
+   player instead; not authored yet). Both inputs are found by canary, see
+   below. Create a
    `RankLease`, whose constructor sets her rank in `FT_CastNow` to the slot
    number. Ask the AI to re-evaluate.
 2. **The AI casts.** Our package now passes. `IgnoreCombat` takes her hands
@@ -161,10 +165,15 @@ Each of these cost at least one test round.
   a few hundred game days. Hour-of-day stays precise; count midnight yourself.
 - **Two spells can share a display name.** Marcurio's heal is `0007231C`; the
   vanilla one is `0002F3B8`. Both are "Fast Healing". Compare FormIDs.
-- **Where a package's Spell input lives**, found by canary rather than
-  guessed: `IPackageData + 0x10 -> + 0x08`. The template's name map spells it
-  `SPELL`; compare case-insensitively. The map lives on the template, not on
-  the copy.
+- **Where a package's Spell and Target inputs live**, found by canary rather
+  than guessed: `IPackageData + 0x10` -> a `PackageTarget` (mapped by
+  CommonLibSSE: type at 00, form-or-handle union at 08). Spell is type
+  ObjectID with a form; Target is type Self (5), or SpecificReference (0)
+  with an `ObjectRefHandle`. The template's name map spells it `SPELL`;
+  compare case-insensitively. The map lives on the template, not on the copy.
+- **The sensor must report whom she is fighting.** `currentCombatTarget` on
+  the actor's runtime data. Without it, "cast at current target" resolves to
+  no target and the rule never fires.
 - **Copying a vanilla package copies its inputs.** Ours came from
   `MG07AncanoCastAtEye` and shipped aiming at the Eye of Magnus with a
   ten-million-second cast time. Read every input of a copied record.
@@ -236,11 +245,8 @@ entry. NFF is one more line when integration is wanted. NFF also has
   the fire signal and release on package end or deadline; make the sustain
   time a rule input by repointing the record's two `CastTime` floats (another
   canary probe).
-- **Targets other than self.** The rule engine already resolves Player and
-  CurrentTarget; the pool refuses them. Self and PlayerRef are constants, so
-  a second pool aimed at the player is content. A per-request target is one
-  more unmapped write, and a record has one holder at a time so the pool
-  needs no change.
+- **Group subjects.** The snapshot carries one enemy, the one she is
+  engaging. "Any enemy below 30% health" needs the combat group read in full.
 - **Our own quest and aliases**, filled for any teammate we manage. Removes
   the dependence on how a follower was recruited and covers every framework.
   Needs `ForceRefTo`, i.e. the CommonLib migration.
