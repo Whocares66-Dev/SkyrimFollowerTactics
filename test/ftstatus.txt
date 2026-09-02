@@ -6,6 +6,25 @@
 ;  matter here. This is also why verification lives in this file
 ;  rather than inside ftsetup.
 ;
+;  SPELLS have no "is it active" console command, so read the
+;  EFFECT instead, and each spell has its own observable:
+;
+;    Fast Healing  health jumps 50. Instant, so it is visible
+;                  only by comparing health before and after.
+;    Oakflesh      damageresist is the armour rating and the
+;                  spell adds a flat 40 for 60 s. A jump of 40
+;                  is the cast landing; it falling back is the
+;                  effect expiring, which is what the re-cast
+;                  rule has to be judged against.
+;
+;  hasspell answers a different question -- whether they know it
+;  at all -- and separating the two matters: "never learned it"
+;  and "learned it, never cast it" are the same silence otherwise.
+;
+;  SKILLS are here because a spell's cost falls with its school.
+;  A follower who cannot pay looks exactly like a rule that never
+;  fired, and these two numbers tell them apart.
+;
 ;  POTION COUNTS are weak then strong, per resource. The engine
 ;  drinks the STRONGEST carried, so after a rule fires the SECOND
 ;  number of a pair should fall. If the first falls instead, the
@@ -24,3 +43,10 @@ getitemcount 0003EAE0
 getitemcount 0003EAE1
 getitemcount 0003EAE5
 getitemcount 00039BE8
+
+hasspell 0002F3B8
+hasspell 0005AD5C
+getav damageresist
+
+getav restoration
+getav alteration

@@ -28,6 +28,31 @@
 ;  All six read off the running game. Stamina breaks the
 ;  adjacent-pair pattern the other two follow.
 ;
+;  SPELLS. Two, because they test different things.
+;
+;  Fast Healing 0002F3B8 is deliberately NOT granted here.
+;  Marcurio already carries a healing spell, and adding a second
+;  one makes the spell menu ambiguous -- pick the wrong entry and
+;  the cast rule names a spell the package does not hold, which
+;  reads as a broken rule rather than a mismatched pick.
+;
+;  It matters which exact form he knows: FollowerTactics.esp
+;  authors its UseMagic packages to cast 0002F3B8 specifically,
+;  so if his native heal is a DIFFERENT form the package has to
+;  be re-authored to match it. `bat ftstatus` reports hasspell
+;  for that exact id.
+;
+;  Oakflesh 0005AD5C -- Novice Alteration, +40 armour for 60
+;  SECONDS. This is the sustained-ability case, and the duration
+;  is the whole point: it outlasts any cooldown worth choosing,
+;  so re-casting can only be stopped by seeing the effect still
+;  running. Fast Healing cannot test that path.
+;
+;  Costs are listed at skill 0 and fall with the school's skill.
+;  Check the follower can actually afford one with `bat ftstatus`
+;  before concluding the rule engine is at fault -- a caster who
+;  cannot pay looks exactly like a rule that never fired.
+;
 ;  Check with a SEPARATE `bat ftstatus` -- a check inside this
 ;  file could run before the thing it checks.
 ; ============================================================
@@ -44,3 +69,5 @@ additem 0003EAE0 10
 additem 0003EAE1 5
 additem 0003EAE5 10
 additem 00039BE8 5
+
+addspell 0005AD5C
