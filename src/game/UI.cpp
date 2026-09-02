@@ -813,7 +813,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // written for as long as you like.
         ft::Rule fresh;
         fresh.subject = ft::SubjectKind::Self;
-        fresh.predicate = ft::PredicateKind::Always;
+        fresh.predicate = ft::PredicateKind::Any;
         fresh.conditionArg = 0.0f;
         fresh.actionTarget = ft::ActionTargetKind::ConditionSubject;
         fresh.action = ft::ActionKind::None;

@@ -12,7 +12,7 @@ bool EnemySatisfies(const EnemyView &e, const Rule &r)
 {
     switch (r.predicate)
     {
-    case PredicateKind::Always:
+    case PredicateKind::Any:
         return true;
     case PredicateKind::HealthPctBelow:
         return e.health.Pct() < r.conditionArg;
@@ -27,7 +27,7 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
 {
     switch (r.predicate)
     {
-    case PredicateKind::Always:
+    case PredicateKind::Any:
         return true;
     case PredicateKind::HealthPctBelow:
         return a.health.Pct() < r.conditionArg;
@@ -145,7 +145,7 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     bool held = false;
     switch (r.predicate)
     {
-    case PredicateKind::Always:
+    case PredicateKind::Any:
         held = true;
         break;
     case PredicateKind::HealthPctBelow:
@@ -174,7 +174,7 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
     bool held = false;
     switch (r.predicate)
     {
-    case PredicateKind::Always:
+    case PredicateKind::Any:
         held = true;
         break;
     case PredicateKind::HealthPctBelow:
@@ -196,7 +196,7 @@ Binding EvaluateCurrentTarget(const Snapshot &s, const Rule &r)
 {
     if (!s.currentTarget)
         return NoMatch();
-    if (r.predicate == PredicateKind::Always)
+    if (r.predicate == PredicateKind::Any)
         return Match(s.currentTarget);
 
     // Anything beyond mere existence needs sensed data about the target, which

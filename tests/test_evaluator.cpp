@@ -370,7 +370,7 @@ TEST_CASE("CurrentTarget needs sensed data for anything beyond existence", "[bin
     {
         Rule r;
         r.subject = SubjectKind::CurrentTarget;
-        r.predicate = PredicateKind::Always;
+        r.predicate = PredicateKind::Any;
         REQUIRE(EvaluateCondition(r, s).id == 0x101);
     }
 
@@ -393,7 +393,7 @@ TEST_CASE("no binding means the rule is skipped, not fired at nobody", "[evaluat
     RuleSet rs;
     Rule r;
     r.subject = SubjectKind::Enemy;
-    r.predicate = PredicateKind::Always;
+    r.predicate = PredicateKind::Any;
     r.actionTarget = ActionTargetKind::ConditionSubject;
     r.action = ActionKind::StopCombat;
     rs.rules.push_back(r);
@@ -845,7 +845,7 @@ TEST_CASE("a spell the follower does not know is not castable", "[spell]")
     RuleSet rs;
     Rule buff;
     buff.subject = SubjectKind::Self;
-    buff.predicate = PredicateKind::Always;
+    buff.predicate = PredicateKind::Any;
     buff.actionTarget = ActionTargetKind::Self;
     buff.action = ActionKind::EquipSpell;
     buff.actionForm = 0x0005AD5C;
@@ -1045,7 +1045,7 @@ TEST_CASE("every wire name is a slug, and no display name is", "[vocabulary]")
 
 TEST_CASE("the slug format rejects anything a translator would produce", "[vocabulary]")
 {
-    REQUIRE(IsWireName("drink-health-potion-strongest"));
+    REQUIRE(IsWireName("drink-strongest-health-potion"));
     REQUIRE(IsWireName("self"));
     REQUIRE(IsWireName("count-at-least"));
 
@@ -1081,7 +1081,7 @@ TEST_CASE("the argument shape tells the UI which widget to draw", "[vocabulary]"
 
     // A predicate that takes no argument must not be given a slider that
     // silently writes a meaningless number into the profile.
-    REQUIRE(ArgumentFor(PredicateKind::Always) == ArgumentKind::None);
+    REQUIRE(ArgumentFor(PredicateKind::Any) == ArgumentKind::None);
     REQUIRE(ArgumentFor(PredicateKind::InCombat) == ArgumentKind::None);
     REQUIRE(ArgumentFor(PredicateKind::InBleedout) == ArgumentKind::None);
 }

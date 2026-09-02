@@ -55,7 +55,7 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     case SubjectKind::Self:
         switch (predicate)
         {
-        case PredicateKind::Always:
+        case PredicateKind::Any:
         case PredicateKind::HealthPctBelow:
         case PredicateKind::MagickaPctBelow:
         case PredicateKind::StaminaPctBelow:
@@ -71,7 +71,7 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     case SubjectKind::Player:
         switch (predicate)
         {
-        case PredicateKind::Always:
+        case PredicateKind::Any:
         case PredicateKind::HealthPctBelow:
         case PredicateKind::InCombat:
         case PredicateKind::WithinDistance:
@@ -83,7 +83,7 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     case SubjectKind::Ally:
         switch (predicate)
         {
-        case PredicateKind::Always:
+        case PredicateKind::Any:
         case PredicateKind::HealthPctBelow:
         case PredicateKind::InBleedout:
         case PredicateKind::WithinDistance:
@@ -96,7 +96,7 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     case SubjectKind::Enemy:
         switch (predicate)
         {
-        case PredicateKind::Always:
+        case PredicateKind::Any:
         case PredicateKind::HealthPctBelow:
         case PredicateKind::WithinDistance:
         case PredicateKind::CountAtLeast:
@@ -108,7 +108,7 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     case SubjectKind::CurrentTarget:
         switch (predicate)
         {
-        case PredicateKind::Always:
+        case PredicateKind::Any:
         case PredicateKind::HealthPctBelow:
         case PredicateKind::WithinDistance:
             return true;

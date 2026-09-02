@@ -64,7 +64,7 @@ constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
 }};
 
 constexpr std::array<Entry<PredicateKind>, 8> kPredicates{{
-    {PredicateKind::Always, "always", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
+    {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
     {PredicateKind::MagickaPctBelow, "magicka-pct-below", "Magicka"},
@@ -88,9 +88,9 @@ constexpr std::array<Entry<ActionKind>, 10> kActions{{
     // on a scratch -- becomes a new value rather than a breaking change to an
     // existing one.
     {ActionKind::None, "none", "Do nothing"},
-    {ActionKind::DrinkHealthPotion, "drink-health-potion-strongest", "Drink strongest health potion"},
-    {ActionKind::DrinkMagickaPotion, "drink-magicka-potion-strongest", "Drink strongest magicka potion"},
-    {ActionKind::DrinkStaminaPotion, "drink-stamina-potion-strongest", "Drink strongest stamina potion"},
+    {ActionKind::DrinkHealthPotion, "drink-strongest-health-potion", "Drink strongest health potion"},
+    {ActionKind::DrinkMagickaPotion, "drink-strongest-magicka-potion", "Drink strongest magicka potion"},
+    {ActionKind::DrinkStaminaPotion, "drink-strongest-stamina-potion", "Drink strongest stamina potion"},
     {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
     {ActionKind::CastSpell, "cast-spell", "Cast spell"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
@@ -208,7 +208,7 @@ ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
     case PredicateKind::CountAtLeast:
         return ArgumentKind::Count;
 
-    case PredicateKind::Always:
+    case PredicateKind::Any:
     case PredicateKind::InBleedout:
     case PredicateKind::InCombat:
         return ArgumentKind::None;
@@ -222,7 +222,7 @@ std::string_view Describe(PredicateKind v) noexcept
 {
     switch (v)
     {
-    case PredicateKind::Always:
+    case PredicateKind::Any:
         return "Any. True whenever the subject exists -- for a rule that should fire whenever it is reached.";
     case PredicateKind::HealthPctBelow:
         return "Health has fallen below this fraction of its maximum.";

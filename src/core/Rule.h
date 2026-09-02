@@ -41,7 +41,7 @@ enum class SubjectKind : std::uint8_t
 // units for WithinDistance, a plain count for CountAtLeast.
 enum class PredicateKind : std::uint8_t
 {
-    Always,
+    Any,
     HealthPctBelow,
     StaminaPctBelow,
     MagickaPctBelow,
@@ -86,7 +86,7 @@ struct Rule
     bool enabled{true};
 
     SubjectKind subject{SubjectKind::Self};
-    PredicateKind predicate{PredicateKind::Always};
+    PredicateKind predicate{PredicateKind::Any};
     float conditionArg{0.0f};
 
     ActionTargetKind actionTarget{ActionTargetKind::ConditionSubject};
