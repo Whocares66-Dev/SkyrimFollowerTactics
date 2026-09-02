@@ -64,7 +64,7 @@ constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
 }};
 
 constexpr std::array<Entry<PredicateKind>, 8> kPredicates{{
-    {PredicateKind::Always, "always", "Always"},
+    {PredicateKind::Always, "always", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
     {PredicateKind::MagickaPctBelow, "magicka-pct-below", "Magicka"},
@@ -223,7 +223,7 @@ std::string_view Describe(PredicateKind v) noexcept
     switch (v)
     {
     case PredicateKind::Always:
-        return "Always true. Use it for a rule that should fire whenever it is reached.";
+        return "Any. True whenever the subject exists -- for a rule that should fire whenever it is reached.";
     case PredicateKind::HealthPctBelow:
         return "Health has fallen below this fraction of its maximum.";
     case PredicateKind::MagickaPctBelow:
