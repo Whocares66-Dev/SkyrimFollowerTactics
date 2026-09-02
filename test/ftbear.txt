@@ -1,0 +1,24 @@
+; ============================================================
+;  FollowerTactics - spawn something that actually hurts
+;  Run:  bat ftbear
+;
+;  A cave bear, which is the point: the draugr in ftspawn is a
+;  punchbag, so testing the potion rule with it means faking the
+;  damage with fthurt. A bear hits hard enough to drive a
+;  follower under 50% health on its own, so the rule fires from
+;  REAL combat damage on the normal code path -- health falling
+;  during a fight, the tick noticing, the potion going down.
+;
+;  That is a materially better test than fthurt. fthurt proves
+;  the rule evaluates; a bear proves the whole loop works while
+;  the game is doing everything else it does during a fight.
+;
+;  Re-runnable: each call adds another bear. Two is a serious
+;  fight for one follower; three will kill them.
+;
+;  YOU ARE IN GOD MODE (the setup scripts run player.tgm), so it
+;  cannot reach you -- but your follower is not protected. Watch
+;  the panel, and bat ftclean if it goes badly.
+; ============================================================
+
+player.placeatme 00023A8B 1

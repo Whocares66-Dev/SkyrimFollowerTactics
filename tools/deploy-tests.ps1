@@ -72,5 +72,8 @@ foreach ($f in $files) {
 
 if (-not $Check) {
     Write-Host "`n$written files written." -ForegroundColor Cyan
-    Write-Host "Sequence:  bat ftsetup  ->  click her in the console  ->  bat ftmake  ->  bat ftspawn  ->  bat fthurt" -ForegroundColor Cyan
+    Write-Host "Click a follower in the console FIRST, then:" -ForegroundColor Cyan
+    Write-Host "  bat ftmake   (repeat per follower)  ->  bat ftbear  ->  bat ftstatus" -ForegroundColor Cyan
+    Write-Host "From a bat file only player.<cmd> and commands on a PRIOR selection work." -ForegroundColor DarkGray
+    Write-Host "prid and <refid>.<cmd> were both tried and neither does." -ForegroundColor DarkGray
 }

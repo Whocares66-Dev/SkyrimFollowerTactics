@@ -1,24 +1,26 @@
 ; ============================================================
-;  FollowerTactics - print the SELECTED actor's state
-;  Run:  bat ftstatus    (with the follower selected)
+;  FollowerTactics - state of the SELECTED follower
+;  Select them, then:  bat ftstatus
 ;
-;  Answers "is the scenario actually set up?" before you spend
-;  time wondering why nothing is happening. Scroll the console
-;  with Page Up to read it all.
+;  All independent reads, so the unreliable ordering does not
+;  matter here. This is also why verification lives in this file
+;  rather than inside ftsetup.
+;
+;  POTION COUNTS are weak then strong, per resource. The engine
+;  drinks the STRONGEST carried, so after a rule fires the SECOND
+;  number of a pair should fall. If the first falls instead, the
+;  selection logic is picking wrong.
 ; ============================================================
 
-; --- Resources the rule engine reads --------------------------
 getavinfo health
 getavinfo magicka
 getavinfo stamina
-
-; --- Combat state ---------------------------------------------
-; 1 = in combat. This is Snapshot::inCombat in Phase 1.
 isincombat
-
-; --- Who are they fighting? -----------------------------------
 getcombattarget
 
-; --- Do they have anything to drink? --------------------------
 getitemcount 0003EADD
 getitemcount 0003EADE
+getitemcount 0003EAE0
+getitemcount 0003EAE1
+getitemcount 0003EAE5
+getitemcount 00039BE8

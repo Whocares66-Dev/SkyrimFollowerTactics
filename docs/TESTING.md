@@ -47,47 +47,118 @@ that configure her. Every script after `ftsetup` therefore operates on **the cur
 console selection** rather than a hardcoded RefID — which also means they work on any
 follower you click, not just this one.
 
+## The rule that governs every script here
+
+**Batch console commands are queued and executed in an order you cannot rely on.**
+They are not run one at a time with each finishing before the next begins.
+
+Everything else on this page follows from that, and it is worth stating first because it is
+undocumented, invisible, and produces failures that look like something else entirely.
+
+What it permits, and what it forbids:
+
+| | |
+|---|---|
+| **Safe** | Lines that are independent of one another |
+| **Safe** | Lines acting on a selection made *before* the batch ran |
+| **Safe** | Explicitly prefixed commands — `player.additem`, `player.placeatme` |
+| **Unsafe** | Any line depending on an earlier line in the same file having happened |
+
+So `prid <ref>` followed by `moveto player` does not work: the `moveto` may run first,
+against whatever was selected before, or nothing. Neither does printing a value before and
+after changing it, or `getitemcount` after `additem` — the read can execute before the write.
+
+**A separate `bat` invocation IS ordered** relative to the previous one. That is the escape
+hatch: split a dependent sequence across two commands you type in order, rather than two
+lines in one file.
+
+### What this cost, and the misdiagnosis it caused
+
+The first version of this harness used `prid 000A2C94` to select Lydia and then configured
+her. It did nothing. The cause was diagnosed as her reference being uninitialised — true, as
+it happens, since she is disabled until you are Thane — and a whole BaseID-and-`placeatme`
+approach was built on that diagnosis.
+
+That diagnosis was at best half right. The same pattern failed later on Marcurio, whose
+reference was definitely live, because `prid` in a batch file cannot be relied on to run
+before the lines that depend on it. The `placeatme` workaround appeared to succeed only
+because `player.placeatme` is explicitly prefixed and needs no selection at all.
+
+The tell was there and went unread: every command that ever worked from a batch file in this
+project was `player.`-prefixed. Not one selection-dependent command was ever confirmed to
+work, and that was treated as coincidence rather than evidence.
+
 ## Usage
 
+One-off per playthrough, so the followers' references exist at all:
+
 ```
-coc QASmoke        <- type this manually, NOT in a batch file
-bat ftsetup        <- god mode on, spawn a follower copy in front of you
-                      *** now CLICK her in the console to select her ***
-bat ftmake         <- make the SELECTED actor a teammate and give her potions
-bat ftspawn        <- spawn one hostile draugr
-bat fthurt         <- drop her to 25 HP; watch this one happen
-bat ftstatus       <- print the selected actor's state
-bat ftclean        <- reset between runs
+coc RiftenBeeandBarb          <- Marcurio   (verify names with console autocomplete)
+coc WhiterunDrunkenHuntsman   <- Jenassa
+coc QASmoke
 ```
 
-The click in the middle cannot be automated: no console command selects the reference
-`placeatme` just created. Everything after `ftsetup` therefore acts on the **current
-console selection**, so it works on any actor you click.
+Then, per follower — **select by hand, batch the rest**:
+
+```
+prid 000B9986      <- typed, not batched. Marcurio.  Jenassa is 000E1BA9.
+bat ftmake         <- configures whoever is selected
+```
+
+Repeat for the second follower. Then:
+
+```
+bat ftbear         <- a cave bear; it can drive them under a threshold on its own
+bat ftstatus       <- read the selected follower's state
+bat fthurt         <- force the threshold directly, if the bear is not obliging
+bat ftclean        <- restore and un-follow. Non-destructive; safe on a real NPC
+```
 
 | Script | Acts on | Does |
 |---|---|---|
-| `ftsetup` | player | `player.tgm`, then `player.placeatme 000A2C8E 1` — spawns a disposable copy of Lydia from her **BaseID** |
-| `ftmake` | selection | `setplayerteammate 1` (the `kPlayerTeammate` bit the mod's registry keys on), relationship rank, `CurrentFollowerFaction`, 10 Minor Healing + 5 Healing potions, then prints health and potion count |
-| `ftspawn` | player | one draugr (`000387C0`). Re-runnable to escalate |
-| `fthurt` | selection | prints health, `forceav health 25`, prints health again. **`forceav` sets current health without touching max/base**; `setav`/`modav` move max health and would corrupt the very percentage the rules engine reads |
-| `ftstatus` | selection | health/magicka/stamina, `isincombat`, `getcombattarget`, potion counts — answers "is the scenario actually set up?" |
-| `ftclean` | selection | resurrect, un-teammate, strip inventory, then `disable` + `markfordelete` the copy, and god mode off |
+| `ftmake` | selection | teammate, faction, and two tiers each of health, magicka and stamina potions. Contains **no `prid`** — that is the point |
+| `ftspawn` | player | one draugr, feeble on purpose: keeps a follower in combat without threatening them |
+| `ftbear` | player | one cave bear (`00023A8B`) — hits hard enough to cross a threshold through real damage |
+| `fthurt` | selection | `damageav health 100`. One command, deliberately: a before/after print in the same file cannot be trusted to bracket the damage |
+| `ftstatus` | selection | health/magicka/stamina, `isincombat`, combat target, and both potion tiers |
+| `ftclean` | selection | restore and un-follow. **Non-destructive** — safe on a real quest NPC |
 
-**If a script appears to do nothing, you probably have nothing selected.** The console shows
-the selected reference's name and FormID just above the input line — check it says an NPC.
-That failure mode is silent and looks identical to a broken batch file.
+Verification lives in `ftstatus`, run as its own command, precisely because a check inside
+the file it is checking may execute before the thing it checks.
 
-**Deploying them.** `bat <name>` does not read this repo. `tools\deploy-tests.ps1` writes
-each file to all three places the console might look — game root with `.txt`, game root
-without an extension, and `Data\` with `.txt` — and converts to **CRLF** on the way.
-Both of those mattered: LF-only files in the root did nothing at all.
+**Potion FormIDs**, all read off the running game — weak / strong:
 
-```powershell
-.\tools\deploy-tests.ps1            # copy repo -> game (3 locations, CRLF)
-.\tools\deploy-tests.ps1 -Check     # report what is present
-```
+| | Weak (×10) | Strong (×5) |
+|---|---|---|
+| Healing | `0003EADD` | `0003EADE` |
+| Magicka | `0003EAE0` | `0003EAE1` |
+| Stamina | `0003EAE5` | `00039BE8` |
 
-The game folder is under `C:\Program Files (x86)`, so deploying needs an elevated shell.
+Two tiers on purpose: the engine drinks the **strongest** it carries, so watching which count
+falls proves it chose correctly rather than merely drinking something. Note stamina breaks
+the adjacent-pair pattern the other two follow — `00039BE8` is nowhere near `0003EAE5`, and
+inferring it as `0003EAE6` was wrong. A pattern that holds twice is not a rule.
+
+### Why these three, and why real references
+
+Real followers beat spawned copies: actual levelled stats, spells and gear; no duplicate
+NPCs accumulating in the save; and `prid` selects them, so no manual click step.
+
+They also cover three resource profiles, which matters because a rule can only be tested
+against a follower who has the resource in question:
+
+| | Class | Useful for |
+|---|---|---|
+| Marcurio | Destruction Mage | magicka rules — a real pool that actually moves |
+| Jenassa | Ranger | stamina, and ranged behaviour |
+| Lydia | Warrior | *retired from this harness* — her magicka sits at 50/50 forever |
+
+Three followers also exercises the multi-follower paths for the first time: three menu
+entries, three slots, three independent evaluation contexts with separate cooldowns.
+
+**Never run deletion commands on these.** They are real quest NPCs; `markfordelete` would
+remove Marcurio from The Bee and Barb permanently. `ftclean` is deliberately non-destructive
+for this reason.
 
 ## About the test cell
 
@@ -160,3 +231,37 @@ I wrote these from documentation, not from a running game. Treat run #1 as a che
       badly — that's the whole premise of NPCsUsePotions. If she never drinks unprompted,
       that's the baseline our Phase 1 rule has to beat, and worth noting.
 - [ ] `bat ftclean` restores her
+
+## FormIDs: base, not reference
+
+Every actor in this harness is spawned with `player.placeatme <BaseID>`, never selected with
+`prid <RefID>`. The distinction has bitten once already and is worth stating plainly:
+
+| Follower | BaseID (use this) | RefID (do not) | Where their reference lives |
+|---|---|---|---|
+| Marcurio | `000B9980` | `000B9986` | The Bee and Barb, Riften |
+| Jenassa | `000B9982` | `000E1BA9` | The Drunken Huntsman, Whiterun |
+| Lydia | `000A2C8E` | `000A2C94` | Dragonsreach — **disabled outright** until you are Thane |
+
+A **RefID names an existing instance**, and that instance is not reachable until the game
+has initialised it — which for both of these means visiting a city and, for Lydia,
+completing a quest. On a fresh character `prid` selects nothing and every command after it
+silently does nothing, which looks exactly like a broken batch file.
+
+A **BaseID names the template**, which exists from the moment the game starts. `placeatme`
+takes the base form, so it works at any point in any save, in any cell, regardless of quest
+state — and the copy is disposable, which is what you want in a test anyway.
+
+`player.placeatme 000B9986 1` fails for this reason: it asks the game to instantiate a
+specific existing instance, which is the very thing that does not exist yet.
+
+### Loading the cell initialises the reference — verified
+
+`coc` into the follower's home cell once, then `coc` back, and `prid <RefID>` works from
+then on. Confirmed in game for both Marcurio and Jenassa. They are persistent references,
+so once instantiated they stay reachable.
+
+This works for **hirelings**, who simply stand in a bar. It does **not** work for Lydia: she
+is `disable`d outright until the Thane quest completes, so loading Dragonsreach instantiates
+nothing. That is the difference between a reference that has not been *created* and one that
+has been created and switched *off*, and it is why the BaseID route existed at all.

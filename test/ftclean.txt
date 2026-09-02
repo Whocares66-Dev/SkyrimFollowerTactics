@@ -1,41 +1,24 @@
 ; ============================================================
-;  FollowerTactics - reset between test runs
-;  Run:  bat ftclean     (with the spawned follower selected)
+;  FollowerTactics - restore the SELECTED follower
+;  Select them, then:  bat ftclean
 ;
-;  Because the follower is a placeatme'd COPY rather than the
-;  real Lydia, cleanup is genuinely destructive and that is fine
-;  - the copy is disposable and nothing in the world references
-;  it. Do NOT run this with the real Lydia selected.
+;  NON-DESTRUCTIVE, deliberately. These are real quest NPCs:
+;  removeallitems would strip their gear and markfordelete would
+;  remove them from the save permanently.
 ;
-;  IF A FOLLOWER'S MAX HEALTH LOOKS WRONG: an earlier version of
-;  fthurt used forceav, which corrupts the actor value itself
-;  rather than damaging it. restoreav cannot undo that. Delete
-;  the copy with this script and spawn a fresh one with ftsetup.
+;  restoreav is the clean inverse of fthurt's damageav: it puts
+;  the current value back without touching base.
 ;
-;  Spawned draugr are not cleaned up here; their RefIDs are not
-;  knowable from a batch file. Kill them, or select each and run
-;  disable then markfordelete.
+;  Spawned creatures are not cleaned up here; their RefIDs are
+;  not knowable in advance. Kill them, or select each and run
+;  disable then markfordelete by hand.
 ; ============================================================
 
-; --- Put the selected actor back to a sane state --------------
-; restoreav is the clean inverse of the damageav that fthurt uses: it puts the
-; current value back without touching base. resurrect alone does not undo a
-; damaged actor value.
+player.tgm
+
 restoreav health 99999
 restoreav magicka 99999
 restoreav stamina 99999
-
 resurrect 1
 setplayerteammate 0
 removefromfaction 0005C84E
-removeallitems
-
-; --- Then remove the copy entirely ----------------------------
-; Safe here: it is a runtime-only reference with no save-persistent
-; placement. Comment these two out if you want to reuse the same
-; follower for the next run instead.
-disable
-markfordelete
-
-; --- Player back to normal ------------------------------------
-player.tgm

@@ -1,51 +1,17 @@
 ; ============================================================
-;  FollowerTactics - wound the SELECTED actor
-;  Run:  bat fthurt      (with the follower selected)
+;  FollowerTactics - wound the SELECTED follower
+;  Select them, then:  bat fthurt      then  bat ftstatus
 ;
-;  Re-runnable. Each run takes off another 100 points, so run it
-;  again if the follower is tougher than that. Watching the F1
-;  panel while you do this is the point.
+;  Re-runnable; each run takes off another 100.
 ;
-;  Why a flat number and not "80% of max": a console batch file
-;  cannot do arithmetic, and damageav takes an absolute amount.
-;  A percentage would need the max read back and multiplied,
-;  which is not something bat can express. 100 is chosen to put a
-;  typical levelled follower well under half health in one go.
+;  damageav applies to the DAMAGE modifier, which is what real
+;  combat damage does. Never setav, modav or forceav on a
+;  resource you intend to keep reading: those write the value
+;  itself, corrupt max health, and can stop it regenerating.
 ;
-;  CORRECTION, learned the hard way:
-;  an earlier version of this file used
-;      forceav health 25
-;  and asserted in a comment that forceav sets CURRENT health
-;  without touching max. That is wrong. forceav writes the actor
-;  value itself, so it corrupts max -- observed in game, a
-;  follower with 42 max health ended up reading 25 / 33 -- and
-;  UESP warns it can also stop health regenerating for that actor
-;  entirely.
-;
-;  damageav applies to the DAMAGE modifier, which is the same
-;  thing real combat damage does. Max is left alone, regeneration
-;  still works, and restoreav or a healing potion undoes it
-;  cleanly. Use damageav. Never setav, modav or forceav on a
-;  resource you intend to keep reading.
-;
-;  IF YOU ALREADY RAN THE OLD VERSION: that follower's max health
-;  is now wrong and no longer trustworthy for testing. Run
-;  bat ftclean to delete the copy, then bat ftsetup for a fresh
-;  one.
+;  No before/after print here -- readings in this same file could
+;  run before the damage. Use ftstatus, as its own command.
 ; ============================================================
 
-; --- Before ---------------------------------------------------
-getavinfo health
-
-; --- Wound them -----------------------------------------------
 damageav health 100
-
-; --- After ----------------------------------------------------
-; Read "current" against "base": that ratio is exactly what
-; Snapshot::health.Pct() computes, and what the panel shows.
-getavinfo health
-
-; Health regen pulls this back over time, which is realistic but
-; can outpace you. To hold it still, freeze AI with tcai
-; (toggles for ALL actors, so remember to toggle it back).
-;tcai
+damageav magicka 100

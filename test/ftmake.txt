@@ -1,32 +1,46 @@
 ; ============================================================
-;  FollowerTactics - step 2: make the SELECTED actor a follower
-;  Run:  click the spawned NPC in the console, then  bat ftmake
+;  FollowerTactics - configure the SELECTED follower
 ;
-;  Every command here acts on the console's current selection,
-;  NOT on a hardcoded RefID. That is deliberate: it works on any
-;  actor you click, at any point in any save, and it is what let
-;  this harness stop depending on Lydia being initialized.
+;  Click the follower in the console, then:  bat ftmake
+;  Repeat for the second follower.
 ;
-;  If nothing happens, you probably have nothing selected. The
-;  console shows the selected reference's name and FormID just
-;  above the input line - check it says an NPC and not a chair.
+;  Marcurio  000B9986   Destruction Mage, a real magicka pool
+;  Jenassa   000E1BA9   Ranger
+;
+;  WHY CLICKING, AND NOT A REFID IN THE FILE
+;  From a batch file, exactly two things reach a specific actor:
+;      player.<command>                        works
+;      <command>, on a PRIOR selection         works
+;  Both of these were tried and neither works:
+;      prid <refid>                            no
+;      <refid>.<command>                       no
+;  Batch lines are queued and run in no reliable order, so
+;  anything that depends on an earlier line in the same file is
+;  broken. A selection made BEFORE the batch is stable state,
+;  which is why the second form is safe and prid is not.
+;
+;  POTIONS, weak then strong. Two tiers on purpose: the engine
+;  drinks the STRONGEST carried, so watching which count falls
+;  proves it chose correctly rather than merely drinking.
+;    0003EADD / 0003EADE   Minor Healing / Healing
+;    0003EAE0 / 0003EAE1   Minor Magicka / Magicka
+;    0003EAE5 / 00039BE8   Minor Stamina / Stamina
+;  All six read off the running game. Stamina breaks the
+;  adjacent-pair pattern the other two follow.
+;
+;  Check with a SEPARATE `bat ftstatus` -- a check inside this
+;  file could run before the thing it checks.
 ; ============================================================
 
-; --- Make them a follower -------------------------------------
-; setplayerteammate sets the kPlayerTeammate bool bit (1 << 26),
-; which is exactly the flag the mod's registry will key on in
-; Phase 1 - so this is the real thing, not an approximation.
+player.tgm
+
 setplayerteammate 1
 setrelationshiprank player 4
-
-; CurrentFollowerFaction, for the vanilla-only cross-check.
 addtofaction 0005C84E 1
 
-; --- Give them potions to actually drink ----------------------
-; 0003EADD = Potion of Minor Healing, 0003EADE = Potion of Healing
 additem 0003EADD 10
 additem 0003EADE 5
-
-; --- Confirm it took ------------------------------------------
-getavinfo health
-getitemcount 0003EADD
+additem 0003EAE0 10
+additem 0003EAE1 5
+additem 0003EAE5 10
+additem 00039BE8 5

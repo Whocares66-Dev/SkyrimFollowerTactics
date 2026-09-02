@@ -6,6 +6,11 @@
 ; ============================================================
 
 ; Weakest generic Draugr. Spawns hostile, engages on sight.
+; Deliberately feeble: it keeps a follower in combat without
+; threatening them, which is what you want when testing whether
+; the tick engages at all. To test the potion rule under real
+; damage, use bat ftbear instead -- a draugr will not hurt anyone
+; enough to cross a health threshold.
 player.placeatme 000387C0 1
 
 ; Alternatives - uncomment one instead if a draugr is too tough
@@ -14,5 +19,6 @@ player.placeatme 000387C0 1
 ;player.placeatme 00000EB2 1   ; Mudcrab  (trivial)
 ;player.placeatme 001068FE 1   ; Bandit   (FormID single-sourced, verify)
 
-; Re-select Lydia so follow-up commands still target her
-prid 000A2C94
+; NOTE: this leaves the SPAWNED CREATURE selected, not your
+; follower. Run bat ftmarcurio or bat ftjenassa again to
+; re-select the follower before bat fthurt or bat ftstatus.
