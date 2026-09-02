@@ -39,26 +39,28 @@
 // The eight records are a resource pool. A follower takes a free record when
 // a cast rule fires, the record is HERS ALONE until the cast has run (or the
 // window has passed), and then it goes back. Never shared, even for the same
-// spell: every input in the record -- spell now, target later -- belongs to
-// the holder, so the pool cannot be caught out by an input it did not think to
-// compare. The limit is eight followers mid-cast at the same instant. When
-// that is exceeded, the tick reports the pool busy and the rule engine skips
-// cast rules for that evaluation -- no cooldown is spent, and the next rule in
-// the list gets its turn.
+// spell: every input in the record -- spell, target, cast time -- belongs to
+// the holder. The limit is eight followers mid-cast at the same instant. When
+// that is exceeded, or she already holds one, the rule engine reports her cast
+// rules busy for that turn -- no cooldown is spent, and the next rule in the
+// list gets its turn.
+//
+// THE INPUTS, AND HOW THEY ARE FOUND
+// Three inputs are written per request: Spell, Target (Self for herself, a
+// specific reference for anyone else), and for a concentration spell the two
+// CastTime floats that say how long the stream runs. The container that holds
+// a package's inputs is not mapped by CommonLibSSE, so none of these offsets
+// is hard-coded: CalibrateInputs finds each one at load by looking for the
+// value the record was authored with (Fast Healing, Self, 0.5 / 1.0), and
+// nothing is written through a layout that did not read back as expected.
 //
 // LIMITS, STATED
 // - Only a follower the vanilla DialogueFollower alias holds is covered: the
 //   override list belongs to that alias. A follower recruited by a framework
 //   (NFF, EFF, AFT) runs its own alias. RequestCast reports which case she is.
-// - The Target input is repointed per request, like the Spell input: Self
-//   for the follower herself, a specific reference for anyone else. Both
-//   writes go through PackageTarget, which CommonLibSSE maps, behind the one
-//   pointer the canary probe locates.
-// - A concentration spell is a STREAM. Its fire event marks the start, not
-//   the end, so it is not a release signal for one; the record's CastTime
-//   inputs (two floats, also found by canary) are set to the sustain time
-//   and the lease runs until the AI ends the package or a deadline sized to
-//   that time.
+// - A concentration spell's fire event marks the START of the stream, so it
+//   is not a release signal for one; the stream is released on the CastStop
+//   that follows, or when the target dies, or at a deadline.
 
 #include <cstdint>
 #include <vector>
@@ -114,8 +116,9 @@ void InitPackages();
 // skipped for that turn without spending a cooldown.
 [[nodiscard]] bool IsMidCast(const RE::Actor *actor);
 
-// Locate the Spell input in memory by finding the canary. Logs only.
-void ProbeSpellInput();
+// Locate the Spell, Target and CastTime inputs in memory by their canaries.
+// Writes nothing; what it fails to find, RequestCast refuses to write.
+void CalibrateInputs();
 
 enum class CastRequest : std::uint8_t
 {

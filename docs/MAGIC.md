@@ -217,7 +217,9 @@ repeats them.
    alternative 4.5x. Score was never the problem.
 7. **Hooking `CombatMagicCasterRestore::CheckStartCast`.** We can answer the
    AI's question; we cannot make it ask. The health caster never evaluates
-   above a very low threshold. The hooks remain in `CombatHook.cpp`, off.
+   above a very low threshold. The hook code was removed once the package
+   route shipped; it is in the history before commit `28ddd3b`
+   (`src/game/CombatHook.cpp`).
 
 Also rejected: **changing the restore-health threshold game setting.** It
 would change when every NPC in Skyrim heals.
@@ -252,15 +254,6 @@ entry. NFF is one more line when integration is wanted. NFF also has
 
 ## Open
 
-- **Sustain time in the editor.** A concentration rule's stream length is
-  its numeric argument, which the panel does not yet expose; every stream runs
-  the 3 s default. A random length within a range is the likely next shape.
-- **The AI sometimes does not start the procedure.** In the Flames run, three
-  of seven requests showed `CastStop` on his own attack and then nothing for
-  four seconds. Package selected, hands free, no cast. Unexplained.
-- **Group subjects.** The snapshot carries one enemy, the one she is
-  engaging. "Any enemy below 30% health" needs the combat group read in full.
-- **Our own quest and aliases**, filled for any teammate we manage. Removes
-  the dependence on how a follower was recruited and covers every framework.
-  Needs `ForceRefTo`, i.e. the CommonLib migration.
-- **Structured JSON log** alongside the text log, for `jq`.
+Tracked in `docs/TODO.md`. The casting items there: sustain length in the
+editor, the AI occasionally not starting a cast, non-hostile targeted spells,
+a target picker, our own quest and aliases.

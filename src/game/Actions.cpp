@@ -134,10 +134,6 @@ const char *ToString(ActionResult r) noexcept
         return "item missing at dispatch";
     case ActionResult::NoEquipManager:
         return "ActorEquipManager unavailable";
-    case ActionResult::NoCaster:
-        return "actor has no magic caster";
-    case ActionResult::CannotCast:
-        return "the game would refuse the cast";
     case ActionResult::Busy:
         return "every package slot is mid-cast";
     case ActionResult::NoTarget:

@@ -125,7 +125,7 @@ double g_lastCostReport = -1.0e9;
 
 // --- the hardcoded Phase 1 rule --------------------------------------------
 
-const ft::RuleSet &SpikeRuleSetImpl()
+const ft::RuleSet &DefaultRuleSetImpl()
 {
     static const ft::RuleSet rules = [] {
         ft::RuleSet rs;
@@ -148,7 +148,7 @@ const ft::RuleSet &SpikeRuleSetImpl()
 // Only the actions Phase 1 actually implements are advertised as supported. The
 // engine then reports Verdict::Unsupported for anything else instead of firing
 // a rule that Actions::Execute would silently drop.
-ft::Capabilities SpikeCapabilities(const RE::Actor *actor)
+ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
 {
     ft::Capabilities caps; // all false
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkHealthPotion)] = true;
@@ -316,7 +316,7 @@ void EvaluateFollower(RE::Actor *actor, double now)
         logger::info("{} entered combat -- tactics engaged", Describe(actor));
     }
     state.lastEvaluatedAt = now;
-    state.eval.caps = SpikeCapabilities(actor);
+    state.eval.caps = RuntimeCapabilities(actor);
 
     const auto started = std::chrono::steady_clock::now();
 
@@ -579,7 +579,7 @@ void SetRules(ft::ActorId id, ft::RuleSet rules)
 
 const ft::RuleSet &DefaultRuleSet()
 {
-    return SpikeRuleSetImpl();
+    return DefaultRuleSetImpl();
 }
 
 std::vector<FollowerView> ObserveFollowers()

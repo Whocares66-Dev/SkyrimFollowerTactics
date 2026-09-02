@@ -21,8 +21,6 @@ enum class ActionResult : std::uint8_t
     NoSuchAction,   // not implemented in this phase
     MissingItem,    // the potion or spell vanished between snapshot and dispatch
     NoEquipManager, // the game singleton was unavailable
-    NoCaster,       // the actor has no magic caster for that source
-    CannotCast,     // the game says she could not cast it: cost, timing, skill
     Busy,           // the package pool was exhausted between evaluation and dispatch
     NoTarget        // a targeted spell with no enemy engaged
 };

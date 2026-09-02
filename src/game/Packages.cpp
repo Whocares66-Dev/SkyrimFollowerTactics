@@ -125,24 +125,16 @@ struct Slot
 };
 std::array<Slot, kPackageSlots> g_pool{};
 
-// Measured 2026-09-02: the UseMagic package casts (health 75 -> 175 about 2 s
-// after arming) and then does NOT complete. NumToCast is 1, the procedure
-// carries SuccessCompletesPackage, and still GetCurrentPackage() was ours
-// four seconds later, with the follower standing idle. Waiting for the
-// package to end is therefore not a release path we can rely on.
+// The release signals come from her animation graph.
 //
-// The spell leaving her hand is. The animation graph emits MRh_SpellFire_Event
-// / MLh_SpellFire_Event at exactly that moment (NPC Spell Variance receives
-// the same events; docs/MAGIC.md dead end 2). A sink on the casting follower
-// flags the slot, and the next tick releases it and asks the AI to
-// re-evaluate. That is the difference between "she cast" and "she cast and
-// then stood there".
-//
-// Measured again the same afternoon: the event fires for EVERY spell she
-// casts. Marcurio is a Destruction mage, and three of four requests were
-// released 65-216 ms after arming -- his own firebolt, not our heal -- which
-// dropped the rank and cancelled our package before it cast. So the sink
-// checks which spell is in the firing hand and accepts only ours.
+// A UseMagic package does NOT complete after its cast (measured: still her
+// current package four seconds later, with her standing idle), so the end of
+// a cast has to be observed. The graph emits MRh_SpellFire_Event /
+// MLh_SpellFire_Event when a spell leaves a hand, and CastStop when a cast
+// ends. Both fire for EVERY spell she casts, her own combat spells included,
+// so the sink reads which spell is equipped in the firing hand and flags the
+// slot only for ours (the caster's currentSpell is already null by then).
+// The tick does the releasing; the sink only sets flags.
 class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
 {
   public:
@@ -173,13 +165,9 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
             if (!right && !left)
                 continue;
 
-            // Which spell just left that hand? Measured: the caster's
-            // currentSpell is already null when the fire event arrives (every
-            // fire in the 12:21 run read 00000000). The spell EQUIPPED in that
-            // hand is still there, and a UseMagic package equips the spell it
-            // casts, so that is what we compare. Not ours: her own combat
-            // casting, and the record stays hers until ours fires or the
-            // deadline.
+            // Which spell just left that hand? The spell EQUIPPED in it: the
+            // UseMagic procedure equips what it casts, and the caster's own
+            // currentSpell is already null when this event arrives.
             auto *actor = const_cast<RE::TESObjectREFR *>(ev->holder)->As<RE::Actor>();
             const auto *spell =
                 actor ? actor->GetActorRuntimeData()
@@ -356,15 +344,8 @@ bool SetPackageSpell(RE::TESPackage *pkg, RE::TESForm *spell)
 // list we spliced into belongs to that alias, so a follower who is not in it
 // -- recruited by a framework, or made a teammate from the console -- never
 // sees our packages, and the log should say so rather than leave "she did not
-// cast" ambiguous.
-//
-// Read from the ACTOR: every alias an actor fills is recorded on her as
-// ExtraAliasInstanceArray, quest and alias id together. The first version of
-// this asked the quest through CreateRefHandleByAliasID, whose contract the
-// header does not state, and it answered "no" for a follower who may well
-// have been in the alias. The actor's own table is the game's source of
-// truth for "which alias packages apply to me", so it is what we read, and
-// the whole table goes in the log so a wrong answer is visible.
+// cast" ambiguous. Read from the ACTOR: every alias she fills is recorded on
+// her as ExtraAliasInstanceArray, and the whole table goes in the log.
 bool InFollowerAlias(RE::Actor *actor)
 {
     const auto *extra = actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
@@ -385,16 +366,6 @@ bool InFollowerAlias(RE::Actor *actor)
                      inst->quest->GetFormEditorID() ? inst->quest->GetFormEditorID() : "",
                      inst->alias ? inst->alias->aliasID : 0xFFFFFFFF, inst->alias ? inst->alias->aliasName.c_str() : "",
                      inst->instancedPackages ? inst->instancedPackages->size() : 0, ours ? "  <- follower alias" : "");
-    }
-
-    // Second opinion, kept only so the two methods can be compared in the log.
-    auto *quest = RE::TESForm::LookupByID<RE::TESQuest>(kDialogueFollowerQuestID);
-    if (quest)
-    {
-        RE::ObjectRefHandle handle;
-        quest->CreateRefHandleByAliasID(handle, 0);
-        const auto ref = handle.get();
-        logger::info("  DialogueFollower alias 0 by quest lookup: {:08X}", ref ? ref->GetFormID() : 0);
     }
 
     // And the faction the follower dialogue puts her in, which "Follow me"
@@ -890,7 +861,7 @@ bool PackagesAvailable()
     return g_available;
 }
 
-void ProbeSpellInput()
+void CalibrateInputs()
 {
     if (!g_available || !g_slots[0])
         return;
