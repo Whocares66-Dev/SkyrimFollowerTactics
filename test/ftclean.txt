@@ -7,12 +7,24 @@
 ;  - the copy is disposable and nothing in the world references
 ;  it. Do NOT run this with the real Lydia selected.
 ;
+;  IF A FOLLOWER'S MAX HEALTH LOOKS WRONG: an earlier version of
+;  fthurt used forceav, which corrupts the actor value itself
+;  rather than damaging it. restoreav cannot undo that. Delete
+;  the copy with this script and spawn a fresh one with ftsetup.
+;
 ;  Spawned draugr are not cleaned up here; their RefIDs are not
 ;  knowable from a batch file. Kill them, or select each and run
 ;  disable then markfordelete.
 ; ============================================================
 
 ; --- Put the selected actor back to a sane state --------------
+; restoreav is the clean inverse of the damageav that fthurt uses: it puts the
+; current value back without touching base. resurrect alone does not undo a
+; damaged actor value.
+restoreav health 99999
+restoreav magicka 99999
+restoreav stamina 99999
+
 resurrect 1
 setplayerteammate 0
 removefromfaction 0005C84E

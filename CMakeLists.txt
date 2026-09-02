@@ -62,6 +62,7 @@ include(ClangTools)
 add_library(ft_core STATIC
     src/core/Evaluator.cpp
     src/core/Rule.cpp
+    src/core/Vocabulary.cpp
 )
 target_include_directories(ft_core PUBLIC src)
 target_compile_features(ft_core PUBLIC cxx_std_23)
@@ -89,7 +90,8 @@ if(FT_BUILD_PLUGIN)
         src/game/Sensors.cpp
         src/game/Actions.cpp
         src/game/Tactics.cpp
-        src/game/Util.cpp)
+        src/game/Util.cpp
+        src/game/UI.cpp)
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
     # These are Skyrim/Windows-API concerns and belong to THIS target only.
@@ -101,6 +103,26 @@ if(FT_BUILD_PLUGIN)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
     ft_apply_warnings(${PROJECT_NAME})
+    # The SKSE Menu Framework SDK is a single vendored header. It declares the
+    # whole ImGui API under namespace ImGuiMCP and forwards every call into
+    # SKSEMenuFramework.dll via GetProcAddress, so there is nothing to link --
+    # no vcpkg imgui, no extra library. The mod page's "import both imgui and
+    # this mod" reads as if imgui were a build dependency; it is not.
+    # Not committed -- see extern/SKSEMenuFramework/README.md. Fail here with
+    # something actionable rather than 200 lines of "ImGuiMCP is undeclared".
+    if(NOT EXISTS "${CMAKE_SOURCE_DIR}/extern/SKSEMenuFramework/SKSEMenuFramework.h")
+        message(FATAL_ERROR
+            "Missing extern/SKSEMenuFramework/SKSEMenuFramework.h.
+"
+            "Download \"SKSEMenuFramework Header\" from the Files tab of
+"
+            "  https://www.nexusmods.com/skyrimspecialedition/mods/120352
+"
+            "and extract it there. See extern/SKSEMenuFramework/README.md.")
+    endif()
+
+    target_include_directories(${PROJECT_NAME} PRIVATE extern/SKSEMenuFramework)
+
     target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
     target_link_libraries(${PROJECT_NAME} PRIVATE ft_core)
 

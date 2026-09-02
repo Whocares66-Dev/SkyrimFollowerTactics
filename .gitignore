@@ -36,3 +36,14 @@ SKSE/
 AddressLibrary/
 CKPE-*/
 CreationKitDowngradePatcher/
+
+# Downloaded mod archives (SKSE Menu Framework and its dependencies).
+# Kept out of the repo so a clone stays small; see extern/ for what is needed.
+# Anchored with a leading slash: unanchored, this pattern matches at ANY depth
+# and would swallow extern/SKSEMenuFramework/ along with its README.
+/SKSEMenuFramework/
+
+# The SKSE Menu Framework SDK header is a build dependency but NOT ours to
+# redistribute: it carries no licence notice, and it is a one-file download from
+# the mod's Nexus page. extern/SKSEMenuFramework/README.md says how to get it.
+extern/SKSEMenuFramework/SKSEMenuFramework.h

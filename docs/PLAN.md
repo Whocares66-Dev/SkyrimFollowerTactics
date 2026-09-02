@@ -339,6 +339,110 @@ lists active magic effects there), so the availability check stays above the `RE
 and unit testable.
 
 
+### 3.5.2 Actions are a verb plus a selector
+
+An action names **what to do** and, separately, **what to do it to**. The current shape --
+one enum value per (verb + item + policy), e.g. `drink-health-potion-strongest` -- conflates
+the two, and does not survive contact with "equip an item": the enum would have to grow once
+per item in anyone's load order, which does not terminate.
+
+```json
+"action": {
+  "verb": "consume-item",
+  "select": { "by": "category", "category": "health-potion", "pick": "strongest" }
+}
+```
+
+**Verbs are a closed set**, because each one needs code in `Actions.cpp` to execute. A verb
+earns its own name only if it differs from every existing verb in one of three ways:
+
+1. a different `RE::` call,
+2. a different **availability** check, or
+3. a different failure mode the player has to understand.
+
+That test is stricter than it looks. Drinking a potion and eating food are the same call --
+NPCsUsePotions passes byte-identical arguments to `EquipObject` for both -- and the same
+availability question ("do you carry one"), so they are one verb. Equipping a helmet and
+equipping boots likewise. But *consuming* and *equipping* differ on point 2 and are two
+verbs: equipping is idempotent state that becomes unavailable once done, while consuming is
+a one-shot that spends the item and stays available while stock remains.
+
+Resist splitting a verb "in case we want them to behave differently later". A verb is a
+permanent wire name; a speculative split costs one forever to buy a distinction that may
+never arrive. Both directions are recoverable through aliases, so prefer coarse and split
+later on evidence.
+
+**A selector is only for choosing among things the player already has** -- their potions,
+their weapons, their spells. When the "object" would be a fixed internal palette the player
+has no independent notion of, there is nothing to select and it should be a separate verb.
+That is why `flee`, `hold-position` and `keep-distance` stay distinct rather than collapsing
+into one `push-package` verb with a package selector: an AI package is Skyrim's unit of NPC
+behaviour, and pushing one is the *mechanism*. Nobody thinks "I would like to push a
+package"; they think "run away". A verb that names its own implementation has leaked.
+
+**And no verb may be a thinly disguised console command.** An early draft of this list had
+`set-actor-value`, which is `setav`: 156 actor values, unbounded numbers, and a direct route
+to a follower with 99999 health or a zeroed weapon skill. Generality of that kind buys
+expressiveness nobody wants and removes every guardrail. The two dials actually needed are
+`kAggression` (whether they start fights) and `kConfidence` (whether they flee), so they get
+named verbs with bounded, enumerated arguments -- the UI offers "Unaggressive / Aggressive /
+Very Aggressive / Frenzied", not a number box.
+
+**`use-power` -- shouts, greater and lesser powers, beast forms.** Passes all three tests,
+and the evidence is worth recording because it also sharpens the first one:
+
+- *Different call.* `ActorEquipManager::EquipShout(Actor*, TESShout*)`, and shouts are
+  `TESShout` rather than `TESBoundObject`. Powers are `SpellItem` with
+  `MagicSystem::SpellType` of `kPower`, `kLesserPower` or `kVoicePower`, distinct from
+  `kSpell` and `kAbility` -- so the selector has a natural axis, and Beast Form and Vampire
+  Lord fall under the same verb.
+- *Different availability.* `Actor::GetVoiceRecoveryTime()` is an engine-tracked cooldown no
+  other verb needs to ask about.
+- *Different failure mode.* Equipping a shout only readies it; making an NPC actually shout
+  is unsolved and stays Tier B.
+
+**Refinement to the first test:** a different call justifies a different verb only when the
+PLAYER experiences it differently. `EquipShout` and `EquipSpell` are different calls, but
+from the player's side a shout and a greater power are the same act -- use the special
+ability, wait for it to come back. So they are one verb whose selector resolves to either
+form, with the dispatch hidden, exactly as `equip-item` hides the equipment slot. Splitting
+on the call alone would have been mechanical rather than meaningful.
+
+**A lead worth following before building this.** Skyrim's own combat code already decides
+when an NPC should ready a shout, gated on the same cooldown:
+
+```cpp
+CombatInventoryItemShout::CheckShouldEquip:
+  { return fCombatInventoryShoutMaxRecoveryTime >= actor->GetVoiceRecoveryTime(); }
+```
+
+So the native AI has shout logic already. Section 1's principle -- bias the native AI, do
+not puppet the actor -- suggests making a shout *more likely* will be far more reliable than
+trying to force one, and this is the first concrete handle on a Tier B action.
+
+
+**Selectors are open**, and there are three, in order of preference:
+
+| `by` | Example | Portable across installs? |
+|---|---|---|
+| `category` | health potion, strongest | **yes, always** -- a query, not a reference |
+| `keyword` | anything with `VendorItemPotion` | yes, if the keyword exists |
+| `form` | `{plugin: "Skyrim.esm", id: "0x0003EADD"}` | only if that plugin is installed |
+
+`category` is the default and the one to steer players toward: "drink the strongest healing
+potion" works on any install regardless of load order or which potion mods are present,
+because it names a capability rather than an object. `form` is the escape hatch for "equip
+*this exact* sword", resolved with `TESDataHandler::LookupForm(localFormID, modName)`, and
+it degrades like an unknown enum name -- drop the rule, log it, keep the rest of the profile.
+
+This also settles the earlier `EquipBestArmour` question: `pick: "strongest"` versus
+`by: "form"` is the same distinction, made explicit in data rather than baked into a verb.
+
+**Timing.** The JSON serialiser does not exist yet, so nothing is frozen and the cost of
+deciding now is zero. Implement the split alongside the serialiser in Phase 2 rather than
+refactoring `ActionKind` twice.
+
+
 **Tier B — works but contests the AI. Prototype the technique before promising the feature.**
 
 - `CastSpell(spell, target)` — there is **no clean animated forced cast** from script.

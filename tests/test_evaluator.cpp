@@ -4,6 +4,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "core/Evaluator.h"
+#include "core/Vocabulary.h"
+
+#include <string>
 
 using namespace ft;
 
@@ -704,6 +707,141 @@ TEST_CASE("nothing is on cooldown at the start of the game", "[cooldown]")
 
     EvalContext ctx;
     REQUIRE(Evaluate(rs, s, ctx).Fired());
+}
+
+// ---------------------------------------------------------------------------
+// The vocabulary: a stable wire id and a translatable display name, kept apart.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+// Catch2 in this configuration has no StringMaker for std::string_view, so
+// comparing one inside REQUIRE fails to link. Compare owned strings instead --
+// it is also what the failure output wants to print.
+std::string Str(std::string_view v)
+{
+    return std::string(v);
+}
+} // namespace
+
+TEST_CASE("every wire name round-trips", "[vocabulary]")
+{
+    // A name that does not parse back is a rule that cannot be loaded from the
+    // profile it was just saved to. Walk every enumerator rather than spot
+    // checking, so adding one without a name fails here rather than in
+    // somebody's save file.
+    for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
+    {
+        const auto v = static_cast<SubjectKind>(i);
+        REQUIRE(Str(WireName(v)) != "Unknown");
+        REQUIRE(SubjectFromWireName(WireName(v)) == v);
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(PredicateKind::COUNT); ++i)
+    {
+        const auto v = static_cast<PredicateKind>(i);
+        REQUIRE(Str(WireName(v)) != "Unknown");
+        REQUIRE(PredicateFromWireName(WireName(v)) == v);
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(ActionTargetKind::COUNT); ++i)
+    {
+        const auto v = static_cast<ActionTargetKind>(i);
+        REQUIRE(Str(WireName(v)) != "Unknown");
+        REQUIRE(ActionTargetFromWireName(WireName(v)) == v);
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(ActionKind::COUNT); ++i)
+    {
+        const auto v = static_cast<ActionKind>(i);
+        REQUIRE(Str(WireName(v)) != "Unknown");
+        REQUIRE(ActionFromWireName(WireName(v)) == v);
+    }
+}
+
+TEST_CASE("every wire name is a slug, and no display name is", "[vocabulary]")
+{
+    // THE GUARD. Display text and the file format must stay separable, or the
+    // first person to translate the UI translates the data format with it and
+    // profiles stop loading across languages. Asserting the shapes are disjoint
+    // means the two cannot be quietly merged later: a translated string carries
+    // capitals, spaces or accents and cannot satisfy IsWireName.
+    for (std::size_t i = 0; i < static_cast<std::size_t>(ActionKind::COUNT); ++i)
+    {
+        const auto v = static_cast<ActionKind>(i);
+        REQUIRE(IsWireName(WireName(v)));
+        REQUIRE(Str(WireName(v)) != Str(DisplayName(v)));
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(PredicateKind::COUNT); ++i)
+    {
+        REQUIRE(IsWireName(WireName(static_cast<PredicateKind>(i))));
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
+    {
+        REQUIRE(IsWireName(WireName(static_cast<SubjectKind>(i))));
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(ActionTargetKind::COUNT); ++i)
+    {
+        REQUIRE(IsWireName(WireName(static_cast<ActionTargetKind>(i))));
+    }
+}
+
+TEST_CASE("the slug format rejects anything a translator would produce", "[vocabulary]")
+{
+    REQUIRE(IsWireName("drink-health-potion-strongest"));
+    REQUIRE(IsWireName("self"));
+    REQUIRE(IsWireName("count-at-least"));
+
+    REQUIRE_FALSE(IsWireName("Drink Strongest Healing Potion")); // display text
+    REQUIRE_FALSE(IsWireName("SanteEnDessousDe"));               // a translation
+    REQUIRE_FALSE(IsWireName("sante-en-dessous-de-Ã©"));         // non-ASCII
+    REQUIRE_FALSE(IsWireName("DrinkHealthPotion"));              // capitals
+    REQUIRE_FALSE(IsWireName("-leading"));
+    REQUIRE_FALSE(IsWireName("trailing-"));
+    REQUIRE_FALSE(IsWireName("double--hyphen"));
+    REQUIRE_FALSE(IsWireName(""));
+}
+
+TEST_CASE("an unknown wire name is rejected, not guessed at", "[vocabulary]")
+{
+    // A profile written by a newer build will name things this one has never
+    // heard of. Returning nullopt lets the loader drop that rule with a log
+    // line instead of refusing the whole file.
+    REQUIRE_FALSE(PredicateFromWireName("health-pct-above").has_value());
+    REQUIRE_FALSE(ActionFromWireName("cast-healing-spell").has_value());
+    REQUIRE_FALSE(SubjectFromWireName("").has_value());
+
+    // And display text is not a key. This is the property that keeps the file
+    // format independent of the player's language.
+    REQUIRE_FALSE(ActionFromWireName(DisplayName(ActionKind::DrinkHealthPotion)).has_value());
+}
+
+TEST_CASE("the argument shape tells the UI which widget to draw", "[vocabulary]")
+{
+    REQUIRE(ArgumentFor(PredicateKind::HealthPctBelow) == ArgumentKind::Percent);
+    REQUIRE(ArgumentFor(PredicateKind::WithinDistance) == ArgumentKind::Distance);
+    REQUIRE(ArgumentFor(PredicateKind::CountAtLeast) == ArgumentKind::Count);
+
+    // A predicate that takes no argument must not be given a slider that
+    // silently writes a meaningless number into the profile.
+    REQUIRE(ArgumentFor(PredicateKind::Always) == ArgumentKind::None);
+    REQUIRE(ArgumentFor(PredicateKind::InCombat) == ArgumentKind::None);
+    REQUIRE(ArgumentFor(PredicateKind::InBleedout) == ArgumentKind::None);
+}
+
+TEST_CASE("every value has display text and help text", "[vocabulary]")
+{
+    // Cheap way to make adding a vocabulary entry force a decision about what
+    // it means to a player, rather than shipping a blank dropdown or tooltip.
+    for (std::size_t i = 0; i < static_cast<std::size_t>(PredicateKind::COUNT); ++i)
+    {
+        const auto v = static_cast<PredicateKind>(i);
+        REQUIRE(DisplayName(v).size() > 0);
+        REQUIRE(Describe(v).size() > 0);
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(ActionKind::COUNT); ++i)
+    {
+        const auto v = static_cast<ActionKind>(i);
+        REQUIRE(DisplayName(v).size() > 0);
+        REQUIRE(Describe(v).size() > 0);
+    }
 }
 
 TEST_CASE("Stat::Pct does not divide by zero", "[snapshot]")

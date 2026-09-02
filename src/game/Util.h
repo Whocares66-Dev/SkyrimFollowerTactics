@@ -32,4 +32,8 @@ namespace ft::game
 // two Lydias (the real one and a placeatme copy) and the name alone is a lie.
 [[nodiscard]] std::string Describe(RE::Actor *actor);
 
+// Just the name, for the UI. Describe() above adds the FormID, which is what a
+// log wants and what a screen does not.
+[[nodiscard]] std::string DisplayNameOf(RE::Actor *actor);
+
 } // namespace ft::game

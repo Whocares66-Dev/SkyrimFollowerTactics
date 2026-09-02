@@ -3,13 +3,16 @@
 #include "core/Evaluator.h"
 #include "game/Actions.h"
 #include "game/Sensors.h"
+#include "game/UI.h"
 #include "game/Util.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace ft::game
 {
@@ -52,6 +55,19 @@ struct FollowerState
 };
 
 std::unordered_map<ft::ActorId, FollowerState> g_followers;
+
+// The last evaluation for each follower, kept for the UI.
+//
+// Written on the game thread by the tick, read on the render thread by the UI,
+// so it is guarded. The lock is held only for the copy in or out -- never
+// across rendering, and never across BuildSnapshot.
+// Only the exceptions are stored, so a follower we have never seen -- or a new
+// one -- defaults to enabled without needing an entry.
+std::mutex g_disabledMutex;
+std::unordered_set<ft::ActorId> g_disabledFollowers;
+
+std::mutex g_viewMutex;
+std::vector<FollowerView> g_view;
 
 // Per-evaluation cost, in microseconds. docs/PLAN.md 3.2 sets a budget -- total
 // tick cost across 8 followers under 0.5 ms/frame amortised -- and insists it be
@@ -139,7 +155,7 @@ ft::Capabilities SpikeCapabilities()
 // machinery, and a correctness hazard, to avoid a few microseconds. The
 // expensive part of a tick is BuildSnapshot's inventory scan, and this gates
 // that already.
-std::vector<RE::Actor *> CollectFightingFollowers()
+std::vector<RE::Actor *> CollectManagedFollowers()
 {
     std::vector<RE::Actor *> followers;
 
@@ -147,13 +163,17 @@ std::vector<RE::Actor *> CollectFightingFollowers()
     if (!processLists)
         return followers;
 
-    // High actors only: the fully simulated ones near the player. A follower
-    // who is not high-process is not fighting anything.
+    // High actors only: the fully simulated ones near the player.
+    //
+    // Note this does NOT filter on combat. Combat decides whether a follower is
+    // EVALUATED, not whether they exist -- an earlier version conflated the two
+    // and the panel stayed empty until a fight started, which is exactly when
+    // you cannot calmly read it. Rules are authored before the fight.
     for (auto &handle : processLists->highActorHandles)
     {
         auto actor = handle.get();
         RE::Actor *raw = actor ? actor.get() : nullptr;
-        if (!raw || raw->IsDead() || !raw->IsPlayerTeammate() || !raw->IsInCombat())
+        if (!raw || raw->IsDead() || !raw->IsPlayerTeammate())
             continue;
 
         followers.push_back(raw);
@@ -178,6 +198,68 @@ void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet
     }
 }
 
+ft::Stat ReadStatFor(RE::Actor *actor, RE::ActorValue av)
+{
+    auto *owner = actor->AsActorValueOwner();
+    if (!owner)
+        return {};
+    return ft::Stat{owner->GetActorValue(av), owner->GetPermanentActorValue(av)};
+}
+
+// Level and carry weight, for the panel. Not rule inputs -- three cheap reads,
+// done on both the in-combat and idle paths so the panel does not go blank when
+// a fight ends.
+void FillDisplayFields(RE::Actor *actor, FollowerView &v)
+{
+    v.level = actor->GetLevel();
+    v.carriedWeight = actor->GetWeightInContainer();
+    if (auto *owner = actor->AsActorValueOwner())
+        v.carryCapacity = owner->GetActorValue(RE::ActorValue::kCarryWeight);
+}
+
+void PublishOne(FollowerView v)
+{
+    std::scoped_lock lock(g_viewMutex);
+    for (auto &existing : g_view)
+    {
+        if (existing.id == v.id)
+        {
+            existing = std::move(v);
+            return;
+        }
+    }
+    g_view.push_back(std::move(v));
+}
+
+// Out of combat: read what is cheap and skip what is not.
+//
+// Three actor-value reads and a couple of flags -- no inventory scan, no
+// evaluation. That keeps "tactics only run in combat" true while still letting
+// the panel show who is under control and what shape they are in.
+void PublishIdle(RE::Actor *actor, double now, bool inCombat)
+{
+    ft::Snapshot snapshot;
+    snapshot.self = actor->GetFormID();
+    snapshot.now = now;
+    snapshot.health = ReadStatFor(actor, RE::ActorValue::kHealth);
+    snapshot.magicka = ReadStatFor(actor, RE::ActorValue::kMagicka);
+    snapshot.stamina = ReadStatFor(actor, RE::ActorValue::kStamina);
+
+    FollowerView v;
+    v.id = snapshot.self;
+    v.name = DisplayNameOf(actor);
+    v.snapshot = snapshot;
+    v.lastEvaluatedAt = now;
+    v.evaluated = false;
+    v.inCombat = inCombat;
+    v.tacticsEnabled = IsFollowerEnabled(v.id);
+    FillDisplayFields(actor, v);
+    PublishOne(std::move(v));
+}
+
+void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace, const ft::Decision &decision,
+                 double now);
+
 void EvaluateFollower(RE::Actor *actor, double now)
 {
     const ft::ActorId id = actor->GetFormID();
@@ -200,6 +282,8 @@ void EvaluateFollower(RE::Actor *actor, double now)
     const auto &rules = SpikeRuleSet();
     ft::Trace trace;
     const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace);
+
+    PublishView(actor, snapshot, trace, decision, now);
 
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
@@ -229,6 +313,26 @@ void EvaluateFollower(RE::Actor *actor, double now)
         state.lastDiagnosticAt = now;
         LogDiagnostic(actor, snapshot, rules, trace);
     }
+}
+
+// Replace this follower's entry in the observable view. Called for every
+// follower every tick, whether or not a rule fired -- the debug column is most
+// useful precisely when nothing is firing.
+void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace, const ft::Decision &decision,
+                 double now)
+{
+    FollowerView v;
+    v.id = actor->GetFormID();
+    v.name = DisplayNameOf(actor);
+    v.snapshot = snapshot;
+    v.trace = trace;
+    v.decision = decision;
+    v.lastEvaluatedAt = now;
+    v.evaluated = true;
+    v.inCombat = true;
+    v.tacticsEnabled = true;
+    FillDisplayFields(actor, v);
+    PublishOne(std::move(v));
 }
 
 // --- the tick ---------------------------------------------------------------
@@ -264,8 +368,42 @@ void Tick()
     if (!RE::PlayerCharacter::GetSingleton())
         return;
 
-    for (auto *follower : CollectFightingFollowers())
-        EvaluateFollower(follower, now);
+    const auto followers = CollectManagedFollowers();
+
+    // Out of combat there is nothing to decide, so the expensive work -- the
+    // inventory scan inside BuildSnapshot, and the evaluation itself -- is
+    // skipped entirely. What remains is a few actor-value reads, so the panel
+    // is not blank while you are standing there authoring rules.
+    for (auto *follower : followers)
+    {
+        const bool fighting = follower->IsInCombat();
+
+        // Both switches must be on. A follower turned off still appears in the
+        // panel, and still reports whether they are fighting -- they are simply
+        // not evaluated, which is what the empty Status column then says.
+        if (fighting && IsFollowerEnabled(follower->GetFormID()))
+            EvaluateFollower(follower, now);
+        else
+            PublishIdle(follower, now, fighting);
+    }
+
+    // Menu entries are added lazily, because followers appear long after
+    // Install() has run. Cheap: it only acts on a follower it has not seen.
+    ui::RegisterNewFollowers();
+
+    // Drop anyone who is no longer a managed follower -- dismissed, dead, or out
+    // of range -- so the panel reflects the present rather than a history.
+    {
+        std::scoped_lock lock(g_viewMutex);
+        std::erase_if(g_view, [&](const FollowerView &v) {
+            for (auto *f : followers)
+            {
+                if (f->GetFormID() == v.id)
+                    return false;
+            }
+            return true;
+        });
+    }
 
     if (g_cost.samples > 0 && (now - g_lastCostReport) >= kCostReportInterval)
     {
@@ -278,6 +416,22 @@ void Tick()
 }
 
 } // namespace
+
+std::vector<FollowerView> ObserveFollowers()
+{
+    std::scoped_lock lock(g_viewMutex);
+    return g_view;
+}
+
+CostStats ObserveCost()
+{
+    return CostStats{g_cost.AvgUs(), g_cost.maxUs, g_cost.samples};
+}
+
+const ft::RuleSet &ActiveRuleSet()
+{
+    return SpikeRuleSet();
+}
 
 void Install()
 {
@@ -299,6 +453,21 @@ void Install()
                 task->AddTask([] { Tick(); });
         }
     }).detach();
+}
+
+void SetFollowerEnabled(ft::ActorId id, bool enabled)
+{
+    std::scoped_lock lock(g_disabledMutex);
+    if (enabled)
+        g_disabledFollowers.erase(id);
+    else
+        g_disabledFollowers.insert(id);
+}
+
+bool IsFollowerEnabled(ft::ActorId id)
+{
+    std::scoped_lock lock(g_disabledMutex);
+    return !g_disabledFollowers.contains(id);
 }
 
 void SetEnabled(bool enabled)

@@ -1,42 +1,51 @@
 ; ============================================================
-;  FollowerTactics - drive the SELECTED actor to a test threshold
-;  Run:  bat fthurt      (with the follower still selected)
+;  FollowerTactics - wound the SELECTED actor
+;  Run:  bat fthurt      (with the follower selected)
 ;
-;  forceav sets CURRENT health without touching max/base.
-;  Do NOT use setav/modav here - those move max health and break
-;  the very percentage the rule engine reads.
+;  Re-runnable. Each run takes off another 100 points, so run it
+;  again if the follower is tougher than that. Watching the F1
+;  panel while you do this is the point.
 ;
-;  WHY 25, AND NOT SOMETHING LIKE 100:
-;  a console batch file cannot do arithmetic, so it cannot say
-;  "40% of max". An absolute number has to be low enough to be a
-;  small fraction at ANY level. Lydia levels with the player from
-;  a floor of 6, where max health is roughly 120-130, and climbs
-;  from there. 25 trips a 50% or a 30% rule on any character.
-;  An earlier version used 100, which on a low-level follower is
-;  around 77% of max - it would fail to trip a 50% rule while
-;  looking exactly like a broken harness.
+;  Why a flat number and not "80% of max": a console batch file
+;  cannot do arithmetic, and damageav takes an absolute amount.
+;  A percentage would need the max read back and multiplied,
+;  which is not something bat can express. 100 is chosen to put a
+;  typical levelled follower well under half health in one go.
 ;
-;  It is deliberately NOT 1: a hair from death she may drop into
-;  bleedout, a different state and a different code path.
+;  CORRECTION, learned the hard way:
+;  an earlier version of this file used
+;      forceav health 25
+;  and asserted in a comment that forceav sets CURRENT health
+;  without touching max. That is wrong. forceav writes the actor
+;  value itself, so it corrupts max -- observed in game, a
+;  follower with 42 max health ended up reading 25 / 33 -- and
+;  UESP warns it can also stop health regenerating for that actor
+;  entirely.
+;
+;  damageav applies to the DAMAGE modifier, which is the same
+;  thing real combat damage does. Max is left alone, regeneration
+;  still works, and restoreav or a healing potion undoes it
+;  cleanly. Use damageav. Never setav, modav or forceav on a
+;  resource you intend to keep reading.
+;
+;  IF YOU ALREADY RAN THE OLD VERSION: that follower's max health
+;  is now wrong and no longer trustworthy for testing. Run
+;  bat ftclean to delete the copy, then bat ftsetup for a fresh
+;  one.
 ; ============================================================
 
 ; --- Before ---------------------------------------------------
 getavinfo health
 
-; --- Hurt them ------------------------------------------------
-forceav health 25
+; --- Wound them -----------------------------------------------
+damageav health 100
 
 ; --- After ----------------------------------------------------
 ; Read "current" against "base": that ratio is exactly what
-; Snapshot::health.Pct() computes in Phase 1.
+; Snapshot::health.Pct() computes, and what the panel shows.
 getavinfo health
 
-; NOTE: the health BAR will not redraw. forceav writes the actor value
-; directly and does not raise the HUD update that real damage does, so the
-; bar keeps showing the old value until she is actually hit. The number is
-; correct; the display is stale. Trust getavinfo and the mod's log, not the bar.
-;
-; Health regen starts pulling this back immediately.
-; If you need the value to hold still long enough to observe,
-; freeze AI first with tcai (toggles for ALL actors).
+; Health regen pulls this back over time, which is realistic but
+; can outpace you. To hold it still, freeze AI with tcai
+; (toggles for ALL actors, so remember to toggle it back).
 ;tcai

@@ -7,6 +7,7 @@
 
 #include "core/Evaluator.h"
 #include "game/Tactics.h"
+#include "game/UI.h"
 
 #include <string>
 #include <vector>
@@ -179,6 +180,7 @@ void OnDataLoaded()
     // Phase 1: start the real thing. The self-check above proves the engine
     // computes correct decisions; this is what connects it to actual followers.
     ft::game::Install();
+    ft::game::ui::Install();
 
     const bool allPassed = passed == checks.size();
     if (auto *console = RE::ConsoleLog::GetSingleton())

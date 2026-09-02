@@ -5,42 +5,42 @@
     {
       "label": "emergency heal",
       "enabled": true,
-      "subject": "Self",
-      "predicate": "HealthPctBelow",
+      "subject": "self",
+      "predicate": "health-pct-below",
       "conditionArg": 0.3,
-      "actionTarget": "ConditionSubject",
-      "action": "DrinkHealthPotion",
+      "actionTarget": "condition-subject",
+      "action": "drink-health-potion-strongest",
       "cooldown": 5.0
     },
     {
       "label": "top up",
       "enabled": true,
-      "subject": "Self",
-      "predicate": "HealthPctBelow",
+      "subject": "self",
+      "predicate": "health-pct-below",
       "conditionArg": 0.6,
-      "actionTarget": "ConditionSubject",
-      "action": "DrinkHealthPotion",
+      "actionTarget": "condition-subject",
+      "action": "drink-health-potion-strongest",
       "cooldown": 15.0
     },
     {
       "label": "finish off a wounded enemy",
       "enabled": false,
-      "subject": "Enemy",
-      "predicate": "HealthPctBelow",
+      "subject": "enemy",
+      "predicate": "health-pct-below",
       "conditionArg": 0.25,
-      "actionTarget": "ConditionSubject",
-      "action": "SetCombatStyle",
+      "actionTarget": "condition-subject",
+      "action": "set-combat-style",
       "actionArg": 0,
       "cooldown": 5.0
     },
     {
       "label": "back off when swarmed",
       "enabled": false,
-      "subject": "Enemy",
-      "predicate": "CountAtLeast",
+      "subject": "enemy",
+      "predicate": "count-at-least",
       "conditionArg": 3,
-      "actionTarget": "Self",
-      "action": "HoldPosition",
+      "actionTarget": "self",
+      "action": "hold-position",
       "cooldown": 10.0
     }
   ]
