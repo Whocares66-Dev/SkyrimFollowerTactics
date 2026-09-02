@@ -19,11 +19,12 @@ std::array<RE::TESPackage *, kPackageSlots> g_slots{};
 RE::TESFaction *g_faction = nullptr;
 bool g_available = false;
 
-// How long a request stays armed before the tick withdraws it. The AI
-// re-evaluates on its own schedule as well as when we ask; a request it has
-// not taken up in this long is stale, and firing later would land at a moment
-// the rule never intended.
-constexpr double kArmWindowSeconds = 4.0;
+// How long the AI gets to START the cast before the record is taken back.
+// Measured: every cast that happened fired 0.65-2.2 s after arming; the ones
+// that did not had not started by 4 s either. The window only costs anything
+// in that second case -- it is how long she stands held and unreactive -- so
+// it is set just above the slowest measured start.
+constexpr double kArmWindowSeconds = 2.5;
 
 // The rank that means "no request". Every slot condition is an equality
 // against 0..7, so any other value fails them all.
@@ -106,12 +107,16 @@ struct Slot
 
     // A concentration stream: the fire event is its start, not a release.
     bool sustained = false;
+    float sustain = 0.0f;   // how long it was asked to run
+    bool streaming = false; // our fire event has been seen
     // Whom the stream is aimed at, so it can stop when they are dead.
     RE::ActorHandle target;
 
-    // Set from the animation thread when her spell-fire event arrives; read
-    // and cleared by the tick. The ONLY thing the sink writes.
+    // Set from the animation thread; read and cleared by the tick. The ONLY
+    // things the sink writes. `fired`: our spell left her hand. `stopped`: a
+    // CastStop arrived after that -- for a stream, its end.
     std::atomic<bool> fired{false};
+    std::atomic<bool> stopped{false};
 
     [[nodiscard]] bool Busy() const noexcept
     {
@@ -151,6 +156,7 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
         const char *tag = ev->tag.c_str();
         const bool right = _stricmp(tag, "MRh_SpellFire_Event") == 0;
         const bool left = _stricmp(tag, "MLh_SpellFire_Event") == 0;
+        const bool stop = _stricmp(tag, "CastStop") == 0;
 
         for (auto &slot : g_pool)
         {
@@ -160,6 +166,10 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
             // vocabulary is on record and a missing fire event is diagnosable.
             if (right || left || strstr(tag, "Cast") || strstr(tag, "Spell"))
                 logger::info("  anim {:08X}: {}", who, tag);
+            // A stream that has fired and now stops has ended, whether the
+            // CastTime ran out or something interrupted it.
+            if (stop && slot.fired.load(std::memory_order_relaxed))
+                slot.stopped.store(true, std::memory_order_relaxed);
             if (!right && !left)
                 continue;
 
@@ -217,7 +227,7 @@ constexpr std::uint32_t kMercerCastAtPlayerID = 0x000FDBC3;
 // Spell input's hex dump showed the same slot empty and its pointer at +10).
 constexpr float kAuthoredCastTimeMin = 0.5f;
 constexpr float kAuthoredCastTimeMax = 1.0f;
-constexpr std::size_t kNamedDataOffset = 0x08;
+std::size_t g_castTimeOffset = kNotCalibrated; // found by scanning for the authored values
 bool g_castTimeCalibrated = false;
 
 // How long a stream runs when the rule does not say. Long enough to matter
@@ -448,7 +458,37 @@ float *FloatOfInput(RE::TESPackage *pkg, const char *inputName)
     if (!FindInputUID(custom, inputName, uid))
         return nullptr;
     auto *input = InputByUID(custom, uid);
-    return input ? reinterpret_cast<float *>(reinterpret_cast<std::uintptr_t>(input) + kNamedDataOffset) : nullptr;
+    if (!input || g_castTimeOffset == kNotCalibrated)
+        return nullptr;
+    return reinterpret_cast<float *>(reinterpret_cast<std::uintptr_t>(input) + g_castTimeOffset);
+}
+
+// Where, inside a float input, the float sits. The first guess (+08, the
+// named data slot) read 0 / 0 in the engine. So: dump the input and look for
+// the authored bit patterns, at the same offset in both inputs.
+std::size_t FindCastTimeOffset(RE::TESPackage *pkg)
+{
+    auto *custom = skyrim_cast<RE::TESCustomPackageData *>(pkg->data);
+    std::int8_t uidMin = 0;
+    std::int8_t uidMax = 0;
+    if (!custom || !FindInputUID(custom, "CastTimeMin", uidMin) || !FindInputUID(custom, "CastTimeMax", uidMax))
+        return kNotCalibrated;
+    auto *lo = InputByUID(custom, uidMin);
+    auto *hi = InputByUID(custom, uidMax);
+    if (!lo || !hi)
+        return kNotCalibrated;
+
+    logger::info("probe: CastTimeMin +00 {}", HexDump(lo, 32));
+    logger::info("probe: CastTimeMax +00 {}", HexDump(hi, 32));
+
+    for (std::size_t off = 0; off + sizeof(float) <= 32; off += sizeof(float))
+    {
+        const float a = *reinterpret_cast<const float *>(reinterpret_cast<std::uintptr_t>(lo) + off);
+        const float b = *reinterpret_cast<const float *>(reinterpret_cast<std::uintptr_t>(hi) + off);
+        if (a == kAuthoredCastTimeMin && b == kAuthoredCastTimeMax)
+            return off;
+    }
+    return kNotCalibrated;
 }
 
 // Set how long a slot holds a concentration stream. Both min and max, so the
@@ -506,7 +546,9 @@ void Release(std::size_t i)
     g_pool[i].target = {};
     SetPackageTarget(g_slots[i], nullptr); // no target handle outlives its lease
     g_pool[i].fired.store(false, std::memory_order_relaxed);
+    g_pool[i].stopped.store(false, std::memory_order_relaxed);
     g_pool[i].seenRunning = false;
+    g_pool[i].streaming = false;
 }
 
 // Put our slots at the FRONT of every follower combat-override list we know
@@ -683,11 +725,14 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
                  InFollowerAlias(actor) ? "yes" : "NO -- recruit her through dialogue, not the console");
 
     slot.armedAt = TacticsSeconds();
-    // A stream needs the window to outlast it; a bolt needs only the AI's
-    // start-up latency.
-    slot.until = slot.armedAt + kArmWindowSeconds + (slot.sustained ? sustain : 0.0f);
+    // The window covers the AI's start-up latency. For a stream it is
+    // extended when the stream actually starts (see the tick), so a stream
+    // that never starts does not hold her for the sustain on top.
+    slot.until = slot.armedAt + kArmWindowSeconds;
+    slot.sustain = sustain;
     slot.seenRunning = false;
     slot.fired.store(false, std::memory_order_relaxed);
+    slot.stopped.store(false, std::memory_order_relaxed);
 
     if (g_sinked.insert(actor->GetFormID()).second)
         logger::info("  animation sink {} on {:08X}",
@@ -717,7 +762,9 @@ void ResetPackages()
             slot.lease->Abandon();
         slot.lease.reset();
         slot.seenRunning = false;
+        slot.streaming = false;
         slot.fired.store(false, std::memory_order_relaxed);
+        slot.stopped.store(false, std::memory_order_relaxed);
     }
     g_sinked.clear();
 }
@@ -773,15 +820,27 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         // other two are only signals that the hold can end sooner -- the spell
         // has left her hand, or the AI has already moved on -- so a follower
         // is not kept for four seconds after a one-second cast.
+        // A stream that has started gets its sustain added to the window,
+        // once, from the moment it started.
+        if (slot.sustained && !slot.streaming && slot.fired.load(std::memory_order_relaxed))
+        {
+            slot.streaming = true;
+            slot.until = now + slot.sustain + 1.0;
+            logger::info("packages: {} stream started on slot {} -- {:.1f} s to run", name, i, slot.sustain);
+        }
+
         const char *why = nullptr;
         if (!slot.sustained && slot.fired.load(std::memory_order_relaxed))
             why = "spell fired";
+        else if (slot.sustained && slot.stopped.load(std::memory_order_relaxed))
+            why = "stream ended";
         else if (slot.sustained && slot.target && slot.target.get() && slot.target.get()->IsDead())
             why = "target dead"; // a stream at a corpse is wasted magicka and a follower standing still
         else if (slot.seenRunning && !running)
             why = "package ended";
         else if (now >= slot.until)
-            why = slot.seenRunning ? "deadline, package still running" : "deadline, AI never picked it up";
+            why = slot.seenRunning ? (slot.streaming ? "deadline, stream still running" : "deadline, never cast")
+                                   : "deadline, AI never picked it up";
 
         if (why)
         {
@@ -951,24 +1010,33 @@ void ProbeSpellInput()
     g_typeSpecificReference = mpt->targType;
     g_targetCalibrated = true;
 
-    // The CastTime floats: every slot ships 0.5 and 1.0. Read both back on
-    // every slot before any stream length is written.
+    // The CastTime floats: every slot ships 0.5 and 1.0. Find where they sit
+    // in slot 0, then read both back at that offset on every slot before any
+    // stream length is written.
+    g_castTimeOffset = FindCastTimeOffset(g_slots[0]);
+    if (g_castTimeOffset == kNotCalibrated)
+    {
+        logger::info("probe: CastTime floats not found in slot 0; concentration spells will run the authored time");
+        return;
+    }
     for (std::size_t i = 0; i < kPackageSlots; ++i)
     {
         const float *lo = FloatOfInput(g_slots[i], "CastTimeMin");
         const float *hi = FloatOfInput(g_slots[i], "CastTimeMax");
         if (!lo || !hi || *lo != kAuthoredCastTimeMin || *hi != kAuthoredCastTimeMax)
         {
-            logger::info("probe: CastTime of slot {} reads {} / {} -- expected {} / {}; concentration spells will "
-                         "run the authored time",
-                         i, lo ? *lo : -1.0f, hi ? *hi : -1.0f, kAuthoredCastTimeMin, kAuthoredCastTimeMax);
-            g_castTimeCalibrated = false;
-            break;
+            logger::info("probe: CastTime of slot {} reads {} / {} at +{:02X} -- expected {} / {}; concentration "
+                         "spells will run the authored time",
+                         i, lo ? *lo : -1.0f, hi ? *hi : -1.0f, g_castTimeOffset, kAuthoredCastTimeMin,
+                         kAuthoredCastTimeMax);
+            g_castTimeOffset = kNotCalibrated;
+            return;
         }
-        g_castTimeCalibrated = true;
     }
-    if (g_castTimeCalibrated)
-        logger::info("probe: CastTime inputs calibrated; a concentration spell can be sustained for a chosen time");
+    g_castTimeCalibrated = true;
+    logger::info("probe: CastTime floats at +{:02X} on all {} slots; a concentration spell can be sustained for a "
+                 "chosen time",
+                 g_castTimeOffset, kPackageSlots);
     logger::info("probe: Target input calibrated: Self = {}, specific reference = {} (from Mercer's package); cast "
                  "rules can name any loaded actor",
                  g_typeSelf, g_typeSpecificReference);

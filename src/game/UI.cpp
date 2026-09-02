@@ -547,8 +547,8 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
             if (!Im::BeginMenu("Drink potion", true))
                 continue;
 
-            for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkMagickaPotion,
-                              ft::ActionKind::DrinkStaminaPotion})
+            for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
+                              ft::ActionKind::DrinkMagickaPotion})
             {
                 const bool selected = rule.action == kind;
                 if (Im::MenuItem(DrinkSubmenuLabel(kind).c_str(), nullptr, selected, true))
