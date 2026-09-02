@@ -1,499 +1,247 @@
 # Making a follower cast a spell
 
-Everything below was measured on **1.6.1170** with CommonLibSSE-NG 3.7.0. Seven
-mechanisms were tried in one long session and none produced a rule-timed,
-animated cast. The eighth -- a UseMagic package in the follower alias's **combat
-override** list, gated by a faction rank -- is built and deployed but not yet
-verified in game; it is described at the end. This file exists so nobody
-repeats the first seven.
+**Status: works, measured in game (2026-09-02).** A rule fires at 43% health,
+the follower's AI picks up our package on the same tick, her own animation
+graph reports `Fast Healing -- OURS` 1.4 s later, health goes 75 -> 175, and she
+is back to fighting on the next tick. Two consecutive cycles, on **1.6.1170**
+with CommonLibSSE-NG 3.7.0.
 
-The short version: Skyrim has **no API that makes an NPC cast a chosen spell at a
-chosen moment.** That is a design property, not a gap in the bindings. NPCs
-decide for themselves, and every route in is indirect.
+This file is the current design, the facts that were expensive to learn, and
+the routes that do not work. It replaces a longer chronological version; the
+sequence of runs that shaped the design is in the git history of this file.
+
+---
 
 ## Why a potion is easy and a spell is not
-
-This is the one idea that explains every dead end below, and it is worth reading
-before any of them.
 
 **A potion is a state change. A cast is a performance.**
 
 Drinking is an inventory operation. `ActorEquipManager::EquipObject` is the
 game's own equip routine, equipping a potion consumes it, and the magic system
-applies the effect at once. No animation to schedule, no AI decision, no state
-machine. The engine exposes it because inventory manipulation is a normal
-external operation -- quests, scripts and the player's own UI all do it.
+applies the effect at once. No animation to schedule, no AI decision.
 
-Casting is something an actor *does over time*: charge, release, magicka drawn at
-a particular instant, interruptible by a stagger, aimed at something. All of that
-lives in the animation graph and the combat AI. There is no "perform this" entry
-point because performing is not a state you can set.
-
-The clincher is that the potion-equivalent for spells exists and works
-perfectly -- `GetMagicCaster(kInstant)->Cast(...)` is reliable and instant. It is
-exactly `EquipObject` for a potion: bypass the actor's agency and apply the
-result. It simply is not a cast.
-
-So the accurate statement is not "an NPC cannot be made to cast a spell". It is:
-**the spell can be made to happen; the follower cannot be made to perform it.**
-For a potion nobody notices the difference. For a spell the performance is the
-whole point.
-
-That is also why AI packages exist: behaviours go through the AI because
-behaviours are the AI's job. Which is why the package route below is the
-conventional answer and the recommended next path.
+Casting is something an actor *does over time*: charge, release, magicka drawn
+at a particular instant, interruptible by a stagger, aimed at something. All of
+that lives in the animation graph and the AI. There is no "perform this" entry
+point because performing is not a state you can set. **The spell can be made
+to happen; the follower cannot be made to perform it** -- except by giving her
+AI a reason to. That is what AI packages are for, and it is the whole design.
 
 ---
 
-## What already works
+## How a cast happens
 
-| Action | Mechanism | Status |
+Records say *what* she does; the C++ says *when*. No Papyrus.
+
+### The records (`esp/FollowerTactics.esp`, ESL, master Skyrim.esm)
+
+| record | FormID | contents |
 |---|---|---|
-| Drink potion | `ActorEquipManager::EquipObject`, NPCsUsePotions' parameters | works, measured in game |
-| Equip spell | `ActorEquipManager::EquipSpell` | works; her AI then casts it **when it chooses** |
+| `FT_CastSlot1..8` | 0x800..0x807 | UseMagic template. Spell = Fast Healing (a canary, repointed at runtime), Target = **Self**, Location = NearSelf r10000, CastTime 0.5..1, Cooldown 1..1, NumToCast 1..1, DualCast off, flags **IgnoreCombat**. One condition: `GetFactionRank(FT_CastNow) == slot` |
+| `FT_CastNow` | 0x808 | a faction with ranks 0..15, used for nothing but that condition |
 
-`Equip spell` is the honest shipping answer today: we choose *what* she holds,
-her combat AI chooses *when*. It animates and it can be interrupted, because the
-game is doing the casting.
+Edit them with houseCARL (`housecarl_bulk_apply`, `target=FollowerTactics.esp`,
+`in_place=true`), then copy the file into `esp/`. The xEdit script in
+`tools/xedit/` is superseded.
 
----
+### The list they live in
 
-## The seven dead ends
+An actor **in combat does not run her package stack**. She runs the **Combat
+Override Package List** on her quest alias, top to bottom, first passing
+condition wins. The vanilla follower alias (`DialogueFollower` alias 0) has
+one: `PlayerFollowerCombatOverridePackageList` (0005C852), two HoldPosition
+entries, the last with no conditions.
 
-### 1. `CastSpellImmediate` / `Spell.Cast` — applies, never animates
+At load, the C++ inserts our eight packages at the **front** of that list, in
+memory only. Nothing vanilla is overridden on disk, nothing is saved, and it is
+redone every launch. With no follower in `FT_CastNow`, every one of ours fails
+its condition and the AI falls through to the vanilla entries exactly as
+before.
 
-Verified from three directions:
+The game's own example of this is Mercer Frey in *Blindsighted*: a UseMagic
+package in his alias's override list, gated on quest stage, makes him cast
+Nightingale Strife at the player mid-fight. Ours is the same thing with a
+faction rank as the trigger, because a faction rank is something the C++ can
+set in one call and `GetFactionRank` is a standard condition function.
 
-- The CK wiki: *"This function casts the spell instantaneously. This is mainly
-  desirable only for non-actors, because **it will not animate an actor**"*, and
-  it recommends *"an AI package with the UseMagic procedure"* instead.
-- [DynamicAnimationCasting](https://github.com/LXIV-CXXVIII/DynamicAnimationCasting)
-  — a plugin whose entire job is casting spells for actors — uses exactly
-  `GetMagicCaster(CastingSource::kInstant)->Cast(...)`. It fires spells **on**
-  animation events; the animation is already playing, driven by something else.
-- `Actor.psc` has **no `Cast` function at all**. `spell.Cast(actorRef)` is on the
-  *Spell* script, and `Actor::DoCombatSpellApply` applies an effect with combat
-  die-rolls, not a cast.
+### The C++ (`src/game/Packages.cpp`)
 
-Reliable, predictable, no gesture, cannot be interrupted.
+1. **A cast rule fires.** Take a free record from the pool. Repoint its Spell
+   input at the rule's spell (found by canary, see below). Create a
+   `RankLease`, whose constructor sets her rank in `FT_CastNow` to the slot
+   number. Ask the AI to re-evaluate.
+2. **The AI casts.** Our package now passes. `IgnoreCombat` takes her hands
+   away from her combat AI; the UseMagic procedure interrupts what she was
+   doing, charges, fires. Animation, cost and interruption are the game's.
+3. **Release.** The tick destroys the lease on the first of: her animation
+   graph emitting a spell-fire event **for our spell** (read from the spell
+   equipped in the firing hand -- her own firebolts are logged and ignored);
+   the AI having dropped the package; or a four-second deadline. The
+   destructor clears the rank and re-evaluates, so she returns to fighting at
+   once. The record goes back to the pool.
 
-### 2. Animation events — outputs, not inputs
+The **pool** is eight records with one holder each. A record is hers alone
+until released, so nothing in it -- spell now, target later -- can be shared
+by accident. When all eight are held, or she already holds one, her cast rules
+report *busy* for that turn, spend no cooldown, and the next rule gets its
+turn.
 
-`MRh_SpellReady_Event` / `MRh_SpellFire_Event` are real, and it is tempting to
-send them. They are the wrong direction.
-[NPC Spell Variance](https://github.com/LeoneKingzz/NPC-Spell-Varaince-Unified)
-settles it — it hooks `ProcessEvent` and *receives* them:
+A follower carrying a rank while holding no record has a **stale** rank (a
+save made mid-cast) and is cleared every tick; a game load drops the pool.
 
-```
-RECEIVED (the game emits): BeginCastLeft, BeginCastRight,
-                           MLh_SpellFire_Event, MRh_SpellFire_Event, InterruptCast
-SENT     (the mod drives): attackStop, recoilStop, bashStop, blockStop,
-                           staggerStop, InterruptCast
-```
+### Clocks
 
-Note `InterruptCast` is in **both** lists: interruption *is* a supported input.
-Starting a cast is not.
+Cooldowns and lease deadlines run on **game time** converted to real seconds
+at the timescale (`TacticsSeconds()`, read from the hour-of-day global, which
+keeps sub-second precision where "hours passed" does not). It stops in menus
+and jumps on wait, sleep and fast travel -- the same behaviour as the engine's
+own per-actor countdowns such as shout recovery.
 
-That mod is also the best evidence for the general shape of the problem: a
-production plugin dedicated to NPC spell usage **never initiates a cast**. It
-waits for the AI to start one and then steers `caster->desiredTarget`.
+### The log
 
-### 3. `SetCurrentSpellImpl` + `RequestCastImpl` — inference, never verified
-
-An attempt to drive the caster's state machine directly. These are `Impl`
-virtuals that the game's own update loop calls, no implementation could be found
-that calls them from outside, and it was never demonstrated to work.
-`docs/PLAN.md` line 451 had already said to verify this API before designing
-around it. Recorded here as a warning, not a technique.
-
-### 4. UseMagic AI package — correct route, pushed onto the wrong stack
-
-The documented answer, and the one the CK wiki points at. It got further than
-anything else and still failed:
-
-```
-current package 000B9987 -> 000B9987 (not ours -- outranked)
-```
-
-`Actor::PutCreatedPackage` + `EvaluatePackage(immediate)` pushes the package, and
-the actor's own package keeps running. `createdPackage=true` made no difference.
-
-At the time this read as a *priority* loss. Reading the records later showed it
-was not: an actor in combat does not consult her package stack at all. See "The
-eighth attempt" below -- the package route is the one that now ships, just not
-through the package stack.
-
-### 5. Swapping `CombatMagicCaster::magicItem` — wrong level
-
-The caster holds `inventoryItem` (the AI's catalogue entry) and `magicItem` (the
-spell). Writing `magicItem` "took" in memory and changed nothing useful, because
-the caster in question had selected a **potion**:
+Each fired cast rule produces, in order:
 
 ```
-magicItem Potion of Magicka 0003EAE1 -> Fast Healing 0007231C (write took)
-inventoryItem->GetMagic() = Potion of Magicka 0003EAE1
+alias: quest 000750BA "DialogueFollower" alias 0 "Follower"  <- follower alias
+000B9986 rank 0 (leased, read back 0)
+current package after evaluate: FE041800 (OURS)
+anim 000B9986: right hand fired 000C969B "Firebolt" -- her own, ignored
+anim 000B9986: left hand fired 0007231C "Fast Healing" -- OURS
+packages: Marcurio releases slot 0 after 2.0 s: spell fired
+000B9986 rank -1 (lease ended, read back -2)
 ```
 
-`AlchemyItem` derives from `MagicItem` and `CombatInventoryItemPotion` derives
-from `CombatInventoryItemMagic`, so potions run through the same machinery.
+| if instead | it means |
+|---|---|
+| alias: NO, or "in NO quest alias at all" | Recruited from the console. Only `SetFollower` fills the alias: use "Follow me", or `cqf DialogueFollower SetFollower <refid>` (unverified). |
+| rank read back N INSTEAD | `AddToFaction` did not set the rank. |
+| not ours yet -- watching, then deadline | Rank set, package never selected. Check the list order line at load. |
+| OURS, then deadline with only her own spells firing | The package never got her hands. `IgnoreCombat` is off the records. |
+| OURS, then deadline with nothing firing | She was staggered or otherwise stuck through the window. |
 
-### 6. Boosting `CalculateScore` — unnecessary, the spell already wins
+### Test procedure
 
-The plan was to make our spell out-score the alternatives. Measurement killed it
-in one run:
+1. `bat ftspawn`, click her, `bat ftmake` (grants Oakflesh, potions, relationship
+   rank -- not teammate status).
+2. **Talk to her, "Follow me."** The alias line in the log is the check.
+3. A self-cast rule: `IF self health < 50% THEN cast Fast Healing ON self`.
+4. `bat ftbear`, then read `FollowerTactics.log`.
 
-```
-[spell]  Fast Healing             222.750
-[potion] Potion of Healing         50.000
-[potion] Potion of Minor Healing   25.000
-[potion] Potion of Magicka         16.500
-[potion] Potion of Minor Magicka    8.250
-```
-
-All scored in a single pass, so it is one contest — and the spell already leads
-by 4.5x. Boosting would have "worked" and changed nothing.
-
-Worth keeping: the scale is **hundreds**, not 0..1, and the score is constant
-across health levels, so it is intrinsic to the item.
-
-### 7. `CombatMagicCasterRestore::CheckStartCast` — the AI never asks
-
-The most promising lever. The combat AI asks itself *"should I start a restore
-cast now?"* through vfunc 6, and answering `true` gives rule-timed casting
-through the game's own path, with animation and interruption. The hook installs,
-is entered, and is safe.
-
-It fails on something upstream:
-
-```
-combat-hook: a restore caster asked, primaryAV=25 (magicka)
-queued:  2
-REQUEST: 0
-```
-
-**One restore caster exists per actor value** (`primaryAV`). Only the magicka one
-ever asked. The health caster never evaluated at 43% health — while the same
-follower's AI healed itself from 1 HP earlier in the session, so the threshold is
-real and very low.
-
-We can answer the AI's questions. We cannot make it ask one. Interrupting is
-unlikely to help: an actor whose threshold says "not hurt enough" will re-decide
-the same way.
+Edits under `test/` do nothing until `tools\deploy-tests.ps1` runs: the game
+reads the copies in the Skyrim root.
 
 ---
 
 ## Facts worth not rediscovering
 
+Each of these cost at least one test round.
+
+- **The spell-fire animation event fires for every spell she casts.** A
+  Destruction mage emits `MRh_SpellFire_Event` constantly. Releasing on the
+  first one cancels our package before it casts. Check the spell.
+- **`MagicCaster::currentSpell` is already null at the fire event.** The spell
+  still equipped in that hand (`selectedSpells[kLeftHand/kRightHand]`) is not,
+  and the UseMagic procedure equips what it casts.
+- **`IgnoreCombat` is required.** Without it her combat AI keeps her hands and
+  the package never fires. It was removed once because she stood idle after a
+  heal; the idling was the missing re-evaluate on release, not the flag.
+- **The UseMagic package does not complete on its own** after NumToCast=1
+  casts. Release must come from us. (NFF solves this at the record level: its
+  heal template runs UseMagic and a 3 s Wait side by side, so the package ends
+  by timeout. An option if the C++ deadline ever needs to move into content.)
+- **`AddToFaction(faction, -1)` removes her from the faction**, and
+  `GetFactionRank` then reports -2. Either negative value means no slot
+  condition passes.
+- **A console teammate is not an alias follower.** `setplayerteammate` and
+  `addtofaction CurrentFollowerFaction` satisfy every check except the one
+  that matters. Read the actor's `ExtraAliasInstanceArray`, not a quest call.
+- **Packages have no editor ID at runtime.** Log FormIDs, or the list prints
+  as `[]`.
+- **Calendar "hours passed" is a float**: sub-second precision is gone after
+  a few hundred game days. Hour-of-day stays precise; count midnight yourself.
 - **Two spells can share a display name.** Marcurio's heal is `0007231C`; the
-  vanilla one is `0002F3B8`. Both are called "Fast Healing". Compare FormIDs.
-- **The UseMagic package template's named inputs** (uid = name):
-  `0 Place to Travel, 1 destination, 2 Location, 3 SPELL, 4 Target,
-  5 HoldWhenBlocked, 6 CastTimeMin, 7 CastTimeMax, 8 CooldownTimeMin,
-  9 CooldownTimeMax, 10 NumToCastMin, 11 NumToCastMax, 12 DualCast`
-  Note the map spells it **`SPELL`**, not `Spell` — compare case-insensitively.
-- **The name map lives on the template**, not on packages built from it. A copy
-  carries the values and a `templateParent` pointer.
-- **Where a package's spell lives**, found by canary rather than guessed:
-  `PTDA - Target \ Target Data \ Target` (Type = Object ID), and in memory at
-  `IPackageData + 0x10 -> + 0x08`. Ints are at `CNAM - Value \ Integer`.
-  Both parents are structs/unions that reject assignment.
-- `MG07AncanoCastAtEye` has `NumToCastMin = 1000`, which is why Ancano casts
-  forever. Copies want `1` so the package completes and normal AI resumes.
-- **Dual casting is a native package input** (uid 12), so it comes free on the
-  package route. Via the caster API it needs a perk most followers lack and
-  multiplies the cost (~2.8x).
-- `CombatController::cachedAttacker` is a **cache of** `attackerHandle`. Read the
-  handle, not the cache — the cache returned `0x1` and crashed us.
-- CommonLibSSE's `static_assert(sizeof(...))` confirms a struct's **size**, not
-  that a named field means what it says in every state. These headers are
-  reverse-engineered from a shipped binary.
+  vanilla one is `0002F3B8`. Both are "Fast Healing". Compare FormIDs.
+- **Where a package's Spell input lives**, found by canary rather than
+  guessed: `IPackageData + 0x10 -> + 0x08`. The template's name map spells it
+  `SPELL`; compare case-insensitively. The map lives on the template, not on
+  the copy.
+- **Copying a vanilla package copies its inputs.** Ours came from
+  `MG07AncanoCastAtEye` and shipped aiming at the Eye of Magnus with a
+  ten-million-second cast time. Read every input of a copied record.
+- **`BGSRefAlias::ForceRefTo` does not exist in CharmedBaryon 3.7.0.** It does
+  in alandtse's `ng` branch, which is what Simple Follower Framework uses to
+  fill its own aliases from C++. Item for `docs/COMMONLIB.md`.
 
 ---
 
-## The eighth attempt: the combat override list
+## What does not work, and why
 
-Implemented 2026-09-02 and **verified in game the same day**: with Marcurio
-recruited through dialogue, a rule at 43% health armed slot 0, the AI selected
-our package on the spot, and his health went 75 -> 175 about two seconds later:
+Seven mechanisms were tried before the package route. Recorded so nobody
+repeats them.
 
-```
-alias: quest 000750BA "DialogueFollower" alias 0 "Follower"  <- follower alias
-000B9986 rank 0 (armed, read back 0)
-current package after evaluate: FE041800 (OURS)
-... health 175/175 (100%)                                    2.2 s later
-```
+1. **`CastSpellImmediate` / `Spell.Cast`.** Applies the effect, never animates
+   an actor. The CK wiki says so, and DynamicAnimationCasting uses exactly this
+   call *because* the animation is already playing.
+2. **Sending animation events.** `MRh_SpellFire_Event` is something the graph
+   *emits*. NPC Spell Variance receives it; it never initiates a cast.
+3. **`SetCurrentSpellImpl` + `RequestCastImpl`.** Internal virtuals the game's
+   update loop calls. Never demonstrated from outside.
+4. **`PutCreatedPackage` + `EvaluatePackage`.** Pushes onto the package stack,
+   which combat does not consult. A quest at priority 99 would have failed the
+   same way; only the alias's override list is read in combat.
+5. **Swapping `CombatMagicCaster::magicItem`.** The write takes and changes
+   nothing useful; the caster in question had selected a potion.
+6. **Boosting `CalculateScore`.** The spell already out-scored every
+   alternative 4.5x. Score was never the problem.
+7. **Hooking `CombatMagicCasterRestore::CheckStartCast`.** We can answer the
+   AI's question; we cannot make it ask. The health caster never evaluates
+   above a very low threshold. The hooks remain in `CombatHook.cpp`, off.
 
-Rule-timed, animated, through the game's own cast path. The first run's
-failure was the harness: the game was running a stale copy of `ftmake` that
-recruited from the console, and a console teammate is not in the alias.
-
-What the first success also showed: the package **does not complete** after
-its one cast. Four seconds on, `GetCurrentPackage()` was still ours and he
-stood idle -- "he healed and then froze". Two changes from that:
-
-- `IgnoreCombat` is **on**, after a detour. It was removed because he stood
-  idle after healing; the idling turned out to be the missing re-evaluate on
-  release. Without the flag (12:59 run) his combat AI kept dual-casting
-  Firebolt and Lightning Bolt with our package current, and the heal never
-  got his hands. With it (11:43 and 12:21 runs) the heal landed in 1-2 s.
-  The flag is what makes the package take his hands; the release is what
-  gives them back.
-- The record is released on the **spell-fire animation event**
-  (`MRh_SpellFire_Event` / `MLh_SpellFire_Event`, via a sink on the caster),
-  and every release calls `EvaluatePackage(immediate)` so the AI leaves the
-  package at once instead of at its own leisure. The 4 s window remains as
-  the backstop.
-
-Second run, same afternoon, with those in: four requests, **one heal**. The
-sink was releasing on the first fire event it saw, and Marcurio is a
-Destruction mage -- three of the four were his own firebolt, 65-216 ms after
-arming, and the early release dropped the rank and cancelled our package
-before it cast. The one that healed was the one where his hands happened to
-be free. So the sink identifies the spell and accepts only ours. Every fire
-event while a record is held is logged with the spell it was.
-
-**Working end to end, 13:15 the same day.** Two consecutive cycles, each:
-package selected on the tick the rank was set; `left hand fired 0007231C
-"Fast Healing" -- OURS` 1.4 s later; record released on the next tick; health
-75 -> 175. His own Firebolts before and after were logged and ignored. The
-sequence of runs that got there is kept below because each one changed the
-design.
-
-Third run: two heals (1 -> 114 on one of them), but every fire event read
-spell `00000000` -- `MagicCaster::currentSpell` is already null when the
-event arrives, so nothing matched and every lease ran to the deadline. The
-sink now reads the spell **equipped in the firing hand**
-(`selectedSpells[hand]`), which the UseMagic procedure sets and which is
-still set at fire time. Also seen: four cast rules fired at negative health
-while he was in bleedout with no potions left. Evaluation is now held while
-a follower is bleeding out.
-
-### What the data layer showed
-
-Reading the records (with houseCARL, against the live load order) changed the
-diagnosis of dead end 4. The pushed package did not lose on *priority*. It lost
-because **an actor in combat does not run her package stack at all.** She runs
-the **Combat Override Package List** on her quest alias, and the vanilla
-follower alias already has one:
-
-```
-DialogueFollower (000750BA), priority 50
-  alias 0 "Follower"
-    PackageData               = [PlayerFollowerSayDismissPackage, PlayerFollowerPackage]
-    CombatOverridePackageList = PlayerFollowerCombatOverridePackageList (0005C852)
-      [0] PlayerFollowerCombatOverridePackageExterior   HoldPosition, IsInInterior == 0
-      [1] PlayerFollowerCombatOverridePackage           HoldPosition, no conditions
-```
-
-Top to bottom, first passing condition wins. So the quest at priority 99 the
-previous section asked for would have put a package on the *package* stack,
-which is exactly the stack combat ignores. It would have failed the same way.
-
-The game's own worked example of what we want is **Mercer Frey**. In
-*Blindsighted*, while fighting the player, he casts Nightingale Strife *at* the
-player on cue -- and the cue is a quest stage:
-
-```
-TG08B alias "MercerAlias"
-  CombatOverridePackageList = TG08bMercerWithdrawCombatOverride
-    ... TG08BMercerCombatOverrideCastAtPlayer (0FDBC3)
-          template UseMagic, flags IgnoreCombat
-          conditions: HasSpell(Nightingale Strife), GetStage(TG08B) >= 40, < 45
-          Spell = Nightingale Strife, Target = PlayerRef
-          Location = NearSelf r10000, CastTime 0.5..1, Cooldown 1..1, NumToCast 1..0
-```
-
-A condition that changes mid-fight, re-evaluated mid-fight, producing an
-animated cast. That is the whole feature, shipped in the base game, and the
-community answer for follower support spells is the same thing: a UseMagic
-package in a form list in the alias's Combat Override slot
-([Nexus forum](https://forums.nexusmods.com/topic/12728355-how-do-seperate-spells-and-combat-override-list-for-npc/),
-[Interesting NPCs](https://3dnpc.com/2013/11/18/creation-kit-combat-ai/) does
-it for Valgus's heal-other).
-
-### What was wrong with our packages
-
-They were copies of `MG07AncanoCastAtEye`, and they still carried Ancano:
-
-| input | shipped as | meaning |
-|---|---|---|
-| Target | `MGEyeCollegeRef` | cast at the Eye of Magnus |
-| Location | `MG08AncanoMarker` r500 | walk to the College first |
-| CastTimeMin/Max | 10 000 000 / 100 000 000 | channel forever |
-| DualCast | true | needs a perk, ~2.8x cost |
-| Flags | none | |
-
-Had the package ever won, she would have set off for Winterhold. This is why
-"the package was pushed and nothing happened" was never going to be
-diagnosable from the package side.
-
-### What the ESL holds now
-
-`esp/FollowerTactics.esp` (now versioned; the xEdit generator in
-`tools/xedit/` is superseded and kept for its notes). ESL-flagged, master
-Skyrim.esm:
-
-| record | FormID | contents |
-|---|---|---|
-| `FT_CastSlot1..8` | 0x800..0x807 | UseMagic: Spell = canary, Target = **Self**, Location = NearSelf r10000, CastTime 0.5..1, Cooldown 1..1, NumToCast 1..1, DualCast off, flags IgnoreCombat, condition `GetFactionRank(FT_CastNow) == slot` |
-| `FT_CastNow` | 0x808 | faction, ranks 0..15 |
-
-Every record was written and read back by houseCARL against the Mutagen
-schema, and the plugin passes a dangling-reference sweep.
-
-### What the C++ does
-
-`src/game/Packages.cpp`:
-
-- **At load** it puts the eight slots at the **front** of
-  `PlayerFollowerCombatOverridePackageList` in memory. Front, because entry
-  [1] has no conditions and nothing after it is ever reached. In memory, not
-  in the ESP: no override of a vanilla record, no conflict with anything else
-  that touches it, and it is redone on every launch.
-- **When a cast rule fires** it takes a slot from the pool, repoints its
-  Spell (the probe from attempt 4, unchanged), sets the follower's rank in
-  `FT_CastNow` to that slot, and calls `EvaluatePackage(immediate)`.
-- **Every tick** it watches `GetCurrentPackage()`. When ours has run and is no
-  longer current, or 4 s have passed, the rank is set back to -1 so no slot's
-  condition passes and the list falls through to vanilla, and the slot is
-  released.
-
-The eight records are a **resource pool with one holder each**. A follower
-takes a free record when her cast rule fires, it is hers alone until the cast
-has run or the window has passed, and then it goes back. Records are never
-shared, even between two followers casting the same spell: every input in the
-record (spell now, target later) belongs to the holder, so the pool cannot be
-caught out by an input it did not think to compare. The limit is eight
-followers mid-cast at the same instant. When that is exceeded, `HasFreeSlot()`
-is false, the rule engine marks cast rules `Busy` for that evaluation only, no
-cooldown is spent, and the next rule down gets its turn. That path has a unit
-test; the pool itself does not, because it touches the game.
-
-**How a record always comes back.** The rank is owned by a `RankLease` in
-the slot: its constructor sets the rank, its destructor clears it and asks the
-AI to re-evaluate, and the only way to free a record is to destroy the lease.
-That makes the cleanup unskippable. It does not make it prompt -- nothing in
-C++ ends the lease by itself -- so the tick does, at the **deadline** (4 s
-after arming) whatever the game did, or earlier on one of two signals, so a
-follower is not held for four seconds after a one-second cast:
-
-| signal | meaning |
-|---|---|
-| spell fired | `MRh/MLh_SpellFire_Event` reached the sink: the effect is on its way |
-| package ended | ours was current and no longer is: the AI already moved on |
-| deadline | neither arrived; release anyway and say which |
-
-Deadlines and cooldowns are measured on **game time** converted to real
-seconds at the timescale. It stops in menus, so a request armed just before
-the panel opens is exactly as old when it closes (the 12:59 run found leases
-"expired after 25 s" on the wall clock after the panel had been open), and it
-jumps on wait, sleep and fast travel, which expires every cooldown.
-
-Two states fall outside a held record: an actor whose handle no longer
-resolves is dropped (nothing to clear a rank on), and a game load drops the
-whole pool. Both are covered by the stale-rank sweep below.
-
-The sweep: every tick, any managed follower carrying a rank while holding no
-record has it cleared, with a warning. That is what stops a save made mid-cast
-from loading a follower who passes her slot's condition on every evaluation
-for the rest of the session -- a leak that would never show up as an exhausted
-pool.
-
-Nothing about the combat AI is hooked. `kEnableCombatHooks` stays off.
-
-### The log lines that decide what happened
-
-Each fired cast rule produces, in order:
-
-```
-Lydia in the DialogueFollower alias: yes | NO -- recruit her through dialogue
-FF000DE0 rank 0 (armed)                        <- or "read back N INSTEAD"
-current package after evaluate: xxxxxxxx (OURS | not ours yet -- watching)
-packages: Lydia is RUNNING slot 0 (spell 0005AD5C)
-packages: slot 0 completed
-FF000DE0 rank -1 (cast completed)
-```
-
-and if it does not go that way:
-
-| line | what it means |
-|---|---|
-| alias: NO | She is a teammate but not the alias's follower. The override list was never consulted. Recruit with "Follow me"; the console `setplayerteammate` route does not fill the alias. |
-| rank read back N INSTEAD | `AddToFaction` did not set the rank. Conditions can never pass. Fall back to setting the rank another way. |
-| expired, never picked up | Alias yes, rank yes, condition never selected. Suspects, in order: the list order in memory (logged at load), `IgnoreCombat`, `HoldWhenBlocked`, the spell failing `CheckCast`. |
-| RUNNING but no animation | The package ran and the UseMagic procedure declined. Most likely an unaffordable or non-self spell. |
-| FIRED the spell ... releasing | The cast happened. This is the line that means success. |
-| expired ... was still running | The cast may have happened, but no fire event reached the sink. Check the `anim` lines for what the graph did emit. |
-
-### Test procedure
-
-The harness in `test/` used to recruit with `setplayerteammate 1` and
-`addtofaction CurrentFollowerFaction`. That makes a *teammate*, not an *alias
-follower*, and the alias is what carries the override list. So:
-
-1. `bat ftspawn`, click her, `bat ftmake` (grants Oakflesh, potions, sets
-   relationship rank). It no longer sets teammate or faction.
-2. **Talk to her and choose "Follow me."** That is `SetFollower`, which fills
-   the alias.
-3. Author a rule: `IF self health < 90% THEN cast Oakflesh ON self`, or any
-   self-cast spell she can afford.
-4. `bat ftbear`, watch her, then read `FollowerTactics.log`.
-
-### Follower frameworks
-
-Read from the frameworks' own plugins with houseCARL, 2026-09-02. What matters
-is one field per alias, `CombatOverridePackageList`, because that is the list
-our packages have to be in.
-
-| framework | where followers live | combat-override list | our splice |
-|---|---|---|---|
-| vanilla | `DialogueFollower` alias 0 | `PlayerFollowerCombatOverridePackageList` (0005C852) | yes |
-| Simple Follower Framework 2.0.3 | follower 1 stays in the vanilla alias; 2..8 in `SFF_FollowerQuest` (priority 51) aliases 1..7 | **the same vanilla list** on every extra alias | covered already |
-| Nether's Follower Framework 2.8.6b | overrides `DialogueFollower` (nulls its list, adds `FollowerExtra1..10`) and holds followers in `nwsFollowerPack` `PackAlias1..12`, plus `_High` / `_VHigh` tiers | `nwsFollowerCombatPkList` (007429), NFF's own fifteen HoldPosition variants | spliced when NFF is loaded |
-
-The splice is a table (`kOverrideLists`) with the vanilla list as its only
-entry today. Covering NFF is one line once integration is wanted; SFF needs
-nothing. Which alias's list the engine consults when a follower is in several
-(NFF puts her in two quests) is not verified.
-
-SFF is also the answer to the "our own quest" question. It is an SKSE plugin
-on the current CommonLibSSE-NG, and it fills its aliases with
-`BGSRefAlias::ForceRefTo(actor)` -- a library call that **our** CommonLib
-(CharmedBaryon 3.7.0) does not have. That is a concrete item for the fork
-migration in `docs/COMMONLIB.md`, and it makes a FollowerTactics quest with
-its own aliases a small job once the library is current: eight aliases, each
-pointing at our own list, filled for any teammate we manage. Then no
-framework's choice of alias matters.
-
-### Still open
-
-- **Targets other than self.** The rule engine already resolves Player and
-  CurrentTarget; the pool refuses them (`NotSelfTarget`). The Target input is
-  in the record like the Spell input. Because a record has one holder at a
-  time, repointing the target per request is the same shape of change as
-  repointing the spell: one more unmapped write, found by canary, and no
-  change to the pool.
-- **Followers outside the known lists.** EFF and AFT have not been read.
-  Adding one is one line in `kOverrideLists`, once its alias's list is known.
-- **A second cast in the same window.** Disarm happens on the next tick after
-  the package completes; if the AI re-selects within 150 ms she may cast twice.
-  Watch for it before fixing it.
-- **Creating packages at runtime** would remove the number eight entirely, and
-  is not worth it: the package data is a templated structure CommonLibSSE does
-  not map, and a shallow clone sharing a pointer with its source would fail
-  only when two of them were written. Eight records cost nothing.
-
-### Rejected: changing the health-restore threshold
-
-If the threshold that stops the health caster asking is a game setting, changing
-it is technically small. It is also **global** -- it would change when every NPC
-in Skyrim heals, in order to make our followers heal on time. Wrong trade for a
-follower mod, and recorded as rejected so it is not rediscovered as a cheap idea.
+Also rejected: **changing the restore-health threshold game setting.** It
+would change when every NPC in Skyrim heals.
 
 | approach | reaches |
 |---|---|
 | equip spell, instant apply | one follower, one action |
-| combat-override splice + faction gate | our records, the follower alias, our followers |
-| a QUST at priority 99 | would not have worked: combat ignores the package stack |
+| override-list splice + faction lease (shipped) | our records, the follower alias, our followers |
+| a QUST at priority 99 | would not work: combat ignores the package stack |
 | combat AI hooks | every actor in the game |
 | GMST threshold | every actor, permanently |
+
+---
+
+## Follower frameworks, as reference
+
+Read from their plugins with houseCARL. What matters is one alias field,
+`CombatOverridePackageList`.
+
+| framework | followers live in | combat-override list |
+|---|---|---|
+| vanilla | `DialogueFollower` alias 0 | `PlayerFollowerCombatOverridePackageList` (0005C852) |
+| Simple Follower Framework 2.0.3 | follower 1 in the vanilla alias; 2..8 in `SFF_FollowerQuest` aliases 1..7, filled from C++ with `ForceRefTo` | the **same vanilla list** -- covered by the splice as-is |
+| Nether's Follower Framework 2.8.6b | overrides `DialogueFollower` (nulls its list) and holds followers in `nwsFollowerPack` `PackAlias1..12` and tiers | `nwsFollowerCombatPkList` (007429), its own |
+
+The splice is a table (`kOverrideLists`) with the vanilla list as its only
+entry. NFF is one more line when integration is wanted. NFF also has
+`nwsFollowerHealSelf` / `HealPlayer`: UseMagic packages gated on
+`GetFactionRank` of an NFF faction, the same idiom.
+
+---
+
+## Open
+
+- **Concentration spells** (Flames, vanilla Healing). The fire event marks
+  the *start* of the stream, so the current release would cut it off at once.
+  Needs: read the spell's casting type at arm time; for concentration, ignore
+  the fire signal and release on package end or deadline; make the sustain
+  time a rule input by repointing the record's two `CastTime` floats (another
+  canary probe).
+- **Targets other than self.** The rule engine already resolves Player and
+  CurrentTarget; the pool refuses them. Self and PlayerRef are constants, so
+  a second pool aimed at the player is content. A per-request target is one
+  more unmapped write, and a record has one holder at a time so the pool
+  needs no change.
+- **Our own quest and aliases**, filled for any teammate we manage. Removes
+  the dependence on how a follower was recruited and covers every framework.
+  Needs `ForceRefTo`, i.e. the CommonLib migration.
+- **Structured JSON log** alongside the text log, for `jq`.
