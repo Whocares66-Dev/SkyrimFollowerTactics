@@ -47,3 +47,5 @@ CreationKitDowngradePatcher/
 # redistribute: it carries no licence notice, and it is a one-file download from
 # the mod's Nexus page. extern/SKSEMenuFramework/README.md says how to get it.
 extern/SKSEMenuFramework/SKSEMenuFramework.h
+SSEEdit/
+CrashLogger/
