@@ -73,9 +73,43 @@ struct CostStats
 [[nodiscard]] std::vector<FollowerView> ObserveFollowers();
 [[nodiscard]] CostStats ObserveCost();
 
-// The rule set being evaluated. Hardcoded in Phase 1, so this is a reference to
-// a static; it becomes per-follower and mutable once profiles land.
-[[nodiscard]] const ft::RuleSet &ActiveRuleSet();
+// This follower's rules, as a copy.
+//
+// Copy in, copy out. Rule sets hold a handful of rules, so copying is cheap,
+// and it removes a whole class of problem: the UI edits its own copy across as
+// many frames as it likes and writes the result back, with no partial state
+// visible to the tick and no lock held across rendering.
+//
+// Only the UI writes. The tick reads. That is what makes read-modify-write safe
+// here without a version check.
+[[nodiscard]] ft::RuleSet GetRules(ft::ActorId id);
+void SetRules(ft::ActorId id, ft::RuleSet rules);
+
+// The rules a follower starts with, before anyone edits them.
+[[nodiscard]] const ft::RuleSet &DefaultRuleSet();
+
+// Why the world's clock is stopped, if it is.
+//
+// Rules are gated on time running, not on any menu being closed -- those are
+// different questions, and only the first is the one a tactic cares about.
+// Firing into a frozen world is how a half-written rule drank potions while it
+// was still being edited.
+//
+// Both the tick and the panel read this, so what the panel reports is by
+// construction what the tick actually did, rather than a second opinion that
+// can drift from it. See ReadClock() for why it takes two signals.
+struct ClockState
+{
+    bool pausedMenu{false};  // inventory, map, journal, settings, console
+    bool frozenClock{false}; // our own panel, with FreezeTimeOnMenu = true
+
+    [[nodiscard]] bool stopped() const
+    {
+        return pausedMenu || frozenClock;
+    }
+};
+
+[[nodiscard]] ClockState ReadClock();
 
 // Start ticking. Safe to call once, after kDataLoaded.
 void Install();

@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -47,6 +48,13 @@ std::atomic_bool g_installed{false};
 
 double g_lastTick = -1.0e9;
 
+// Last reported follower count, so a change is logged once rather than every
+// tick. Without this there is no way to tell a tick that is running and finding
+// nobody from a tick that is not running at all -- both are silent, and the
+// difference is "your setup script did not apply" versus "the mod is broken".
+// -1 so the first report always fires, including the zero case.
+int g_lastFollowerCount = -1;
+
 struct FollowerState
 {
     ft::EvalContext eval;
@@ -65,6 +73,12 @@ std::unordered_map<ft::ActorId, FollowerState> g_followers;
 // one -- defaults to enabled without needing an entry.
 std::mutex g_disabledMutex;
 std::unordered_set<ft::ActorId> g_disabledFollowers;
+
+// Per-follower rules. Absent means "has not been edited", and the default set
+// is handed out instead -- so a new follower costs nothing until someone
+// actually changes something.
+std::mutex g_rulesMutex;
+std::unordered_map<ft::ActorId, ft::RuleSet> g_ruleSets;
 
 std::mutex g_viewMutex;
 std::vector<FollowerView> g_view;
@@ -102,7 +116,7 @@ double g_lastCostReport = -1.0e9;
 
 // --- the hardcoded Phase 1 rule --------------------------------------------
 
-const ft::RuleSet &SpikeRuleSet()
+const ft::RuleSet &SpikeRuleSetImpl()
 {
     static const ft::RuleSet rules = [] {
         ft::RuleSet rs;
@@ -279,7 +293,9 @@ void EvaluateFollower(RE::Actor *actor, double now)
     PotionChoice choice;
     const ft::Snapshot snapshot = BuildSnapshot(actor, now, choice);
 
-    const auto &rules = SpikeRuleSet();
+    // This follower's own rules, not a shared static -- the whole point of
+    // making them per-follower.
+    const ft::RuleSet rules = GetRules(id);
     ft::Trace trace;
     const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace);
 
@@ -337,6 +353,32 @@ void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace
 
 // --- the tick ---------------------------------------------------------------
 
+// Tick-side wrapper: same predicate, plus a line in the log when the answer
+// changes.
+//
+// Logged on change only. This runs every tick, and a gate that stays silent
+// when it works is indistinguishable from one that is not running at all --
+// which is exactly how the previous version stayed hidden for a whole test
+// round. It also tells us WHICH signal caught a given menu, so this can be
+// narrowed later on evidence rather than on a guess.
+bool EvaluationHeld()
+{
+    const ClockState clock = ReadClock();
+
+    static int previous = -1;
+    const int state = (clock.pausedMenu ? 1 : 0) | (clock.frozenClock ? 2 : 0);
+    if (state != previous)
+    {
+        previous = state;
+        if (state == 0)
+            logger::info("tactics: time is running -- evaluating");
+        else
+            logger::info("tactics: time stopped ({}{}{}) -- evaluation held", clock.pausedMenu ? "paused menu" : "",
+                         (clock.pausedMenu && clock.frozenClock) ? " + " : "", clock.frozenClock ? "frozen clock" : "");
+    }
+    return clock.stopped();
+}
+
 // Pacing lives on a separate thread; the work itself runs on the game thread via
 // the task interface.
 //
@@ -358,6 +400,9 @@ void Tick()
     if (!g_enabled.load())
         return;
 
+    if (EvaluationHeld())
+        return;
+
     const double now = NowSeconds();
     if ((now - g_lastTick) < kTickInterval)
         return;
@@ -369,6 +414,27 @@ void Tick()
         return;
 
     const auto followers = CollectManagedFollowers();
+
+    if (static_cast<int>(followers.size()) != g_lastFollowerCount)
+    {
+        g_lastFollowerCount = static_cast<int>(followers.size());
+        if (followers.empty())
+        {
+            logger::info("tactics: 0 followers. Nobody nearby has the player-teammate flag -- "
+                         "if you just ran a setup script, prid probably selected nothing.");
+        }
+        else
+        {
+            std::string names;
+            for (auto *f : followers)
+            {
+                if (!names.empty())
+                    names += ", ";
+                names += Describe(f);
+            }
+            logger::info("tactics: {} follower(s) under control: {}", followers.size(), names);
+        }
+    }
 
     // Out of combat there is nothing to decide, so the expensive work -- the
     // inventory scan inside BuildSnapshot, and the evaluation itself -- is
@@ -417,6 +483,54 @@ void Tick()
 
 } // namespace
 
+// Two signals, because neither alone is enough.
+//
+//   numPausesGame    what UI::GameIsPaused() returns, and it is nothing more
+//                    than a count of registered menus carrying kPausesGame.
+//                    It covers the inventory, map, journal, settings and the
+//                    console. It CANNOT see our own panel: SKSE Menu Framework
+//                    draws from a D3D present hook and never registers an
+//                    IMenu, so it never moves that counter no matter what
+//                    FreezeTimeOnMenu says. An earlier gate checked only this
+//                    and let the panel straight through -- for a whole test
+//                    round, because it also went unlogged.
+//
+//   Main::freezeTime the clock itself, which is what the framework sets when
+//                    FreezeTimeOnMenu = true.
+//
+// Whether a pausing menu ALSO sets freezeTime is not established, so the two
+// are OR-ed rather than one being assumed to imply the other. Both are a
+// pointer dereference; there is nothing to win by guessing.
+//
+// Asking about the clock rather than about panel-is-open also gets
+// FreezeTimeOnMenu = false right for free: with the freeze off, time keeps
+// running and so do rules, so the panel shows live state rather than a still
+// frame. That is the whole point of that setting.
+ClockState ReadClock()
+{
+    auto *ui = RE::UI::GetSingleton();
+    auto *main = RE::Main::GetSingleton();
+    return ClockState{ui && ui->GameIsPaused(), main && main->freezeTime};
+}
+
+ft::RuleSet GetRules(ft::ActorId id)
+{
+    std::scoped_lock lock(g_rulesMutex);
+    const auto it = g_ruleSets.find(id);
+    return it == g_ruleSets.end() ? DefaultRuleSet() : it->second;
+}
+
+void SetRules(ft::ActorId id, ft::RuleSet rules)
+{
+    std::scoped_lock lock(g_rulesMutex);
+    g_ruleSets[id] = std::move(rules);
+}
+
+const ft::RuleSet &DefaultRuleSet()
+{
+    return SpikeRuleSetImpl();
+}
+
 std::vector<FollowerView> ObserveFollowers()
 {
     std::scoped_lock lock(g_viewMutex);
@@ -430,7 +544,7 @@ CostStats ObserveCost()
 
 const ft::RuleSet &ActiveRuleSet()
 {
-    return SpikeRuleSet();
+    return DefaultRuleSet();
 }
 
 void Install()
