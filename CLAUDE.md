@@ -4,7 +4,8 @@ A Dragon Age: Origins-style tactics system for Skyrim SE/AE followers: an ordere
 `IF <condition> THEN <action> ON <target>` rules, per follower, editable in game.
 
 Read `docs/PLAN.md` first. `docs/RESEARCH.md` has the sourced findings behind it, with
-explicit uncertainty flags.
+explicit uncertainty flags. `docs/MAGIC.md` is how casting works and what does not;
+`docs/TODO.md` is what is still to do.
 
 ## The one architectural rule
 
