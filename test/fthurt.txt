@@ -1,0 +1,20 @@
+; ============================================================
+;  FollowerTactics - drive the follower to a test threshold
+;  Run:  bat fthurt
+;
+;  forceav sets CURRENT health without touching max/base.
+;  Do NOT use setav/modav here - those move max health and
+;  break the percentage the rule engine reads.
+;
+;  Lydia's max health is level-dependent. Run getavinfo health
+;  first, then edit the number below to ~40% of her max.
+; ============================================================
+
+prid 000A2C94
+forceav health 100
+getavinfo health
+
+; Health regen starts pulling this back immediately.
+; If you need the value to hold still long enough to observe,
+; freeze AI first with tcai (toggles for ALL actors).
+;tcai

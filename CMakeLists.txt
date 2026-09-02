@@ -1,0 +1,125 @@
+cmake_minimum_required(VERSION 3.21)
+
+project(FollowerTactics VERSION 0.1.0 LANGUAGES CXX)
+
+option(FT_BUILD_PLUGIN "Build the SKSE plugin (needs CommonLibSSE-NG, Windows only)" ${WIN32})
+option(FT_BUILD_TESTS  "Build the core unit tests (no game required)"                ON)
+
+option(FT_SANITIZE     "Build with AddressSanitizer + UBSan where available"      OFF)
+option(FT_WARN_AS_ERR  "Treat warnings as errors (on in CI, off for local hacking)" OFF)
+
+# ---------------------------------------------------------------------------
+# Shared compile hygiene. The core engine is the only part of this project that
+# can be verified without launching Skyrim, so it is worth over-tooling: max
+# warnings, and a sanitized build variant for the test loop.
+# ---------------------------------------------------------------------------
+function(ft_apply_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /Zc:preprocessor)
+        if(FT_WARN_AS_ERR)
+            target_compile_options(${target} PRIVATE /WX)
+        endif()
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wconversion)
+        if(FT_WARN_AS_ERR)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif()
+    endif()
+endfunction()
+
+# AddressSanitizer has to cover EVERY translation unit in the tree, third-party
+# code included, so this is deliberately global rather than per-target. MSVC's
+# STL switches on container annotations under ASan; linking an annotated object
+# against an unannotated static library fails with a wall of
+#   LNK2038: mismatch detected for 'annotate_string'
+# which says nothing about sanitizers. Applying the flags before any target or
+# FetchContent subproject is declared is what keeps Catch2 consistent with us.
+if(FT_SANITIZE)
+    if(MSVC)
+        add_compile_options(/fsanitize=address /Oy-)
+        add_link_options(/INCREMENTAL:NO)
+        # ASan is incompatible with /RTC1, which CMake puts in the Debug flags.
+        string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+    else()
+        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address,undefined)
+    endif()
+    message(STATUS "FT_SANITIZE: AddressSanitizer enabled for the whole build tree")
+endif()
+
+# ---------------------------------------------------------------------------
+# ft_core -- the rule engine.
+#
+# This target must NEVER link CommonLibSSE and must NEVER see an RE:: type.
+# That constraint is what makes it testable: there is no headless test harness
+# for Skyrim, so the only route to automated tests is logic that does not need
+# the game. If you ever find yourself wanting to #include "RE/Skyrim.h" here,
+# the code you are writing belongs in src/game/ instead.
+# ---------------------------------------------------------------------------
+add_library(ft_core STATIC
+    src/core/Evaluator.cpp
+)
+target_include_directories(ft_core PUBLIC src)
+target_compile_features(ft_core PUBLIC cxx_std_23)
+ft_apply_warnings(ft_core)
+
+# ---------------------------------------------------------------------------
+# The SKSE plugin.
+# ---------------------------------------------------------------------------
+if(FT_BUILD_PLUGIN)
+    # Deploy target: set SKYRIM_MODS_FOLDER (MO2) or SKYRIM_FOLDER (vanilla)
+    # and a rebuild lands the .dll straight where the game will load it.
+    if(DEFINED ENV{SKYRIM_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_FOLDER}/Data")
+        set(OUTPUT_FOLDER "$ENV{SKYRIM_FOLDER}/Data")
+    endif()
+    if(DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
+        set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/${PROJECT_NAME}")
+    endif()
+
+    find_package(CommonLibSSE CONFIG REQUIRED)
+
+    add_commonlibsse_plugin(${PROJECT_NAME} SOURCES src/plugin.cpp)
+    target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
+
+    # These are Skyrim/Windows-API concerns and belong to THIS target only.
+    # They used to live in the preset's global CMAKE_CXX_FLAGS, where
+    # -DUNICODE leaked into third-party code built in the same tree: it
+    # flipped Catch2's entry point from main() to wmain(), and the test
+    # executable then failed to link with an unresolved external 'main'
+    # that pointed nowhere near the actual cause.
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+    ft_apply_warnings(${PROJECT_NAME})
+    target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ft_core)
+
+    if(DEFINED OUTPUT_FOLDER)
+        set(DLL_FOLDER "${OUTPUT_FOLDER}/SKSE/Plugins")
+        message(STATUS "SKSE plugin output folder: ${DLL_FOLDER}")
+
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLL_FOLDER}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "$<TARGET_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
+            VERBATIM)
+
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                        "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>"
+                VERBATIM)
+        endif()
+    else()
+        message(WARNING "Neither SKYRIM_MODS_FOLDER nor SKYRIM_FOLDER is set -- "
+                        "the .dll will not be deployed automatically.")
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
+# Tests. Run these constantly; they are the only fast feedback loop in this
+# project. Everything else costs a Skyrim restart.
+# ---------------------------------------------------------------------------
+if(FT_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

@@ -1,0 +1,32 @@
+; ============================================================
+;  FollowerTactics - test scenario setup
+;  Run from the in-game console:  bat ftsetup
+;  File must sit in the Skyrim root, NEXT TO SkyrimSE.exe
+;  (if "bat" can't find it, try Data\ instead - sources conflict)
+;
+;  DO NOT put coc in a batch file. Community reports say coc
+;  inside a bat either silently fails or freezes the game.
+;  Travel to the test cell manually FIRST, then run this.
+; ============================================================
+
+; --- Follower: Lydia, by her persistent placed RefID ---------
+; Using a persistent ref instead of placeatme means every
+; command below targets a known actor. No RefID guessing.
+prid 000A2C94
+enable
+resurrect 1
+moveto player
+setrelationshiprank player 4
+setplayerteammate 1
+addtofaction 0005C84E 1
+
+; --- Give her potions to actually drink ----------------------
+additem 0003EADD 10
+additem 0003EADE 5
+
+; --- Report her health so you can compute thresholds ---------
+getavinfo health
+
+; --- Player survivability while testing ----------------------
+; (comment these out when you want a real fight)
+player.tgm

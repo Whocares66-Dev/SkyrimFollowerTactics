@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "name": "default",
+  "rules": [
+    {
+      "label": "emergency heal",
+      "enabled": true,
+      "condition": "SelfHealthPctBelow",
+      "conditionArg": 0.3,
+      "target": "Self",
+      "action": "DrinkHealthPotion",
+      "cooldown": 5.0
+    },
+    {
+      "label": "top up",
+      "enabled": true,
+      "condition": "SelfHealthPctBelow",
+      "conditionArg": 0.6,
+      "target": "Self",
+      "action": "DrinkHealthPotion",
+      "cooldown": 15.0
+    },
+    {
+      "label": "back off when swarmed",
+      "enabled": false,
+      "condition": "EnemyCountAtLeast",
+      "conditionArg": 3,
+      "target": "Self",
+      "action": "HoldPosition",
+      "cooldown": 10.0
+    }
+  ]
+}

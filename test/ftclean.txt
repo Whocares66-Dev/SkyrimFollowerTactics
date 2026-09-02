@@ -1,0 +1,18 @@
+; ============================================================
+;  FollowerTactics - reset between test runs
+;  Run:  bat ftclean
+;
+;  NOTE: this does NOT delete spawned draugr - their RefIDs
+;  aren't knowable from a batch file. Kill them, or select
+;  each one in the console and run:  disable   then
+;  markfordelete  (safe here: they're runtime-only refs with
+;  no save-persistent placement).
+; ============================================================
+
+prid 000A2C94
+resurrect 1
+forceav health 1000
+setplayerteammate 0
+removefromfaction 0005C84E
+removeallitems
+player.tgm

@@ -1,0 +1,18 @@
+; ============================================================
+;  FollowerTactics - spawn a hostile
+;  Run:  bat ftspawn
+;  Assumes ftsetup has already run. Re-runnable: each call
+;  adds one more draugr.
+; ============================================================
+
+; Weakest generic Draugr. Spawns hostile, engages on sight.
+player.placeatme 000387C0 1
+
+; Alternatives - uncomment one instead if a draugr is too tough
+; or too weak for the scenario you're testing:
+;player.placeatme 000EF610 1   ; Skeever  (trivial)
+;player.placeatme 00000EB2 1   ; Mudcrab  (trivial)
+;player.placeatme 001068FE 1   ; Bandit   (FormID single-sourced, verify)
+
+; Re-select Lydia so follow-up commands still target her
+prid 000A2C94

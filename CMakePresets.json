@@ -1,0 +1,116 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "installDir": "${sourceDir}/install/${presetName}",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "cl.exe",
+                "CMAKE_CXX_FLAGS": "/permissive- /Zc:preprocessor /EHsc /MP",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "vcpkg",
+            "hidden": true,
+            "inherits": [
+                "base"
+            ],
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
+                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
+                "VCPKG_MANIFEST_FEATURES": "tests"
+            }
+        },
+        {
+            "name": "debug",
+            "inherits": [
+                "vcpkg"
+            ],
+            "displayName": "Debug (plugin + tests)",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "release",
+            "inherits": [
+                "vcpkg"
+            ],
+            "displayName": "Release (plugin + tests)",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "core",
+            "inherits": [
+                "base"
+            ],
+            "displayName": "Core only (no Skyrim, no vcpkg)",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FT_BUILD_PLUGIN": "OFF"
+            }
+        },
+        {
+            "name": "core-asan",
+            "inherits": [
+                "core"
+            ],
+            "displayName": "Core only + AddressSanitizer",
+            "cacheVariables": {
+                "FT_SANITIZE": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "debug",
+            "configurePreset": "debug"
+        },
+        {
+            "name": "release",
+            "configurePreset": "release"
+        },
+        {
+            "name": "core",
+            "configurePreset": "core"
+        },
+        {
+            "name": "core-asan",
+            "configurePreset": "core-asan"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "core",
+            "configurePreset": "core",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "core-asan",
+            "configurePreset": "core-asan",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ]
+}

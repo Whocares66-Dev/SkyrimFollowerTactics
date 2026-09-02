@@ -1,0 +1,38 @@
+# Build output
+build/
+out/
+install/
+cmake-build*/
+vcpkg_installed/
+*.dll
+*.pdb
+*.lib
+*.obj
+
+# IDE
+.vs/
+.idea/
+.vscode/settings.json
+CMakeUserPresets.json
+
+# Skyrim
+*.bsa
+*.ess
+*.skse
+
+# Downloaded tooling archives
+*.7z
+*.zip
+
+# Local backups of vanilla game files
+backup/
+
+# Mod Organizer 2 instance data lives inside this repo. Its mods/ and
+# downloads/ folders can reach many GB and must never be committed.
+MO2/
+
+# Third-party tooling unpacked here
+SKSE/
+AddressLibrary/
+CKPE-*/
+CreationKitDowngradePatcher/
