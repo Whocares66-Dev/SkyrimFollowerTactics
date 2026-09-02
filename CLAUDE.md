@@ -24,7 +24,7 @@ verified by playing. If you want to `#include "RE/Skyrim.h"` in `core/`, the cod
 | SKSE | 2.2.8, `skse64_1_6_1170.dll` |
 | Address Library | AIO v13, installed at `Data/SKSE/Plugins/` |
 | Game path | `C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition` |
-| MO2 instance | `MO2/` inside this repo (gitignored) — mods at `MO2\mods` |
+| MO2 instance | `C:\modding\mo2` (ModOrganizer.ini lives there); its mods folder is `MO2\mods` inside this repo (gitignored). houseCARL is pointed at it. |
 
 `python tools/check_install.py "<game folder>"` verifies all of the above and detects drift.
 
@@ -195,13 +195,23 @@ highest risk in the project, the one that would kill the marquee feature. It wor
 ### Performance: measured, and no optimisation needed
 
 **47 us average, 68 us worst case** per follower evaluation, including the inventory scan.
-At 150 ms ticks that is ~0.3 ms/second for one follower; eight followers is ~2.6 ms/second,
-about **0.04 ms/frame amortised at 60 fps** against a 0.5 ms/frame budget.
+At the original 150 ms tick that was ~0.3 ms/second for one follower; eight followers
+~2.6 ms/second, about **0.04 ms/frame amortised at 60 fps** against a 0.5 ms/frame budget.
+The tick is now 500 ms (one decision per half-second "turn"), so the cost is lower still.
 
 So the three things `PLAN.md` 3.2/3.3 called for -- staggered scheduling, cached expensive
 sensors, dependency-driven sensor activation -- are **not needed yet**, and building them
 now would be optimising a cost that is two orders of magnitude under budget. Revisit only
 if this number moves. It is logged every 5 s of combat, so drift is visible.
+
+**Casting — WORKS end to end (2026-09-02 13:15).** `docs/MAGIC.md` "The eighth attempt":
+UseMagic packages spliced into the follower alias's combat-override list, gated by a
+faction rank held by a lease, released when the follower's own spell-fire animation event
+names our spell. Measured over two cycles: rule fires at 43% health, package selected on
+the same tick, `Fast Healing -- OURS` 1.4 s later, health 75 -> 175, released next tick,
+follower back to fighting. The ESL is versioned at `esp/FollowerTactics.esp` (edit with
+houseCARL, not the xEdit script). Recruit through dialogue (or `cqf DialogueFollower
+SetFollower`), never `setplayerteammate`. Cooldowns and leases run on game time.
 
 **Phase 2 — next.** The rule engine already has the subject/predicate model and is unit
 tested; what is missing is JSON load/save (the shareable profile format), per-follower
