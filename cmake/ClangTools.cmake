@@ -50,28 +50,43 @@ else()
     message(STATUS "clang-format: NOT FOUND -- 'format' targets unavailable")
 endif()
 
+# src/game only appears in the PLUGIN's compile database, which the core-only
+# presets never generate. Point tidy at build/debug when it exists so `tidy`
+# works from any preset; the core files are in both.
+set(FT_TIDY_BUILD_DIR "${CMAKE_BINARY_DIR}")
+if(EXISTS "${CMAKE_SOURCE_DIR}/build/debug/compile_commands.json")
+    set(FT_TIDY_BUILD_DIR "${CMAKE_SOURCE_DIR}/build/debug")
+endif()
+
 if(FT_CLANG_TIDY)
     message(STATUS "clang-tidy: ${FT_CLANG_TIDY}")
 
-    # Scope: ft_core and the tests only. That is the RE::-free half of the
-    # project -- plain C++23 with no CommonLibSSE and no MSVC extensions -- so
-    # clang-tidy parses it exactly. Pointing it at src/game/ later would drag in
-    # RE/Skyrim.h and bury real findings under thousands of third-party
-    # diagnostics. The architectural line that makes the core testable is the
-    # same line that makes it analysable.
-    # The test file is deliberately NOT analysed. Catch2's REQUIRE_FALSE expands
-    # into an enum-flag cast that the static analyzer flags inside Catch2's own
-    # headers -- a third-party false positive that buries anything real.
-    file(GLOB FT_TIDY_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/core/*.cpp")
+    # Scope: everything WE wrote -- src/core and src/game both.
+    #
+    # This used to be src/core only, on the grounds that src/game pulls in
+    # RE/Skyrim.h and would bury real findings under third-party noise. That was
+    # right when src/game was empty; it is not now, and it left the imperative
+    # half -- the half that can actually crash the game -- entirely unchecked.
+    #
+    # Two flags make it work:
+    #  * --header-filter restricts reports to our own headers, so CommonLibSSE's
+    #    thousands of lines stay quiet while our .h files are still checked.
+    #  * /Y- disables the precompiled header. MSVC's .pch is not a format clang
+    #    can read, and without this clang-tidy fails outright with "not a valid
+    #    precompiled PCH file" -- which looks exactly like a clean run, because
+    #    it reports zero findings.
+    file(GLOB FT_TIDY_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/src/core/*.cpp"
+        "${CMAKE_SOURCE_DIR}/src/game/*.cpp")
 
-    # compile_commands.json records MSVC-only switches that clang ignores;
-    # without this every run leads with noise about them.
     add_custom_target(tidy
         COMMAND "${FT_CLANG_TIDY}"
-                -p "${CMAKE_BINARY_DIR}"
+                -p "${FT_TIDY_BUILD_DIR}"
+                --header-filter=src.\(core\|game\)
+                --extra-arg-before=/Y-
                 --extra-arg=-Wno-unused-command-line-argument
                 ${FT_TIDY_SOURCES}
-        COMMENT "Running clang-tidy over src/core"
+        COMMENT "Running clang-tidy over src/core and src/game"
         VERBATIM)
 else()
     message(STATUS "clang-tidy: NOT FOUND -- 'tidy' target unavailable")

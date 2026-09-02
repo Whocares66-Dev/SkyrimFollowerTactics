@@ -57,6 +57,53 @@ or the DLL never loads.
 
 Last verified: 10 cases / 32 assertions green under MSVC 19.42 (`core` preset).
 
+## After every edit
+
+Run these. They are fast, and each one has already caught something real in this
+project:
+
+```powershell
+.\tools\build.ps1 -Preset core -Test        # 1. tests
+cmake --build --preset core --target format # 2. formatter, rewrites in place
+cmake --build --preset core --target tidy   # 3. linter
+.\tools\build.ps1 -Preset debug             # 4. plugin builds and deploys
+```
+
+(2) and (3) need the developer environment, so run them from a shell where
+`tools\build.ps1` has already imported it, or wrap them the same way it does.
+
+Before anything is called done, all four must be green, plus:
+
+```powershell
+.\tools\build.ps1 -Preset core-asan -Test   # AddressSanitizer, before committing
+```
+
+**A green build is not a passing check.** Every one of these has caught a defect
+that compiled perfectly: the tests caught a cooldown interaction that changed
+behaviour silently, the formatter has caught hand-written code on nearly every
+pass, and extending the linter to `src/game` found dead code within a minute.
+
+**Do not report work as finished without running them.** "It compiles" is the
+weakest signal available here -- the whole point of the `RE::`-free core is that
+there IS a real check, so use it.
+
+### The linter's blind spot, and how it hid
+
+`tidy` covers `src/core` **and** `src/game`. Getting `src/game` covered needs two
+flags that are easy to get wrong:
+
+- `--header-filter=src.(core|game)` keeps CommonLibSSE's thousands of header
+  lines quiet while still checking ours.
+- `--extra-arg-before=/Y-` disables the precompiled header. MSVC's `.pch` is not
+  a format clang can read, and **without this clang-tidy fails outright** with
+  `not a valid precompiled PCH file` -- while reporting zero findings, which
+  looks exactly like a clean run. If tidy ever reports nothing on a file you
+  know is messy, check it actually parsed.
+
+`src/game` also only appears in the *plugin's* compile database, which the
+core-only presets never generate, so `tidy` points at `build/debug` when that
+exists.
+
 ## Toolchain gotchas already hit
 
 - **Visual Studio can be installed without the C++ workload.** That was this machine's
