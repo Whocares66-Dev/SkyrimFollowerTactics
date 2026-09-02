@@ -71,6 +71,8 @@ enum class ActionKind : std::uint8_t
     DrinkHealthPotion,
     DrinkMagickaPotion,
     DrinkStaminaPotion,
+    CastSpell,
+    EquipSpell,
     StopCombat,
     Flee,
     HoldPosition,
@@ -89,6 +91,15 @@ struct Rule
     ActionTargetKind actionTarget{ActionTargetKind::ConditionSubject};
     ActionKind action{ActionKind::None};
     float actionArg{0.0f};
+
+    // Which spell, for EquipSpell. A FormID, and deliberately opaque here: core
+    // has no idea what a spell is, it only compares this against the ids the
+    // snapshot reports as known and as currently running.
+    //
+    // A separate field from actionArg because actionArg is a float, and a float
+    // cannot hold a 32-bit FormID without loss -- the mantissa is 24 bits, so
+    // ids above 0x FFFFFF would silently round to a different form.
+    std::uint32_t actionForm{0};
 
     double cooldown{0.0}; // seconds; 0 = only the global cooldown applies
     std::string label;    // free text, shown in the UI, ignored by the engine

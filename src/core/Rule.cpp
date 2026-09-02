@@ -16,6 +16,19 @@ double MinimumCooldown(ActionKind action) noexcept
         // follower who is still badly hurt should drink again promptly.
         return 3.0;
 
+    case ActionKind::CastSpell:
+        // Long enough for the AI package to be picked up, the cast to play, and
+        // the effect to register, so the next evaluation sees the result of
+        // this one rather than re-firing into a cast already in progress.
+        // Anything shorter and the rule fights its own previous decision.
+        return 3.0;
+
+    case ActionKind::EquipSpell:
+        // Swapping what is in hand is cheap and its result is visible at once,
+        // so this only needs to be long enough not to thrash. Re-equipping what
+        // is already equipped is prevented by availability, not by this.
+        return 1.0;
+
     case ActionKind::StopCombat:
         // Changes whether the follower is in combat, which conditions read.
         return 1.0;

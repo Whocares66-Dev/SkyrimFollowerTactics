@@ -605,6 +605,100 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
     REQUIRE(trace.at(0) == Verdict::Unsupported);
 }
 
+TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
+{
+    // The log said "previous dose still active" about an EQUIP rule, which is
+    // true of nothing and sent a reader looking for a potion that was never in
+    // the rule. Same verdict, different action, different sentence.
+    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkHealthPotion)) == "previous dose still active");
+    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::EquipSpell)) ==
+            "that spell is already in hand or still running");
+
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkHealthPotion)) == "no potion");
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EquipSpell)) == "does not know that spell");
+
+    // Everything else is action-independent and must not drift from ToString.
+    for (std::size_t i = 0; i < static_cast<std::size_t>(ActionKind::COUNT); ++i)
+    {
+        const auto action = static_cast<ActionKind>(i);
+        REQUIRE(std::string(Explain(Verdict::ConditionFalse, action)) ==
+                std::string(ToString(Verdict::ConditionFalse)));
+        REQUIRE(std::string(Explain(Verdict::OnCooldown, action)) == std::string(ToString(Verdict::OnCooldown)));
+    }
+}
+
+TEST_CASE("a sustained buff is not re-equipped while it is still up", "[spell]")
+{
+    // The case a cooldown cannot solve. Oakflesh runs for sixty seconds, and
+    // no settle worth choosing is that long -- pick two seconds and the rule
+    // re-casts thirty times, pick sixty and every other spell in the game gets
+    // the wrong number. Only the effect list answers it.
+    constexpr std::uint32_t kOakflesh = 0x0005AD5C;
+
+    RuleSet rs;
+    Rule buff;
+    buff.subject = SubjectKind::Self;
+    buff.predicate = PredicateKind::InCombat;
+    buff.actionTarget = ActionTargetKind::Self;
+    buff.action = ActionKind::EquipSpell;
+    buff.actionForm = kOakflesh;
+    buff.label = "armour up";
+    rs.rules.push_back(buff);
+
+    Snapshot s = Healthy();
+    s.inCombat = true;
+    s.spells.known.push_back(kOakflesh);
+
+    EvalContext ctx;
+    ctx.globalCooldown = 0.0;
+
+    // Nothing up yet, so it casts.
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+
+    // The effect is now running. Well past the settle, it still must not fire.
+    s.spells.active.push_back(kOakflesh);
+    s.now += MinimumCooldown(ActionKind::EquipSpell) * 10.0;
+
+    Trace trace;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+
+    // It lapses, and the rule takes it again.
+    s.spells.active.clear();
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+}
+
+TEST_CASE("a spell the follower does not know is not castable", "[spell]")
+{
+    // Distinct from EffectActive on purpose: "never learned it" and "learned
+    // it, already has it up" are the same silence in game, and the status
+    // column has to tell them apart or a mis-set rule looks like a bug.
+    RuleSet rs;
+    Rule buff;
+    buff.subject = SubjectKind::Self;
+    buff.predicate = PredicateKind::Always;
+    buff.actionTarget = ActionTargetKind::Self;
+    buff.action = ActionKind::EquipSpell;
+    buff.actionForm = 0x0005AD5C;
+    rs.rules.push_back(buff);
+
+    Snapshot s = Healthy();
+    EvalContext ctx;
+    ctx.globalCooldown = 0.0;
+
+    Trace trace;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+
+    // An EquipSpell rule with no spell chosen is the same kind of unusable, and
+    // is what a freshly added rule looks like before it is filled in.
+    rs.rules[0].actionForm = 0;
+    s.spells.known.push_back(0x0005AD5C);
+    Trace blank;
+    REQUIRE(Evaluate(rs, s, ctx, &blank).ruleIndex < 0);
+    REQUIRE(blank.at(0) == Verdict::NoResource);
+}
+
 TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
 {
     // The two mechanisms compose as a max, not an either/or:

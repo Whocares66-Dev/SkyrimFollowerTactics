@@ -9,6 +9,7 @@
 // src/game/ builds one of these per follower per tick. Everything in
 // src/core/ consumes it and nothing else.
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -76,6 +77,38 @@ struct PotionStock
     bool staminaEffectActive{false};
 };
 
+// Spells the follower knows, and the ones whose effects are running right now.
+//
+// Both are FormIDs and both are opaque to core -- it never resolves them, it
+// only asks whether one is in a list. That keeps the "is this buff already up"
+// question answerable without core knowing what a spell is.
+//
+// This is the general form of what PotionStock's three bools do for restores.
+// A buff like Oakflesh runs for sixty seconds, far longer than any cooldown
+// worth choosing, so spacing cannot solve re-casting and only the effect list
+// can: ask whether it is still running.
+struct SpellState
+{
+    std::vector<std::uint32_t> known;
+    std::vector<std::uint32_t> active;
+    std::vector<std::uint32_t> equipped;
+
+    [[nodiscard]] bool Knows(std::uint32_t form) const
+    {
+        return std::find(known.begin(), known.end(), form) != known.end();
+    }
+
+    [[nodiscard]] bool IsActive(std::uint32_t form) const
+    {
+        return std::find(active.begin(), active.end(), form) != active.end();
+    }
+
+    [[nodiscard]] bool IsEquipped(std::uint32_t form) const
+    {
+        return std::find(equipped.begin(), equipped.end(), form) != equipped.end();
+    }
+};
+
 struct Snapshot
 {
     ActorId self{0};
@@ -100,6 +133,7 @@ struct Snapshot
     std::vector<AllyView> allies;
 
     PotionStock potions;
+    SpellState spells;
 };
 
 } // namespace ft

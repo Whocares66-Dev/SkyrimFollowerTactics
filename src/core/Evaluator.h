@@ -107,6 +107,10 @@ struct Decision
     ActorId targetId{0};
     float actionArg{0.0f};
 
+    // Carried through from the rule so dispatch needs only the Decision. Core
+    // never looks at it -- it is an opaque id the game side resolves.
+    std::uint32_t actionForm{0};
+
     [[nodiscard]] bool Fired() const noexcept
     {
         return ruleIndex >= 0;
@@ -138,5 +142,14 @@ bool HasResource(ActionKind action, const Snapshot &snap);
 bool EffectAlreadyActive(ActionKind action, const Snapshot &snap);
 
 const char *ToString(Verdict v) noexcept;
+
+// The same verdict, worded for the action it happened to.
+//
+// ToString is generic and therefore wrong half the time: an equip rule that is
+// already satisfied logged "previous dose still active", which sent someone
+// looking for a potion that was never involved. Two verdicts mean genuinely
+// different things depending on the action, and the wording has to follow or
+// the log misdirects exactly when it is being read most carefully.
+[[nodiscard]] const char *Explain(Verdict v, ActionKind action) noexcept;
 
 } // namespace ft

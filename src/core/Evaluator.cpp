@@ -271,9 +271,12 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
     }
 }
 
-bool HasResource(ActionKind action, const Snapshot &s)
+// Takes the whole rule, not just the action: a spell rule is only answerable
+// with the spell in hand, and splitting that across two lookups is how the two
+// drift apart.
+bool HasResource(const Rule &r, const Snapshot &s)
 {
-    switch (action)
+    switch (r.action)
     {
     case ActionKind::DrinkHealthPotion:
         return s.potions.healthCount > 0;
@@ -281,16 +284,25 @@ bool HasResource(ActionKind action, const Snapshot &s)
         return s.potions.magickaCount > 0;
     case ActionKind::DrinkStaminaPotion:
         return s.potions.staminaCount > 0;
+
+    case ActionKind::CastSpell:
+    case ActionKind::EquipSpell:
+        // Knowing the spell is the inventory equivalent. Whether she can AFFORD
+        // to cast it is a separate question and deliberately not asked here:
+        // magicka cost depends on perks and skill, which live on the game side.
+        // The action reports that back instead.
+        return r.actionForm != 0 && s.spells.Knows(r.actionForm);
+
     default:
         return true; // most actions cost nothing from inventory
     }
 }
 
-bool EffectAlreadyActive(ActionKind action, const Snapshot &s)
+bool EffectAlreadyActive(const Rule &r, const Snapshot &s)
 {
     // Reported separately from "no potion" because the fix is different: the
     // follower has plenty, she is simply still absorbing the last one.
-    switch (action)
+    switch (r.action)
     {
     case ActionKind::DrinkHealthPotion:
         return s.potions.healthEffectActive;
@@ -298,6 +310,27 @@ bool EffectAlreadyActive(ActionKind action, const Snapshot &s)
         return s.potions.magickaEffectActive;
     case ActionKind::DrinkStaminaPotion:
         return s.potions.staminaEffectActive;
+
+    case ActionKind::CastSpell:
+        // The sustained-buff case. Oakflesh runs sixty seconds and no cooldown
+        // worth picking is that long, so re-casting can only be stopped by
+        // seeing the effect still running.
+        return r.actionForm != 0 && s.spells.IsActive(r.actionForm);
+
+    case ActionKind::EquipSpell:
+        // Two ways this is already done, and both matter.
+        //
+        // IsEquipped is availability, the mechanism the note in Rule.h says
+        // every state-setting action owes: without it a rule that equips what
+        // is already in hand wins every evaluation and starves every rule below
+        // it -- first-match-wins makes that a monopoly, not a nuisance.
+        //
+        // IsActive is the sustained-buff case. Oakflesh runs sixty seconds, and
+        // no cooldown worth picking is that long; putting it back in her hand
+        // while it is still up asks her to spend magicka renewing a buff that
+        // never lapsed. Only the effect list can answer that.
+        return r.actionForm != 0 && (s.spells.IsEquipped(r.actionForm) || s.spells.IsActive(r.actionForm));
+
     default:
         return false;
     }
@@ -373,14 +406,14 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             put(Verdict::ActionCooldown);
             continue;
         }
-        if (!HasResource(r.action, snap))
+        if (!HasResource(r, snap))
         {
             put(Verdict::NoResource);
             continue;
         }
         // Exact where the settle time is a guess: on a game whose potions
         // restore over time, the previous dose may still have seconds to run.
-        if (EffectAlreadyActive(r.action, snap))
+        if (EffectAlreadyActive(r, snap))
         {
             put(Verdict::EffectActive);
             continue;
@@ -410,6 +443,7 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         decision.action = r.action;
         decision.targetId = target;
         decision.actionArg = r.actionArg;
+        decision.actionForm = r.actionForm;
 
         // How long to wait before responding to this situation again, or using
         // this remedy again, is a property of the remedy we just applied: a
@@ -425,6 +459,25 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
     }
 
     return decision;
+}
+
+const char *Explain(Verdict v, ActionKind action) noexcept
+{
+    const bool spell = action == ActionKind::EquipSpell || action == ActionKind::CastSpell;
+
+    switch (v)
+    {
+    case Verdict::NoResource:
+        return spell ? "does not know that spell" : "no potion";
+
+    case Verdict::EffectActive:
+        if (action == ActionKind::EquipSpell)
+            return "that spell is already in hand or still running";
+        return spell ? "that spell is still running" : "previous dose still active";
+
+    default:
+        return ToString(v);
+    }
 }
 
 const char *ToString(Verdict v) noexcept

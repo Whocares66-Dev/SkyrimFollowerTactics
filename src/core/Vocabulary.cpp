@@ -81,7 +81,7 @@ constexpr std::array<Entry<ActionTargetKind>, 4> kActionTargets{{
     {ActionTargetKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 7> kActions{{
+constexpr std::array<Entry<ActionKind>, 9> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. It also
     // leaves room: "drink-health-potion-weakest" -- don't burn a strong potion
@@ -91,6 +91,8 @@ constexpr std::array<Entry<ActionKind>, 7> kActions{{
     {ActionKind::DrinkHealthPotion, "drink-health-potion-strongest", "Drink health potion"},
     {ActionKind::DrinkMagickaPotion, "drink-magicka-potion-strongest", "Drink magicka potion"},
     {ActionKind::DrinkStaminaPotion, "drink-stamina-potion-strongest", "Drink stamina potion"},
+    {ActionKind::CastSpell, "cast-spell", "Cast spell"},
+    {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
     {ActionKind::StopCombat, "stop-combat", "Stop fighting"},
     {ActionKind::Flee, "flee", "Flee"},
     {ActionKind::HoldPosition, "hold-position", "Hold position"},
@@ -252,6 +254,13 @@ std::string_view Describe(ActionKind v) noexcept
         return "Drink the strongest magicka potion carried.";
     case ActionKind::DrinkStaminaPotion:
         return "Drink the strongest stamina potion carried.";
+    case ActionKind::CastSpell:
+        return "Tell the follower to cast it now, through the game's own casting behaviour -- with "
+               "the animation, and interruptible. Needs the FollowerTactics plugin enabled.";
+    case ActionKind::EquipSpell:
+        return "Put a spell in the follower's hand and let her own combat AI cast it -- with the "
+               "animation, and interruptible. She chooses the moment, not the rule. Skipped when "
+               "it is already in hand or its effect is still running.";
     case ActionKind::StopCombat:
         return "Break off the current fight.";
     case ActionKind::Flee:
