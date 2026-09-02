@@ -47,6 +47,25 @@ that configure her. Every script after `ftsetup` therefore operates on **the cur
 console selection** rather than a hardcoded RefID — which also means they work on any
 follower you click, not just this one.
 
+## Recruiting: dialogue, not the console (cast rules need it)
+
+`ftmake` used to run `setplayerteammate 1` and `addtofaction CurrentFollowerFaction`.
+That produces a *teammate*: the tick picks her up, potion rules work, and the panel
+shows her. It does **not** fill the `DialogueFollower` quest's Follower alias, and the
+alias is what carries the combat-override package list the cast route uses
+(`docs/MAGIC.md`, "The eighth attempt"). So after `bat ftmake`, **talk to her and choose
+"Follow me."** The log line `in the DialogueFollower alias: yes` on the first cast is
+the check. Dismiss her through dialogue too; `ftclean` only undoes the console side.
+
+A console route that should do the same, **unverified on this build**: after `placeatme`
+prints the RefID, `cqf DialogueFollower SetFollower <refid>` calls the quest's own Papyrus
+function, which is what the dialogue calls. It takes the ID as an argument, so it does not
+suffer from the batch-file selection problem. The alias log line is the check either way.
+
+Editing a file in `test/` changes nothing until `tools\deploy-tests.ps1` is run again: the
+game reads the copies in the Skyrim root. A stale copy is invisible in the log except as
+`in the DialogueFollower alias: NO` on a follower who was "set up correctly".
+
 ## The rule that governs every script here
 
 **Batch console commands are queued and executed in an order you cannot rely on.**

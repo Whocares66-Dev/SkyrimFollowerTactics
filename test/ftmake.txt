@@ -7,6 +7,16 @@
 ;  Marcurio  000B9986   Destruction Mage, a real magicka pool
 ;  Jenassa   000E1BA9   Ranger
 ;
+;  THEN TALK TO HER AND CHOOSE "Follow me."
+;  This file no longer sets setplayerteammate / CurrentFollowerFaction.
+;  Those make a TEAMMATE, which the potion rules are happy with, but
+;  cast rules run through the DialogueFollower quest's alias and its
+;  combat-override package list, and only "Follow me" (SetFollower)
+;  fills that alias. The relationship rank set below is what makes the
+;  line appear. FollowerTactics.log says "in the DialogueFollower
+;  alias: yes/NO" the first time a cast rule fires, so a wrong recruit
+;  is diagnosed rather than guessed.
+;
 ;  WHY CLICKING, AND NOT A REFID IN THE FILE
 ;  From a batch file, exactly two things reach a specific actor:
 ;      player.<command>                        works
@@ -59,9 +69,7 @@
 
 player.tgm
 
-setplayerteammate 1
 setrelationshiprank player 4
-addtofaction 0005C84E 1
 
 additem 0003EADD 10
 additem 0003EADE 5
