@@ -1,6 +1,7 @@
 #include "game/Tactics.h"
 
 #include "core/Evaluator.h"
+#include "core/Vocabulary.h"
 #include "game/Actions.h"
 #include "game/Packages.h"
 #include "game/Sensors.h"
@@ -24,7 +25,10 @@ namespace
 // --- tuning ----------------------------------------------------------------
 
 // docs/PLAN.md 3.2 wants 150 ms.
-constexpr double kTickInterval = 0.15;
+// The TURN. Every half second the list is walked and at most one rule
+// fires. There is no separate "global cooldown": the turn is the spacing
+// between decisions, and the only other timers are per action.
+constexpr double kTickInterval = 0.5;
 
 // How often a follower may report *why* it did not act. Without this the log is
 // seven lines per second per follower and unreadable; with it, the answer to
@@ -74,6 +78,10 @@ std::unordered_map<ft::ActorId, FollowerState> g_followers;
 // one -- defaults to enabled without needing an entry.
 std::mutex g_disabledMutex;
 std::unordered_set<ft::ActorId> g_disabledFollowers;
+
+// Followers currently in bleedout, so the transition is logged once rather
+// than every tick.
+std::unordered_set<ft::ActorId> g_bleedingOut;
 
 // Per-follower rules. Absent means "has not been edited", and the default set
 // is handed out instead -- so a new follower costs nothing until someone
@@ -130,7 +138,6 @@ const ft::RuleSet &SpikeRuleSetImpl()
         heal.conditionArg = 0.5f;
         heal.actionTarget = ft::ActionTargetKind::ConditionSubject;
         heal.action = ft::ActionKind::DrinkHealthPotion;
-        heal.cooldown = 10.0;
         rs.rules.push_back(heal);
 
         return rs;
@@ -141,7 +148,7 @@ const ft::RuleSet &SpikeRuleSetImpl()
 // Only the actions Phase 1 actually implements are advertised as supported. The
 // engine then reports Verdict::Unsupported for anything else instead of firing
 // a rule that Actions::Execute would silently drop.
-ft::Capabilities SpikeCapabilities()
+ft::Capabilities SpikeCapabilities(const RE::Actor *actor)
 {
     ft::Capabilities caps; // all false
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkHealthPotion)] = true;
@@ -153,6 +160,12 @@ ft::Capabilities SpikeCapabilities()
     // panel greys it out, which is a truthful "not available here" rather than
     // a rule that silently never fires.
     caps.supported[static_cast<std::size_t>(ft::ActionKind::CastSpell)] = PackagesAvailable();
+
+    // Transient, unlike the line above: every slot mid-cast means a cast rule
+    // is skipped for THIS evaluation only, with no cooldown spent, and the
+    // next rule down gets its turn.
+    caps.busy[static_cast<std::size_t>(ft::ActionKind::CastSpell)] =
+        PackagesAvailable() && (!HasFreeSlot() || IsMidCast(actor));
     return caps;
 }
 
@@ -215,7 +228,8 @@ void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet
     for (std::size_t i = 0; i < trace.size(); ++i)
     {
         const auto &rule = rules.rules[i];
-        logger::info("    rule {} \"{}\": {}", i, rule.label, ft::Explain(trace[i], rule.action));
+        logger::info("    rule {} \"{}\" [{}]: {}", i, rule.label, ft::WireName(rule.action),
+                     ft::Explain(trace[i], rule.action));
     }
 }
 
@@ -300,7 +314,7 @@ void EvaluateFollower(RE::Actor *actor, double now)
         logger::info("{} entered combat -- tactics engaged", Describe(actor));
     }
     state.lastEvaluatedAt = now;
-    state.eval.caps = SpikeCapabilities();
+    state.eval.caps = SpikeCapabilities(actor);
 
     const auto started = std::chrono::steady_clock::now();
 
@@ -321,9 +335,9 @@ void EvaluateFollower(RE::Actor *actor, double now)
     {
         const auto result = Execute(decision, actor, choice);
 
-        logger::info("{} FIRED rule {} \"{}\" -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
-                     decision.ruleIndex, rules.rules[decision.ruleIndex].label, ToString(result),
-                     snapshot.health.current, snapshot.health.max, snapshot.health.Pct() * 100.0);
+        logger::info("{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
+                     decision.ruleIndex, rules.rules[decision.ruleIndex].label, ft::WireName(decision.action),
+                     ToString(result), snapshot.health.current, snapshot.health.max, snapshot.health.Pct() * 100.0);
 
         // Empirical check for whether a drunk potion leaves a lingering effect
         // we could test against, rather than relying on a fixed settle time.
@@ -417,7 +431,9 @@ void Tick()
     if (EvaluationHeld())
         return;
 
-    const double now = NowSeconds();
+    // Game time, in real seconds: it does not advance while the game is
+    // paused, so nothing below is aged by a menu.
+    const double now = TacticsSeconds();
     if ((now - g_lastTick) < kTickInterval)
         return;
     g_lastTick = now;
@@ -461,11 +477,30 @@ void Tick()
         // Both switches must be on. A follower turned off still appears in the
         // panel, and still reports whether they are fighting -- they are simply
         // not evaluated, which is what the empty Status column then says.
-        if (fighting && IsFollowerEnabled(follower->GetFormID()))
+        // Bleeding out, nothing can be performed: no potion, no cast, and the
+        // 12:20 run fired a cast rule four times at negative health. Hold
+        // evaluation until she is up again, and say so once.
+        const bool down = follower->AsActorState() && follower->AsActorState()->IsBleedingOut();
+        const bool wasDown = g_bleedingOut.contains(follower->GetFormID());
+        if (down != wasDown)
+        {
+            logger::info("{} {}", Describe(follower),
+                         down ? "is bleeding out -- tactics held" : "is up -- tactics resume");
+            if (down)
+                g_bleedingOut.insert(follower->GetFormID());
+            else
+                g_bleedingOut.erase(follower->GetFormID());
+        }
+
+        if (fighting && !down && IsFollowerEnabled(follower->GetFormID()))
             EvaluateFollower(follower, now);
         else
             PublishIdle(follower, now, fighting);
     }
+
+    // Armed cast requests are withdrawn from here, whether or not anyone is
+    // still fighting: a request must not outlive the moment it was made for.
+    TickPackages(now, followers);
 
     // Menu entries are added lazily, because followers appear long after
     // Install() has run. Cheap: it only acts on a follower it has not seen.
@@ -568,8 +603,7 @@ void Install()
 
     logger::info("tactics: tick {:.0f} ms, combat only, max {} followers", kTickInterval * 1000.0,
                  kMaxManagedFollowers);
-    logger::info("tactics: Phase 1 rule set is hardcoded -- self health below 50% -> drink the "
-                 "best health potion, at most once per 10 s");
+    logger::info("tactics: default rule set -- self health below 50% -> drink the best health potion");
 
     // Detached on purpose: Skyrim never unloads SKSE plugins, and joining a
     // sleeping thread during process teardown is a good way to hang on exit.

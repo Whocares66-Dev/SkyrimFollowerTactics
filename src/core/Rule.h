@@ -101,8 +101,14 @@ struct Rule
     // ids above 0x FFFFFF would silently round to a different form.
     std::uint32_t actionForm{0};
 
-    double cooldown{0.0}; // seconds; 0 = only the global cooldown applies
-    std::string label;    // free text, shown in the UI, ignored by the engine
+    // No per-rule cooldown, deliberately. A cooldown is a property of the
+    // remedy -- how long a potion takes to show, how long a cast takes to
+    // land -- so it belongs to the action (MinimumCooldown) and is tracked per
+    // action, not per rule. The per-rule field this replaced was invisible in
+    // the editor, survived a change of action (a potion rule turned into a
+    // cast rule kept its 10 s), and its state was keyed by list position, so
+    // reordering rules handed one rule's cooldown to another.
+    std::string label; // free text, shown in the UI, ignored by the engine
 };
 
 struct RuleSet
@@ -172,9 +178,20 @@ struct Capabilities
 {
     std::array<bool, static_cast<std::size_t>(ActionKind::COUNT)> supported{};
 
+    // Supported in general but not available for THIS evaluation -- a resource
+    // pool that is momentarily exhausted. A busy action is skipped exactly
+    // like an unsupported one, so the next rule gets its turn and no cooldown
+    // is spent; unlike unsupported, it is expected to clear on its own.
+    std::array<bool, static_cast<std::size_t>(ActionKind::COUNT)> busy{};
+
     [[nodiscard]] bool Supports(ActionKind a) const noexcept
     {
         return supported[static_cast<std::size_t>(a)];
+    }
+
+    [[nodiscard]] bool Busy(ActionKind a) const noexcept
+    {
+        return busy[static_cast<std::size_t>(a)];
     }
 
     static Capabilities All() noexcept

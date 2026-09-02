@@ -22,14 +22,13 @@ enum class Verdict : std::uint8_t
     Fired,
     Disabled,
     ConditionFalse,
-    OnCooldown,
-    ConditionCooldown,
     ActionCooldown,
-    GlobalCooldown,
     NoTarget,
     NoResource,
+    CannotAfford,     // knows the spell, cannot pay for it right now
     EffectActive,     // a previous dose is still running
     Unsupported,      // the action cannot be performed on this runtime
+    Busy,             // it can, but not this evaluation: its resource pool is exhausted
     InvalidCondition, // this subject/predicate pair is not answerable at all
     NotReached,       // an earlier rule already fired
 };
@@ -51,25 +50,8 @@ struct Binding
     }
 };
 
-struct RuleState
-{
-    double lastFired{-1.0e9};
-};
-
-// One slot per (subject, predicate) pair, for the condition cooldown below.
-[[nodiscard]] constexpr std::size_t ConditionSlot(SubjectKind subject, PredicateKind predicate) noexcept
-{
-    return static_cast<std::size_t>(subject) * static_cast<std::size_t>(PredicateKind::COUNT) +
-           static_cast<std::size_t>(predicate);
-}
-
-inline constexpr std::size_t kConditionSlots =
-    static_cast<std::size_t>(SubjectKind::COUNT) * static_cast<std::size_t>(PredicateKind::COUNT);
-
 struct EvalContext
 {
-    std::vector<RuleState> ruleStates;
-
     // Both of these hold a time UNTIL WHICH something is blocked, not the time
     // it last happened. Zero therefore reads as "not blocked", which is what we
     // want at startup -- storing a last-fired time instead needs a sentinel in
@@ -78,7 +60,49 @@ struct EvalContext
 
     // Per ACTION, across all rules. Stops one remedy being repeated: two rules
     // that both drink potions must not drink two potions in consecutive ticks.
-    std::array<double, static_cast<std::size_t>(ActionKind::COUNT)> actionBlockedUntil{};
+    // What exactly is on cooldown: the action, the spell it casts (zero for
+    // an action without one) and the actor it was applied to. Drinking a
+    // health potion does not block a magicka potion; healing herself does not
+    // block healing the player; Oakflesh does not block a heal. What it DOES
+    // block is every rule, wherever it sits in the list, that would do the
+    // same thing to the same actor before the first has had time to show.
+    struct ActionKey
+    {
+        ActionKind action{ActionKind::None};
+        std::uint32_t form{0};
+        ActorId target{0};
+
+        [[nodiscard]] bool operator==(const ActionKey &o) const noexcept
+        {
+            return action == o.action && form == o.form && target == o.target;
+        }
+    };
+
+    struct Blocked
+    {
+        ActionKey key;
+        double until{0.0};
+    };
+    std::vector<Blocked> blocked;
+
+    [[nodiscard]] double BlockedUntil(const ActionKey &key) const noexcept
+    {
+        for (const auto &b : blocked)
+            if (b.key == key)
+                return b.until;
+        return 0.0;
+    }
+
+    void Block(const ActionKey &key, double until)
+    {
+        for (auto &b : blocked)
+            if (b.key == key)
+            {
+                b.until = until;
+                return;
+            }
+        blocked.push_back({key, until});
+    }
 
     // Per CONDITION -- the (subject, predicate) pair, ignoring the threshold.
     // Stops one *situation* drawing several remedies at once: given
@@ -93,10 +117,7 @@ struct EvalContext
     // Note this is only ever set when a rule actually FIRES. A rule that could
     // not act -- no potion in the bag, no target -- blocks nothing, so the next
     // remedy for the same problem is tried immediately, in the same tick.
-    std::array<double, kConditionSlots> conditionBlockedUntil{};
 
-    double lastActionAt{-1.0e9};
-    double globalCooldown{0.5};
     Capabilities caps{Capabilities::All()};
 };
 

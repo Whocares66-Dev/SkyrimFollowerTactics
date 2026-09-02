@@ -93,6 +93,27 @@ struct SpellState
     std::vector<std::uint32_t> active;
     std::vector<std::uint32_t> equipped;
 
+    // What each known spell costs HER, in magicka, with her perks and skill
+    // already applied. The game computes it; core only compares it against
+    // the magicka she has, so a cast rule she cannot afford is reported as
+    // such instead of firing a package the AI will decline.
+    struct Cost
+    {
+        std::uint32_t form{0};
+        float magicka{0.0f};
+    };
+    std::vector<Cost> costs;
+
+    // Zero for a spell with no recorded cost, so a snapshot that does not
+    // carry costs (a test, an older sensor) never blocks a cast.
+    [[nodiscard]] float CostOf(std::uint32_t form) const
+    {
+        for (const auto &c : costs)
+            if (c.form == form)
+                return c.magicka;
+        return 0.0f;
+    }
+
     [[nodiscard]] bool Knows(std::uint32_t form) const
     {
         return std::find(known.begin(), known.end(), form) != known.end();

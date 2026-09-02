@@ -28,7 +28,7 @@ Snapshot Healthy()
 }
 
 // The marquee rule: IF self health below <pct> THEN drink a health potion.
-Rule HealBelow(float pct, double cooldown = 0.0)
+Rule HealBelow(float pct)
 {
     Rule r;
     r.subject = SubjectKind::Self;
@@ -36,7 +36,6 @@ Rule HealBelow(float pct, double cooldown = 0.0)
     r.conditionArg = pct;
     r.actionTarget = ActionTargetKind::ConditionSubject;
     r.action = ActionKind::DrinkHealthPotion;
-    r.cooldown = cooldown;
     r.label = "heal";
     return r;
 }
@@ -126,62 +125,94 @@ TEST_CASE("a disabled rule is skipped and the next one gets a turn", "[evaluator
     REQUIRE(trace.at(0) == Verdict::Disabled);
 }
 
-TEST_CASE("per-rule cooldown suppresses a re-fire", "[evaluator]")
+TEST_CASE("a cooldown belongs to the action, not to the rule's position", "[evaluator]")
 {
+    // Two rules on DIFFERENT conditions and different actions. The potion
+    // fires; then the list is reordered. The potion's cooldown must follow the
+    // potion action wherever its rule now sits, and must not land on the cast
+    // rule that moved into its old slot.
+    constexpr std::uint32_t kHeal = 0x0002F3B8;
+
+    Rule potion = HealBelow(0.5f);
+    Rule cast;
+    cast.subject = SubjectKind::Self;
+    cast.predicate = PredicateKind::InCombat;
+    cast.actionTarget = ActionTargetKind::Self;
+    cast.action = ActionKind::CastSpell;
+    cast.actionForm = kHeal;
+    cast.label = "cast";
+
     RuleSet rs;
-    rs.rules.push_back(HealBelow(0.5f, /*cooldown=*/10.0));
+    rs.rules.push_back(potion);
+    rs.rules.push_back(cast);
 
     Snapshot s = Healthy();
     s.health = {40.0f, 100.0f};
+    s.spells.known.push_back(kHeal);
 
     EvalContext ctx;
-    ctx.globalCooldown = 0.0;
+    ctx.caps = Capabilities::All();
 
-    REQUIRE(Evaluate(rs, s, ctx).Fired());
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0); // potion fires
 
-    s.now = 105.0; // 5s later, inside the 10s cooldown
+    std::swap(rs.rules[0], rs.rules[1]); // cast is now index 0, potion index 1
+    s.now += 0.1;
+
     Trace trace;
-    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
-    REQUIRE(trace.at(0) == Verdict::OnCooldown);
+    const auto d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0); // the cast rule, unblocked, fires from its new slot
+    REQUIRE(d.action == ActionKind::CastSpell);
+    REQUIRE(trace.at(1) == Verdict::NotReached);
 
-    s.now = 111.0; // past it
-    REQUIRE(Evaluate(rs, s, ctx).Fired());
+    // And the potion's cooldown is on the ACTION, wherever its rule now sits.
+    REQUIRE(ctx.BlockedUntil({ActionKind::DrinkHealthPotion, 0, s.self}) > s.now);
+    REQUIRE(ctx.BlockedUntil({ActionKind::CastSpell, kHeal, s.self}) > s.now);
 }
 
-TEST_CASE("the global cooldown rate-limits across different rules", "[evaluator]")
+TEST_CASE("a cooldown is as fine as the spell and the target", "[cooldown]")
 {
-    // The two rules differ in BOTH condition and action on purpose. Sharing
-    // either one would mean the condition or action cooldown blocks rule 1
-    // first and the global limiter never gets a look -- correct behaviour, but
-    // it would leave this test quietly not testing what it claims to.
-    RuleSet rs;
-    rs.rules.push_back(HealBelow(0.5f));
+    // Heal on self, heal on the player, and Oakflesh on self are three
+    // different things. Only a repeat of the SAME thing on the SAME actor is
+    // held back.
+    constexpr std::uint32_t kHeal = 0x0002F3B8;
+    constexpr std::uint32_t kOakflesh = 0x0005AD5C;
 
-    Rule flee;
-    flee.subject = SubjectKind::Self;
-    flee.predicate = PredicateKind::InCombat;
-    flee.action = ActionKind::Flee;
-    flee.label = "flee";
-    rs.rules.push_back(flee);
+    auto castRule = [](std::uint32_t spell, ActionTargetKind target) {
+        Rule r;
+        r.subject = SubjectKind::Self;
+        r.predicate = PredicateKind::InCombat;
+        r.actionTarget = target;
+        r.action = ActionKind::CastSpell;
+        r.actionForm = spell;
+        return r;
+    };
+
+    RuleSet rs;
+    rs.rules.push_back(castRule(kHeal, ActionTargetKind::Self));     // 0
+    rs.rules.push_back(castRule(kHeal, ActionTargetKind::Player));   // 1
+    rs.rules.push_back(castRule(kOakflesh, ActionTargetKind::Self)); // 2
 
     Snapshot s = Healthy();
-    s.health = {40.0f, 100.0f};
+    s.spells.known.push_back(kHeal);
+    s.spells.known.push_back(kOakflesh);
 
     EvalContext ctx;
-    ctx.globalCooldown = 0.5;
+    ctx.caps = Capabilities::All();
 
-    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0); // heal self
 
-    s.now = 100.1; // inside the global cooldown
+    s.now += 0.5;
     Trace trace;
-    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 1); // heal player: same spell, other target
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
 
-    // Rule 0 is held back because we just responded to low health; rule 1's
-    // condition and action are both free, so it reaches the global limiter. Each rule is told the truth
-    // about what actually stopped it -- the debug column has to point at the
-    // real reason or it sends you debugging the wrong thing.
-    REQUIRE(trace.at(0) == Verdict::ConditionCooldown);
-    REQUIRE(trace.at(1) == Verdict::GlobalCooldown);
+    s.now += 0.5;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 2); // Oakflesh: other spell, same target
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+    REQUIRE(trace.at(1) == Verdict::ActionCooldown);
+
+    s.now += MinimumCooldown(ActionKind::CastSpell);
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0); // heal self is back
 }
 
 TEST_CASE("an unsupported action never fires", "[evaluator]")
@@ -434,11 +465,11 @@ Rule HurtBut(float pct, ActionKind action, const char *label)
 
 } // namespace
 
-TEST_CASE("one situation draws one remedy, not all of them", "[cooldown]")
+TEST_CASE("one situation draws its remedies in list order, one per turn", "[cooldown]")
 {
-    // Three rules, one problem. Without a condition cooldown the follower drinks
-    // a potion, then 150 ms later casts a heal, then 150 ms after that eats --
-    // three remedies applied before the first has had any effect.
+    // Three rules, one problem. The list is a preference order: the potion
+    // first, and if the next turn still finds her hurt, the next remedy. Each
+    // action carries its own cooldown; nothing is keyed by the condition.
     RuleSet rs;
     rs.rules.push_back(HurtBut(0.25f, ActionKind::DrinkHealthPotion, "potion"));
     rs.rules.push_back(HurtBut(0.25f, ActionKind::DrinkMagickaPotion, "heal spell"));
@@ -449,23 +480,25 @@ TEST_CASE("one situation draws one remedy, not all of them", "[cooldown]")
     s.potions.magickaCount = 5;
 
     EvalContext ctx;
-    ctx.globalCooldown = 0.0; // isolate the condition cooldown
 
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
 
-    s.now += 0.15;
+    // Next turn, still hurt: the potion is on ITS cooldown and says so; the
+    // second remedy is free and fires.
+    s.now += 0.5;
     Trace trace;
-    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
 
-    // Every rule is held back by the situation, not by its own cooldown and not
-    // by its action -- and says so.
-    REQUIRE(trace.at(1) == Verdict::ConditionCooldown);
-    REQUIRE(trace.at(2) == Verdict::ConditionCooldown);
+    // Both potions used: the third remedy gets its turn.
+    s.now += 0.5;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 2);
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+    REQUIRE(trace.at(1) == Verdict::ActionCooldown);
 
-    // Once the potion has had time to work, the situation is open again. Health
-    // is still low here, so a second remedy is now legitimate.
+    // Once the potion has had time to work, it is available again.
     s.now += MinimumCooldown(ActionKind::DrinkHealthPotion);
-    REQUIRE(Evaluate(rs, s, ctx).Fired());
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
 }
 
 TEST_CASE("an unavailable action falls through immediately, in the same tick", "[cooldown]")
@@ -510,14 +543,13 @@ TEST_CASE("two rules sharing an action cannot repeat it back to back", "[cooldow
     s.health = {40.0f, 100.0f};
 
     EvalContext ctx;
-    ctx.globalCooldown = 0.0;
 
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
 
     s.now += 0.15;
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
-    REQUIRE(trace.at(1) == Verdict::ActionCooldown); // not ConditionCooldown
+    REQUIRE(trace.at(1) == Verdict::ActionCooldown);
 
     s.now += MinimumCooldown(ActionKind::DrinkHealthPotion);
     REQUIRE(Evaluate(rs, s, ctx).Fired());
@@ -544,7 +576,6 @@ TEST_CASE("a different situation is still free to draw a response", "[cooldown]"
     s.enemies.push_back({0x102, {50.0f, 100.0f}, 400.0f, false, false, true});
 
     EvalContext ctx;
-    ctx.globalCooldown = 0.0;
 
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0); // drinks
     s.now += 0.15;
@@ -585,7 +616,6 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
     s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
 
     EvalContext ctx;
-    ctx.globalCooldown = 0.0;
 
     // Rule 0 wins now, and keeps winning every time it comes off cooldown.
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
@@ -603,6 +633,105 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
     const auto d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 1);
     REQUIRE(trace.at(0) == Verdict::Unsupported);
+}
+
+TEST_CASE("a busy action is skipped without spending a cooldown", "[capabilities]")
+{
+    // Two rules on the same condition. The cast pool is exhausted for one
+    // evaluation: the cast rule must be skipped WITHOUT counting as fired, the
+    // potion rule must get its turn, and once the pool clears the cast rule
+    // fires as if nothing had happened. A skipped tactic is not a used tactic.
+    constexpr std::uint32_t kOakflesh = 0x0005AD5C;
+
+    RuleSet rs;
+    Rule cast;
+    cast.subject = SubjectKind::Self;
+    cast.predicate = PredicateKind::HealthPctBelow;
+    cast.conditionArg = 0.9f;
+    cast.actionTarget = ActionTargetKind::Self;
+    cast.action = ActionKind::CastSpell;
+    cast.actionForm = kOakflesh;
+    rs.rules.push_back(cast);
+
+    Rule potion = cast;
+    potion.action = ActionKind::DrinkHealthPotion;
+    potion.actionForm = 0;
+    rs.rules.push_back(potion);
+
+    Snapshot s = Healthy();
+    s.health = {50.0f, 100.0f};
+    s.spells.known.push_back(kOakflesh);
+
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+    ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = true;
+
+    Trace trace;
+    const auto skipped = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(skipped.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::Busy);
+
+    // The pool clears. The potion's fire blocked the condition both rules
+    // share, so that settle has to elapse -- but the cast rule itself must
+    // carry NO cooldown from having been skipped.
+    ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = false;
+    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion) + 0.01;
+    const auto fired = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(fired.ruleIndex == 0);
+    REQUIRE(trace.at(0) == Verdict::Fired);
+}
+
+TEST_CASE("a cast she cannot afford is reported and spends no cooldown", "[resources]")
+{
+    constexpr std::uint32_t kHeal = 0x0002F3B8;
+
+    RuleSet rs;
+    Rule cast;
+    cast.subject = SubjectKind::Self;
+    cast.predicate = PredicateKind::HealthPctBelow;
+    cast.conditionArg = 0.9f;
+    cast.actionTarget = ActionTargetKind::Self;
+    cast.action = ActionKind::CastSpell;
+    cast.actionForm = kHeal;
+    rs.rules.push_back(cast);
+
+    Rule potion = cast;
+    potion.action = ActionKind::DrinkHealthPotion;
+    potion.actionForm = 0;
+    rs.rules.push_back(potion);
+
+    Snapshot s = Healthy();
+    s.health = {50.0f, 100.0f};
+    s.magicka = {30.0f, 100.0f};
+    s.spells.known.push_back(kHeal);
+    s.spells.costs.push_back({kHeal, 60.0f});
+
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+
+    // 30 magicka against a 60-point spell: the cast rule is reported, the
+    // potion rule fires instead.
+    Trace trace;
+    const auto d1 = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d1.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::CannotAfford);
+
+    // Magicka back, potion settle elapsed: the cast rule fires at once. It
+    // must carry no cooldown from having been unaffordable.
+    s.magicka = {100.0f, 100.0f};
+    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion) + 0.01;
+    const auto d2 = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d2.ruleIndex == 0);
+    REQUIRE(trace.at(0) == Verdict::Fired);
+
+    // A spell with no recorded cost is never blocked on this ground.
+    Snapshot t = Healthy();
+    t.health = {50.0f, 100.0f};
+    t.magicka = {0.0f, 100.0f};
+    t.spells.known.push_back(kHeal);
+    EvalContext ctx2;
+    ctx2.caps = Capabilities::All();
+    REQUIRE(Evaluate(rs, t, ctx2).ruleIndex == 0);
 }
 
 TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
@@ -623,7 +752,8 @@ TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
         const auto action = static_cast<ActionKind>(i);
         REQUIRE(std::string(Explain(Verdict::ConditionFalse, action)) ==
                 std::string(ToString(Verdict::ConditionFalse)));
-        REQUIRE(std::string(Explain(Verdict::OnCooldown, action)) == std::string(ToString(Verdict::OnCooldown)));
+        REQUIRE(std::string(Explain(Verdict::ActionCooldown, action)) ==
+                std::string(ToString(Verdict::ActionCooldown)));
     }
 }
 
@@ -650,7 +780,6 @@ TEST_CASE("a sustained buff is not re-equipped while it is still up", "[spell]")
     s.spells.known.push_back(kOakflesh);
 
     EvalContext ctx;
-    ctx.globalCooldown = 0.0;
 
     // Nothing up yet, so it casts.
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
@@ -684,7 +813,6 @@ TEST_CASE("a spell the follower does not know is not castable", "[spell]")
 
     Snapshot s = Healthy();
     EvalContext ctx;
-    ctx.globalCooldown = 0.0;
 
     Trace trace;
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
@@ -714,7 +842,6 @@ TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
     s.health = {40.0f, 100.0f};
 
     EvalContext ctx;
-    ctx.globalCooldown = 0.0;
 
     REQUIRE(Evaluate(rs, s, ctx).Fired());
 
@@ -746,14 +873,13 @@ TEST_CASE("an instant effect leaves the settle time in charge", "[cooldown]")
     REQUIRE_FALSE(s.potions.healthEffectActive);
 
     EvalContext ctx;
-    ctx.globalCooldown = 0.0;
 
     REQUIRE(Evaluate(rs, s, ctx).Fired());
 
     s.now += 0.15;
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
-    REQUIRE(trace.at(0) == Verdict::ConditionCooldown);
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
 
     s.now += MinimumCooldown(ActionKind::DrinkHealthPotion);
     REQUIRE(Evaluate(rs, s, ctx).Fired());

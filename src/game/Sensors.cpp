@@ -224,9 +224,13 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     // ids only -- Snapshot never sees an RE:: type -- and all three are needed
     // to tell "cannot", "already up" and "already held" apart in the status
     // column.
-    ForEachSpell(actor, [&s](RE::SpellItem *spell) {
-        if (IsCastable(spell))
-            s.spells.known.push_back(spell->GetFormID());
+    ForEachSpell(actor, [&s, actor](RE::SpellItem *spell) {
+        if (!IsCastable(spell))
+            return;
+        s.spells.known.push_back(spell->GetFormID());
+        // Her cost, not the base cost: CalculateMagickaCost applies her skill
+        // and perks, which is what the AI will charge her.
+        s.spells.costs.push_back({spell->GetFormID(), spell->CalculateMagickaCost(actor)});
     });
 
     if (auto *target = actor->AsMagicTarget())

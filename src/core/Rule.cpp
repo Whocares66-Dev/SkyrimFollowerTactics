@@ -17,11 +17,11 @@ double MinimumCooldown(ActionKind action) noexcept
         return 3.0;
 
     case ActionKind::CastSpell:
-        // Long enough for the AI package to be picked up, the cast to play, and
-        // the effect to register, so the next evaluation sees the result of
-        // this one rather than re-firing into a cast already in progress.
-        // Anything shorter and the rule fights its own previous decision.
-        return 3.0;
+        // Measured: the AI picks the package up on the same tick, and a heal
+        // lands 0.9-2.2 s later. Two seconds lets the next evaluation see the
+        // result of this one without re-firing into a cast still in progress;
+        // the package pool's lease covers the case where it has not landed.
+        return 2.0;
 
     case ActionKind::EquipSpell:
         // Swapping what is in hand is cheap and its result is visible at once,

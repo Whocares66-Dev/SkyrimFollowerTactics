@@ -75,10 +75,7 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
     case ft::Verdict::ConditionFalse:
         return {"false", quiet};
 
-    case ft::Verdict::OnCooldown:
-    case ft::Verdict::ConditionCooldown:
     case ft::Verdict::ActionCooldown:
-    case ft::Verdict::GlobalCooldown:
         return {"cooldown", held};
 
     // The same verdict means different things to different actions, and the
@@ -90,6 +87,10 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
         return {action == ft::ActionKind::EquipSpell ? "equipped" : "active", held};
     case ft::Verdict::NoTarget:
         return {"no target", held};
+    case ft::Verdict::CannotAfford:
+        return {"no magicka", held};
+    case ft::Verdict::Busy:
+        return {"busy", held};
 
     case ft::Verdict::Disabled:
         return {"off", quiet};
@@ -581,7 +582,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     const float tick = Im::GetFontSize() + kTickPad * 2.0f;
     const float onWidth = tick + gutter;
     const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
-    const float statusWidth = WidestLabel({"cooldown", "no target", "no potion", "invalid", "fired", "false"}) + gutter;
+    const float statusWidth =
+        WidestLabel({"cooldown", "no target", "no potion", "no magicka", "invalid", "fired", "false"}) + gutter;
     const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
 
     Im::TableSetupColumn("On", Im::ImGuiTableColumnFlags_WidthFixed, onWidth, 0);

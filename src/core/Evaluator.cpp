@@ -338,12 +338,8 @@ bool EffectAlreadyActive(const Rule &r, const Snapshot &s)
 
 Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace)
 {
-    if (ctx.ruleStates.size() != rs.rules.size())
-        ctx.ruleStates.resize(rs.rules.size());
     if (trace)
         trace->assign(rs.rules.size(), Verdict::NotReached);
-
-    const bool globalReady = (snap.now - ctx.lastActionAt) >= ctx.globalCooldown;
 
     Decision decision;
 
@@ -365,6 +361,11 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             put(Verdict::Unsupported);
             continue;
         }
+        if (ctx.caps.Busy(r.action))
+        {
+            put(Verdict::Busy);
+            continue;
+        }
         // Reported separately from ConditionFalse on purpose: a pair that can
         // never be answered is an authoring mistake, not a condition that
         // happens to be untrue right now, and the debug column must not send
@@ -381,34 +382,18 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             put(Verdict::ConditionFalse);
             continue;
         }
-        if (r.cooldown > 0.0 && (snap.now - ctx.ruleStates[i].lastFired) < r.cooldown)
-        {
-            put(Verdict::OnCooldown);
-            continue;
-        }
-        // Two cooldowns the author did not write, reported separately from each
-        // other and from the rule's own so the debug column names the right
-        // thing to go and change.
-        //
-        // The condition first: we already responded to this situation and the
-        // response has not had time to work. Then the action: some other rule
-        // just used this same remedy.
-        const auto conditionSlot = ConditionSlot(r.subject, r.predicate);
-        if (snap.now < ctx.conditionBlockedUntil[conditionSlot])
-        {
-            put(Verdict::ConditionCooldown);
-            continue;
-        }
-
-        const auto actionIndex = static_cast<std::size_t>(r.action);
-        if (snap.now < ctx.actionBlockedUntil[actionIndex])
-        {
-            put(Verdict::ActionCooldown);
-            continue;
-        }
         if (!HasResource(r, snap))
         {
             put(Verdict::NoResource);
+            continue;
+        }
+        // A cast she cannot pay for is not a cast. The AI would decline the
+        // package and the rule would have spent its cooldown on nothing -- the
+        // 12:20 run fired four heals at empty magicka. Reported, not fired, so
+        // no cooldown moves and the next rule gets its turn.
+        if (r.action == ActionKind::CastSpell && snap.magicka.current < snap.spells.CostOf(r.actionForm))
+        {
+            put(Verdict::CannotAfford);
             continue;
         }
         // Exact where the settle time is a guess: on a game whose potions
@@ -427,15 +412,13 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             continue;
         }
 
-        // Condition-true rules are reported honestly even when the global
-        // cooldown is what stopped them -- otherwise the debug column would
-        // claim the condition was false, which is the wrong thing to go and
-        // debug. Evaluation still stops here: a lower-priority rule must not
-        // sneak past a higher-priority one that was merely rate-limited.
-        if (!globalReady)
+        // The cooldown key needs the resolved target, which is why this check
+        // sits after target resolution rather than with the other cheap ones.
+        const EvalContext::ActionKey key{r.action, r.actionForm, target};
+        if (snap.now < ctx.BlockedUntil(key))
         {
-            put(Verdict::GlobalCooldown);
-            break;
+            put(Verdict::ActionCooldown);
+            continue;
         }
 
         put(Verdict::Fired);
@@ -445,16 +428,13 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         decision.actionArg = r.actionArg;
         decision.actionForm = r.actionForm;
 
-        // How long to wait before responding to this situation again, or using
-        // this remedy again, is a property of the remedy we just applied: a
-        // potion takes about two seconds to be consumed and show up in the
-        // follower's health, so nothing should be decided on stale numbers
-        // before then.
-        const double settle = MinimumCooldown(r.action);
-        ctx.ruleStates[i].lastFired = snap.now;
-        ctx.conditionBlockedUntil[conditionSlot] = snap.now + settle;
-        ctx.actionBlockedUntil[actionIndex] = snap.now + settle;
-        ctx.lastActionAt = snap.now;
+        // The one cooldown there is: the ACTION goes on cooldown for as long
+        // as its effect takes to show, and every rule that uses that action
+        // reports it. Nothing is keyed by rule or by condition. Two rules on
+        // the same condition with different actions therefore fire on
+        // successive turns -- the list expresses preference, and the next
+        // remedy applies if the first has not fixed things yet.
+        ctx.Block(key, snap.now + MinimumCooldown(r.action));
         break;
     }
 
@@ -490,22 +470,20 @@ const char *ToString(Verdict v) noexcept
         return "disabled";
     case Verdict::ConditionFalse:
         return "condition false";
-    case Verdict::OnCooldown:
-        return "on cooldown";
-    case Verdict::ConditionCooldown:
-        return "already responded to this";
     case Verdict::ActionCooldown:
         return "action used too recently";
-    case Verdict::GlobalCooldown:
-        return "global cooldown";
     case Verdict::NoTarget:
         return "no target";
     case Verdict::NoResource:
         return "no potion";
+    case Verdict::CannotAfford:
+        return "not enough magicka";
     case Verdict::EffectActive:
         return "previous dose still active";
     case Verdict::Unsupported:
         return "unsupported";
+    case Verdict::Busy:
+        return "busy, skipped this evaluation";
     case Verdict::InvalidCondition:
         return "invalid condition";
     case Verdict::NotReached:
