@@ -1,5 +1,8 @@
 #include "game/Actions.h"
 
+#include "game/CombatHook.h"
+#include "game/Packages.h"
+
 namespace ft::game
 {
 namespace
@@ -42,7 +45,83 @@ ActionResult DrinkPotion(RE::Actor *actor, RE::AlchemyItem *potion)
     return ActionResult::Performed;
 }
 
+// Put the spell in her hand and leave the choice of when to use it to her own
+// combat AI. A different thing from casting it, and worth having both: a buff
+// wants casting now, an attack spell wants equipping and trusting.
+ActionResult EquipKnownSpell(RE::Actor *actor, RE::SpellItem *spell)
+{
+    if (!spell)
+        return ActionResult::MissingItem;
+
+    auto *equipManager = RE::ActorEquipManager::GetSingleton();
+    if (!equipManager)
+        return ActionResult::NoEquipManager;
+
+    equipManager->EquipSpell(actor, spell, nullptr);
+
+    // Equipping always "works" -- the spell goes in her hand whether or not she
+    // will ever cast it -- so on its own this action cannot tell the difference
+    // between the two ways it fails, and they need opposite fixes:
+    //
+    //   she CANNOT cast it   too expensive for her pool and skill. Nothing
+    //                        about packages or combat styles will help.
+    //   she WILL NOT cast it can afford it, her combat AI simply chose
+    //                        something else. That is the UseMagic package case.
+    //
+    // CheckCast answers the first question directly, using the game's own
+    // arithmetic including her Alteration skill, so the log separates them
+    // instead of leaving it to inference.
+    auto *caster = actor->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
+    if (!caster)
+        return ActionResult::Performed;
+
+    float alchStrength = 1.0f;
+    RE::MagicSystem::CannotCastReason reason{};
+    const bool couldCast = caster->CheckCast(spell, /*dualCast*/ false, &alchStrength, &reason, false);
+
+    float magicka = 0.0f;
+    if (auto *owner = actor->AsActorValueOwner())
+        magicka = owner->GetActorValue(RE::ActorValue::kMagicka);
+
+    // CalculateMagickaCost(actor), not caster->GetCurrentSpellCost(). The latter
+    // reports whatever spell the caster happens to have selected right now,
+    // which is usually something else entirely -- it logged "cost 1" for a
+    // spell with a base cost of 73, which is not a number anyone can act on.
+    // This one is the cost of THIS spell for THIS actor, skill included.
+    logger::info("  equipped {}: castable={} ({}), cost {:.0f}, magicka {:.0f}",
+                 spell->GetName() ? spell->GetName() : "?", couldCast,
+                 CannotCastText(static_cast<std::uint32_t>(reason)), spell->CalculateMagickaCost(actor), magicka);
+
+    return ActionResult::Performed;
+}
+
 } // namespace
+
+const char *CannotCastText(std::uint32_t reason) noexcept
+{
+    switch (static_cast<RE::MagicSystem::CannotCastReason>(reason))
+    {
+    case RE::MagicSystem::CannotCastReason::kOK:
+        return "ok";
+    case RE::MagicSystem::CannotCastReason::kMagicka:
+        return "not enough magicka";
+    case RE::MagicSystem::CannotCastReason::kPowerUsed:
+        return "power already used today";
+    case RE::MagicSystem::CannotCastReason::kRangedUnderWater:
+        return "cannot cast that underwater";
+    case RE::MagicSystem::CannotCastReason::kMultipleCast:
+        return "already casting";
+    case RE::MagicSystem::CannotCastReason::kItemCharge:
+        return "not enough charge";
+    case RE::MagicSystem::CannotCastReason::kCastWhileShouting:
+        return "shouting";
+    case RE::MagicSystem::CannotCastReason::kShoutWhileCasting:
+        return "casting";
+    case RE::MagicSystem::CannotCastReason::kShoutWhileRecovering:
+        return "recovering from a shout";
+    }
+    return "?";
+}
 
 const char *ToString(ActionResult r) noexcept
 {
@@ -56,6 +135,10 @@ const char *ToString(ActionResult r) noexcept
         return "item missing at dispatch";
     case ActionResult::NoEquipManager:
         return "ActorEquipManager unavailable";
+    case ActionResult::NoCaster:
+        return "actor has no magic caster";
+    case ActionResult::CannotCast:
+        return "the game would refuse the cast";
     }
     return "?";
 }
@@ -73,6 +156,18 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
         return DrinkPotion(actor, choice.magicka);
     case ft::ActionKind::DrinkStaminaPotion:
         return DrinkPotion(actor, choice.stamina);
+
+    case ft::ActionKind::CastSpell:
+        // ONE mechanism, deliberately. The package route is left in place but
+        // not called: running both would mean a cast could not be attributed to
+        // either, which is the mistake that made the animation-event experiment
+        // worthless. If this fails, the package route is still there to return
+        // to -- with its priority problem intact.
+        RequestCombatCast(actor, decision.actionForm);
+        return ActionResult::Performed;
+
+    case ft::ActionKind::EquipSpell:
+        return EquipKnownSpell(actor, FindSpell(decision.actionForm));
 
     default:
         // Every other action is Phase 4. The rule engine's Capabilities table is

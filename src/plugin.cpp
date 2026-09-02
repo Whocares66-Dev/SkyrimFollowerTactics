@@ -6,6 +6,8 @@
 // Catch2. Reading a real actor is Phase 1, and src/game/ does not exist yet.
 
 #include "core/Evaluator.h"
+#include "game/CombatHook.h"
+#include "game/Packages.h"
 #include "game/Tactics.h"
 #include "game/UI.h"
 
@@ -179,6 +181,13 @@ void OnDataLoaded()
 
     // Phase 1: start the real thing. The self-check above proves the engine
     // computes correct decisions; this is what connects it to actual followers.
+    // The UseMagic package pool, from FollowerTactics.esp. Optional content:
+    // if the ESL is not enabled this reports unavailable and cast rules stay
+    // off, rather than failing the whole plugin.
+    ft::game::InstallCombatHook();
+    ft::game::InitPackages();
+    ft::game::ProbeSpellInput();
+
     ft::game::Install();
     ft::game::ui::Install();
 

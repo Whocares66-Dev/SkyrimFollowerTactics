@@ -18,10 +18,17 @@ namespace ft::game
 enum class ActionResult : std::uint8_t
 {
     Performed,
-    NoSuchAction,  // not implemented in this phase
-    MissingItem,   // the potion vanished between snapshot and dispatch
-    NoEquipManager // the game singleton was unavailable
+    NoSuchAction,   // not implemented in this phase
+    MissingItem,    // the potion or spell vanished between snapshot and dispatch
+    NoEquipManager, // the game singleton was unavailable
+    NoCaster,       // the actor has no magic caster for that source
+    CannotCast      // the game says she could not cast it: cost, timing, skill
 };
+
+// Why the game refused a cast, in its own words. Kept separate from
+// ActionResult because "she cannot afford it" and "she is mid-shout" are the
+// same failure to us and completely different to a player.
+[[nodiscard]] const char *CannotCastText(std::uint32_t reason) noexcept;
 
 [[nodiscard]] const char *ToString(ActionResult r) noexcept;
 

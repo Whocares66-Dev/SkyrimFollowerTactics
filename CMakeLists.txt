@@ -91,7 +91,9 @@ if(FT_BUILD_PLUGIN)
         src/game/Actions.cpp
         src/game/Tactics.cpp
         src/game/Util.cpp
-        src/game/UI.cpp)
+        src/game/UI.cpp
+        src/game/Packages.cpp
+        src/game/CombatHook.cpp)
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
     # These are Skyrim/Windows-API concerns and belong to THIS target only.

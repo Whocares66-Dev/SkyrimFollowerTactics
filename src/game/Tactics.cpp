@@ -2,6 +2,7 @@
 
 #include "core/Evaluator.h"
 #include "game/Actions.h"
+#include "game/Packages.h"
 #include "game/Sensors.h"
 #include "game/UI.h"
 #include "game/Util.h"
@@ -146,6 +147,12 @@ ft::Capabilities SpikeCapabilities()
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkHealthPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkMagickaPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkStaminaPotion)] = true;
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipSpell)] = true;
+
+    // Casting needs the ESL. Without it the action reports Unsupported and the
+    // panel greys it out, which is a truthful "not available here" rather than
+    // a rule that silently never fires.
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::CastSpell)] = PackagesAvailable();
     return caps;
 }
 
@@ -208,7 +215,7 @@ void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet
     for (std::size_t i = 0; i < trace.size(); ++i)
     {
         const auto &rule = rules.rules[i];
-        logger::info("    rule {} \"{}\": {}", i, rule.label, ft::ToString(trace[i]));
+        logger::info("    rule {} \"{}\": {}", i, rule.label, ft::Explain(trace[i], rule.action));
     }
 }
 
@@ -229,6 +236,13 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     v.carriedWeight = actor->GetWeightInContainer();
     if (auto *owner = actor->AsActorValueOwner())
         v.carryCapacity = owner->GetActorValue(RE::ActorValue::kCarryWeight);
+
+    // Scanned on the idle path too, so the spell menu is populated while rules
+    // are being written -- which is the only time anyone opens it. A follower's
+    // spell list changes rarely, but it does change (the console addspell that
+    // set this test up is exactly such a change), so it is re-read rather than
+    // cached until something invalidates it.
+    v.spells = ScanCastableSpells(actor);
 }
 
 void PublishOne(FollowerView v)
