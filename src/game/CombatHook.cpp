@@ -404,10 +404,31 @@ struct RestoreCastHook
 
 } // namespace
 
+// OFF by default, and it should stay off unless someone is actively
+// investigating.
+//
+// These hooks do not work: the health restore caster never asks, so a request
+// is never consumed (see docs/MAGIC.md). What they DO have is the largest blast
+// radius in the project. Everything else here touches one follower at a time;
+// this sits in the combat AI's decision path for every actor in the game and
+// filters to followers afterwards. It has crashed twice, and generalising it
+// would mean roughly fifteen more of them.
+//
+// The code stays because the findings are worth keeping and the observation
+// hooks are how they were found. Running it by default is not worth the risk it
+// carries for the nothing it currently buys.
+constexpr bool kEnableCombatHooks = false;
+
 void InstallCombatHook()
 {
     if (g_installed)
         return;
+
+    if constexpr (!kEnableCombatHooks)
+    {
+        logger::info("combat-hook: disabled (kEnableCombatHooks) -- see docs/MAGIC.md");
+        return;
+    }
 
     RestoreCastHook::Install();
     ScoreProbeSpell::Install();

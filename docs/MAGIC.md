@@ -223,15 +223,65 @@ What is missing is **priority**. The fix, per the community write-up, is a `QUST
 with reference aliases at priority **99** — quest priority *is* package priority,
 which is why a pushed package loses to a follow package.
 
-Two open questions before committing to it:
+### Why it has to be a quest
 
-1. Authoring a quest with aliases *and* alias package lists in xEdit. Hairier
-   than a `PACK`, but `tools/xedit/` already has working scripts to build on.
-2. **Filling the alias from C++.** Papyrus does it with `ReferenceAlias.ForceRefTo`;
-   whether a clean native equivalent is reachable is unverified. If it is not,
-   this needs a Papyrus script — which reintroduces save-game state, the thing
-   the pure-C++ design was avoiding.
+Not a preference. A follower's follow behaviour comes from the vanilla
+`DialogueFollower` quest's **alias package**, and alias packages outrank an
+actor's own package list. So a package pushed onto the actor loses no matter
+what, and the only thing that outranks a quest alias package is another one at
+higher quest priority. `Actor::CheckForCurrentAliasPackage` exists as its own
+vfunc, which is the engine confirming aliases are a separate, higher tier.
 
-Also worth one cheap experiment first: if the health-restore threshold is a game
-setting, changing it is far smaller than a quest. A one-time dump of GMSTs
-matching `restore` / `health` / `combat` would answer that in a single run.
+### How C++ would drive it
+
+Two candidate bridges, and the second looks much better:
+
+**`ForceRefTo` through the Papyrus VM.** `IVirtualMachine::DispatchMethodCall2`
+takes a `VMHandle`, so it is reachable via the handle policy without shipping a
+script of our own. But it is intricate, and the docs note ForceRefTo *"does not
+yield ... the reference will be forced rapidly, not immediately"* -- an
+asynchronous fill in the middle of a tactic is exactly the wrong property.
+
+**A faction as the flag.** `Actor::AddToFaction(TESFaction*, rank)` is direct,
+instant and needs no VM, and `GetFactionRank` is a standard *condition* function
+that packages and aliases can read. So the bridge from our C++ to the AI is:
+
+    rule fires  ->  AddToFaction(FT_CastNow, rank)
+                ->  the alias package's condition passes
+                ->  the AI runs it, casts, the package completes
+    afterwards  ->  rank cleared
+
+That keeps the alias filled once and gates on the PACKAGE's conditions, which the
+AI re-evaluates continuously -- rather than trying to refill an alias, which
+happens at quest start. Faction membership is the standard modding idiom for
+"tag an actor so a condition can see it".
+
+### Still open
+
+1. Authoring `QUST` + aliases + alias package lists in xEdit. Hairier than a
+   `PACK`; `tools/xedit/` has working scripts to build on.
+2. How each alias acquires its follower. Eight aliases for eight followers, and
+   "Find Matching Reference" fills at quest start.
+3. Whether package conditions re-evaluate fast enough for a tactic to feel
+   responsive.
+
+### Rejected: changing the health-restore threshold
+
+If the threshold that stops the health caster asking is a game setting, changing
+it is technically small. It is also **global** -- it would change when every NPC
+in Skyrim heals, in order to make our followers heal on time. Wrong trade for a
+follower mod, and recorded as rejected so it is not rediscovered as a cheap idea.
+
+Blast radius is a design constraint here, not an afterthought:
+
+| approach | reaches |
+|---|---|
+| equip spell, instant apply | one follower, one action |
+| ESL package + quest | our records, our followers |
+| combat AI hooks | every actor in the game |
+| GMST threshold | every actor, permanently |
+
+The ESL route is the *most contained* mechanism that could work, not the
+heaviest. It felt expensive only because authoring content is unfamiliar. The
+combat hooks felt cheap and are the opposite, which is why they are now off by
+default (`kEnableCombatHooks`).
