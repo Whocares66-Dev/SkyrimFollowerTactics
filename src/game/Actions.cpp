@@ -177,8 +177,13 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
         // targeted spell (Healing Hands) will need the player instead -- that
         // is the case to revisit when such a spell is authored.
         std::uint32_t targetId = actor->GetFormID();
-        if (auto *spell = FindSpell(decision.actionForm);
-            spell && spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
+        auto *spell = FindSpell(decision.actionForm);
+        if (spell)
+            logger::info("  cast: {} is {} / {}", spell->GetName() ? spell->GetName() : "?",
+                         spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration ? "concentration"
+                                                                                                 : "fire-and-forget",
+                         spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf ? "self" : "targeted");
+        if (spell && spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
         {
             auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
             if (!enemy)
@@ -190,7 +195,9 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
             targetId = enemy->GetFormID();
         }
 
-        const auto request = RequestCast(actor, decision.actionForm, targetId);
+        // actionArg is the sustain time for a concentration spell, when a rule
+        // sets one; zero takes the default.
+        const auto request = RequestCast(actor, decision.actionForm, targetId, decision.actionArg);
         logger::info("  cast: {}", ToString(request));
         switch (request)
         {

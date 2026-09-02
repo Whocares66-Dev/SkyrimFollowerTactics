@@ -104,6 +104,11 @@ struct Slot
     double until = 0.0;
     bool seenRunning = false;
 
+    // A concentration stream: the fire event is its start, not a release.
+    bool sustained = false;
+    // Whom the stream is aimed at, so it can stop when they are dead.
+    RE::ActorHandle target;
+
     // Set from the animation thread when her spell-fire event arrives; read
     // and cleared by the tick. The ONLY thing the sink writes.
     std::atomic<bool> fired{false};
@@ -205,6 +210,20 @@ std::size_t g_spellInner = kNotCalibrated;
 // type byte is the specific-reference value -- confirmed by its handle
 // matching the player's. Nothing is written until both read consistently.
 constexpr std::uint32_t kMercerCastAtPlayerID = 0x000FDBC3;
+
+// The CastTime inputs: how long the UseMagic procedure holds a CONCENTRATION
+// stream. Two floats, authored 0.5 and 1.0 in every slot -- the canary for
+// their layout, which is the named package data's 8-byte slot at +08 (the
+// Spell input's hex dump showed the same slot empty and its pointer at +10).
+constexpr float kAuthoredCastTimeMin = 0.5f;
+constexpr float kAuthoredCastTimeMax = 1.0f;
+constexpr std::size_t kNamedDataOffset = 0x08;
+bool g_castTimeCalibrated = false;
+
+// How long a stream runs when the rule does not say. Long enough to matter
+// against a bear, short enough that the AI has her back for the next turn.
+// (Later, perhaps a random length within a range.)
+constexpr float kDefaultSustainSeconds = 3.0f;
 std::int8_t g_typeSpecificReference = -1;
 std::int8_t g_typeSelf = -1;
 bool g_targetCalibrated = false;
@@ -417,6 +436,38 @@ RE::PackageTarget *TargetOfInput(RE::TESPackage *pkg, const char *inputName)
     return LooksLikePointer(p) ? reinterpret_cast<RE::PackageTarget *>(p) : nullptr;
 }
 
+// The float behind a named input (CastTimeMin, CastTimeMax), or null.
+float *FloatOfInput(RE::TESPackage *pkg, const char *inputName)
+{
+    if (!pkg)
+        return nullptr;
+    auto *custom = skyrim_cast<RE::TESCustomPackageData *>(pkg->data);
+    if (!custom)
+        return nullptr;
+    std::int8_t uid = 0;
+    if (!FindInputUID(custom, inputName, uid))
+        return nullptr;
+    auto *input = InputByUID(custom, uid);
+    return input ? reinterpret_cast<float *>(reinterpret_cast<std::uintptr_t>(input) + kNamedDataOffset) : nullptr;
+}
+
+// Set how long a slot holds a concentration stream. Both min and max, so the
+// procedure has no range to roll in. Restored to the authored values when a
+// fire-and-forget spell takes the slot, so a record never carries a stale
+// four-second cast time into a one-second spell.
+bool SetPackageCastTime(RE::TESPackage *pkg, float seconds)
+{
+    if (!g_castTimeCalibrated)
+        return false;
+    float *lo = FloatOfInput(pkg, "CastTimeMin");
+    float *hi = FloatOfInput(pkg, "CastTimeMax");
+    if (!lo || !hi)
+        return false;
+    *lo = seconds;
+    *hi = seconds;
+    return true;
+}
+
 // Aim a slot's Target input at an actor, or back at Self with nullptr.
 bool SetPackageTarget(RE::TESPackage *pkg, RE::Actor *target)
 {
@@ -452,6 +503,7 @@ bool AlreadyCasting(const RE::Actor *actor)
 void Release(std::size_t i)
 {
     g_pool[i].lease.reset();
+    g_pool[i].target = {};
     SetPackageTarget(g_slots[i], nullptr); // no target handle outlives its lease
     g_pool[i].fired.store(false, std::memory_order_relaxed);
     g_pool[i].seenRunning = false;
@@ -544,7 +596,7 @@ bool HasFreeSlot()
     return false;
 }
 
-CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId)
+CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId, float sustainSeconds)
 {
     if (!g_available || !actor)
         return CastRequest::NoPackages;
@@ -602,6 +654,25 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
     }
 
     SetPackageTarget(g_slots[chosen], target);
+    slot.target = target ? target->GetHandle() : RE::ActorHandle{};
+
+    // A concentration spell streams for as long as the procedure's CastTime
+    // says. Set that to the sustain, and remember that the fire event is
+    // not the end of this one.
+    auto *spellItem = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
+    slot.sustained = spellItem && spellItem->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
+    const float sustain = sustainSeconds > 0.0f ? sustainSeconds : kDefaultSustainSeconds;
+    if (slot.sustained)
+    {
+        if (SetPackageCastTime(g_slots[chosen], sustain))
+            logger::info("  slot {} sustains {} for {:.1f} s", chosen,
+                         spellItem->GetName() ? spellItem->GetName() : "?", sustain);
+        else
+            logger::info("  slot {} cast time not calibrated; the stream will run the authored {:.1f}-{:.1f} s", chosen,
+                         kAuthoredCastTimeMin, kAuthoredCastTimeMax);
+    }
+    else
+        SetPackageCastTime(g_slots[chosen], kAuthoredCastTimeMax);
     logger::info("  slot {} aims at {}", chosen,
                  target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), target->GetName() ? target->GetName() : "?")
                         : std::string("self"));
@@ -612,7 +683,9 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
                  InFollowerAlias(actor) ? "yes" : "NO -- recruit her through dialogue, not the console");
 
     slot.armedAt = TacticsSeconds();
-    slot.until = slot.armedAt + kArmWindowSeconds;
+    // A stream needs the window to outlast it; a bolt needs only the AI's
+    // start-up latency.
+    slot.until = slot.armedAt + kArmWindowSeconds + (slot.sustained ? sustain : 0.0f);
     slot.seenRunning = false;
     slot.fired.store(false, std::memory_order_relaxed);
 
@@ -701,8 +774,10 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         // has left her hand, or the AI has already moved on -- so a follower
         // is not kept for four seconds after a one-second cast.
         const char *why = nullptr;
-        if (slot.fired.load(std::memory_order_relaxed))
+        if (!slot.sustained && slot.fired.load(std::memory_order_relaxed))
             why = "spell fired";
+        else if (slot.sustained && slot.target && slot.target.get() && slot.target.get()->IsDead())
+            why = "target dead"; // a stream at a corpse is wasted magicka and a follower standing still
         else if (slot.seenRunning && !running)
             why = "package ended";
         else if (now >= slot.until)
@@ -875,6 +950,25 @@ void ProbeSpellInput()
     g_typeSelf = self;
     g_typeSpecificReference = mpt->targType;
     g_targetCalibrated = true;
+
+    // The CastTime floats: every slot ships 0.5 and 1.0. Read both back on
+    // every slot before any stream length is written.
+    for (std::size_t i = 0; i < kPackageSlots; ++i)
+    {
+        const float *lo = FloatOfInput(g_slots[i], "CastTimeMin");
+        const float *hi = FloatOfInput(g_slots[i], "CastTimeMax");
+        if (!lo || !hi || *lo != kAuthoredCastTimeMin || *hi != kAuthoredCastTimeMax)
+        {
+            logger::info("probe: CastTime of slot {} reads {} / {} -- expected {} / {}; concentration spells will "
+                         "run the authored time",
+                         i, lo ? *lo : -1.0f, hi ? *hi : -1.0f, kAuthoredCastTimeMin, kAuthoredCastTimeMax);
+            g_castTimeCalibrated = false;
+            break;
+        }
+        g_castTimeCalibrated = true;
+    }
+    if (g_castTimeCalibrated)
+        logger::info("probe: CastTime inputs calibrated; a concentration spell can be sustained for a chosen time");
     logger::info("probe: Target input calibrated: Self = {}, specific reference = {} (from Mercer's package); cast "
                  "rules can name any loaded actor",
                  g_typeSelf, g_typeSpecificReference);

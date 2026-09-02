@@ -54,6 +54,11 @@
 //   for the follower herself, a specific reference for anyone else. Both
 //   writes go through PackageTarget, which CommonLibSSE maps, behind the one
 //   pointer the canary probe locates.
+// - A concentration spell is a STREAM. Its fire event marks the start, not
+//   the end, so it is not a release signal for one; the record's CastTime
+//   inputs (two floats, also found by canary) are set to the sustain time
+//   and the lease runs until the AI ends the package or a deadline sized to
+//   that time.
 
 #include <cstdint>
 #include <vector>
@@ -128,7 +133,11 @@ enum class CastRequest : std::uint8_t
 // own id (or zero) casts on herself; any other actor is written into the
 // record's Target input for the duration of the lease, so an offensive spell
 // goes at the enemy she is engaging and a heal can go to the player.
-[[nodiscard]] CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId);
+// sustainSeconds applies to a CONCENTRATION spell (Flames, vanilla Healing):
+// how long to hold the stream. Zero means the default. Ignored for a
+// fire-and-forget spell.
+[[nodiscard]] CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId,
+                                      float sustainSeconds);
 
 // Called every tick from the game thread. Watches held slots: reports when
 // the AI picks our package up, and releases the record -- rank back to -1 --

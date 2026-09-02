@@ -52,11 +52,12 @@
 ;  be re-authored to match it. `bat ftstatus` reports hasspell
 ;  for that exact id.
 ;
-;  Oakflesh 0005AD5C -- Novice Alteration, +40 armour for 60
-;  SECONDS. This is the sustained-ability case, and the duration
-;  is the whole point: it outlasts any cooldown worth choosing,
-;  so re-casting can only be stopped by seeing the effect still
-;  running. Fast Healing cannot test that path.
+;  Flames 00012FCD -- Novice Destruction, CONCENTRATION: the
+;  stream lasts as long as the hand is held. This is the sustained
+;  cast case, and it is here to be watched, not because it works:
+;  the record's CastTime inputs are 0.5..1 s and the release fires
+;  on the spell-fire event, which for a concentration spell marks
+;  the START of the stream. docs/MAGIC.md "Open" has the plan.
 ;
 ;  Costs are listed at skill 0 and fall with the school's skill.
 ;  Check the follower can actually afford one with `bat ftstatus`
@@ -67,8 +68,6 @@
 ;  file could run before the thing it checks.
 ; ============================================================
 
-player.tgm
-
 setrelationshiprank player 4
 
 additem 0003EADD 10
@@ -78,4 +77,4 @@ additem 0003EAE1 5
 additem 0003EAE5 10
 additem 00039BE8 5
 
-addspell 0005AD5C
+addspell 00012FCD

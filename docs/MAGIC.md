@@ -84,6 +84,15 @@ set in one call and `GetFactionRank` is a standard condition function.
    destructor clears the rank and re-evaluates, so she returns to fighting at
    once. The record goes back to the pool.
 
+   A **concentration** spell (Flames, vanilla Healing) is a stream, and its
+   fire event marks the *start*. Measured: releasing on it cut Flames off at
+   0.35-0.65 s, whichever tick landed first. So for a concentration spell the
+   fire event is not a release signal; the record's two `CastTime` floats are
+   set to the sustain time (the rule's numeric argument, default 3 s) and the
+   deadline is extended by it. The stream then runs for the time the record
+   says, and the lease ends when the target dies, the AI drops the package, or
+   at the deadline.
+
 The **pool** is eight records with one holder each. A record is hers alone
 until released, so nothing in it -- spell now, target later -- can be shared
 by accident. When all eight are held, or she already holds one, her cast rules
@@ -165,12 +174,15 @@ Each of these cost at least one test round.
   a few hundred game days. Hour-of-day stays precise; count midnight yourself.
 - **Two spells can share a display name.** Marcurio's heal is `0007231C`; the
   vanilla one is `0002F3B8`. Both are "Fast Healing". Compare FormIDs.
-- **Where a package's Spell and Target inputs live**, found by canary rather
-  than guessed: `IPackageData + 0x10` -> a `PackageTarget` (mapped by
-  CommonLibSSE: type at 00, form-or-handle union at 08). Spell is type
-  ObjectID with a form; Target is type Self (5), or SpecificReference (0)
-  with an `ObjectRefHandle`. The template's name map spells it `SPELL`;
-  compare case-insensitively. The map lives on the template, not on the copy.
+- **Where a package's inputs live**, found by canary rather than guessed. A
+  named input's 8-byte data slot is at `IPackageData + 0x08`: the CastTime
+  floats are there. The Spell and Target inputs keep that slot empty and hold
+  a pointer at `+0x10` to a `PackageTarget` (mapped by CommonLibSSE: type at
+  00, form-or-handle union at 08). Self read as type **6** in the engine, not
+  the 5 the record library's ordering implies -- which is why the type values
+  are read from authored records, not assumed. The template's name map spells
+  it `SPELL`; compare case-insensitively. The map lives on the template, not
+  on the copy.
 - **The sensor must report whom she is fighting.** `currentCombatTarget` on
   the actor's runtime data. Without it, "cast at current target" resolves to
   no target and the rule never fires.
@@ -239,12 +251,12 @@ entry. NFF is one more line when integration is wanted. NFF also has
 
 ## Open
 
-- **Concentration spells** (Flames, vanilla Healing). The fire event marks
-  the *start* of the stream, so the current release would cut it off at once.
-  Needs: read the spell's casting type at arm time; for concentration, ignore
-  the fire signal and release on package end or deadline; make the sustain
-  time a rule input by repointing the record's two `CastTime` floats (another
-  canary probe).
+- **Sustain time in the editor.** A concentration rule's stream length is
+  its numeric argument, which the panel does not yet expose; every stream runs
+  the 3 s default. A random length within a range is the likely next shape.
+- **The AI sometimes does not start the procedure.** In the Flames run, three
+  of seven requests showed `CastStop` on his own attack and then nothing for
+  four seconds. Package selected, hands free, no cast. Unexplained.
 - **Group subjects.** The snapshot carries one enemy, the one she is
   engaging. "Any enemy below 30% health" needs the combat group read in full.
 - **Our own quest and aliases**, filled for any teammate we manage. Removes

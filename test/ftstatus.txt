@@ -45,7 +45,7 @@ getitemcount 0003EAE5
 getitemcount 00039BE8
 
 hasspell 0002F3B8
-hasspell 0005AD5C
+hasspell 00012FCD
 getav damageresist
 
 getav restoration

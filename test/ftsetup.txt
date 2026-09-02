@@ -1,0 +1,15 @@
+; ============================================================
+;  FollowerTactics - set up the PLAYER for a test session
+;  Run once per session:  bat ftsetup
+;
+;  God mode, so the bears cannot reach you while you watch the
+;  follower. Gold, so a hireling (Marcurio charges 500) can be
+;  recruited through dialogue -- which is the only recruit that
+;  fills the follower alias the cast route runs on. Everything
+;  that configures a FOLLOWER is in ftmake, on a selection.
+;
+;  tgm TOGGLES. ftclean toggles it back at the end of a session.
+; ============================================================
+
+player.tgm
+player.additem f 10000
