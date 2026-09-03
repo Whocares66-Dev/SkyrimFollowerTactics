@@ -177,6 +177,22 @@ bool EquippedIn(RE::Actor *actor, RE::TESForm *form, Hand hands)
 // (20:26, Marcurio's boots). The click path takes `now`; the tick, with
 // time running, keeps the queue. Items go on with the prevent-removal flag,
 // the pin; a spell has no such flag.
+// For the log: the selected spell and the hand's caster, both hands. The
+// two differ while a spell equip is only half done -- the menu's equip
+// sounds once at the click and once more when the panel closes (14:19),
+// and this says which half plays the second.
+std::string CasterState(RE::Actor *actor)
+{
+    const auto &data = actor->GetActorRuntimeData();
+    const auto name = [](const RE::MagicItem *spell) { return spell && spell->GetName() ? spell->GetName() : "-"; };
+    const auto *left = actor->GetMagicCaster(RE::MagicSystem::CastingSource::kLeftHand);
+    const auto *right = actor->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
+    return std::string("selected L=") + name(data.selectedSpells[RE::Actor::SlotTypes::kLeftHand]) +
+           " R=" + name(data.selectedSpells[RE::Actor::SlotTypes::kRightHand]) +
+           " -- caster L=" + name(left ? left->currentSpell : nullptr) +
+           " R=" + name(right ? right->currentSpell : nullptr);
+}
+
 void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
 {
     auto *manager = RE::ActorEquipManager::GetSingleton();
@@ -731,7 +747,10 @@ void RepublishOwed()
     for (const ft::ActorId id : g_republish)
     {
         if (auto *actor = RE::TESForm::LookupByID<RE::Actor>(id))
+        {
+            logger::info("{} time running again -- {}", Describe(actor), CasterState(actor));
             PublishFollower(actor);
+        }
     }
     g_republish.clear();
 }
@@ -857,10 +876,12 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
             {
                 const auto *slot = spell->GetEquipSlot();
                 const auto &data = actor->GetActorRuntimeData();
-                logger::info("{} spell {} asked {} -- record slot {:06X} -- now left {} right {}", Describe(actor),
-                             name, static_cast<int>(hands), slot ? slot->GetFormID() : 0,
+                logger::info("{} spell {} asked {} -- record slot {:06X} -- now left {} right {} -- {}",
+                             Describe(actor), name, static_cast<int>(hands), slot ? slot->GetFormID() : 0,
                              data.selectedSpells[RE::Actor::SlotTypes::kLeftHand] == spell,
-                             data.selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell);
+                             data.selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell, CasterState(actor));
+                // Look again once time runs, to see what the engine finishes.
+                g_republish.insert(id);
             }
             break;
         case WearRequest::Unpin:
