@@ -15,7 +15,8 @@
 namespace RE
 {
 class Actor;
-}
+class MagicItem;
+} // namespace RE
 
 namespace ft::game
 {
@@ -53,6 +54,15 @@ struct InventoryItem
     float armor{0.0f};  // a piece of armour's rating on her; 0 for the rest
     bool worn{false};
     bool enchanted{false};
+    // A thing held in a hand -- weapon, shield, torch -- as opposed to worn;
+    // and one that only the left hand takes: a shield or a torch.
+    bool handItem{false};
+    bool leftOnly{false};
+    // For a weapon, shield or torch: which hand holds it.
+    bool equippedLeft{false};
+    bool equippedRight{false};
+    bool pinnedLeft{false};
+    bool pinnedRight{false};
     // Something she can put on: a weapon, a piece of apparel, ammunition, a
     // torch. Only these take a click in the Worn column.
     bool equipable{false};
@@ -68,6 +78,10 @@ struct InventoryItem
     std::string description;
     std::string effects;
 };
+
+// One line per effect of a spell, potion or enchantment: its description
+// with the magnitude and duration filled in, as the item card shows it.
+[[nodiscard]] std::string EffectLines(const RE::MagicItem *magic);
 
 // Everything she carries that the game would list, sorted by name. Nameless
 // entries and armour or weapons flagged non-playable are left out, as the

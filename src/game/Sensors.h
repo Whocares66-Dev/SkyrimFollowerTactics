@@ -104,6 +104,12 @@ struct SheetSection
 // any fortify or potion modifier folded into the same line.
 [[nodiscard]] std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor);
 
+// The Tactics tab's Combat Style section: the numbers and flags the combat
+// AI is tuned by, read off the style she is using right now -- her live
+// combat controller's in a fight, her record's otherwise -- so a copy the
+// panel gave her shows as what it is.
+[[nodiscard]] std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor);
+
 // The damage a weapon does in her hands, as the inventory menu would show
 // it: base, times tempering, times the skill curve, through her perks, times
 // any Fortify effect on the skill. `entry` may be null, in which case the

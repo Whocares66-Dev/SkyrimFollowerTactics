@@ -246,65 +246,231 @@ ft::Stat ReadStatFor(RE::Actor *actor, RE::ActorValue av)
 // read by the tick; both on the game thread, but the lock costs nothing and
 // keeps the next writer honest.
 std::mutex g_pinMutex;
-std::unordered_map<ft::ActorId, std::unordered_set<std::uint32_t>> g_pins;
+// What the panel has pinned on each follower: the form, and the hands it is
+// pinned to (None for armour and ammunition). Written by the request task,
+// read by the tick; both on the game thread, but the lock costs nothing and
+// keeps the next writer honest.
+std::unordered_map<ft::ActorId, std::unordered_map<std::uint32_t, Hand>> g_pins;
 
-// Equip a base object. `force` is the engine's prevent-removal flag, which
-// asks the AI not to take it off again -- the pin.
-//
-// `now` clears the engine's queue flag. Queued -- the potion path's shape,
-// right in a fight -- the change waits for the actor's next update, and an
-// actor gets no update while the clock is frozen, so a click in the panel
-// showed nothing until the panel closed (20:26, Marcurio's boots). The
-// engine's trailing apply-now flag did not change that (20:37); dropping the
-// queue is what the player's own inventory menu does, paused, and it does.
-// The click path takes that; the tick, with time running, keeps the queue.
-void Equip(RE::Actor *actor, RE::TESBoundObject *object, bool force, bool now)
+bool Overlap(Hand a, Hand b)
 {
-    if (auto *manager = RE::ActorEquipManager::GetSingleton())
-        manager->EquipObject(actor, object, nullptr, 1, nullptr, !now, force, false, false);
+    return (static_cast<std::uint8_t>(a) & static_cast<std::uint8_t>(b)) != 0;
 }
 
-// Take it off WITHOUT the prevent-equip flag. The Creation Kit wiki notes
-// that flag does nothing for weapons on an NPC and works only too well for
-// ammunition: an archer is left holding a bow she cannot use. Taking off is
-// a one-time act here; if the game puts the thing back, that is its outfit
-// logic doing its job.
-void Unequip(RE::Actor *actor, RE::TESBoundObject *object, bool now)
+// The hand's equip slot record, by FormID: LeftHand 013F43, RightHand
+// 013F42 in Skyrim.esm. Not through the default object table, which did
+// not answer for these on this game (01:29): a null slot here means "the
+// default", and the default is the right hand -- which is where every
+// left-hand dagger went (01:51).
+const RE::BGSEquipSlot *HandSlot(Hand hand)
 {
-    if (auto *manager = RE::ActorEquipManager::GetSingleton())
-        manager->UnequipObject(actor, object, nullptr, 1, nullptr, !now, false, false, false, nullptr);
+    return RE::TESForm::LookupByID<RE::BGSEquipSlot>(hand == Hand::Left ? 0x00013F43 : 0x00013F42);
 }
 
-// Does wearing `incoming` mean taking `held` off? Armour by shared body
-// slots; a weapon by any other weapon, and a two-hander or a bow by a shield
-// too; a torch by a shield, since both want the left hand; ammunition by
-// other ammunition. Anything else does not compete.
-bool Conflicts(RE::TESBoundObject *incoming, RE::TESBoundObject *held)
+// The hands a form takes when pinned, given the hand asked for.
+Hand HandsFor(RE::TESForm *form, Hand requested)
 {
-    using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
-    const auto slotsOf = [](RE::TESBoundObject *o) -> std::uint32_t {
-        auto *armor = o->As<RE::TESObjectARMO>();
-        return armor ? static_cast<std::uint32_t>(armor->GetSlotMask()) : 0U;
-    };
-    const auto isShield = [&](RE::TESBoundObject *o) {
-        return (slotsOf(o) & static_cast<std::uint32_t>(Slot::kShield)) != 0U;
-    };
-
-    if (auto *weapon = incoming->As<RE::TESObjectWEAP>())
+    const Hand one = requested == Hand::Left ? Hand::Left : Hand::Right;
+    if (auto *weapon = form->As<RE::TESObjectWEAP>())
     {
-        if (held->Is(RE::FormType::Weapon))
-            return true;
-        const bool bothHands =
-            weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow();
-        return bothHands && isShield(held);
+        if (weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow())
+            return Hand::Both;
+        return one;
     }
-    if (incoming->Is(RE::FormType::Armor))
-        return (slotsOf(incoming) & slotsOf(held)) != 0U;
-    if (incoming->Is(RE::FormType::Light))
-        return held->Is(RE::FormType::Light) || isShield(held);
-    if (incoming->Is(RE::FormType::Ammo))
-        return held->Is(RE::FormType::Ammo);
-    return false;
+    if (auto *spell = form->As<RE::SpellItem>())
+    {
+        if (spell->IsTwoHanded())
+            return Hand::Both;
+        // A one-hand-only record (the NPC variants) goes to its hand
+        // whatever was asked. By FormID, as Magic.cpp explains: RightHand is
+        // 013F42 and LeftHand 013F43 in Skyrim.esm.
+        if (const auto *slot = spell->GetEquipSlot())
+        {
+            if (slot->GetFormID() == 0x00013F43)
+                return Hand::Left;
+            if (slot->GetFormID() == 0x00013F42)
+                return Hand::Right;
+        }
+        return one;
+    }
+    if (auto *armor = form->As<RE::TESObjectARMO>())
+        return armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield) ? Hand::Left : Hand::None;
+    if (form->Is(RE::FormType::Light))
+        return Hand::Left;
+    return Hand::None;
+}
+
+// Is the form in those hands right now?
+bool EquippedIn(RE::Actor *actor, RE::TESForm *form, Hand hands)
+{
+    if (auto *spell = form->As<RE::SpellItem>())
+    {
+        const auto &data = actor->GetActorRuntimeData();
+        const bool left = data.selectedSpells[RE::Actor::SlotTypes::kLeftHand] == spell;
+        const bool right = data.selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell;
+        return (!Overlap(hands, Hand::Left) || left) && (!Overlap(hands, Hand::Right) || right);
+    }
+    // A two-hander sits in the right hand; the left reports it too, or
+    // nothing. Asking the right is enough.
+    if (hands == Hand::Both)
+        return actor->GetEquippedObject(false) == form;
+    return actor->GetEquippedObject(hands == Hand::Left) == form;
+}
+
+// Put a pinned form on, in its hands. `now` clears the engine's queue flag:
+// queued -- the potion path's shape, right in a fight -- the change waits
+// for the actor's next update, and an actor gets no update while the clock
+// is frozen, so a click in the panel showed nothing until the panel closed
+// (20:26, Marcurio's boots). The click path takes `now`; the tick, with
+// time running, keeps the queue. Items go on with the prevent-removal flag,
+// the pin; a spell has no such flag.
+void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
+{
+    auto *manager = RE::ActorEquipManager::GetSingleton();
+    if (!manager)
+        return;
+    if (auto *spell = form->As<RE::SpellItem>())
+    {
+        for (const Hand hand : {Hand::Left, Hand::Right})
+        {
+            if (Overlap(hands, hand))
+                manager->EquipSpell(actor, spell, HandSlot(hand));
+        }
+        return;
+    }
+    auto *object = form->As<RE::TESBoundObject>();
+    if (!object)
+        return;
+    // A one-handed weapon goes to the hand asked for; everything else finds
+    // its own slot.
+    const RE::BGSEquipSlot *slot = nullptr;
+    if (object->Is(RE::FormType::Weapon) && hands != Hand::Both && hands != Hand::None)
+        slot = HandSlot(hands);
+    manager->EquipObject(actor, object, nullptr, 1, slot, !now, true, false, false);
+}
+
+// Equip an item WITHOUT the pin, for letting go of one while it stays on.
+void EquipPlain(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
+{
+    auto *manager = RE::ActorEquipManager::GetSingleton();
+    if (!manager)
+        return;
+    const RE::BGSEquipSlot *slot = nullptr;
+    if (object->Is(RE::FormType::Weapon) && hands != Hand::Both && hands != Hand::None)
+        slot = HandSlot(hands);
+    manager->EquipObject(actor, object, nullptr, 1, slot, false, false, false, false);
+}
+
+// Take a form off.
+//
+// Items go through the equip manager WITHOUT the prevent-equip flag: the
+// Creation Kit wiki notes that flag does nothing for weapons on an NPC and
+// works only too well for ammunition, leaving an archer holding a bow she
+// cannot use. A spell has no unequip in CommonLibSSE 3.7.0 or in SKSE; the
+// engine's is the Papyrus native Actor.UnequipSpell(spell, source), 0 for
+// the left hand and 1 for the right, so it is dispatched to the script VM,
+// which runs it on the game thread a frame later.
+void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
+{
+    if (auto *spell = form->As<RE::SpellItem>())
+    {
+        auto *vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        auto *policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
+        if (!policy)
+            return;
+        const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
+        for (const Hand hand : {Hand::Left, Hand::Right})
+        {
+            if (!Overlap(hands, hand))
+                continue;
+            RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
+            vm->DispatchMethodCall2(
+                handle, "Actor", "UnequipSpell",
+                RE::MakeFunctionArguments(std::move(spell), static_cast<std::int32_t>(hand == Hand::Left ? 0 : 1)),
+                result);
+        }
+        return;
+    }
+    if (auto *object = form->As<RE::TESBoundObject>())
+    {
+        // A one-handed weapon comes out of the hand named; anything else
+        // out of wherever it is.
+        const RE::BGSEquipSlot *slot = nullptr;
+        if (object->Is(RE::FormType::Weapon) && (hands == Hand::Left || hands == Hand::Right))
+            slot = HandSlot(hands);
+        if (auto *manager = RE::ActorEquipManager::GetSingleton())
+            manager->UnequipObject(actor, object, nullptr, 1, slot, !now, false, false, false, nullptr);
+    }
+}
+
+// Whether a left-hand weapon pin also gives her a combat style that allows
+// dual wielding. Off: a trial of what the unmodified style does with the
+// weapon (2026-09-03).
+constexpr bool kDualWieldOnLeftPin = false;
+
+// Let her dual wield.
+//
+// csHumanMagic, Marcurio's style, and most vanilla styles do not allow it,
+// and the AI of an actor whose style forbids it takes a left-hand weapon
+// straight off again -- the loop seen with the dagger (00:26), the watchdog
+// putting it back every half second. The style is shared by every mage in
+// the game, so it is not edited in place: she gets a runtime copy with the
+// flag set, on her record and on her live combat controller if she has
+// one. Two flags are set because CommonLibSSE names the bit in two places
+// (the DATA flags and the record header) and which the engine reads is
+// unverified. Not saved: redone on every left-hand pin, gone with the
+// session, like the pins.
+void AllowDualWield(RE::Actor *actor)
+{
+    auto *npc = actor->GetActorBase();
+    auto *style = npc ? npc->GetCombatStyle() : nullptr;
+    if (!style)
+        return;
+    if (style->flags.all(RE::TESCombatStyle::FLAG::kAllowDualWielding))
+    {
+        logger::info("{} combat style {:08X} already allows dual wielding", Describe(actor), style->GetFormID());
+        return;
+    }
+
+    auto *copy = style->CreateDuplicateForm(true, nullptr);
+    auto *ours = copy ? copy->As<RE::TESCombatStyle>() : nullptr;
+    if (!ours)
+    {
+        logger::warn("{} cannot be allowed to dual wield: combat style {:08X} would not duplicate", Describe(actor),
+                     style->GetFormID());
+        return;
+    }
+    // CreateDuplicateForm gives a NEW combat style at the engine's defaults
+    // -- offensive 0.24, every score 1 -- not a copy of hers (01:55, the
+    // Combat Style tab on the copy). The data is five plain structs and the
+    // flags, so it is copied by hand.
+    ours->generalData = style->generalData;
+    ours->meleeData = style->meleeData;
+    ours->closeRangeData = style->closeRangeData;
+    ours->longRangeData = style->longRangeData;
+    ours->flightData = style->flightData;
+    ours->flags = style->flags;
+    ours->flags.set(RE::TESCombatStyle::FLAG::kAllowDualWielding);
+    ours->formFlags |= RE::TESCombatStyle::RecordFlags::kAllowDualWielding;
+    npc->SetCombatStyle(ours);
+    if (auto *controller = actor->GetActorRuntimeData().combatController)
+        controller->combatStyle = ours;
+    logger::info("{} allowed to dual wield: combat style {:08X} copied as {:08X} with the flag set", Describe(actor),
+                 style->GetFormID(), ours->GetFormID());
+}
+
+// Does pinning `incoming` in `hands` mean releasing `held`, pinned in
+// `heldHands`? Hands that overlap; armour on shared body slots;
+// ammunition against ammunition. Anything else does not compete.
+bool Conflicts(RE::TESForm *incoming, Hand hands, RE::TESForm *held, Hand heldHands)
+{
+    if (hands != Hand::None && heldHands != Hand::None)
+        return Overlap(hands, heldHands);
+    auto *a = incoming->As<RE::TESObjectARMO>();
+    auto *b = held->As<RE::TESObjectARMO>();
+    if (a && b)
+        return (static_cast<std::uint32_t>(a->GetSlotMask()) & static_cast<std::uint32_t>(b->GetSlotMask())) != 0U;
+    return incoming->Is(RE::FormType::Ammo) && held->Is(RE::FormType::Ammo);
 }
 
 // A pinned item is locked against the engine's own swap -- the Creation Kit
@@ -312,15 +478,16 @@ bool Conflicts(RE::TESBoundObject *incoming, RE::TESBoundObject *held)
 // -- so before something new goes on, whatever it displaces has to be
 // unpinned and taken off by us, or the equip silently does nothing. That is
 // what happened with iron armour pinned and robes clicked.
-void ReleaseConflictingPins(RE::Actor *actor, std::unordered_set<std::uint32_t> &pins, RE::TESBoundObject *incoming)
+void ReleaseConflictingPins(RE::Actor *actor, std::unordered_map<std::uint32_t, Hand> &pins, RE::TESForm *incoming,
+                            Hand hands)
 {
     for (auto it = pins.begin(); it != pins.end();)
     {
-        auto *held = RE::TESForm::LookupByID<RE::TESBoundObject>(*it);
-        if (held && held != incoming && Conflicts(incoming, held))
+        auto *held = RE::TESForm::LookupByID(it->first);
+        if (held && held != incoming && Conflicts(incoming, hands, held, it->second))
         {
             logger::info("{} unpinning {} to make room", Describe(actor), held->GetName() ? held->GetName() : "?");
-            Unequip(actor, held, true);
+            UnequipForm(actor, held, it->second, true);
             it = pins.erase(it);
         }
         else
@@ -330,12 +497,12 @@ void ReleaseConflictingPins(RE::Actor *actor, std::unordered_set<std::uint32_t> 
     }
 }
 
-// Mark the scanned items that are pinned, for the Worn column, and drop any
-// pin for an item the scan did not find: sold, dropped, the last arrow shot.
-// The sweep has the whole bag in hand, so this is a set lookup per item and
-// nothing more; the watchdog catches the same case on its own, but there is
-// no reason to leave a dead pin for it to find.
-void MarkPinned(ft::ActorId id, std::vector<InventoryItem> &items)
+// Mark the scanned items and spells that are pinned, for the panel's hand
+// and Equipped cells, and drop any pin for something the scans did not
+// find: sold, dropped, the last arrow shot. A set lookup per entry and
+// nothing more; the watchdog catches the same case on its own, but there
+// is no reason to leave a dead pin for it to find.
+void MarkPins(ft::ActorId id, std::vector<InventoryItem> &items, std::vector<MagicEntry> &magic)
 {
     std::scoped_lock lock(g_pinMutex);
     const auto it = g_pins.find(id);
@@ -343,37 +510,45 @@ void MarkPinned(ft::ActorId id, std::vector<InventoryItem> &items)
         return;
     auto &pins = it->second;
 
-    std::unordered_set<std::uint32_t> carried;
+    std::unordered_set<std::uint32_t> present;
     for (auto &item : items)
     {
-        carried.insert(item.form);
-        item.pinned = pins.contains(item.form);
+        present.insert(item.form);
+        if (const auto pin = pins.find(item.form); pin != pins.end())
+        {
+            item.pinned = pin->second == Hand::None;
+            item.pinnedLeft = Overlap(pin->second, Hand::Left);
+            item.pinnedRight = Overlap(pin->second, Hand::Right);
+        }
     }
-    std::erase_if(pins, [&](std::uint32_t form) { return !carried.contains(form); });
+    for (auto &entry : magic)
+    {
+        present.insert(entry.form);
+        if (const auto pin = pins.find(entry.form); pin != pins.end())
+        {
+            entry.pinnedLeft = Overlap(pin->second, Hand::Left);
+            entry.pinnedRight = Overlap(pin->second, Hand::Right);
+        }
+    }
+    std::erase_if(pins, [&](const auto &pin) { return !present.contains(pin.first); });
 }
 
-// Weapons and torches: the hand items the combat AI and the rules contest.
-// Ammunition is not, so it is not one of these.
-bool IsHandItem(const RE::TESBoundObject *object)
-{
-    return object->Is(RE::FormType::Weapon) || object->Is(RE::FormType::Light);
-}
-
-// The watchdog: put back any pinned item the game has taken off, and forget
+// The watchdog: put back any pinned form the game has taken off, and forget
 // pins for items no longer carried.
 //
 // Its own pass, not a rider on the inventory scan, and gated on the pin map:
 // with nothing pinned it costs a lock and a look at an empty map. With pins
-// it asks the engine for each pinned base object's entry alone -- a walk of
-// pointer compares, no names, no strings -- so a follower with two pins
-// costs two lookups a tick, not a sweep of her bag.
+// it asks the engine for each pinned item's entry alone -- a walk of pointer
+// compares, no names, no strings -- so a follower with two pins costs two
+// lookups a tick, not a sweep of her bag.
 //
 // In a fight her hands are the combat AI's, and the rules': a mage with a
 // pinned dagger wants that hand for a spell, and putting the dagger back
 // every half second had the two trading blows -- the flicker seen with
-// Marcurio. So a pinned weapon or torch is what she carries out of combat
-// and starts a fight with; once it is over, it goes back on. Armour and
-// ammunition are contested by nothing and hold throughout.
+// Marcurio. So anything pinned to a hand -- weapon, spell, shield, torch --
+// is what she carries out of combat and starts a fight with; once it is
+// over, it goes back. Armour and ammunition are contested by nothing and
+// hold throughout.
 void EnforcePins(const std::vector<RE::Actor *> &followers)
 {
     std::scoped_lock lock(g_pinMutex);
@@ -390,31 +565,47 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
 
         for (auto pin = pins.begin(); pin != pins.end();)
         {
-            auto *object = RE::TESForm::LookupByID<RE::TESBoundObject>(*pin);
-            if (!object)
+            auto *form = RE::TESForm::LookupByID(pin->first);
+            if (!form)
             {
                 pin = pins.erase(pin);
                 continue;
             }
+            const Hand hands = pin->second;
 
-            auto inventory =
-                actor->GetInventory([object](RE::TESBoundObject &candidate) { return &candidate == object; });
-            const auto found = inventory.find(object);
-            const bool carried = found != inventory.end() && found->second.first > 0;
-            if (!carried)
+            // Spells first: a SpellItem is a bound object too, and the
+            // inventory branch dropped every spell pin as "no longer
+            // carried" (00:26, Close Wounds).
+            if (form->Is(RE::FormType::Spell))
             {
-                logger::info("{} no longer carries {} -- pin dropped", Describe(actor),
-                             object->GetName() ? object->GetName() : "?");
-                pin = pins.erase(pin);
-                continue;
+                if (!fighting && !EquippedIn(actor, form, hands))
+                {
+                    logger::info("{} put away pinned {} -- readying it again", Describe(actor),
+                                 form->GetName() ? form->GetName() : "?");
+                    EquipPinned(actor, form, hands, false);
+                }
             }
-
-            const bool worn = found->second.second && found->second.second->IsWorn();
-            if (!worn && !(fighting && IsHandItem(object)))
+            else if (auto *object = form->As<RE::TESBoundObject>())
             {
-                logger::info("{} took off pinned {} -- putting it back on", Describe(actor),
-                             object->GetName() ? object->GetName() : "?");
-                Equip(actor, object, true, false);
+                auto inventory =
+                    actor->GetInventory([object](RE::TESBoundObject &candidate) { return &candidate == object; });
+                const auto found = inventory.find(object);
+                const bool carried = found != inventory.end() && found->second.first > 0;
+                if (!carried)
+                {
+                    logger::info("{} no longer carries {} -- pin dropped", Describe(actor),
+                                 object->GetName() ? object->GetName() : "?");
+                    pin = pins.erase(pin);
+                    continue;
+                }
+                const bool on = hands == Hand::None ? (found->second.second && found->second.second->IsWorn())
+                                                    : EquippedIn(actor, object, hands);
+                if (!on && !(fighting && hands != Hand::None))
+                {
+                    logger::info("{} took off pinned {} -- putting it back on", Describe(actor),
+                                 object->GetName() ? object->GetName() : "?");
+                    EquipPinned(actor, object, hands, false);
+                }
             }
             ++pin;
         }
@@ -443,7 +634,9 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     v.sheet = BuildCharacterSheet(actor);
     v.skills = BuildSkillSheet(actor);
     v.inventory = ScanInventory(actor);
-    MarkPinned(v.id, v.inventory);
+    v.magic = ScanMagic(actor);
+    MarkPins(v.id, v.inventory, v.magic);
+    v.combatStyle = BuildCombatStyleSheet(actor);
 }
 
 void PublishOne(FollowerView v)
@@ -762,52 +955,103 @@ ft::RuleSet GetRules(ft::ActorId id)
     return it == g_ruleSets.end() ? DefaultRuleSet() : it->second;
 }
 
-void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request)
+void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand)
 {
     auto *task = SKSE::GetTaskInterface();
     if (!task)
         return;
     // Queued to the game thread and run there once. The panel is open while
     // this is clicked, and with FreezeTimeOnMenu the tick is held, so the
-    // task also republishes her view: the Worn column answers now rather
-    // than when the panel closes.
-    task->AddTask([id, form, request] {
+    // task also republishes her view: the cell answers now rather than when
+    // the panel closes.
+    task->AddTask([id, form, request, hand] {
         auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
-        auto *object = RE::TESForm::LookupByID<RE::TESBoundObject>(form);
-        if (!actor || !object)
+        auto *thing = RE::TESForm::LookupByID(form);
+        if (!actor || !thing)
             return;
 
+        Hand hands = HandsFor(thing, hand);
         {
             std::scoped_lock lock(g_pinMutex);
             auto &pins = g_pins[id];
             if (request == WearRequest::Pin)
             {
-                ReleaseConflictingPins(actor, pins, object);
-                pins.insert(form);
+                ReleaseConflictingPins(actor, pins, thing, hands);
+                pins[form] = hands;
             }
             else
             {
+                if (const auto pin = pins.find(form); pin != pins.end())
+                    hands = pin->second;
                 pins.erase(form);
             }
         }
 
-        const char *name = object->GetName() ? object->GetName() : "?";
+        const char *name = thing->GetName() ? thing->GetName() : "?";
         switch (request)
         {
         case WearRequest::Pin:
-            logger::info("{} told to wear {} (pinned)", Describe(actor), name);
-            Equip(actor, object, true, true);
+            logger::info("{} told to ready {} (pinned)", Describe(actor), name);
+            // Off for now, to see what her own style does with a left-hand
+            // weapon; the copy stays available for the combat-style work.
+            if (kDualWieldOnLeftPin && thing->Is(RE::FormType::Weapon) && hands == Hand::Left)
+                AllowDualWield(actor);
+            // One weapon cannot be in both hands. Asked to move her only copy
+            // to the other hand, take it out of the first; otherwise the
+            // engine's equip, finding none free, conjures a second (02:05,
+            // the doubled dagger). Two in the bag may go one per hand.
+            if (thing->Is(RE::FormType::Weapon) && (hands == Hand::Left || hands == Hand::Right))
+            {
+                const Hand other = hands == Hand::Left ? Hand::Right : Hand::Left;
+                if (EquippedIn(actor, thing, other))
+                {
+                    auto *object = thing->As<RE::TESBoundObject>();
+                    auto inventory = actor->GetInventory([object](RE::TESBoundObject &c) { return &c == object; });
+                    const auto found = inventory.find(object);
+                    const auto count = found != inventory.end() ? found->second.first : 0;
+                    if (count < 2)
+                        UnequipForm(actor, thing, other, true);
+                }
+            }
+            EquipPinned(actor, thing, hands, true);
+            // Which hand a weapon or spell lands in is the AI's call as much
+            // as ours: say what was asked and where it went, so the rule can
+            // be read off the log.
+            if (thing->Is(RE::FormType::Weapon))
+            {
+                logger::info("{} weapon {} asked {} -- now left {} right {}", Describe(actor), name,
+                             static_cast<int>(hands), actor->GetEquippedObject(true) == thing,
+                             actor->GetEquippedObject(false) == thing);
+            }
+            if (auto *spell = thing->As<RE::SpellItem>())
+            {
+                const auto *slot = spell->GetEquipSlot();
+                const auto &data = actor->GetActorRuntimeData();
+                logger::info("{} spell {} asked {} -- record slot {:06X} -- now left {} right {}", Describe(actor),
+                             name, static_cast<int>(hands), slot ? slot->GetFormID() : 0,
+                             data.selectedSpells[RE::Actor::SlotTypes::kLeftHand] == spell,
+                             data.selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell);
+            }
             break;
         case WearRequest::Unpin:
-            // The lock lives on the worn item, and the engine offers no way
-            // to lift it in place: off, then on again without the flag.
+            // An item's lock lives on the worn item, and the engine offers no
+            // way to lift it in place: off, then on again without the flag.
+            // A spell has no lock; forgetting the pin is the whole of it.
             logger::info("{} told to keep {} but not held to it", Describe(actor), name);
-            Unequip(actor, object, true);
-            Equip(actor, object, false, true);
+            // Spell first: a SpellItem is a bound object too, and the item
+            // branch took a spell off and "put it back" with an item equip,
+            // which left it off (01:47, Chain Lightning).
+            if (thing->Is(RE::FormType::Spell))
+                break;
+            if (auto *object = thing->As<RE::TESBoundObject>())
+            {
+                UnequipForm(actor, object, hands, true);
+                EquipPlain(actor, object, hands);
+            }
             break;
         case WearRequest::TakeOff:
-            logger::info("{} told to take off {}", Describe(actor), name);
-            Unequip(actor, object, true);
+            logger::info("{} told to put away {}", Describe(actor), name);
+            UnequipForm(actor, thing, hands, true);
             break;
         }
 

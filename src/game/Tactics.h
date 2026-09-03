@@ -13,6 +13,7 @@
 
 #include "core/Evaluator.h"
 #include "game/Inventory.h"
+#include "game/Magic.h"
 #include "game/Sensors.h"
 
 #include <string>
@@ -73,6 +74,10 @@ struct FollowerView
     std::vector<SheetSection> skills;
     // The Inventory tab: everything she carries, sorted by name.
     std::vector<InventoryItem> inventory;
+    // The Magic tab: spells, powers and shouts, sorted by name.
+    std::vector<MagicEntry> magic;
+    // The Tactics tab's Combat Style section.
+    std::vector<SheetSection> combatStyle;
 };
 
 struct CostStats
@@ -102,7 +107,7 @@ void SetRules(ft::ActorId id, ft::RuleSet rules);
 // The rules a follower starts with, before anyone edits them.
 [[nodiscard]] const ft::RuleSet &DefaultRuleSet();
 
-// Put an item on, keep it on, or take it off, from the panel.
+// Put an item or a spell on, keep it on, or take it off, from the panel.
 //
 // Pin equips it and KEEPS it on: the tick puts it back whenever the game
 // takes it off, until the item leaves her inventory or a later request lets
@@ -135,7 +140,19 @@ enum class WearRequest
     TakeOff
 };
 
-void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request);
+// Which hand a pin holds. None for armour and ammunition, which have no
+// hand. A one-handed weapon or a spell takes the hand asked for; a
+// two-hander, a bow or a master spell takes Both; a shield or a torch takes
+// Left whatever is asked.
+enum class Hand : std::uint8_t
+{
+    None = 0,
+    Left = 1,
+    Right = 2,
+    Both = 3
+};
+
+void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None);
 
 // Why the world's clock is stopped, if it is.
 //

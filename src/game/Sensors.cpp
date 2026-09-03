@@ -788,6 +788,125 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     return out;
 }
 
+std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
+{
+    std::vector<SheetSection> out;
+    if (!actor)
+        return out;
+    auto *npc = actor->GetActorBase();
+    auto *record = npc ? npc->GetCombatStyle() : nullptr;
+    auto *controller = actor->GetActorRuntimeData().combatController;
+    auto *live = controller && controller->combatStyle ? controller->combatStyle : record;
+    if (!live)
+        return out;
+
+    // Two scales, read off every style in the load order (163 of them):
+    // the chances and movement multipliers run 0 to 1, and the score and
+    // attack multipliers run 0 to 10, with 1 as the neutral value.
+    const auto chance = [](float x) { return Fmt("%.2f", x) + " / 1"; };
+    const auto score = [](float x) { return Fmt("%.2f", x) + " / 10"; };
+    // Hover text: the Creation Kit wiki's word on each field, as bullets.
+    // docs/COMBAT_STYLE.md has the page.
+    const auto note = [](SheetRow row, const char *text) {
+        row.note = text;
+        return row;
+    };
+
+    using Flag = RE::TESCombatStyle::FLAG;
+    const bool flanking = live->flags.all(Flag::kFlankingStyle);
+    {
+        SheetSection s{"Style", {}, {}};
+        // A runtime copy has a 0xFF FormID; a record's is its plugin's.
+        const bool ours = (live->GetFormID() & 0xFF000000U) == 0xFF000000U;
+        char id[16];
+        std::snprintf(id, sizeof(id), "%08X", live->GetFormID());
+        s.rows.push_back(Row("Record", ours ? std::string(id) + "  (our copy)" : id));
+        if (controller && controller->combatStyle && record && controller->combatStyle != record)
+        {
+            char recordId[16];
+            std::snprintf(recordId, sizeof(recordId), "%08X", record->GetFormID());
+            s.rows.push_back(Row("On Record", recordId));
+        }
+        s.rows.push_back(note(Row("Close Range", flanking ? "Flanking" : "Dueling"),
+                              "- Dueling: circles, falls back\n"
+                              "- Flanking: keeps a distance, stalks\n"
+                              "- One or the other"));
+        s.rows.push_back(note(Row("Dual Wield", live->flags.all(Flag::kAllowDualWielding) ? "allowed" : "no"),
+                              "- May hold a weapon in each hand\n"
+                              "- Humanoids only"));
+        out.push_back(std::move(s));
+    }
+    {
+        const auto &g = live->generalData;
+        SheetSection s{"General", {}, {}};
+        s.rows.push_back(note(Row("Offensive", chance(g.offensiveMult)), "- Higher: attacks more often\n"
+                                                                         "- More power attacks\n"
+                                                                         "- Paired with Defensive"));
+        s.rows.push_back(note(Row("Defensive", chance(g.defensiveMult)), "- Higher: blocks more, holds it longer\n"
+                                                                         "- Bashes more, if she can"));
+        s.rows.push_back(note(Row("Group Offensive", chance(g.groupOffensiveMult)),
+                              "- Replaces Offensive when several attack one target\n"
+                              "- Higher: stays offensive in a crowd"));
+        out.push_back(std::move(s));
+    }
+    {
+        // The six that decide what she prefers to hold.
+        const auto &g = live->generalData;
+        SheetSection s{"Equipment Scores", {}, {}};
+        constexpr const char *kScore = "- Multiplies the damage of attacks of this kind\n"
+                                       "- The highest score is what she uses\n"
+                                       "- A weak weapon needs a high score to beat a strong spell";
+        s.rows.push_back(note(Row("Melee", score(g.meleeScoreMult)), kScore));
+        s.rows.push_back(note(Row("Magic", score(g.magicScoreMult)), kScore));
+        s.rows.push_back(note(Row("Ranged", score(g.rangedScoreMult)), kScore));
+        s.rows.push_back(note(Row("Staff", score(g.staffScoreMult)), kScore));
+        s.rows.push_back(note(Row("Shout", score(g.shoutScoreMult)), kScore));
+        s.rows.push_back(note(Row("Unarmed", score(g.unarmedScoreMult)), kScore));
+        out.push_back(std::move(s));
+    }
+    {
+        const auto &m = live->meleeData;
+        SheetSection s{"Melee", {}, {}};
+        s.rows.push_back(note(Row("Attack, Staggered", score(m.attackIncapacitatedMult)),
+                              "- Higher: attacks a staggered target more"));
+        s.rows.push_back(note(Row("Power Attack, Staggered", score(m.powerAttackIncapacitatedMult)),
+                              "- Higher: power-attacks a staggered target more"));
+        s.rows.push_back(note(Row("Power Attack, Blocking", score(m.powerAttackBlockingMult)),
+                              "- Higher: power-attacks a blocking target more\n"
+                              "- Breaks the block"));
+        s.rows.push_back(note(Row("Bash", score(m.bashMult)), "- Higher: bashes more, with a shield or a bash attack\n"
+                                                              "- A bash can stagger"));
+        s.rows.push_back(note(Row("Bash, Recoiled", score(m.bashRecoilMult)),
+                              "- Higher: bashes a target recoiling from its blocked attack"));
+        s.rows.push_back(note(Row("Bash, Attacking", score(m.bashAttackMult)), "- Higher: bashes a target mid-attack"));
+        s.rows.push_back(note(Row("Bash, Power Attacking", score(m.bashPowerAttackMult)),
+                              "- Higher: bashes a target mid-power-attack"));
+        out.push_back(std::move(s));
+    }
+    {
+        // Only the active pair: dueling circles and falls back, flanking
+        // keeps a distance and stalks. The other pair is dead data.
+        const auto &c = live->closeRangeData;
+        SheetSection s{"Range", {}, {}};
+        if (flanking)
+        {
+            s.rows.push_back(
+                note(Row("Flank Distance", chance(c.flankDistanceMult)), "- Distance kept while flanking"));
+            s.rows.push_back(
+                note(Row("Stalk Time", chance(c.stalkTimeMult)), "- Time spent flanking before attacking"));
+        }
+        else
+        {
+            s.rows.push_back(note(Row("Circle", chance(c.circleMult)), "- Higher: circles the target more"));
+            s.rows.push_back(note(Row("Fallback", chance(c.fallbackMult)), "- Chance to back off"));
+        }
+        s.rows.push_back(note(Row("Strafe", chance(live->longRangeData.strafeMult)),
+                              "- Higher: strafes more to dodge projectiles at range"));
+        out.push_back(std::move(s));
+    }
+    return out;
+}
+
 std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
 {
     std::vector<SheetSection> out;

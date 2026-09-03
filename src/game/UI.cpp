@@ -131,6 +131,8 @@ constexpr float kOrderGap = 2.0f;
 // row and the number column, which is not what those want. So the padding
 // stays, and the two button cells opt out of it themselves.
 constexpr float kCellPadX = 6.0f;
+// Vertical padding of the inventory and magic tables' cells.
+constexpr float kCellPadY = 4.0f;
 
 float WidestLabel(std::initializer_list<const char *> labels)
 {
@@ -1194,6 +1196,10 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             if (row.detail.empty())
             {
                 Im::Text("%s", row.label.c_str());
+                // A row's note is hover text on its label, where there is no
+                // Modifiers column to carry it.
+                if (!modifiers && !row.note.empty() && Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", row.note.c_str());
             }
             else
             {
@@ -1410,19 +1416,20 @@ void CentredHeading(const char *title)
     Im::PopStyleVar(1);
 }
 
-// SkyUI's tab strip: All, then every category she has something in. Empty
-// categories are left out, as SkyUI leaves them out -- a tab promising
-// nothing is noise. Chips flow onto a second line when the panel is narrow.
-//
-// Each chip is a selectable with no label of its own; the icon and the word
-// are painted over it through the draw list, so the layout cursor stays on
-// the chip's full width and the next one lands beside it, not beside the text.
-void DrawCategoryRow(const FollowerView &view, InventoryTabState &state)
+// A row of chips: a strip of tabs in SkyUI's manner, each an icon and a
+// word, flowing onto a second line when the panel is narrow. Chips are
+// selectables with no label of their own; the icon and the word are painted
+// over them through the draw list, so the layout cursor stays on the chip's
+// full width and the next one lands beside it, not beside the text.
+struct Chip
 {
-    std::array<int, static_cast<std::size_t>(ItemCategory::COUNT)> counts{};
-    for (const auto &item : view.inventory)
-        ++counts[static_cast<std::size_t>(item.category)];
+    std::string label;
+    unsigned icon; // Font Awesome codepoint
+    int id;
+};
 
+void DrawChips(const std::vector<Chip> &chips, int &selected)
+{
     const auto *style = Im::GetStyle();
     const float padX = style ? style->FramePadding.x : 4.0f;
     const float spacing = style ? style->ItemSpacing.x : 8.0f;
@@ -1436,8 +1443,9 @@ void DrawCategoryRow(const FollowerView &view, InventoryTabState &state)
     FontAwesome::Pop();
 
     bool first = true;
-    const auto chip = [&](const char *label, unsigned codepoint, int category) {
-        const std::string icon = Utf8(codepoint);
+    for (const Chip &chip : chips)
+    {
+        const std::string icon = Utf8(chip.icon);
         float iconWidth = 0.0f;
         if (iconFont)
         {
@@ -1445,7 +1453,7 @@ void DrawCategoryRow(const FollowerView &view, InventoryTabState &state)
             iconWidth = TextWidth(icon);
             FontAwesome::Pop();
         }
-        const float width = padX + iconWidth + gap + TextWidth(label) + padX;
+        const float width = padX + iconWidth + gap + TextWidth(chip.label) + padX;
 
         if (!first)
         {
@@ -1456,26 +1464,36 @@ void DrawCategoryRow(const FollowerView &view, InventoryTabState &state)
         first = false;
 
         const Im::ImVec2 pos = Im::GetCursorScreenPos();
-        if (Im::Selectable((std::string("##cat") + label).c_str(), state.category == category, 0,
-                           Im::ImVec2(width, 0.0f)))
-            state.category = category;
+        if (Im::Selectable(("##chip" + chip.label).c_str(), selected == chip.id, 0, Im::ImVec2(width, 0.0f)))
+            selected = chip.id;
 
         if (!draw)
-            return;
+            continue;
         const auto ink = Im::GetColorU32(Im::ImGuiCol_Text, 1.0f);
         if (iconFont)
             Im::ImDrawListManager::AddText(draw, iconFont, iconSize, {pos.x + padX, pos.y}, ink, icon.c_str());
-        Im::ImDrawListManager::AddText(draw, {pos.x + padX + iconWidth + gap, pos.y}, ink, label);
-    };
+        Im::ImDrawListManager::AddText(draw, {pos.x + padX + iconWidth + gap, pos.y}, ink, chip.label.c_str());
+    }
+}
 
-    chip("All", kIconAll, -1);
+// SkyUI's tab strip: All, then every category she has something in. Empty
+// categories are left out, as SkyUI leaves them out -- a tab promising
+// nothing is noise.
+void DrawCategoryRow(const FollowerView &view, InventoryTabState &state)
+{
+    std::array<int, static_cast<std::size_t>(ItemCategory::COUNT)> counts{};
+    for (const auto &item : view.inventory)
+        ++counts[static_cast<std::size_t>(item.category)];
+
+    std::vector<Chip> chips{{"All", kIconAll, -1}};
     for (std::size_t i = 0; i < counts.size(); ++i)
     {
         if (counts[i] == 0)
             continue;
         const auto category = static_cast<ItemCategory>(i);
-        chip(DisplayName(category), IconFor(category), static_cast<int>(i));
+        chips.push_back({DisplayName(category), IconFor(category), static_cast<int>(i)});
     }
+    DrawChips(chips, state.category);
 
     // A category that has just emptied -- the last potion drunk -- falls back
     // to All rather than showing an empty table under a tab that is no
@@ -1495,8 +1513,64 @@ enum class Column : unsigned
     Armor,
     Weight,
     Value,
-    Equipped
+    Equipped,
+    School,
+    Level,
+    Cast,
+    Cost,
+    Left,
+    Right,
+    Magnitude
 };
+
+// A cell that says whether something is on -- in a hand, or worn -- with a
+// tick, a pin beside it if we are keeping it there, and, when clickable, a
+// click that rounds the three states: off -> kept on -> hers to change ->
+// off. The request goes to the game thread and the cell answers when the
+// view comes back.
+// A diagonal across the current cell, corner to corner: this cell does not
+// apply -- a right hand for a shield, a hand for a cuirass. The cell's
+// rectangle is the content rectangle plus the table's cell padding on each
+// side, which is what the row lines are drawn around.
+void SlashCell()
+{
+    auto *draw = Im::GetWindowDrawList();
+    if (!draw)
+        return;
+    const Im::ImVec2 pos = Im::GetCursorScreenPos();
+    const float h = Im::GetTextLineHeight();
+    const float w = Im::GetContentRegionAvail().x;
+    const Im::ImVec2 lo{pos.x - kCellPadX, pos.y - kCellPadY};
+    const Im::ImVec2 hi{pos.x + w + kCellPadX, pos.y + h + kCellPadY};
+    Im::ImDrawListManager::AddLine(draw, {lo.x, hi.y}, {hi.x, lo.y},
+                                   Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f), 1.0f);
+}
+
+void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, bool pinned, Hand hand, bool clickable,
+            bool allowed = true)
+{
+    const Im::ImVec2 pos = Im::GetCursorScreenPos();
+    if (!allowed)
+    {
+        SlashCell();
+        return;
+    }
+    if (clickable)
+    {
+        if (CellClicked(id))
+            RequestWear(follower, form,
+                        !on      ? WearRequest::Pin
+                        : pinned ? WearRequest::Unpin
+                                 : WearRequest::TakeOff,
+                        hand);
+        if (Im::IsItemHovered(0))
+            Im::SetTooltip("%s", !on      ? "Click to equip it and keep it equipped."
+                                 : pinned ? "Equipped, and kept so. Click to let her change it again."
+                                          : "Equipped. Click to unequip it.");
+    }
+    if (on)
+        DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), pinned);
+}
 
 // The rows to show, in the order the table's header asks for. Sorted every
 // frame rather than on change: a hundred pointers is nothing, and the set
@@ -1535,6 +1609,10 @@ std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const 
             return number(static_cast<float>(a.value), static_cast<float>(b.value));
         case Column::Equipped:
             return number(a.worn ? 1.0f : 0.0f, b.worn ? 1.0f : 0.0f);
+        case Column::Left:
+            return number(a.equippedLeft ? 1.0f : 0.0f, b.equippedLeft ? 1.0f : 0.0f);
+        case Column::Right:
+            return number(a.equippedRight ? 1.0f : 0.0f, b.equippedRight ? 1.0f : 0.0f);
         case Column::Name:
         default:
             return a.name.compare(b.name);
@@ -1567,12 +1645,17 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     // same way.
     const bool weapons = state.category == static_cast<int>(ItemCategory::Weapons);
     const bool apparel = state.category == static_cast<int>(ItemCategory::Apparel);
-    bool anyEquipable = false;
+    // Hand columns where something is held in a hand; an Equipped column
+    // where something is worn. A cell that does not apply to its row -- a
+    // right hand for a shield, a hand for a cuirass -- is slashed.
+    bool anyHand = false;
+    bool anyWorn = false;
     for (const auto &item : view.inventory)
     {
         if (state.category >= 0 && static_cast<int>(item.category) != state.category)
             continue;
-        anyEquipable = anyEquipable || item.equipable;
+        anyHand = anyHand || item.handItem;
+        anyWorn = anyWorn || (item.equipable && !item.handItem);
     }
 
     constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg | Im::ImGuiTableFlags_Sortable;
@@ -1594,9 +1677,10 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     // Content is the tick and, pinned, the pin beside it: two glyph boxes.
     const float wornWidth = (std::max)(TextWidth("Equipped") + arrow, Im::GetFontSize() * 2.0f) + gutter;
 
-    const int columnCount = 4 + ((weapons || apparel) ? 1 : 0) + (anyEquipable ? 1 : 0);
+    const float handWidth = (std::max)(TextWidth("Right") + arrow, Im::GetFontSize() * 2.0f) + gutter;
+    const int columnCount = 4 + ((weapons || apparel) ? 1 : 0) + (anyHand ? 2 : 0) + (anyWorn ? 1 : 0);
 
-    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 4.0f));
+    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
     if (!Im::BeginTable("inventory", columnCount, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
     {
         Im::PopStyleVar(1);
@@ -1623,10 +1707,21 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     // Equipped first on the first click: nobody sorts this column to find
     // what she is NOT wearing. "Equipped", not "Worn": it is the word the
     // item's page uses, and the one that fits a weapon.
-    if (anyEquipable)
+    if (anyHand)
+    {
+        Im::TableSetupColumn("Left",
+                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                             handWidth, static_cast<Im::ImGuiID>(Column::Left));
+        Im::TableSetupColumn("Right",
+                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                             handWidth, static_cast<Im::ImGuiID>(Column::Right));
+    }
+    if (anyWorn)
+    {
         Im::TableSetupColumn("Equipped",
                              Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                              wornWidth, static_cast<Im::ImGuiID>(Column::Equipped));
+    }
     Im::TableHeadersRow();
 
     const std::vector<const InventoryItem *> rows = VisibleItems(view, state);
@@ -1681,27 +1776,32 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         // Equipped: a tick if it is, a pin beside it if we are the ones
         // keeping it so. A click equips or unequips; the request goes to the
         // game thread and the column answers when the view comes back.
-        if (!anyEquipable)
-            continue;
-        Im::TableNextColumn();
-        pos = Im::GetCursorScreenPos();
-        if (item->equipable)
+        // A cell that does not apply to this row is slashed; a row that can
+        // be equipped nowhere (a potion) is left blank.
+        if (anyHand)
+        {
+            std::snprintf(buf, sizeof(buf), "##left%08X", item->form);
+            Im::TableNextColumn();
+            if (item->handItem)
+                OnCell(buf, view.id, item->form, item->equippedLeft, item->pinnedLeft, Hand::Left, true);
+            else if (item->equipable)
+                SlashCell();
+            std::snprintf(buf, sizeof(buf), "##right%08X", item->form);
+            Im::TableNextColumn();
+            if (item->handItem && !item->leftOnly)
+                OnCell(buf, view.id, item->form, item->equippedRight, item->pinnedRight, Hand::Right, true);
+            else if (item->equipable)
+                SlashCell();
+        }
+        if (anyWorn)
         {
             std::snprintf(buf, sizeof(buf), "##wear%08X", item->form);
-            // Round the three states: off -> kept on -> worn but hers to
-            // change -> off. Each is one click from the next.
-            if (CellClicked(buf))
-                RequestWear(view.id, item->form,
-                            !item->worn    ? WearRequest::Pin
-                            : item->pinned ? WearRequest::Unpin
-                                           : WearRequest::TakeOff);
-            if (Im::IsItemHovered(0))
-                Im::SetTooltip("%s", !item->worn    ? "Click to equip it and keep it equipped."
-                                     : item->pinned ? "Equipped, and kept so. Click to let her change it again."
-                                                    : "Equipped. Click to unequip it.");
+            Im::TableNextColumn();
+            if (item->equipable && !item->handItem)
+                OnCell(buf, view.id, item->form, item->worn, item->pinned, Hand::None, true);
+            else if (item->equipable)
+                SlashCell();
         }
-        if (item->worn)
-            DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), item->pinned);
     }
     Im::EndTable();
     Im::PopStyleVar(1);
@@ -1798,6 +1898,308 @@ void DrawInventory(const FollowerView &view)
         return;
     }
     DrawInventoryList(view, state);
+}
+
+// --- magic -------------------------------------------------------------------
+
+// SkyUI's Magic menu: All, the five schools, Shouts, Powers.
+struct MagicTabState
+{
+    std::uint32_t detail{0}; // the entry open in detail; 0 for the list
+    int category{-1};        // a MagicCategory, or -1 for all of them
+};
+
+std::unordered_map<ft::ActorId, MagicTabState> g_magicTabs;
+char g_magicFilter[64]{};
+
+unsigned IconFor(MagicCategory category)
+{
+    switch (category)
+    {
+    case MagicCategory::Alteration:
+        return 0xF1BB; // tree
+    case MagicCategory::Conjuration:
+        return 0xF52B; // door-open
+    case MagicCategory::Destruction:
+        return 0xF06D; // fire
+    case MagicCategory::Illusion:
+        return 0xF72B; // wand-sparkles
+    case MagicCategory::Restoration:
+        return 0xE4FB; // hands-holding-circle
+    case MagicCategory::Shouts:
+        return 0xF72E; // wind
+    case MagicCategory::Powers:
+    default:
+        return 0xE05D; // hand-sparkles
+    }
+}
+
+constexpr unsigned kIconMagicAll = 0xF6E8; // hat-wizard
+
+std::vector<const MagicEntry *> VisibleMagic(const FollowerView &view, const MagicTabState &state)
+{
+    std::vector<const MagicEntry *> rows;
+    for (const auto &entry : view.magic)
+    {
+        if (state.category >= 0 && static_cast<int>(entry.category) != state.category)
+            continue;
+        if (!ContainsNoCase(entry.name, g_magicFilter))
+            continue;
+        rows.push_back(&entry);
+    }
+
+    const auto *specs = Im::TableGetSortSpecs();
+    if (!specs || specs->SpecsCount < 1 || !specs->Specs)
+        return rows;
+    const auto &spec = specs->Specs[0];
+    const bool ascending = spec.SortDirection != Im::ImGuiSortDirection_Descending;
+
+    const auto compare = [&](const MagicEntry &a, const MagicEntry &b) -> int {
+        const auto number = [](float x, float y) { return x < y ? -1 : (x > y ? 1 : 0); };
+        switch (static_cast<Column>(spec.ColumnUserID))
+        {
+        case Column::School:
+            return a.school.compare(b.school);
+        case Column::Level:
+            return number(static_cast<float>(a.levelValue), static_cast<float>(b.levelValue));
+        case Column::Cast:
+            return a.castValue != b.castValue ? number(static_cast<float>(a.castValue), static_cast<float>(b.castValue))
+                                              : a.cast.compare(b.cast);
+        case Column::Cost:
+            return number(a.costValue, b.costValue);
+        case Column::Magnitude:
+            return number(a.magnitude, b.magnitude);
+        case Column::Equipped:
+            return number(a.equipped ? 1.0f : 0.0f, b.equipped ? 1.0f : 0.0f);
+        case Column::Left:
+            return number(a.equippedLeft ? 1.0f : 0.0f, b.equippedLeft ? 1.0f : 0.0f);
+        case Column::Right:
+            return number(a.equippedRight ? 1.0f : 0.0f, b.equippedRight ? 1.0f : 0.0f);
+        case Column::Name:
+        default:
+            return a.name.compare(b.name);
+        }
+    };
+    std::stable_sort(rows.begin(), rows.end(), [&](const MagicEntry *a, const MagicEntry *b) {
+        const int c = compare(*a, *b);
+        if (c == 0)
+            return a->name < b->name;
+        return ascending ? c < 0 : c > 0;
+    });
+    return rows;
+}
+
+void DrawMagicList(const FollowerView &view, MagicTabState &state)
+{
+    Im::Spacing();
+    {
+        std::array<int, static_cast<std::size_t>(MagicCategory::COUNT)> counts{};
+        for (const auto &entry : view.magic)
+            ++counts[static_cast<std::size_t>(entry.category)];
+        std::vector<Chip> chips{{"All", kIconMagicAll, -1}};
+        for (std::size_t i = 0; i < counts.size(); ++i)
+        {
+            if (counts[i] == 0)
+                continue;
+            const auto category = static_cast<MagicCategory>(i);
+            chips.push_back({DisplayName(category), IconFor(category), static_cast<int>(i)});
+        }
+        DrawChips(chips, state.category);
+        if (state.category >= 0 && counts[static_cast<std::size_t>(state.category)] == 0)
+            state.category = -1;
+    }
+    Im::Spacing();
+
+    Im::SetNextItemWidth(Im::GetFontSize() * 9.0f);
+    Im::InputTextWithHint("##magicfilter", "Filter", g_magicFilter, sizeof(g_magicFilter));
+    Im::Spacing();
+
+    // Which columns. A school's own list needs no School column. Spells
+    // show a cell per hand; powers and shouts, which are selected rather
+    // than held, show one Equipped cell, read-only: they are readied by the
+    // voice slot, which this does not drive.
+    const bool schoolList = state.category >= 0 && state.category < static_cast<int>(MagicCategory::Shouts);
+    const bool voiceList = state.category == static_cast<int>(MagicCategory::Shouts) ||
+                           state.category == static_cast<int>(MagicCategory::Powers);
+
+    constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg | Im::ImGuiTableFlags_Sortable;
+    const float gutter = kCellPadX * 2.0f;
+    const auto *tableStyle = Im::GetStyle();
+    const float arrow = std::floor(Im::GetFontSize() * 0.65f + (tableStyle ? tableStyle->FramePadding.x : 4.0f));
+    float schoolWidth = TextWidth("School") + arrow;
+    float levelWidth = TextWidth("Level") + arrow;
+    float castWidth = TextWidth("Cast") + arrow;
+    float costWidth = TextWidth("Cost") + arrow;
+    for (const auto &entry : view.magic)
+    {
+        schoolWidth = (std::max)(schoolWidth, TextWidth(entry.school));
+        levelWidth = (std::max)(levelWidth, TextWidth(entry.level));
+        castWidth = (std::max)(castWidth, TextWidth(entry.cast));
+        costWidth = (std::max)(costWidth, TextWidth(entry.cost));
+    }
+    const float magnitudeWidth = (std::max)(TextWidth("Mag") + arrow, TextWidth("999")) + gutter;
+    const float handWidth = (std::max)(TextWidth("Right") + arrow, Im::GetFontSize() * 2.0f) + gutter;
+    const float wornWidth = (std::max)(TextWidth("Equipped") + arrow, Im::GetFontSize()) + gutter;
+
+    const int columnCount = 5 + (schoolList ? 0 : 1) + (voiceList ? 1 : 2);
+
+    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
+    if (!Im::BeginTable("magic", columnCount, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+    {
+        Im::PopStyleVar(1);
+        return;
+    }
+    Im::TableSetupColumn("Name", Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
+                         static_cast<Im::ImGuiID>(Column::Name));
+    if (!schoolList)
+        Im::TableSetupColumn("School", Im::ImGuiTableColumnFlags_WidthFixed, schoolWidth + gutter,
+                             static_cast<Im::ImGuiID>(Column::School));
+    Im::TableSetupColumn("Level", Im::ImGuiTableColumnFlags_WidthFixed, levelWidth + gutter,
+                         static_cast<Im::ImGuiID>(Column::Level));
+    Im::TableSetupColumn("Mag", Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                         magnitudeWidth, static_cast<Im::ImGuiID>(Column::Magnitude));
+    Im::TableSetupColumn("Cost", Im::ImGuiTableColumnFlags_WidthFixed, costWidth + gutter,
+                         static_cast<Im::ImGuiID>(Column::Cost));
+    // Cast: what it does when cast -- Self, Touch, Spray, Projectile, Target,
+    // Location -- delivery and casting type in one word.
+    Im::TableSetupColumn("Cast", Im::ImGuiTableColumnFlags_WidthFixed, castWidth + gutter,
+                         static_cast<Im::ImGuiID>(Column::Cast));
+    if (voiceList)
+    {
+        Im::TableSetupColumn("Equipped",
+                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                             wornWidth, static_cast<Im::ImGuiID>(Column::Equipped));
+    }
+    else
+    {
+        Im::TableSetupColumn("Left",
+                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                             handWidth, static_cast<Im::ImGuiID>(Column::Left));
+        Im::TableSetupColumn("Right",
+                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                             handWidth, static_cast<Im::ImGuiID>(Column::Right));
+    }
+    Im::TableHeadersRow();
+
+    const std::vector<const MagicEntry *> rows = VisibleMagic(view, state);
+    for (const MagicEntry *entry : rows)
+    {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "##magic%08X", entry->form);
+
+        Im::TableNextRow(0, 0.0f);
+        Im::TableSetColumnIndex(0);
+        Im::ImVec2 pos = Im::GetCursorScreenPos();
+        if (CellClicked(buf))
+            state.detail = entry->form;
+        Im::SetCursorScreenPos(pos);
+        Im::Text("%s", entry->name.c_str());
+
+        if (!schoolList)
+        {
+            Im::TableNextColumn();
+            Im::Text("%s", entry->school.c_str());
+        }
+        Im::TableNextColumn();
+        Im::Text("%s", entry->level.c_str());
+        Im::TableNextColumn();
+        if (entry->magnitude > 0.0f)
+        {
+            char num[32];
+            std::snprintf(num, sizeof(num), "%.0f", entry->magnitude);
+            TextRightInCell(num);
+        }
+        Im::TableNextColumn();
+        TextRightInCell(entry->cost);
+        Im::TableNextColumn();
+        Im::Text("%s", entry->cast.c_str());
+
+        const bool voice = entry->category == MagicCategory::Shouts || entry->category == MagicCategory::Powers;
+        if (voiceList)
+        {
+            Im::TableNextColumn();
+            pos = Im::GetCursorScreenPos();
+            if (entry->equipped)
+                DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), false);
+        }
+        else
+        {
+            std::snprintf(buf, sizeof(buf), "##left%08X", entry->form);
+            Im::TableNextColumn();
+            OnCell(buf, view.id, entry->form, entry->equippedLeft, entry->pinnedLeft, Hand::Left, !voice,
+                   voice || entry->leftAllowed);
+            std::snprintf(buf, sizeof(buf), "##right%08X", entry->form);
+            Im::TableNextColumn();
+            OnCell(buf, view.id, entry->form, entry->equippedRight, entry->pinnedRight, Hand::Right, !voice,
+                   voice || entry->rightAllowed);
+        }
+    }
+    Im::EndTable();
+    Im::PopStyleVar(1);
+
+    Im::Spacing();
+    const std::string shown = rows.size() == view.magic.size() ? std::to_string(rows.size()) + " spells"
+                                                               : std::to_string(rows.size()) + " of " +
+                                                                     std::to_string(view.magic.size()) + " spells";
+    Im::TextDisabled("%s", shown.c_str());
+}
+
+void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
+{
+    Im::Spacing();
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    if (GlyphButton("back", Im::GetFrameHeight(), Glyph::Back))
+        state.detail = 0;
+    Im::PopStyleVar(1);
+
+    Im::SameLine(0.0f, kCellPadX);
+    Im::AlignTextToFramePadding();
+    Im::Text("%s", entry.name.c_str());
+    Im::SameLine(0.0f, kCellPadX * 2.0f);
+    Im::AlignTextToFramePadding();
+    Im::TextDisabled("%s", entry.school.c_str());
+
+    Im::Spacing();
+    DrawSections(entry.detail, false);
+
+    if (!entry.effects.empty())
+    {
+        CentredHeading("Effects");
+        Im::TextWrapped("%s", entry.effects.c_str());
+        Im::Spacing();
+    }
+    if (!entry.description.empty())
+    {
+        CentredHeading("Description");
+        Im::TextWrapped("%s", entry.description.c_str());
+        Im::Spacing();
+    }
+}
+
+void DrawMagic(const FollowerView &view)
+{
+    MagicTabState &state = g_magicTabs[view.id];
+
+    if (state.detail != 0)
+    {
+        for (const auto &entry : view.magic)
+        {
+            if (entry.form == state.detail)
+            {
+                DrawMagicDetail(entry, state);
+                return;
+            }
+        }
+        state.detail = 0;
+    }
+
+    if (view.magic.empty())
+    {
+        Im::Spacing();
+        Im::TextDisabled("Knows no spells.");
+        return;
+    }
+    DrawMagicList(view, state);
 }
 
 // The character sheet: what she is, as opposed to what she has been told to
@@ -1930,8 +2332,9 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
 // tab bar keeps whatever was last chosen, as tab bars do. Render thread only.
 std::unordered_set<ft::ActorId> g_pagesOpened;
 
-// One page per follower, four tabs, reading left to right as who she is,
-// what she can do, what she carries, and what she has been told to do. The tab bar is keyed by
+// One page per follower, six tabs, reading left to right as who she is,
+// what she can do, what she carries, what she can cast, how her combat AI
+// is tuned, and what she has been told to do. The tab bar is keyed by
 // follower so each page remembers its own tab.
 void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 {
@@ -1961,6 +2364,19 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     if (Im::BeginTabItem("Inventory", nullptr, select == Tab::Inventory ? Im::ImGuiTabItemFlags_SetSelected : 0))
     {
         DrawInventory(view);
+        Im::EndTabItem();
+    }
+    if (Im::BeginTabItem("Magic"))
+    {
+        DrawMagic(view);
+        Im::EndTabItem();
+    }
+    // What the combat AI is tuned by, before what it is told: a rule works
+    // with, or against, these numbers.
+    if (Im::BeginTabItem("Combat Style"))
+    {
+        Im::Spacing();
+        DrawSections(view.combatStyle, false);
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Tactics", nullptr, tacticsFlags))

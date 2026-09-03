@@ -49,31 +49,6 @@ void ReplaceNoCase(std::string &text, std::string_view token, const std::string 
     }
 }
 
-// One line per effect: its description with the numbers filled in, as the
-// item card shows it, or just its name for an effect that has none.
-std::string EffectLines(const RE::MagicItem *magic)
-{
-    std::string out;
-    if (!magic)
-        return out;
-    for (const auto *effect : magic->effects)
-    {
-        if (!effect || !effect->baseEffect)
-            continue;
-        const char *text = effect->baseEffect->magicItemDescription.c_str();
-        std::string line = text && *text ? text : NameOf(effect->baseEffect);
-        if (line.empty())
-            continue;
-        ReplaceNoCase(line, "<mag>", Fmt("%.0f", effect->effectItem.magnitude));
-        ReplaceNoCase(line, "<dur>", std::to_string(effect->effectItem.duration));
-        ReplaceNoCase(line, "<area>", std::to_string(effect->effectItem.area));
-        if (!out.empty())
-            out += '\n';
-        out += line;
-    }
-    return out;
-}
-
 // The record's own DESC text, which most items leave empty.
 template <typename T> std::string DescriptionOf(T *item)
 {
@@ -197,6 +172,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.type = WeaponTypeName(weapon);
         item.category = ItemCategory::Weapons;
         item.equipable = true;
+        item.handItem = true;
         // In her hands, as the inventory menu would show it; the record's
         // own figure beneath it, for the curious.
         item.damage = WeaponDamage(actor, weapon, entry);
@@ -214,6 +190,11 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.type = ArmorTypeName(armor);
         item.category = ItemCategory::Apparel;
         item.equipable = true;
+        if (armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield))
+        {
+            item.handItem = true;
+            item.leftOnly = true;
+        }
         if (armor->GetArmorType() != RE::BGSBipedObjectForm::ArmorType::kClothing)
         {
             item.armor = ArmorRating(actor, armor, entry);
@@ -305,6 +286,8 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     {
         item.type = "Torch";
         item.equipable = true;
+        item.handItem = true;
+        item.leftOnly = true;
         return;
     }
     if (object->Is(RE::FormType::Misc))
@@ -312,6 +295,29 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
 }
 
 } // namespace
+
+std::string EffectLines(const RE::MagicItem *magic)
+{
+    std::string out;
+    if (!magic)
+        return out;
+    for (const auto *effect : magic->effects)
+    {
+        if (!effect || !effect->baseEffect)
+            continue;
+        const char *text = effect->baseEffect->magicItemDescription.c_str();
+        std::string line = text && *text ? text : NameOf(effect->baseEffect);
+        if (line.empty())
+            continue;
+        ReplaceNoCase(line, "<mag>", Fmt("%.0f", effect->effectItem.magnitude));
+        ReplaceNoCase(line, "<dur>", std::to_string(effect->effectItem.duration));
+        ReplaceNoCase(line, "<area>", std::to_string(effect->effectItem.area));
+        if (!out.empty())
+            out += '\n';
+        out += line;
+    }
+    return out;
+}
 
 const char *DisplayName(ItemCategory category)
 {
@@ -369,6 +375,8 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
         // trade menu prices it.
         item.value = entry ? entry->GetValue() : object->GetGoldValue();
         item.worn = entry && entry->IsWorn();
+        item.equippedLeft = actor->GetEquippedObject(true) == object;
+        item.equippedRight = actor->GetEquippedObject(false) == object;
 
         SheetSection stats{"Stats", {}, {}};
         stats.rows.push_back(Row("Type", ""));
