@@ -62,21 +62,35 @@ Hand PinnedHands(const std::vector<Pin> &pins) noexcept
     return all;
 }
 
-std::vector<std::uint32_t> KeepFromAI(const std::vector<Pin> &pins, const std::vector<Holdable> &things)
+bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) noexcept
 {
     const Hand pinned = PinnedHands(pins);
-    std::vector<std::uint32_t> out;
     if (pinned == Hand::None)
-        return out;
-    const auto isPinned = [&](std::uint32_t form) {
-        return std::any_of(pins.begin(), pins.end(), [form](const Pin &pin) { return pin.form == form; });
-    };
-    for (const Holdable &thing : things)
+        return false;
+    const auto pin = std::find_if(pins.begin(), pins.end(), [&](const Pin &p) { return p.form == thing.form; });
+    if (slot == Hand::None)
+        return pin == pins.end() && Competes(thing.grip, pinned);
+    if (pin != pins.end())
+        return !Overlap(slot, pin->hands);
+    return Overlap(slot, pinned);
+}
+
+bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept
+{
+    switch (thing.grip)
     {
-        if (!isPinned(thing.form) && Competes(thing.grip, pinned))
-            out.push_back(thing.form);
+    case Grip::LeftOnly:
+        return KeptFromAI(pins, thing, Hand::Left);
+    case Grip::RightOnly:
+        return KeptFromAI(pins, thing, Hand::Right);
+    case Grip::Both:
+        return KeptFromAI(pins, thing, Hand::Both);
+    case Grip::Either:
+        return KeptFromAI(pins, thing, Hand::Left) && KeptFromAI(pins, thing, Hand::Right);
+    case Grip::None:
+    default:
+        return false;
     }
-    return out;
 }
 
 } // namespace ft

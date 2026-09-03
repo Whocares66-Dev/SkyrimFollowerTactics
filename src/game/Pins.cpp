@@ -39,6 +39,39 @@ const RE::BGSEquipSlot *HandSlot(Hand hand)
     return RE::TESForm::LookupByID<RE::BGSEquipSlot>(hand == Hand::Left ? 0x00013F43 : 0x00013F42);
 }
 
+// The hand a slot record names: RightHand 013F42, LeftHand 013F43,
+// BothHands 013F45. EitherHand (013F44) and no record are None.
+Hand SlotHand(const RE::BGSEquipSlot *slot)
+{
+    switch (slot ? slot->GetFormID() : 0)
+    {
+    case 0x00013F42:
+        return Hand::Right;
+    case 0x00013F43:
+        return Hand::Left;
+    case 0x00013F45:
+        return Hand::Both;
+    default:
+        return Hand::None;
+    }
+}
+
+// For the log: which hand an entry of the AI's list would go into.
+const char *HandTag(Hand hand)
+{
+    switch (hand)
+    {
+    case Hand::Left:
+        return "[L]";
+    case Hand::Right:
+        return "[R]";
+    case Hand::Both:
+        return "[LR]";
+    default:
+        return "";
+    }
+}
+
 // The planner's description of a form: which hands its record lets it
 // take, whether the combat AI would choose it, which body slots it covers.
 // The ONLY place the pin rules meet a record; the rules themselves are in
@@ -223,7 +256,7 @@ constexpr bool kDualWieldOnLeftPin = false;
 // (the DATA flags and the record header) and which the engine reads is
 // unverified. Not saved: redone on every left-hand pin, gone with the
 // session, like the pins.
-void AllowDualWield(RE::Actor *actor)
+[[maybe_unused]] void AllowDualWield(RE::Actor *actor)
 {
     auto *npc = actor->GetActorBase();
     auto *style = npc ? npc->GetCombatStyle() : nullptr;
@@ -432,7 +465,8 @@ void ProbeCombatInventory(RE::Actor *actor)
         {
             const auto *form = entry ? entry->item : nullptr;
             listed.insert(form);
-            names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?");
+            names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?") +
+                     HandTag(entry ? SlotHand(entry->itemSlot.equipSlot) : Hand::None);
         }
         logger::info("{} combat inventory [{}]: {}", Describe(actor), slot, names.empty() ? "-" : names);
     }
@@ -459,16 +493,12 @@ void ProbeCombatInventory(RE::Actor *actor)
                  owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
 }
 
-int PruneCombatList(RE::Actor *actor, Hand pinned)
+int PruneCombatList(RE::Actor *actor)
 {
     auto *controller = actor->GetActorRuntimeData().combatController;
     if (!controller || !controller->inventory)
         return 0;
-    std::unordered_map<std::uint32_t, Hand> pins;
-    {
-        std::scoped_lock lock(g_pinMutex);
-        pins = g_pins[actor->GetFormID()];
-    }
+    const std::vector<Pin> pins = PinsOf(actor->GetFormID());
     int removed = 0;
     std::string names;
     for (auto &array : controller->inventory->inventoryItems)
@@ -476,9 +506,11 @@ int PruneCombatList(RE::Actor *actor, Hand pinned)
         for (auto it = array.begin(); it != array.end();)
         {
             auto *form = *it ? (*it)->item : nullptr;
-            if (form && !pins.contains(form->GetFormID()) && Competes(DescribeHoldable(actor, form).grip, pinned))
+            const Hand slot = *it ? SlotHand((*it)->itemSlot.equipSlot) : Hand::None;
+            if (form && KeptFromAI(pins, DescribeHoldable(actor, form), slot))
             {
-                names += (names.empty() ? "" : ", ") + std::string(form->GetName() ? form->GetName() : "?");
+                names +=
+                    (names.empty() ? "" : ", ") + std::string(form->GetName() ? form->GetName() : "?") + HandTag(slot);
                 it = array.erase(it);
                 ++removed;
             }
@@ -541,9 +573,9 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     if (it == g_pins.end() || it->second.empty())
         return;
     auto &pins = it->second;
-    Hand pinned = Hand::None;
+    std::vector<Pin> asPlanned;
     for (const auto &[form, hands] : pins)
-        pinned = pinned | hands;
+        asPlanned.push_back({form, hands});
 
     std::unordered_set<std::uint32_t> present;
     const auto mark = [&](std::uint32_t form, bool &left, bool &right, bool &aside, bool *whole) {
@@ -557,7 +589,7 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
             return;
         }
         auto *thing = RE::TESForm::LookupByID(form);
-        aside = thing && Competes(DescribeHoldable(actor, thing).grip, pinned);
+        aside = thing && SetAside(asPlanned, DescribeHoldable(actor, thing));
     };
     for (auto &item : items)
         mark(item.form, item.pinnedLeft, item.pinnedRight, item.setAside, &item.pinned);
@@ -588,8 +620,7 @@ void KeepPins(const std::vector<RE::Actor *> &followers)
         MeasureRebuild(follower);
         if (follower->IsInCombat())
         {
-            const Hand pinned = PinnedHands(follower->GetFormID());
-            if (pinned != Hand::None && PruneCombatList(follower, pinned) > 0)
+            if (PinnedHands(follower->GetFormID()) != Hand::None && PruneCombatList(follower) > 0)
                 ReadyPinnedHands(follower);
         }
     }

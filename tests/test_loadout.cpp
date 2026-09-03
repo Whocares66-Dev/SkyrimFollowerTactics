@@ -5,8 +5,6 @@
 
 #include "core/Loadout.h"
 
-#include <algorithm>
-
 using namespace ft;
 
 namespace
@@ -26,11 +24,6 @@ Holdable Armour(std::uint32_t form, std::uint32_t slots)
     t.form = form;
     t.slots = slots;
     return t;
-}
-
-bool Has(const std::vector<std::uint32_t> &forms, std::uint32_t form)
-{
-    return std::find(forms.begin(), forms.end(), form) != forms.end();
 }
 
 // Marcurio's spells, as the engine labelled them: his Firebolt and Chain
@@ -75,8 +68,9 @@ TEST_CASE("a spell above her skill can be equipped but not pinned")
 
 TEST_CASE("what competes with a right-hand pin")
 {
-    // The AI put Flames straight into the pinned right hand: either-hand
-    // competes with any pin. A left-only spell has its own hand and does not.
+    // The coarse rule, for an entry whose hand is not known. The AI put
+    // Flames straight into the pinned right hand: either-hand competes with
+    // any pin. A left-only spell has its own hand and does not.
     CHECK(Competes(Grip::RightOnly, Hand::Right));
     CHECK(Competes(Grip::Either, Hand::Right));
     CHECK(Competes(Grip::Both, Hand::Right));
@@ -98,40 +92,66 @@ TEST_CASE("with nothing pinned nothing competes")
         CHECK_FALSE(Competes(grip, Hand::None));
 }
 
-TEST_CASE("with both hands pinned the AI is left with the pins and nothing else")
+TEST_CASE("the AI's list holds an either-hand spell once per hand, and a pin keeps one")
 {
-    const std::vector<Pin> pins{{kLightningBolt, Hand::Left}, {kFirebolt, Hand::Right}};
-    const std::vector<Holdable> things{
-        Thing(kFirebolt, Grip::RightOnly),  Thing(kLightningBolt, Grip::LeftOnly),
-        Thing(kFlames, Grip::Either),       Thing(kStoneflesh, Grip::Either),
-        Thing(kSteelDagger, Grip::Either),  Thing(kHuntingBow, Grip::Both),
-        Thing(kIronShield, Grip::LeftOnly), Armour(kIronArmor, 0x4),
-    };
-    const auto keep = KeepFromAI(pins, things);
-
-    // The pins themselves are never kept from the AI.
-    CHECK_FALSE(Has(keep, kFirebolt));
-    CHECK_FALSE(Has(keep, kLightningBolt));
-    // Everything with a hand is -- the self-cast Stoneflesh included, by
-    // design: both hands pinned means both hands are spoken for.
-    CHECK(Has(keep, kFlames));
-    CHECK(Has(keep, kStoneflesh));
-    CHECK(Has(keep, kSteelDagger));
-    CHECK(Has(keep, kHuntingBow));
-    CHECK(Has(keep, kIronShield));
+    // Flames pinned left, Firebolt pinned right: the AI's Flames-in-right
+    // would undo the Firebolt pin, so it goes; Flames-in-left is the pin.
+    const std::vector<Pin> pins{{kFlames, Hand::Left}, {kFirebolt, Hand::Right}};
+    const Holdable flames = Thing(kFlames, Grip::Either);
+    CHECK_FALSE(KeptFromAI(pins, flames, Hand::Left));
+    CHECK(KeptFromAI(pins, flames, Hand::Right));
+    CHECK_FALSE(KeptFromAI(pins, Thing(kFirebolt, Grip::RightOnly), Hand::Right));
+    // Everything else with a hand goes, the self-cast Stoneflesh included:
+    // both hands pinned means both hands are spoken for.
+    CHECK(KeptFromAI(pins, Thing(kStoneflesh, Grip::Either), Hand::Left));
+    CHECK(KeptFromAI(pins, Thing(kStoneflesh, Grip::Either), Hand::Right));
+    CHECK(KeptFromAI(pins, Thing(kSteelDagger, Grip::Either), Hand::Right));
+    CHECK(KeptFromAI(pins, Thing(kHuntingBow, Grip::Both), Hand::Both));
+    CHECK(KeptFromAI(pins, Thing(kIronShield, Grip::LeftOnly), Hand::Left));
     // Armour has no hand and is left to the AI.
-    CHECK_FALSE(Has(keep, kIronArmor));
+    CHECK_FALSE(KeptFromAI(pins, Armour(kIronArmor, 0x4), Hand::None));
 }
 
-TEST_CASE("with only the left hand pinned, right-only spells stay available")
+TEST_CASE("with only the right hand pinned, the left stays the AI's")
 {
-    const std::vector<Pin> pins{{kLightningBolt, Hand::Left}};
-    const std::vector<Holdable> things{Thing(kFirebolt, Grip::RightOnly), Thing(kFlames, Grip::Either),
-                                       Thing(kIronShield, Grip::LeftOnly)};
-    const auto keep = KeepFromAI(pins, things);
-    CHECK_FALSE(Has(keep, kFirebolt));
-    CHECK(Has(keep, kFlames));
-    CHECK(Has(keep, kIronShield));
+    const std::vector<Pin> pins{{kFirebolt, Hand::Right}};
+    const Holdable flames = Thing(kFlames, Grip::Either);
+    CHECK_FALSE(KeptFromAI(pins, flames, Hand::Left));
+    CHECK(KeptFromAI(pins, flames, Hand::Right));
+    CHECK_FALSE(KeptFromAI(pins, Thing(kLightningBolt, Grip::LeftOnly), Hand::Left));
+    CHECK_FALSE(KeptFromAI(pins, Thing(kIronShield, Grip::LeftOnly), Hand::Left));
+    // A two-hander wants the pinned hand too.
+    CHECK(KeptFromAI(pins, Thing(kHuntingBow, Grip::Both), Hand::Both));
+    CHECK(KeptFromAI(pins, Thing(kSteelDagger, Grip::Either), Hand::Right));
+}
+
+TEST_CASE("an entry that carries no hand falls back to the coarse rule")
+{
+    const std::vector<Pin> pins{{kFirebolt, Hand::Right}};
+    // Either-hand, hand unknown: it could land in the pinned hand, so it goes.
+    CHECK(KeptFromAI(pins, Thing(kFlames, Grip::Either), Hand::None));
+    CHECK_FALSE(KeptFromAI(pins, Thing(kLightningBolt, Grip::LeftOnly), Hand::None));
+    // The pin itself, hand unknown, is left alone.
+    CHECK_FALSE(KeptFromAI(pins, Thing(kFirebolt, Grip::RightOnly), Hand::None));
+    // Nothing pinned, nothing kept.
+    CHECK_FALSE(KeptFromAI({}, Thing(kFlames, Grip::Either), Hand::Right));
+}
+
+TEST_CASE("what the panel greys out: things with no hand left to take")
+{
+    const std::vector<Pin> right{{kFirebolt, Hand::Right}};
+    CHECK_FALSE(SetAside(right, Thing(kFlames, Grip::Either)));
+    CHECK_FALSE(SetAside(right, Thing(kLightningBolt, Grip::LeftOnly)));
+    CHECK(SetAside(right, Thing(kChainLightning, Grip::RightOnly)));
+    CHECK(SetAside(right, Thing(kHuntingBow, Grip::Both)));
+    CHECK_FALSE(SetAside(right, Thing(kFirebolt, Grip::RightOnly)));
+    CHECK_FALSE(SetAside(right, Armour(kIronArmor, 0x4)));
+
+    const std::vector<Pin> both{{kFlames, Hand::Left}, {kFirebolt, Hand::Right}};
+    CHECK(SetAside(both, Thing(kStoneflesh, Grip::Either)));
+    CHECK(SetAside(both, Thing(kSteelDagger, Grip::Either)));
+    CHECK_FALSE(SetAside(both, Thing(kFlames, Grip::Either)));
+    CHECK_FALSE(SetAside(both, Armour(kIronArmor, 0x4)));
 }
 
 TEST_CASE("pinned hands are the union of the pins")

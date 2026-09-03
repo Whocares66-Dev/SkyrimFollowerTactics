@@ -90,19 +90,26 @@ struct Pin
 // against ammunition. Anything else lives alongside.
 [[nodiscard]] bool Conflicts(const Holdable &incoming, Hand hands, const Holdable &held, Hand heldHands) noexcept;
 
-// Would a thing with this grip take a hand the pins hold? Such a thing must
-// not be offered to the combat AI. A one-hand-only thing competes with a
-// pin on its hand. A thing that takes either hand, or both, competes with
-// a pin on ANY hand: the AI puts an either-hand spell into a pinned hand
-// as readily as the free one. So with both hands pinned the AI is left
-// with the pins and nothing else, which is the intent.
+// Would a thing with this grip take a hand the pins hold, when the hand it
+// would go into is not known? A one-hand-only thing competes with a pin on
+// its hand. A thing that takes either hand, or both, competes with a pin
+// on ANY hand: the AI puts an either-hand spell into a pinned hand as
+// readily as the free one. The coarse rule; KeptFromAI is the fine one.
 [[nodiscard]] bool Competes(Grip grip, Hand pinned) noexcept;
 
 // The hands the pins hold, all together.
 [[nodiscard]] Hand PinnedHands(const std::vector<Pin> &pins) noexcept;
 
-// What the combat AI must not be offered: every unpinned thing that
-// competes for a pinned hand.
-[[nodiscard]] std::vector<std::uint32_t> KeepFromAI(const std::vector<Pin> &pins, const std::vector<Holdable> &things);
+// Must this entry of the combat AI's list be taken from it? The AI's list
+// holds a thing once per hand it could go into, an either-hand spell as a
+// left entry and a right entry, and each entry carries its hand. An entry
+// whose hand a pin holds goes, unless it is that pin itself: Flames pinned
+// left keeps Flames-in-left and loses Flames-in-right. An entry that
+// carries no hand falls back to the coarse rule.
+[[nodiscard]] bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) noexcept;
+
+// Is a thing entirely unavailable to the AI: every hand it could take is
+// spoken for? What the panel greys out.
+[[nodiscard]] bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept;
 
 } // namespace ft
