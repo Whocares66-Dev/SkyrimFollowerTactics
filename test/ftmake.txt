@@ -72,6 +72,8 @@
 ;    00012E49   Iron Armor    body, heavy -- displaces the robes
 ;    00012EB6   Iron Shield   left hand -- contests a spell there
 ;    0001397E   Iron Sword    one-handed -- either hand
+;    0003B562   Long Bow      two-handed -- the pinned-bow case, and
+;    0001397D   Iron Arrow    the arrows it needs to be listed at all
 ;
 ;  Check with a SEPARATE `bat ftstatus` -- a check inside this
 ;  file could run before the thing it checks.
@@ -91,3 +93,5 @@ addspell 00012FCD
 additem 00012E49 1
 additem 00012EB6 1
 additem 0001397E 1
+additem 0003B562 1
+additem 0001397D 20
