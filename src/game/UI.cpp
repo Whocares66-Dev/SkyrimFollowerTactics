@@ -1679,12 +1679,14 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     const bool apparel = state.category == static_cast<int>(ItemCategory::Apparel);
     // Hand columns where something is held in a hand; an Equipped column
     // where something is worn. A cell that does not apply to its row -- a
-    // right hand for a shield, a hand for a cuirass -- is slashed.
+    // right hand for a shield, a hand for a cuirass -- is slashed. Not on
+    // All: three equip columns leave no room for the rest, and equipping
+    // is done from the category lists.
     bool anyHand = false;
     bool anyWorn = false;
     for (const auto &item : view.inventory)
     {
-        if (state.category >= 0 && static_cast<int>(item.category) != state.category)
+        if (state.category < 0 || static_cast<int>(item.category) != state.category)
             continue;
         anyHand = anyHand || item.handItem;
         anyWorn = anyWorn || (item.equipable && !item.handItem);
@@ -2088,7 +2090,10 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     const float handWidth = (std::max)(TextWidth("Right") + arrow, Im::GetFontSize() * 2.0f) + gutter;
     const float wornWidth = (std::max)(TextWidth("Equipped") + arrow, Im::GetFontSize()) + gutter;
 
-    const int columnCount = 5 + (schoolList ? 0 : 1) + (voiceList ? 1 : 2);
+    // No equip columns on All, as the Inventory tab has it: equipping is
+    // done from the school lists.
+    const bool allList = state.category < 0;
+    const int columnCount = 5 + (schoolList ? 0 : 1) + (allList ? 0 : voiceList ? 1 : 2);
 
     Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
     if (!Im::BeginTable("magic", columnCount, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
@@ -2111,7 +2116,11 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     // Location -- delivery and casting type in one word.
     Im::TableSetupColumn("Cast", Im::ImGuiTableColumnFlags_WidthFixed, castWidth + gutter,
                          static_cast<Im::ImGuiID>(Column::Cast));
-    if (voiceList)
+    if (allList)
+    {
+        // no equip columns
+    }
+    else if (voiceList)
     {
         Im::TableSetupColumn("Equipped", Im::ImGuiTableColumnFlags_WidthFixed, wornWidth,
                              static_cast<Im::ImGuiID>(Column::Equipped));
@@ -2186,7 +2195,11 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         Im::Text("%s", entry->cast.c_str());
 
         const bool voice = entry->category == MagicCategory::Shouts || entry->category == MagicCategory::Powers;
-        if (voiceList)
+        if (allList)
+        {
+            // no equip cells
+        }
+        else if (voiceList)
         {
             Im::TableNextColumn();
             pos = Im::GetCursorScreenPos();
