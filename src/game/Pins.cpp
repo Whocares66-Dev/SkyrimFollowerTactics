@@ -468,14 +468,14 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
 // builds when a fight begins: spells and items together, scored, in seven
 // arrays by role. It does not read her spell lists or her bag again during
 // the fight -- Firebolt was cast after being removed from her record, a
-// removed dagger never was. So a pin is kept by editing THAT list: every
-// tick she fights with something pinned to a hand, every spell or item
-// that would take that hand is pruned from the list and whatever is pinned
-// goes back into its hand. Nothing of hers changes, nothing is saved, and
-// the engine discards the list when the fight ends, so there is nothing to
-// restore. The first version removed competing spells from her record for
-// the life of a pin; it worked, and left her without those spells for
-// every menu, script and mod in between (2026-09-03).
+// removed dagger never was. So a pin is kept by answering THAT list's
+// scoring, below: an entry that would take a pinned hand scores zero when
+// the AI asks. Nothing of hers changes, nothing is saved, and the engine
+// discards the list when the fight ends, so there is nothing to restore.
+// Two earlier ways were dropped: removing competing spells from her record
+// for the life of a pin (it worked, and left her without them for every
+// menu, script and mod in between), and erasing entries from the list on
+// each tick (a race the AI won; it re-lists every few seconds).
 
 // What the combat AI is choosing from: its combat inventory, seven arrays
 // of scored options built for the fight. Logged once per fight, by name,
@@ -492,10 +492,6 @@ std::unordered_set<const RE::CombatInventoryItem *> g_zeroedOnce;
 // own answer for everything else. Reactive and exact -- nothing is
 // computed until the AI asks, and however often it re-lists its options
 // (every few seconds, for the range it is at) the answer is the same.
-// The list was pruned on the tick before this, and the AI won that race:
-// it re-listed the sword and drew it in the half second before the next
-// prune (14:47, the pinned bow).
-//
 // The classes are hooked at load from the address library's table; any
 // class first seen in a list at combat start is hooked then, in case the
 // table missed one. The original is kept per vtable.
@@ -622,12 +618,6 @@ void ProbeCombatInventory(RE::Actor *actor)
 // the view republished in the request still showed the spell in hand and a
 // second click was needed to see it gone (04:15). Game thread only.
 std::unordered_set<ft::ActorId> g_republish;
-
-// The hands this follower's pins hold, all together.
-Hand PinnedHands(ft::ActorId id)
-{
-    return ft::PinnedHands(PinsOf(id));
-}
 
 } // namespace
 

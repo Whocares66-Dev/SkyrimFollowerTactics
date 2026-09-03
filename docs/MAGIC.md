@@ -274,47 +274,37 @@ controller, logged at the start of a fight (the probe in `Tactics.cpp`):
   rule's UseMagic package makes her cast such a spell regardless, and the
   player casts anything with the magicka for it. A pin on such a spell gives
   the AI nothing to reach for; the Magic tab dims its level and says so.
-- **An either-hand spell goes to the right hand by default.** Left alone by
-  the first shadowing rule on the theory that the AI would keep it to the
-  free hand, Flames went straight into the pinned right hand. Either-hand
-  spells now compete with any pin.
+- **An either-hand spell is listed once per hand.** Flames appears twice in
+  the list, once with the left slot and once with the right, and the AI put
+  the right-hand entry into a pinned right hand. Each entry is judged by its
+  own hand, so the entry for the free hand stays available.
 - The seven arrays, from what appeared in them: [0] offence (attack spells,
   bows, blades), [1] restoration (healing spells and potions), [3] defence
   (wards, shields), [4] armour spells; [2], [5], [6] empty for a mage.
 - With every usable right-hand spell set aside, he drew a dagger. The list
   is the list: the AI falls back to what is left, weapons included.
 
-### How a pin is kept (2026-09-03, evening): the AI's own scoring
+### How a pin is kept from the AI (2026-09-03): its own scoring
 
-The prune below was a race, and the AI won it. Its list is re-listed every
-few seconds for the range it is at -- with the timer setting
-`fCombatInventoryUpdateTimer` raised to a million it made no difference, and
-only the melee weapons, spells and shield ever returned, never the second
-bow -- and at melee range it drew the sword in the half second before the
-next prune. Every entry in the list is a scored object, and the AI asks
-each one for its score, through a virtual call, every time it decides. That
-slot in each entry class's table is now ours: zero for an entry the pins
-keep from the AI, the class's own answer for everything else. Nothing runs
-on the tick for it; the AI asks, and is answered. The classes are taken
-over at load from the address library's table (six weapon kinds, fifteen
-kinds of spell entry, one per caster type), and any class first seen in a
-list at combat start is taken over then. Two crashes on the way in: the
-controller's cached-attacker pointer is not to be read (it held the value
-1 for a cave bear); the attacker handle, validated by the handle table, is.
+The combat AI chooses from a list of scored options, its own per-follower
+combat inventory, and it asks every entry for its score, through a virtual
+call, each time it decides what to hold. That call is ours: the scoring
+slot in each entry class's table is replaced at load (six weapon kinds,
+fifteen kinds of spell entry, one per caster type; any class first seen in
+a list at combat start is taken over then). An entry the pins keep from the
+AI -- one whose hand a pin holds, unless it is that pin -- scores zero and
+is never chosen; everything else gets the class's own answer. Nothing runs
+on the tick for it, and it holds however often the AI re-lists its options,
+which it does every few seconds for the range it is at. Verified: a pinned
+longbow held at melee range against a sword the AI kept re-listing.
 
-### How a pin was kept before (2026-09-03, afternoon): pruning -- superseded
-
-By pruning the AI's list, not by touching her. Every tick she fights with
-something pinned to a hand, every spell or item in the combat inventory that
-would take that hand is erased from it, and whatever is pinned goes back in
-its hand. A one-hand-only spell competes with a pin on its hand; an
-either-hand spell, a both-hands spell, a one-handed weapon and a two-hander
-compete with a pin on any hand; a shield or torch with a pin on the left. A
-spell above her skill is never in the list to begin with, and cannot be
-pinned, since the AI would not choose it. A pin changed mid-fight sets the
-list's dirty flag so the AI rebuilds it whole and the next tick prunes it to
-the new pins. The first version removed competing spells from her record for
-the life of a pin, with a restore on unpin, dismissal and save; it worked,
-and it left her without those spells for every menu, script and mod in the
-meantime, which the prune does not. Each follower's list is her own: it
-belongs to her combat controller.
+The list is expanded per hand: an either-hand spell appears twice, once
+with the left slot and once with the right, so with Flames pinned left and
+Firebolt pinned right the AI is left with exactly those two entries. A spell
+above skill is never in the list and cannot be pinned. Her records are never
+touched. Two earlier ways were tried and dropped: removing competing spells
+from her record for the life of a pin (it worked, and left her without them
+for every menu, script and mod meanwhile), and erasing entries from the list
+on each tick (a race the AI won: it re-listed the sword and drew it in the
+half second before the next erase, and the update-timer setting was not the
+cause).

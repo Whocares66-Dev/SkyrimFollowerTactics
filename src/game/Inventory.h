@@ -76,7 +76,7 @@ struct InventoryItem
     // Kept on by us: the tick puts it back whenever the game takes it off.
     bool pinned{false};
     // Kept from the combat AI while a pinned spell holds a hand this would
-    // take: pruned from the AI's list of options in a fight. Still hers.
+    // take: it scores zero whenever the combat AI asks. Still carried.
     bool setAside{false};
     // Why, when it is: one line per pin that holds a hand it could take.
     std::string asideBy;

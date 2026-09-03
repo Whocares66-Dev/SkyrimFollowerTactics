@@ -67,7 +67,7 @@ struct MagicEntry
     bool leftAllowed{true};
     bool rightAllowed{true};
     // Kept from the combat AI in a fight because it would take a hand a
-    // pin holds: pruned from the AI's list of options. Still hers, and a
+    // pin holds: it scores zero whenever the combat AI asks. Still known, and a
     // cast rule can still make her cast it. Listed dimmed.
     bool setAside{false};
     // Why, when it is: one line per pin that holds a hand it could take,
