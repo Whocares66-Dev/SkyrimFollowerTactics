@@ -584,20 +584,22 @@ using ScoreFn = float (*)(RE::CombatInventoryItem *, RE::CombatController *);
 std::unordered_map<std::uintptr_t, ScoreFn> g_scoreOriginals;
 constexpr std::size_t kCalculateScoreSlot = 0x0C;
 
-bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::CombatController *controller)
+// The actor whose AI this controller is, or null. The hook fires for every
+// creature's AI, not only a follower's, and the attacker is found by its
+// HANDLE, which the handle table validates: the cached pointer beside it
+// read as the value 1 for a cave bear's controller and crashed the game
+// twice (15:04, 15:12). A controller whose inventory does not point back
+// at it is not the shape we expect, and is left alone.
+RE::NiPointer<RE::Actor> AttackerOf(RE::CombatController *controller)
 {
-    if (!entry || !entry->item || !controller)
-        return false;
-    // The hook fires for every creature's AI, not only a follower's. The
-    // attacker by its HANDLE, which the handle table validates: the cached
-    // pointer beside it read as the value 1 for a cave bear's controller
-    // and crashed the game (15:04). A controller whose inventory does not
-    // point back at it is not the shape we expect; leave it alone.
-    if (!controller->inventory || controller->inventory->parentController != controller)
-        return false;
-    const RE::NiPointer<RE::Actor> attacker = controller->attackerHandle.get();
-    RE::Actor *actor = attacker.get();
-    if (!actor)
+    if (!controller || !controller->inventory || controller->inventory->parentController != controller)
+        return {};
+    return controller->attackerHandle.get();
+}
+
+bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor)
+{
+    if (!entry || !entry->item || !actor)
         return false;
     const std::vector<Pin> pins = PinsOf(actor->GetFormID());
     if (pins.empty())
@@ -610,14 +612,14 @@ float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
     const auto vtable = *reinterpret_cast<const std::uintptr_t *>(self);
     const auto original = g_scoreOriginals.find(vtable);
     const float score = original != g_scoreOriginals.end() ? original->second(self, controller) : 0.0f;
-    if (!ShadowedEntry(self, controller))
+    const RE::NiPointer<RE::Actor> actor = AttackerOf(controller);
+    if (!ShadowedEntry(self, actor.get()))
         return score;
     if (g_zeroedOnce.insert(self).second)
     {
-        RE::Actor *actor = controller->cachedAttacker.get();
-        logger::info("{} AI asked the score of {}{}: {:.2f}, answered 0 (pinned against)",
-                     actor ? Describe(actor) : "?", self->item->GetName() ? self->item->GetName() : "?",
-                     HandTag(SlotHand(self->itemSlot.equipSlot)), score);
+        logger::info("{} AI asked the score of {}{}: {:.2f}, answered 0 (pinned against)", Describe(actor.get()),
+                     self->item->GetName() ? self->item->GetName() : "?", HandTag(SlotHand(self->itemSlot.equipSlot)),
+                     score);
     }
     return 0.0f;
 }
