@@ -86,6 +86,56 @@ const char *WeaponTypeName(const RE::TESObjectWEAP *weapon)
     }
 }
 
+} // namespace
+
+ft::Grip ArmorGrip(const RE::TESObjectARMO *armor)
+{
+    // The slot records, by FormID from Skyrim.esm: RightHand 013F42,
+    // LeftHand 013F43, EitherHand 013F44, BothHands 013F45. The first two
+    // may sit above a slot of the mod's own, so the parents are walked.
+    const RE::BGSEquipSlot *root = armor->GetEquipSlot();
+    if (!root)
+        return ft::Grip::None;
+    if (root->GetFormID() == 0x00013F44)
+        return ft::Grip::Either;
+    if (root->GetFormID() == 0x00013F45)
+        return ft::Grip::Both;
+    ft::Hand hands = ft::Hand::None;
+    std::vector<const RE::BGSEquipSlot *> open{root};
+    std::vector<const RE::BGSEquipSlot *> seen;
+    while (!open.empty())
+    {
+        const RE::BGSEquipSlot *slot = open.back();
+        open.pop_back();
+        if (std::find(seen.begin(), seen.end(), slot) != seen.end())
+            continue;
+        seen.push_back(slot);
+        if (slot->GetFormID() == 0x00013F43)
+            hands = hands | ft::Hand::Left;
+        else if (slot->GetFormID() == 0x00013F42)
+            hands = hands | ft::Hand::Right;
+        for (const RE::BGSEquipSlot *parent : slot->parentSlots)
+        {
+            if (parent)
+                open.push_back(parent);
+        }
+    }
+    switch (hands)
+    {
+    case ft::Hand::Left:
+        return ft::Grip::LeftOnly;
+    case ft::Hand::Right:
+        return ft::Grip::RightOnly;
+    case ft::Hand::Both:
+        return ft::Grip::Either;
+    default:
+        return ft::Grip::None;
+    }
+}
+
+namespace
+{
+
 // "Heavy Helmet", "Light Boots", "Gloves", "Ring": the class and the piece,
 // except for jewellery and shields, where the piece says enough.
 std::string ArmorTypeName(const RE::TESObjectARMO *armor)
@@ -190,14 +240,16 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.type = ArmorTypeName(armor);
         item.category = ItemCategory::Apparel;
         item.equipable = true;
-        // A shield lists with the weapons, as ammunition does: it takes a
-        // hand, it is chosen with the sword, and it bashes. That leaves
-        // apparel with no hand and a single Equipped column.
-        if (armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield))
+        // Armour that takes a hand -- a shield, or a mod's hand-held piece
+        // -- lists with the weapons, as ammunition does: it is chosen with
+        // the sword, and a shield bashes. That leaves apparel with no hand
+        // and a single Equipped column.
+        if (const ft::Grip grip = ArmorGrip(armor); grip != ft::Grip::None)
         {
             item.category = ItemCategory::Weapons;
             item.handItem = true;
-            item.leftOnly = true;
+            item.leftOnly = grip == ft::Grip::LeftOnly;
+            item.rightOnly = grip == ft::Grip::RightOnly;
         }
         if (armor->GetArmorType() != RE::BGSBipedObjectForm::ArmorType::kClothing)
         {

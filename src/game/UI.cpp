@@ -1630,7 +1630,9 @@ std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const 
         case Column::Equipped:
             return rank([](const InventoryItem &i) { return CellRank(!i.handItem, i.worn, i.pinned); });
         case Column::Left:
-            return rank([](const InventoryItem &i) { return CellRank(i.handItem, i.equippedLeft, i.pinnedLeft); });
+            return rank([](const InventoryItem &i) {
+                return CellRank(i.handItem && !i.rightOnly, i.equippedLeft, i.pinnedLeft);
+            });
         case Column::Right:
             return rank([](const InventoryItem &i) {
                 return CellRank(i.handItem && !i.leftOnly, i.equippedRight, i.pinnedRight);
@@ -1807,7 +1809,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         {
             std::snprintf(buf, sizeof(buf), "##left%08X", item->form);
             Im::TableNextColumn();
-            if (item->handItem)
+            if (item->handItem && !item->rightOnly)
                 OnCell(buf, view.id, item->form, item->equippedLeft, item->pinnedLeft, Hand::Left, true);
             else if (item->equipable)
                 SlashCell();

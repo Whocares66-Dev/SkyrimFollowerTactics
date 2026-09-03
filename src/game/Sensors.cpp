@@ -565,7 +565,8 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
 
     if (auto *armor = held->As<RE::TESObjectARMO>())
     {
-        rows.push_back(Row("Shield", NameOr(armor, "?")));
+        const bool shield = armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield);
+        rows.push_back(Row(shield ? "Shield" : "Held", NameOr(armor, "?")));
         rows.back().form = armor->GetFormID();
         auto inventory = actor->GetInventory([armor](RE::TESBoundObject &o) { return &o == armor; });
         const auto found = inventory.find(armor);

@@ -6,6 +6,7 @@
 // touching an RE:: type -- and without the player having to open a trade
 // dialogue to find out.
 
+#include "core/Loadout.h"
 #include "game/Sensors.h"
 
 #include <cstdint>
@@ -55,9 +56,11 @@ struct InventoryItem
     bool worn{false};
     bool enchanted{false};
     // A thing held in a hand -- weapon, shield, torch -- as opposed to worn;
-    // and one that only the left hand takes: a shield or a torch.
+    // and one that only one particular hand takes: a shield or a torch on
+    // the left, a mod's right-hand armour on the right.
     bool handItem{false};
     bool leftOnly{false};
+    bool rightOnly{false};
     // For a weapon, shield or torch: which hand holds it.
     bool equippedLeft{false};
     bool equippedRight{false};
@@ -85,6 +88,12 @@ struct InventoryItem
 // One line per effect of a spell, potion or enchantment: its description
 // with the magnitude and duration filled in, as the item card shows it.
 [[nodiscard]] std::string EffectLines(const RE::MagicItem *magic);
+
+// The hands a piece of armour takes, read from its equip slot and that
+// slot's parents rather than from a list of known shields: the game's
+// Shield slot is a child of LeftHand, and a mod's hand-held armour names a
+// hand slot itself or one beneath it. Body armour takes none.
+[[nodiscard]] ft::Grip ArmorGrip(const RE::TESObjectARMO *armor);
 
 // Everything she carries that the game would list, sorted by name. Nameless
 // entries and armour or weapons flagged non-playable are left out, as the

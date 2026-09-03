@@ -109,8 +109,7 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
     else if (auto *armor = form->As<RE::TESObjectARMO>())
     {
         thing.slots = static_cast<std::uint32_t>(armor->GetSlotMask());
-        if (armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield))
-            thing.grip = Grip::LeftOnly;
+        thing.grip = ArmorGrip(armor);
     }
     else if (form->Is(RE::FormType::Light))
     {
