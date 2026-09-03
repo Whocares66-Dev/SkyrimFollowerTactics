@@ -154,6 +154,17 @@ TEST_CASE("what the panel greys out: things with no hand left to take")
     CHECK_FALSE(SetAside(both, Armour(kIronArmor, 0x4)));
 }
 
+TEST_CASE("a pin may hold both hands, and let one go")
+{
+    // Flames pinned left, then right: one pin, both hands. Letting the
+    // left go leaves the right.
+    CHECK((Hand::Left | Hand::Right) == Hand::Both);
+    CHECK(Without(Hand::Both, Hand::Left) == Hand::Right);
+    CHECK(Without(Hand::Both, Hand::Right) == Hand::Left);
+    CHECK(Without(Hand::Right, Hand::Right) == Hand::None);
+    CHECK(Without(Hand::Right, Hand::Left) == Hand::Right);
+}
+
 TEST_CASE("pinned hands are the union of the pins")
 {
     CHECK(PinnedHands({}) == Hand::None);

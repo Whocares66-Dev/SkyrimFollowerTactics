@@ -45,6 +45,12 @@ enum class Hand : std::uint8_t
     return (static_cast<std::uint8_t>(a) & static_cast<std::uint8_t>(b)) != 0;
 }
 
+// The hands left once one is let go.
+[[nodiscard]] constexpr Hand Without(Hand hands, Hand hand) noexcept
+{
+    return static_cast<Hand>(static_cast<std::uint8_t>(hands) & ~static_cast<std::uint8_t>(hand));
+}
+
 // Which hands a thing's record lets it take.
 enum class Grip : std::uint8_t
 {

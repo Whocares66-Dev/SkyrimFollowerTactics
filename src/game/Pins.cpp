@@ -651,20 +651,52 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
                          thing->GetName() ? thing->GetName() : "?");
             request = WearRequest::Equip;
         }
+        // One weapon cannot be in both hands. Asked to move her only copy to
+        // the other hand, take it out of the first; otherwise the engine's
+        // equip, finding none free, conjures a second (02:05, the doubled
+        // dagger). Two in the bag may go one per hand.
+        bool moving = false;
+        if (request == WearRequest::Pin && thing->Is(RE::FormType::Weapon) &&
+            (hands == Hand::Left || hands == Hand::Right))
+        {
+            const Hand other = hands == Hand::Left ? Hand::Right : Hand::Left;
+            if (EquippedIn(actor, thing, other))
+            {
+                auto *object = thing->As<RE::TESBoundObject>();
+                auto inventory = actor->GetInventory([object](RE::TESBoundObject &c) { return &c == object; });
+                const auto found = inventory.find(object);
+                moving = (found != inventory.end() ? found->second.first : 0) < 2;
+            }
+        }
+
         {
             std::scoped_lock lock(g_pinMutex);
             auto &pins = g_pins[id];
+            const auto pin = pins.find(form);
+            const bool eitherHand = described.grip == Grip::Either && pin != pins.end() && hand != Hand::None;
             if (request == WearRequest::Pin || request == WearRequest::Equip)
             {
                 ReleaseConflictingPins(actor, pins, thing, hands);
+                // An either-hand thing already pinned in the other hand is
+                // pinned in both now, a spell once in each; unless this is
+                // her one weapon changing hands.
                 if (request == WearRequest::Pin)
-                    pins[form] = hands;
+                    pins[form] = eitherHand && !moving ? pin->second | hands : hands;
             }
-            else
+            else if (pin != pins.end())
             {
-                if (const auto pin = pins.find(form); pin != pins.end())
+                // One cell of a two-handed pin lets that hand go and keeps
+                // the other; anything else is the whole pin.
+                if (eitherHand && pin->second == Hand::Both)
+                {
+                    pin->second = Without(pin->second, hand);
+                    hands = hand;
+                }
+                else
+                {
                     hands = pin->second;
-                pins.erase(form);
+                    pins.erase(pin);
+                }
             }
         }
 
@@ -684,23 +716,8 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
                 if (thing->Is(RE::FormType::Weapon) && hands == Hand::Left)
                     AllowDualWield(actor);
             }
-            // One weapon cannot be in both hands. Asked to move her only copy
-            // to the other hand, take it out of the first; otherwise the
-            // engine's equip, finding none free, conjures a second (02:05,
-            // the doubled dagger). Two in the bag may go one per hand.
-            if (thing->Is(RE::FormType::Weapon) && (hands == Hand::Left || hands == Hand::Right))
-            {
-                const Hand other = hands == Hand::Left ? Hand::Right : Hand::Left;
-                if (EquippedIn(actor, thing, other))
-                {
-                    auto *object = thing->As<RE::TESBoundObject>();
-                    auto inventory = actor->GetInventory([object](RE::TESBoundObject &c) { return &c == object; });
-                    const auto found = inventory.find(object);
-                    const auto count = found != inventory.end() ? found->second.first : 0;
-                    if (count < 2)
-                        UnequipForm(actor, thing, other, true);
-                }
-            }
+            if (moving)
+                UnequipForm(actor, thing, hands == Hand::Left ? Hand::Right : Hand::Left, true);
             EquipPinned(actor, thing, hands, true);
             // Which hand a weapon or spell lands in is the AI's call as much
             // as ours: say what was asked and where it went, so the rule can
