@@ -14,7 +14,10 @@ namespace RE
 {
 class Actor;
 class AlchemyItem;
+class InventoryEntryData;
 class SpellItem;
+class TESObjectARMO;
+class TESObjectWEAP;
 } // namespace RE
 
 namespace ft::game
@@ -77,12 +80,19 @@ struct SheetRow
     // Rows revealed by expanding this one: a skill's perks. Empty means the
     // row is a plain line and cannot be opened.
     std::vector<SheetRow> detail;
+    // The inventory item this row names, if any: a click on it opens the
+    // item's page on the Inventory tab. 0 for a row that names nothing.
+    std::uint32_t form{0};
 };
 
 struct SheetSection
 {
     std::string title;
     std::vector<SheetRow> rows;
+    // The heading this section sits under when several share one -- Attack
+    // over a Right Hand table and a Left Hand table. Empty means the title
+    // is the heading.
+    std::string group;
 };
 
 // The Character tab: race, movement, defence and the equipped weapon. Display
@@ -93,6 +103,17 @@ struct SheetSection
 // The Skills tab: the eighteen skills grouped as the game groups them, with
 // any fortify or potion modifier folded into the same line.
 [[nodiscard]] std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor);
+
+// The damage a weapon does in her hands, as the inventory menu would show
+// it: base, times tempering, times the skill curve, through her perks, times
+// any Fortify effect on the skill. `entry` may be null, in which case the
+// weapon is taken as untempered.
+[[nodiscard]] float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry);
+
+// The armour rating a piece gives her, the same way: base, times tempering,
+// times the armour skill's curve, through her perks, times any Fortify
+// effect on the skill. Clothing rates 0.
+[[nodiscard]] float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry);
 
 // Resolve a FormID from a rule back to the spell it names, or nullptr.
 [[nodiscard]] RE::SpellItem *FindSpell(std::uint32_t form);

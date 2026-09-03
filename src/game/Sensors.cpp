@@ -377,6 +377,11 @@ SheetRow Row(std::string label, std::string value)
     return row;
 }
 
+std::string NameOr(const RE::TESForm *form, const char *fallback)
+{
+    return form && form->GetName() && *form->GetName() ? form->GetName() : fallback;
+}
+
 // --- perks -------------------------------------------------------------------
 
 struct TreePerk
@@ -498,7 +503,205 @@ std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
     return rows;
 }
 
+// What one hand holds, as rows: a weapon and its numbers, a spell and its
+// cost and strongest effect, a shield and its rating, or a torch. An empty
+// hand adds no rows, and the caller shows no table for it. A two-hander
+// shows in the right hand and the left says so.
+void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
+{
+    RE::TESForm *held = actor->GetEquippedObject(left);
+    if (!held)
+        return;
+
+    if (auto *weapon = held->As<RE::TESObjectWEAP>())
+    {
+        const bool twoHanded =
+            weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow();
+        if (left && twoHanded)
+        {
+            rows.push_back(Row("Held", "the same, two-handed"));
+            return;
+        }
+        rows.push_back(Row("Weapon", NameOr(weapon, "?")));
+        rows.back().form = weapon->GetFormID();
+        // In her hands: the carried item, for its tempering.
+        auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &o) { return &o == weapon; });
+        const auto found = inventory.find(weapon);
+        auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
+        rows.push_back(Row("Damage", Fmt("%.0f", WeaponDamage(actor, weapon, entry))));
+        rows.push_back(Row("Speed", Fmt("%.2f", weapon->GetSpeed())));
+        rows.push_back(Row("Reach", Fmt("%.2f", weapon->GetReach())));
+        rows.push_back(Row("Stagger", Fmt("%.2f", weapon->GetStagger())));
+        if (weapon->IsBow() || weapon->IsCrossbow())
+        {
+            if (auto *ammo = actor->GetCurrentAmmo())
+            {
+                rows.push_back(Row("Ammo", NameOr(ammo, "?")));
+                rows.back().form = ammo->GetFormID();
+                rows.push_back(Row("Ammo Damage", Fmt("%.0f", ammo->GetRuntimeData().data.damage)));
+            }
+            else
+            {
+                rows.push_back(Row("Ammo", "none"));
+            }
+        }
+        return;
+    }
+
+    if (auto *spell = held->As<RE::SpellItem>())
+    {
+        rows.push_back(Row("Spell", NameOr(spell, "?")));
+        rows.push_back(Row("Cost", Fmt("%.0f", spell->CalculateMagickaCost(actor))));
+        if (const auto *effect = spell->GetCostliestEffectItem(); effect && effect->baseEffect)
+        {
+            std::string what = NameOr(effect->baseEffect, "?");
+            what += " " + Fmt("%.0f", effect->effectItem.magnitude);
+            if (effect->effectItem.duration > 0)
+                what += " for " + std::to_string(effect->effectItem.duration) + " s";
+            rows.push_back(Row("Effect", what));
+        }
+        return;
+    }
+
+    if (auto *armor = held->As<RE::TESObjectARMO>())
+    {
+        rows.push_back(Row("Shield", NameOr(armor, "?")));
+        rows.back().form = armor->GetFormID();
+        auto inventory = actor->GetInventory([armor](RE::TESBoundObject &o) { return &o == armor; });
+        const auto found = inventory.find(armor);
+        auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
+        rows.push_back(Row("Armor", Fmt("%.0f", ArmorRating(actor, armor, entry))));
+        return;
+    }
+
+    if (held->Is(RE::FormType::Light))
+    {
+        rows.push_back(Row("Held", NameOr(held, "torch")));
+        rows.back().form = held->GetFormID();
+        return;
+    }
+
+    rows.push_back(Row("Held", NameOr(held, "?")));
+}
+
 } // namespace
+
+namespace
+{
+
+// Tempering lives on the carried item, not the record: an item's health is
+// 1.0 untempered and climbs with each visit to a grindstone or workbench,
+// and the engine multiplies damage and armour by it.
+float Tempering(RE::InventoryEntryData *entry)
+{
+    if (!entry || !entry->extraLists)
+        return 1.0f;
+    for (auto *list : *entry->extraLists)
+    {
+        if (auto *health = list ? list->GetByType<RE::ExtraHealth>() : nullptr; health && health->health > 0.0f)
+            return health->health;
+    }
+    return 1.0f;
+}
+
+} // namespace
+
+float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry)
+{
+    if (!actor || !weapon)
+        return 0.0f;
+    float damage = weapon->GetAttackDamage() * Tempering(entry);
+
+    // The skill curve: UESP gives it as (1 + skill / 200), which is what the
+    // fallbacks below encode. The settings are read by the names the engine
+    // uses so a rebalancing mod that changes them is honoured; the resolved
+    // curve is logged once so a wrong name shows up as a wrong number in the
+    // log rather than as a silently vanilla curve.
+    using AV = RE::ActorValue;
+    AV skill = AV::kOneHanded;
+    AV fortify = AV::kOneHandedModifier;
+    AV fortifyPower = AV::kOneHandedPowerModifier;
+    if (weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe())
+    {
+        skill = AV::kTwoHanded;
+        fortify = AV::kTwoHandedModifier;
+        fortifyPower = AV::kTwoHandedPowerModifier;
+    }
+    else if (weapon->IsBow() || weapon->IsCrossbow())
+    {
+        skill = AV::kArchery;
+        fortify = AV::kMarksmanModifier;
+        fortifyPower = AV::kMarksmanPowerModifier;
+    }
+
+    static const float curveBase = GameSetting("fDamageSkillBase", 1.0f);
+    static const float curveMult = GameSetting("fDamageSkillMult", 0.5f);
+    static const bool logged = [] {
+        logger::info("damage: skill curve base {:.2f} + {:.2f} * skill/100", curveBase, curveMult);
+        return true;
+    }();
+    (void)logged;
+
+    auto *owner = actor->AsActorValueOwner();
+    const float skillLevel = owner ? owner->GetActorValue(skill) : 0.0f;
+    damage *= curveBase + curveMult * skillLevel / 100.0f;
+
+    // Perks, through the engine's own entry point, so Armsman and the rest
+    // count exactly as they do in a swing. The entry point wants a target,
+    // and there is none outside a fight; she stands in for it herself. A
+    // perk that reads the target (against undead, say) evaluates against
+    // her and so stays out of the figure -- the same figure the player's
+    // own inventory menu shows, which has no target either.
+    RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, actor, weapon, actor,
+                                        &damage);
+
+    // Fortify One-handed and its kin: enchantments on the first value,
+    // potions on the second, both in percent.
+    if (owner)
+        damage *= 1.0f + (owner->GetActorValue(fortify) + owner->GetActorValue(fortifyPower)) / 100.0f;
+
+    return damage;
+}
+
+float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry)
+{
+    if (!actor || !armor)
+        return 0.0f;
+    using Class = RE::BGSBipedObjectForm::ArmorType;
+    const Class armorClass = armor->GetArmorType();
+    if (armorClass == Class::kClothing)
+        return 0.0f;
+    float rating = armor->GetArmorRating() * Tempering(entry);
+
+    // The skill curve. UESP gives displayed armour as base * (1 + 0.4 *
+    // skill / 100), which the fallbacks encode; the names are the engine's,
+    // logged once, as for damage.
+    using AV = RE::ActorValue;
+    const bool heavy = armorClass == Class::kHeavyArmor;
+    const AV skill = heavy ? AV::kHeavyArmor : AV::kLightArmor;
+    const AV fortify = heavy ? AV::kHeavyArmorModifier : AV::kLightArmorModifier;
+    const AV fortifyPower = heavy ? AV::kHeavyArmorPowerModifier : AV::kLightArmorPowerModifier;
+
+    static const float curveBase = GameSetting("fArmorSkillBase", 1.0f);
+    static const float curveMult = GameSetting("fArmorSkillMult", 0.4f);
+    static const bool logged = [] {
+        logger::info("armor: skill curve base {:.2f} + {:.2f} * skill/100", curveBase, curveMult);
+        return true;
+    }();
+    (void)logged;
+
+    auto *owner = actor->AsActorValueOwner();
+    const float skillLevel = owner ? owner->GetActorValue(skill) : 0.0f;
+    rating *= curveBase + curveMult * skillLevel / 100.0f;
+
+    // Perks: Juggernaut, Agile Defender and their kin, through the engine's
+    // entry point for armour, which takes the piece and the value.
+    RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModArmorRating, actor, armor, &rating);
+
+    if (owner)
+        rating *= 1.0f + (owner->GetActorValue(fortify) + owner->GetActorValue(fortifyPower)) / 100.0f;
+    return rating;
+}
 
 std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
 {
@@ -512,7 +715,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     const auto av = [owner](RE::ActorValue value) { return owner->GetActorValue(value); };
 
     {
-        SheetSection s{"General", {}};
+        SheetSection s{"General", {}, {}};
         auto *race = actor->GetRace();
         s.rows.push_back(Row("Race", race && race->GetName() ? race->GetName() : "?"));
         s.rows.push_back(Row("Speed", Fmt("%.0f%%", av(RE::ActorValue::kSpeedMult))));
@@ -520,8 +723,34 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         out.push_back(std::move(s));
     }
 
+    // Attack: what each hand holds, whatever it is. The old Attack section
+    // knew only weapons, which left a mage's page saying "unarmed". A hand
+    // holding nothing gets no table; with both empty, the one thing worth
+    // saying is what her fists do.
     {
-        SheetSection s{"Defence", {}};
+        SheetSection right{"Right Hand", {}, "Attack"};
+        HandRows(actor, false, right.rows);
+        SheetSection left{"Left Hand", {}, "Attack"};
+        HandRows(actor, true, left.rows);
+
+        if (right.rows.empty() && left.rows.empty())
+        {
+            SheetSection s{"Attack", {}, {}};
+            s.rows.push_back(Row("Held", "unarmed"));
+            s.rows.push_back(Row("Base Damage", Fmt("%.0f", av(RE::ActorValue::kUnarmedDamage))));
+            out.push_back(std::move(s));
+        }
+        else
+        {
+            if (!right.rows.empty())
+                out.push_back(std::move(right));
+            if (!left.rows.empty())
+                out.push_back(std::move(left));
+        }
+    }
+
+    {
+        SheetSection s{"Defence", {}, {}};
         // The armour rating the game shows is not the one it applies. Each of
         // the four main pieces worn adds a hidden 25 before the scaling factor,
         // which is why a displayed 609 lands at 85% and not 73%. Whether a
@@ -539,41 +768,20 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
 
         s.rows.push_back(Row("Armor", Fmt("%.0f", armor)));
         s.rows.push_back(Row("Resist Damage", CappedPercent(armorPct, GameSetting("fMaxArmorRating", 80.0f))));
-        s.rows.push_back(Row("Health Rate", Fmt("%.2f%%", av(RE::ActorValue::kHealRate))));
-        s.rows.push_back(Row("Stamina Rate", Fmt("%.2f%%", av(RE::ActorValue::kStaminaRate))));
-        s.rows.push_back(Row("Magicka Rate", Fmt("%.2f%%", av(RE::ActorValue::kMagickaRate))));
         s.rows.push_back(Row("Resist Disease", Fmt("%.0f%%", av(RE::ActorValue::kResistDisease))));
         s.rows.push_back(Row("Resist Poison", CappedPercent(av(RE::ActorValue::kPoisonResist), resistCap)));
         s.rows.push_back(Row("Resist Fire", CappedPercent(av(RE::ActorValue::kResistFire), resistCap)));
-        s.rows.push_back(Row("Resist Shock", CappedPercent(av(RE::ActorValue::kResistShock), resistCap)));
         s.rows.push_back(Row("Resist Frost", CappedPercent(av(RE::ActorValue::kResistFrost), resistCap)));
+        s.rows.push_back(Row("Resist Shock", CappedPercent(av(RE::ActorValue::kResistShock), resistCap)));
         s.rows.push_back(Row("Resist Magic", CappedPercent(av(RE::ActorValue::kResistMagic), resistCap)));
         out.push_back(std::move(s));
     }
 
     {
-        SheetSection s{"Attack", {}};
-        // The right hand's weapon, as authored: base damage, before skill,
-        // perks and enchantments. The number the inventory shows is computed
-        // by a routine the engine does not expose, so this is the honest
-        // figure rather than an approximation of that one.
-        auto *right = actor->GetEquippedObject(false);
-        auto *weapon = right ? right->As<RE::TESObjectWEAP>() : nullptr;
-        if (weapon)
-        {
-            s.rows.push_back(Row("Weapon", weapon->GetName() ? weapon->GetName() : "?"));
-            s.rows.push_back(Row("Base Damage", Fmt("%.0f", weapon->GetAttackDamage())));
-            s.rows.push_back(Row("Weapon Speed", Fmt("%.2f", weapon->GetSpeed())));
-            s.rows.push_back(Row("Reach", Fmt("%.2f", weapon->GetReach())));
-            s.rows.push_back(Row("Stagger", Fmt("%.2f", weapon->GetStagger())));
-        }
-        else
-        {
-            s.rows.push_back(Row("Weapon", "unarmed"));
-            s.rows.push_back(Row("Base Damage", Fmt("%.0f", av(RE::ActorValue::kUnarmedDamage))));
-        }
-        if (auto *ammo = actor->GetCurrentAmmo())
-            s.rows.push_back(Row("Arrow Damage", Fmt("%.0f", ammo->GetRuntimeData().data.damage)));
+        SheetSection s{"Regen", {}, {}};
+        s.rows.push_back(Row("Health Rate", Fmt("%.2f%%", av(RE::ActorValue::kHealRate))));
+        s.rows.push_back(Row("Stamina Rate", Fmt("%.2f%%", av(RE::ActorValue::kStaminaRate))));
+        s.rows.push_back(Row("Magicka Rate", Fmt("%.2f%%", av(RE::ActorValue::kMagickaRate))));
         out.push_back(std::move(s));
     }
 
@@ -667,7 +875,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
     };
 
     {
-        SheetSection s{"Warrior", {}};
+        SheetSection s{"Warrior", {}, {}};
         skill(s, {"One-Handed",
                   AV::kOneHanded,
                   {AV::kOneHandedModifier, "damage", +1},
@@ -693,7 +901,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
     }
 
     {
-        SheetSection s{"Thief", {}};
+        SheetSection s{"Thief", {}, {}};
         skill(s, {"Archery",
                   AV::kArchery,
                   {AV::kMarksmanModifier, "damage", +1},
@@ -722,7 +930,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
     }
 
     {
-        SheetSection s{"Magic", {}};
+        SheetSection s{"Magic", {}, {}};
         skill(s, {"Alteration",
                   AV::kAlteration,
                   {AV::kAlterationModifier, "cost", -1},
