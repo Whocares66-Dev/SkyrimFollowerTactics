@@ -17,7 +17,8 @@
 namespace RE
 {
 class Actor;
-}
+class SpellItem;
+} // namespace RE
 
 namespace ft::game
 {
@@ -57,6 +58,13 @@ enum class WearRequest
 };
 
 void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None);
+
+// Put a spell in a hand -- Left, Right, or None for the engine's choice --
+// unless it is there already. The engine's item equip is a no-op for an
+// item already worn; its spell equip is not, and each call plays the equip
+// sound, so the panel and the watchdog together could sound several times
+// for one pin. Returns whether anything was done.
+bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand);
 
 // The tick's part. Mark the scanned items and spells that are pinned, and
 // those the AI is kept from, for the panel; drop pins for things gone.

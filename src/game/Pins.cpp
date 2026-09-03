@@ -186,7 +186,7 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
         for (const Hand hand : {Hand::Left, Hand::Right})
         {
             if (Overlap(hands, hand))
-                manager->EquipSpell(actor, spell, HandSlot(hand));
+                EquipSpellIn(actor, spell, hand);
         }
         return;
     }
@@ -630,6 +630,21 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     for (auto &entry : magic)
         mark(entry.form, entry.pinnedLeft, entry.pinnedRight, entry.setAside, entry.asideBy, nullptr);
     std::erase_if(pins, [&](const auto &pin) { return !present.contains(pin.first); });
+}
+
+bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand)
+{
+    auto *manager = RE::ActorEquipManager::GetSingleton();
+    if (!manager || !actor || !spell)
+        return false;
+    const auto &data = actor->GetActorRuntimeData();
+    const bool left = data.selectedSpells[RE::Actor::SlotTypes::kLeftHand] == spell;
+    const bool right = data.selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell;
+    const bool already = hand == Hand::Left ? left : hand == Hand::Right ? right : (left || right);
+    if (already)
+        return false;
+    manager->EquipSpell(actor, spell, hand == Hand::None ? nullptr : HandSlot(hand));
+    return true;
 }
 
 void RepublishOwed()

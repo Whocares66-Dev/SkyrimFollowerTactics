@@ -1,6 +1,7 @@
 #include "game/Actions.h"
 
 #include "game/Packages.h"
+#include "game/Pins.h"
 
 namespace ft::game
 {
@@ -52,11 +53,11 @@ ActionResult EquipKnownSpell(RE::Actor *actor, RE::SpellItem *spell)
     if (!spell)
         return ActionResult::MissingItem;
 
-    auto *equipManager = RE::ActorEquipManager::GetSingleton();
-    if (!equipManager)
+    if (!RE::ActorEquipManager::GetSingleton())
         return ActionResult::NoEquipManager;
 
-    equipManager->EquipSpell(actor, spell, nullptr);
+    // A no-op when it is already in a hand: the rule may fire every turn.
+    EquipSpellIn(actor, spell, Hand::None);
 
     // Equipping always "works" -- the spell goes in her hand whether or not she
     // will ever cast it -- so on its own this action cannot tell the difference
