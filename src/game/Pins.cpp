@@ -718,11 +718,24 @@ bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand)
     return true;
 }
 
+// EXPERIMENT (14:33): the combat AI re-adds the pruned melee weapons,
+// spells and shield to its list every 2.5 to 7 s with the dirty flag
+// clear, and fCombatInventoryUpdateTimer is 5. Raise it, in memory only,
+// and see whether the regrowth stops. Global: every NPC's periodic
+// re-scan slows with it; the dirty flag still rebuilds on a change.
+constexpr float kCombatInventoryUpdateTimer = 1.0e6f;
+
 void LogCombatInventorySettings()
 {
     auto *collection = RE::GameSettingCollection::GetSingleton();
     if (!collection)
         return;
+    if (auto *timer = collection->GetSetting("fCombatInventoryUpdateTimer"))
+    {
+        logger::info("setting fCombatInventoryUpdateTimer was {} -- set to {}", timer->GetFloat(),
+                     kCombatInventoryUpdateTimer);
+        timer->data.f = kCombatInventoryUpdateTimer;
+    }
     for (const auto &entry : collection->settings)
     {
         const RE::Setting *setting = entry.second;
