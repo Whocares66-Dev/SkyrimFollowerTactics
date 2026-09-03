@@ -1583,11 +1583,12 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
         DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), pinned);
 }
 
-// The order of an equip cell when its column is sorted: unequipped, then
-// equipped, then pinned, then the slashed cells that cannot take it at all.
+// The order of an equip cell when its column is sorted, ascending: pinned,
+// then equipped, then unequipped, then the slashed cells that cannot take
+// it at all. What she holds to comes first, what she cannot hold last.
 int CellRank(bool allowed, bool on, bool pinned)
 {
-    return !allowed ? 3 : pinned ? 2 : on ? 1 : 0;
+    return !allowed ? 3 : pinned ? 0 : on ? 1 : 2;
 }
 
 // The rows to show, in the order the table's header asks for. Sorted every
@@ -1725,7 +1726,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
                          static_cast<Im::ImGuiID>(Column::Weight));
     Im::TableSetupColumn("Val", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth,
                          static_cast<Im::ImGuiID>(Column::Value));
-    // Ascending first, like the rest: unequipped, equipped, pinned, then the
+    // Ascending first, like the rest: pinned, equipped, unequipped, then the
     // slashed cells. "Equipped", not "Worn": it is the word the item's page
     // uses, and the one that fits a weapon.
     if (anyHand)
