@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -524,12 +525,17 @@ void ProbeCombatInventory(RE::Actor *actor)
                  owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
 }
 
+// When the last prune took something, per follower: the interval between
+// regrowths is the clue to what rebuilds the list.
+std::unordered_map<ft::ActorId, double> g_lastPruneAt;
+
 int PruneCombatList(RE::Actor *actor)
 {
     auto *controller = actor->GetActorRuntimeData().combatController;
     if (!controller || !controller->inventory)
         return 0;
     const std::vector<Pin> pins = PinsOf(actor->GetFormID());
+    const bool dirtyNow = controller->inventory->dirty;
     int removed = 0;
     std::string names;
     for (auto &array : controller->inventory->inventoryItems)
@@ -552,7 +558,17 @@ int PruneCombatList(RE::Actor *actor)
         }
     }
     if (removed > 0)
-        logger::info("{} pruned {} from the combat list: {}", Describe(actor), removed, names);
+    {
+        const ft::ActorId id = actor->GetFormID();
+        const double now = NowSeconds();
+        const auto last = g_lastPruneAt.find(id);
+        if (last == g_lastPruneAt.end())
+            logger::info("{} pruned {} from the combat list: {}", Describe(actor), removed, names);
+        else
+            logger::info("{} pruned {} from the combat list: {} -- back {:.1f} s after the last prune, dirty={}",
+                         Describe(actor), removed, names, now - last->second, dirtyNow);
+        g_lastPruneAt[id] = now;
+    }
     return removed;
 }
 
@@ -660,6 +676,38 @@ bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand)
         return false;
     manager->EquipSpell(actor, spell, hand == Hand::None ? nullptr : HandSlot(hand));
     return true;
+}
+
+void LogCombatInventorySettings()
+{
+    auto *collection = RE::GameSettingCollection::GetSingleton();
+    if (!collection)
+        return;
+    for (const auto &entry : collection->settings)
+    {
+        const RE::Setting *setting = entry.second;
+        if (!setting || !setting->GetName())
+            continue;
+        const std::string_view name = setting->GetName();
+        if (name.find("CombatInventory") == std::string_view::npos &&
+            name.find("CombatEquip") == std::string_view::npos && name.find("Equipment") == std::string_view::npos)
+            continue;
+        switch (setting->GetType())
+        {
+        case RE::Setting::Type::kFloat:
+            logger::info("setting {} = {}", name, setting->GetFloat());
+            break;
+        case RE::Setting::Type::kSignedInteger:
+            logger::info("setting {} = {}", name, setting->GetSInt());
+            break;
+        case RE::Setting::Type::kBool:
+            logger::info("setting {} = {}", name, setting->GetBool());
+            break;
+        default:
+            logger::info("setting {} (not a number)", name);
+            break;
+        }
+    }
 }
 
 void RepublishOwed()

@@ -75,6 +75,11 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
 // what the AI is choosing from once per fight.
 void KeepPins(const std::vector<RE::Actor *> &followers);
 
+// Once, at data load: every game setting that could govern how often the
+// combat AI rebuilds its list, since in play it comes back every few
+// seconds with the pruned entries restored (14:05, Jenassa's sword).
+void LogCombatInventorySettings();
+
 // Republish the views owed after a spell left a hand: the Papyrus native
 // that does it runs a frame after the request. Called first thing in the
 // tick, ahead of every hold.

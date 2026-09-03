@@ -7,6 +7,7 @@
 
 #include "core/Evaluator.h"
 #include "game/Packages.h"
+#include "game/Pins.h"
 #include "game/Tactics.h"
 #include "game/UI.h"
 
@@ -188,6 +189,7 @@ void OnDataLoaded()
 
     ft::game::Install();
     ft::game::ui::Install();
+    ft::game::LogCombatInventorySettings();
 
     const bool allPassed = passed == checks.size();
     if (auto *console = RE::ConsoleLog::GetSingleton())
