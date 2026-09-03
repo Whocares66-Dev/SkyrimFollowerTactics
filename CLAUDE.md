@@ -157,6 +157,19 @@ exists.
   SKSE ships its own source in `SKSE/src/`, which is how this was diagnosed rather than
   guessed at. Worth remembering it is there.
 
+- **An NPC's equipment changes are queued to her next update, and the frozen
+  clock withholds it.** `ActorEquipManager::EquipObject` with the queue flag
+  set (the potion path's shape) shows nothing while the panel has time
+  frozen; the click path clears that flag and calls `Actor::Update3DModel`,
+  and the item and model change at once. The item's ENCHANTMENT still waits
+  for her next update. Do not apply it early with `UpdateArmorAbility`: the
+  engine applies it again when time runs, and the effect doubles.
+- **Prevent-removal (the force flag on EquipObject) holds against the
+  equip-best swap but not against the combat AI's spell hand.** Verified in
+  play: pinned robes stop iron armour going on; a pinned dagger comes off the
+  moment a mage wants that hand for a spell. See the pin watchdog in
+  `Tactics.cpp`.
+
 ## CommonLibSSE gotchas already hit
 
 Verified against the 3.7.0 headers. Do not "simplify" these away:

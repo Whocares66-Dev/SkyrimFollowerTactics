@@ -37,6 +37,12 @@ in `docs/PLAN.md`.
 
 ## Rule engine
 
+- **Equipment swapping, and pins.** There is no "equip item" action yet. When
+  there is, it meets the Inventory tab's pins: a rule that swaps to a bow
+  should not fight a pinned sword, and the watchdog should not undo a swap
+  the rules made. Likely shape: a rule's swap releases the pin on what it
+  displaces, and re-pins it (or not) when the rule's condition lapses.
+
 - **Group subjects.** The snapshot carries one enemy, the one she is
   engaging, and no allies. "Any enemy below 30% health" and "ally in
   bleedout" need the combat group read in full (`Snapshot::enemies`,
@@ -47,6 +53,37 @@ in `docs/PLAN.md`.
 - **Named-potion effect check.** `DrinkPotion` has no "already in effect"
   test; only its per-potion cooldown spaces it. The strongest-of-a-kind
   actions do check the restore effect.
+
+## Panel
+
+- **An item's model on its detail page.** ImGui draws textured quads, not
+  meshes, so a 3D preview means one of: (a) the game's own
+  `Inventory3DManager` (`UpdateItem3D` / `Clear3D`), which renders the
+  selected item into the frame the way the vanilla inventory does -- cheap,
+  but it draws behind the framework's overlay and is positioned for
+  Scaleform's layout, so whether it can be made to sit inside our window is
+  unverified; or (b) rendering the NIF ourselves into a D3D11 render target
+  and handing the shader-resource view to `ImGui::Image` -- always works,
+  but is a mesh loader and a renderer of our own. The framework's
+  `LoadTexture` takes a file path only, so a 2D icon per item type is the
+  one cheap option available today.
+- **Enchantments show late while the clock is frozen.** With the framework's
+  `FreezeTimeOnMenu = true`, equipping an enchanted piece from the Inventory
+  tab changes the Equipped column and her model at once (the click path
+  equips unqueued and refreshes the model), but the enchantment's effect --
+  robes of Destruction's -17% cost on the Skills tab -- lands only on her
+  next update, after the panel closes. Do NOT pre-apply it with
+  `Actor::UpdateArmorAbility`: the engine's own application still follows
+  when time runs, and the two stacked to -34% (2026-09-02). Either accept
+  the lag or run the panel with `FreezeTimeOnMenu = false`, where the tick
+  refreshes the sheet within half a second.
+- **A dismissed follower's entry stays.** Removing a menu entry needs the
+  framework's `DeleteSection`, committed to its repository on 2026-09-02 but
+  in no published build (3.14.1 exports only `AddSectionItem`). The code
+  already calls it and frees the slot when it succeeds; until a release
+  ships it, the entry says "Dismissed". The call needs the SDK header from
+  that repository (`resources/SKSEMenuFramework.h`, gitignored here at
+  `extern/SKSEMenuFramework/`); the 3.11 header on Nexus predates it.
 
 ## Harness and diagnostics
 
