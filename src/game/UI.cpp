@@ -1583,6 +1583,13 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
         DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), pinned);
 }
 
+// The order of an equip cell when its column is sorted: unequipped, then
+// equipped, then pinned, then the slashed cells that cannot take it at all.
+int CellRank(bool allowed, bool on, bool pinned)
+{
+    return !allowed ? 3 : pinned ? 2 : on ? 1 : 0;
+}
+
 // The rows to show, in the order the table's header asks for. Sorted every
 // frame rather than on change: a hundred pointers is nothing, and the set
 // itself changes with the filter and with what she picks up.
@@ -1606,6 +1613,7 @@ std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const 
 
     const auto compare = [&](const InventoryItem &a, const InventoryItem &b) -> int {
         const auto number = [](float x, float y) { return x < y ? -1 : (x > y ? 1 : 0); };
+        const auto rank = [&](auto of) { return number(static_cast<float>(of(a)), static_cast<float>(of(b))); };
         switch (static_cast<Column>(spec.ColumnUserID))
         {
         case Column::Type:
@@ -1619,11 +1627,13 @@ std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const 
         case Column::Value:
             return number(static_cast<float>(a.value), static_cast<float>(b.value));
         case Column::Equipped:
-            return number(a.worn ? 1.0f : 0.0f, b.worn ? 1.0f : 0.0f);
+            return rank([](const InventoryItem &i) { return CellRank(!i.handItem, i.worn, i.pinned); });
         case Column::Left:
-            return number(a.equippedLeft ? 1.0f : 0.0f, b.equippedLeft ? 1.0f : 0.0f);
+            return rank([](const InventoryItem &i) { return CellRank(i.handItem, i.equippedLeft, i.pinnedLeft); });
         case Column::Right:
-            return number(a.equippedRight ? 1.0f : 0.0f, b.equippedRight ? 1.0f : 0.0f);
+            return rank([](const InventoryItem &i) {
+                return CellRank(i.handItem && !i.leftOnly, i.equippedRight, i.pinnedRight);
+            });
         case Column::Name:
         default:
             return a.name.compare(b.name);
@@ -1975,6 +1985,7 @@ std::vector<const MagicEntry *> VisibleMagic(const FollowerView &view, const Mag
 
     const auto compare = [&](const MagicEntry &a, const MagicEntry &b) -> int {
         const auto number = [](float x, float y) { return x < y ? -1 : (x > y ? 1 : 0); };
+        const auto rank = [&](auto of) { return number(static_cast<float>(of(a)), static_cast<float>(of(b))); };
         switch (static_cast<Column>(spec.ColumnUserID))
         {
         case Column::School:
@@ -1989,11 +2000,11 @@ std::vector<const MagicEntry *> VisibleMagic(const FollowerView &view, const Mag
         case Column::Magnitude:
             return number(a.magnitude, b.magnitude);
         case Column::Equipped:
-            return number(a.equipped ? 1.0f : 0.0f, b.equipped ? 1.0f : 0.0f);
+            return rank([](const MagicEntry &e) { return CellRank(true, e.equipped, false); });
         case Column::Left:
-            return number(a.equippedLeft ? 1.0f : 0.0f, b.equippedLeft ? 1.0f : 0.0f);
+            return rank([](const MagicEntry &e) { return CellRank(e.leftAllowed, e.equippedLeft, e.pinnedLeft); });
         case Column::Right:
-            return number(a.equippedRight ? 1.0f : 0.0f, b.equippedRight ? 1.0f : 0.0f);
+            return rank([](const MagicEntry &e) { return CellRank(e.rightAllowed, e.equippedRight, e.pinnedRight); });
         case Column::Name:
         default:
             return a.name.compare(b.name);
