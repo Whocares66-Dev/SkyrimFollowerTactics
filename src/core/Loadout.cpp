@@ -93,4 +93,19 @@ bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept
     }
 }
 
+std::vector<Pin> Shadowing(const std::vector<Pin> &pins, const Holdable &thing)
+{
+    std::vector<Pin> out;
+    if (!SetAside(pins, thing))
+        return out;
+    const Hand reach = Reach(thing.grip);
+    for (const Pin &pin : pins)
+    {
+        const Hand taken = Common(pin.hands, reach);
+        if (pin.form != thing.form && taken != Hand::None)
+            out.push_back({pin.form, taken});
+    }
+    return out;
+}
+
 } // namespace ft

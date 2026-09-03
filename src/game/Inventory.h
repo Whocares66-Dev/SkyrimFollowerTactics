@@ -78,6 +78,8 @@ struct InventoryItem
     // Kept from the combat AI while a pinned spell holds a hand this would
     // take: pruned from the AI's list of options in a fight. Still hers.
     bool setAside{false};
+    // Why, when it is: one line per pin that holds a hand it could take.
+    std::string asideBy;
 
     // The detail page. Numbers as sections in the style of the character
     // sheet; prose beneath them, each drawn under its own heading when it is

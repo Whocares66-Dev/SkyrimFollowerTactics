@@ -165,6 +165,33 @@ TEST_CASE("a pin may hold both hands, and let one go")
     CHECK(Without(Hand::Right, Hand::Left) == Hand::Right);
 }
 
+TEST_CASE("why a thing is set aside: the pins holding a hand it could take")
+{
+    const std::vector<Pin> both{{kFlames, Hand::Left}, {kFirebolt, Hand::Right}};
+    // Stoneflesh could go either way, and both ways are pinned.
+    auto why = Shadowing(both, Thing(kStoneflesh, Grip::Either));
+    REQUIRE(why.size() == 2);
+    CHECK(why[0].form == kFlames);
+    CHECK(why[0].hands == Hand::Left);
+    CHECK(why[1].form == kFirebolt);
+    CHECK(why[1].hands == Hand::Right);
+    // A left-only spell names only the left pin.
+    why = Shadowing(both, Thing(kLightningBolt, Grip::LeftOnly));
+    REQUIRE(why.size() == 1);
+    CHECK(why[0].form == kFlames);
+    // The pin itself is not set aside, so nothing shadows it.
+    CHECK(Shadowing(both, Thing(kFlames, Grip::Either)).empty());
+    // With one hand free an either-hand spell is not set aside: no reason.
+    const std::vector<Pin> right{{kFirebolt, Hand::Right}};
+    CHECK(Shadowing(right, Thing(kFlames, Grip::Either)).empty());
+    // A two-hander pinned takes both hands from a one-hander; the reason
+    // names only the hands the one-hander could have had.
+    const std::vector<Pin> bow{{kHuntingBow, Hand::Both}};
+    why = Shadowing(bow, Thing(kIronShield, Grip::LeftOnly));
+    REQUIRE(why.size() == 1);
+    CHECK(why[0].hands == Hand::Left);
+}
+
 TEST_CASE("pinned hands are the union of the pins")
 {
     CHECK(PinnedHands({}) == Hand::None);

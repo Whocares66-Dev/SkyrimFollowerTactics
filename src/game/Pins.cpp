@@ -576,8 +576,23 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     for (const auto &[form, hands] : pins)
         asPlanned.push_back({form, hands});
 
+    // The tooltip's reason: which pin holds which hand this could take.
+    const auto why = [&](const std::vector<Pin> &shadowing) {
+        std::string lines;
+        for (const Pin &pin : shadowing)
+        {
+            const auto *holder = RE::TESForm::LookupByID(pin.form);
+            const char *name = holder && holder->GetName() ? holder->GetName() : "Something";
+            const char *where = pin.hands == Hand::Both   ? "both hands"
+                                : pin.hands == Hand::Left ? "her left hand"
+                                                          : "her right hand";
+            lines += (lines.empty() ? "" : "\n") + std::string(name) + " is pinned in " + where;
+        }
+        return lines;
+    };
+
     std::unordered_set<std::uint32_t> present;
-    const auto mark = [&](std::uint32_t form, bool &left, bool &right, bool &aside, bool *whole) {
+    const auto mark = [&](std::uint32_t form, bool &left, bool &right, bool &aside, std::string &asideBy, bool *whole) {
         present.insert(form);
         if (const auto pin = pins.find(form); pin != pins.end())
         {
@@ -588,12 +603,17 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
             return;
         }
         auto *thing = RE::TESForm::LookupByID(form);
-        aside = thing && SetAside(asPlanned, DescribeHoldable(actor, thing));
+        if (!thing)
+            return;
+        const Holdable described = DescribeHoldable(actor, thing);
+        aside = SetAside(asPlanned, described);
+        if (aside)
+            asideBy = why(Shadowing(asPlanned, described));
     };
     for (auto &item : items)
-        mark(item.form, item.pinnedLeft, item.pinnedRight, item.setAside, &item.pinned);
+        mark(item.form, item.pinnedLeft, item.pinnedRight, item.setAside, item.asideBy, &item.pinned);
     for (auto &entry : magic)
-        mark(entry.form, entry.pinnedLeft, entry.pinnedRight, entry.setAside, nullptr);
+        mark(entry.form, entry.pinnedLeft, entry.pinnedRight, entry.setAside, entry.asideBy, nullptr);
     std::erase_if(pins, [&](const auto &pin) { return !present.contains(pin.first); });
 }
 

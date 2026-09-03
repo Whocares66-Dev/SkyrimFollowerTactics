@@ -1770,8 +1770,9 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             state.detail = item->form;
             state.openedFrom = Tab::Inventory;
         }
+        // Over the whole cell: the Selectable is the last item here.
         if (item->setAside && Im::IsItemHovered(0))
-            Im::SetTooltip("Kept from the AI in a fight: a pin holds a hand it would take. Still hers.");
+            Im::SetTooltip("Kept from the AI in a fight:\n%s\nStill hers.", item->asideBy.c_str());
         Im::SetCursorScreenPos(pos);
         std::string name = item->name;
         if (item->count > 1)
@@ -2133,15 +2134,17 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
             state.detail = entry->form;
+        // Why the row is dimmed, over the whole cell: asked of the
+        // Selectable, before the name is drawn over it.
+        if (entry->setAside && Im::IsItemHovered(0))
+            Im::SetTooltip("Kept from the AI in a fight:\n%s\nStill hers, and a cast rule can still make her cast it.",
+                           entry->asideBy.c_str());
+        else if (entry->aboveSkill && Im::IsItemHovered(0))
+            Im::SetTooltip("The AI will not choose it on its own:\nNeeds  %s %d\nHers   %s %d\nSo it cannot be "
+                           "pinned; a cast rule can still make her cast it.",
+                           entry->school.c_str(), entry->levelValue, entry->school.c_str(), entry->skill);
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", entry->name.c_str());
-        if (entry->setAside && Im::IsItemHovered(0))
-            Im::SetTooltip("Kept from the AI in a fight: a pin holds a hand it would take. Still hers, and a cast "
-                           "rule can still make her cast it.");
-        else if (entry->aboveSkill && Im::IsItemHovered(0))
-            Im::SetTooltip("Needs %d in %s; she has %d. The AI will not choose it on its own, so it cannot be "
-                           "pinned; a cast rule can still make her cast it.",
-                           entry->levelValue, entry->school.c_str(), entry->skill);
 
         if (!schoolList)
         {

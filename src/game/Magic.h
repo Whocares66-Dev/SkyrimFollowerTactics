@@ -70,6 +70,9 @@ struct MagicEntry
     // pin holds: pruned from the AI's list of options. Still hers, and a
     // cast rule can still make her cast it. Listed dimmed.
     bool setAside{false};
+    // Why, when it is: one line per pin that holds a hand it could take,
+    // "Firebolt is pinned in her right hand", for the row's tooltip.
+    std::string asideBy;
     std::string hand; // the record's word for it: Either, Left, Right, Both; Voice for a power or shout
 
     // The page: numbers as sections, then the effect lines and the record's

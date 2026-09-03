@@ -51,6 +51,12 @@ enum class Hand : std::uint8_t
     return static_cast<Hand>(static_cast<std::uint8_t>(hands) & ~static_cast<std::uint8_t>(hand));
 }
 
+// The hands two sets share.
+[[nodiscard]] constexpr Hand Common(Hand a, Hand b) noexcept
+{
+    return static_cast<Hand>(static_cast<std::uint8_t>(a) & static_cast<std::uint8_t>(b));
+}
+
 // Which hands a thing's record lets it take.
 enum class Grip : std::uint8_t
 {
@@ -60,6 +66,24 @@ enum class Grip : std::uint8_t
     Either,    // a one-handed weapon; most spells
     Both       // a two-hander, a bow, a crossbow, a master spell
 };
+
+// The hands a thing with this grip could go into.
+[[nodiscard]] constexpr Hand Reach(Grip grip) noexcept
+{
+    switch (grip)
+    {
+    case Grip::LeftOnly:
+        return Hand::Left;
+    case Grip::RightOnly:
+        return Hand::Right;
+    case Grip::Either:
+    case Grip::Both:
+        return Hand::Both;
+    case Grip::None:
+    default:
+        return Hand::None;
+    }
+}
 
 // One thing she has, as the planner sees it.
 struct Holdable
@@ -117,5 +141,11 @@ struct Pin
 // Is a thing entirely unavailable to the AI: every hand it could take is
 // spoken for? What the panel greys out.
 [[nodiscard]] bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept;
+
+// Why: the pins holding a hand the thing could take, each cut down to the
+// hands it takes from this thing. The panel's answer to "why is this row
+// greyed out". Empty for the thing's own pin, and for anything not set
+// aside.
+[[nodiscard]] std::vector<Pin> Shadowing(const std::vector<Pin> &pins, const Holdable &thing);
 
 } // namespace ft
