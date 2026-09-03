@@ -278,15 +278,22 @@ std::string ConditionText(const ft::Rule &r)
 // inside it is a box within a box. And an unanchored popup appears detached
 // from the thing it belongs to -- it reads as a floating menu rather than as
 // this row's condition being edited.
-// A delete button whose X is drawn, not typed.
+// A square button whose glyph is drawn, not typed: an X to delete, a + to add.
 //
-// The letter "X" is sized and positioned by the font, so beside two vector
-// triangles it never quite agrees with them. The obvious glyph upgrades are a
-// worse bet, not a better one: MainFont.ttf is a Latin face -- every non-Latin
+// The letters "X" and "+" are sized and positioned by the font, so beside two
+// vector triangles they never quite agree with them, and a typed "+" sits
+// visibly off centre in its button. The obvious glyph upgrades are a worse
+// bet, not a better one: MainFont.ttf is a Latin face -- every non-Latin
 // range in SKSEMenuFramework.ini is opt-in and off by default -- so U+2715 and
 // a trashcan emoji would likely come back as blank boxes. Two lines cost
 // nothing, centre by construction, and cannot go missing.
-bool DeleteButton(const std::string &id, float size)
+enum class Glyph
+{
+    Cross,
+    Plus
+};
+
+bool GlyphButton(const std::string &id, float size, Glyph glyph)
 {
     const bool clicked = Im::Button(("##" + id).c_str(), Im::ImVec2(size, size));
 
@@ -298,12 +305,27 @@ bool DeleteButton(const std::string &id, float size)
 
     if (auto *draw = Im::GetWindowDrawList())
     {
-        Im::ImDrawListManager::AddLine(draw, {lo.x + inset, lo.y + inset}, {hi.x - inset, hi.y - inset}, ink,
-                                       thickness);
-        Im::ImDrawListManager::AddLine(draw, {hi.x - inset, lo.y + inset}, {lo.x + inset, hi.y - inset}, ink,
-                                       thickness);
+        if (glyph == Glyph::Cross)
+        {
+            Im::ImDrawListManager::AddLine(draw, {lo.x + inset, lo.y + inset}, {hi.x - inset, hi.y - inset}, ink,
+                                           thickness);
+            Im::ImDrawListManager::AddLine(draw, {hi.x - inset, lo.y + inset}, {lo.x + inset, hi.y - inset}, ink,
+                                           thickness);
+        }
+        else
+        {
+            const float cx = (lo.x + hi.x) * 0.5f;
+            const float cy = (lo.y + hi.y) * 0.5f;
+            Im::ImDrawListManager::AddLine(draw, {lo.x + inset, cy}, {hi.x - inset, cy}, ink, thickness);
+            Im::ImDrawListManager::AddLine(draw, {cx, lo.y + inset}, {cx, hi.y - inset}, ink, thickness);
+        }
     }
     return clicked;
+}
+
+bool DeleteButton(const std::string &id, float size)
+{
+    return GlyphButton(id, size, Glyph::Cross);
 }
 
 // Chrome for the cascade popups, shared by the condition and action menus.
@@ -796,10 +818,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
     Im::Spacing();
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-    const bool addClicked = Im::Button("+##addrule", Im::ImVec2(Im::GetFrameHeight(), 0.0f));
+    const bool addClicked = GlyphButton("addrule", Im::GetFrameHeight(), Glyph::Plus);
     Im::PopStyleVar(1);
-    if (Im::IsItemHovered(0))
-        Im::SetTooltip("%s", "Add a rule. They run top to bottom; the first that can act wins.");
 
     if (addClicked)
     {
