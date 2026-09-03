@@ -1779,7 +1779,9 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         std::string name = item->name;
         if (item->count > 1)
             name += " (" + std::to_string(item->count) + ")";
-        if (item->enchanted)
+        // The enchanted tint would override the disabled colour a set-aside
+        // row was pushed: dimmed wins, or the row does not read as greyed.
+        if (item->enchanted && !item->setAside)
             Im::TextColored(kEnchanted, "%s", name.c_str());
         else
             Im::Text("%s", name.c_str());
