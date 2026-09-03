@@ -588,7 +588,15 @@ bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::CombatController *control
 {
     if (!entry || !entry->item || !controller)
         return false;
-    RE::Actor *actor = controller->cachedAttacker.get();
+    // The hook fires for every creature's AI, not only a follower's. The
+    // attacker by its HANDLE, which the handle table validates: the cached
+    // pointer beside it read as the value 1 for a cave bear's controller
+    // and crashed the game (15:04). A controller whose inventory does not
+    // point back at it is not the shape we expect; leave it alone.
+    if (!controller->inventory || controller->inventory->parentController != controller)
+        return false;
+    const RE::NiPointer<RE::Actor> attacker = controller->attackerHandle.get();
+    RE::Actor *actor = attacker.get();
     if (!actor)
         return false;
     const std::vector<Pin> pins = PinsOf(actor->GetFormID());
@@ -624,8 +632,10 @@ void WatchScoreOf(RE::CombatInventoryItem *entry)
     REL::Relocation<std::uintptr_t> table{vtable};
     const auto original = table.write_vfunc(kCalculateScoreSlot, ScoreHook);
     g_scoreOriginals[vtable] = reinterpret_cast<ScoreFn>(original);
-    logger::info("watching the AI's score of entries like {} (vtable {:X})",
-                 entry->item && entry->item->GetName() ? entry->item->GetName() : "?", vtable);
+    // The stored score is what the last call to that slot returned: if it
+    // is not a plausible score the slot is not CalculateScore.
+    logger::info("watching the AI's score of entries like {} (vtable {:X}, its last score {:.2f})",
+                 entry->item && entry->item->GetName() ? entry->item->GetName() : "?", vtable, entry->itemScore);
 }
 
 int PruneCombatList(RE::Actor *actor)
