@@ -439,9 +439,16 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
         item.equippedRight = actor->GetEquippedObject(false) == object;
 
         SheetSection stats{"Stats", {}, {}};
+        {
+            // The FormID first, as the spell page has it: what the console
+            // and the log call the thing.
+            char id[16];
+            std::snprintf(id, sizeof(id), "%08X", object->GetFormID());
+            stats.rows.push_back(Row("FormID", id));
+        }
         stats.rows.push_back(Row("Type", ""));
         Classify(actor, object, entry, item, stats);
-        stats.rows[0].value = item.type;
+        stats.rows[1].value = item.type;
         if (item.count > 1)
         {
             stats.rows.push_back(Row("Count", std::to_string(item.count)));

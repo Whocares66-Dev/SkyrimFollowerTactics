@@ -549,6 +549,17 @@ void ProbeCombatInventory(RE::Actor *actor)
     for (auto *spell : actor->GetActorRuntimeData().addedSpells)
         consider(spell);
     auto *owner = actor->AsActorValueOwner();
+    // The two form arrays beside the seven: if the 5 s rebuild
+    // (fCombatInventoryUpdateTimer) draws from these rather than from the
+    // bag, pruning them would hold where pruning the seven does not.
+    const auto forms = [](const RE::BSTArray<RE::TESForm *> &array) {
+        std::string names;
+        for (const auto *form : array)
+            names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?");
+        return names.empty() ? std::string("-") : names;
+    };
+    logger::info("{} combat inventory forms A: {}", Describe(actor), forms(controller->inventory->unk0B0));
+    logger::info("{} combat inventory forms B: {}", Describe(actor), forms(controller->inventory->unk0C8));
     logger::info("{} combat inventory left out: {} -- magicka {:.0f}/{:.0f}", Describe(actor),
                  missing.empty() ? "nothing" : missing, owner ? owner->GetActorValue(RE::ActorValue::kMagicka) : 0.0f,
                  owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
