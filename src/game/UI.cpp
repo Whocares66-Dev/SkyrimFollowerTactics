@@ -1390,10 +1390,14 @@ bool CellClicked(const char *id, float height)
 // The Worn column's tick, centred in the cell whose top-left is `pos` and
 // drawn over whatever the cell already laid out. Pinned adds a pin beside
 // the tick, in the word the panel uses for it: equipped, and kept so.
-void DrawTickAt(Im::ImVec2 pos, Im::ImU32 ink, bool pinned)
+// The tick for equipped, the pin for pinned, side by side when both. A
+// pin without a tick is a pin the AI is fighting: the thing is promised
+// to the hand but not in it this instant (the sword the AI drew over a
+// pinned bow, 14:48), and the pin must not read as cleared.
+void DrawTickAt(Im::ImVec2 pos, Im::ImU32 ink, bool on, bool pinned)
 {
     auto *draw = Im::GetWindowDrawList();
-    if (!draw)
+    if (!draw || (!on && !pinned))
         return;
     // Boxes the height of the text line the row was laid out with, and a
     // glyph's width each, so the pair sits centred with the row's own margin
@@ -1401,15 +1405,15 @@ void DrawTickAt(Im::ImVec2 pos, Im::ImU32 ink, bool pinned)
     const float h = Im::GetTextLineHeight();
     const float box = Im::GetFontSize();
     const float cell = Im::GetContentRegionAvail().x;
-    if (!pinned)
+    const float width = on && pinned ? 2.0f * box : box;
+    float left = pos.x + (std::max)(0.0f, (cell - width) * 0.5f);
+    if (on)
     {
-        const float left = pos.x + (std::max)(0.0f, (cell - box) * 0.5f);
         DrawGlyph(draw, Glyph::Tick, {left, pos.y}, {left + box, pos.y + h}, ink);
-        return;
+        left += box;
     }
-    const float left = pos.x + (std::max)(0.0f, (cell - 2.0f * box) * 0.5f);
-    DrawGlyph(draw, Glyph::Tick, {left, pos.y}, {left + box, pos.y + h}, ink);
-    DrawGlyph(draw, Glyph::Pin, {left + box, pos.y}, {left + 2.0f * box, pos.y + h}, ink, kPinScale);
+    if (pinned)
+        DrawGlyph(draw, Glyph::Pin, {left, pos.y}, {left + box, pos.y + h}, ink, kPinScale);
 }
 
 void CentredHeading(const char *title)
@@ -1570,19 +1574,20 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
     }
     else if (clickable)
     {
+        // Pinned first: a pin whose thing the AI has swapped out is still a
+        // pin, and the click releases it rather than pinning it again.
         if (CellClicked(id))
             RequestWear(follower, form,
-                        !on      ? WearRequest::Pin
-                        : pinned ? WearRequest::Unpin
-                                 : WearRequest::TakeOff,
+                        pinned ? WearRequest::Unpin
+                        : !on  ? WearRequest::Pin
+                               : WearRequest::TakeOff,
                         hand);
         if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", !on      ? "Click to equip it and keep it equipped."
-                                 : pinned ? "Equipped and pinned. Click to release the pin; it stays equipped."
-                                          : "Equipped. Click to unequip it.");
+            Im::SetTooltip("%s", pinned ? "Pinned. Click to release the pin; it stays equipped."
+                                 : !on  ? "Click to equip it and keep it equipped."
+                                        : "Equipped. Click to unequip it.");
     }
-    if (on)
-        DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), pinned);
+    DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), on, pinned);
 }
 
 // The order of an equip cell when its column is sorted, ascending: pinned,
@@ -2186,7 +2191,7 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
             Im::TableNextColumn();
             pos = Im::GetCursorScreenPos();
             if (entry->equipped)
-                DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), false);
+                DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), true, false);
         }
         else
         {
