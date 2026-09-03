@@ -339,16 +339,29 @@ void ReleaseConflictingPins(RE::Actor *actor, std::unordered_map<std::uint32_t, 
     for (auto it = pins.begin(); it != pins.end();)
     {
         auto *held = RE::TESForm::LookupByID(it->first);
-        if (held && held != incoming && Conflicts(coming, hands, DescribeHoldable(actor, held), it->second))
-        {
-            logger::info("{} unpinning {} to make room", Describe(actor), held->GetName() ? held->GetName() : "?");
-            UnequipForm(actor, held, it->second, true);
-            it = pins.erase(it);
-        }
-        else
+        const Holdable holding = held ? DescribeHoldable(actor, held) : Holdable{};
+        if (!held || held == incoming || !Conflicts(coming, hands, holding, it->second))
         {
             ++it;
+            continue;
         }
+        const char *name = held->GetName() ? held->GetName() : "?";
+        // A pin holding both hands with one thing per hand -- two daggers
+        // -- gives up only the hand asked for and keeps the other. A
+        // two-hander, or a pin with no hand, goes whole.
+        const Hand taken = Common(hands, it->second);
+        const bool partly = holding.grip == Grip::Either && taken != Hand::None && taken != it->second;
+        if (partly)
+        {
+            logger::info("{} unpinning {} from one hand to make room", Describe(actor), name);
+            UnequipForm(actor, held, taken, true);
+            it->second = Without(it->second, taken);
+            ++it;
+            continue;
+        }
+        logger::info("{} unpinning {} to make room", Describe(actor), name);
+        UnequipForm(actor, held, it->second, true);
+        it = pins.erase(it);
     }
 }
 
