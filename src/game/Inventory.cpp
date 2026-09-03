@@ -190,8 +190,12 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.type = ArmorTypeName(armor);
         item.category = ItemCategory::Apparel;
         item.equipable = true;
+        // A shield lists with the weapons, as ammunition does: it takes a
+        // hand, it is chosen with the sword, and it bashes. That leaves
+        // apparel with no hand and a single Equipped column.
         if (armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield))
         {
+            item.category = ItemCategory::Weapons;
             item.handItem = true;
             item.leftOnly = true;
         }
@@ -284,7 +288,9 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     }
     if (object->Is(RE::FormType::Light))
     {
+        // With the weapons for the same reason as a shield: it takes a hand.
         item.type = "Torch";
+        item.category = ItemCategory::Weapons;
         item.equipable = true;
         item.handItem = true;
         item.leftOnly = true;
