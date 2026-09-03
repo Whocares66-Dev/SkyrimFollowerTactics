@@ -47,7 +47,10 @@ entry point.)
 .\tools\build.ps1 -Preset core-asan -Test  # same core tests, under AddressSanitizer
 ```
 
-`-Fresh` wipes the preset's build directory first.
+`-Fresh` wipes the preset's build directory first. `-NoDeploy` builds the plugin
+without copying it into the mods folder and without the running-game guard, for
+compiling while Skyrim is up (it holds the deployed DLL open); the next plain
+run copies as usual.
 
 `core` / `core-asan` need no vcpkg and no Skyrim at all -- that is the fast feedback loop.
 `debug` / `release` build the plugin and pull CommonLibSSE-NG through vcpkg.
