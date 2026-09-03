@@ -12,6 +12,7 @@
 // rethinking.
 
 #include "core/Evaluator.h"
+#include "core/Loadout.h"
 #include "game/Inventory.h"
 #include "game/Magic.h"
 #include "game/Sensors.h"
@@ -139,18 +140,6 @@ enum class WearRequest
     Equip, // on, but no pin: for a spell the AI would not choose, where a pin would be a promise unkept
     Unpin,
     TakeOff
-};
-
-// Which hand a pin holds. None for armour and ammunition, which have no
-// hand. A one-handed weapon or a spell takes the hand asked for; a
-// two-hander, a bow or a master spell takes Both; a shield or a torch takes
-// Left whatever is asked.
-enum class Hand : std::uint8_t
-{
-    None = 0,
-    Left = 1,
-    Right = 2,
-    Both = 3
 };
 
 void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None);

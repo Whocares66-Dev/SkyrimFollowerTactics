@@ -253,11 +253,6 @@ std::mutex g_pinMutex;
 // keeps the next writer honest.
 std::unordered_map<ft::ActorId, std::unordered_map<std::uint32_t, Hand>> g_pins;
 
-bool Overlap(Hand a, Hand b)
-{
-    return (static_cast<std::uint8_t>(a) & static_cast<std::uint8_t>(b)) != 0;
-}
-
 // The hand's equip slot record, by FormID: LeftHand 013F43, RightHand
 // 013F42 in Skyrim.esm. Not through the default object table, which did
 // not answer for these on this game (01:29): a null slot here means "the
@@ -268,37 +263,68 @@ const RE::BGSEquipSlot *HandSlot(Hand hand)
     return RE::TESForm::LookupByID<RE::BGSEquipSlot>(hand == Hand::Left ? 0x00013F43 : 0x00013F42);
 }
 
-// The hands a form takes when pinned, given the hand asked for.
-Hand HandsFor(RE::TESForm *form, Hand requested)
+// The planner's description of a form: which hands its record lets it
+// take, whether the combat AI would choose it, which body slots it covers.
+// The ONLY place the pin rules meet a record; the rules themselves are in
+// core/Loadout.cpp, where they are tested.
+Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
 {
-    const Hand one = requested == Hand::Left ? Hand::Left : Hand::Right;
+    Holdable thing;
+    thing.form = form->GetFormID();
     if (auto *weapon = form->As<RE::TESObjectWEAP>())
     {
-        if (weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow())
-            return Hand::Both;
-        return one;
+        const bool bothHands =
+            weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow();
+        thing.grip = bothHands ? Grip::Both : Grip::Either;
     }
-    if (auto *spell = form->As<RE::SpellItem>())
+    else if (auto *spell = form->As<RE::SpellItem>())
     {
-        if (spell->IsTwoHanded())
-            return Hand::Both;
-        // A one-hand-only record (the NPC variants) goes to its hand
-        // whatever was asked. By FormID, as Magic.cpp explains: RightHand is
-        // 013F42 and LeftHand 013F43 in Skyrim.esm.
-        if (const auto *slot = spell->GetEquipSlot())
-        {
-            if (slot->GetFormID() == 0x00013F43)
-                return Hand::Left;
-            if (slot->GetFormID() == 0x00013F42)
-                return Hand::Right;
-        }
-        return one;
+        if (spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell)
+            return thing; // a power, an ability: no hand
+        // The slot records, by FormID from Skyrim.esm: RightHand 013F42,
+        // LeftHand 013F43, EitherHand 013F44, BothHands 013F45. The default
+        // object table did not answer for them on this game.
+        const auto *slot = spell->GetEquipSlot();
+        const std::uint32_t slotId = slot ? slot->GetFormID() : 0;
+        thing.grip = spell->IsTwoHanded()   ? Grip::Both
+                     : slotId == 0x00013F43 ? Grip::LeftOnly
+                     : slotId == 0x00013F42 ? Grip::RightOnly
+                                            : Grip::Either;
+        // Above her skill in its school: the combat AI will not choose it.
+        const auto *costliest = spell->GetCostliestEffectItem();
+        const auto *effect = costliest ? costliest->baseEffect : nullptr;
+        auto *owner = actor->AsActorValueOwner();
+        if (effect && owner)
+            thing.unusable = effect->GetMinimumSkillLevel() > owner->GetActorValue(effect->GetMagickSkill());
     }
-    if (auto *armor = form->As<RE::TESObjectARMO>())
-        return armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield) ? Hand::Left : Hand::None;
-    if (form->Is(RE::FormType::Light))
-        return Hand::Left;
-    return Hand::None;
+    else if (auto *armor = form->As<RE::TESObjectARMO>())
+    {
+        thing.slots = static_cast<std::uint32_t>(armor->GetSlotMask());
+        if (armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield))
+            thing.grip = Grip::LeftOnly;
+    }
+    else if (form->Is(RE::FormType::Light))
+    {
+        thing.grip = Grip::LeftOnly;
+    }
+    else if (form->Is(RE::FormType::Ammo))
+    {
+        thing.ammo = true;
+    }
+    return thing;
+}
+
+// This follower's pins as the planner takes them.
+std::vector<Pin> PinsOf(ft::ActorId id)
+{
+    std::scoped_lock lock(g_pinMutex);
+    std::vector<Pin> out;
+    if (const auto it = g_pins.find(id); it != g_pins.end())
+    {
+        for (const auto &[form, hands] : it->second)
+            out.push_back({form, hands});
+    }
+    return out;
 }
 
 // Is the form in those hands right now?
@@ -460,20 +486,6 @@ void AllowDualWield(RE::Actor *actor)
                  style->GetFormID(), ours->GetFormID());
 }
 
-// Does pinning `incoming` in `hands` mean releasing `held`, pinned in
-// `heldHands`? Hands that overlap; armour on shared body slots;
-// ammunition against ammunition. Anything else does not compete.
-bool Conflicts(RE::TESForm *incoming, Hand hands, RE::TESForm *held, Hand heldHands)
-{
-    if (hands != Hand::None && heldHands != Hand::None)
-        return Overlap(hands, heldHands);
-    auto *a = incoming->As<RE::TESObjectARMO>();
-    auto *b = held->As<RE::TESObjectARMO>();
-    if (a && b)
-        return (static_cast<std::uint32_t>(a->GetSlotMask()) & static_cast<std::uint32_t>(b->GetSlotMask())) != 0U;
-    return incoming->Is(RE::FormType::Ammo) && held->Is(RE::FormType::Ammo);
-}
-
 // A pinned item is locked against the engine's own swap -- the Creation Kit
 // wiki: prevent-removal "does prevent removal when using EquipItem(OtherItem)"
 // -- so before something new goes on, whatever it displaces has to be
@@ -482,10 +494,11 @@ bool Conflicts(RE::TESForm *incoming, Hand hands, RE::TESForm *held, Hand heldHa
 void ReleaseConflictingPins(RE::Actor *actor, std::unordered_map<std::uint32_t, Hand> &pins, RE::TESForm *incoming,
                             Hand hands)
 {
+    const Holdable coming = DescribeHoldable(actor, incoming);
     for (auto it = pins.begin(); it != pins.end();)
     {
         auto *held = RE::TESForm::LookupByID(it->first);
-        if (held && held != incoming && Conflicts(incoming, hands, held, it->second))
+        if (held && held != incoming && Conflicts(coming, hands, DescribeHoldable(actor, held), it->second))
         {
             logger::info("{} unpinning {} to make room", Describe(actor), held->GetName() ? held->GetName() : "?");
             UnequipForm(actor, held, it->second, true);
@@ -498,59 +511,40 @@ void ReleaseConflictingPins(RE::Actor *actor, std::unordered_map<std::uint32_t, 
     }
 }
 
-bool CompetesForHand(RE::TESBoundObject *object, Hand pinned);
-bool Competes(const RE::SpellItem *spell, Hand pinned);
-
-// Mark the scanned items and spells that are pinned, for the panel's hand
-// and Equipped cells, and drop any pin for something the scans did not
-// find: sold, dropped, the last arrow shot. A set lookup per entry and
-// nothing more; the watchdog catches the same case on its own, but there
-// is no reason to leave a dead pin for it to find.
-void MarkPins(ft::ActorId id, std::vector<InventoryItem> &items, std::vector<MagicEntry> &magic)
+// Mark the scanned items and spells that are pinned, and those the AI is
+// kept from, for the panel's cells; and drop any pin for something the
+// scans did not find: sold, dropped, the last arrow shot. The watchdog
+// catches that case on its own, but there is no reason to leave a dead pin
+// for it to find.
+void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<MagicEntry> &magic)
 {
     std::scoped_lock lock(g_pinMutex);
-    const auto it = g_pins.find(id);
+    const auto it = g_pins.find(actor->GetFormID());
     if (it == g_pins.end() || it->second.empty())
         return;
     auto &pins = it->second;
-
-    // The hands pins hold: a weapon or spell that would take one of them is
-    // kept from the AI in a fight, and reads as set aside here.
-    std::uint8_t handMask = 0;
+    Hand pinned = Hand::None;
     for (const auto &[form, hands] : pins)
-        handMask |= static_cast<std::uint8_t>(hands);
-    const Hand pinnedSpells = static_cast<Hand>(handMask);
+        pinned = pinned | hands;
 
     std::unordered_set<std::uint32_t> present;
+    const auto mark = [&](std::uint32_t form, bool &left, bool &right, bool &aside, bool *whole) {
+        present.insert(form);
+        if (const auto pin = pins.find(form); pin != pins.end())
+        {
+            left = Overlap(pin->second, Hand::Left);
+            right = Overlap(pin->second, Hand::Right);
+            if (whole)
+                *whole = pin->second == Hand::None;
+            return;
+        }
+        auto *thing = RE::TESForm::LookupByID(form);
+        aside = thing && Competes(DescribeHoldable(actor, thing).grip, pinned);
+    };
     for (auto &item : items)
-    {
-        present.insert(item.form);
-        if (const auto pin = pins.find(item.form); pin != pins.end())
-        {
-            item.pinned = pin->second == Hand::None;
-            item.pinnedLeft = Overlap(pin->second, Hand::Left);
-            item.pinnedRight = Overlap(pin->second, Hand::Right);
-        }
-        else if (item.handItem && pinnedSpells != Hand::None)
-        {
-            auto *object = RE::TESForm::LookupByID<RE::TESBoundObject>(item.form);
-            item.setAside = object && CompetesForHand(object, pinnedSpells);
-        }
-    }
+        mark(item.form, item.pinnedLeft, item.pinnedRight, item.setAside, &item.pinned);
     for (auto &entry : magic)
-    {
-        present.insert(entry.form);
-        if (const auto pin = pins.find(entry.form); pin != pins.end())
-        {
-            entry.pinnedLeft = Overlap(pin->second, Hand::Left);
-            entry.pinnedRight = Overlap(pin->second, Hand::Right);
-        }
-        else if (pinnedSpells != Hand::None)
-        {
-            auto *spell = RE::TESForm::LookupByID<RE::SpellItem>(entry.form);
-            entry.setAside = spell && Competes(spell, pinnedSpells);
-        }
-    }
+        mark(entry.form, entry.pinnedLeft, entry.pinnedRight, entry.setAside, nullptr);
     std::erase_if(pins, [&](const auto &pin) { return !present.contains(pin.first); });
 }
 
@@ -650,40 +644,6 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
 // the life of a pin; it worked, and left her without those spells for
 // every menu, script and mod in between (2026-09-03).
 
-// Which hands a spell's record could take, as a mask, for the competition
-// test. Voice spells (powers) take none.
-Hand SpellHands(const RE::SpellItem *spell)
-{
-    using Type = RE::MagicSystem::SpellType;
-    if (spell->GetSpellType() != Type::kSpell)
-        return Hand::None;
-    if (spell->IsTwoHanded())
-        return Hand::Both;
-    const auto *slot = spell->GetEquipSlot();
-    const std::uint32_t id = slot ? slot->GetFormID() : 0;
-    if (id == 0x00013F43)
-        return Hand::Left;
-    if (id == 0x00013F42)
-        return Hand::Right;
-    return Hand::None; // either hand: has the other hand, so it does not compete
-}
-
-// Does an unpinned spell compete with the hands pinned spells hold? A
-// one-hand-only spell competes if that hand is pinned. A both-hands spell,
-// and an EITHER-hand spell, compete if any hand is: the either-hand spell
-// was first left alone on the theory that the AI would keep it to the free
-// hand, and the AI put Flames straight into the pinned one (03:25). Powers
-// and the like take no hand and never compete.
-bool Competes(const RE::SpellItem *spell, Hand pinned)
-{
-    if (spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell)
-        return false;
-    const Hand needs = SpellHands(spell);
-    if (needs == Hand::None || needs == Hand::Both)
-        return pinned != Hand::None;
-    return Overlap(needs, pinned);
-}
-
 // What the combat AI is choosing from: its combat inventory, seven arrays
 // of scored options built for the fight. Logged once per fight, by name,
 // to learn the layout -- the AI cast a spell we had removed from her lists
@@ -760,19 +720,6 @@ void ProbeCombatInventory(RE::Actor *actor)
                  owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
 }
 
-// Does an item take a pinned hand? A one-hander takes either hand; a
-// two-hander both; a shield or a torch the left.
-bool CompetesForHand(RE::TESBoundObject *object, Hand pinned)
-{
-    if (object->Is(RE::FormType::Weapon))
-        return pinned != Hand::None; // a one-hander takes either hand; a two-hander both
-    if (object->Is(RE::FormType::Light))
-        return Overlap(pinned, Hand::Left);
-    if (auto *armor = object->As<RE::TESObjectARMO>())
-        return armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield) && Overlap(pinned, Hand::Left);
-    return false;
-}
-
 int PruneCombatList(RE::Actor *actor, Hand pinned)
 {
     auto *controller = actor->GetActorRuntimeData().combatController;
@@ -790,16 +737,7 @@ int PruneCombatList(RE::Actor *actor, Hand pinned)
         for (auto it = array.begin(); it != array.end();)
         {
             auto *form = *it ? (*it)->item : nullptr;
-            bool competes = false;
-            if (form && !pins.contains(form->GetFormID()))
-            {
-                // A spell is a bound object too: ask the spell question first.
-                if (auto *spell = form->As<RE::SpellItem>())
-                    competes = Competes(spell, pinned);
-                else if (auto *object = form->As<RE::TESBoundObject>())
-                    competes = CompetesForHand(object, pinned);
-            }
-            if (competes)
+            if (form && !pins.contains(form->GetFormID()) && Competes(DescribeHoldable(actor, form).grip, pinned))
             {
                 names += (names.empty() ? "" : ", ") + std::string(form->GetName() ? form->GetName() : "?");
                 it = array.erase(it);
@@ -844,20 +782,10 @@ void ReadyPinnedHands(RE::Actor *actor)
 // second click was needed to see it gone (04:15). Game thread only.
 std::unordered_set<ft::ActorId> g_republish;
 
-// The hands pins hold on this follower -- a weapon's, a spell's, a shield's
-// or a torch's alike -- or None. A pin is a promise whichever kind holds
-// the hand: a pinned dagger keeps spells off its hand as a pinned spell
-// keeps daggers off (04:27).
+// The hands this follower's pins hold, all together.
 Hand PinnedHands(ft::ActorId id)
 {
-    std::scoped_lock lock(g_pinMutex);
-    const auto it = g_pins.find(id);
-    if (it == g_pins.end())
-        return Hand::None;
-    std::uint8_t mask = 0;
-    for (const auto &[form, hands] : it->second)
-        mask |= static_cast<std::uint8_t>(hands);
-    return static_cast<Hand>(mask);
+    return ft::PinnedHands(PinsOf(id));
 }
 
 // Level and carry weight, for the panel. Not rule inputs -- three cheap reads,
@@ -881,7 +809,7 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     v.skills = BuildSkillSheet(actor);
     v.inventory = ScanInventory(actor);
     v.magic = ScanMagic(actor);
-    MarkPins(v.id, v.inventory, v.magic);
+    MarkPins(actor, v.inventory, v.magic);
     v.combatStyle = BuildCombatStyleSheet(actor);
 }
 
@@ -1231,13 +1159,22 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
     // this is clicked, and with FreezeTimeOnMenu the tick is held, so the
     // task also republishes her view: the cell answers now rather than when
     // the panel closes.
-    task->AddTask([id, form, request, hand] {
+    task->AddTask([id, form, request, hand]() mutable {
         auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
         auto *thing = RE::TESForm::LookupByID(form);
         if (!actor || !thing)
             return;
 
-        Hand hands = HandsFor(thing, hand);
+        const Holdable described = DescribeHoldable(actor, thing);
+        Hand hands = HandsFor(described.grip, hand);
+        if (request == WearRequest::Pin && !Pinnable(described))
+        {
+            // The panel does not offer this, but a pin is a promise, and it
+            // is kept here too: the AI would not choose it, so equip only.
+            logger::info("{} {} cannot be pinned (the AI would not choose it); equipping instead", Describe(actor),
+                         thing->GetName() ? thing->GetName() : "?");
+            request = WearRequest::Equip;
+        }
         {
             std::scoped_lock lock(g_pinMutex);
             auto &pins = g_pins[id];

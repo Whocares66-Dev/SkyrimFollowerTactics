@@ -61,6 +61,7 @@ include(ClangTools)
 # ---------------------------------------------------------------------------
 add_library(ft_core STATIC
     src/core/Evaluator.cpp
+    src/core/Loadout.cpp
     src/core/Rule.cpp
     src/core/Vocabulary.cpp
 )
