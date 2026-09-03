@@ -242,6 +242,187 @@ ft::Stat ReadStatFor(RE::Actor *actor, RE::ActorValue av)
     return ft::Stat{owner->GetActorValue(av), owner->GetPermanentActorValue(av)};
 }
 
+// What the panel has pinned on each follower. Written by the request task,
+// read by the tick; both on the game thread, but the lock costs nothing and
+// keeps the next writer honest.
+std::mutex g_pinMutex;
+std::unordered_map<ft::ActorId, std::unordered_set<std::uint32_t>> g_pins;
+
+// Equip a base object. `force` is the engine's prevent-removal flag, which
+// asks the AI not to take it off again -- the pin.
+//
+// `now` clears the engine's queue flag. Queued -- the potion path's shape,
+// right in a fight -- the change waits for the actor's next update, and an
+// actor gets no update while the clock is frozen, so a click in the panel
+// showed nothing until the panel closed (20:26, Marcurio's boots). The
+// engine's trailing apply-now flag did not change that (20:37); dropping the
+// queue is what the player's own inventory menu does, paused, and it does.
+// The click path takes that; the tick, with time running, keeps the queue.
+void Equip(RE::Actor *actor, RE::TESBoundObject *object, bool force, bool now)
+{
+    if (auto *manager = RE::ActorEquipManager::GetSingleton())
+        manager->EquipObject(actor, object, nullptr, 1, nullptr, !now, force, false, false);
+}
+
+// Take it off WITHOUT the prevent-equip flag. The Creation Kit wiki notes
+// that flag does nothing for weapons on an NPC and works only too well for
+// ammunition: an archer is left holding a bow she cannot use. Taking off is
+// a one-time act here; if the game puts the thing back, that is its outfit
+// logic doing its job.
+void Unequip(RE::Actor *actor, RE::TESBoundObject *object, bool now)
+{
+    if (auto *manager = RE::ActorEquipManager::GetSingleton())
+        manager->UnequipObject(actor, object, nullptr, 1, nullptr, !now, false, false, false, nullptr);
+}
+
+// Does wearing `incoming` mean taking `held` off? Armour by shared body
+// slots; a weapon by any other weapon, and a two-hander or a bow by a shield
+// too; a torch by a shield, since both want the left hand; ammunition by
+// other ammunition. Anything else does not compete.
+bool Conflicts(RE::TESBoundObject *incoming, RE::TESBoundObject *held)
+{
+    using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
+    const auto slotsOf = [](RE::TESBoundObject *o) -> std::uint32_t {
+        auto *armor = o->As<RE::TESObjectARMO>();
+        return armor ? static_cast<std::uint32_t>(armor->GetSlotMask()) : 0U;
+    };
+    const auto isShield = [&](RE::TESBoundObject *o) {
+        return (slotsOf(o) & static_cast<std::uint32_t>(Slot::kShield)) != 0U;
+    };
+
+    if (auto *weapon = incoming->As<RE::TESObjectWEAP>())
+    {
+        if (held->Is(RE::FormType::Weapon))
+            return true;
+        const bool bothHands =
+            weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow();
+        return bothHands && isShield(held);
+    }
+    if (incoming->Is(RE::FormType::Armor))
+        return (slotsOf(incoming) & slotsOf(held)) != 0U;
+    if (incoming->Is(RE::FormType::Light))
+        return held->Is(RE::FormType::Light) || isShield(held);
+    if (incoming->Is(RE::FormType::Ammo))
+        return held->Is(RE::FormType::Ammo);
+    return false;
+}
+
+// A pinned item is locked against the engine's own swap -- the Creation Kit
+// wiki: prevent-removal "does prevent removal when using EquipItem(OtherItem)"
+// -- so before something new goes on, whatever it displaces has to be
+// unpinned and taken off by us, or the equip silently does nothing. That is
+// what happened with iron armour pinned and robes clicked.
+void ReleaseConflictingPins(RE::Actor *actor, std::unordered_set<std::uint32_t> &pins, RE::TESBoundObject *incoming)
+{
+    for (auto it = pins.begin(); it != pins.end();)
+    {
+        auto *held = RE::TESForm::LookupByID<RE::TESBoundObject>(*it);
+        if (held && held != incoming && Conflicts(incoming, held))
+        {
+            logger::info("{} unpinning {} to make room", Describe(actor), held->GetName() ? held->GetName() : "?");
+            Unequip(actor, held, true);
+            it = pins.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+// Mark the scanned items that are pinned, for the Worn column, and drop any
+// pin for an item the scan did not find: sold, dropped, the last arrow shot.
+// The sweep has the whole bag in hand, so this is a set lookup per item and
+// nothing more; the watchdog catches the same case on its own, but there is
+// no reason to leave a dead pin for it to find.
+void MarkPinned(ft::ActorId id, std::vector<InventoryItem> &items)
+{
+    std::scoped_lock lock(g_pinMutex);
+    const auto it = g_pins.find(id);
+    if (it == g_pins.end() || it->second.empty())
+        return;
+    auto &pins = it->second;
+
+    std::unordered_set<std::uint32_t> carried;
+    for (auto &item : items)
+    {
+        carried.insert(item.form);
+        item.pinned = pins.contains(item.form);
+    }
+    std::erase_if(pins, [&](std::uint32_t form) { return !carried.contains(form); });
+}
+
+// Weapons and torches: the hand items the combat AI and the rules contest.
+// Ammunition is not, so it is not one of these.
+bool IsHandItem(const RE::TESBoundObject *object)
+{
+    return object->Is(RE::FormType::Weapon) || object->Is(RE::FormType::Light);
+}
+
+// The watchdog: put back any pinned item the game has taken off, and forget
+// pins for items no longer carried.
+//
+// Its own pass, not a rider on the inventory scan, and gated on the pin map:
+// with nothing pinned it costs a lock and a look at an empty map. With pins
+// it asks the engine for each pinned base object's entry alone -- a walk of
+// pointer compares, no names, no strings -- so a follower with two pins
+// costs two lookups a tick, not a sweep of her bag.
+//
+// In a fight her hands are the combat AI's, and the rules': a mage with a
+// pinned dagger wants that hand for a spell, and putting the dagger back
+// every half second had the two trading blows -- the flicker seen with
+// Marcurio. So a pinned weapon or torch is what she carries out of combat
+// and starts a fight with; once it is over, it goes back on. Armour and
+// ammunition are contested by nothing and hold throughout.
+void EnforcePins(const std::vector<RE::Actor *> &followers)
+{
+    std::scoped_lock lock(g_pinMutex);
+    if (g_pins.empty())
+        return;
+
+    for (auto *actor : followers)
+    {
+        const auto it = g_pins.find(actor->GetFormID());
+        if (it == g_pins.end())
+            continue;
+        auto &pins = it->second;
+        const bool fighting = actor->IsInCombat();
+
+        for (auto pin = pins.begin(); pin != pins.end();)
+        {
+            auto *object = RE::TESForm::LookupByID<RE::TESBoundObject>(*pin);
+            if (!object)
+            {
+                pin = pins.erase(pin);
+                continue;
+            }
+
+            auto inventory =
+                actor->GetInventory([object](RE::TESBoundObject &candidate) { return &candidate == object; });
+            const auto found = inventory.find(object);
+            const bool carried = found != inventory.end() && found->second.first > 0;
+            if (!carried)
+            {
+                logger::info("{} no longer carries {} -- pin dropped", Describe(actor),
+                             object->GetName() ? object->GetName() : "?");
+                pin = pins.erase(pin);
+                continue;
+            }
+
+            const bool worn = found->second.second && found->second.second->IsWorn();
+            if (!worn && !(fighting && IsHandItem(object)))
+            {
+                logger::info("{} took off pinned {} -- putting it back on", Describe(actor),
+                             object->GetName() ? object->GetName() : "?");
+                Equip(actor, object, true, false);
+            }
+            ++pin;
+        }
+    }
+
+    std::erase_if(g_pins, [](const auto &entry) { return entry.second.empty(); });
+}
+
 // Level and carry weight, for the panel. Not rule inputs -- three cheap reads,
 // done on both the in-combat and idle paths so the panel does not go blank when
 // a fight ends.
@@ -261,6 +442,8 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     v.potions = ScanCarriedPotions(actor);
     v.sheet = BuildCharacterSheet(actor);
     v.skills = BuildSkillSheet(actor);
+    v.inventory = ScanInventory(actor);
+    MarkPinned(v.id, v.inventory);
 }
 
 void PublishOne(FollowerView v)
@@ -429,9 +612,11 @@ bool EvaluationHeld()
 // deadlock. This cost one hung startup to learn.
 void Tick()
 {
-    if (!g_enabled.load())
-        return;
-
+    // Not an early return on the tactics switch: the switch gates rule
+    // EVALUATION, and the rest of this -- the views behind the Character,
+    // Skills and Inventory tabs, the pin watchdog -- is not tactics and runs
+    // whether or not she is being told what to do. The frozen clock still
+    // holds everything, since nothing below can act on a stopped world.
     if (EvaluationHeld())
         return;
 
@@ -496,7 +681,7 @@ void Tick()
                 g_bleedingOut.erase(follower->GetFormID());
         }
 
-        if (fighting && !down && IsFollowerEnabled(follower->GetFormID()))
+        if (g_enabled.load() && fighting && !down && IsFollowerEnabled(follower->GetFormID()))
             EvaluateFollower(follower, now);
         else
             PublishIdle(follower, now, fighting);
@@ -506,9 +691,8 @@ void Tick()
     // still fighting: a request must not outlive the moment it was made for.
     TickPackages(now, followers);
 
-    // Menu entries are added lazily, because followers appear long after
-    // Install() has run. Cheap: it only acts on a follower it has not seen.
-    ui::RegisterNewFollowers();
+    // Pinned gear, independent of tactics. Cheap when nothing is pinned.
+    EnforcePins(followers);
 
     // Drop anyone who is no longer a managed follower -- dismissed, dead, or out
     // of range -- so the panel reflects the present rather than a history.
@@ -523,6 +707,11 @@ void Tick()
             return true;
         });
     }
+
+    // Menu entries follow the views: added for a newcomer, removed for the
+    // dismissed. After the erase above, so a dismissed follower is gone from
+    // the views by the time this looks.
+    ui::SyncFollowers();
 
     if (g_cost.samples > 0 && (now - g_lastCostReport) >= kCostReportInterval)
     {
@@ -571,6 +760,73 @@ ft::RuleSet GetRules(ft::ActorId id)
     std::scoped_lock lock(g_rulesMutex);
     const auto it = g_ruleSets.find(id);
     return it == g_ruleSets.end() ? DefaultRuleSet() : it->second;
+}
+
+void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request)
+{
+    auto *task = SKSE::GetTaskInterface();
+    if (!task)
+        return;
+    // Queued to the game thread and run there once. The panel is open while
+    // this is clicked, and with FreezeTimeOnMenu the tick is held, so the
+    // task also republishes her view: the Worn column answers now rather
+    // than when the panel closes.
+    task->AddTask([id, form, request] {
+        auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+        auto *object = RE::TESForm::LookupByID<RE::TESBoundObject>(form);
+        if (!actor || !object)
+            return;
+
+        {
+            std::scoped_lock lock(g_pinMutex);
+            auto &pins = g_pins[id];
+            if (request == WearRequest::Pin)
+            {
+                ReleaseConflictingPins(actor, pins, object);
+                pins.insert(form);
+            }
+            else
+            {
+                pins.erase(form);
+            }
+        }
+
+        const char *name = object->GetName() ? object->GetName() : "?";
+        switch (request)
+        {
+        case WearRequest::Pin:
+            logger::info("{} told to wear {} (pinned)", Describe(actor), name);
+            Equip(actor, object, true, true);
+            break;
+        case WearRequest::Unpin:
+            // The lock lives on the worn item, and the engine offers no way
+            // to lift it in place: off, then on again without the flag.
+            logger::info("{} told to keep {} but not held to it", Describe(actor), name);
+            Unequip(actor, object, true);
+            Equip(actor, object, false, true);
+            break;
+        case WearRequest::TakeOff:
+            logger::info("{} told to take off {}", Describe(actor), name);
+            Unequip(actor, object, true);
+            break;
+        }
+
+        // Redraw her now. The Creation Kit wiki, on EquipItem: armour
+        // equipped while a menu holds the actor "will not be visible ...
+        // until the dialogue is ended" unless the model is refreshed
+        // straight after -- which is this call, the one SKSE's
+        // QueueNiNodeUpdate wraps.
+        actor->Update3DModel();
+
+        // NOT applied here: the item's enchantment. The equip path applies it
+        // on the actor's next update, which the frozen clock withholds, so
+        // the Skills tab shows the change only once the panel has closed and
+        // time has run. Applying it here as well (UpdateArmorAbility) put
+        // robes of Destruction at -34% instead of -17%: the engine's own
+        // application still came, on top. Deferred it stays.
+
+        PublishIdle(actor, TacticsSeconds(), actor->IsInCombat());
+    });
 }
 
 void SetRules(ft::ActorId id, ft::RuleSet rules)

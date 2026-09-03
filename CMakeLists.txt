@@ -88,6 +88,7 @@ if(FT_BUILD_PLUGIN)
     add_commonlibsse_plugin(${PROJECT_NAME} SOURCES
         src/plugin.cpp
         src/game/Sensors.cpp
+        src/game/Inventory.cpp
         src/game/Actions.cpp
         src/game/Tactics.cpp
         src/game/Util.cpp

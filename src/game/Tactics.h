@@ -12,6 +12,7 @@
 // rethinking.
 
 #include "core/Evaluator.h"
+#include "game/Inventory.h"
 #include "game/Sensors.h"
 
 #include <string>
@@ -70,6 +71,8 @@ struct FollowerView
     // The Character and Skills tabs' sections, worded on the game thread.
     std::vector<SheetSection> sheet;
     std::vector<SheetSection> skills;
+    // The Inventory tab: everything she carries, sorted by name.
+    std::vector<InventoryItem> inventory;
 };
 
 struct CostStats
@@ -98,6 +101,41 @@ void SetRules(ft::ActorId id, ft::RuleSet rules);
 
 // The rules a follower starts with, before anyone edits them.
 [[nodiscard]] const ft::RuleSet &DefaultRuleSet();
+
+// Put an item on, keep it on, or take it off, from the panel.
+//
+// Pin equips it and KEEPS it on: the tick puts it back whenever the game
+// takes it off, until the item leaves her inventory or a later request lets
+// go. The game re-dresses a follower freely -- her default outfit comes
+// back on a cell change, and a better piece of armour handed over is worn
+// at once -- and a pin is how "wear this" survives that without touching
+// her outfit record, which is what the heavier follower frameworks do.
+// Pinning releases any pin it conflicts with (same body slot, other hand),
+// since the engine will not displace a pinned item on its own.
+//
+// A pinned weapon or torch is held only OUT of combat. In a fight the hands
+// are the combat AI's and the rules' -- a spell wants one -- and holding a
+// dagger there against them only flickers. It goes back on when the fight
+// ends. Armour and ammunition hold throughout.
+//
+// Unpin leaves it worn but hers to change again. TakeOff takes it off and
+// forgets it; the game may put it back, and what it wears by default is
+// its business.
+//
+// Independent of tactics: pins are enforced whether the tactics switch is on
+// or off, on the same half-second clock, by a watchdog that looks only at the
+// pinned items and does nothing at all when nothing is pinned.
+//
+// Callable from any thread: the work is queued to the game thread. Pins live
+// in memory only, like the rules, until profiles persist.
+enum class WearRequest
+{
+    Pin,
+    Unpin,
+    TakeOff
+};
+
+void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request);
 
 // Why the world's clock is stopped, if it is.
 //

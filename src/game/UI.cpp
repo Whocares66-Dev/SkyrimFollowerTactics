@@ -23,11 +23,14 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <initializer_list>
 #include <mutex>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -128,14 +131,6 @@ constexpr float kOrderGap = 2.0f;
 // row and the number column, which is not what those want. So the padding
 // stays, and the two button cells opt out of it themselves.
 constexpr float kCellPadX = 6.0f;
-
-// Padding around the enable tick, and it is deliberately not the theme's.
-//
-// A checkbox is square at GetFrameHeight(), which with a 32pt font is a ~46px
-// box around a tick that needs nothing like it -- and every pixel of that is
-// width the Then column does not get. This one control gets a tight frame so
-// the column can be sized to the tick instead of to the font.
-constexpr float kTickPad = 3.0f;
 
 float WidestLabel(std::initializer_list<const char *> labels)
 {
@@ -279,50 +274,99 @@ std::string ConditionText(const ft::Rule &r)
 // inside it is a box within a box. And an unanchored popup appears detached
 // from the thing it belongs to -- it reads as a floating menu rather than as
 // this row's condition being edited.
-// A square button whose glyph is drawn, not typed: an X to delete, a + to add.
-//
-// The letters "X" and "+" are sized and positioned by the font, so beside two
-// vector triangles they never quite agree with them, and a typed "+" sits
-// visibly off centre in its button. The obvious glyph upgrades are a worse
-// bet, not a better one: MainFont.ttf is a Latin face -- every non-Latin
-// range in SKSEMenuFramework.ini is opt-in and off by default -- so U+2715 and
-// a trashcan emoji would likely come back as blank boxes. Two lines cost
-// nothing, centre by construction, and cannot go missing.
+// Every icon on a row -- tick, double tick, plus, cross, the order carets,
+// the back arrow -- is a Font Awesome glyph from the solid face the
+// framework ships and loads (the inventory's category row proved it
+// renders). Strokes through the draw list were tried first and read jagged
+// beside ImGui's own checkbox tick; a font glyph is hinted and anti-aliased
+// for free, and one em size keeps every icon on a row the same size.
 enum class Glyph
 {
     Cross,
-    Plus
+    Plus,
+    Tick,
+    Pin,
+    CaretRight,
+    Up,
+    Down,
+    Back
 };
 
+unsigned Codepoint(Glyph glyph)
+{
+    switch (glyph)
+    {
+    case Glyph::Cross:
+        return 0xF00D; // xmark
+    case Glyph::Plus:
+        return 0xF067; // plus
+    case Glyph::Tick:
+        return 0xF00C; // check
+    case Glyph::Pin:
+        return 0xF08D; // thumbtack
+    case Glyph::CaretRight:
+        return 0xF0DA; // caret-right
+    case Glyph::Up:
+        return 0xF062; // arrow-up: a move, not a sort direction
+    case Glyph::Down:
+        return 0xF063; // arrow-down
+    case Glyph::Back:
+    default:
+        return 0xF060; // arrow-left
+    }
+}
+
+// A codepoint as UTF-8. Every Font Awesome icon sits in the U+F000 block, so
+// the three-byte form is the only case.
+std::string Utf8(unsigned codepoint)
+{
+    return {static_cast<char>(0xE0 | (codepoint >> 12)), static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)),
+            static_cast<char>(0x80 | (codepoint & 0x3F))};
+}
+
+// A codepoint centred in the box [lo, hi], through the draw list, for a cell
+// that is not a button. `scale` is the glyph's size as a fraction of the
+// font's: a font glyph fills its whole em where a letter uses two thirds of
+// it, so at full size a tall glyph like the pin touches the edges of a text
+// row. The pin draws at kPinScale for a margin; the tick is a short glyph
+// and fits at 1, as do buttons, whose frame is taller than the glyph.
+constexpr float kPinScale = 0.75f;
+
+void DrawCodepoint(Im::ImDrawList *draw, unsigned codepoint, Im::ImVec2 lo, Im::ImVec2 hi, Im::ImU32 ink,
+                   float scale = 1.0f)
+{
+    const std::string text = Utf8(codepoint);
+    FontAwesome::PushSolid();
+    const Im::ImFont *font = Im::GetFont();
+    const float fontSize = Im::GetFontSize() * scale;
+    Im::ImVec2 extent = Im::CalcTextSize(text.c_str(), nullptr, false, -1.0f);
+    FontAwesome::Pop();
+    if (!font)
+        return;
+    extent.x *= scale;
+    extent.y *= scale;
+    const Im::ImVec2 at{(lo.x + hi.x - extent.x) * 0.5f, (lo.y + hi.y - extent.y) * 0.5f};
+    Im::ImDrawListManager::AddText(draw, font, fontSize, at, ink, text.c_str());
+}
+
+void DrawGlyph(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 lo, Im::ImVec2 hi, Im::ImU32 ink, float scale = 1.0f)
+{
+    DrawCodepoint(draw, Codepoint(glyph), lo, hi, ink, scale);
+}
+
+// A square button whose label is the glyph, so ImGui centres it and dims it
+// with the button when disabled. The icon font is pushed for the button
+// alone.
 bool GlyphButton(const std::string &id, float size, Glyph glyph)
 {
-    const bool clicked = Im::Button(("##" + id).c_str(), Im::ImVec2(size, size));
-
-    const Im::ImVec2 lo = Im::GetItemRectMin();
-    const Im::ImVec2 hi = Im::GetItemRectMax();
-    const float inset = size * 0.30f;
-    const float thickness = (std::max)(1.0f, size * 0.07f);
-    const auto ink = Im::GetColorU32(Im::ImGuiCol_Text, 1.0f);
-
-    if (auto *draw = Im::GetWindowDrawList())
-    {
-        if (glyph == Glyph::Cross)
-        {
-            Im::ImDrawListManager::AddLine(draw, {lo.x + inset, lo.y + inset}, {hi.x - inset, hi.y - inset}, ink,
-                                           thickness);
-            Im::ImDrawListManager::AddLine(draw, {hi.x - inset, lo.y + inset}, {lo.x + inset, hi.y - inset}, ink,
-                                           thickness);
-        }
-        else
-        {
-            const float cx = (lo.x + hi.x) * 0.5f;
-            const float cy = (lo.y + hi.y) * 0.5f;
-            Im::ImDrawListManager::AddLine(draw, {lo.x + inset, cy}, {hi.x - inset, cy}, ink, thickness);
-            Im::ImDrawListManager::AddLine(draw, {cx, lo.y + inset}, {cx, hi.y - inset}, ink, thickness);
-        }
-    }
+    FontAwesome::PushSolid();
+    const bool clicked = Im::Button((Utf8(Codepoint(glyph)) + "##" + id).c_str(), Im::ImVec2(size, size));
+    FontAwesome::Pop();
     return clicked;
 }
+
+bool CellClicked(const char *id, float height = 0.0f);
+void CentredHeading(const char *title);
 
 bool DeleteButton(const std::string &id, float size)
 {
@@ -331,28 +375,35 @@ bool DeleteButton(const std::string &id, float size)
 
 // Chrome for the cascade popups, shared by the condition and action menus.
 //
-// ImGui positions a nested menu deliberately overlapping its parent by
-// ItemSpacing.x -- a mouse-travel convenience, since it means a diagonal drag
-// toward the submenu does not fall off the parent. With a theme whose spacing
-// and borders are as heavy as SKYRIMDEFAULT's, that overlap stops reading as
-// helpful and starts reading as two windows colliding. Tightening the spacing
-// shrinks the overlap and thinning the border stops the two edges doubling up.
+// A thin border on every level. The root popup takes PopupBorderSize, but a
+// menu opened from inside a menu is flagged as a CHILD window by ImGui
+// (BeginMenuEx adds ImGuiWindowFlags_ChildWindow when its parent is itself a
+// child menu) and takes ChildBorderSize instead -- which is why thinning only
+// the popup border left the deeper levels at the theme's 3 px. Both are
+// pushed, to the same value.
 //
-// WindowPadding is deliberately NOT touched. Overriding it here is what left
-// the menu text jammed against the popup border: the overlap is driven by
-// ItemSpacing alone, so padding was never the lever and shrinking it only cost
-// the margin. The theme's own padding is the right value.
+// ImGui places a submenu overlapping its parent, and the amount is
+// ItemInnerSpacing.x -- not ItemSpacing, whatever the comment in imgui.cpp
+// says it is (FindBestWindowPosForPopup reads ItemInnerSpacing). Setting it
+// to the border width makes the child's left border land exactly on the
+// parent's right border, so the two boxes share one line instead of
+// colliding a few pixels apart.
 //
 // Pushed BEFORE BeginPopup: a popup takes its padding and border when the
 // window is created, not while it is being filled. Popped on every path out,
 // the closed one included.
 void PushPopupChrome()
 {
-    Im::PushStyleVar(Im::ImGuiStyleVar_PopupBorderSize, 1.0f);
+    constexpr float border = 1.0f;
+    const auto *style = Im::GetStyle();
+    const float innerY = style ? style->ItemInnerSpacing.y : 4.0f;
+    Im::PushStyleVar(Im::ImGuiStyleVar_PopupBorderSize, border);
+    Im::PushStyleVar(Im::ImGuiStyleVar_ChildBorderSize, border);
+    Im::PushStyleVar(Im::ImGuiStyleVar_ItemInnerSpacing, Im::ImVec2(border, innerY));
     Im::PushStyleVar(Im::ImGuiStyleVar_ItemSpacing, Im::ImVec2(6.0f, 4.0f));
 }
 
-constexpr int kPopupChromeVars = 2;
+constexpr int kPopupChromeVars = 4;
 
 void CellButtonOpensPopup(const char *id, const std::string &label)
 {
@@ -398,6 +449,57 @@ void CellButtonOpensPopup(const char *id, const std::string &label)
     Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
 }
 
+// One row of a cascade, drawn with the icon font's glyphs.
+//
+// ImGui draws a submenu's arrow and a selected item's check in its own
+// strokes, and those are the two marks on this panel that were not from the
+// icon font. There is no flag to turn them off, so: a submenu row is opened
+// with its label pushed transparent -- ImGui still measures it and still
+// draws its arrow, invisibly -- and the label and a caret are drawn over it
+// through the parent's draw list; a leaf row is opened unselected, so ImGui
+// draws no check, and a check is drawn where it would have been. The rect
+// comes from the cursor and the window, not from the item: once a submenu
+// opens, "the last item" is the submenu window.
+float CascadeIconRight()
+{
+    const auto *style = Im::GetStyle();
+    return Im::GetWindowPos().x + Im::GetWindowWidth() - (style ? style->WindowPadding.x : 8.0f);
+}
+
+void CascadeIcon(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 rowPos, float right)
+{
+    if (!draw)
+        return;
+    const float h = Im::GetTextLineHeight();
+    const float w = Im::GetFontSize();
+    DrawGlyph(draw, glyph, {right - w, rowPos.y}, {right, rowPos.y + h}, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
+}
+
+bool BeginCascade(const char *label)
+{
+    auto *draw = Im::GetWindowDrawList();
+    const Im::ImVec2 pos = Im::GetCursorScreenPos();
+    const float right = CascadeIconRight();
+    Im::PushStyleColor(Im::ImGuiCol_Text, Im::ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    const bool open = Im::BeginMenu(label, true);
+    Im::PopStyleColor(1);
+    if (draw)
+        Im::ImDrawListManager::AddText(draw, pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), label);
+    CascadeIcon(draw, Glyph::CaretRight, pos, right);
+    return open;
+}
+
+bool CascadeItem(const char *label, bool selected)
+{
+    auto *draw = Im::GetWindowDrawList();
+    const Im::ImVec2 pos = Im::GetCursorScreenPos();
+    const float right = CascadeIconRight();
+    const bool clicked = Im::MenuItem(label, nullptr, false, true);
+    if (selected)
+        CascadeIcon(draw, Glyph::Tick, pos, right);
+    return clicked;
+}
+
 bool ConditionCascade(const char *id, ft::Rule &rule)
 {
     bool changed = false;
@@ -414,7 +516,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule)
     for (std::size_t si = 0; si < static_cast<std::size_t>(ft::SubjectKind::COUNT); ++si)
     {
         const auto subject = static_cast<ft::SubjectKind>(si);
-        if (!Im::BeginMenu(std::string(ft::DisplayName(subject)).c_str(), true))
+        if (!BeginCascade(std::string(ft::DisplayName(subject)).c_str()))
             continue;
 
         for (std::size_t pi = 0; pi < static_cast<std::size_t>(ft::PredicateKind::COUNT); ++pi)
@@ -430,7 +532,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule)
             {
                 // No argument -- a leaf.
                 const bool selected = rule.subject == subject && rule.predicate == predicate;
-                if (Im::MenuItem(predicateName.c_str(), nullptr, selected, true))
+                if (CascadeItem(predicateName.c_str(), selected))
                 {
                     rule.subject = subject;
                     rule.predicate = predicate;
@@ -441,14 +543,14 @@ bool ConditionCascade(const char *id, ft::Rule &rule)
                 continue;
             }
 
-            if (!Im::BeginMenu(predicateName.c_str(), true))
+            if (!BeginCascade(predicateName.c_str()))
                 continue;
 
             for (const float preset : presets)
             {
                 const bool selected = rule.subject == subject && rule.predicate == predicate &&
                                       std::abs(rule.conditionArg - preset) < 0.001f;
-                if (Im::MenuItem(ArgumentText(predicate, preset).c_str(), nullptr, selected, true))
+                if (CascadeItem(ArgumentText(predicate, preset).c_str(), selected))
                 {
                     rule.subject = subject;
                     rule.predicate = predicate;
@@ -567,14 +669,14 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
         {
             if (action != ft::ActionKind::DrinkHealthPotion)
                 continue;
-            if (!Im::BeginMenu("Drink potion", true))
+            if (!BeginCascade("Drink potion"))
                 continue;
 
             for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
                               ft::ActionKind::DrinkMagickaPotion})
             {
                 const bool selected = rule.action == kind;
-                if (Im::MenuItem(DrinkSubmenuLabel(kind).c_str(), nullptr, selected, true))
+                if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
                 {
                     rule.action = kind;
                     rule.actionForm = 0;
@@ -591,7 +693,7 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
                 {
                     const std::string label = option.name + " (" + std::to_string(option.count) + ")";
                     const bool selected = rule.action == ft::ActionKind::DrinkPotion && rule.actionForm == option.form;
-                    if (Im::MenuItem(label.c_str(), nullptr, selected, true))
+                    if (CascadeItem(label.c_str(), selected))
                     {
                         rule.action = ft::ActionKind::DrinkPotion;
                         rule.actionForm = option.form;
@@ -606,7 +708,7 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
         if (!TakesSpell(action))
         {
             const bool selected = rule.action == action;
-            if (Im::MenuItem(name.c_str(), nullptr, selected, true))
+            if (CascadeItem(name.c_str(), selected))
             {
                 rule.action = action;
                 rule.actionForm = 0;
@@ -625,13 +727,13 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
             continue;
         }
 
-        if (!Im::BeginMenu(name.c_str(), true))
+        if (!BeginCascade(name.c_str()))
             continue;
 
         for (const auto &option : view.spells)
         {
             const bool selected = rule.action == action && rule.actionForm == option.form;
-            if (Im::MenuItem(option.name.c_str(), nullptr, selected, true))
+            if (CascadeItem(option.name.c_str(), selected))
             {
                 rule.action = action;
                 rule.actionForm = option.form;
@@ -678,8 +780,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     // three buttons ended up in a column too narrow to hold them.
     const float row = Im::GetFrameHeight();
     const float gutter = kCellPadX * 2.0f;
-    const float tick = Im::GetFontSize() + kTickPad * 2.0f;
-    const float onWidth = tick + gutter;
+    // The heading or the visible tick, whichever is wider: the cell is the
+    // click target now, so it needs no room for a button around the glyph.
+    const float onWidth = (std::max)(TextWidth("On"), row * 0.4f) + gutter;
     const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
     const float statusWidth =
         WidestLabel({"cooldown", "no target", "no potion", "no magicka", "invalid", "fired", "false"}) + gutter;
@@ -710,21 +813,28 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         Im::TableSetColumnIndex(0);
         {
-            const float widget = Im::GetFontSize() + kTickPad * 2.0f;
-            const float cell = Im::GetContentRegionAvail().x;
-            if (cell > widget)
-                Im::SetCursorPosX(Im::GetCursorPosX() + (cell - widget) * 0.5f);
-            // Centre it against the row too: the row's height comes from the
-            // taller buttons beside it, so a tight tick would otherwise ride
-            // high in its cell.
-            if (const float slack = Im::GetFrameHeight() - widget; slack > 0.0f)
-                Im::SetCursorPosY(Im::GetCursorPosY() + slack * 0.5f);
-
-            Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-            Im::PushStyleVar(Im::ImGuiStyleVar_FramePadding, Im::ImVec2(kTickPad, kTickPad));
-            if (Im::Checkbox(("##on" + rowId).c_str(), &rule.enabled))
+            // The whole cell is the switch, lit while hovered; the tick is
+            // drawn centred in it at the size of the other glyphs on the row.
+            // Off is the tick ghosted rather than gone: an empty cell would
+            // not read as something to click.
+            const Im::ImVec2 pos = Im::GetCursorScreenPos();
+            if (CellClicked(("##on" + rowId).c_str(), Im::GetFrameHeight()))
+            {
+                rule.enabled = !rule.enabled;
                 changed = true;
-            Im::PopStyleVar(2);
+            }
+            if (Im::IsItemHovered(0))
+                Im::SetTooltip(rule.enabled ? "On -- click to turn this rule off"
+                                            : "Off -- click to turn this rule on");
+
+            if (auto *draw = Im::GetWindowDrawList())
+            {
+                const float size = Im::GetFrameHeight();
+                const float cell = Im::GetContentRegionAvail().x;
+                const float left = pos.x + (cell - size) * 0.5f;
+                DrawGlyph(draw, Glyph::Tick, {left, pos.y}, {left + size, pos.y + size},
+                          Im::GetColorU32(rule.enabled ? Im::ImGuiCol_Text : Im::ImGuiCol_TextDisabled, 1.0f));
+            }
         }
 
         Im::TableSetColumnIndex(1);
@@ -769,15 +879,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 Im::SetCursorPosX(Im::GetCursorPosX() + (cell - group) * 0.5f);
         }
         Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-        // ArrowButton, not a "^" and a "v".
-        //
-        // Those are two glyphs with nothing in common: "^" is a diacritic that
-        // sits up near the cap line, "v" is a lowercase letter on the baseline.
-        // Centring the text box centres neither triangle, so the pair always
-        // looked misaligned however the cell was measured. ArrowButton draws a
-        // vector triangle centred in the frame, and needs nothing of the font.
+        // Arrows from the icon font, like every other glyph on the row.
         Im::BeginDisabled(i == 0);
-        if (Im::ArrowButton(("up" + rowId).c_str(), Im::ImGuiDir_Up))
+        if (GlyphButton("up" + rowId, Im::GetFrameHeight(), Glyph::Up))
         {
             moveFrom = static_cast<int>(i);
             moveTo = static_cast<int>(i) - 1;
@@ -786,7 +890,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         Im::SameLine(0.0f, kOrderGap);
         Im::BeginDisabled(i + 1 >= rules.rules.size());
-        if (Im::ArrowButton(("dn" + rowId).c_str(), Im::ImGuiDir_Down))
+        if (GlyphButton("dn" + rowId, Im::GetFrameHeight(), Glyph::Down))
         {
             moveFrom = static_cast<int>(i);
             moveTo = static_cast<int>(i) + 1;
@@ -958,7 +1062,8 @@ void DrawPerkDrawer(const SheetRow &row, float left, float right)
 // next is the row line below it; the striping is counted across pieces
 // rather than restarted by each; and the outer left and right borders are
 // drawn by hand across the drawer's height, so the frame is continuous.
-void DrawSections(const std::vector<SheetSection> &sections, bool modifiers)
+void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
+                  const std::function<void(std::uint32_t)> &onLink = {})
 {
     float nameWidth = 0.0f;
     float valueWidth = 0.0f;
@@ -987,12 +1092,35 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers)
     // at the theme's default the last row sat on the table's bottom border.
     Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 4.0f));
 
+    std::string lastHeading;
+    bool firstInGroup = true;
     for (const auto &section : sections)
     {
-        // Centred, where the style default is flush left.
-        Im::PushStyleVar(Im::ImGuiStyleVar_SeparatorTextAlign, Im::ImVec2(0.5f, 0.5f));
-        Im::SeparatorText(section.title.c_str());
-        Im::PopStyleVar(1);
+        // One heading per group, and a plain label over each table within it
+        // -- Attack, then "Right Hand" and "Left Hand". A section with no
+        // group is its own heading, as every section was before.
+        const std::string &heading = section.group.empty() ? section.title : section.group;
+        if (heading != lastHeading)
+        {
+            CentredHeading(heading.c_str());
+            lastHeading = heading;
+            firstInGroup = true;
+        }
+        if (!section.group.empty())
+        {
+            // Air between one table and the next label under a shared
+            // heading: the two spacings after a table were not enough to
+            // keep "Left Hand" from reading as a footer to the table above.
+            if (!firstInGroup)
+            {
+                Im::Spacing();
+                Im::Spacing();
+                Im::Spacing();
+            }
+            Im::SetCursorPosX(Im::GetCursorPosX() + kCellPadX);
+            Im::Text("%s", section.title.c_str());
+        }
+        firstInGroup = false;
 
         // Pieces abut: no item spacing between one table and the next.
         Im::PushStyleVar(Im::ImGuiStyleVar_ItemSpacing, Im::ImVec2(kCellPadX, 0.0f));
@@ -1011,7 +1139,13 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers)
             if (!Im::BeginTable(id.c_str(), modifiers ? 3 : 2, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
                 return false;
             Im::TableSetupColumn("##name", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
-            Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
+            // The value column takes the rest of the table when nothing
+            // follows it, so a value cell that is a link lights up to the
+            // table's edge rather than stopping at the widest value.
+            if (modifiers)
+                Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
+            else
+                Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
             if (modifiers)
             {
                 Im::TableSetupColumn("Modifiers", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
@@ -1102,6 +1236,15 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers)
             }
 
             Im::TableSetColumnIndex(1);
+            if (row.form != 0 && onLink)
+            {
+                // The value names an item: that cell is a link to its page,
+                // lit like the inventory's name cell.
+                const Im::ImVec2 pos = Im::GetCursorScreenPos();
+                if (CellClicked(("##link" + section.title + "/" + row.label).c_str()))
+                    onLink(row.form);
+                Im::SetCursorScreenPos(pos);
+            }
             Im::Text("%s", row.value.c_str());
             if (modifiers)
             {
@@ -1140,6 +1283,521 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers)
     }
 
     Im::PopStyleVar(1); // cell padding
+}
+
+// --- inventory ---------------------------------------------------------------
+
+// What each follower's Inventory tab is showing: the list narrowed to one
+// category, or one item in detail. Keyed by follower so switching pages does
+// not lose the place. Render thread only, like g_openRows.
+enum class Tab
+{
+    None,
+    Character,
+    Inventory
+};
+
+struct InventoryTabState
+{
+    std::uint32_t detail{0};        // the item open in detail; 0 for the list
+    int category{-1};               // an ItemCategory, or -1 for all of them
+    Tab openedFrom{Tab::Inventory}; // where the detail page returns to
+    Tab select{Tab::None};          // a tab to switch to on the next frame
+};
+
+std::unordered_map<ft::ActorId, InventoryTabState> g_inventoryTabs;
+
+// One filter for every follower. Shared on purpose: "where are the lockpicks"
+// is a question about the party, not about one bag.
+char g_inventoryFilter[64]{};
+
+// The category row's icons. Font Awesome's free set has no sword, so
+// Weapons gets a hammer; swap the codepoint here if a better one turns up.
+constexpr unsigned kIconAll = 0xF49E;  // box-open
+constexpr unsigned kIconMisc = 0xF1B2; // cube
+unsigned IconFor(ItemCategory category)
+{
+    switch (category)
+    {
+    case ItemCategory::Weapons:
+        return 0xF6E3; // hammer
+    case ItemCategory::Apparel:
+        return 0xF553; // tshirt
+    case ItemCategory::Potions:
+        return 0xF0C3; // flask
+    case ItemCategory::Food:
+        return 0xF5D1; // apple-alt
+    case ItemCategory::Ingredients:
+        return 0xF5A7; // mortar-pestle
+    case ItemCategory::Scrolls:
+        return 0xF70E; // scroll
+    case ItemCategory::Books:
+        return 0xF02D; // book
+    case ItemCategory::Keys:
+        return 0xF084; // key
+    case ItemCategory::Misc:
+    default:
+        return kIconMisc;
+    }
+}
+
+constexpr Im::ImVec4 kEnchanted{0.70f, 0.75f, 1.00f, 1.0f};
+
+bool ContainsNoCase(const std::string &text, const char *needle)
+{
+    const auto same = [](char a, char b) {
+        return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+    };
+    const std::string_view n(needle);
+    return n.empty() || std::search(text.begin(), text.end(), n.begin(), n.end(), same) != text.end();
+}
+
+// Text flush with the right edge of the current table cell, for a column of
+// numbers: the ones and the tens then line up.
+void TextRightInCell(const std::string &text)
+{
+    const float slack = Im::GetContentRegionAvail().x - TextWidth(text);
+    if (slack > 0.0f)
+        Im::SetCursorPosX(Im::GetCursorPosX() + slack);
+    Im::Text("%s", text.c_str());
+}
+
+// An invisible, cell-filling click target, lit through the cell background
+// while hovered for the reason DrawSections gives. Draws nothing itself: the
+// caller puts the cursor back and draws the cell's content over it.
+bool CellClicked(const char *id, float height)
+{
+    const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
+    Im::PushStyleColor(Im::ImGuiCol_Header, invisible);
+    Im::PushStyleColor(Im::ImGuiCol_HeaderHovered, invisible);
+    Im::PushStyleColor(Im::ImGuiCol_HeaderActive, invisible);
+    const bool clicked = Im::Selectable(id, false, 0, Im::ImVec2(0.0f, height));
+    Im::PopStyleColor(3);
+    if (Im::IsItemHovered(0))
+        Im::TableSetBgColor(Im::ImGuiTableBgTarget_CellBg, Im::GetColorU32(Im::ImGuiCol_ButtonHovered, 1.0f), -1);
+    return clicked;
+}
+
+// The Worn column's tick, centred in the cell whose top-left is `pos` and
+// drawn over whatever the cell already laid out. Pinned adds a pin beside
+// the tick, in the word the panel uses for it: equipped, and kept so.
+void DrawTickAt(Im::ImVec2 pos, Im::ImU32 ink, bool pinned)
+{
+    auto *draw = Im::GetWindowDrawList();
+    if (!draw)
+        return;
+    // Boxes the height of the text line the row was laid out with, and a
+    // glyph's width each, so the pair sits centred with the row's own margin
+    // above and below.
+    const float h = Im::GetTextLineHeight();
+    const float box = Im::GetFontSize();
+    const float cell = Im::GetContentRegionAvail().x;
+    if (!pinned)
+    {
+        const float left = pos.x + (std::max)(0.0f, (cell - box) * 0.5f);
+        DrawGlyph(draw, Glyph::Tick, {left, pos.y}, {left + box, pos.y + h}, ink);
+        return;
+    }
+    const float left = pos.x + (std::max)(0.0f, (cell - 2.0f * box) * 0.5f);
+    DrawGlyph(draw, Glyph::Tick, {left, pos.y}, {left + box, pos.y + h}, ink);
+    DrawGlyph(draw, Glyph::Pin, {left + box, pos.y}, {left + 2.0f * box, pos.y + h}, ink, kPinScale);
+}
+
+void CentredHeading(const char *title)
+{
+    Im::PushStyleVar(Im::ImGuiStyleVar_SeparatorTextAlign, Im::ImVec2(0.5f, 0.5f));
+    Im::SeparatorText(title);
+    Im::PopStyleVar(1);
+}
+
+// SkyUI's tab strip: All, then every category she has something in. Empty
+// categories are left out, as SkyUI leaves them out -- a tab promising
+// nothing is noise. Chips flow onto a second line when the panel is narrow.
+//
+// Each chip is a selectable with no label of its own; the icon and the word
+// are painted over it through the draw list, so the layout cursor stays on
+// the chip's full width and the next one lands beside it, not beside the text.
+void DrawCategoryRow(const FollowerView &view, InventoryTabState &state)
+{
+    std::array<int, static_cast<std::size_t>(ItemCategory::COUNT)> counts{};
+    for (const auto &item : view.inventory)
+        ++counts[static_cast<std::size_t>(item.category)];
+
+    const auto *style = Im::GetStyle();
+    const float padX = style ? style->FramePadding.x : 4.0f;
+    const float spacing = style ? style->ItemSpacing.x : 8.0f;
+    const float gap = padX;
+    const float right = Im::GetCursorPosX() + Im::GetContentRegionAvail().x;
+    auto *draw = Im::GetWindowDrawList();
+
+    FontAwesome::PushSolid();
+    const Im::ImFont *iconFont = Im::GetFont();
+    const float iconSize = Im::GetFontSize();
+    FontAwesome::Pop();
+
+    bool first = true;
+    const auto chip = [&](const char *label, unsigned codepoint, int category) {
+        const std::string icon = Utf8(codepoint);
+        float iconWidth = 0.0f;
+        if (iconFont)
+        {
+            FontAwesome::PushSolid();
+            iconWidth = TextWidth(icon);
+            FontAwesome::Pop();
+        }
+        const float width = padX + iconWidth + gap + TextWidth(label) + padX;
+
+        if (!first)
+        {
+            Im::SameLine(0.0f, spacing);
+            if (Im::GetCursorPosX() + width > right)
+                Im::NewLine();
+        }
+        first = false;
+
+        const Im::ImVec2 pos = Im::GetCursorScreenPos();
+        if (Im::Selectable((std::string("##cat") + label).c_str(), state.category == category, 0,
+                           Im::ImVec2(width, 0.0f)))
+            state.category = category;
+
+        if (!draw)
+            return;
+        const auto ink = Im::GetColorU32(Im::ImGuiCol_Text, 1.0f);
+        if (iconFont)
+            Im::ImDrawListManager::AddText(draw, iconFont, iconSize, {pos.x + padX, pos.y}, ink, icon.c_str());
+        Im::ImDrawListManager::AddText(draw, {pos.x + padX + iconWidth + gap, pos.y}, ink, label);
+    };
+
+    chip("All", kIconAll, -1);
+    for (std::size_t i = 0; i < counts.size(); ++i)
+    {
+        if (counts[i] == 0)
+            continue;
+        const auto category = static_cast<ItemCategory>(i);
+        chip(DisplayName(category), IconFor(category), static_cast<int>(i));
+    }
+
+    // A category that has just emptied -- the last potion drunk -- falls back
+    // to All rather than showing an empty table under a tab that is no
+    // longer there.
+    if (state.category >= 0 && counts[static_cast<std::size_t>(state.category)] == 0)
+        state.category = -1;
+}
+
+// The inventory table's columns, by id rather than by position: which of
+// them a list shows depends on the category, and a sort spec names the
+// column by this id.
+enum class Column : unsigned
+{
+    Name = 1,
+    Type,
+    Damage,
+    Armor,
+    Weight,
+    Value,
+    Equipped
+};
+
+// The rows to show, in the order the table's header asks for. Sorted every
+// frame rather than on change: a hundred pointers is nothing, and the set
+// itself changes with the filter and with what she picks up.
+std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const InventoryTabState &state)
+{
+    std::vector<const InventoryItem *> rows;
+    for (const auto &item : view.inventory)
+    {
+        if (state.category >= 0 && static_cast<int>(item.category) != state.category)
+            continue;
+        if (!ContainsNoCase(item.name, g_inventoryFilter))
+            continue;
+        rows.push_back(&item);
+    }
+
+    const auto *specs = Im::TableGetSortSpecs();
+    if (!specs || specs->SpecsCount < 1 || !specs->Specs)
+        return rows;
+    const auto &spec = specs->Specs[0];
+    const bool ascending = spec.SortDirection != Im::ImGuiSortDirection_Descending;
+
+    const auto compare = [&](const InventoryItem &a, const InventoryItem &b) -> int {
+        const auto number = [](float x, float y) { return x < y ? -1 : (x > y ? 1 : 0); };
+        switch (static_cast<Column>(spec.ColumnUserID))
+        {
+        case Column::Type:
+            return a.type.compare(b.type);
+        case Column::Damage:
+            return number(a.damage, b.damage);
+        case Column::Armor:
+            return number(a.armor, b.armor);
+        case Column::Weight:
+            return number(a.weight, b.weight);
+        case Column::Value:
+            return number(static_cast<float>(a.value), static_cast<float>(b.value));
+        case Column::Equipped:
+            return number(a.worn ? 1.0f : 0.0f, b.worn ? 1.0f : 0.0f);
+        case Column::Name:
+        default:
+            return a.name.compare(b.name);
+        }
+    };
+    std::stable_sort(rows.begin(), rows.end(), [&](const InventoryItem *a, const InventoryItem *b) {
+        const int c = compare(*a, *b);
+        if (c == 0)
+            return a->name < b->name; // ties by name, whichever way the column goes
+        return ascending ? c < 0 : c > 0;
+    });
+    return rows;
+}
+
+// The list: SkyUI's columns, sortable by clicking a heading, one row per
+// kind of item with the count in brackets. Clicking a row opens it.
+void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
+{
+    Im::Spacing();
+    DrawCategoryRow(view, state);
+    Im::Spacing();
+
+    Im::SetNextItemWidth(Im::GetFontSize() * 9.0f);
+    Im::InputTextWithHint("##invfilter", "Filter", g_inventoryFilter, sizeof(g_inventoryFilter));
+    Im::Spacing();
+
+    // Which columns this list has. A stat column only where the stat means
+    // something -- damage for weapons, armour for apparel -- and an Equipped
+    // column only where something can be equipped. SkyUI's lists differ the
+    // same way.
+    const bool weapons = state.category == static_cast<int>(ItemCategory::Weapons);
+    const bool apparel = state.category == static_cast<int>(ItemCategory::Apparel);
+    bool anyEquipable = false;
+    for (const auto &item : view.inventory)
+    {
+        if (state.category >= 0 && static_cast<int>(item.category) != state.category)
+            continue;
+        anyEquipable = anyEquipable || item.equipable;
+    }
+
+    constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg | Im::ImGuiTableFlags_Sortable;
+    const float gutter = kCellPadX * 2.0f;
+    float typeWidth = TextWidth("Type");
+    for (const auto &item : view.inventory)
+        typeWidth = (std::max)(typeWidth, TextWidth(item.type));
+    // A sortable heading keeps room beside its label for the sort arrow, and
+    // a column sized to the label alone clips it to "D...". The allowance is
+    // ImGui's own (TableHeader: FontSize * 0.65 + FramePadding.x), so each
+    // fixed column is exactly its heading-with-arrow or its widest content,
+    // and the Name column gets everything that is left.
+    const auto *tableStyle = Im::GetStyle();
+    const float arrow = std::floor(Im::GetFontSize() * 0.65f + (tableStyle ? tableStyle->FramePadding.x : 4.0f));
+    const float damageWidth = (std::max)(TextWidth("Dmg") + arrow, TextWidth("999")) + gutter;
+    const float armorWidth = (std::max)(TextWidth("Armor") + arrow, TextWidth("999")) + gutter;
+    const float weightWidth = (std::max)(TextWidth("Wgt") + arrow, TextWidth("999.9")) + gutter;
+    const float valueWidth = (std::max)(TextWidth("Val") + arrow, TextWidth("99999")) + gutter;
+    // Content is the tick and, pinned, the pin beside it: two glyph boxes.
+    const float wornWidth = (std::max)(TextWidth("Equipped") + arrow, Im::GetFontSize() * 2.0f) + gutter;
+
+    const int columnCount = 4 + ((weapons || apparel) ? 1 : 0) + (anyEquipable ? 1 : 0);
+
+    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 4.0f));
+    if (!Im::BeginTable("inventory", columnCount, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+    {
+        Im::PopStyleVar(1);
+        return;
+    }
+    Im::TableSetupColumn("Name", Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
+                         static_cast<Im::ImGuiID>(Column::Name));
+    Im::TableSetupColumn("Type", Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
+                         static_cast<Im::ImGuiID>(Column::Type));
+    // The stat, highest first on the first click: for a weapon or a piece
+    // of armour it is the number, and the rest wait on the item's page.
+    if (weapons)
+        Im::TableSetupColumn("Dmg",
+                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                             damageWidth, static_cast<Im::ImGuiID>(Column::Damage));
+    else if (apparel)
+        Im::TableSetupColumn("Armor",
+                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                             armorWidth, static_cast<Im::ImGuiID>(Column::Armor));
+    Im::TableSetupColumn("Wgt", Im::ImGuiTableColumnFlags_WidthFixed, weightWidth,
+                         static_cast<Im::ImGuiID>(Column::Weight));
+    Im::TableSetupColumn("Val", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth,
+                         static_cast<Im::ImGuiID>(Column::Value));
+    // Equipped first on the first click: nobody sorts this column to find
+    // what she is NOT wearing. "Equipped", not "Worn": it is the word the
+    // item's page uses, and the one that fits a weapon.
+    if (anyEquipable)
+        Im::TableSetupColumn("Equipped",
+                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                             wornWidth, static_cast<Im::ImGuiID>(Column::Equipped));
+    Im::TableHeadersRow();
+
+    const std::vector<const InventoryItem *> rows = VisibleItems(view, state);
+    for (const InventoryItem *item : rows)
+    {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "##item%08X", item->form);
+
+        Im::TableNextRow(0, 0.0f);
+        Im::TableSetColumnIndex(0);
+
+        // The NAME is the click target for the detail page, not the row: the
+        // Worn cell has a click of its own. Highlighted through the cell
+        // background for the reason DrawSections gives.
+        Im::ImVec2 pos = Im::GetCursorScreenPos();
+        if (CellClicked(buf))
+        {
+            state.detail = item->form;
+            state.openedFrom = Tab::Inventory;
+        }
+        Im::SetCursorScreenPos(pos);
+        std::string name = item->name;
+        if (item->count > 1)
+            name += " (" + std::to_string(item->count) + ")";
+        if (item->enchanted)
+            Im::TextColored(kEnchanted, "%s", name.c_str());
+        else
+            Im::Text("%s", name.c_str());
+
+        Im::TableNextColumn();
+        Im::Text("%s", item->type.c_str());
+
+        char num[32];
+        if (weapons || apparel)
+        {
+            Im::TableNextColumn();
+            const float stat = weapons ? item->damage : item->armor;
+            if (stat > 0.0f)
+            {
+                std::snprintf(num, sizeof(num), "%.0f", stat);
+                TextRightInCell(num);
+            }
+        }
+
+        Im::TableNextColumn();
+        std::snprintf(num, sizeof(num), "%.1f", item->weight);
+        TextRightInCell(num);
+
+        Im::TableNextColumn();
+        TextRightInCell(std::to_string(item->value));
+
+        // Equipped: a tick if it is, a pin beside it if we are the ones
+        // keeping it so. A click equips or unequips; the request goes to the
+        // game thread and the column answers when the view comes back.
+        if (!anyEquipable)
+            continue;
+        Im::TableNextColumn();
+        pos = Im::GetCursorScreenPos();
+        if (item->equipable)
+        {
+            std::snprintf(buf, sizeof(buf), "##wear%08X", item->form);
+            // Round the three states: off -> kept on -> worn but hers to
+            // change -> off. Each is one click from the next.
+            if (CellClicked(buf))
+                RequestWear(view.id, item->form,
+                            !item->worn    ? WearRequest::Pin
+                            : item->pinned ? WearRequest::Unpin
+                                           : WearRequest::TakeOff);
+            if (Im::IsItemHovered(0))
+                Im::SetTooltip("%s", !item->worn    ? "Click to equip it and keep it equipped."
+                                     : item->pinned ? "Equipped, and kept so. Click to let her change it again."
+                                                    : "Equipped. Click to unequip it.");
+        }
+        if (item->worn)
+            DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), item->pinned);
+    }
+    Im::EndTable();
+    Im::PopStyleVar(1);
+
+    // What the list came to, and what it weighs: the reason to look in a
+    // follower's bag is usually to decide whether she can carry more.
+    Im::Spacing();
+    const std::string shown =
+        rows.size() == view.inventory.size()
+            ? std::to_string(rows.size()) + " items"
+            : std::to_string(rows.size()) + " of " + std::to_string(view.inventory.size()) + " items";
+    Im::TextDisabled("%s", shown.c_str());
+
+    char carried[64];
+    std::snprintf(carried, sizeof(carried), "Carrying %.0f / %.0f", view.carriedWeight, view.carryCapacity);
+    const auto *style = Im::GetStyle();
+    const float inset = style ? style->ItemSpacing.x : 8.0f;
+    const float rightEdge = Im::GetCursorPosX() + Im::GetContentRegionAvail().x - inset;
+    Im::SameLine((std::max)(0.0f, rightEdge - TextWidth(carried)), -1.0f);
+    if (view.carryCapacity > 0.0f && view.carriedWeight > view.carryCapacity)
+        Im::TextColored(Im::ImVec4(0.95f, 0.45f, 0.40f, 1.0f), "%s", carried);
+    else
+        Im::Text("%s", carried);
+}
+
+// One item: a back arrow, the name, then the numbers as sheet sections and
+// the prose beneath, each under its own heading only when there is any.
+void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
+{
+    Im::Spacing();
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    if (GlyphButton("back", Im::GetFrameHeight(), Glyph::Back))
+    {
+        // Back to wherever this was opened from: the list, or the sheet.
+        state.detail = 0;
+        if (state.openedFrom != Tab::Inventory)
+            state.select = state.openedFrom;
+    }
+    Im::PopStyleVar(1);
+
+    Im::SameLine(0.0f, kCellPadX);
+    Im::AlignTextToFramePadding();
+    if (item.enchanted)
+        Im::TextColored(kEnchanted, "%s", item.name.c_str());
+    else
+        Im::Text("%s", item.name.c_str());
+    Im::SameLine(0.0f, kCellPadX * 2.0f);
+    Im::AlignTextToFramePadding();
+    Im::TextDisabled("%s", item.type.c_str());
+
+    Im::Spacing();
+    DrawSections(item.detail, false);
+
+    if (!item.effects.empty())
+    {
+        CentredHeading("Effects");
+        Im::TextWrapped("%s", item.effects.c_str());
+        Im::Spacing();
+    }
+    if (!item.description.empty())
+    {
+        CentredHeading("Description");
+        Im::TextWrapped("%s", item.description.c_str());
+        Im::Spacing();
+    }
+}
+
+// The Inventory tab. Either the list or one item, never both: the detail
+// takes the item's place rather than opening beside it, because the panel is
+// not wide enough for two columns of text at this font size, and a back
+// arrow is a gesture everyone already knows.
+void DrawInventory(const FollowerView &view)
+{
+    InventoryTabState &state = g_inventoryTabs[view.id];
+
+    if (state.detail != 0)
+    {
+        for (const auto &item : view.inventory)
+        {
+            if (item.form == state.detail)
+            {
+                DrawItemDetail(item, state);
+                return;
+            }
+        }
+        // Gone -- drunk, dropped, or handed over. Back to the list.
+        state.detail = 0;
+    }
+
+    if (view.inventory.empty())
+    {
+        Im::Spacing();
+        Im::TextDisabled("Nothing carried.");
+        return;
+    }
+    DrawInventoryList(view, state);
 }
 
 // The character sheet: what she is, as opposed to what she has been told to
@@ -1191,7 +1849,7 @@ void DrawCharacter(const FollowerView &view)
             Im::TextDisabled("%s", statusText.c_str());
     });
 
-    DrawStatRow(geo, "Magicka", view.snapshot.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Carried", [&] {
+    DrawStatRow(geo, "Magicka", view.snapshot.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Carrying", [&] {
         // Over capacity is worth seeing: an overencumbered follower
         // cannot fight properly, and otherwise you would only notice
         // by wondering why they are standing still.
@@ -1203,7 +1861,15 @@ void DrawCharacter(const FollowerView &view)
 
     Im::Spacing();
 
-    DrawSections(view.sheet, false);
+    // A weapon, shield, ammo or torch named on the sheet is a link to its
+    // page on the Inventory tab.
+    const ft::ActorId id = view.id;
+    DrawSections(view.sheet, false, [id](std::uint32_t form) {
+        auto &state = g_inventoryTabs[id];
+        state.detail = form;
+        state.openedFrom = Tab::Character;
+        state.select = Tab::Inventory;
+    });
 }
 
 // The rule list and its switch.
@@ -1211,12 +1877,34 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
 {
     Im::Spacing();
 
-    // This follower's switch. The first genuinely interactive control: the UI
-    // runs on the render thread and the tick on the game thread, so the setter
-    // takes a lock rather than writing shared state directly.
-    bool followerEnabled = view.tacticsEnabled;
-    if (Im::Checkbox("Tactics enabled", &followerEnabled))
-        SetFollowerEnabled(view.id, followerEnabled);
+    // This follower's switch. The UI runs on the render thread and the tick
+    // on the game thread, so the setter takes a lock rather than writing
+    // shared state directly.
+    //
+    // Read LIVE, not from the view. The view is rebuilt by the tick, and the
+    // tick is held while this panel has the clock frozen -- so a copy taken
+    // from it showed the old state until the panel closed and a tick ran.
+    // The global switch on the Settings page never had this problem because
+    // it reads its flag directly; this now does the same.
+    const bool followerEnabled = IsFollowerEnabled(view.id);
+    // The same tick as the rule rows, ghosted when off, with the word beside
+    // it: one glyph for "on" everywhere on this tab, not ImGui's boxed tick
+    // next to ours.
+    if (!followerEnabled)
+        Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    const bool toggled = GlyphButton("enabled", Im::GetFrameHeight(), Glyph::Tick);
+    Im::PopStyleVar(1);
+    if (!followerEnabled)
+        Im::PopStyleColor(1);
+    if (toggled)
+        SetFollowerEnabled(view.id, !followerEnabled);
+    if (Im::IsItemHovered(0))
+        Im::SetTooltip(followerEnabled ? "On -- click to turn this follower's tactics off"
+                                       : "Off -- click to turn this follower's tactics on");
+    Im::SameLine(0.0f, kCellPadX);
+    Im::AlignTextToFramePadding();
+    Im::Text("Enabled");
 
     // Space, but no rule: the table's own border already reads as the boundary,
     // and a separator immediately above it draws a second line doing the same
@@ -1242,8 +1930,8 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
 // tab bar keeps whatever was last chosen, as tab bars do. Render thread only.
 std::unordered_set<ft::ActorId> g_pagesOpened;
 
-// One page per follower, three tabs, reading left to right as who she is,
-// what she can do, and what she has been told to do. The tab bar is keyed by
+// One page per follower, four tabs, reading left to right as who she is,
+// what she can do, what she carries, and what she has been told to do. The tab bar is keyed by
 // follower so each page remembers its own tab.
 void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 {
@@ -1253,7 +1941,13 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     const bool firstOpen = g_pagesOpened.insert(view.id).second;
     const Im::ImGuiTabItemFlags tacticsFlags = firstOpen ? Im::ImGuiTabItemFlags_SetSelected : 0;
 
-    if (Im::BeginTabItem("Character"))
+    // A pending switch, from a link on the sheet or the back arrow on an
+    // item page; consumed here so it acts for one frame only.
+    auto &inventoryState = g_inventoryTabs[view.id];
+    const Tab select = inventoryState.select;
+    inventoryState.select = Tab::None;
+
+    if (Im::BeginTabItem("Character", nullptr, select == Tab::Character ? Im::ImGuiTabItemFlags_SetSelected : 0))
     {
         DrawCharacter(view);
         Im::EndTabItem();
@@ -1262,6 +1956,11 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     {
         Im::Spacing();
         DrawSections(view.skills, true);
+        Im::EndTabItem();
+    }
+    if (Im::BeginTabItem("Inventory", nullptr, select == Tab::Inventory ? Im::ImGuiTabItemFlags_SetSelected : 0))
+    {
+        DrawInventory(view);
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Tactics", nullptr, tacticsFlags))
@@ -1281,24 +1980,30 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 //  1. RenderFunction is `void(__stdcall*)()` with no user data, so an entry
 //     cannot be told which follower it is for. Each needs its own function --
 //     hence a fixed pool of slots, one static trampoline apiece.
-//  2. There is no way to REMOVE a section item. The SDK offers Unregister for
-//     events, input and HUD elements, but not for menu entries. So an entry
-//     outlives its follower being dismissed, and says so rather than lying.
+//  2. Removing an entry needs DeleteSection, which the framework's source has
+//     but no released build yet exports (3.14.1 is the newest; ours is
+//     3.14.0). The SDK wrapper returns false when the export is missing, so
+//     a dismissed follower's entry is deleted where it can be and otherwise
+//     stays, saying so, until the framework catches up.
 //
 // Entries are registered the first time a follower is seen, so they carry real
-// names. Ordering is first-seen rather than alphabetical, forced by the same
-// constraint: re-sorting would mean removing and re-adding.
+// names. Ordering is first-seen rather than alphabetical.
 
 constexpr std::size_t kSlots = 8; // matches kMaxManagedFollowers in Tactics.cpp
 
+struct Slot
+{
+    ft::ActorId id{0}; // 0: free
+    std::string name;  // as registered, for the entry's path
+};
+
 std::mutex g_slotMutex;
-std::array<ft::ActorId, kSlots> g_slotIds{};
-std::size_t g_slotsUsed = 0;
+std::array<Slot, kSlots> g_slots{};
 
 [[nodiscard]] ft::ActorId SlotOwner(std::size_t slot)
 {
     std::scoped_lock lock(g_slotMutex);
-    return slot < kSlots ? g_slotIds[slot] : 0;
+    return slot < kSlots ? g_slots[slot].id : 0;
 }
 
 void DrawSlot(std::size_t slot)
@@ -1319,8 +2024,8 @@ void DrawSlot(std::size_t slot)
         }
     }
 
-    Im::TextWrapped("This follower is not travelling with you at the moment. The entry stays "
-                    "because menu items cannot be removed once added.");
+    Im::TextDisabled("Dismissed. This entry cannot be removed until the menu framework's next "
+                     "release; it is reused if they come back.");
 }
 
 void DrawSettings()
@@ -1428,7 +2133,7 @@ void __stdcall RenderSlot7()
 
 } // namespace
 
-void RegisterNewFollowers()
+void SyncFollowers()
 {
     if (!SKSEMenuFramework::IsInstalled())
         return;
@@ -1436,30 +2141,60 @@ void RegisterNewFollowers()
     static const std::array<SKSEMenuFramework::Model::RenderFunction, kSlots> renderers{
         RenderSlot0, RenderSlot1, RenderSlot2, RenderSlot3, RenderSlot4, RenderSlot5, RenderSlot6, RenderSlot7};
 
-    for (const auto &view : ObserveFollowers())
+    const auto followers = ObserveFollowers();
+    const auto present = [&](ft::ActorId id) {
+        for (const auto &view : followers)
+        {
+            if (view.id == id)
+                return true;
+        }
+        return false;
+    };
+
+    // Dismissed: delete the entry where the framework allows it, and free
+    // the slot. Where it does not, the slot stays hers, so the entry still
+    // reads as her page if she is recruited again.
     {
-        std::size_t slot = 0;
+        std::scoped_lock lock(g_slotMutex);
+        for (auto &slot : g_slots)
+        {
+            if (slot.id == 0 || present(slot.id))
+                continue;
+            if (SKSEMenuFramework::DeleteSection("Follower Tactics/" + slot.name))
+            {
+                logger::info("ui: menu entry removed for {}", slot.name);
+                slot = {};
+            }
+        }
+    }
+
+    // New: the first free slot.
+    for (const auto &view : followers)
+    {
+        std::size_t index = kSlots;
         {
             std::scoped_lock lock(g_slotMutex);
             bool known = false;
-            for (std::size_t i = 0; i < g_slotsUsed; ++i)
+            for (const auto &slot : g_slots)
+                known = known || slot.id == view.id;
+            if (known)
+                continue;
+            for (std::size_t i = 0; i < kSlots; ++i)
             {
-                if (g_slotIds[i] == view.id)
+                if (g_slots[i].id == 0)
                 {
-                    known = true;
+                    index = i;
+                    g_slots[i] = {view.id, view.name};
                     break;
                 }
             }
-            if (known || g_slotsUsed >= kSlots)
-                continue;
-
-            slot = g_slotsUsed++;
-            g_slotIds[slot] = view.id;
         }
+        if (index == kSlots)
+            continue;
 
         SKSEMenuFramework::SetSection("Follower Tactics");
-        SKSEMenuFramework::AddSectionItem(view.name, renderers[slot]);
-        logger::info("ui: menu entry added for {} (slot {})", view.name, slot);
+        SKSEMenuFramework::AddSectionItem(view.name, renderers[index]);
+        logger::info("ui: menu entry added for {} (slot {})", view.name, index);
     }
 }
 
