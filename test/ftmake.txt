@@ -64,6 +64,15 @@
 ;  before concluding the rule engine is at fault -- a caster who
 ;  cannot pay looks exactly like a rule that never fired.
 ;
+;  GEAR, for the Inventory tab's hands and pins. Iron, so it is
+;  plainly WORSE than what Marcurio wears and so nothing goes on
+;  by itself: the equip-best logic only swaps upward. Putting it
+;  on is the panel's job, and whether it stays on across a fight
+;  is what the pin watchdog is being watched for.
+;    00012E49   Iron Armor    body, heavy -- displaces the robes
+;    00012EB6   Iron Shield   left hand -- contests a spell there
+;    0001397E   Iron Sword    one-handed -- either hand
+;
 ;  Check with a SEPARATE `bat ftstatus` -- a check inside this
 ;  file could run before the thing it checks.
 ; ============================================================
@@ -78,3 +87,7 @@ additem 0003EAE5 10
 additem 00039BE8 5
 
 addspell 00012FCD
+
+additem 00012E49 1
+additem 00012EB6 1
+additem 0001397E 1
