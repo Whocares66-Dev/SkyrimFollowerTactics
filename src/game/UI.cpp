@@ -1764,7 +1764,10 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         Im::TableNextRow(0, 0.0f);
         // Set aside -- kept from the combat AI while a pinned spell holds a
         // hand it would take -- the whole row goes to the disabled colour.
-        if (item->setAside)
+        // Not on All, where nothing can be equipped and the dimming would
+        // have no cell to explain it.
+        const bool dim = item->setAside && state.category >= 0;
+        if (dim)
             Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
         Im::TableSetColumnIndex(0);
 
@@ -1780,7 +1783,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         // Over the whole cell: the Selectable is the last item here. The
         // reason and nothing else; what a pin means belongs in a help
         // section, not on every row.
-        if (item->setAside && Im::IsItemHovered(0))
+        if (dim && Im::IsItemHovered(0))
             Im::SetTooltip("%s", item->asideBy.c_str());
         Im::SetCursorScreenPos(pos);
         std::string name = item->name;
@@ -1788,7 +1791,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             name += " (" + std::to_string(item->count) + ")";
         // The enchanted tint would override the disabled colour a set-aside
         // row was pushed: dimmed wins, or the row does not read as greyed.
-        if (item->enchanted && !item->setAside)
+        if (item->enchanted && !dim)
             Im::TextColored(kEnchanted, "%s", name.c_str());
         else
             Im::Text("%s", name.c_str());
@@ -1844,7 +1847,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             else if (item->equipable)
                 SlashCell();
         }
-        if (item->setAside)
+        if (dim)
             Im::PopStyleColor(1);
     }
     Im::EndTable();
@@ -2145,7 +2148,7 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         // skill, so the AI would not choose it: the whole row is drawn in
         // the disabled colour, ticks included, since every glyph takes the
         // text colour.
-        const bool dim = entry->setAside || entry->aboveSkill;
+        const bool dim = (entry->setAside || entry->aboveSkill) && !allList;
         if (dim)
             Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
         Im::TableSetColumnIndex(0);
@@ -2154,9 +2157,9 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
             state.detail = entry->form;
         // Why the row is dimmed, over the whole cell: asked of the
         // Selectable, before the name is drawn over it.
-        if (entry->setAside && Im::IsItemHovered(0))
+        if (dim && entry->setAside && Im::IsItemHovered(0))
             Im::SetTooltip("%s", entry->asideBy.c_str());
-        else if (entry->aboveSkill && Im::IsItemHovered(0))
+        else if (dim && entry->aboveSkill && Im::IsItemHovered(0))
         {
             // The two labels right-aligned to one edge, so the school and
             // the numbers line up beneath each other.
