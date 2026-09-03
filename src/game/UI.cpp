@@ -1772,7 +1772,9 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         }
         // Over the whole cell: the Selectable is the last item here.
         if (item->setAside && Im::IsItemHovered(0))
-            Im::SetTooltip("Kept from the AI in a fight:\n%s\nStill hers.", item->asideBy.c_str());
+            Im::SetTooltip(
+                "%s\n%s\nStill hers.",
+                item->handItem ? "Kept from the AI in a fight:" : "Kept off by a pin:", item->asideBy.c_str());
         Im::SetCursorScreenPos(pos);
         std::string name = item->name;
         if (item->count > 1)

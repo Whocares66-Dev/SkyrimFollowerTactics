@@ -104,6 +104,11 @@ struct Pin
 {
     std::uint32_t form{0};
     Hand hands{Hand::None};
+    // For a pin with no hand: the body slots it covers, or that it is
+    // ammunition. What a pinned cuirass keeps off is another cuirass, not
+    // a ring; what a pinned quiver keeps off is another quiver.
+    std::uint32_t slots{0};
+    bool ammo{false};
 };
 
 // The hands a thing takes when pinned, given the hand asked for. A thing
@@ -139,7 +144,10 @@ struct Pin
 [[nodiscard]] bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) noexcept;
 
 // Is a thing entirely unavailable to the AI: every hand it could take is
-// spoken for? What the panel greys out.
+// spoken for? What the panel greys out. Armour is not on the AI's list at
+// all, but a pinned piece holds its body slots against the engine's own
+// swap, so armour over the same slot is set aside the same way, and
+// ammunition against pinned ammunition.
 [[nodiscard]] bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept;
 
 // Why: the pins holding a hand the thing could take, each cut down to the

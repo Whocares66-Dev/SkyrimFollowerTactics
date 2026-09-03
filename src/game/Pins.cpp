@@ -123,14 +123,31 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
 }
 
 // This follower's pins as the planner takes them.
+// One pin as the planner takes it: the hands, and for a pin with none,
+// the body slots or the quiver it holds.
+Pin PlannedPin(RE::Actor *actor, std::uint32_t form, Hand hands)
+{
+    Pin pin;
+    pin.form = form;
+    pin.hands = hands;
+    if (auto *thing = RE::TESForm::LookupByID(form); thing && hands == Hand::None)
+    {
+        const Holdable described = DescribeHoldable(actor, thing);
+        pin.slots = described.slots;
+        pin.ammo = described.ammo;
+    }
+    return pin;
+}
+
 std::vector<Pin> PinsOf(ft::ActorId id)
 {
     std::scoped_lock lock(g_pinMutex);
     std::vector<Pin> out;
-    if (const auto it = g_pins.find(id); it != g_pins.end())
+    auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+    if (const auto it = g_pins.find(id); actor && it != g_pins.end())
     {
         for (const auto &[form, hands] : it->second)
-            out.push_back({form, hands});
+            out.push_back(PlannedPin(actor, form, hands));
     }
     return out;
 }
@@ -574,7 +591,7 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     auto &pins = it->second;
     std::vector<Pin> asPlanned;
     for (const auto &[form, hands] : pins)
-        asPlanned.push_back({form, hands});
+        asPlanned.push_back(PlannedPin(actor, form, hands));
 
     // The tooltip's reason: which pin holds which hand this could take.
     const auto why = [&](const std::vector<Pin> &shadowing) {
@@ -583,10 +600,12 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
         {
             const auto *holder = RE::TESForm::LookupByID(pin.form);
             const char *name = holder && holder->GetName() ? holder->GetName() : "Something";
-            const char *where = pin.hands == Hand::Both   ? "both hands"
-                                : pin.hands == Hand::Left ? "her left hand"
-                                                          : "her right hand";
-            lines += (lines.empty() ? "" : "\n") + std::string(name) + " is pinned in " + where;
+            const char *where = pin.hands == Hand::Both    ? "in both hands"
+                                : pin.hands == Hand::Left  ? "in her left hand"
+                                : pin.hands == Hand::Right ? "in her right hand"
+                                : pin.ammo                 ? "as her ammunition"
+                                                           : "over the same body slot";
+            lines += (lines.empty() ? "" : "\n") + std::string(name) + " is pinned " + where;
         }
         return lines;
     };

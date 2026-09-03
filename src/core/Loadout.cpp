@@ -75,6 +75,15 @@ bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) 
     return Overlap(slot, pinned);
 }
 
+// A pin with no hand holding the place a thing would take: a body slot
+// they share, or the quiver.
+bool HoldsPlaceOf(const Pin &pin, const Holdable &thing) noexcept
+{
+    if (pin.form == thing.form)
+        return false;
+    return (pin.slots & thing.slots) != 0 || (pin.ammo && thing.ammo);
+}
+
 bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept
 {
     switch (thing.grip)
@@ -89,7 +98,7 @@ bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept
         return KeptFromAI(pins, thing, Hand::Left) && KeptFromAI(pins, thing, Hand::Right);
     case Grip::None:
     default:
-        return false;
+        return std::any_of(pins.begin(), pins.end(), [&](const Pin &pin) { return HoldsPlaceOf(pin, thing); });
     }
 }
 
@@ -101,9 +110,12 @@ std::vector<Pin> Shadowing(const std::vector<Pin> &pins, const Holdable &thing)
     const Hand reach = Reach(thing.grip);
     for (const Pin &pin : pins)
     {
-        const Hand taken = Common(pin.hands, reach);
-        if (pin.form != thing.form && taken != Hand::None)
+        if (pin.form == thing.form)
+            continue;
+        if (const Hand taken = Common(pin.hands, reach); taken != Hand::None)
             out.push_back({pin.form, taken});
+        else if (HoldsPlaceOf(pin, thing))
+            out.push_back(pin);
     }
     return out;
 }

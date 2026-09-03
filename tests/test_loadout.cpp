@@ -192,6 +192,39 @@ TEST_CASE("why a thing is set aside: the pins holding a hand it could take")
     CHECK(why[0].hands == Hand::Left);
 }
 
+TEST_CASE("a pinned cuirass keeps other cuirasses off, and nothing else")
+{
+    // The pin carries the slots it covers; the engine will not swap over a
+    // locked piece, so what shares a slot is set aside, as a spell is.
+    Pin cuirass;
+    cuirass.form = kIronArmor;
+    cuirass.slots = 0x4;
+    const std::vector<Pin> pins{cuirass};
+    CHECK(SetAside(pins, Armour(10, 0x4)));        // robes
+    CHECK_FALSE(SetAside(pins, Armour(11, 0x80))); // boots
+    CHECK_FALSE(SetAside(pins, Armour(12, 0x40))); // a ring
+    CHECK_FALSE(SetAside(pins, Armour(kIronArmor, 0x4)));
+    // Body armour holds no hand: a spell is not set aside by it.
+    CHECK_FALSE(SetAside(pins, Thing(kFlames, Grip::Either)));
+    const auto why = Shadowing(pins, Armour(10, 0x4));
+    REQUIRE(why.size() == 1);
+    CHECK(why[0].form == kIronArmor);
+    CHECK(why[0].hands == Hand::None);
+}
+
+TEST_CASE("pinned ammunition keeps other ammunition off")
+{
+    Pin arrows;
+    arrows.form = 12;
+    arrows.ammo = true;
+    const std::vector<Pin> pins{arrows};
+    Holdable bolts = Thing(13, Grip::None);
+    bolts.ammo = true;
+    CHECK(SetAside(pins, bolts));
+    CHECK_FALSE(SetAside(pins, Armour(kIronArmor, 0x4)));
+    REQUIRE(Shadowing(pins, bolts).size() == 1);
+}
+
 TEST_CASE("pinned hands are the union of the pins")
 {
     CHECK(PinnedHands({}) == Hand::None);
