@@ -56,6 +56,12 @@ in `docs/PLAN.md`.
 
 ## Panel
 
+- **Help as a collapsible section, not per-row tooltips.** A greyed row's
+  tooltip gives the reason only ("Firebolt is pinned in the right hand";
+  "Needs: Destruction (50) / Has: Destruction (39)"). What a pin promises,
+  what "set aside" means for the AI and for cast rules, and that a spell
+  above skill can be cast by a rule but not pinned, belong in one place the
+  reader opens on purpose.
 - **An item's model on its detail page.** ImGui draws textured quads, not
   meshes, so a 3D preview means one of: (a) the game's own
   `Inventory3DManager` (`UpdateItem3D` / `Clear3D`), which renders the

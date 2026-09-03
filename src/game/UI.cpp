@@ -1770,11 +1770,11 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             state.detail = item->form;
             state.openedFrom = Tab::Inventory;
         }
-        // Over the whole cell: the Selectable is the last item here.
+        // Over the whole cell: the Selectable is the last item here. The
+        // reason and nothing else; what a pin means belongs in a help
+        // section, not on every row.
         if (item->setAside && Im::IsItemHovered(0))
-            Im::SetTooltip(
-                "%s\n%s\nStill carried.",
-                item->handItem ? "Kept from the AI in a fight:" : "Kept off by a pin:", item->asideBy.c_str());
+            Im::SetTooltip("%s", item->asideBy.c_str());
         Im::SetCursorScreenPos(pos);
         std::string name = item->name;
         if (item->count > 1)
@@ -2139,14 +2139,12 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         // Why the row is dimmed, over the whole cell: asked of the
         // Selectable, before the name is drawn over it.
         if (entry->setAside && Im::IsItemHovered(0))
-            Im::SetTooltip("Kept from the AI in a fight:\n%s\nStill known; a cast rule can still cast it.",
-                           entry->asideBy.c_str());
+            Im::SetTooltip("%s", entry->asideBy.c_str());
         else if (entry->aboveSkill && Im::IsItemHovered(0))
         {
             // The two labels right-aligned to one edge, so the school and
             // the numbers line up beneath each other.
             Im::BeginTooltip();
-            Im::Text("The AI will not choose it on its own:");
             const float labelWidth = (std::max)(TextWidth("Needs:"), TextWidth("Has:"));
             const auto line = [&](const char *label, int value) {
                 Im::SetCursorPosX(Im::GetCursorPos().x + labelWidth - TextWidth(label));
@@ -2156,7 +2154,6 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
             };
             line("Needs:", entry->levelValue);
             line("Has:", entry->skill);
-            Im::Text("So it cannot be pinned; a cast rule can still cast it.");
             Im::EndTooltip();
         }
         Im::SetCursorScreenPos(pos);
