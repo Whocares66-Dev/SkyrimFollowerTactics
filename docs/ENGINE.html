@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FollowerTactics Engine</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  html, body { margin: 0; }
+  img { max-width: 100%; }
+
+  :root {
+    --ground: #f3f4f6;
+    --paper: #ffffff;
+    --ink: #1b1d22;
+    --muted: #5c6270;
+    --rule: #d6d9df;
+    --accent: #8a6d1c;
+    --accent-soft: #f3ead0;
+    --code-bg: #eceef2;
+    --ok: #2f7a3d;
+    --warn: #a35a12;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #14161a;
+      --paper: #1b1e24;
+      --ink: #e6e4dc;
+      --muted: #9298a3;
+      --rule: #2c3038;
+      --accent: #d9bf66;
+      --accent-soft: #2b2718;
+      --code-bg: #22262d;
+      --ok: #8ce68c;
+      --warn: #e6b366;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #14161a;
+    --paper: #1b1e24;
+    --ink: #e6e4dc;
+    --muted: #9298a3;
+    --rule: #2c3038;
+    --accent: #d9bf66;
+    --accent-soft: #2b2718;
+    --code-bg: #22262d;
+    --ok: #8ce68c;
+    --warn: #e6b366;
+  }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  main {
+    max-width: 68ch;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  header {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 20px;
+    margin-bottom: 36px;
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+  h1 {
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1.15;
+    margin: 0 0 10px;
+    text-wrap: balance;
+  }
+  h2 {
+    font-size: 21px;
+    font-weight: 600;
+    margin: 44px 0 10px;
+    text-wrap: balance;
+  }
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 24px 0 6px;
+  }
+  p { margin: 0 0 14px; }
+  .lede { color: var(--muted); font-size: 17px; margin: 0; }
+  ul { padding-left: 22px; margin: 0 0 14px; }
+  li { margin-bottom: 6px; }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.92em;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .diagram {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 12px 8px;
+    margin: 16px 0 22px;
+    overflow-x: auto;
+  }
+  .diagram pre { margin: 0; }
+  .caption {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--muted);
+    margin: -14px 0 24px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0 22px;
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 10px 14px;
+    margin: 16px 0 22px;
+    border-radius: 0 4px 4px 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .wrap { overflow-x: auto; }
+</style>
+
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">FollowerTactics, 2026-09-03</p>
+    <h1>FollowerTactics Engine</h1>
+    <p class="lede">How a follower's rules, casts and pins run: three threads, one clock, and a
+    rule engine that never sees the game.</p>
+  </header>
+
+  <h2>Three threads, one owner of the game</h2>
+  <p>Everything that touches a Skyrim object happens on the game's main thread. The other two
+  threads never do. The pacing thread only decides <em>when</em>; the render thread only reads
+  copies and posts requests.</p>
+
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  P["Pacing thread<br/>every 500 ms"] -- "AddTask(Tick)" --> G
+  subgraph G["Game thread"]
+    T["Tick()"]
+    V[("Views<br/>one copy per follower")]
+    S[("Pins, rules, switches")]
+    T --> V
+    T --> S
+  end
+  R["Render thread<br/>ImGui panel"] -- "ObserveFollowers()<br/>copies the views" --> V
+  R -- "SetRules, RequestWear<br/>queued as tasks" --> G
+  </pre></div>
+  <p class="caption">A task runs once on the game thread. A task that re-adds itself hangs the game; the pacing thread is the only clock.</p>
+
+  <p>The panel reads a <code>FollowerView</code>: a snapshot of her stats, inventory, spells,
+  combat style and the last verdict of every rule, rebuilt by the tick and copied by the panel
+  each frame. Nothing the panel draws is a live pointer. When a click needs the game (a pin, a
+  rule change), it is queued as a task and answered on the next tick's view, or immediately where
+  the request republishes the view itself.</p>
+
+  <div class="note">
+    <p>With the framework's <code>FreezeTimeOnMenu</code> on, the tick is held while the panel is
+    open. Requests still run, since they are tasks, and republish the view they changed. Anything
+    the engine defers to the actor's next update (an enchantment's effect, a spell leaving a hand
+    through the Papyrus native) lands after the panel closes.</p>
+  </div>
+
+  <h2>What one tick does</h2>
+  <p>The tick is the single loop. Its order matters, and it is the order below.</p>
+
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  participant T as Tick
+  participant F as Each follower
+  participant C as Core (no RE)
+  participant E as Engine
+  T->>T: republish views owed after a spell unequip
+  T->>T: hold if the clock is stopped (menu, frozen panel)
+  T->>E: collect teammates within range
+  loop per follower
+    alt in combat, tactics on, not bleeding out
+      T->>E: BuildSnapshot (stats, potions, spells, enemy)
+      T->>C: Evaluate(rules, snapshot, state)
+      C-->>T: Decision + Trace (a verdict per rule)
+      T->>E: Execute: drink, cast, equip
+    else idle
+      T->>E: read stats only
+    end
+    T->>T: publish the view (inventory, magic, sheet, pins marked)
+  end
+  T->>E: TickPackages: withdraw cast leases that have fired or timed out
+  T->>E: EnforcePins: put back a pinned item taken off (hands stand down in combat)
+  T->>E: prune the combat AI's list to the pins, then ready them
+  T->>T: sync menu entries, drop views of anyone gone
+  </pre></div>
+  <p class="caption">Measured cost of the combat path: about 47 us per follower, two orders of magnitude under budget.</p>
+
+  <h2>The rule engine never sees Skyrim</h2>
+  <p>The one architectural rule of the project: no <code>RE::</code> type crosses into
+  <code>src/core/</code>. The core takes a <code>Snapshot</code> of plain numbers and returns a
+  <code>Decision</code>. That is what makes it testable without a game, and it is where the
+  evaluator, the vocabulary and, as of today, the pin planner live.</p>
+
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph game["src/game (imperative, verified by playing)"]
+    S["Sensors: actor to Snapshot"]
+    A["Actions: Decision to engine calls"]
+    D["DescribeHoldable: record to Holdable"]
+  end
+  subgraph core["src/core (pure, Catch2)"]
+    EV["Evaluate(rules, snapshot, state)"]
+    LO["Loadout: HandsFor, Competes, Conflicts, KeepFromAI"]
+  end
+  S --> EV --> A
+  D --> LO
+  </pre></div>
+
+  <h3>Rules</h3>
+  <p>A rule set is an ordered list of <code>IF subject predicate [value] THEN action [form]</code>.
+  Evaluation is first-match-wins: rules are tried in order and the first that fires is the
+  decision for that tick. Every rule gets a verdict, which is what the Tactics tab's Status column
+  shows; the ones that matter are these.</p>
+
+  <table>
+    <tr><th>verdict</th><th>meaning</th></tr>
+    <tr><td>fired</td><td>The condition held and the action was performed this tick.</td></tr>
+    <tr><td>false</td><td>The condition did not hold.</td></tr>
+    <tr><td>cooldown</td><td>The condition held, but the action, the rule or the potion is on cooldown. Cooldowns run on game time, so a menu does not age them.</td></tr>
+    <tr><td>no potion / no spell</td><td>The action names something she does not have.</td></tr>
+    <tr><td>no magicka, busy, no target</td><td>The action could not be performed right now.</td></tr>
+    <tr><td>off, invalid, n/a</td><td>Decided before the condition is looked at: disabled, or a subject-predicate pair the matrix forbids.</td></tr>
+  </table>
+
+  <h3>Actions</h3>
+  <p>Drinking is the direct route: the potion is equipped through the actor's equip manager, the
+  same way the game's own NPCsUsePotions does. Casting is not. An NPC cannot be told to cast; she
+  can be given a package that makes casting what her AI does. So a cast is a <em>lease</em>.</p>
+
+  <div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> Free
+  Free --> Armed : rule fires, faction rank set, UseMagic package chosen
+  Armed --> Casting : AI starts the cast
+  Casting --> Free : her spell fire event names our spell, rank cleared
+  Armed --> Free : 2.5 s deadline, never started
+  </pre></div>
+  <p class="caption">The UseMagic packages ride the vanilla follower alias's combat-override list, gated by a faction rank the lease holds. Eight package slots, one lease per follower.</p>
+
+  <h2>Pins</h2>
+  <p>A pin says "this stays in this hand", or "this stays on" for armour and ammunition. Pins are
+  the only state a person authors here; everything else about them is derived. The derivation is
+  the core planner, tested; the game layer keeps one adapter from a record to the planner's
+  description and imposes the answers.</p>
+
+  <div class="diagram"><pre class="mermaid">
+flowchart TB
+  PIN["Pin request<br/>form + hand"] --> DESC["DescribeHoldable<br/>grip, usable, slots"]
+  DESC --> HF["HandsFor(grip, hand)"]
+  HF --> REL["Release conflicting pins<br/>same hand, same body slot, ammo vs ammo"]
+  REL --> EQ["Equip with prevent-removal<br/>(items) or EquipSpell (spells)"]
+  EQ --> DIRTY["Mark the AI's list dirty<br/>if in combat"]
+  </pre></div>
+
+  <p>A pin keeps its promise by three means, each covering what the others cannot.</p>
+
+  <table>
+    <tr><th>mechanism</th><th>covers</th><th>verified</th></tr>
+    <tr><td>Prevent-removal flag on the item</td><td>The engine's equip-best swap: it refuses to displace a locked item.</td><td>Pinned robes kept iron armour off.</td></tr>
+    <tr><td>Prune the combat AI's list</td><td>The AI reaching for anything else in a fight. It chooses from its own per-follower list, built at combat start, not from her records.</td><td>A removed spell was cast from that list; a pruned dagger never was.</td></tr>
+    <tr><td>Watchdog on the tick</td><td>Whatever got past both, out of combat. Hands stand down in combat so the AI and the pin do not trade blows.</td><td>The dagger flicker before it did.</td></tr>
+  </table>
+
+  <p>What competes for a pinned hand, from the planner's tests: a one-hand-only spell competes
+  with a pin on its hand; an either-hand spell, a both-hands spell, a one-handed weapon and a
+  two-hander compete with a pin on <em>any</em> hand, because the AI puts an either-hand spell
+  into the pinned hand as readily as the free one; a shield or torch competes with a pin on the
+  left. With both hands pinned the AI is left with the pins and nothing else, by design. A spell
+  above her skill is never on the AI's list and cannot be pinned, since a pin is a promise the AI
+  would not keep; it can still be equipped, and a cast rule can still make her cast it.</p>
+
+  <div class="note">
+    <p>Nothing of hers is changed by a pin beyond the item's flag. Her spell list and her bag are
+    never edited; the AI's list is rebuilt by the engine for every fight and discarded after. A
+    pin changed mid-fight sets the list's dirty flag, and the engine rebuilt within 4 ms of play
+    resuming in the measured case.</p>
+  </div>
+
+  <h2>What is not there yet</h2>
+  <ul>
+    <li><strong>Persistence.</strong> Rules, pins and follower switches live in memory. Phase 2's
+    JSON profiles and the SKSE co-save are the fix; the runtime combat-style copy a pin can make
+    is deliberately never saved.</li>
+    <li><strong>Group subjects.</strong> The snapshot carries one enemy and no allies, so "any
+    enemy below 30%" cannot match yet.</li>
+    <li><strong>Equipment as a rule action.</strong> When it lands, a rule's swap has to release
+    the pin it displaces, and the watchdog must not undo a swap a rule made.</li>
+  </ul>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.6.0/mermaid.min.js"></script>
+<script>
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral",
+                       fontFamily: "IBM Plex Sans, system-ui, sans-serif" });
+</script>
+</body>
+</html>
