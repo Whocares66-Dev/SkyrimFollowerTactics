@@ -67,6 +67,9 @@ struct FollowerView
     std::uint16_t level{0};
     float carriedWeight{0.0f};
     float carryCapacity{0.0f};
+    // The Character and Skills tabs' sections, worded on the game thread.
+    std::vector<SheetSection> sheet;
+    std::vector<SheetSection> skills;
 };
 
 struct CostStats

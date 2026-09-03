@@ -1,6 +1,10 @@
 #include "game/Sensors.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <string>
+#include <string_view>
+#include <utility>
 
 namespace ft::game
 {
@@ -327,6 +331,290 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
     });
 
     std::sort(out.begin(), out.end(), [](const SpellOption &a, const SpellOption &b) { return a.name < b.name; });
+    return out;
+}
+
+// --- character sheet ---------------------------------------------------------
+
+namespace
+{
+
+std::string Fmt(const char *fmt, double value)
+{
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), fmt, value);
+    return buf;
+}
+
+// A float game setting, or the vanilla value if the collection has no such
+// entry. The fallbacks are vanilla's numbers so a missing setting degrades to
+// "what the unmodded game does", not to a zero that reads as a broken sheet.
+float GameSetting(const char *name, float vanilla)
+{
+    auto *collection = RE::GameSettingCollection::GetSingleton();
+    auto *setting = collection ? collection->GetSetting(name) : nullptr;
+    return setting ? setting->GetFloat() : vanilla;
+}
+
+// "83%", or past the engine's cap "85% (110.00%)": what is actually applied
+// first, what the gear adds up to in brackets. The bracketed number is the one
+// worth seeing when it is there -- it says how much of the follower's kit is
+// doing nothing.
+std::string CappedPercent(float value, float cap)
+{
+    if (value > cap)
+        return Fmt("%.0f%%", cap) + " (" + Fmt("%.2f%%", value) + ")";
+    return Fmt("%.0f%%", value);
+}
+
+} // namespace
+
+std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
+{
+    std::vector<SheetSection> out;
+    if (!actor)
+        return out;
+    auto *owner = actor->AsActorValueOwner();
+    if (!owner)
+        return out;
+
+    const auto av = [owner](RE::ActorValue value) { return owner->GetActorValue(value); };
+
+    {
+        SheetSection s{"General", {}};
+        auto *race = actor->GetRace();
+        s.rows.push_back({"Race", race && race->GetName() ? race->GetName() : "?", {}, {}});
+        s.rows.push_back({"Speed", Fmt("%.0f%%", av(RE::ActorValue::kSpeedMult)), {}, {}});
+        s.rows.push_back({"Noise", Fmt("%.0f%%", av(RE::ActorValue::kMovementNoiseMult) * 100.0), {}, {}});
+        out.push_back(std::move(s));
+    }
+
+    {
+        SheetSection s{"Defence", {}};
+        // The armour rating the game shows is not the one it applies. Each of
+        // the four main pieces worn adds a hidden 25 before the scaling factor,
+        // which is why a displayed 609 lands at 85% and not 73%. Whether a
+        // shield also counts is disputed; it is left out here.
+        const float armor = av(RE::ActorValue::kDamageResist);
+        float hidden = 0.0f;
+        using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
+        for (const Slot slot : {Slot::kBody, Slot::kHead, Slot::kHands, Slot::kFeet})
+        {
+            if (actor->GetWornArmor(slot))
+                hidden += 25.0f;
+        }
+        const float armorPct = (armor + hidden) * GameSetting("fArmorScalingFactor", 0.12f);
+        const float resistCap = GameSetting("fPlayerMaxResistance", 85.0f);
+
+        s.rows.push_back({"Armor", Fmt("%.0f", armor), {}, {}});
+        s.rows.push_back({"Resist Damage", CappedPercent(armorPct, GameSetting("fMaxArmorRating", 80.0f)), {}, {}});
+        s.rows.push_back({"Health Rate", Fmt("%.2f%%", av(RE::ActorValue::kHealRate)), {}, {}});
+        s.rows.push_back({"Stamina Rate", Fmt("%.2f%%", av(RE::ActorValue::kStaminaRate)), {}, {}});
+        s.rows.push_back({"Magicka Rate", Fmt("%.2f%%", av(RE::ActorValue::kMagickaRate)), {}, {}});
+        s.rows.push_back({"Resist Disease", Fmt("%.0f%%", av(RE::ActorValue::kResistDisease)), {}, {}});
+        s.rows.push_back({"Resist Poison", CappedPercent(av(RE::ActorValue::kPoisonResist), resistCap), {}, {}});
+        s.rows.push_back({"Resist Fire", CappedPercent(av(RE::ActorValue::kResistFire), resistCap), {}, {}});
+        s.rows.push_back({"Resist Shock", CappedPercent(av(RE::ActorValue::kResistShock), resistCap), {}, {}});
+        s.rows.push_back({"Resist Frost", CappedPercent(av(RE::ActorValue::kResistFrost), resistCap), {}, {}});
+        s.rows.push_back({"Resist Magic", CappedPercent(av(RE::ActorValue::kResistMagic), resistCap), {}, {}});
+        out.push_back(std::move(s));
+    }
+
+    {
+        SheetSection s{"Attack", {}};
+        // The right hand's weapon, as authored: base damage, before skill,
+        // perks and enchantments. The number the inventory shows is computed
+        // by a routine the engine does not expose, so this is the honest
+        // figure rather than an approximation of that one.
+        auto *right = actor->GetEquippedObject(false);
+        auto *weapon = right ? right->As<RE::TESObjectWEAP>() : nullptr;
+        if (weapon)
+        {
+            s.rows.push_back({"Weapon", weapon->GetName() ? weapon->GetName() : "?", {}, {}});
+            s.rows.push_back({"Base Damage", Fmt("%.0f", weapon->GetAttackDamage()), {}, {}});
+            s.rows.push_back({"Weapon Speed", Fmt("%.2f", weapon->GetSpeed()), {}, {}});
+            s.rows.push_back({"Reach", Fmt("%.2f", weapon->GetReach()), {}, {}});
+            s.rows.push_back({"Stagger", Fmt("%.2f", weapon->GetStagger()), {}, {}});
+        }
+        else
+        {
+            s.rows.push_back({"Weapon", "unarmed", {}, {}});
+            s.rows.push_back({"Base Damage", Fmt("%.0f", av(RE::ActorValue::kUnarmedDamage)), {}, {}});
+        }
+        if (auto *ammo = actor->GetCurrentAmmo())
+            s.rows.push_back({"Arrow Damage", Fmt("%.0f", ammo->GetRuntimeData().data.damage), {}, {}});
+        out.push_back(std::move(s));
+    }
+
+    return out;
+}
+
+std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
+{
+    std::vector<SheetSection> out;
+    if (!actor)
+        return out;
+    auto *owner = actor->AsActorValueOwner();
+    if (!owner)
+        return out;
+
+    const auto av = [owner](RE::ActorValue value) { return owner->GetActorValue(value); };
+
+    // What a skill's two modifier values do, read from the game's own records
+    // rather than a wiki (docs/RESEARCH.md, "Skill modifiers").
+    //
+    // Every actor carries two hidden perks, PerkSkillBoosts and
+    // AlchemySkillBoosts in Skyrim.esm. Each multiplies ONE game quantity by
+    // (1 + 0.01 * value): the first reads <skill>Modifier, which Fortify
+    // enchantments and perks write; the second reads <skill>PowerModifier,
+    // which Fortify potions write. For every skill but the magic schools both
+    // perks hit the SAME quantity -- one-handed damage, percent blocked,
+    // pickpocket chance -- so the two values are one bonus and are shown as
+    // one: "+35% damage". For a school they differ: the modifier cuts spell
+    // cost, the power modifier raises magnitude (Destruction, Illusion,
+    // Restoration) or duration (Alteration, Conjuration), so both are shown,
+    // as what spells now are: "83% cost, 200% magnitude".
+    //
+    // Enchanting appears in neither perk: Fortify Enchanting writes the skill
+    // itself. So do Fortify Heavy Armor and Fortify Light Armor -- the perks
+    // would honour those two modifiers as a cut to damage taken, but nothing
+    // in the base game sets them, so on a vanilla install they stay at zero
+    // and the row stays plain.
+    //
+    // Brackets appear only when a value is off zero, which for a follower is
+    // rare. The tooltip says where the number came from.
+    struct Modifier
+    {
+        RE::ActorValue value;
+        const char *effect; // nullptr: nothing reads this value
+        int sign;           // +1: each point raises the quantity; -1: lowers it
+    };
+    struct Skill
+    {
+        const char *label;
+        RE::ActorValue value;
+        Modifier mod;   // Fortify enchantments and perks
+        Modifier power; // Fortify potions
+    };
+    using AV = RE::ActorValue;
+    constexpr Modifier none{AV::kNone, nullptr, 0};
+
+    const auto skill = [&](SheetSection &s, const Skill &k) {
+        SheetRow row{k.label, Fmt("%.0f", av(k.value)), {}, {}};
+        const float m = k.mod.effect ? av(k.mod.value) : 0.0f;
+        const float p = k.power.effect ? av(k.power.value) : 0.0f;
+
+        // Every modifier is a signed change from normal: "+90% damage",
+        // "-17% cost". Power first, then the other, as the two read best.
+        const auto add = [&row](const std::string &text) {
+            row.modifiers += (row.modifiers.empty() ? "" : ", ") + text;
+        };
+        if (k.mod.effect && k.power.effect && std::string_view(k.mod.effect) == k.power.effect)
+        {
+            // One quantity, two factors: multiply them and show the change.
+            if (m != 0.0f || p != 0.0f)
+            {
+                const double factor = (1.0 + k.mod.sign * m / 100.0) * (1.0 + k.power.sign * p / 100.0);
+                add(Fmt("%+.0f%% ", (factor - 1.0) * 100.0) + k.mod.effect);
+            }
+        }
+        else
+        {
+            if (p != 0.0f)
+                add(Fmt("%+.0f%% ", k.power.sign * p) + k.power.effect);
+            if (m != 0.0f)
+                add(Fmt("%+.0f%% ", k.mod.sign * m) + k.mod.effect);
+        }
+
+        if (m != 0.0f)
+            row.note += std::string(k.mod.effect) + ": enchantments and perks " + Fmt("%+.0f", m);
+        if (p != 0.0f)
+            row.note += (row.note.empty() ? "" : "\n") + std::string(k.power.effect) + ": potions " + Fmt("%+.0f", p);
+
+        s.rows.push_back(std::move(row));
+    };
+
+    {
+        SheetSection s{"Warrior", {}};
+        skill(s, {"One-Handed",
+                  AV::kOneHanded,
+                  {AV::kOneHandedModifier, "damage", +1},
+                  {AV::kOneHandedPowerModifier, "damage", +1}});
+        skill(s, {"Two-Handed",
+                  AV::kTwoHanded,
+                  {AV::kTwoHandedModifier, "damage", +1},
+                  {AV::kTwoHandedPowerModifier, "damage", +1}});
+        skill(s, {"Block", AV::kBlock, {AV::kBlockModifier, "blocked", +1}, {AV::kBlockPowerModifier, "blocked", +1}});
+        skill(s, {"Smithing",
+                  AV::kSmithing,
+                  {AV::kSmithingModifier, "tempering", +1},
+                  {AV::kSmithingPowerModifier, "tempering", +1}});
+        skill(s, {"Heavy Armor",
+                  AV::kHeavyArmor,
+                  {AV::kHeavyArmorModifier, "damage", -1},
+                  {AV::kHeavyArmorPowerModifier, "damage", -1}});
+        skill(s, {"Light Armor",
+                  AV::kLightArmor,
+                  {AV::kLightArmorModifier, "damage", -1},
+                  {AV::kLightArmorPowerModifier, "damage", -1}});
+        out.push_back(std::move(s));
+    }
+
+    {
+        SheetSection s{"Thief", {}};
+        skill(s, {"Archery",
+                  AV::kArchery,
+                  {AV::kMarksmanModifier, "damage", +1},
+                  {AV::kMarksmanPowerModifier, "damage", +1}});
+        skill(s, {"Pickpocket",
+                  AV::kPickpocket,
+                  {AV::kPickpocketModifier, "chance", +1},
+                  {AV::kPickpocketPowerModifier, "chance", +1}});
+        skill(s, {"Lockpicking",
+                  AV::kLockpicking,
+                  {AV::kLockpickingModifier, "sweet spot", +1},
+                  {AV::kLockpickingPowerModifier, "sweet spot", +1}});
+        skill(
+            s,
+            {"Sneak", AV::kSneak, {AV::kSneakingModifier, "stealth", +1}, {AV::kSneakingPowerModifier, "stealth", +1}});
+        skill(s, {"Alchemy",
+                  AV::kAlchemy,
+                  {AV::kAlchemyModifier, "potion strength", +1},
+                  {AV::kAlchemyPowerModifier, "potion strength", +1}});
+        // Sell prices up and buy prices down by the same factor: "better prices".
+        skill(s, {"Speech",
+                  AV::kSpeech,
+                  {AV::kSpeechcraftModifier, "better prices", +1},
+                  {AV::kSpeechcraftPowerModifier, "better prices", +1}});
+        out.push_back(std::move(s));
+    }
+
+    {
+        SheetSection s{"Magic", {}};
+        skill(s, {"Alteration",
+                  AV::kAlteration,
+                  {AV::kAlterationModifier, "cost", -1},
+                  {AV::kAlterationPowerModifier, "duration", +1}});
+        skill(s, {"Conjuration",
+                  AV::kConjuration,
+                  {AV::kConjurationModifier, "cost", -1},
+                  {AV::kConjurationPowerModifier, "duration", +1}});
+        skill(s, {"Destruction",
+                  AV::kDestruction,
+                  {AV::kDestructionModifier, "cost", -1},
+                  {AV::kDestructionPowerModifier, "damage", +1}});
+        skill(s, {"Illusion",
+                  AV::kIllusion,
+                  {AV::kIllusionModifier, "cost", -1},
+                  {AV::kIllusionPowerModifier, "magnitude", +1}});
+        skill(s, {"Restoration",
+                  AV::kRestoration,
+                  {AV::kRestorationModifier, "cost", -1},
+                  {AV::kRestorationPowerModifier, "healing", +1}});
+        skill(s, {"Enchanting", AV::kEnchanting, none, none});
+        out.push_back(std::move(s));
+    }
+
     return out;
 }
 

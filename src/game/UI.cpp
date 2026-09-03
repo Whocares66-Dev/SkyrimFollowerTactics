@@ -823,7 +823,85 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     return changed;
 }
 
-void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
+// A run of headed sections, each a bordered table in the style of the rule
+// table. The name and value columns are FIXED, measured across every section
+// in the run so the tables line up down the page, and sized to their
+// contents so a value sits beside its name rather than at the far edge of
+// the panel. A Modifiers column, when asked for, takes the rest. Plain
+// headings rather than collapsing ones: nothing here is long enough to want
+// hiding, and a heading that can be clicked invites clicking to see what
+// happens. The wording was done on the game thread; this only lays it out.
+//
+// No header row for the name and value columns. What they are is obvious
+// from a glance at any row, and a label saying so is one more line of chrome
+// per table. The Modifiers column keeps its heading because that one is not
+// obvious.
+void DrawSections(const std::vector<SheetSection> &sections, bool modifiers)
+{
+    float nameWidth = 0.0f;
+    float valueWidth = 0.0f;
+    for (const auto &section : sections)
+    {
+        for (const auto &row : section.rows)
+        {
+            nameWidth = (std::max)(nameWidth, TextWidth(row.label));
+            valueWidth = (std::max)(valueWidth, TextWidth(row.value));
+        }
+    }
+    const float pad = 2.0f * kCellPadX + 8.0f;
+
+    // The rule table's horizontal padding, but more above and below the text:
+    // at the theme's default the last row sat on the table's bottom border.
+    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 4.0f));
+
+    for (const auto &section : sections)
+    {
+        // Centred, where the style default is flush left.
+        Im::PushStyleVar(Im::ImGuiStyleVar_SeparatorTextAlign, Im::ImVec2(0.5f, 0.5f));
+        Im::SeparatorText(section.title.c_str());
+        Im::PopStyleVar(1);
+
+        const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
+        if (!Im::BeginTable(section.title.c_str(), modifiers ? 3 : 2, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+            continue;
+
+        Im::TableSetupColumn("##name", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
+        Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
+        if (modifiers)
+        {
+            Im::TableSetupColumn("Modifiers", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+            Im::TableHeadersRow();
+        }
+
+        for (const auto &row : section.rows)
+        {
+            Im::TableNextRow(0, 0.0f);
+            Im::TableSetColumnIndex(0);
+            Im::Text("%s", row.label.c_str());
+            Im::TableSetColumnIndex(1);
+            Im::Text("%s", row.value.c_str());
+            if (modifiers)
+            {
+                Im::TableSetColumnIndex(2);
+                Im::Text("%s", row.modifiers.c_str());
+                if (!row.note.empty() && Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", row.note.c_str());
+            }
+        }
+        Im::EndTable();
+
+        // Room below the table before the next heading.
+        Im::Spacing();
+        Im::Spacing();
+    }
+
+    Im::PopStyleVar(1);
+}
+
+// The character sheet: what she is, as opposed to what she has been told to
+// do. Everything here is display only and already on the view, so it costs
+// the game thread nothing extra to show.
+void DrawCharacter(const FollowerView &view)
 {
     // Breathing room at the top -- the first bar sat flush against the panel
     // border.
@@ -851,7 +929,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     geo.barLeft = geo.barLabelRight + 12.0f;
 
     // The stat column is pinned to the RIGHT edge of the panel rather than left
-    // against the bars, so it lines up with the rule table below it.
+    // against the bars, so it lines up with the rule table on the other tab.
     // Mirror the inset on the right so the stat values sit inboard of the border
     // by the same amount the labels do on the left.
     const float contentRight = originX + Im::GetContentRegionAvail().x - inset;
@@ -881,6 +959,14 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 
     Im::Spacing();
 
+    DrawSections(view.sheet, false);
+}
+
+// The rule list and its switch.
+void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
+{
+    Im::Spacing();
+
     // This follower's switch. The first genuinely interactive control: the UI
     // runs on the render thread and the tick on the game thread, so the setter
     // takes a lock rather than writing shared state directly.
@@ -905,6 +991,33 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     if (DrawRuleTable(editable, view))
         SetRules(view.id, std::move(editable));
     Im::EndDisabled();
+}
+
+// One page per follower, two tabs. Tactics first because it is what the mod
+// is for; the character sheet is context for it.
+void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
+{
+    if (!Im::BeginTabBar("follower"))
+        return;
+
+    if (Im::BeginTabItem("Tactics"))
+    {
+        DrawTactics(rules, view);
+        Im::EndTabItem();
+    }
+    if (Im::BeginTabItem("Character"))
+    {
+        DrawCharacter(view);
+        Im::EndTabItem();
+    }
+    if (Im::BeginTabItem("Skills"))
+    {
+        Im::Spacing();
+        DrawSections(view.skills, true);
+        Im::EndTabItem();
+    }
+
+    Im::EndTabBar();
 }
 
 // --- menu entries -----------------------------------------------------------
@@ -957,7 +1070,7 @@ void DrawSlot(std::size_t slot)
                     "because menu items cannot be removed once added.");
 }
 
-void DrawGeneral()
+void DrawSettings()
 {
     bool enabled = IsEnabled();
     if (Im::Checkbox("Tactics enabled for all followers", &enabled))
@@ -1020,9 +1133,9 @@ void DrawGeneral()
     }
 }
 
-void __stdcall RenderGeneral()
+void __stdcall RenderSettings()
 {
-    DrawGeneral();
+    DrawSettings();
 }
 
 // One trampoline per slot. Tedious, and unavoidable with a render callback that
@@ -1110,7 +1223,7 @@ void Install()
     }
 
     SKSEMenuFramework::SetSection("Follower Tactics");
-    SKSEMenuFramework::AddSectionItem("General", RenderGeneral);
+    SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
 
     logger::info("ui: registered with SKSE Menu Framework (F1). "
                  "Follower entries appear as followers do.");

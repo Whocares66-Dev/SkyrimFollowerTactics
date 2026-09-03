@@ -259,6 +259,8 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     // cached until something invalidates it.
     v.spells = ScanCastableSpells(actor);
     v.potions = ScanCarriedPotions(actor);
+    v.sheet = BuildCharacterSheet(actor);
+    v.skills = BuildSkillSheet(actor);
 }
 
 void PublishOne(FollowerView v)

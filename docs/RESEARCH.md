@@ -335,3 +335,59 @@ Gotcha: debug and release DLL builds must match exactly or it CTDs.
    confirmed a C++/CommonLibNG plugin supporting SSE/AE/VR and is the better reference — but
    its README does not document the consumption technique or its follower-specific logic, so
    both claims need confirming by reading the source rather than the mod page.
+
+
+## 6. Skill modifiers — what `<skill>Mod` and `<skill>PowerMod` actually do
+
+Read from the game's own records (Skyrim.esm and Update.esm via houseCARL, 2026-09-02),
+not from a wiki. Two questions: which effects write the two values, and what reads them.
+
+**What reads them.** Every actor carries two hidden perks. Each is a list of eighteen
+`ModifyActorValue` entry points, all of the form *multiply quantity by (1 + 0.01 × AV)*:
+
+| Perk | Reads | Written by |
+|---|---|---|
+| `PerkSkillBoosts` (0x0CF788, overridden in Update.esm) | `<skill>Modifier` (AV 96–113) | Fortify `<skill>` **enchantments** (`EnchFortify*ConstantSelf`) and perks |
+| `AlchemySkillBoosts` (0x0A725C) | `<skill>PowerModifier` (AV 135–152) | Fortify `<skill>` **potions** (`AlchFortify*`) |
+
+**The quantity each one multiplies**, identical in both perks except for the schools:
+
+| Skill | Entry point | Per point | Notes |
+|---|---|---|---|
+| One-Handed, Two-Handed, Archery | `ModAttackDamage` | +1 % | conditioned on the weapon type |
+| Block | `ModPercentBlocked` | +1 % | |
+| Heavy Armor, Light Armor | `ModIncomingDamage` | −1 % | **never written by vanilla** — see below |
+| Smithing | `ModTemperingHealth` | +1 % | |
+| Pickpocket | `ModPickpocketChance` | +1 % | |
+| Lockpicking | `ModLockpickSweetSpot` | +1 % | |
+| Sneak | `ModDetectionSneakSkill` | +1 % | |
+| Alchemy | `ModAlchemyEffectiveness` | +1 % | |
+| Speech | `ModSellPrices` +1 % **and** `ModBuyPrices` −1 % | | one value, two entry points |
+| Alteration, Conjuration | Mod: `ModSpellCost` −1 % · PowerMod: `ModSpellDuration` +1 % | | |
+| Destruction, Illusion, Restoration | Mod: `ModSpellCost` −1 % · PowerMod: `ModSpellMagnitude` +1 % | | |
+| Enchanting | — | | in **neither** perk |
+
+So for every skill except the five schools, Mod and PowerMod are the same bonus from two
+sources and can be shown as one number (the factors multiply). For a school they are two
+different things and must be shown separately: cost versus magnitude/duration.
+
+**The three exceptions.** `EnchFortifyHeavyArmorConstantSelf`, `EnchFortifyLightArmorConstantSelf`,
+`EnchFortifyEnchantingConstantSelf`, `AlchFortifyHeavyArmor`, `AlchFortifyLightArmor` and
+`AlchFortifyEnchanting` all have `Archetype.ActorValue` set to the **skill itself**, not the
+modifier. Fortify Heavy Armor therefore raises the Heavy Armor skill directly, which is why
+the perks' `HeavyArmorModifier` / `HeavyArmorPowerModifier` entries exist but stay at zero
+on a vanilla install. A mod that sets them would get a straight cut to damage taken. The
+same applies to Fortify Persuasion (`Speech` directly) as opposed to Fortify Barter
+(`SpeechcraftModifier`).
+
+**Who carries the perks.** A reverse-reference scan of Skyrim.esm and Update.esm finds
+`PerkSkillBoosts` on the `Player` NPC record and the 160 character-creation presets, and
+`AlchemySkillBoosts` on the `Player` record only. No other NPC, race, spell or ability
+references either. On the records alone, then, a follower wearing Fortify One-Handed gear
+gets `OneHandedModifier` +35 and nothing turns it into damage. Not yet confirmed at runtime
+(`Actor::HasPerk` on a follower would settle it); until it is, a bonus shown for a follower
+is a bonus the game may not be applying.
+
+**Consequence for the Skills tab** (`src/game/Sensors.cpp`, `BuildSkillSheet`): one
+bracketed bonus per non-magic skill, "cost" and "magnitude/duration" for a school, nothing
+for Enchanting, and a tooltip naming the source of each number.

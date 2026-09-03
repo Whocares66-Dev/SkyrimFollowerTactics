@@ -64,6 +64,33 @@ struct PotionOption
 // them would be offering rules that can never work.
 [[nodiscard]] std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor);
 
+// One line of the character sheet, already worded. Worded HERE, not in the
+// panel, because every value is an actor-value read and the RE:: enum naming
+// it belongs with the read; the panel then has nothing to know about what a
+// resistance cap is or which slot counts as armour.
+struct SheetRow
+{
+    std::string label;
+    std::string value;
+    std::string modifiers; // Skills tab only: "+35% damage, -17% cost"
+    std::string note;      // tooltip on the modifiers; empty for none
+};
+
+struct SheetSection
+{
+    std::string title;
+    std::vector<SheetRow> rows;
+};
+
+// The Character tab: race, movement, defence and the equipped weapon. Display
+// only -- none of it is a rule input. Cheap reads, done in and out of combat
+// alike.
+[[nodiscard]] std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor);
+
+// The Skills tab: the eighteen skills grouped as the game groups them, with
+// any fortify or potion modifier folded into the same line.
+[[nodiscard]] std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor);
+
 // Resolve a FormID from a rule back to the spell it names, or nullptr.
 [[nodiscard]] RE::SpellItem *FindSpell(std::uint32_t form);
 
