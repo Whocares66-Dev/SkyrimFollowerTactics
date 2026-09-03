@@ -1328,6 +1328,8 @@ unsigned IconFor(ItemCategory category)
     {
     case ItemCategory::Weapons:
         return 0xF6E3; // hammer
+    case ItemCategory::Arrows:
+        return 0xF140; // bullseye
     case ItemCategory::Apparel:
         return 0xF553; // tshirt
     case ItemCategory::Potions:
@@ -1667,7 +1669,8 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     // something -- damage for weapons, armour for apparel -- and an Equipped
     // column only where something can be equipped. SkyUI's lists differ the
     // same way.
-    const bool weapons = state.category == static_cast<int>(ItemCategory::Weapons);
+    const bool weapons = state.category == static_cast<int>(ItemCategory::Weapons) ||
+                         state.category == static_cast<int>(ItemCategory::Arrows);
     const bool apparel = state.category == static_cast<int>(ItemCategory::Apparel);
     // Hand columns where something is held in a hand; an Equipped column
     // where something is worn. A cell that does not apply to its row -- a

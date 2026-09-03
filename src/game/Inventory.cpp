@@ -263,7 +263,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     if (auto *ammo = object->As<RE::TESAmmo>())
     {
         item.type = ammo->IsBolt() ? "Bolt" : "Arrow";
-        item.category = ItemCategory::Weapons;
+        item.category = ItemCategory::Arrows;
         item.equipable = true;
         item.damage = ammo->GetRuntimeData().data.damage;
         stats.rows.push_back(Row("Damage", Fmt("%.0f", item.damage)));
@@ -383,6 +383,8 @@ const char *DisplayName(ItemCategory category)
     {
     case ItemCategory::Weapons:
         return "Weapons";
+    case ItemCategory::Arrows:
+        return "Arrows";
     case ItemCategory::Apparel:
         return "Apparel";
     case ItemCategory::Potions:

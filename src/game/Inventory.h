@@ -22,10 +22,14 @@ class MagicItem;
 namespace ft::game
 {
 
-// SkyUI's tabs, less Favorites: a follower has none.
+// SkyUI's tabs, less Favorites: a follower has none; plus Arrows, which
+// SkyUI folds into Weapons. Ammunition has no equip slot at all -- neither
+// hand, not worn -- so its own list is the one with a plain Equipped
+// column, and Weapons keeps just Left and Right.
 enum class ItemCategory : std::uint8_t
 {
     Weapons,
+    Arrows,
     Apparel,
     Potions,
     Food,
