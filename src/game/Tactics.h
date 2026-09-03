@@ -12,7 +12,6 @@
 // rethinking.
 
 #include "core/Evaluator.h"
-#include "core/Loadout.h"
 #include "game/Inventory.h"
 #include "game/Magic.h"
 #include "game/Sensors.h"
@@ -108,41 +107,10 @@ void SetRules(ft::ActorId id, ft::RuleSet rules);
 // The rules a follower starts with, before anyone edits them.
 [[nodiscard]] const ft::RuleSet &DefaultRuleSet();
 
-// Put an item or a spell on, keep it on, or take it off, from the panel.
-//
-// Pin equips it and KEEPS it on: the tick puts it back whenever the game
-// takes it off, until the item leaves her inventory or a later request lets
-// go. The game re-dresses a follower freely -- her default outfit comes
-// back on a cell change, and a better piece of armour handed over is worn
-// at once -- and a pin is how "wear this" survives that without touching
-// her outfit record, which is what the heavier follower frameworks do.
-// Pinning releases any pin it conflicts with (same body slot, other hand),
-// since the engine will not displace a pinned item on its own.
-//
-// A pinned weapon or torch is held only OUT of combat. In a fight the hands
-// are the combat AI's and the rules' -- a spell wants one -- and holding a
-// dagger there against them only flickers. It goes back on when the fight
-// ends. Armour and ammunition hold throughout.
-//
-// Unpin leaves it worn but hers to change again. TakeOff takes it off and
-// forgets it; the game may put it back, and what it wears by default is
-// its business.
-//
-// Independent of tactics: pins are enforced whether the tactics switch is on
-// or off, on the same half-second clock, by a watchdog that looks only at the
-// pinned items and does nothing at all when nothing is pinned.
-//
-// Callable from any thread: the work is queued to the game thread. Pins live
-// in memory only, like the rules, until profiles persist.
-enum class WearRequest
-{
-    Pin,
-    Equip, // on, but no pin: for a spell the AI would not choose, where a pin would be a promise unkept
-    Unpin,
-    TakeOff
-};
-
-void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None);
+// Rebuild and publish one follower's view now, out of turn: for a request
+// that has just changed her, so the panel answers before the next tick --
+// which the frozen clock holds while the panel is open.
+void PublishFollower(RE::Actor *actor);
 
 // Why the world's clock is stopped, if it is.
 //

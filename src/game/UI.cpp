@@ -15,6 +15,7 @@
 #include "game/UI.h"
 
 #include "core/Vocabulary.h"
+#include "game/Pins.h"
 #include "game/Tactics.h"
 
 #include "SKSEMenuFramework.h"

@@ -97,6 +97,7 @@ if(FT_BUILD_PLUGIN)
         src/game/Sensors.cpp
         src/game/Inventory.cpp
         src/game/Magic.cpp
+        src/game/Pins.cpp
         src/game/Actions.cpp
         src/game/Tactics.cpp
         src/game/Util.cpp
