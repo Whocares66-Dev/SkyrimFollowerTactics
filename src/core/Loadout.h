@@ -100,16 +100,17 @@ struct Holdable
     bool ammo{false};
 };
 
+// A thing pinned, and the hands it is pinned in: None for armour and
+// ammunition, which have no hand; Both for a two-hander, or for an
+// either-hand thing pinned once in each hand.
 struct Pin
 {
-    std::uint32_t form{0};
+    Holdable thing;
     Hand hands{Hand::None};
-    // For a pin with no hand: the body slots it covers, or that it is
-    // ammunition. What a pinned cuirass keeps off is another cuirass, not
-    // a ring; what a pinned quiver keeps off is another quiver.
-    std::uint32_t slots{0};
-    bool ammo{false};
 };
+
+[[nodiscard]] Pin *FindPin(std::vector<Pin> &pins, std::uint32_t form) noexcept;
+[[nodiscard]] const Pin *FindPin(const std::vector<Pin> &pins, std::uint32_t form) noexcept;
 
 // The hands a thing takes when pinned, given the hand asked for. A thing
 // that takes one particular hand, or both, takes that whatever was asked;
@@ -134,6 +135,33 @@ struct Pin
 
 // The hands the pins hold, all together.
 [[nodiscard]] Hand PinnedHands(const std::vector<Pin> &pins) noexcept;
+
+// ---- What a request from the panel does to the pins. `hands` is what
+// HandsFor gave the request: the hand clicked as the thing takes it, None
+// for a thing with no hand. The game layer does the equipping; these keep
+// the book.
+
+// What other pins give up so that `thing` can be pinned in `hands`, each
+// with the hands let go (None for a no-hand pin, which goes whole). A pin
+// of one-handers holding both hands -- two daggers -- gives up only the
+// hand asked for; a two-hander, or a pin with no hand, goes whole.
+struct Displaced
+{
+    std::uint32_t form{0};
+    Hand hands{Hand::None};
+};
+[[nodiscard]] std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, Hand hands);
+
+// Pin `thing` in `hands`. An either-hand thing already pinned in the other
+// hand is pinned in both, a spell once in each -- unless `moving`, her one
+// weapon changing hands, which leaves the first hand.
+void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool moving);
+
+// A release or a take-off of `thing` in `hands`. A hand cell acts on THAT
+// hand and no other: the pin lets it go if it holds it and keeps the rest;
+// a pin on the other hand alone is not touched. With no hand named the
+// whole pin goes. Returns the hands the request acts on.
+[[nodiscard]] Hand LetGo(std::vector<Pin> &pins, const Holdable &thing, Hand hands);
 
 // Must this entry of the combat AI's list be taken from it? The AI's list
 // holds a thing once per hand it could go into, an either-hand spell as a

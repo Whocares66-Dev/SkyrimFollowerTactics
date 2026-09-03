@@ -54,6 +54,70 @@ bool Competes(Grip grip, Hand pinned) noexcept
     }
 }
 
+Pin *FindPin(std::vector<Pin> &pins, std::uint32_t form) noexcept
+{
+    const auto it = std::find_if(pins.begin(), pins.end(), [form](const Pin &p) { return p.thing.form == form; });
+    return it == pins.end() ? nullptr : &*it;
+}
+
+const Pin *FindPin(const std::vector<Pin> &pins, std::uint32_t form) noexcept
+{
+    const auto it = std::find_if(pins.begin(), pins.end(), [form](const Pin &p) { return p.thing.form == form; });
+    return it == pins.end() ? nullptr : &*it;
+}
+
+std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, Hand hands)
+{
+    std::vector<Displaced> out;
+    for (auto it = pins.begin(); it != pins.end();)
+    {
+        if (it->thing.form == thing.form || !Conflicts(thing, hands, it->thing, it->hands))
+        {
+            ++it;
+            continue;
+        }
+        const Hand taken = Common(hands, it->hands);
+        const bool partly = it->thing.grip == Grip::Either && taken != Hand::None && taken != it->hands;
+        if (partly)
+        {
+            out.push_back({it->thing.form, taken});
+            it->hands = Without(it->hands, taken);
+            ++it;
+            continue;
+        }
+        out.push_back({it->thing.form, it->hands});
+        it = pins.erase(it);
+    }
+    return out;
+}
+
+void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool moving)
+{
+    if (Pin *pin = FindPin(pins, thing.form))
+    {
+        pin->hands = thing.grip == Grip::Either && !moving ? pin->hands | hands : hands;
+        return;
+    }
+    pins.push_back({thing, hands});
+}
+
+Hand LetGo(std::vector<Pin> &pins, const Holdable &thing, Hand hands)
+{
+    Pin *pin = FindPin(pins, thing.form);
+    if (!pin)
+        return hands;
+    if (hands == Hand::None)
+    {
+        const Hand whole = pin->hands;
+        pins.erase(pins.begin() + (pin - pins.data()));
+        return whole;
+    }
+    pin->hands = Without(pin->hands, hands);
+    if (pin->hands == Hand::None)
+        pins.erase(pins.begin() + (pin - pins.data()));
+    return hands;
+}
+
 Hand PinnedHands(const std::vector<Pin> &pins) noexcept
 {
     Hand all = Hand::None;
@@ -67,10 +131,10 @@ bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) 
     const Hand pinned = PinnedHands(pins);
     if (pinned == Hand::None)
         return false;
-    const auto pin = std::find_if(pins.begin(), pins.end(), [&](const Pin &p) { return p.form == thing.form; });
+    const Pin *pin = FindPin(pins, thing.form);
     if (slot == Hand::None)
-        return pin == pins.end() && Competes(thing.grip, pinned);
-    if (pin != pins.end())
+        return pin == nullptr && Competes(thing.grip, pinned);
+    if (pin != nullptr)
         return !Overlap(slot, pin->hands);
     return Overlap(slot, pinned);
 }
@@ -79,9 +143,9 @@ bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) 
 // they share, or the quiver.
 bool HoldsPlaceOf(const Pin &pin, const Holdable &thing) noexcept
 {
-    if (pin.form == thing.form)
+    if (pin.thing.form == thing.form)
         return false;
-    return (pin.slots & thing.slots) != 0 || (pin.ammo && thing.ammo);
+    return (pin.thing.slots & thing.slots) != 0 || (pin.thing.ammo && thing.ammo);
 }
 
 bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept
@@ -110,10 +174,10 @@ std::vector<Pin> Shadowing(const std::vector<Pin> &pins, const Holdable &thing)
     const Hand reach = Reach(thing.grip);
     for (const Pin &pin : pins)
     {
-        if (pin.form == thing.form)
+        if (pin.thing.form == thing.form)
             continue;
         if (const Hand taken = Common(pin.hands, reach); taken != Hand::None)
-            out.push_back({pin.form, taken});
+            out.push_back({pin.thing, taken});
         else if (HoldsPlaceOf(pin, thing))
             out.push_back(pin);
     }

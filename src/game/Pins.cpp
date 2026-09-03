@@ -28,7 +28,7 @@ std::recursive_mutex g_pinMutex;
 // pinned to (None for armour and ammunition). Written by the request task,
 // read by the tick; both on the game thread, but the lock costs nothing and
 // keeps the next writer honest.
-std::unordered_map<ft::ActorId, std::unordered_map<std::uint32_t, Hand>> g_pins;
+std::unordered_map<ft::ActorId, std::vector<Pin>> g_pins;
 
 // The hand's equip slot record, by FormID: LeftHand 013F43, RightHand
 // 013F42 in Skyrim.esm. Not through the default object table, which did
@@ -124,33 +124,11 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
 }
 
 // This follower's pins as the planner takes them.
-// One pin as the planner takes it: the hands, and for a pin with none,
-// the body slots or the quiver it holds.
-Pin PlannedPin(RE::Actor *actor, std::uint32_t form, Hand hands)
-{
-    Pin pin;
-    pin.form = form;
-    pin.hands = hands;
-    if (auto *thing = RE::TESForm::LookupByID(form); thing && hands == Hand::None)
-    {
-        const Holdable described = DescribeHoldable(actor, thing);
-        pin.slots = described.slots;
-        pin.ammo = described.ammo;
-    }
-    return pin;
-}
-
 std::vector<Pin> PinsOf(ft::ActorId id)
 {
     std::scoped_lock lock(g_pinMutex);
-    std::vector<Pin> out;
-    auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
-    if (const auto it = g_pins.find(id); actor && it != g_pins.end())
-    {
-        for (const auto &[form, hands] : it->second)
-            out.push_back(PlannedPin(actor, form, hands));
-    }
-    return out;
+    const auto it = g_pins.find(id);
+    return it == g_pins.end() ? std::vector<Pin>{} : it->second;
 }
 
 // Is the form in those hands right now?
@@ -348,36 +326,17 @@ constexpr bool kDualWieldOnLeftPin = false;
 // -- so before something new goes on, whatever it displaces has to be
 // unpinned and taken off by us, or the equip silently does nothing. That is
 // what happened with iron armour pinned and robes clicked.
-void ReleaseConflictingPins(RE::Actor *actor, std::unordered_map<std::uint32_t, Hand> &pins, RE::TESForm *incoming,
-                            Hand hands)
+// What the planner says must give way for a new pin, taken off.
+void ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Holdable &incoming, Hand hands)
 {
-    const Holdable coming = DescribeHoldable(actor, incoming);
-    for (auto it = pins.begin(); it != pins.end();)
+    for (const Displaced &gone : MakeRoom(pins, incoming, hands))
     {
-        auto *held = RE::TESForm::LookupByID(it->first);
-        const Holdable holding = held ? DescribeHoldable(actor, held) : Holdable{};
-        if (!held || held == incoming || !Conflicts(coming, hands, holding, it->second))
-        {
-            ++it;
+        auto *held = RE::TESForm::LookupByID(gone.form);
+        if (!held)
             continue;
-        }
-        const char *name = held->GetName() ? held->GetName() : "?";
-        // A pin holding both hands with one thing per hand -- two daggers
-        // -- gives up only the hand asked for and keeps the other. A
-        // two-hander, or a pin with no hand, goes whole.
-        const Hand taken = Common(hands, it->second);
-        const bool partly = holding.grip == Grip::Either && taken != Hand::None && taken != it->second;
-        if (partly)
-        {
-            logger::info("{} unpinning {} from one hand to make room", Describe(actor), name);
-            UnequipForm(actor, held, taken, true);
-            it->second = Without(it->second, taken);
-            ++it;
-            continue;
-        }
-        logger::info("{} unpinning {} to make room", Describe(actor), name);
-        UnequipForm(actor, held, it->second, true);
-        it = pins.erase(it);
+        logger::info("{} unpinning {}{} to make room", Describe(actor), held->GetName() ? held->GetName() : "?",
+                     HandTag(gone.hands));
+        UnequipForm(actor, held, gone.hands, true);
     }
 }
 
@@ -413,13 +372,13 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
 
         for (auto pin = pins.begin(); pin != pins.end();)
         {
-            auto *form = RE::TESForm::LookupByID(pin->first);
+            auto *form = RE::TESForm::LookupByID(pin->thing.form);
             if (!form)
             {
                 pin = pins.erase(pin);
                 continue;
             }
-            const Hand hands = pin->second;
+            const Hand hands = pin->hands;
 
             // Spells first: a SpellItem is a bound object too, and the
             // inventory branch dropped every spell pin as "no longer
@@ -633,9 +592,7 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     if (it == g_pins.end() || it->second.empty())
         return;
     auto &pins = it->second;
-    std::vector<Pin> asPlanned;
-    for (const auto &[form, hands] : pins)
-        asPlanned.push_back(PlannedPin(actor, form, hands));
+    const std::vector<Pin> asPlanned = pins;
 
     // The tooltip's reason: the pins in the way, one per line, "Firebolt
     // is pinned". Which hand or slot is plain from the table itself.
@@ -643,7 +600,7 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
         std::string lines;
         for (const Pin &pin : shadowing)
         {
-            const auto *holder = RE::TESForm::LookupByID(pin.form);
+            const auto *holder = RE::TESForm::LookupByID(pin.thing.form);
             const char *name = holder && holder->GetName() ? holder->GetName() : "Something";
             lines += (lines.empty() ? "" : "\n") + std::string(name) + " is pinned";
         }
@@ -653,12 +610,12 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     std::unordered_set<std::uint32_t> present;
     const auto mark = [&](std::uint32_t form, bool &left, bool &right, bool &aside, std::string &asideBy, bool *whole) {
         present.insert(form);
-        if (const auto pin = pins.find(form); pin != pins.end())
+        if (const Pin *pin = FindPin(pins, form))
         {
-            left = Overlap(pin->second, Hand::Left);
-            right = Overlap(pin->second, Hand::Right);
+            left = Overlap(pin->hands, Hand::Left);
+            right = Overlap(pin->hands, Hand::Right);
             if (whole)
-                *whole = pin->second == Hand::None;
+                *whole = pin->hands == Hand::None;
             return;
         }
         auto *thing = RE::TESForm::LookupByID(form);
@@ -673,7 +630,7 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
         mark(item.form, item.pinnedLeft, item.pinnedRight, item.setAside, item.asideBy, &item.pinned);
     for (auto &entry : magic)
         mark(entry.form, entry.pinnedLeft, entry.pinnedRight, entry.setAside, entry.asideBy, nullptr);
-    std::erase_if(pins, [&](const auto &pin) { return !present.contains(pin.first); });
+    std::erase_if(pins, [&](const Pin &pin) { return !present.contains(pin.thing.form); });
 }
 
 bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand)
@@ -801,37 +758,15 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         {
             std::scoped_lock lock(g_pinMutex);
             auto &pins = g_pins[id];
-            const auto pin = pins.find(form);
-            const bool eitherHand = described.grip == Grip::Either && pin != pins.end() && hand != Hand::None;
             if (request == WearRequest::Pin || request == WearRequest::Equip)
             {
-                ReleaseConflictingPins(actor, pins, thing, hands);
-                // An either-hand thing already pinned in the other hand is
-                // pinned in both now, a spell once in each; unless this is
-                // her one weapon changing hands.
+                ReleaseConflictingPins(actor, pins, described, hands);
                 if (request == WearRequest::Pin)
-                    pins[form] = eitherHand && !moving ? pin->second | hands : hands;
+                    AddPin(pins, described, hands, moving);
             }
-            else if (hand != Hand::None && described.grip != Grip::None)
+            else
             {
-                // A hand cell acts on THAT hand and no other: the pin, if it
-                // holds this hand, lets it go and keeps the rest; a pin on
-                // the other hand alone is not touched. Acting on the pin's
-                // hand instead took the wrong one off (16:04: Flames pinned
-                // both, the left released, then the left put away -- and
-                // the RIGHT went).
-                if (pin != pins.end())
-                {
-                    pin->second = Without(pin->second, hands);
-                    if (pin->second == Hand::None)
-                        pins.erase(pin);
-                }
-            }
-            else if (pin != pins.end())
-            {
-                // No hand to name: armour, ammunition. The whole pin.
-                hands = pin->second;
-                pins.erase(pin);
+                hands = LetGo(pins, described, hands);
             }
         }
 
