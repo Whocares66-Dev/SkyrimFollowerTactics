@@ -23,7 +23,7 @@ namespace
 // What the panel has pinned on each follower. Written by the request task,
 // read by the tick; both on the game thread, but the lock costs nothing and
 // keeps the next writer honest.
-std::mutex g_pinMutex;
+std::recursive_mutex g_pinMutex;
 // What the panel has pinned on each follower: the form, and the hands it is
 // pinned to (None for armour and ammunition). Written by the request task,
 // read by the tick; both on the game thread, but the lock costs nothing and
@@ -482,6 +482,8 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
 // to learn the layout -- the AI cast a spell we had removed from her lists
 // (03:18), so this list, not those, is what it reads.
 std::unordered_set<ft::ActorId> g_probedFights;
+// Entries whose zeroed score has been logged this fight: once each.
+std::unordered_set<const RE::CombatInventoryItem *> g_zeroedOnce;
 
 // When a list was marked for rebuild, per follower, to measure how soon the
 // engine clears the flag: that is the rebuild, and its latency decides
@@ -518,6 +520,7 @@ void ProbeCombatInventory(RE::Actor *actor)
     }
     if (!g_probedFights.insert(id).second)
         return;
+    g_zeroedOnce.clear();
     std::unordered_set<const RE::TESForm *> listed;
     for (int slot = 0; slot < 7; ++slot)
     {
@@ -569,6 +572,62 @@ void ProbeCombatInventory(RE::Actor *actor)
 // regrowths is the clue to what rebuilds the list.
 std::unordered_map<ft::ActorId, double> g_lastPruneAt;
 
+// The watch on the AI's list. Pruning it is a race: the AI re-lists the
+// kinds of equipment it wants for its range every few seconds, and draws
+// the sword in the half second before the next prune (14:47, the pinned
+// bow). The AI asks each entry for its score every time it decides, so
+// answering ZERO for an entry the pins keep from it holds however often
+// the list is rebuilt. Installed per class the first time an entry of
+// that class is seen, by rewriting the class's CalculateScore slot; the
+// original is kept per vtable and called for everything else.
+using ScoreFn = float (*)(RE::CombatInventoryItem *, RE::CombatController *);
+std::unordered_map<std::uintptr_t, ScoreFn> g_scoreOriginals;
+constexpr std::size_t kCalculateScoreSlot = 0x0C;
+
+bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::CombatController *controller)
+{
+    if (!entry || !entry->item || !controller)
+        return false;
+    RE::Actor *actor = controller->cachedAttacker.get();
+    if (!actor)
+        return false;
+    const std::vector<Pin> pins = PinsOf(actor->GetFormID());
+    if (pins.empty())
+        return false;
+    return KeptFromAI(pins, DescribeHoldable(actor, entry->item), SlotHand(entry->itemSlot.equipSlot));
+}
+
+float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
+{
+    const auto vtable = *reinterpret_cast<const std::uintptr_t *>(self);
+    const auto original = g_scoreOriginals.find(vtable);
+    const float score = original != g_scoreOriginals.end() ? original->second(self, controller) : 0.0f;
+    if (!ShadowedEntry(self, controller))
+        return score;
+    if (g_zeroedOnce.insert(self).second)
+    {
+        RE::Actor *actor = controller->cachedAttacker.get();
+        logger::info("{} AI asked the score of {}{}: {:.2f}, answered 0 (pinned against)",
+                     actor ? Describe(actor) : "?", self->item->GetName() ? self->item->GetName() : "?",
+                     HandTag(SlotHand(self->itemSlot.equipSlot)), score);
+    }
+    return 0.0f;
+}
+
+void WatchScoreOf(RE::CombatInventoryItem *entry)
+{
+    if (!entry)
+        return;
+    const auto vtable = *reinterpret_cast<const std::uintptr_t *>(entry);
+    if (g_scoreOriginals.contains(vtable))
+        return;
+    REL::Relocation<std::uintptr_t> table{vtable};
+    const auto original = table.write_vfunc(kCalculateScoreSlot, ScoreHook);
+    g_scoreOriginals[vtable] = reinterpret_cast<ScoreFn>(original);
+    logger::info("watching the AI's score of entries like {} (vtable {:X})",
+                 entry->item && entry->item->GetName() ? entry->item->GetName() : "?", vtable);
+}
+
 int PruneCombatList(RE::Actor *actor)
 {
     auto *controller = actor->GetActorRuntimeData().combatController;
@@ -584,6 +643,7 @@ int PruneCombatList(RE::Actor *actor)
         {
             auto *form = *it ? (*it)->item : nullptr;
             const Hand slot = *it ? SlotHand((*it)->itemSlot.equipSlot) : Hand::None;
+            WatchScoreOf(it->get());
             if (form && KeptFromAI(pins, DescribeHoldable(actor, form), slot))
             {
                 names +=
