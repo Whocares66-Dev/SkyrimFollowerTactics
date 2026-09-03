@@ -257,3 +257,46 @@ entry. NFF is one more line when integration is wanted. NFF also has
 Tracked in `docs/TODO.md`. The casting items there: sustain length in the
 editor, the AI occasionally not starting a cast, non-hostile targeted spells,
 a target picker, our own quest and aliases.
+
+## What the combat AI will cast (2026-09-03)
+
+Read off the AI's own list of options, the `CombatInventory` on her combat
+controller, logged at the start of a fight (the probe in `Tactics.cpp`):
+
+- It is built when the fight begins, from her spell lists and inventory as
+  they are at that moment. Removing a spell from her lists after that does
+  nothing for the fight in progress: Firebolt was set aside three
+  milliseconds after "entered combat" and cast anyway.
+- **It skips any spell whose level is above her skill.** Marcurio at
+  Destruction 39 and Restoration 45: Chain Lightning and Close Wounds
+  (Adept, 50) were left out with magicka at 210/210; every Apprentice and
+  Novice spell was in. This is the AI's CHOICE, not a casting limit: a cast
+  rule's UseMagic package makes her cast such a spell regardless, and the
+  player casts anything with the magicka for it. A pin on such a spell gives
+  the AI nothing to reach for; the Magic tab dims its level and says so.
+- **An either-hand spell goes to the right hand by default.** Left alone by
+  the first shadowing rule on the theory that the AI would keep it to the
+  free hand, Flames went straight into the pinned right hand. Either-hand
+  spells now compete with any pin.
+- The seven arrays, from what appeared in them: [0] offence (attack spells,
+  bows, blades), [1] restoration (healing spells and potions), [3] defence
+  (wards, shields), [4] armour spells; [2], [5], [6] empty for a mage.
+- With every usable right-hand spell set aside, he drew a dagger. The list
+  is the list: the AI falls back to what is left, weapons included.
+
+### How a pin is kept (2026-09-03, later)
+
+By pruning the AI's list, not by touching her. Every tick she fights with
+something pinned to a hand, every spell or item in the combat inventory that
+would take that hand is erased from it, and whatever is pinned goes back in
+its hand. A one-hand-only spell competes with a pin on its hand; an
+either-hand spell, a both-hands spell, a one-handed weapon and a two-hander
+compete with a pin on any hand; a shield or torch with a pin on the left. A
+spell above her skill is never in the list to begin with, and cannot be
+pinned, since the AI would not choose it. A pin changed mid-fight sets the
+list's dirty flag so the AI rebuilds it whole and the next tick prunes it to
+the new pins. The first version removed competing spells from her record for
+the life of a pin, with a restore on unpin, dismissal and save; it worked,
+and it left her without those spells for every menu, script and mod in the
+meantime, which the prune does not. Each follower's list is her own: it
+belongs to her combat controller.
