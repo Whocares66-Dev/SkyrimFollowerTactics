@@ -1725,23 +1725,20 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
                          static_cast<Im::ImGuiID>(Column::Weight));
     Im::TableSetupColumn("Val", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth,
                          static_cast<Im::ImGuiID>(Column::Value));
-    // Equipped first on the first click: nobody sorts this column to find
-    // what she is NOT wearing. "Equipped", not "Worn": it is the word the
-    // item's page uses, and the one that fits a weapon.
+    // Ascending first, like the rest: unequipped, equipped, pinned, then the
+    // slashed cells. "Equipped", not "Worn": it is the word the item's page
+    // uses, and the one that fits a weapon.
     if (anyHand)
     {
-        Im::TableSetupColumn("Left",
-                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
-                             handWidth, static_cast<Im::ImGuiID>(Column::Left));
-        Im::TableSetupColumn("Right",
-                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
-                             handWidth, static_cast<Im::ImGuiID>(Column::Right));
+        Im::TableSetupColumn("Left", Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
+                             static_cast<Im::ImGuiID>(Column::Left));
+        Im::TableSetupColumn("Right", Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
+                             static_cast<Im::ImGuiID>(Column::Right));
     }
     if (anyWorn)
     {
-        Im::TableSetupColumn("Equipped",
-                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
-                             wornWidth, static_cast<Im::ImGuiID>(Column::Equipped));
+        Im::TableSetupColumn("Equipped", Im::ImGuiTableColumnFlags_WidthFixed, wornWidth,
+                             static_cast<Im::ImGuiID>(Column::Equipped));
     }
     Im::TableHeadersRow();
 
@@ -2096,18 +2093,15 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
                          static_cast<Im::ImGuiID>(Column::Cast));
     if (voiceList)
     {
-        Im::TableSetupColumn("Equipped",
-                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
-                             wornWidth, static_cast<Im::ImGuiID>(Column::Equipped));
+        Im::TableSetupColumn("Equipped", Im::ImGuiTableColumnFlags_WidthFixed, wornWidth,
+                             static_cast<Im::ImGuiID>(Column::Equipped));
     }
     else
     {
-        Im::TableSetupColumn("Left",
-                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
-                             handWidth, static_cast<Im::ImGuiID>(Column::Left));
-        Im::TableSetupColumn("Right",
-                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
-                             handWidth, static_cast<Im::ImGuiID>(Column::Right));
+        Im::TableSetupColumn("Left", Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
+                             static_cast<Im::ImGuiID>(Column::Left));
+        Im::TableSetupColumn("Right", Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
+                             static_cast<Im::ImGuiID>(Column::Right));
     }
     Im::TableHeadersRow();
 
