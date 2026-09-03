@@ -57,7 +57,7 @@ in `docs/PLAN.md`.
 ## Panel
 
 - **Help as a collapsible section, not per-row tooltips.** A greyed row's
-  tooltip gives the reason only ("Firebolt is pinned in the right hand";
+  tooltip gives the reason only ("Firebolt is pinned";
   "Needs: Destruction (50) / Has: Destruction (39)"). What a pin promises,
   what "set aside" means for the AI and for cast rules, and that a spell
   above skill can be cast by a rule but not pinned, belong in one place the

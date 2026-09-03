@@ -593,19 +593,15 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     for (const auto &[form, hands] : pins)
         asPlanned.push_back(PlannedPin(actor, form, hands));
 
-    // The tooltip's reason: which pin holds which hand this could take.
+    // The tooltip's reason: the pins in the way, one per line, "Firebolt
+    // is pinned". Which hand or slot is plain from the table itself.
     const auto why = [&](const std::vector<Pin> &shadowing) {
         std::string lines;
         for (const Pin &pin : shadowing)
         {
             const auto *holder = RE::TESForm::LookupByID(pin.form);
             const char *name = holder && holder->GetName() ? holder->GetName() : "Something";
-            const char *where = pin.hands == Hand::Both    ? "in both hands"
-                                : pin.hands == Hand::Left  ? "in the left hand"
-                                : pin.hands == Hand::Right ? "in the right hand"
-                                : pin.ammo                 ? "as the ammunition"
-                                                           : "over the same body slot";
-            lines += (lines.empty() ? "" : "\n") + std::string(name) + " is pinned " + where;
+            lines += (lines.empty() ? "" : "\n") + std::string(name) + " is pinned";
         }
         return lines;
     };
