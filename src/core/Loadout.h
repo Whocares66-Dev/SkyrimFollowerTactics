@@ -13,12 +13,12 @@
 // A pin keeps its promise by three means, each covering what the others
 // cannot. An ITEM is equipped with the engine's prevent-removal flag, which
 // stops the engine's own equip-best swap (verified: pinned robes kept iron
-// armour off). The combat AI's own list of options is PRUNED of everything
-// that competes for a pinned hand, since that list, not her records, is what
-// the AI chooses from in a fight (verified: a removed spell was cast from it,
-// a pruned dagger never was). And a WATCHDOG puts back, out of combat,
-// whatever got past both. A spell has no flag, so for it the last two carry
-// the promise alone.
+// armour off). The combat AI SCORES every option in its list each time it
+// decides what to hold, and that score is answered by us: zero for anything
+// that competes for a pinned hand, so it is never chosen (verified: a pinned
+// bow held at melee range against a sword the AI kept re-listing). And a
+// WATCHDOG puts back, out of combat, whatever got past both. A spell has no
+// flag, so for it the last two carry the promise alone.
 
 #include <cstdint>
 #include <vector>

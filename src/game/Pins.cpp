@@ -7,10 +7,10 @@
 #include "game/Tactics.h"
 #include "game/Util.h"
 
+#include <array>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -485,101 +485,20 @@ std::unordered_set<ft::ActorId> g_probedFights;
 // Entries whose zeroed score has been logged this fight: once each.
 std::unordered_set<const RE::CombatInventoryItem *> g_zeroedOnce;
 
-// When a list was marked for rebuild, per follower, to measure how soon the
-// engine clears the flag: that is the rebuild, and its latency decides
-// whether a mid-fight pin change takes effect in a frame or a while.
-std::unordered_map<ft::ActorId, double> g_rebuildMarkedAt;
-
-void MeasureRebuild(RE::Actor *actor)
-{
-    const ft::ActorId id = actor->GetFormID();
-    const auto it = g_rebuildMarkedAt.find(id);
-    if (it == g_rebuildMarkedAt.end())
-        return;
-    auto *controller = actor->GetActorRuntimeData().combatController;
-    if (!controller || !controller->inventory)
-    {
-        g_rebuildMarkedAt.erase(it);
-        return;
-    }
-    if (controller->inventory->dirty)
-        return;
-    logger::info("{} combat list rebuilt {:.0f} ms after being marked", Describe(actor),
-                 (NowSeconds() - it->second) * 1000.0);
-    g_rebuildMarkedAt.erase(it);
-}
-
-void ProbeCombatInventory(RE::Actor *actor)
-{
-    const ft::ActorId id = actor->GetFormID();
-    auto *controller = actor->GetActorRuntimeData().combatController;
-    if (!controller || !controller->inventory)
-    {
-        g_probedFights.erase(id);
-        return;
-    }
-    if (!g_probedFights.insert(id).second)
-        return;
-    g_zeroedOnce.clear();
-    std::unordered_set<const RE::TESForm *> listed;
-    for (int slot = 0; slot < 7; ++slot)
-    {
-        std::string names;
-        for (const auto &entry : controller->inventory->inventoryItems[slot])
-        {
-            const auto *form = entry ? entry->item : nullptr;
-            listed.insert(form);
-            names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?") +
-                     HandTag(entry ? SlotHand(entry->itemSlot.equipSlot) : Hand::None);
-        }
-        logger::info("{} combat inventory [{}]: {}", Describe(actor), slot, names.empty() ? "-" : names);
-    }
-    // Which of her spells the AI did not list, and her magicka at the
-    // moment, since a cost above the pool is the first guess at the filter
-    // that kept a pinned Chain Lightning out (03:25).
-    std::string missing;
-    const auto consider = [&](RE::SpellItem *spell) {
-        if (spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell && !listed.contains(spell))
-            missing += (missing.empty() ? "" : ", ") + std::string(spell->GetName() ? spell->GetName() : "?") + " (" +
-                       std::to_string(static_cast<int>(spell->CalculateMagickaCost(actor))) + ")";
-    };
-    if (auto *npc = actor->GetActorBase())
-    {
-        if (auto *list = npc->GetSpellList())
-            for (std::uint32_t i = 0; i < list->numSpells; ++i)
-                consider(list->spells[i]);
-    }
-    for (auto *spell : actor->GetActorRuntimeData().addedSpells)
-        consider(spell);
-    auto *owner = actor->AsActorValueOwner();
-    // The two form arrays beside the seven: if the 5 s rebuild
-    // (fCombatInventoryUpdateTimer) draws from these rather than from the
-    // bag, pruning them would hold where pruning the seven does not.
-    const auto forms = [](const RE::BSTArray<RE::TESForm *> &array) {
-        std::string names;
-        for (const auto *form : array)
-            names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?");
-        return names.empty() ? std::string("-") : names;
-    };
-    logger::info("{} combat inventory forms A: {}", Describe(actor), forms(controller->inventory->unk0B0));
-    logger::info("{} combat inventory forms B: {}", Describe(actor), forms(controller->inventory->unk0C8));
-    logger::info("{} combat inventory left out: {} -- magicka {:.0f}/{:.0f}", Describe(actor),
-                 missing.empty() ? "nothing" : missing, owner ? owner->GetActorValue(RE::ActorValue::kMagicka) : 0.0f,
-                 owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
-}
-
-// When the last prune took something, per follower: the interval between
-// regrowths is the clue to what rebuilds the list.
-std::unordered_map<ft::ActorId, double> g_lastPruneAt;
-
-// The watch on the AI's list. Pruning it is a race: the AI re-lists the
-// kinds of equipment it wants for its range every few seconds, and draws
-// the sword in the half second before the next prune (14:47, the pinned
-// bow). The AI asks each entry for its score every time it decides, so
-// answering ZERO for an entry the pins keep from it holds however often
-// the list is rebuilt. Installed per class the first time an entry of
-// that class is seen, by rewriting the class's CalculateScore slot; the
-// original is kept per vtable and called for everything else.
+// HOW A PIN IS KEPT FROM THE AI. Its list of options is a list of scored
+// entries, and it asks each entry for its score every time it decides
+// what to hold. That call is a virtual, so its slot in each entry class's
+// table is ours: ZERO for an entry the pins keep from the AI, the class's
+// own answer for everything else. Reactive and exact -- nothing is
+// computed until the AI asks, and however often it re-lists its options
+// (every few seconds, for the range it is at) the answer is the same.
+// The list was pruned on the tick before this, and the AI won that race:
+// it re-listed the sword and drew it in the half second before the next
+// prune (14:47, the pinned bow).
+//
+// The classes are hooked at load from the address library's table; any
+// class first seen in a list at combat start is hooked then, in case the
+// table missed one. The original is kept per vtable.
 using ScoreFn = float (*)(RE::CombatInventoryItem *, RE::CombatController *);
 std::unordered_map<std::uintptr_t, ScoreFn> g_scoreOriginals;
 constexpr std::size_t kCalculateScoreSlot = 0x0C;
@@ -624,6 +543,16 @@ float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
     return 0.0f;
 }
 
+void WatchScoresIn(std::uintptr_t vtable, const char *what)
+{
+    if (g_scoreOriginals.contains(vtable))
+        return;
+    REL::Relocation<std::uintptr_t> table{vtable};
+    const auto original = table.write_vfunc(kCalculateScoreSlot, ScoreHook);
+    g_scoreOriginals[vtable] = reinterpret_cast<ScoreFn>(original);
+    logger::info("watching the AI's score of {} (vtable {:X})", what, vtable);
+}
+
 void WatchScoreOf(RE::CombatInventoryItem *entry)
 {
     if (!entry)
@@ -631,78 +560,60 @@ void WatchScoreOf(RE::CombatInventoryItem *entry)
     const auto vtable = *reinterpret_cast<const std::uintptr_t *>(entry);
     if (g_scoreOriginals.contains(vtable))
         return;
-    REL::Relocation<std::uintptr_t> table{vtable};
-    const auto original = table.write_vfunc(kCalculateScoreSlot, ScoreHook);
-    g_scoreOriginals[vtable] = reinterpret_cast<ScoreFn>(original);
-    // The stored score is what the last call to that slot returned: if it
-    // is not a plausible score the slot is not CalculateScore.
-    logger::info("watching the AI's score of entries like {} (vtable {:X}, its last score {:.2f})",
-                 entry->item && entry->item->GetName() ? entry->item->GetName() : "?", vtable, entry->itemScore);
+    // A class the load-time table did not name: say so, with the entry's
+    // last score as a check that the slot is the scoring one.
+    logger::info("an AI entry class not in the table: entries like {} (last score {:.2f})",
+                 entry->item && entry->item->GetName() ? entry->item->GetName() : "?", entry->itemScore);
+    WatchScoresIn(vtable, "entries of an unlisted class");
 }
 
-int PruneCombatList(RE::Actor *actor)
+void ProbeCombatInventory(RE::Actor *actor)
 {
+    const ft::ActorId id = actor->GetFormID();
     auto *controller = actor->GetActorRuntimeData().combatController;
     if (!controller || !controller->inventory)
-        return 0;
-    const std::vector<Pin> pins = PinsOf(actor->GetFormID());
-    const bool dirtyNow = controller->inventory->dirty;
-    int removed = 0;
-    std::string names;
-    for (auto &array : controller->inventory->inventoryItems)
     {
-        for (auto it = array.begin(); it != array.end();)
+        g_probedFights.erase(id);
+        return;
+    }
+    if (!g_probedFights.insert(id).second)
+        return;
+    g_zeroedOnce.clear();
+    std::unordered_set<const RE::TESForm *> listed;
+    for (int slot = 0; slot < 7; ++slot)
+    {
+        std::string names;
+        for (const auto &entry : controller->inventory->inventoryItems[slot])
         {
-            auto *form = *it ? (*it)->item : nullptr;
-            const Hand slot = *it ? SlotHand((*it)->itemSlot.equipSlot) : Hand::None;
-            WatchScoreOf(it->get());
-            if (form && KeptFromAI(pins, DescribeHoldable(actor, form), slot))
-            {
-                names +=
-                    (names.empty() ? "" : ", ") + std::string(form->GetName() ? form->GetName() : "?") + HandTag(slot);
-                it = array.erase(it);
-                ++removed;
-            }
-            else
-            {
-                ++it;
-            }
+            const auto *form = entry ? entry->item : nullptr;
+            listed.insert(form);
+            names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?") +
+                     HandTag(entry ? SlotHand(entry->itemSlot.equipSlot) : Hand::None);
+            WatchScoreOf(entry.get());
         }
+        logger::info("{} combat inventory [{}]: {}", Describe(actor), slot, names.empty() ? "-" : names);
     }
-    if (removed > 0)
+    // Which of her spells the AI did not list, and her magicka at the
+    // moment, since a cost above the pool is the first guess at the filter
+    // that kept a pinned Chain Lightning out (03:25).
+    std::string missing;
+    const auto consider = [&](RE::SpellItem *spell) {
+        if (spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell && !listed.contains(spell))
+            missing += (missing.empty() ? "" : ", ") + std::string(spell->GetName() ? spell->GetName() : "?") + " (" +
+                       std::to_string(static_cast<int>(spell->CalculateMagickaCost(actor))) + ")";
+    };
+    if (auto *npc = actor->GetActorBase())
     {
-        const ft::ActorId id = actor->GetFormID();
-        const double now = NowSeconds();
-        const auto last = g_lastPruneAt.find(id);
-        if (last == g_lastPruneAt.end())
-            logger::info("{} pruned {} from the combat list: {}", Describe(actor), removed, names);
-        else
-            logger::info("{} pruned {} from the combat list: {} -- back {:.1f} s after the last prune, dirty={}",
-                         Describe(actor), removed, names, now - last->second, dirtyNow);
-        g_lastPruneAt[id] = now;
+        if (auto *list = npc->GetSpellList())
+            for (std::uint32_t i = 0; i < list->numSpells; ++i)
+                consider(list->spells[i]);
     }
-    return removed;
-}
-
-// After a prune, whatever is pinned to a hand goes back into it: what the
-// AI had reached for is no longer on its list, so this holds.
-void ReadyPinnedHands(RE::Actor *actor)
-{
-    std::unordered_map<std::uint32_t, Hand> pins;
-    {
-        std::scoped_lock lock(g_pinMutex);
-        pins = g_pins[actor->GetFormID()];
-    }
-    for (const auto &[form, hands] : pins)
-    {
-        auto *thing = RE::TESForm::LookupByID(form);
-        if (thing && hands != Hand::None && !EquippedIn(actor, thing, hands))
-        {
-            logger::info("{} readying pinned {} after the prune", Describe(actor),
-                         thing->GetName() ? thing->GetName() : "?");
-            EquipPinned(actor, thing, hands, false);
-        }
-    }
+    for (auto *spell : actor->GetActorRuntimeData().addedSpells)
+        consider(spell);
+    auto *owner = actor->AsActorValueOwner();
+    logger::info("{} combat inventory left out: {} -- magicka {:.0f}/{:.0f}", Describe(actor),
+                 missing.empty() ? "nothing" : missing, owner ? owner->GetActorValue(RE::ActorValue::kMagicka) : 0.0f,
+                 owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
 }
 
 // Followers whose view is to be republished on the next pacing beat, whether
@@ -790,42 +701,44 @@ bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand)
     return true;
 }
 
-// Tried and taken back (14:47): fCombatInventoryUpdateTimer raised to a
-// million made no difference -- the pruned melee weapons, spells and
-// shield still came back every 2.5 to 3.5 s with the dirty flag clear.
-// The regrowth is not that timer's, and only those categories return,
-// never the second bow: it looks like the AI re-listing the kinds of
-// equipment it wants for the range it is at, rather than a rebuild.
-
-void LogCombatInventorySettings()
+void WatchCombatScores()
 {
-    auto *collection = RE::GameSettingCollection::GetSingleton();
-    if (!collection)
-        return;
-    for (const auto &entry : collection->settings)
+    // Every entry class that can hold a hand: the weapon kinds, and the
+    // spell entry for each kind of caster the AI has. Potions, scrolls and
+    // shouts take no hand and are never kept from it.
+    struct Named
     {
-        const RE::Setting *setting = entry.second;
-        if (!setting || !setting->GetName())
-            continue;
-        const std::string_view name = setting->GetName();
-        if (name.find("CombatInventory") == std::string_view::npos &&
-            name.find("CombatEquip") == std::string_view::npos && name.find("Equipment") == std::string_view::npos)
-            continue;
-        switch (setting->GetType())
-        {
-        case RE::Setting::Type::kFloat:
-            logger::info("setting {} = {}", name, setting->GetFloat());
-            break;
-        case RE::Setting::Type::kSignedInteger:
-            logger::info("setting {} = {}", name, setting->GetSInt());
-            break;
-        case RE::Setting::Type::kBool:
-            logger::info("setting {} = {}", name, setting->GetBool());
-            break;
-        default:
-            logger::info("setting {} (not a number)", name);
-            break;
-        }
+        const std::array<REL::VariantID, 1> *id;
+        const char *what;
+    };
+    const Named classes[] = {
+        {&RE::VTABLE_CombatInventoryItemMelee, "melee weapons"},
+        {&RE::VTABLE_CombatInventoryItemRanged, "bows and crossbows"},
+        {&RE::VTABLE_CombatInventoryItemShield, "shields"},
+        {&RE::VTABLE_CombatInventoryItemOneHandedBlock, "one-handed blocking"},
+        {&RE::VTABLE_CombatInventoryItemTorch, "torches"},
+        {&RE::VTABLE_CombatInventoryItemStaff, "staves"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterOffensive_, "attack spells"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterRestore_, "healing spells"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterWard_, "wards"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterArmor_, "armour spells"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterSummon_, "summons"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterBoundItem_, "bound weapons"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterCloak_, "cloaks"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterInvisibility_, "invisibility"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterLight_, "light spells"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterDisarm_, "disarm spells"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterParalyze_, "paralysis"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterReanimate_, "reanimation"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterStagger_, "stagger spells"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterTargetEffect_,
+         "target-effect spells"},
+        {&RE::VTABLE_CombatInventoryItemMagicT_CombatInventoryItemMagic_CombatMagicCasterScript_, "scripted spells"},
+    };
+    for (const Named &named : classes)
+    {
+        const REL::Relocation<std::uintptr_t> table{(*named.id)[0]};
+        WatchScoresIn(table.address(), named.what);
     }
 }
 
@@ -849,15 +762,7 @@ void KeepPins(const std::vector<RE::Actor *> &followers)
 {
     EnforcePins(followers);
     for (auto *follower : followers)
-    {
         ProbeCombatInventory(follower);
-        MeasureRebuild(follower);
-        if (follower->IsInCombat())
-        {
-            if (PinnedHands(follower->GetFormID()) != Hand::None && PruneCombatList(follower) > 0)
-                ReadyPinnedHands(follower);
-        }
-    }
 }
 
 void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand)
@@ -1004,21 +909,6 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         // straight after -- which is this call, the one SKSE's
         // QueueNiNodeUpdate wraps.
         actor->Update3DModel();
-
-        // Pins changed mid-fight: the AI's list was pruned to the OLD pins,
-        // and a prune is one way -- what was erased does not come back on
-        // its own. The list's dirty flag is the engine's own "rebuild me",
-        // so the AI rebuilds it whole on its next update and the next tick
-        // prunes it to the new pins. That is how a change overwrites.
-        if (auto *controller = actor->GetActorRuntimeData().combatController)
-        {
-            if (controller->inventory)
-            {
-                controller->inventory->dirty = true;
-                g_rebuildMarkedAt[id] = NowSeconds();
-                logger::info("{} combat list marked for rebuild: pins changed mid-fight", Describe(actor));
-            }
-        }
 
         // NOT applied here: the item's enchantment. The equip path applies it
         // on the actor's next update, which the frozen clock withholds, so

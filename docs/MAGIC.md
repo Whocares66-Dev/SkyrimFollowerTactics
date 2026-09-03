@@ -284,7 +284,25 @@ controller, logged at the start of a fight (the probe in `Tactics.cpp`):
 - With every usable right-hand spell set aside, he drew a dagger. The list
   is the list: the AI falls back to what is left, weapons included.
 
-### How a pin is kept (2026-09-03, later)
+### How a pin is kept (2026-09-03, evening): the AI's own scoring
+
+The prune below was a race, and the AI won it. Its list is re-listed every
+few seconds for the range it is at -- with the timer setting
+`fCombatInventoryUpdateTimer` raised to a million it made no difference, and
+only the melee weapons, spells and shield ever returned, never the second
+bow -- and at melee range it drew the sword in the half second before the
+next prune. Every entry in the list is a scored object, and the AI asks
+each one for its score, through a virtual call, every time it decides. That
+slot in each entry class's table is now ours: zero for an entry the pins
+keep from the AI, the class's own answer for everything else. Nothing runs
+on the tick for it; the AI asks, and is answered. The classes are taken
+over at load from the address library's table (six weapon kinds, fifteen
+kinds of spell entry, one per caster type), and any class first seen in a
+list at combat start is taken over then. Two crashes on the way in: the
+controller's cached-attacker pointer is not to be read (it held the value
+1 for a cave bear); the attacker handle, validated by the handle table, is.
+
+### How a pin was kept before (2026-09-03, afternoon): pruning -- superseded
 
 By pruning the AI's list, not by touching her. Every tick she fights with
 something pinned to a hand, every spell or item in the combat inventory that

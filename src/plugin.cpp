@@ -189,7 +189,7 @@ void OnDataLoaded()
 
     ft::game::Install();
     ft::game::ui::Install();
-    ft::game::LogCombatInventorySettings();
+    ft::game::WatchCombatScores();
 
     const bool allPassed = passed == checks.size();
     if (auto *console = RE::ConsoleLog::GetSingleton())

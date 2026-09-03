@@ -5,7 +5,8 @@
 // it -- which hands a thing takes, what a pin releases, what the combat AI
 // must not be offered, what cannot be pinned -- are core/Loadout.h, pure and
 // tested. This is the game side: the pins themselves, the requests the
-// panel makes, and the tick's work of keeping the promise. Game thread only.
+// panel makes, the watchdog on the tick, and the hook that answers the
+// combat AI when it asks what to hold. Game thread only.
 
 #include "core/Loadout.h"
 #include "game/Inventory.h"
@@ -70,15 +71,16 @@ bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand);
 // those the AI is kept from, for the panel; drop pins for things gone.
 void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<MagicEntry> &magic);
 
-// Keep the promise: put back what the game took off (hands stand down in
-// combat), prune the combat AI's list to the pins and ready them, and log
-// what the AI is choosing from once per fight.
+// Keep the promise on the tick: put back what the game took off (hands
+// stand down in combat), and log what the AI is choosing from once per
+// fight. In a fight the promise is kept by WatchCombatScores, not here.
 void KeepPins(const std::vector<RE::Actor *> &followers);
 
-// Once, at data load: every game setting that could govern how often the
-// combat AI rebuilds its list, since in play it comes back every few
-// seconds with the pruned entries restored (14:05, Jenassa's sword).
-void LogCombatInventorySettings();
+// Once, at data load: take over the scoring of every kind of entry in the
+// combat AI's list of options, so an entry the pins keep from the AI
+// scores zero whenever the AI asks, and is never chosen. Reactive: nothing
+// is computed until the AI asks, and nothing on the tick.
+void WatchCombatScores();
 
 // Republish the views owed after a spell left a hand: the Papyrus native
 // that does it runs a frame after the request. Called first thing in the

@@ -217,7 +217,7 @@ sequenceDiagram
   end
   T->>E: TickPackages: withdraw cast leases that have fired or timed out
   T->>E: EnforcePins: put back a pinned item taken off (hands stand down in combat)
-  T->>E: prune the combat AI's list to the pins, then ready them
+  E->>T: (in a fight) score this option? -- zero if a pin keeps it from the AI
   T->>T: sync menu entries, drop views of anyone gone
   </pre></div>
   <p class="caption">Measured cost of the combat path: about 47 us per follower, two orders of magnitude under budget.</p>
@@ -294,7 +294,7 @@ flowchart TB
   <table>
     <tr><th>mechanism</th><th>covers</th><th>verified</th></tr>
     <tr><td>Prevent-removal flag on the item</td><td>The engine's equip-best swap: it refuses to displace a locked item.</td><td>Pinned robes kept iron armour off.</td></tr>
-    <tr><td>Prune the combat AI's list</td><td>The AI reaching for anything else in a fight. It chooses from its own per-follower list, built at combat start, not from her records.</td><td>A removed spell was cast from that list; a pruned dagger never was.</td></tr>
+    <tr><td>Answer the combat AI's scoring</td><td>The AI reaching for anything else in a fight. It scores every option in its own per-follower list each time it decides, and the scoring call is ours: zero for what a pin keeps from it.</td><td>A pinned bow held at melee range against a sword the AI re-listed every few seconds.</td>
     <tr><td>Watchdog on the tick</td><td>Whatever got past both, out of combat. Hands stand down in combat so the AI and the pin do not trade blows.</td><td>The dagger flicker before it did.</td></tr>
   </table>
 
