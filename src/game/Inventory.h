@@ -68,6 +68,9 @@ struct InventoryItem
     bool equipable{false};
     // Kept on by us: the tick puts it back whenever the game takes it off.
     bool pinned{false};
+    // Kept from the combat AI while a pinned spell holds a hand this would
+    // take: pruned from the AI's list of options in a fight. Still hers.
+    bool setAside{false};
 
     // The detail page. Numbers as sections in the style of the character
     // sheet; prose beneath them, each drawn under its own heading when it is

@@ -148,6 +148,11 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         entry.school = DisplayName(entry.category);
         entry.levelValue = effect ? effect->GetMinimumSkillLevel() : 0;
         entry.level = LevelWord(entry.levelValue);
+        if (auto *owner = actor->AsActorValueOwner())
+        {
+            entry.skill = static_cast<int>(owner->GetActorValue(skill));
+            entry.aboveSkill = entry.levelValue > entry.skill;
+        }
         entry.costValue = spell->CalculateMagickaCost(actor);
         const bool stream = spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
         entry.cost = Fmt("%.0f", entry.costValue) + (stream ? "/s" : "");
@@ -190,7 +195,12 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     stats.rows.push_back(Row("School", entry.school));
     stats.rows.push_back(Row("Hand", entry.hand));
     if (!entry.level.empty())
+    {
         stats.rows.push_back(Row("Level", entry.level));
+        stats.rows.push_back(Row("Skill", std::to_string(entry.levelValue) + " needed, hers " +
+                                              std::to_string(entry.skill) +
+                                              (entry.aboveSkill ? " -- the combat AI will not choose it" : "")));
+    }
     if (costliest)
     {
         stats.rows.push_back(Row("Magnitude", Fmt("%.0f", costliest->effectItem.magnitude)));

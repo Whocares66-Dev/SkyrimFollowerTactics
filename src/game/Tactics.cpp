@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -497,6 +498,9 @@ void ReleaseConflictingPins(RE::Actor *actor, std::unordered_map<std::uint32_t, 
     }
 }
 
+bool CompetesForHand(RE::TESBoundObject *object, Hand pinned);
+bool Competes(const RE::SpellItem *spell, Hand pinned);
+
 // Mark the scanned items and spells that are pinned, for the panel's hand
 // and Equipped cells, and drop any pin for something the scans did not
 // find: sold, dropped, the last arrow shot. A set lookup per entry and
@@ -510,6 +514,13 @@ void MarkPins(ft::ActorId id, std::vector<InventoryItem> &items, std::vector<Mag
         return;
     auto &pins = it->second;
 
+    // The hands pins hold: a weapon or spell that would take one of them is
+    // kept from the AI in a fight, and reads as set aside here.
+    std::uint8_t handMask = 0;
+    for (const auto &[form, hands] : pins)
+        handMask |= static_cast<std::uint8_t>(hands);
+    const Hand pinnedSpells = static_cast<Hand>(handMask);
+
     std::unordered_set<std::uint32_t> present;
     for (auto &item : items)
     {
@@ -520,6 +531,11 @@ void MarkPins(ft::ActorId id, std::vector<InventoryItem> &items, std::vector<Mag
             item.pinnedLeft = Overlap(pin->second, Hand::Left);
             item.pinnedRight = Overlap(pin->second, Hand::Right);
         }
+        else if (item.handItem && pinnedSpells != Hand::None)
+        {
+            auto *object = RE::TESForm::LookupByID<RE::TESBoundObject>(item.form);
+            item.setAside = object && CompetesForHand(object, pinnedSpells);
+        }
     }
     for (auto &entry : magic)
     {
@@ -528,6 +544,11 @@ void MarkPins(ft::ActorId id, std::vector<InventoryItem> &items, std::vector<Mag
         {
             entry.pinnedLeft = Overlap(pin->second, Hand::Left);
             entry.pinnedRight = Overlap(pin->second, Hand::Right);
+        }
+        else if (pinnedSpells != Hand::None)
+        {
+            auto *spell = RE::TESForm::LookupByID<RE::SpellItem>(entry.form);
+            entry.setAside = spell && Competes(spell, pinnedSpells);
         }
     }
     std::erase_if(pins, [&](const auto &pin) { return !present.contains(pin.first); });
@@ -612,6 +633,231 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
     }
 
     std::erase_if(g_pins, [](const auto &entry) { return entry.second.empty(); });
+}
+
+// --- keeping the AI to the pins ------------------------------------------
+//
+// The combat AI chooses from a list of its own, the combat inventory it
+// builds when a fight begins: spells and items together, scored, in seven
+// arrays by role. It does not read her spell lists or her bag again during
+// the fight -- Firebolt was cast after being removed from her record, a
+// removed dagger never was. So a pin is kept by editing THAT list: every
+// tick she fights with something pinned to a hand, every spell or item
+// that would take that hand is pruned from the list and whatever is pinned
+// goes back into its hand. Nothing of hers changes, nothing is saved, and
+// the engine discards the list when the fight ends, so there is nothing to
+// restore. The first version removed competing spells from her record for
+// the life of a pin; it worked, and left her without those spells for
+// every menu, script and mod in between (2026-09-03).
+
+// Which hands a spell's record could take, as a mask, for the competition
+// test. Voice spells (powers) take none.
+Hand SpellHands(const RE::SpellItem *spell)
+{
+    using Type = RE::MagicSystem::SpellType;
+    if (spell->GetSpellType() != Type::kSpell)
+        return Hand::None;
+    if (spell->IsTwoHanded())
+        return Hand::Both;
+    const auto *slot = spell->GetEquipSlot();
+    const std::uint32_t id = slot ? slot->GetFormID() : 0;
+    if (id == 0x00013F43)
+        return Hand::Left;
+    if (id == 0x00013F42)
+        return Hand::Right;
+    return Hand::None; // either hand: has the other hand, so it does not compete
+}
+
+// Does an unpinned spell compete with the hands pinned spells hold? A
+// one-hand-only spell competes if that hand is pinned. A both-hands spell,
+// and an EITHER-hand spell, compete if any hand is: the either-hand spell
+// was first left alone on the theory that the AI would keep it to the free
+// hand, and the AI put Flames straight into the pinned one (03:25). Powers
+// and the like take no hand and never compete.
+bool Competes(const RE::SpellItem *spell, Hand pinned)
+{
+    if (spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell)
+        return false;
+    const Hand needs = SpellHands(spell);
+    if (needs == Hand::None || needs == Hand::Both)
+        return pinned != Hand::None;
+    return Overlap(needs, pinned);
+}
+
+// What the combat AI is choosing from: its combat inventory, seven arrays
+// of scored options built for the fight. Logged once per fight, by name,
+// to learn the layout -- the AI cast a spell we had removed from her lists
+// (03:18), so this list, not those, is what it reads.
+std::unordered_set<ft::ActorId> g_probedFights;
+
+// When a list was marked for rebuild, per follower, to measure how soon the
+// engine clears the flag: that is the rebuild, and its latency decides
+// whether a mid-fight pin change takes effect in a frame or a while.
+std::unordered_map<ft::ActorId, double> g_rebuildMarkedAt;
+
+void MeasureRebuild(RE::Actor *actor)
+{
+    const ft::ActorId id = actor->GetFormID();
+    const auto it = g_rebuildMarkedAt.find(id);
+    if (it == g_rebuildMarkedAt.end())
+        return;
+    auto *controller = actor->GetActorRuntimeData().combatController;
+    if (!controller || !controller->inventory)
+    {
+        g_rebuildMarkedAt.erase(it);
+        return;
+    }
+    if (controller->inventory->dirty)
+        return;
+    logger::info("{} combat list rebuilt {:.0f} ms after being marked", Describe(actor),
+                 (NowSeconds() - it->second) * 1000.0);
+    g_rebuildMarkedAt.erase(it);
+}
+
+void ProbeCombatInventory(RE::Actor *actor)
+{
+    const ft::ActorId id = actor->GetFormID();
+    auto *controller = actor->GetActorRuntimeData().combatController;
+    if (!controller || !controller->inventory)
+    {
+        g_probedFights.erase(id);
+        return;
+    }
+    if (!g_probedFights.insert(id).second)
+        return;
+    std::unordered_set<const RE::TESForm *> listed;
+    for (int slot = 0; slot < 7; ++slot)
+    {
+        std::string names;
+        for (const auto &entry : controller->inventory->inventoryItems[slot])
+        {
+            const auto *form = entry ? entry->item : nullptr;
+            listed.insert(form);
+            names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?");
+        }
+        logger::info("{} combat inventory [{}]: {}", Describe(actor), slot, names.empty() ? "-" : names);
+    }
+    // Which of her spells the AI did not list, and her magicka at the
+    // moment, since a cost above the pool is the first guess at the filter
+    // that kept a pinned Chain Lightning out (03:25).
+    std::string missing;
+    const auto consider = [&](RE::SpellItem *spell) {
+        if (spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell && !listed.contains(spell))
+            missing += (missing.empty() ? "" : ", ") + std::string(spell->GetName() ? spell->GetName() : "?") + " (" +
+                       std::to_string(static_cast<int>(spell->CalculateMagickaCost(actor))) + ")";
+    };
+    if (auto *npc = actor->GetActorBase())
+    {
+        if (auto *list = npc->GetSpellList())
+            for (std::uint32_t i = 0; i < list->numSpells; ++i)
+                consider(list->spells[i]);
+    }
+    for (auto *spell : actor->GetActorRuntimeData().addedSpells)
+        consider(spell);
+    auto *owner = actor->AsActorValueOwner();
+    logger::info("{} combat inventory left out: {} -- magicka {:.0f}/{:.0f}", Describe(actor),
+                 missing.empty() ? "nothing" : missing, owner ? owner->GetActorValue(RE::ActorValue::kMagicka) : 0.0f,
+                 owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
+}
+
+// Does an item take a pinned hand? A one-hander takes either hand; a
+// two-hander both; a shield or a torch the left.
+bool CompetesForHand(RE::TESBoundObject *object, Hand pinned)
+{
+    if (object->Is(RE::FormType::Weapon))
+        return pinned != Hand::None; // a one-hander takes either hand; a two-hander both
+    if (object->Is(RE::FormType::Light))
+        return Overlap(pinned, Hand::Left);
+    if (auto *armor = object->As<RE::TESObjectARMO>())
+        return armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield) && Overlap(pinned, Hand::Left);
+    return false;
+}
+
+int PruneCombatList(RE::Actor *actor, Hand pinned)
+{
+    auto *controller = actor->GetActorRuntimeData().combatController;
+    if (!controller || !controller->inventory)
+        return 0;
+    std::unordered_map<std::uint32_t, Hand> pins;
+    {
+        std::scoped_lock lock(g_pinMutex);
+        pins = g_pins[actor->GetFormID()];
+    }
+    int removed = 0;
+    std::string names;
+    for (auto &array : controller->inventory->inventoryItems)
+    {
+        for (auto it = array.begin(); it != array.end();)
+        {
+            auto *form = *it ? (*it)->item : nullptr;
+            bool competes = false;
+            if (form && !pins.contains(form->GetFormID()))
+            {
+                // A spell is a bound object too: ask the spell question first.
+                if (auto *spell = form->As<RE::SpellItem>())
+                    competes = Competes(spell, pinned);
+                else if (auto *object = form->As<RE::TESBoundObject>())
+                    competes = CompetesForHand(object, pinned);
+            }
+            if (competes)
+            {
+                names += (names.empty() ? "" : ", ") + std::string(form->GetName() ? form->GetName() : "?");
+                it = array.erase(it);
+                ++removed;
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+    if (removed > 0)
+        logger::info("{} pruned {} from the combat list: {}", Describe(actor), removed, names);
+    return removed;
+}
+
+// After a prune, whatever is pinned to a hand goes back into it: what the
+// AI had reached for is no longer on its list, so this holds.
+void ReadyPinnedHands(RE::Actor *actor)
+{
+    std::unordered_map<std::uint32_t, Hand> pins;
+    {
+        std::scoped_lock lock(g_pinMutex);
+        pins = g_pins[actor->GetFormID()];
+    }
+    for (const auto &[form, hands] : pins)
+    {
+        auto *thing = RE::TESForm::LookupByID(form);
+        if (thing && hands != Hand::None && !EquippedIn(actor, thing, hands))
+        {
+            logger::info("{} readying pinned {} after the prune", Describe(actor),
+                         thing->GetName() ? thing->GetName() : "?");
+            EquipPinned(actor, thing, hands, false);
+        }
+    }
+}
+
+// Followers whose view is to be republished on the next pacing beat, whether
+// or not the clock is running. A spell leaves a hand through the Papyrus
+// native, which the script VM runs a frame or so after the request, so
+// the view republished in the request still showed the spell in hand and a
+// second click was needed to see it gone (04:15). Game thread only.
+std::unordered_set<ft::ActorId> g_republish;
+
+// The hands pins hold on this follower -- a weapon's, a spell's, a shield's
+// or a torch's alike -- or None. A pin is a promise whichever kind holds
+// the hand: a pinned dagger keeps spells off its hand as a pinned spell
+// keeps daggers off (04:27).
+Hand PinnedHands(ft::ActorId id)
+{
+    std::scoped_lock lock(g_pinMutex);
+    const auto it = g_pins.find(id);
+    if (it == g_pins.end())
+        return Hand::None;
+    std::uint8_t mask = 0;
+    for (const auto &[form, hands] : it->second)
+        mask |= static_cast<std::uint8_t>(hands);
+    return static_cast<Hand>(mask);
 }
 
 // Level and carry weight, for the panel. Not rule inputs -- three cheap reads,
@@ -805,6 +1051,16 @@ bool EvaluationHeld()
 // deadlock. This cost one hung startup to learn.
 void Tick()
 {
+    // Views owed after a spell unequip, before any of the holds below: the
+    // clock is frozen while the panel is open, and this is what the panel
+    // is waiting on.
+    for (const ft::ActorId id : g_republish)
+    {
+        if (auto *actor = RE::TESForm::LookupByID<RE::Actor>(id))
+            PublishIdle(actor, TacticsSeconds(), actor->IsInCombat());
+    }
+    g_republish.clear();
+
     // Not an early return on the tactics switch: the switch gates rule
     // EVALUATION, and the rest of this -- the views behind the Character,
     // Skills and Inventory tabs, the pin watchdog -- is not tactics and runs
@@ -886,6 +1142,17 @@ void Tick()
 
     // Pinned gear, independent of tactics. Cheap when nothing is pinned.
     EnforcePins(followers);
+    for (auto *follower : followers)
+    {
+        ProbeCombatInventory(follower);
+        MeasureRebuild(follower);
+        if (follower->IsInCombat())
+        {
+            const Hand pinned = PinnedHands(follower->GetFormID());
+            if (pinned != Hand::None && PruneCombatList(follower, pinned) > 0)
+                ReadyPinnedHands(follower);
+        }
+    }
 
     // Drop anyone who is no longer a managed follower -- dismissed, dead, or out
     // of range -- so the panel reflects the present rather than a history.
@@ -974,10 +1241,11 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         {
             std::scoped_lock lock(g_pinMutex);
             auto &pins = g_pins[id];
-            if (request == WearRequest::Pin)
+            if (request == WearRequest::Pin || request == WearRequest::Equip)
             {
                 ReleaseConflictingPins(actor, pins, thing, hands);
-                pins[form] = hands;
+                if (request == WearRequest::Pin)
+                    pins[form] = hands;
             }
             else
             {
@@ -990,6 +1258,10 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         const char *name = thing->GetName() ? thing->GetName() : "?";
         switch (request)
         {
+        case WearRequest::Equip:
+            logger::info("{} told to ready {} (not pinned)", Describe(actor), name);
+            EquipPinned(actor, thing, hands, true);
+            break;
         case WearRequest::Pin:
             logger::info("{} told to ready {} (pinned)", Describe(actor), name);
             // Off for now, to see what her own style does with a left-hand
@@ -1052,6 +1324,8 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         case WearRequest::TakeOff:
             logger::info("{} told to put away {}", Describe(actor), name);
             UnequipForm(actor, thing, hands, true);
+            if (thing->Is(RE::FormType::Spell))
+                g_republish.insert(id);
             break;
         }
 
@@ -1061,6 +1335,21 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         // straight after -- which is this call, the one SKSE's
         // QueueNiNodeUpdate wraps.
         actor->Update3DModel();
+
+        // Pins changed mid-fight: the AI's list was pruned to the OLD pins,
+        // and a prune is one way -- what was erased does not come back on
+        // its own. The list's dirty flag is the engine's own "rebuild me",
+        // so the AI rebuilds it whole on its next update and the next tick
+        // prunes it to the new pins. That is how a change overwrites.
+        if (auto *controller = actor->GetActorRuntimeData().combatController)
+        {
+            if (controller->inventory)
+            {
+                controller->inventory->dirty = true;
+                g_rebuildMarkedAt[id] = NowSeconds();
+                logger::info("{} combat list marked for rebuild: pins changed mid-fight", Describe(actor));
+            }
+        }
 
         // NOT applied here: the item's enchantment. The equip path applies it
         // on the actor's next update, which the frozen clock withholds, so

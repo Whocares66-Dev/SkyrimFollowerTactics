@@ -11,7 +11,8 @@
 namespace RE
 {
 class Actor;
-}
+class SpellItem;
+} // namespace RE
 
 namespace ft::game
 {
@@ -47,6 +48,12 @@ struct MagicEntry
     std::string cost;
     float magnitude{0.0f}; // the costliest effect's, the column
     int levelValue{0};     // the minimum skill behind the word, for sorting
+    int skill{0};          // her level in the spell's school
+    // The level is above her skill: left to itself the combat AI will not
+    // choose it, whatever is pinned or set aside (Chain Lightning, Adept,
+    // against Destruction 39). Nothing stops it being CAST -- a cast rule's
+    // package makes her cast it regardless -- only chosen.
+    bool aboveSkill{false};
     int castValue{0};      // the delivery behind the word, for sorting
     float costValue{0.0f}; // magicka, for sorting; 0 for powers and shouts
     // In a hand -- and which -- or, for a power or shout, selected.
@@ -59,6 +66,10 @@ struct MagicEntry
     // variants take one, and a master spell takes both at once.
     bool leftAllowed{true};
     bool rightAllowed{true};
+    // Kept from the combat AI in a fight because it would take a hand a
+    // pin holds: pruned from the AI's list of options. Still hers, and a
+    // cast rule can still make her cast it. Listed dimmed.
+    bool setAside{false};
     std::string hand; // the record's word for it: Either, Left, Right, Both; Voice for a power or shout
 
     // The page: numbers as sections, then the effect lines and the record's

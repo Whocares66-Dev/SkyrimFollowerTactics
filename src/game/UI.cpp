@@ -1547,7 +1547,7 @@ void SlashCell()
 }
 
 void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, bool pinned, Hand hand, bool clickable,
-            bool allowed = true)
+            bool allowed = true, bool pinnable = true)
 {
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
     if (!allowed)
@@ -1555,7 +1555,17 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
         SlashCell();
         return;
     }
-    if (clickable)
+    if (clickable && !pinnable)
+    {
+        // A pin is a promise the AI will use it, and for this it would not
+        // be kept: equip and unequip only, two states.
+        if (CellClicked(id))
+            RequestWear(follower, form, !on ? WearRequest::Equip : WearRequest::TakeOff, hand);
+        if (Im::IsItemHovered(0))
+            Im::SetTooltip("%s", !on ? "Click to equip it. It cannot be pinned: the AI would not choose it."
+                                     : "Equipped. Click to unequip it.");
+    }
+    else if (clickable)
     {
         if (CellClicked(id))
             RequestWear(follower, form,
@@ -1731,6 +1741,10 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         std::snprintf(buf, sizeof(buf), "##item%08X", item->form);
 
         Im::TableNextRow(0, 0.0f);
+        // Set aside -- kept from the combat AI while a pinned spell holds a
+        // hand it would take -- the whole row goes to the disabled colour.
+        if (item->setAside)
+            Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
         Im::TableSetColumnIndex(0);
 
         // The NAME is the click target for the detail page, not the row: the
@@ -1742,6 +1756,8 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             state.detail = item->form;
             state.openedFrom = Tab::Inventory;
         }
+        if (item->setAside && Im::IsItemHovered(0))
+            Im::SetTooltip("Kept from the AI in a fight: a pin holds a hand it would take. Still hers.");
         Im::SetCursorScreenPos(pos);
         std::string name = item->name;
         if (item->count > 1)
@@ -1802,6 +1818,8 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             else if (item->equipable)
                 SlashCell();
         }
+        if (item->setAside)
+            Im::PopStyleColor(1);
     }
     Im::EndTable();
     Im::PopStyleVar(1);
@@ -2088,12 +2106,26 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         std::snprintf(buf, sizeof(buf), "##magic%08X", entry->form);
 
         Im::TableNextRow(0, 0.0f);
+        // Kept from the AI -- a pin holds a hand it would take -- or above her
+        // skill, so the AI would not choose it: the whole row is drawn in
+        // the disabled colour, ticks included, since every glyph takes the
+        // text colour.
+        const bool dim = entry->setAside || entry->aboveSkill;
+        if (dim)
+            Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
         Im::TableSetColumnIndex(0);
         Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
             state.detail = entry->form;
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", entry->name.c_str());
+        if (entry->setAside && Im::IsItemHovered(0))
+            Im::SetTooltip("Kept from the AI in a fight: a pin holds a hand it would take. Still hers, and a cast "
+                           "rule can still make her cast it.");
+        else if (entry->aboveSkill && Im::IsItemHovered(0))
+            Im::SetTooltip("Needs %d in %s; she has %d. The AI will not choose it on its own, so it cannot be "
+                           "pinned; a cast rule can still make her cast it.",
+                           entry->levelValue, entry->school.c_str(), entry->skill);
 
         if (!schoolList)
         {
@@ -2127,12 +2159,14 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
             std::snprintf(buf, sizeof(buf), "##left%08X", entry->form);
             Im::TableNextColumn();
             OnCell(buf, view.id, entry->form, entry->equippedLeft, entry->pinnedLeft, Hand::Left, !voice,
-                   voice || entry->leftAllowed);
+                   voice || entry->leftAllowed, !entry->aboveSkill);
             std::snprintf(buf, sizeof(buf), "##right%08X", entry->form);
             Im::TableNextColumn();
             OnCell(buf, view.id, entry->form, entry->equippedRight, entry->pinnedRight, Hand::Right, !voice,
-                   voice || entry->rightAllowed);
+                   voice || entry->rightAllowed, !entry->aboveSkill);
         }
+        if (dim)
+            Im::PopStyleColor(1);
     }
     Im::EndTable();
     Im::PopStyleVar(1);
