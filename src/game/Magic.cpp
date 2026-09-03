@@ -190,7 +190,7 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         // and whether a base-record spell can be removed is a thing to try.
         char id[16];
         std::snprintf(id, sizeof(id), "%08X", spell->GetFormID());
-        stats.rows.push_back(Row("FormID", id));
+        stats.rows.push_back(Row("Base ID", id));
     }
     stats.rows.push_back(Row("School", entry.school));
     stats.rows.push_back(Row("Hand", entry.hand));

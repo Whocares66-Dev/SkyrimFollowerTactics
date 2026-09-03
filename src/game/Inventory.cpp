@@ -444,7 +444,7 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
             // and the log call the thing.
             char id[16];
             std::snprintf(id, sizeof(id), "%08X", object->GetFormID());
-            stats.rows.push_back(Row("FormID", id));
+            stats.rows.push_back(Row("Base ID", id));
         }
         stats.rows.push_back(Row("Type", ""));
         Classify(actor, object, entry, item, stats);
