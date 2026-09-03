@@ -1838,10 +1838,14 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     // What the list came to, and what it weighs: the reason to look in a
     // follower's bag is usually to decide whether she can carry more.
     Im::Spacing();
-    const std::string shown =
-        rows.size() == view.inventory.size()
-            ? std::to_string(rows.size()) + " items"
-            : std::to_string(rows.size()) + " of " + std::to_string(view.inventory.size()) + " items";
+    // Counted against the category, not the whole bag: on Weapons, "3 of
+    // 3" until the filter box takes some away. Only All counts everything.
+    std::size_t inCategory = 0;
+    for (const auto &item : view.inventory)
+        inCategory += (state.category < 0 || static_cast<int>(item.category) == state.category) ? 1 : 0;
+    const std::string shown = rows.size() == inCategory
+                                  ? std::to_string(rows.size()) + " items"
+                                  : std::to_string(rows.size()) + " of " + std::to_string(inCategory) + " items";
     Im::TextDisabled("%s", shown.c_str());
 
     char carried[64];
