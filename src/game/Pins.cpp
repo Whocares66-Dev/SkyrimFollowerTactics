@@ -222,6 +222,19 @@ void EquipPlain(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
 // engine's is the Papyrus native Actor.UnequipSpell(spell, source), 0 for
 // the left hand and 1 for the right, so it is dispatched to the script VM,
 // which runs it on the game thread a frame later.
+// Is the item on, in a hand or worn? The no-op check before an unequip.
+bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
+{
+    if (hands != Hand::None)
+        return EquippedIn(actor, object, hands);
+    auto inventory = actor->GetInventory([object](RE::TESBoundObject &c) { return &c == object; });
+    const auto found = inventory.find(object);
+    return found != inventory.end() && found->second.second && found->second.second->IsWorn();
+}
+
+// Take a spell out of a hand, or an item off. A no-op when it is not
+// there, like EquipSpellIn: a spell's unequip is a Papyrus call and a
+// republish, and neither is owed for a hand that was already empty.
 void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
 {
     if (auto *spell = form->As<RE::SpellItem>())
@@ -233,7 +246,7 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
         const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
         for (const Hand hand : {Hand::Left, Hand::Right})
         {
-            if (!Overlap(hands, hand))
+            if (!Overlap(hands, hand) || !EquippedIn(actor, spell, hand))
                 continue;
             RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
             vm->DispatchMethodCall2(
@@ -245,6 +258,8 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
     }
     if (auto *object = form->As<RE::TESBoundObject>())
     {
+        if (!Worn(actor, object, hands))
+            return;
         // A one-handed weapon comes out of the hand named; anything else
         // out of wherever it is.
         const RE::BGSEquipSlot *slot = nullptr;
