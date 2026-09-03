@@ -812,20 +812,26 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
                 if (request == WearRequest::Pin)
                     pins[form] = eitherHand && !moving ? pin->second | hands : hands;
             }
+            else if (hand != Hand::None && described.grip != Grip::None)
+            {
+                // A hand cell acts on THAT hand and no other: the pin, if it
+                // holds this hand, lets it go and keeps the rest; a pin on
+                // the other hand alone is not touched. Acting on the pin's
+                // hand instead took the wrong one off (16:04: Flames pinned
+                // both, the left released, then the left put away -- and
+                // the RIGHT went).
+                if (pin != pins.end())
+                {
+                    pin->second = Without(pin->second, hands);
+                    if (pin->second == Hand::None)
+                        pins.erase(pin);
+                }
+            }
             else if (pin != pins.end())
             {
-                // One cell of a two-handed pin lets that hand go and keeps
-                // the other; anything else is the whole pin.
-                if (eitherHand && pin->second == Hand::Both)
-                {
-                    pin->second = Without(pin->second, hand);
-                    hands = hand;
-                }
-                else
-                {
-                    hands = pin->second;
-                    pins.erase(pin);
-                }
+                // No hand to name: armour, ammunition. The whole pin.
+                hands = pin->second;
+                pins.erase(pin);
             }
         }
 
@@ -873,7 +879,7 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
             // An item's lock lives on the worn item, and the engine offers no
             // way to lift it in place: off, then on again without the flag.
             // A spell has no lock; forgetting the pin is the whole of it.
-            logger::info("{} told to keep {} but not held to it", Describe(actor), name);
+            logger::info("{} told to keep {}{} but not held to it", Describe(actor), name, HandTag(hands));
             // Spell first: a SpellItem is a bound object too, and the item
             // branch took a spell off and "put it back" with an item equip,
             // which left it off (01:47, Chain Lightning).
@@ -886,7 +892,7 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
             }
             break;
         case WearRequest::TakeOff:
-            logger::info("{} told to put away {}", Describe(actor), name);
+            logger::info("{} told to put away {}{}", Describe(actor), name, HandTag(hands));
             UnequipForm(actor, thing, hands, true);
             if (thing->Is(RE::FormType::Spell))
                 g_republish.insert(id);
