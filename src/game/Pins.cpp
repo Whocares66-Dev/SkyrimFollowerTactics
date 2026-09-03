@@ -601,9 +601,9 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
             const auto *holder = RE::TESForm::LookupByID(pin.form);
             const char *name = holder && holder->GetName() ? holder->GetName() : "Something";
             const char *where = pin.hands == Hand::Both    ? "in both hands"
-                                : pin.hands == Hand::Left  ? "in her left hand"
-                                : pin.hands == Hand::Right ? "in her right hand"
-                                : pin.ammo                 ? "as her ammunition"
+                                : pin.hands == Hand::Left  ? "in the left hand"
+                                : pin.hands == Hand::Right ? "in the right hand"
+                                : pin.ammo                 ? "as the ammunition"
                                                            : "over the same body slot";
             lines += (lines.empty() ? "" : "\n") + std::string(name) + " is pinned " + where;
         }

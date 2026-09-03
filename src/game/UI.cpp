@@ -1578,7 +1578,7 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
                         hand);
         if (Im::IsItemHovered(0))
             Im::SetTooltip("%s", !on      ? "Click to equip it and keep it equipped."
-                                 : pinned ? "Equipped, and kept so. Click to let her change it again."
+                                 : pinned ? "Equipped and pinned. Click to release the pin; it stays equipped."
                                           : "Equipped. Click to unequip it.");
     }
     if (on)
@@ -1773,7 +1773,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         // Over the whole cell: the Selectable is the last item here.
         if (item->setAside && Im::IsItemHovered(0))
             Im::SetTooltip(
-                "%s\n%s\nStill hers.",
+                "%s\n%s\nStill carried.",
                 item->handItem ? "Kept from the AI in a fight:" : "Kept off by a pin:", item->asideBy.c_str());
         Im::SetCursorScreenPos(pos);
         std::string name = item->name;
@@ -2139,12 +2139,26 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         // Why the row is dimmed, over the whole cell: asked of the
         // Selectable, before the name is drawn over it.
         if (entry->setAside && Im::IsItemHovered(0))
-            Im::SetTooltip("Kept from the AI in a fight:\n%s\nStill hers, and a cast rule can still make her cast it.",
+            Im::SetTooltip("Kept from the AI in a fight:\n%s\nStill known; a cast rule can still cast it.",
                            entry->asideBy.c_str());
         else if (entry->aboveSkill && Im::IsItemHovered(0))
-            Im::SetTooltip("The AI will not choose it on its own:\nNeeds  %s %d\nHers   %s %d\nSo it cannot be "
-                           "pinned; a cast rule can still make her cast it.",
-                           entry->school.c_str(), entry->levelValue, entry->school.c_str(), entry->skill);
+        {
+            // The two labels right-aligned to one edge, so the school and
+            // the numbers line up beneath each other.
+            Im::BeginTooltip();
+            Im::Text("The AI will not choose it on its own:");
+            const float labelWidth = (std::max)(TextWidth("Needs:"), TextWidth("Has:"));
+            const auto line = [&](const char *label, int value) {
+                Im::SetCursorPosX(Im::GetCursorPos().x + labelWidth - TextWidth(label));
+                Im::Text("%s", label);
+                Im::SameLine(0.0f, -1.0f);
+                Im::Text("%s (%d)", entry->school.c_str(), value);
+            };
+            line("Needs:", entry->levelValue);
+            line("Has:", entry->skill);
+            Im::Text("So it cannot be pinned; a cast rule can still cast it.");
+            Im::EndTooltip();
+        }
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", entry->name.c_str());
 

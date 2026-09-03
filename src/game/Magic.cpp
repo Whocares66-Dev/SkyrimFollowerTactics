@@ -197,7 +197,7 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     if (!entry.level.empty())
     {
         stats.rows.push_back(Row("Level", entry.level));
-        stats.rows.push_back(Row("Skill", std::to_string(entry.levelValue) + " needed, hers " +
+        stats.rows.push_back(Row("Skill", std::to_string(entry.levelValue) + " needed, has " +
                                               std::to_string(entry.skill) +
                                               (entry.aboveSkill ? " -- the combat AI will not choose it" : "")));
     }

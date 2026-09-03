@@ -137,7 +137,7 @@ const char *ToString(ActionResult r) noexcept
     case ActionResult::Busy:
         return "every package slot is mid-cast";
     case ActionResult::NoTarget:
-        return "the spell needs a target and she is fighting no one";
+        return "the spell needs a target and there is no one to fight";
     }
     return "?";
 }

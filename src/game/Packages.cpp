@@ -585,7 +585,7 @@ const char *ToString(CastRequest r) noexcept
     case CastRequest::PoolBusy:
         return "every package slot is mid-cast; skipped this turn";
     case CastRequest::AlreadyCasting:
-        return "she is already mid-cast; skipped this turn";
+        return "already mid-cast; skipped this turn";
     case CastRequest::SpellNotInSlot:
         return "could not repoint the package at that spell";
     case CastRequest::TargetGone:

@@ -71,7 +71,7 @@ struct MagicEntry
     // cast rule can still make her cast it. Listed dimmed.
     bool setAside{false};
     // Why, when it is: one line per pin that holds a hand it could take,
-    // "Firebolt is pinned in her right hand", for the row's tooltip.
+    // "Firebolt is pinned in the right hand", for the row's tooltip.
     std::string asideBy;
     std::string hand; // the record's word for it: Either, Left, Right, Both; Voice for a power or shout
 

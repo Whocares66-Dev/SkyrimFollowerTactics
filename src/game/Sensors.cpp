@@ -844,7 +844,7 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
                                                                          "- More power attacks\n"
                                                                          "- Paired with Defensive"));
         s.rows.push_back(note(Row("Defensive", chance(g.defensiveMult)), "- Higher: blocks more, holds it longer\n"
-                                                                         "- Bashes more, if she can"));
+                                                                         "- Bashes more, given a shield or a weapon"));
         s.rows.push_back(note(Row("Group Offensive", chance(g.groupOffensiveMult)),
                               "- Replaces Offensive when several attack one target\n"
                               "- Higher: stays offensive in a crowd"));
@@ -855,7 +855,7 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
         const auto &g = live->generalData;
         SheetSection s{"Equipment Scores", {}, {}};
         constexpr const char *kScore = "- Multiplies the damage of attacks of this kind\n"
-                                       "- The highest score is what she uses\n"
+                                       "- The highest score is what gets used\n"
                                        "- A weak weapon needs a high score to beat a strong spell";
         s.rows.push_back(note(Row("Melee", score(g.meleeScoreMult)), kScore));
         s.rows.push_back(note(Row("Magic", score(g.magicScoreMult)), kScore));
