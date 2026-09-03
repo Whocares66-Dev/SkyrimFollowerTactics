@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace ft::game
@@ -367,6 +369,135 @@ std::string CappedPercent(float value, float cap)
     return Fmt("%.0f%%", value);
 }
 
+SheetRow Row(std::string label, std::string value)
+{
+    SheetRow row;
+    row.label = std::move(label);
+    row.value = std::move(value);
+    return row;
+}
+
+// --- perks -------------------------------------------------------------------
+
+struct TreePerk
+{
+    RE::BGSPerk *perk;
+    int rank;          // 1-based position in the perk's rank chain
+    int ranks;         // length of that chain
+    float requirement; // the skill level the perk asks for; 0 if it asks nothing
+    std::string description;
+};
+
+// The skill level a perk requires, read from its own conditions. It is not a
+// field on the record: the perk menu's "requires Archery 20" is a condition,
+// GetBaseActorValue(Archery) >= 20, and the first perk in a tree has none at
+// all. The highest such bound is what the menu shows, so that is what this
+// returns.
+float SkillRequirement(const RE::BGSPerk *perk, RE::ActorValue skill)
+{
+    float best = 0.0f;
+    for (const auto *item = perk->perkConditions.head; item; item = item->next)
+    {
+        const auto &d = item->data;
+        if (d.functionData.function != RE::FUNCTION_DATA::FunctionID::kGetBaseActorValue)
+            continue;
+        if (static_cast<RE::ActorValue>(reinterpret_cast<std::uintptr_t>(d.functionData.params[0])) != skill)
+            continue;
+        if (d.flags.global) // compared against a global, not a number
+            continue;
+        using Op = RE::CONDITION_ITEM_DATA::OpCode;
+        if (d.flags.opCode != Op::kGreaterThanOrEqualTo && d.flags.opCode != Op::kGreaterThan)
+            continue;
+        best = (std::max)(best, d.comparisonValue.f);
+    }
+    return best;
+}
+
+// Every perk in a skill's tree, ranks included, found by walking the same
+// tree the perk menu draws. Walked once per skill and kept, description and
+// requirement included: all of it is static data, and this is called from
+// the tick, where reading a description every half second for every perk of
+// every follower would be the only real cost on the sheet.
+const std::vector<TreePerk> &TreePerks(RE::ActorValue skill)
+{
+    static std::unordered_map<RE::ActorValue, std::vector<TreePerk>> cache;
+    if (const auto it = cache.find(skill); it != cache.end())
+        return it->second;
+
+    std::vector<TreePerk> out;
+    auto *list = RE::ActorValueList::GetSingleton();
+    auto *info = list ? list->GetActorValue(skill) : nullptr;
+    if (info && info->perkTree)
+    {
+        std::vector<RE::BGSSkillPerkTreeNode *> stack{info->perkTree};
+        std::unordered_set<const RE::BGSSkillPerkTreeNode *> seen;
+        while (!stack.empty())
+        {
+            auto *node = stack.back();
+            stack.pop_back();
+            if (!node || !seen.insert(node).second)
+                continue;
+
+            // A node names the first rank; the rest chain through nextPerk.
+            // Bounded, because a malformed chain that loops would hang the
+            // game thread, and a chain longer than this is not a rank chain.
+            std::vector<RE::BGSPerk *> chain;
+            for (auto *perk = node->perk; perk && chain.size() < 16; perk = perk->nextPerk)
+                chain.push_back(perk);
+            for (std::size_t i = 0; i < chain.size(); ++i)
+            {
+                RE::BSString text;
+                chain[i]->GetDescription(text, chain[i]);
+                out.push_back({chain[i], static_cast<int>(i) + 1, static_cast<int>(chain.size()),
+                               SkillRequirement(chain[i], skill), text.c_str() ? text.c_str() : ""});
+            }
+
+            for (auto *child : node->children)
+                stack.push_back(child);
+        }
+    }
+
+    // Least demanding first: the requirement is the game's own statement of
+    // how strong a perk is, so the list reads weakest to strongest.
+    std::sort(out.begin(), out.end(), [](const TreePerk &a, const TreePerk &b) {
+        if (a.requirement != b.requirement)
+            return a.requirement < b.requirement;
+        return a.rank < b.rank;
+    });
+    return cache.emplace(skill, std::move(out)).first->second;
+}
+
+// The perks this follower holds in one skill's tree, one row per perk at
+// the highest rank held. Asked of the engine with HasPerk rather than read
+// off her record, so a perk a mod granted at runtime counts the same as one
+// she was authored with. Ordered by the skill level each perk asks for,
+// weakest first; the modifiers column carries its own in-game description.
+std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
+{
+    std::vector<SheetRow> rows;
+    for (const TreePerk &entry : TreePerks(skill))
+    {
+        if (!actor->HasPerk(entry.perk))
+            continue;
+        if (entry.perk->nextPerk && actor->HasPerk(entry.perk->nextPerk))
+            continue; // a higher rank is held; that one gets the row
+
+        // Trimmed, because the records are not: Skyrim.esm's first rank of
+        // Magic Resistance is named " Magic Resistance", leading space and
+        // all, and on screen that reads as a row set in for no reason.
+        std::string label = entry.perk->GetName() ? entry.perk->GetName() : "?";
+        const auto first = label.find_first_not_of(' ');
+        const auto last = label.find_last_not_of(' ');
+        label = first == std::string::npos ? "?" : label.substr(first, last - first + 1);
+
+        const std::string rank = entry.ranks > 1 ? std::to_string(entry.rank) + "/" + std::to_string(entry.ranks) : "";
+        SheetRow row = Row(std::move(label), rank);
+        row.modifiers = entry.description;
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
 } // namespace
 
 std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
@@ -383,9 +514,9 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     {
         SheetSection s{"General", {}};
         auto *race = actor->GetRace();
-        s.rows.push_back({"Race", race && race->GetName() ? race->GetName() : "?", {}, {}});
-        s.rows.push_back({"Speed", Fmt("%.0f%%", av(RE::ActorValue::kSpeedMult)), {}, {}});
-        s.rows.push_back({"Noise", Fmt("%.0f%%", av(RE::ActorValue::kMovementNoiseMult) * 100.0), {}, {}});
+        s.rows.push_back(Row("Race", race && race->GetName() ? race->GetName() : "?"));
+        s.rows.push_back(Row("Speed", Fmt("%.0f%%", av(RE::ActorValue::kSpeedMult))));
+        s.rows.push_back(Row("Noise", Fmt("%.0f%%", av(RE::ActorValue::kMovementNoiseMult) * 100.0)));
         out.push_back(std::move(s));
     }
 
@@ -406,17 +537,17 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         const float armorPct = (armor + hidden) * GameSetting("fArmorScalingFactor", 0.12f);
         const float resistCap = GameSetting("fPlayerMaxResistance", 85.0f);
 
-        s.rows.push_back({"Armor", Fmt("%.0f", armor), {}, {}});
-        s.rows.push_back({"Resist Damage", CappedPercent(armorPct, GameSetting("fMaxArmorRating", 80.0f)), {}, {}});
-        s.rows.push_back({"Health Rate", Fmt("%.2f%%", av(RE::ActorValue::kHealRate)), {}, {}});
-        s.rows.push_back({"Stamina Rate", Fmt("%.2f%%", av(RE::ActorValue::kStaminaRate)), {}, {}});
-        s.rows.push_back({"Magicka Rate", Fmt("%.2f%%", av(RE::ActorValue::kMagickaRate)), {}, {}});
-        s.rows.push_back({"Resist Disease", Fmt("%.0f%%", av(RE::ActorValue::kResistDisease)), {}, {}});
-        s.rows.push_back({"Resist Poison", CappedPercent(av(RE::ActorValue::kPoisonResist), resistCap), {}, {}});
-        s.rows.push_back({"Resist Fire", CappedPercent(av(RE::ActorValue::kResistFire), resistCap), {}, {}});
-        s.rows.push_back({"Resist Shock", CappedPercent(av(RE::ActorValue::kResistShock), resistCap), {}, {}});
-        s.rows.push_back({"Resist Frost", CappedPercent(av(RE::ActorValue::kResistFrost), resistCap), {}, {}});
-        s.rows.push_back({"Resist Magic", CappedPercent(av(RE::ActorValue::kResistMagic), resistCap), {}, {}});
+        s.rows.push_back(Row("Armor", Fmt("%.0f", armor)));
+        s.rows.push_back(Row("Resist Damage", CappedPercent(armorPct, GameSetting("fMaxArmorRating", 80.0f))));
+        s.rows.push_back(Row("Health Rate", Fmt("%.2f%%", av(RE::ActorValue::kHealRate))));
+        s.rows.push_back(Row("Stamina Rate", Fmt("%.2f%%", av(RE::ActorValue::kStaminaRate))));
+        s.rows.push_back(Row("Magicka Rate", Fmt("%.2f%%", av(RE::ActorValue::kMagickaRate))));
+        s.rows.push_back(Row("Resist Disease", Fmt("%.0f%%", av(RE::ActorValue::kResistDisease))));
+        s.rows.push_back(Row("Resist Poison", CappedPercent(av(RE::ActorValue::kPoisonResist), resistCap)));
+        s.rows.push_back(Row("Resist Fire", CappedPercent(av(RE::ActorValue::kResistFire), resistCap)));
+        s.rows.push_back(Row("Resist Shock", CappedPercent(av(RE::ActorValue::kResistShock), resistCap)));
+        s.rows.push_back(Row("Resist Frost", CappedPercent(av(RE::ActorValue::kResistFrost), resistCap)));
+        s.rows.push_back(Row("Resist Magic", CappedPercent(av(RE::ActorValue::kResistMagic), resistCap)));
         out.push_back(std::move(s));
     }
 
@@ -430,19 +561,19 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         auto *weapon = right ? right->As<RE::TESObjectWEAP>() : nullptr;
         if (weapon)
         {
-            s.rows.push_back({"Weapon", weapon->GetName() ? weapon->GetName() : "?", {}, {}});
-            s.rows.push_back({"Base Damage", Fmt("%.0f", weapon->GetAttackDamage()), {}, {}});
-            s.rows.push_back({"Weapon Speed", Fmt("%.2f", weapon->GetSpeed()), {}, {}});
-            s.rows.push_back({"Reach", Fmt("%.2f", weapon->GetReach()), {}, {}});
-            s.rows.push_back({"Stagger", Fmt("%.2f", weapon->GetStagger()), {}, {}});
+            s.rows.push_back(Row("Weapon", weapon->GetName() ? weapon->GetName() : "?"));
+            s.rows.push_back(Row("Base Damage", Fmt("%.0f", weapon->GetAttackDamage())));
+            s.rows.push_back(Row("Weapon Speed", Fmt("%.2f", weapon->GetSpeed())));
+            s.rows.push_back(Row("Reach", Fmt("%.2f", weapon->GetReach())));
+            s.rows.push_back(Row("Stagger", Fmt("%.2f", weapon->GetStagger())));
         }
         else
         {
-            s.rows.push_back({"Weapon", "unarmed", {}, {}});
-            s.rows.push_back({"Base Damage", Fmt("%.0f", av(RE::ActorValue::kUnarmedDamage)), {}, {}});
+            s.rows.push_back(Row("Weapon", "unarmed"));
+            s.rows.push_back(Row("Base Damage", Fmt("%.0f", av(RE::ActorValue::kUnarmedDamage))));
         }
         if (auto *ammo = actor->GetCurrentAmmo())
-            s.rows.push_back({"Arrow Damage", Fmt("%.0f", ammo->GetRuntimeData().data.damage), {}, {}});
+            s.rows.push_back(Row("Arrow Damage", Fmt("%.0f", ammo->GetRuntimeData().data.damage)));
         out.push_back(std::move(s));
     }
 
@@ -500,7 +631,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
     constexpr Modifier none{AV::kNone, nullptr, 0};
 
     const auto skill = [&](SheetSection &s, const Skill &k) {
-        SheetRow row{k.label, Fmt("%.0f", av(k.value)), {}, {}};
+        SheetRow row = Row(k.label, Fmt("%.0f", av(k.value)));
         const float m = k.mod.effect ? av(k.mod.value) : 0.0f;
         const float p = k.power.effect ? av(k.power.value) : 0.0f;
 
@@ -531,6 +662,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         if (p != 0.0f)
             row.note += (row.note.empty() ? "" : "\n") + std::string(k.power.effect) + ": potions " + Fmt("%+.0f", p);
 
+        row.detail = OwnedPerks(actor, k.value);
         s.rows.push_back(std::move(row));
     };
 

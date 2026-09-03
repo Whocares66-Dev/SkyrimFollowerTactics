@@ -74,6 +74,9 @@ struct SheetRow
     std::string value;
     std::string modifiers; // Skills tab only: "+35% damage, -17% cost"
     std::string note;      // tooltip on the modifiers; empty for none
+    // Rows revealed by expanding this one: a skill's perks. Empty means the
+    // row is a plain line and cannot be opened.
+    std::vector<SheetRow> detail;
 };
 
 struct SheetSection

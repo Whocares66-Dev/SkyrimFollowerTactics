@@ -28,6 +28,7 @@
 #include <initializer_list>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace ft::game::ui
@@ -843,6 +844,97 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     return changed;
 }
 
+// A header row that is only a header. TableHeadersRow() draws each heading
+// as a widget: it lights up under the mouse and opens a column menu on a
+// right click, both of which promise something the sheet does not offer. A
+// row flagged as a header gets the header background; plain text on it gets
+// the look without the behaviour.
+void PlainHeaderRow(std::initializer_list<const char *> labels)
+{
+    Im::TableNextRow(Im::ImGuiTableRowFlags_Headers, 0.0f);
+    int column = 0;
+    for (const char *label : labels)
+    {
+        Im::TableSetColumnIndex(column++);
+        Im::Text("%s", label);
+    }
+}
+
+// The open/closed marker before a skill that has perks: a small triangle,
+// pointing right when closed and down when open, drawn rather than typed
+// for the reason DeleteButton gives. Drawn at `pos`, the top-left of the
+// text line it sits beside, and vertically centred on that line.
+float DisclosureWidth()
+{
+    return Im::GetTextLineHeight() * 0.5f + kCellPadX;
+}
+
+void DrawDisclosure(Im::ImVec2 pos, bool open)
+{
+    auto *draw = Im::GetWindowDrawList();
+    if (!draw)
+        return;
+    const float h = Im::GetTextLineHeight();
+    const float s = h * 0.5f;
+    const float top = pos.y + (h - s) * 0.5f;
+    const auto ink = Im::GetColorU32(Im::ImGuiCol_Text, 1.0f);
+    if (open)
+        Im::ImDrawListManager::AddTriangleFilled(draw, {pos.x, top}, {pos.x + s, top},
+                                                 {pos.x + s * 0.5f, top + s * 0.8f}, ink);
+    else
+        Im::ImDrawListManager::AddTriangleFilled(draw, {pos.x, top}, {pos.x + s * 0.8f, top + s * 0.5f},
+                                                 {pos.x, top + s}, ink);
+}
+
+// Which skill rows are open, keyed "section/label". Ours rather than any
+// ImGui widget state, because widget state is keyed on the ID stack, and a
+// row's ID stack includes which table PIECE it landed in (see DrawSections)
+// -- which changes as soon as a row above it opens, at which point ImGui
+// would forget the row was open. Render thread only.
+std::unordered_set<std::string> g_openRows;
+
+// The drawer an open skill row reveals: its perks, name and description,
+// set in from both edges of the parent table and given air above and below.
+void DrawPerkDrawer(const SheetRow &row, float left, float right)
+{
+    constexpr float kGap = 6.0f;
+    const float inset = 4.0f * kCellPadX;
+
+    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    Im::SetCursorScreenPos(Im::ImVec2(left + inset, Im::GetCursorScreenPos().y));
+
+    float nameWidth = TextWidth("Perk");
+    float rankWidth = TextWidth("Rank");
+    for (const auto &sub : row.detail)
+    {
+        nameWidth = (std::max)(nameWidth, TextWidth(sub.label));
+        rankWidth = (std::max)(rankWidth, TextWidth(sub.value));
+    }
+    const float pad = 2.0f * kCellPadX + 8.0f;
+
+    const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
+    const float width = (std::max)(0.0f, right - left - 2.0f * inset);
+    if (Im::BeginTable(("perks##" + row.label).c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
+    {
+        Im::TableSetupColumn("Perk", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
+        Im::TableSetupColumn("Rank", Im::ImGuiTableColumnFlags_WidthFixed, rankWidth + pad, 0);
+        Im::TableSetupColumn("Description", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+        PlainHeaderRow({"Perk", "Rank", "Description"});
+        for (const auto &sub : row.detail)
+        {
+            Im::TableNextRow(0, 0.0f);
+            Im::TableSetColumnIndex(0);
+            Im::Text("%s", sub.label.c_str());
+            Im::TableSetColumnIndex(1);
+            Im::Text("%s", sub.value.c_str());
+            Im::TableSetColumnIndex(2);
+            Im::TextWrapped("%s", sub.modifiers.c_str());
+        }
+        Im::EndTable();
+    }
+    Im::Dummy(Im::ImVec2(0.0f, kGap));
+}
+
 // A run of headed sections, each a bordered table in the style of the rule
 // table. The name and value columns are FIXED, measured across every section
 // in the run so the tables line up down the page, and sized to their
@@ -856,19 +948,40 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 // from a glance at any row, and a label saying so is one more line of chrome
 // per table. The Modifiers column keeps its heading because that one is not
 // obvious.
+//
+// A row with perks opens like a drawer, and ImGui has no such thing: a table
+// is a grid with no spanning. So the table is drawn in PIECES. It is closed
+// at an open row, the drawer is drawn beneath, and a fresh table with the
+// same column widths is opened for the rows that follow. Three things make
+// the seam invisible: no vertical spacing between pieces, so the bottom
+// border of one is the row line above the drawer and the top border of the
+// next is the row line below it; the striping is counted across pieces
+// rather than restarted by each; and the outer left and right borders are
+// drawn by hand across the drawer's height, so the frame is continuous.
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers)
 {
     float nameWidth = 0.0f;
     float valueWidth = 0.0f;
+    // A row with perks carries the disclosure marker before its name and
+    // is measured with it; a row without starts its name where the marker
+    // would be, so the two kinds line up on their left edge.
+    const float marker = modifiers ? DisclosureWidth() : 0.0f;
     for (const auto &section : sections)
     {
         for (const auto &row : section.rows)
         {
-            nameWidth = (std::max)(nameWidth, TextWidth(row.label));
+            const float lead = row.detail.empty() ? 0.0f : marker;
+            nameWidth = (std::max)(nameWidth, lead + TextWidth(row.label));
             valueWidth = (std::max)(valueWidth, TextWidth(row.value));
         }
     }
     const float pad = 2.0f * kCellPadX + 8.0f;
+
+    const auto border = Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f);
+    const auto stripe = Im::GetColorU32(Im::ImGuiCol_TableRowBgAlt, 1.0f);
+    const auto hovered = Im::GetColorU32(Im::ImGuiCol_ButtonHovered, 1.0f);
+    const auto opened = Im::GetColorU32(Im::ImGuiCol_Header, 1.0f);
+    auto *draw = Im::GetWindowDrawList();
 
     // The rule table's horizontal padding, but more above and below the text:
     // at the theme's default the last row sat on the table's bottom border.
@@ -881,23 +994,113 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers)
         Im::SeparatorText(section.title.c_str());
         Im::PopStyleVar(1);
 
-        const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
-        if (!Im::BeginTable(section.title.c_str(), modifiers ? 3 : 2, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
-            continue;
+        // Pieces abut: no item spacing between one table and the next.
+        Im::PushStyleVar(Im::ImGuiStyleVar_ItemSpacing, Im::ImVec2(kCellPadX, 0.0f));
 
-        Im::TableSetupColumn("##name", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
-        Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
-        if (modifiers)
+        int piece = 0;
+        int stripeIndex = 0;
+        bool inTable = false;
+        float left = 0.0f;
+        float right = 0.0f;
+        float drawerTop = 0.0f; // bottom of the piece above an open drawer
+        bool drawerOpen = false;
+
+        const auto beginPiece = [&]() {
+            const std::string id = section.title + "##" + std::to_string(piece++);
+            const auto flags = Im::ImGuiTableFlags_Borders;
+            if (!Im::BeginTable(id.c_str(), modifiers ? 3 : 2, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+                return false;
+            Im::TableSetupColumn("##name", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
+            Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
+            if (modifiers)
+            {
+                Im::TableSetupColumn("Modifiers", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+                if (piece == 1)
+                    PlainHeaderRow({"", "", "Modifiers"});
+            }
+            inTable = true;
+            return true;
+        };
+
+        // Closes the current piece and, if a drawer sat above it, draws the
+        // outer borders down the drawer's sides so the frame is unbroken.
+        const auto endPiece = [&]() {
+            Im::EndTable();
+            inTable = false;
+            const Im::ImVec2 lo = Im::GetItemRectMin();
+            const Im::ImVec2 hi = Im::GetItemRectMax();
+            left = lo.x;
+            right = hi.x;
+            if (drawerOpen && draw)
+            {
+                Im::ImDrawListManager::AddLine(draw, {lo.x, drawerTop}, {lo.x, lo.y}, border, 1.0f);
+                Im::ImDrawListManager::AddLine(draw, {hi.x, drawerTop}, {hi.x, lo.y}, border, 1.0f);
+            }
+            drawerOpen = false;
+            drawerTop = hi.y;
+        };
+
+        if (!beginPiece())
         {
-            Im::TableSetupColumn("Modifiers", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-            Im::TableHeadersRow();
+            Im::PopStyleVar(1);
+            continue;
         }
 
         for (const auto &row : section.rows)
         {
+            if (!inTable && !beginPiece())
+                break;
+
             Im::TableNextRow(0, 0.0f);
+            if (stripeIndex++ % 2 == 1)
+                Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg0, stripe, -1);
+
             Im::TableSetColumnIndex(0);
-            Im::Text("%s", row.label.c_str());
+            bool open = false;
+            if (row.detail.empty())
+            {
+                Im::Text("%s", row.label.c_str());
+            }
+            else
+            {
+                // A row that opens is a selectable spanning every column, so
+                // the whole row is the click target -- but drawn INVISIBLE,
+                // and the highlight painted through the table's own row
+                // background instead. The selectable's own highlight is the
+                // size of its label, which is what left the far end of the
+                // row unlit; the row background is the rect ImGui derived
+                // for the row, padding and all, so it fits by construction.
+                // The marker and the name are then drawn over it.
+                const std::string key = section.title + "/" + row.label;
+                open = g_openRows.count(key) > 0;
+
+                const Im::ImVec2 pos = Im::GetCursorScreenPos();
+                const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
+                Im::PushStyleColor(Im::ImGuiCol_Header, invisible);
+                Im::PushStyleColor(Im::ImGuiCol_HeaderHovered, invisible);
+                Im::PushStyleColor(Im::ImGuiCol_HeaderActive, invisible);
+                const bool clicked = Im::Selectable(("##" + key).c_str(), false,
+                                                    Im::ImGuiSelectableFlags_SpanAllColumns, Im::ImVec2(0.0f, 0.0f));
+                Im::PopStyleColor(3);
+
+                if (clicked)
+                {
+                    open = !open;
+                    if (open)
+                        g_openRows.insert(key);
+                    else
+                        g_openRows.erase(key);
+                }
+                if (Im::IsItemHovered(0))
+                    Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg1, hovered, -1);
+                else if (open)
+                    Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg1, opened, -1);
+
+                DrawDisclosure(pos, open);
+                Im::SetCursorScreenPos(Im::ImVec2(pos.x + marker, pos.y));
+                Im::Text("%s", row.label.c_str());
+            }
+
             Im::TableSetColumnIndex(1);
             Im::Text("%s", row.value.c_str());
             if (modifiers)
@@ -907,15 +1110,36 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers)
                 if (!row.note.empty() && Im::IsItemHovered(0))
                     Im::SetTooltip("%s", row.note.c_str());
             }
-        }
-        Im::EndTable();
 
-        // Room below the table before the next heading.
+            if (!open)
+                continue;
+
+            // The drawer: close this piece, draw beneath, reopen for the rest.
+            endPiece();
+            DrawPerkDrawer(row, left, right);
+            drawerOpen = true;
+        }
+
+        if (inTable)
+        {
+            endPiece();
+        }
+        else if (drawerOpen && draw)
+        {
+            // The drawer was the last thing in the section: close the frame
+            // under it by hand, since no piece follows to do so.
+            const float bottom = Im::GetCursorScreenPos().y;
+            Im::ImDrawListManager::AddLine(draw, {left, drawerTop}, {left, bottom}, border, 1.0f);
+            Im::ImDrawListManager::AddLine(draw, {right, drawerTop}, {right, bottom}, border, 1.0f);
+            Im::ImDrawListManager::AddLine(draw, {left, bottom}, {right, bottom}, border, 1.0f);
+        }
+
+        Im::PopStyleVar(1); // item spacing
         Im::Spacing();
         Im::Spacing();
     }
 
-    Im::PopStyleVar(1);
+    Im::PopStyleVar(1); // cell padding
 }
 
 // The character sheet: what she is, as opposed to what she has been told to
@@ -1013,18 +1237,22 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     Im::EndDisabled();
 }
 
-// One page per follower, two tabs. Tactics first because it is what the mod
-// is for; the character sheet is context for it.
+// Followers whose page has been drawn at least once. The first time a page
+// opens it lands on Tactics, which is what the mod is for; from then on the
+// tab bar keeps whatever was last chosen, as tab bars do. Render thread only.
+std::unordered_set<ft::ActorId> g_pagesOpened;
+
+// One page per follower, three tabs, reading left to right as who she is,
+// what she can do, and what she has been told to do. The tab bar is keyed by
+// follower so each page remembers its own tab.
 void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 {
-    if (!Im::BeginTabBar("follower"))
+    if (!Im::BeginTabBar(("follower##" + std::to_string(view.id)).c_str()))
         return;
 
-    if (Im::BeginTabItem("Tactics"))
-    {
-        DrawTactics(rules, view);
-        Im::EndTabItem();
-    }
+    const bool firstOpen = g_pagesOpened.insert(view.id).second;
+    const Im::ImGuiTabItemFlags tacticsFlags = firstOpen ? Im::ImGuiTabItemFlags_SetSelected : 0;
+
     if (Im::BeginTabItem("Character"))
     {
         DrawCharacter(view);
@@ -1034,6 +1262,11 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     {
         Im::Spacing();
         DrawSections(view.skills, true);
+        Im::EndTabItem();
+    }
+    if (Im::BeginTabItem("Tactics", nullptr, tacticsFlags))
+    {
+        DrawTactics(rules, view);
         Im::EndTabItem();
     }
 
