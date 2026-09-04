@@ -60,10 +60,11 @@ in `docs/PLAN.md`.
   rule's package equips through it too and must be exempted (the lease
   knows the spell), or tactics stop being unlimited.
 
-- **Group subjects.** The snapshot carries one enemy, the one she is
-  engaging, and no allies. "Any enemy below 30% health" and "ally in
-  bleedout" need the combat group read in full (`Snapshot::enemies`,
-  `Snapshot::allies`).
+- **Group subjects, in play.** Allies and enemies are sensed by
+  definition (docs/CONDITIONS.md 6): the player and the teammates, and
+  whoever is in combat and hostile to the player. Verify against the log's
+  once-per-fight "allies / enemies" line that a dead enemy drops out and a
+  distant hostile is not counted before the player is in its fight.
 - **Rules do not survive a restart.** Rule sets live in memory. Phase 2's
   JSON load/save (the shareable profile format) and per-follower profiles
   are the fix; wire names are already stable for it.

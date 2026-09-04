@@ -471,25 +471,59 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         s.distanceToPlayer = actor->GetPosition().GetDistance(player->GetPosition());
     }
 
-    // Whom she is fighting, as the engine sees it. This is what "current
-    // target" resolves to, and the one enemy the snapshot carries until the
-    // combat group is read in full (Phase 2).
+    // Whom the follower is fighting, as the engine sees it: what "current
+    // target" resolves to.
     if (auto target = actor->GetActorRuntimeData().currentCombatTarget.get(); target && !target->IsDead())
-    {
         s.currentTarget = target->GetFormID();
 
+    // The party and the enemies, by definition (docs/CONDITIONS.md 6). An
+    // ally is the player and every other actor with the teammate flag; an
+    // enemy is anyone the compass paints red for the player, in combat and
+    // hostile to them. One walk of the loaded actors, alive ones only.
+    auto *player = RE::PlayerCharacter::GetSingleton();
+    const auto enemyOf = [&](RE::Actor *other) {
         ft::EnemyView enemy;
-        enemy.id = target->GetFormID();
-        enemy.health = ReadStat(target.get(), RE::ActorValue::kHealth);
-        enemy.distance = actor->GetPosition().GetDistance(target->GetPosition());
-        if (auto *player = RE::PlayerCharacter::GetSingleton())
+        enemy.id = other->GetFormID();
+        enemy.health = ReadStat(other, RE::ActorValue::kHealth);
+        enemy.distance = actor->GetPosition().GetDistance(other->GetPosition());
+        if (player)
         {
-            auto theirTarget = target->GetActorRuntimeData().currentCombatTarget.get();
+            auto theirTarget = other->GetActorRuntimeData().currentCombatTarget.get();
             enemy.isAttackingPlayer = theirTarget && theirTarget.get() == player;
         }
         bool losArg = false;
-        enemy.hasLineOfSight = actor->HasLineOfSight(target.get(), losArg);
-        s.enemies.push_back(enemy);
+        enemy.hasLineOfSight = actor->HasLineOfSight(other, losArg);
+        return enemy;
+    };
+    const auto allyOf = [&](RE::Actor *other) {
+        ft::AllyView ally;
+        ally.id = other->GetFormID();
+        ally.health = ReadStat(other, RE::ActorValue::kHealth);
+        ally.distance = actor->GetPosition().GetDistance(other->GetPosition());
+        ally.inBleedout = other->AsActorState() && other->AsActorState()->IsBleedingOut();
+        return ally;
+    };
+    if (player && !player->IsDead())
+        s.allies.push_back(allyOf(player));
+    if (auto *lists = RE::ProcessLists::GetSingleton())
+    {
+        lists->ForEachHighActor([&](RE::Actor &other) {
+            if (&other == actor || &other == player || other.IsDead())
+                return RE::BSContainer::ForEachResult::kContinue;
+            if (other.IsPlayerTeammate())
+                s.allies.push_back(allyOf(&other));
+            else if (player && other.IsInCombat() && other.IsHostileToActor(player))
+                s.enemies.push_back(enemyOf(&other));
+            return RE::BSContainer::ForEachResult::kContinue;
+        });
+    }
+    // The follower's own target is an enemy whether or not the player is
+    // in its fight yet.
+    if (s.currentTarget != 0 && !std::any_of(s.enemies.begin(), s.enemies.end(),
+                                             [&](const ft::EnemyView &e) { return e.id == s.currentTarget; }))
+    {
+        if (auto *target = RE::TESForm::LookupByID<RE::Actor>(s.currentTarget))
+            s.enemies.push_back(enemyOf(target));
     }
 
     ScanPotions(actor, s.potions, choice);
@@ -556,7 +590,6 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
             s.spells.equipped.push_back(held->GetFormID());
     }
 
-    // enemies / allies deliberately left empty -- see the header.
     return s;
 }
 

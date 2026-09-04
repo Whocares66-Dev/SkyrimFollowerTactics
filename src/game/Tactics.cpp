@@ -351,7 +351,8 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     auto &state = g_followers[id];
 
     // A long gap since the last evaluation means a different fight.
-    if ((now - state.lastEvaluatedAt) > kNewFightGap)
+    const bool newFight = (now - state.lastEvaluatedAt) > kNewFightGap;
+    if (newFight)
     {
         state.eval = {};
         logger::info("{} entered combat -- tactics engaged", Describe(actor));
@@ -363,6 +364,22 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 
     PotionChoice choice;
     ft::Snapshot snapshot = BuildSnapshot(actor, now, choice);
+
+    // Who is who, once per fight, so the Ally and Enemy subjects can be
+    // read against the log.
+    if (newFight)
+    {
+        const auto names = [](const auto &views) {
+            std::string out;
+            for (const auto &v : views)
+            {
+                auto *who = RE::TESForm::LookupByID<RE::Actor>(v.id);
+                out += (out.empty() ? "" : ", ") + std::string(who && who->GetName() ? who->GetName() : "?");
+            }
+            return out.empty() ? std::string("nobody") : out;
+        };
+        logger::info("{} allies: {} -- enemies: {}", Describe(actor), names(snapshot.allies), names(snapshot.enemies));
+    }
     snapshot.combatBegan = began;
     snapshot.combatEnded = ended;
 

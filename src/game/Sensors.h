@@ -194,13 +194,10 @@ struct Contribution
 void LogActiveEffects(RE::Actor *actor, const char *when);
 
 // Build the snapshot for one follower. `now` is monotonic seconds since plugin
-// load; cooldowns are measured against it.
-//
-// Phase 1 scope: this fills self/player state and the potion inventory only.
-// The enemies and allies vectors are deliberately left EMPTY -- the marquee
-// rule is Self + HealthPctBelow, which needs none of it, and every extra sensor
-// is per-tick cost that has to be justified (docs/PLAN.md 3.3). Group subjects
-// will not match until those are populated.
+// load; cooldowns are measured against it. Self and player state, the
+// potions and the loadout, and the party and the enemies by definition:
+// allies are the player and the other teammates, enemies whoever is in
+// combat and hostile to the player (docs/CONDITIONS.md 6).
 ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice);
 
 } // namespace ft::game

@@ -118,13 +118,19 @@ Target. That is what "hit the enemy who is doing the attacking" needs.
 
 ## 6. Sensing the party and the enemies
 
-The combat group is the engine's own answer: `combatController->combatGroup`
-holds `members` (allies, with threat) and `targets` (enemies, with detect
-level and who they attack), read under the group's lock. Whether a follower
-shares the player's group is expected and not yet verified; log the group
-id for both in play. The fallback is a walk of the high actors, in combat
-and hostile to the follower, with teammates as allies; at eight followers
-and 500 ms that is affordable.
+By definition, not by the engine's combat group:
+
+- **Ally**, for a follower, is the player and every other actor with the
+  player-teammate flag -- the player's other followers -- alive and loaded.
+- **Enemy** is anyone the compass paints red for the player: an actor in
+  combat and hostile to the player, alive and loaded.
+
+Both come from one walk of the loaded high actors per tick
+(`ProcessLists::ForEachHighActor`), testing `IsPlayerTeammate()`,
+`IsInCombat()` and `IsHostileToActor(player)`. At a few dozen loaded actors
+and 500 ms that is well inside the budget. The player's own combat group
+(`targets`) would say the same thing more cheaply and is the thing to
+compare against once, in the log; the walk is what the definition says.
 
 This is what makes the Ally and Enemy subjects real, and it is what a
 named-follower subject needs: `SubjectKind::Follower` with the actor's
@@ -145,7 +151,8 @@ form, listed by name in the menu after the player.
   `magicCasters[]` shows during a concentration spell.
 - Whether the hit event fires for cloaks, hazards and concentration ticks,
   and how often.
-- Follower and player group identity; how stale `targets` goes after a kill.
+- The walk's list against the player's combat group `targets`, once, in
+  the log; and how soon a dead or fled enemy drops out.
 - Logged `kDamageResist`, `armorRating` and `armorBaseFactorSum` for a
   fight's enemies, to replace the estimated tiers.
 
