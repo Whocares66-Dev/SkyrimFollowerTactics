@@ -1268,11 +1268,16 @@ TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI wo
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
     REQUIRE(trace.at(0) == Verdict::NoResource);
 
-    // Above her skill: the AI would never choose it, so a pin would be a
-    // promise unkept. Said so, not fired.
+    // Above the follower's skill: the AI would never choose it, so a pin
+    // would be a promise unkept. Said so, not fired -- and not cast either,
+    // so that cast and equip agree.
     rs.rules[0] = Equip(ActionKind::EquipSpell, kChainLightning, Hand::Right);
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
-    REQUIRE(trace.at(0) == Verdict::CannotHold);
+    REQUIRE(trace.at(0) == Verdict::AboveSkill);
+    rs.rules[0] = Equip(ActionKind::CastSpell, kChainLightning);
+    s.spells.known.push_back(kChainLightning);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::AboveSkill);
 
     // A spell she can use, in both hands at once.
     rs.rules[0] = Equip(ActionKind::EquipSpell, kFirebolt, Hand::Both);

@@ -91,8 +91,8 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
         return {TakesSpell(action) ? "no spell" : ft::IsEquip(action) ? "not carried" : "no potion", held};
     case ft::Verdict::EffectActive:
         return {ft::IsEquip(action) ? "pinned" : "active", held};
-    case ft::Verdict::CannotHold:
-        return {"can't pin", held};
+    case ft::Verdict::AboveSkill:
+        return {"too high", held};
     case ft::Verdict::Outranked:
         return {"outranked", held};
     case ft::Verdict::NoTarget:

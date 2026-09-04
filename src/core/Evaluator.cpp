@@ -429,11 +429,12 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
     if (IsEquip(a.kind))
     {
         const Holdable *thing = LetsGo(a) ? nullptr : FindHoldable(snap.loadout, a.form);
-        // A pin is a promise the AI will use it. A spell above her skill it
-        // never would, so the promise cannot be kept, and the rule says so
-        // rather than equipping something that gets swapped straight out.
+        // A pin is a promise the AI will use it. A spell above the
+        // follower's skill it never would, so the promise cannot be kept,
+        // and the rule says so rather than equipping something that gets
+        // swapped straight out.
         if (thing && thing->unusable)
-            return Verdict::CannotHold;
+            return Verdict::AboveSkill;
         const Hand hands = HandsWanted(a);
         const bool outranked = std::any_of(heldAbove.begin(), heldAbove.end(), [&](const Pin &held) {
             return thing ? Conflicts(*thing, hands, held.thing, held.hands) : held.thing.kind == KindOf(a.kind);
@@ -452,6 +453,14 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         // A cast she cannot pay for is not a cast. The AI would decline the
         // package and the rule would have spent its cooldown on nothing --
         // the 12:20 run fired four heals at empty magicka.
+        // A spell above the follower's skill is not cast either. The
+        // package would make them cast it regardless; it is refused so that
+        // cast and equip agree, and the menus offer neither.
+        if (a.kind == ActionKind::CastSpell)
+        {
+            if (const Holdable *spell = FindHoldable(snap.loadout, a.form); spell && spell->unusable)
+                return Verdict::AboveSkill;
+        }
         if (a.kind == ActionKind::CastSpell && snap.magicka.current < snap.spells.CostOf(a.form))
             return Verdict::CannotAfford;
         // Exact where the settle time is a guess: on a game whose potions
@@ -695,8 +704,8 @@ const char *ToString(Verdict v) noexcept
         return "not enough magicka";
     case Verdict::EffectActive:
         return "previous dose still active";
-    case Verdict::CannotHold:
-        return "cannot be pinned: above the follower's skill, so the AI would never choose it";
+    case Verdict::AboveSkill:
+        return "above the follower's skill";
     case Verdict::Outranked:
         return "a rule above holds that hand or slot";
     case Verdict::Unsupported:

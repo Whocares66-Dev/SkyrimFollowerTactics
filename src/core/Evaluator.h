@@ -27,7 +27,7 @@ enum class Verdict : std::uint8_t
     NoResource,
     CannotAfford,     // knows the spell, cannot pay for it right now
     EffectActive,     // a previous dose is still running; or the thing is already pinned
-    CannotHold,       // it cannot be pinned: the AI would never choose it, so a pin would be a promise unkept
+    AboveSkill,       // a spell above the follower's skill: neither cast nor pinned, so cast and equip agree
     Outranked,        // a rule above holds the hand or slot this would take
     Unsupported,      // the action cannot be performed on this runtime
     Busy,             // it can, but not this evaluation: its resource pool is exhausted

@@ -337,8 +337,12 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
     if (!actor)
         return out;
 
-    ForEachSpell(actor, [&out](RE::SpellItem *spell) {
+    ForEachSpell(actor, [&out, actor](RE::SpellItem *spell) {
         if (!IsCastable(spell))
+            return;
+        // Above the follower's skill: not offered for casting, as it is not
+        // for pinning, so the two menus agree on what they can use.
+        if (DescribeHoldable(actor, spell).unusable)
             return;
         // The same spell can appear in both sources; show it once.
         const std::uint32_t id = spell->GetFormID();
