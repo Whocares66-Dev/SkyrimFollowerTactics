@@ -1777,12 +1777,13 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             }
             if (row.icon != 0)
             {
-                // A glyph in the value's place, the text line's height, so it
-                // sits on the line the value would have.
-                const Im::ImVec2 at = Im::GetCursorScreenPos();
-                const float h = Im::GetTextLineHeight();
-                DrawCodepoint(draw, row.icon, at, {at.x + h, at.y + h}, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
-                Im::Dummy(Im::ImVec2(h, h));
+                // A glyph in the value's place, laid as text so it starts
+                // where the value would and keeps its own width: centred in
+                // a square, the infinity, twice as wide as tall, spilled
+                // over the cell's left border.
+                FontAwesome::PushSolid();
+                Im::Text("%s", Utf8(row.icon).c_str());
+                FontAwesome::Pop();
             }
             else
             {
@@ -2901,14 +2902,6 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state)
     Im::SameLine(0.0f, kCellPadX);
     Im::AlignTextToFramePadding();
     Im::Text("%s", row.name.c_str());
-    // The source beside the name, unless it only repeats it: an ability's
-    // effect is named for the ability.
-    if (!row.source.empty() && row.source != row.name)
-    {
-        Im::SameLine(0.0f, kCellPadX * 2.0f);
-        Im::AlignTextToFramePadding();
-        Im::TextDisabled("%s", row.source.c_str());
-    }
 
     Im::Spacing();
     DrawSections(row.detail, false);
