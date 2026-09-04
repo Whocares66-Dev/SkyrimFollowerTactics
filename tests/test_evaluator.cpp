@@ -671,6 +671,64 @@ TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[stat
         REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::Status));
 }
 
+TEST_CASE("armour is asked by band, and the group's extremes bind the least and the most", "[armor]")
+{
+    // The bands, at the lines docs/CONDITIONS.md draws.
+    REQUIRE(BandOf(0.0f) == ArmorBand::Low);
+    REQUIRE(BandOf(0.24f) == ArmorBand::Low);
+    REQUIRE(BandOf(0.25f) == ArmorBand::Medium);
+    REQUIRE(BandOf(0.54f) == ArmorBand::Medium);
+    REQUIRE(BandOf(0.55f) == ArmorBand::High);
+    REQUIRE(BandOf(0.80f) == ArmorBand::High);
+
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Armor;
+    r.conditionArg = static_cast<float>(ArmorBand::High);
+
+    Snapshot s = Healthy();
+    s.traits.armor = 0.6f;
+    REQUIRE(EvaluateCondition(r, s).ok);
+    r.conditionArg = static_cast<float>(ArmorBand::Low);
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    // The player, in fur.
+    r.subject = SubjectKind::Player;
+    s.playerTraits.armor = 0.1f;
+    REQUIRE(EvaluateCondition(r, s).ok);
+
+    // Enemies: a mage in robes, a chief in plate. The band picks by band;
+    // Lowest and Highest bind the extremes whatever the bands.
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x102, {40.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies[0].traits.armor = 0.05f;
+    s.enemies[1].traits.armor = 0.7f;
+    r.subject = SubjectKind::Enemy;
+    r.predicate = PredicateKind::Armor;
+    r.conditionArg = static_cast<float>(ArmorBand::High);
+    REQUIRE(EvaluateCondition(r, s).id == 0x102);
+    r.predicate = PredicateKind::ArmorLowest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+    r.predicate = PredicateKind::ArmorHighest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x102);
+    r.predicate = PredicateKind::HealthLowest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x102);
+    r.predicate = PredicateKind::HealthHighest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+
+    // No enemies: no extreme to bind.
+    s.enemies.clear();
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    // The extremes are of a group only; the band is anyone's.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::HealthLowest));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::ArmorHighest));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::HealthLowest));
+    REQUIRE(IsPredicateValidFor(SubjectKind::CurrentTarget, PredicateKind::Armor));
+    REQUIRE(ExtremesOf(PredicateKind::Armor).highest == PredicateKind::ArmorHighest);
+    REQUIRE(ExtremesOf(PredicateKind::InCombat).lowest == PredicateKind::InCombat);
+}
+
 TEST_CASE("above and below are the same number from either side", "[evaluator]")
 {
     Rule r;

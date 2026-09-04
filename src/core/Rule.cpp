@@ -91,6 +91,25 @@ bool IsAbove(PredicateKind predicate) noexcept
            predicate == PredicateKind::MagickaPctAbove;
 }
 
+Extremes ExtremesOf(PredicateKind predicate) noexcept
+{
+    switch (predicate)
+    {
+    case PredicateKind::HealthPctBelow:
+        return {PredicateKind::HealthLowest, PredicateKind::HealthHighest};
+    case PredicateKind::Armor:
+        return {PredicateKind::ArmorLowest, PredicateKind::ArmorHighest};
+    default:
+        return {predicate, predicate};
+    }
+}
+
+bool IsExtreme(PredicateKind predicate) noexcept
+{
+    return predicate == PredicateKind::HealthLowest || predicate == PredicateKind::HealthHighest ||
+           predicate == PredicateKind::ArmorLowest || predicate == PredicateKind::ArmorHighest;
+}
+
 bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
 {
     // The matrix is driven by what Snapshot actually carries. When a sensor is
@@ -109,10 +128,13 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         }
         return false;
     }
-    // A status is read off every actor the snapshot carries, so it is
-    // answerable about any of them.
-    if (predicate == PredicateKind::Status)
+    // A status and the armour are read off every actor the snapshot
+    // carries, so they are answerable about any of them. The extremes are
+    // of a group.
+    if (predicate == PredicateKind::Status || predicate == PredicateKind::Armor)
         return true;
+    if (IsExtreme(predicate))
+        return subject == SubjectKind::Ally || subject == SubjectKind::Enemy;
     switch (subject)
     {
     case SubjectKind::Self:

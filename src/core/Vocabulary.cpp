@@ -63,7 +63,7 @@ constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
     {SubjectKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 14> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 19> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
@@ -75,6 +75,11 @@ constexpr std::array<Entry<PredicateKind>, 14> kPredicates{{
     {PredicateKind::WithinDistance, "within-distance", "Distance"},
     {PredicateKind::CountAtLeast, "count-at-least", "Count"},
     {PredicateKind::Status, "status", "Status"},
+    {PredicateKind::Armor, "armor", "Armor"},
+    {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
+    {PredicateKind::HealthHighest, "health-highest", "Health highest"},
+    {PredicateKind::ArmorLowest, "armor-lowest", "Armor lowest"},
+    {PredicateKind::ArmorHighest, "armor-highest", "Armor highest"},
     {PredicateKind::HealthPctAbove, "health-pct-above", "Health"},
     {PredicateKind::StaminaPctAbove, "stamina-pct-above", "Stamina"},
     {PredicateKind::MagickaPctAbove, "magicka-pct-above", "Magicka"},
@@ -135,6 +140,12 @@ constexpr std::array<Entry<StatusKind>, 14> kStatuses{{
     {StatusKind::Sneaking, "sneaking", "Sneaking"},
 }};
 
+constexpr std::array<Entry<ArmorBand>, 3> kArmorBands{{
+    {ArmorBand::Low, "low", "Low"},
+    {ArmorBand::Medium, "medium", "Medium"},
+    {ArmorBand::High, "high", "High"},
+}};
+
 // Every enumerator must appear in its table, or a rule would serialise as
 // "Unknown" and fail to load back. Cheap to assert, impossible to forget.
 static_assert(kSubjects.size() == static_cast<std::size_t>(SubjectKind::COUNT));
@@ -142,6 +153,7 @@ static_assert(kPredicates.size() == static_cast<std::size_t>(PredicateKind::COUN
 static_assert(kActionTargets.size() == static_cast<std::size_t>(ActionTargetKind::COUNT));
 static_assert(kActions.size() == static_cast<std::size_t>(ActionKind::COUNT));
 static_assert(kStatuses.size() == static_cast<std::size_t>(StatusKind::COUNT));
+static_assert(kArmorBands.size() == static_cast<std::size_t>(ArmorBand::COUNT));
 
 } // namespace
 
@@ -253,6 +265,10 @@ std::string_view DisplayName(StatusKind v) noexcept
 {
     return LookupDisplay(kStatuses, v);
 }
+std::string_view DisplayName(ArmorBand v) noexcept
+{
+    return LookupDisplay(kArmorBands, v);
+}
 
 ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 {
@@ -271,6 +287,9 @@ ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 
     case PredicateKind::CountAtLeast:
         return ArgumentKind::Count;
+
+    case PredicateKind::Armor:
+        return ArgumentKind::ArmorBand;
 
     case PredicateKind::Any:
     case PredicateKind::InBleedout:
@@ -315,6 +334,16 @@ std::string_view Describe(PredicateKind v) noexcept
         return "At least this many of them.";
     case PredicateKind::Status:
         return "In this state right now.";
+    case PredicateKind::Armor:
+        return "How much of a blow the armour turns away: under a quarter, up to half, or more.";
+    case PredicateKind::HealthLowest:
+        return "The one with the least health.";
+    case PredicateKind::HealthHighest:
+        return "The one with the most health.";
+    case PredicateKind::ArmorLowest:
+        return "The least armoured one.";
+    case PredicateKind::ArmorHighest:
+        return "The best armoured one.";
     default:
         return "";
     }

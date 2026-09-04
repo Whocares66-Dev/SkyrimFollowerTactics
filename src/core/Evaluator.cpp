@@ -10,12 +10,24 @@ namespace
 // Does one specific enemy satisfy the rule's predicate? Predicates that are not
 // answerable about an enemy return false; IsPredicateValidFor rejects those
 // pairs before we get here, so this is belt and braces.
+// The band a rule's number names.
+ArmorBand BandArg(const Rule &r)
+{
+    return static_cast<ArmorBand>(static_cast<int>(r.conditionArg + 0.5f));
+}
+
 bool EnemySatisfies(const EnemyView &e, const Rule &r)
 {
     switch (r.predicate)
     {
     case PredicateKind::Any:
-        return true;
+    case PredicateKind::HealthLowest:
+    case PredicateKind::HealthHighest:
+    case PredicateKind::ArmorLowest:
+    case PredicateKind::ArmorHighest:
+        return true; // the group's extreme: everyone qualifies, the selection binds the one
+    case PredicateKind::Armor:
+        return BandOf(e.traits.armor) == BandArg(r);
     case PredicateKind::HealthPctBelow:
         return e.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
@@ -34,7 +46,13 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
     switch (r.predicate)
     {
     case PredicateKind::Any:
+    case PredicateKind::HealthLowest:
+    case PredicateKind::HealthHighest:
+    case PredicateKind::ArmorLowest:
+    case PredicateKind::ArmorHighest:
         return true;
+    case PredicateKind::Armor:
+        return BandOf(a.traits.armor) == BandArg(r);
     case PredicateKind::HealthPctBelow:
         return a.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
@@ -57,16 +75,25 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
 bool OrdersByHealth(PredicateKind p)
 {
     return p == PredicateKind::HealthPctBelow || p == PredicateKind::MagickaPctBelow ||
-           p == PredicateKind::StaminaPctBelow || IsAbove(p);
+           p == PredicateKind::StaminaPctBelow || IsAbove(p) || p == PredicateKind::HealthLowest ||
+           p == PredicateKind::HealthHighest;
+}
+
+bool OrdersByArmor(PredicateKind p)
+{
+    return p == PredicateKind::ArmorLowest || p == PredicateKind::ArmorHighest;
 }
 
 // Is `candidate` a better binding than `best` for this predicate?
-bool Better(PredicateKind p, const Stat &candidateHealth, float candidateDistance, const Stat &bestHealth,
-            float bestDistance)
+bool Better(PredicateKind p, const Stat &candidateHealth, float candidateDistance, float candidateArmor,
+            const Stat &bestHealth, float bestDistance, float bestArmor)
 {
+    if (OrdersByArmor(p))
+        return p == PredicateKind::ArmorHighest ? candidateArmor > bestArmor : candidateArmor < bestArmor;
     if (!OrdersByHealth(p))
         return candidateDistance < bestDistance;
-    return IsAbove(p) ? candidateHealth.Pct() > bestHealth.Pct() : candidateHealth.Pct() < bestHealth.Pct();
+    const bool most = IsAbove(p) || p == PredicateKind::HealthHighest;
+    return most ? candidateHealth.Pct() > bestHealth.Pct() : candidateHealth.Pct() < bestHealth.Pct();
 }
 
 const EnemyView *SelectEnemy(const Snapshot &s, const Rule &r)
@@ -76,7 +103,8 @@ const EnemyView *SelectEnemy(const Snapshot &s, const Rule &r)
     {
         if (!EnemySatisfies(e, r))
             continue;
-        if (!best || Better(r.predicate, e.health, e.distance, best->health, best->distance))
+        if (!best ||
+            Better(r.predicate, e.health, e.distance, e.traits.armor, best->health, best->distance, best->traits.armor))
             best = &e;
     }
     return best;
@@ -89,7 +117,8 @@ const AllyView *SelectAlly(const Snapshot &s, const Rule &r)
     {
         if (!AllySatisfies(a, r))
             continue;
-        if (!best || Better(r.predicate, a.health, a.distance, best->health, best->distance))
+        if (!best ||
+            Better(r.predicate, a.health, a.distance, a.traits.armor, best->health, best->distance, best->traits.armor))
             best = &a;
     }
     return best;
@@ -215,6 +244,9 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::Status:
         held = s.traits.Has(r.statusKind);
         break;
+    case PredicateKind::Armor:
+        held = BandOf(s.traits.armor) == BandArg(r);
+        break;
     default:
         break;
     }
@@ -243,6 +275,9 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
         break;
     case PredicateKind::Status:
         held = s.playerTraits.Has(r.statusKind);
+        break;
+    case PredicateKind::Armor:
+        held = BandOf(s.playerTraits.armor) == BandArg(r);
         break;
     default:
         break;

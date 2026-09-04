@@ -35,4 +35,27 @@ enum class StatusKind : std::uint8_t
     return 1u << static_cast<std::uint32_t>(kind);
 }
 
+// How well armoured an actor is, by the damage their armour turns away
+// rather than the rating the game shows, so a bandit in fur and a chief in
+// plate are measured on one scale. The lines are from docs/CONDITIONS.md 3:
+// under a quarter is Low -- animals, mages, dragons, bandits in fur --
+// past 55% is High -- ebony and better, the cap being 80%.
+enum class ArmorBand : std::uint8_t
+{
+    Low,
+    Medium,
+    High,
+
+    COUNT
+};
+
+[[nodiscard]] constexpr ArmorBand BandOf(float damageReduction) noexcept
+{
+    if (damageReduction < 0.25f)
+        return ArmorBand::Low;
+    if (damageReduction < 0.55f)
+        return ArmorBand::Medium;
+    return ArmorBand::High;
+}
+
 } // namespace ft

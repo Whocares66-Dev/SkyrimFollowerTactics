@@ -220,6 +220,8 @@ std::string ArgumentText(ft::PredicateKind predicate, float value)
         return "< " + std::to_string(static_cast<int>(value));
     case ft::ArgumentKind::Count:
         return ">= " + std::to_string(static_cast<int>(value));
+    case ft::ArgumentKind::ArmorBand:
+        return std::string(ft::DisplayName(static_cast<ft::ArmorBand>(static_cast<int>(value + 0.5f))));
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -245,6 +247,8 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
         return {200.0f, 500.0f, 1000.0f, 2000.0f};
     case ft::ArgumentKind::Count:
         return {2.0f, 3.0f, 4.0f, 5.0f};
+    case ft::ArgumentKind::ArmorBand:
+        return {0.0f, 1.0f, 2.0f};
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -555,8 +559,9 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
             if (!ft::IsPredicateValidFor(subject, predicate))
                 continue;
             // An above predicate is listed under its below counterpart's
-            // heading, after a divider, not as a heading of its own.
-            if (ft::IsAbove(predicate))
+            // heading, after a divider, not as a heading of its own; the
+            // group's extremes likewise, first under theirs.
+            if (ft::IsAbove(predicate) || ft::IsExtreme(predicate))
                 continue;
 
             // The fight's three, grouped where the first of them falls.
@@ -634,6 +639,27 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
 
             if (!BeginCascade(predicateName.c_str()))
                 continue;
+
+            // Lowest and Highest first, for a group: the one with the least
+            // or the most of what the heading measures.
+            if (const auto extremes = ft::ExtremesOf(predicate);
+                extremes.lowest != predicate && ft::IsPredicateValidFor(subject, extremes.lowest))
+            {
+                for (const auto [which, label] :
+                     {std::pair{extremes.lowest, "Lowest"}, std::pair{extremes.highest, "Highest"}})
+                {
+                    const bool selected = rule.subject == subject && rule.predicate == which;
+                    if (CascadeItem(label, selected))
+                    {
+                        rule.subject = subject;
+                        rule.predicate = which;
+                        changed = true;
+                    }
+                    if (Im::IsItemHovered(0))
+                        Im::SetTooltip("%s", std::string(ft::Describe(which)).c_str());
+                }
+                Im::Separator();
+            }
 
             const auto offer = [&](ft::PredicateKind which) {
                 for (const float preset : PresetsFor(which))

@@ -192,6 +192,7 @@ bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base)
     return true;
 }
 std::string Fmt(const char *fmt, double value);
+float GameSetting(const char *name, float vanilla);
 
 } // namespace
 
@@ -445,11 +446,33 @@ void LogActiveEffects(RE::Actor *actor, const char *when)
 // hostile effects running on them by the kind of damage, the poison and
 // the disease by their spell type, the paralysis and the rest by the
 // actor's own flags. One walk of the effect list, a handful of flag reads.
+// The share of a blow the actor's armour turns away, as the engine works it
+// out: the rating it shows, plus a hidden 25 for each of the four main
+// pieces worn, times the scaling factor, capped. The Character sheet's
+// Resist Damage row does the same sum.
+float DamageReduction(RE::Actor *actor)
+{
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    if (!owner)
+        return 0.0f;
+    float rating = owner->GetActorValue(RE::ActorValue::kDamageResist);
+    using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
+    for (const Slot slot : {Slot::kBody, Slot::kHead, Slot::kHands, Slot::kFeet})
+    {
+        if (actor->GetWornArmor(slot))
+            rating += 25.0f;
+    }
+    static const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
+    static const float cap = GameSetting("fMaxArmorRating", 80.0f) / 100.0f;
+    return (std::min)(cap, (std::max)(0.0f, rating * scale));
+}
+
 ft::ActorTraits ReadTraits(RE::Actor *actor)
 {
     ft::ActorTraits traits;
     if (!actor)
         return traits;
+    traits.armor = DamageReduction(actor);
     using Archetype = RE::EffectArchetypes::ArchetypeID;
 
     if (auto *target = actor->AsMagicTarget())

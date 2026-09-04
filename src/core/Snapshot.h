@@ -43,6 +43,10 @@ struct Stat
 struct ActorTraits
 {
     std::uint32_t status{0};
+    // The share of physical damage the actor's armour turns away, 0 to
+    // 0.8: the rating with the hidden per-piece bonus, scaled and capped as
+    // the engine does it.
+    float armor{0.0f};
 
     [[nodiscard]] constexpr bool Has(StatusKind kind) const noexcept
     {
