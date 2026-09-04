@@ -407,19 +407,7 @@ std::string HandsState(RE::Actor *actor)
            " R=" + name(actor->GetEquippedObject(false));
 }
 
-// Out of combat the engine's own equip-best wants a weapon in the right
-// hand, and a pinned item holds against it by the prevent-removal flag. A
-// spell has no flag: put back, it is taken out again on the engine's next
-// update, and each readying plays the draw -- Jenassa, Flames pinned in
-// both hands, drawing a sword over and over after the fight (17:31). So a
-// spell is put back a limited number of times in a row; after that the
-// watchdog stands down until the spell is seen in hand again or a fight
-// starts, where the score hook keeps the promise instead. Keyed by
-// follower and spell; consecutive, so a spell put back once and kept is
-// never charged for it.
-std::unordered_map<std::uint64_t, int> g_spellReadies;
-constexpr int kSpellReadyLimit = 2;
-
+// A follower and a form, as one key.
 std::uint64_t ReadyKey(const RE::Actor *actor, const RE::TESForm *form)
 {
     return (static_cast<std::uint64_t>(actor->GetFormID()) << 32) | form->GetFormID();
@@ -480,9 +468,7 @@ void RestorePinsAfterFight(RE::Actor *actor, std::vector<Pin> &pins, const std::
     pins = before;
     if (!changed)
         return;
-    // A fresh start for the spell watchdog and the refusal log: the book is
-    // what it was, and anything they gave up on may hold now.
-    std::erase_if(g_spellReadies, [&](const auto &entry) { return (entry.first >> 32) == actor->GetFormID(); });
+    // A fresh start for the refusal log: the book is what it was.
     g_refusedLogged.clear();
     actor->Update3DModel();
 }
@@ -535,31 +521,19 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             // Spells first: a SpellItem is a bound object too, and the
             // inventory branch dropped every spell pin as "no longer
             // carried" (00:26, Close Wounds).
+            // A spell has no prevent-removal flag. Out of combat the engine's
+            // equip-best put a sword over pinned Flames every update, and
+            // this put it back every tick -- the draw loop of 17:31. The
+            // equip detour refuses that sword now; if this line repeats, the
+            // detour has missed a path, and the hand state beside it says
+            // which.
             if (form->Is(RE::FormType::Spell))
             {
-                const std::uint64_t key = ReadyKey(actor, form);
-                if (fighting || EquippedIn(actor, form, hands))
+                if (!fighting && !EquippedIn(actor, form, hands))
                 {
-                    g_spellReadies.erase(key);
-                }
-                else
-                {
-                    int &readies = g_spellReadies[key];
-                    if (readies < kSpellReadyLimit)
-                    {
-                        ++readies;
-                        logger::info("{} put away pinned {} -- readying it again ({} of {}) -- {}", Describe(actor),
-                                     form->GetName() ? form->GetName() : "?", readies, kSpellReadyLimit,
-                                     HandsState(actor));
-                        EquipPinned(actor, form, hands, false);
-                    }
-                    else if (readies == kSpellReadyLimit)
-                    {
-                        ++readies;
-                        logger::warn("{} the engine keeps taking pinned {} out of the hand out of combat -- "
-                                     "leaving it until the next fight -- {}",
-                                     Describe(actor), form->GetName() ? form->GetName() : "?", HandsState(actor));
-                    }
+                    logger::info("{} put away pinned {} -- readying it again -- {}", Describe(actor),
+                                 form->GetName() ? form->GetName() : "?", HandsState(actor));
+                    EquipPinned(actor, form, hands, false);
                 }
             }
             else if (auto *object = form->As<RE::TESBoundObject>())

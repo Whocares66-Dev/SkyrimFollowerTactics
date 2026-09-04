@@ -53,9 +53,9 @@ in `docs/PLAN.md`.
 - **The equip detour, in play.** `RefuseEquipsAgainstPins` refuses the
   engine's own `EquipObject` calls that would break a pin (the sword it
   puts in the right hand when a fight ends, over pinned Flames). Verify
-  the log shows the refusal and Jenassa keeps Flames; then decide whether
-  the watchdog's out-of-combat spell case, and its stand-down after two
-  tries, can go. `EquipSpell` (37939 / 38895) could be detoured the same
+  the log shows the refusal and Jenassa keeps Flames. The watchdog's
+  two-try stand-down for spells is gone: a repeating "readying it again"
+  line now means the detour missed a path, and prints the hand state. `EquipSpell` (37939 / 38895) could be detoured the same
   way to hold a pinned hand against the AI's spell choice, but a CastSpell
   rule's package equips through it too and must be exempted (the lease
   knows the spell), or tactics stop being unlimited.
