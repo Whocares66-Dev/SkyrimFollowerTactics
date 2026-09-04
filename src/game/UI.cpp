@@ -1794,7 +1794,10 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             if (modifiers)
             {
                 Im::TableSetColumnIndex(2);
-                Im::Text("%s", row.modifiers.c_str());
+                if (row.modifiersApplied)
+                    Im::Text("%s", row.modifiers.c_str());
+                else
+                    Im::TextDisabled("%s", row.modifiers.c_str());
                 if (!row.note.empty() && Im::IsItemHovered(0))
                     NoteTooltip(row.note);
             }

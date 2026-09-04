@@ -1262,15 +1262,13 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
 
     const auto skill = [&](SheetSection &s, const Skill &k) {
         SheetRow row = Row(k.label, Fmt("%.0f", av(k.value)));
-        // What the values hold, and whether anything on this actor reads
-        // them: a follower has Fortify One-handed +35 on the value and no
-        // perk to turn it into damage, so it is not shown as a bonus.
-        const float mRaw = k.mod.effect ? av(k.mod.value) : 0.0f;
-        const float pRaw = k.power.effect ? av(k.power.value) : 0.0f;
-        const bool mApplies = ReadsSkillMods(actor);
-        const bool pApplies = ReadsSkillPowerMods(actor);
-        const float m = mApplies ? mRaw : 0.0f;
-        const float p = pApplies ? pRaw : 0.0f;
+        // What the values hold. Whether anything on this actor reads them
+        // is the row's flag: a follower has Fortify One-handed +35 on the
+        // value and no perk to turn it into damage, so the bonus is shown
+        // greyed, with "Not applied" for its hover.
+        const float m = k.mod.effect ? av(k.mod.value) : 0.0f;
+        const float p = k.power.effect ? av(k.power.value) : 0.0f;
+        row.modifiersApplied = (m == 0.0f || ReadsSkillMods(actor)) && (p == 0.0f || ReadsSkillPowerMods(actor));
 
         // Every modifier is a signed change from normal: "+90% damage",
         // "-17% cost". Power first, then the other, as the two read best.
@@ -1310,18 +1308,15 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                 row.note += (row.note.empty() ? "" : "\n") + std::string("Perks: ") + Fmt("%+.0f%% ", mod.sign * rest) +
                             mod.effect;
         };
-        bySource(k.mod, m);
-        bySource(k.power, p);
-        const auto unread = [&](const Modifier &mod, float raw, const char *from) {
-            if (!mod.effect || raw == 0.0f)
-                return;
-            row.note += (row.note.empty() ? "" : "\n") + std::string("Fortify from ") + from + " " + Fmt("%+.0f", raw) +
-                        ": not applied, nothing on this follower reads it";
-        };
-        if (!mApplies)
-            unread(k.mod, mRaw, "enchantments");
-        if (!pApplies)
-            unread(k.power, pRaw, "potions");
+        if (row.modifiersApplied)
+        {
+            bySource(k.mod, m);
+            bySource(k.power, p);
+        }
+        else
+        {
+            row.note = "Not applied";
+        }
 
         row.detail = OwnedPerks(actor, k.value);
         s.rows.push_back(std::move(row));

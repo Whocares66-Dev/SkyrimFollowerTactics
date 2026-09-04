@@ -82,7 +82,11 @@ struct SheetRow
     std::string value;
     unsigned icon{0};      // a Font Awesome codepoint drawn instead of the value, when set
     std::string modifiers; // Skills tab only: "+35% damage, -17% cost"
-    std::string note;      // tooltip on the modifiers; empty for none
+    // False when the modifiers are on the value but nothing on this actor
+    // reads them -- a follower's Fortify One-handed. Drawn greyed, and the
+    // hover says so.
+    bool modifiersApplied{true};
+    std::string note; // tooltip on the modifiers; empty for none
     // Rows revealed by expanding this one: a skill's perks. Empty means the
     // row is a plain line and cannot be opened.
     std::vector<SheetRow> detail;
