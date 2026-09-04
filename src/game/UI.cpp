@@ -722,17 +722,20 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     return base + " (not known)";
 }
 
-// One leaf of an equip menu: a thing she has, pinned in `hand` when
-// chosen. A spell above her skill is listed but cannot be chosen: the AI
-// would never pick it, so a pin on it is a promise the rule could not keep.
-bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const std::string &name, Hand hand,
-               bool unusable)
+// Is this spell offered for pinning in this hand? Not a shout or a power,
+// which take no hand; fits the hand; and not above the follower's skill,
+// which the combat AI would never choose -- so a pin on it would be a
+// promise unkept, and it is left out rather than listed and greyed.
+bool Offered(const MagicEntry &entry, Hand hand)
 {
-    if (unusable)
-    {
-        Im::MenuItem((name + " (above their skill)").c_str(), nullptr, false, false);
-        return false;
-    }
+    return entry.category != MagicCategory::Shouts && entry.category != MagicCategory::Powers &&
+           Fits(entry.grip, hand, true) && !entry.aboveSkill;
+}
+
+// One leaf of an equip menu: a thing the follower has, pinned in `hand`
+// when chosen.
+bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const std::string &name, Hand hand)
+{
     const bool selected = act.kind == action && act.form == form && act.hand == hand;
     if (!CascadeItem(name.c_str(), selected))
         return false;
@@ -775,7 +778,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             if (item.category != category)
                 continue;
             any = true;
-            if (EquipLeaf(act, action, item.form, item.name, Hand::None, false))
+            if (EquipLeaf(act, action, item.form, item.name, Hand::None))
                 changed = true;
         }
         if (!any)
@@ -790,8 +793,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         if (spell)
         {
             for (const auto &entry : view.magic)
-                any = any || (entry.category != MagicCategory::Shouts && entry.category != MagicCategory::Powers &&
-                              Fits(entry.grip, hand, true));
+                any = any || Offered(entry, hand);
         }
         else
         {
@@ -809,10 +811,9 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         {
             for (const auto &entry : view.magic)
             {
-                if (entry.category == MagicCategory::Shouts || entry.category == MagicCategory::Powers ||
-                    !Fits(entry.grip, hand, true))
+                if (!Offered(entry, hand))
                     continue;
-                if (EquipLeaf(act, action, entry.form, entry.name, hand, entry.aboveSkill))
+                if (EquipLeaf(act, action, entry.form, entry.name, hand))
                     changed = true;
             }
         }
@@ -822,7 +823,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             {
                 if (item.category != ItemCategory::Weapons || !Fits(item.grip, hand, false))
                     continue;
-                if (EquipLeaf(act, action, item.form, item.name, hand, false))
+                if (EquipLeaf(act, action, item.form, item.name, hand))
                     changed = true;
             }
         }
