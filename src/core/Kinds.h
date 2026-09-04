@@ -58,4 +58,44 @@ enum class ArmorBand : std::uint8_t
     return ArmorBand::High;
 }
 
+// A kind of damage: what a resistance is against, what an attack was made
+// with. Physical has no resistance value -- armour is its own condition --
+// and disease is not a way of attacking.
+enum class DamageKind : std::uint8_t
+{
+    Physical,
+    Magic,
+    Fire,
+    Frost,
+    Shock,
+    Poison,
+    Disease,
+
+    COUNT
+};
+
+// How resistant, from the value the game holds: a weakness is below zero,
+// and on an NPC nothing caps it, so 100 is true immunity. Vanilla values
+// sit at 25, 33, 50 and 100 (docs/CONDITIONS.md 4).
+enum class ResistBand : std::uint8_t
+{
+    Weak,
+    Normal,
+    High,
+    Immune,
+
+    COUNT
+};
+
+[[nodiscard]] constexpr ResistBand ResistBandOf(float resistance) noexcept
+{
+    if (resistance < 0.0f)
+        return ResistBand::Weak;
+    if (resistance < 50.0f)
+        return ResistBand::Normal;
+    if (resistance < 100.0f)
+        return ResistBand::High;
+    return ResistBand::Immune;
+}
+
 } // namespace ft

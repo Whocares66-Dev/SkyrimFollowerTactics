@@ -16,6 +16,16 @@ ArmorBand BandArg(const Rule &r)
     return static_cast<ArmorBand>(static_cast<int>(r.conditionArg + 0.5f));
 }
 
+ResistBand ResistArg(const Rule &r)
+{
+    return static_cast<ResistBand>(static_cast<int>(r.conditionArg + 0.5f));
+}
+
+bool ResistsAs(const ActorTraits &t, const Rule &r)
+{
+    return ResistBandOf(t.Resist(r.damageKind)) == ResistArg(r);
+}
+
 bool EnemySatisfies(const EnemyView &e, const Rule &r)
 {
     switch (r.predicate)
@@ -28,6 +38,8 @@ bool EnemySatisfies(const EnemyView &e, const Rule &r)
         return true; // the group's extreme: everyone qualifies, the selection binds the one
     case PredicateKind::Armor:
         return BandOf(e.traits.armor) == BandArg(r);
+    case PredicateKind::Resistance:
+        return ResistsAs(e.traits, r);
     case PredicateKind::HealthPctBelow:
         return e.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
@@ -53,6 +65,8 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
         return true;
     case PredicateKind::Armor:
         return BandOf(a.traits.armor) == BandArg(r);
+    case PredicateKind::Resistance:
+        return ResistsAs(a.traits, r);
     case PredicateKind::HealthPctBelow:
         return a.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
@@ -247,6 +261,9 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::Armor:
         held = BandOf(s.traits.armor) == BandArg(r);
         break;
+    case PredicateKind::Resistance:
+        held = ResistsAs(s.traits, r);
+        break;
     default:
         break;
     }
@@ -278,6 +295,9 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
         break;
     case PredicateKind::Armor:
         held = BandOf(s.playerTraits.armor) == BandArg(r);
+        break;
+    case PredicateKind::Resistance:
+        held = ResistsAs(s.playerTraits, r);
         break;
     default:
         break;

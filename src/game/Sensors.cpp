@@ -473,6 +473,15 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     if (!actor)
         return traits;
     traits.armor = DamageReduction(actor);
+    if (auto *owner = actor->AsActorValueOwner())
+    {
+        traits.SetResist(ft::DamageKind::Magic, owner->GetActorValue(RE::ActorValue::kResistMagic));
+        traits.SetResist(ft::DamageKind::Fire, owner->GetActorValue(RE::ActorValue::kResistFire));
+        traits.SetResist(ft::DamageKind::Frost, owner->GetActorValue(RE::ActorValue::kResistFrost));
+        traits.SetResist(ft::DamageKind::Shock, owner->GetActorValue(RE::ActorValue::kResistShock));
+        traits.SetResist(ft::DamageKind::Poison, owner->GetActorValue(RE::ActorValue::kPoisonResist));
+        traits.SetResist(ft::DamageKind::Disease, owner->GetActorValue(RE::ActorValue::kResistDisease));
+    }
     using Archetype = RE::EffectArchetypes::ArchetypeID;
 
     if (auto *target = actor->AsMagicTarget())

@@ -131,7 +131,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     // A status and the armour are read off every actor the snapshot
     // carries, so they are answerable about any of them. The extremes are
     // of a group.
-    if (predicate == PredicateKind::Status || predicate == PredicateKind::Armor)
+    if (predicate == PredicateKind::Status || predicate == PredicateKind::Armor ||
+        predicate == PredicateKind::Resistance)
         return true;
     if (IsExtreme(predicate))
         return subject == SubjectKind::Ally || subject == SubjectKind::Enemy;

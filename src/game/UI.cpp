@@ -222,6 +222,8 @@ std::string ArgumentText(ft::PredicateKind predicate, float value)
         return ">= " + std::to_string(static_cast<int>(value));
     case ft::ArgumentKind::ArmorBand:
         return std::string(ft::DisplayName(static_cast<ft::ArmorBand>(static_cast<int>(value + 0.5f))));
+    case ft::ArgumentKind::ResistBand:
+        return std::string(ft::DisplayName(static_cast<ft::ResistBand>(static_cast<int>(value + 0.5f))));
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -249,6 +251,8 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
         return {2.0f, 3.0f, 4.0f, 5.0f};
     case ft::ArgumentKind::ArmorBand:
         return {0.0f, 1.0f, 2.0f};
+    case ft::ArgumentKind::ResistBand:
+        return {0.0f, 1.0f, 2.0f, 3.0f};
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -269,6 +273,12 @@ std::string ConditionText(const ft::Rule &r, const std::string &playerName)
         return text;
     }
     text += ft::DisplayName(r.predicate);
+    // A resistance names its kind: "Enemy Resistance Fire High".
+    if (r.predicate == ft::PredicateKind::Resistance)
+    {
+        text += ' ';
+        text += ft::DisplayName(r.damageKind);
+    }
 
     if (const std::string arg = ArgumentText(r.predicate, r.conditionArg); !arg.empty())
         text += ' ' + arg;
@@ -599,6 +609,38 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
 
             const auto presets = PresetsFor(predicate);
             const std::string predicateName(ft::DisplayName(predicate));
+
+            // A resistance: the kinds of damage under "Resistance", the
+            // bands under each.
+            if (predicate == ft::PredicateKind::Resistance)
+            {
+                if (!BeginCascade(predicateName.c_str()))
+                    continue;
+                for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::DamageKind::COUNT); ++ki)
+                {
+                    const auto kind = static_cast<ft::DamageKind>(ki);
+                    if (kind == ft::DamageKind::Physical)
+                        continue; // armour is the physical answer, and its own heading
+                    if (!BeginCascade(std::string(ft::DisplayName(kind)).c_str()))
+                        continue;
+                    for (const float preset : PresetsFor(predicate))
+                    {
+                        const bool selected = rule.subject == subject && rule.predicate == predicate &&
+                                              rule.damageKind == kind && std::abs(rule.conditionArg - preset) < 0.001f;
+                        if (CascadeItem(ArgumentText(predicate, preset).c_str(), selected))
+                        {
+                            rule.subject = subject;
+                            rule.predicate = predicate;
+                            rule.damageKind = kind;
+                            rule.conditionArg = preset;
+                            changed = true;
+                        }
+                    }
+                    Im::EndMenu();
+                }
+                Im::EndMenu();
+                continue;
+            }
 
             // A status: the kinds, one leaf each, under "Status".
             if (predicate == ft::PredicateKind::Status)

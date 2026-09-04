@@ -66,6 +66,9 @@ enum class PredicateKind : std::uint8_t
     // The subject's armour is in the band conditionArg names (an ArmorBand,
     // as a number). Any subject.
     Armor,
+    // The subject's resistance to Rule::damageKind is in the band
+    // conditionArg names (a ResistBand, as a number). Any subject.
+    Resistance,
     // The group's extremes: true of the group when it has anyone, binding
     // the member with the least or the most. Ally and Enemy only.
     HealthLowest,
@@ -156,6 +159,9 @@ struct Rule
     // Which status, for PredicateKind::Status. Ignored by every other
     // predicate.
     StatusKind statusKind{StatusKind::Poisoned};
+    // Which kind of damage, for Resistance. Ignored by every other
+    // predicate.
+    DamageKind damageKind{DamageKind::Fire};
 
     ActionTargetKind actionTarget{ActionTargetKind::ConditionSubject};
 

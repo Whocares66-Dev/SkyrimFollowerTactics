@@ -729,6 +729,58 @@ TEST_CASE("armour is asked by band, and the group's extremes bind the least and 
     REQUIRE(ExtremesOf(PredicateKind::InCombat).lowest == PredicateKind::InCombat);
 }
 
+TEST_CASE("resistance is asked by kind and band", "[resistance]")
+{
+    // The bands: a weakness, nothing to speak of, half or more, immune.
+    REQUIRE(ResistBandOf(-50.0f) == ResistBand::Weak);
+    REQUIRE(ResistBandOf(0.0f) == ResistBand::Normal);
+    REQUIRE(ResistBandOf(25.0f) == ResistBand::Normal);
+    REQUIRE(ResistBandOf(50.0f) == ResistBand::High);
+    REQUIRE(ResistBandOf(99.0f) == ResistBand::High);
+    REQUIRE(ResistBandOf(100.0f) == ResistBand::Immune);
+
+    // A flame atronach: immune to fire, weak to frost.
+    Snapshot s = Healthy();
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies[0].traits.SetResist(DamageKind::Fire, 100.0f);
+    s.enemies[0].traits.SetResist(DamageKind::Frost, -33.0f);
+
+    Rule r;
+    r.subject = SubjectKind::Enemy;
+    r.predicate = PredicateKind::Resistance;
+    r.damageKind = DamageKind::Fire;
+    r.conditionArg = static_cast<float>(ResistBand::Immune);
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+    r.damageKind = DamageKind::Frost;
+    r.conditionArg = static_cast<float>(ResistBand::Weak);
+    REQUIRE(EvaluateCondition(r, s).ok);
+    r.damageKind = DamageKind::Shock;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    r.conditionArg = static_cast<float>(ResistBand::Normal);
+    REQUIRE(EvaluateCondition(r, s).ok);
+
+    // The follower, a Nord: frost half off.
+    r.subject = SubjectKind::Self;
+    r.damageKind = DamageKind::Frost;
+    r.conditionArg = static_cast<float>(ResistBand::High);
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    s.traits.SetResist(DamageKind::Frost, 50.0f);
+    REQUIRE(EvaluateCondition(r, s).ok);
+
+    // Everyone can be asked; every kind and band has a name.
+    for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
+        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::Resistance));
+    for (std::size_t i = 0; i < static_cast<std::size_t>(DamageKind::COUNT); ++i)
+    {
+        const auto v = static_cast<DamageKind>(i);
+        REQUIRE(IsWireName(WireName(v)));
+        REQUIRE(DamageFromWireName(WireName(v)) == v);
+        REQUIRE(DisplayName(v).size() > 0);
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(ResistBand::COUNT); ++i)
+        REQUIRE(DisplayName(static_cast<ResistBand>(i)).size() > 0);
+}
+
 TEST_CASE("above and below are the same number from either side", "[evaluator]")
 {
     Rule r;

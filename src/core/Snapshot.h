@@ -13,6 +13,7 @@
 #include "Loadout.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -47,6 +48,20 @@ struct ActorTraits
     // 0.8: the rating with the hidden per-piece bonus, scaled and capped as
     // the engine does it.
     float armor{0.0f};
+    // The resistance to each kind of damage, as the game holds it: percent,
+    // negative for a weakness, uncapped. Physical stays 0; armour is the
+    // physical answer.
+    std::array<float, static_cast<std::size_t>(DamageKind::COUNT)> resist{};
+
+    [[nodiscard]] constexpr float Resist(DamageKind kind) const noexcept
+    {
+        return resist[static_cast<std::size_t>(kind)];
+    }
+
+    constexpr void SetResist(DamageKind kind, float value) noexcept
+    {
+        resist[static_cast<std::size_t>(kind)] = value;
+    }
 
     [[nodiscard]] constexpr bool Has(StatusKind kind) const noexcept
     {

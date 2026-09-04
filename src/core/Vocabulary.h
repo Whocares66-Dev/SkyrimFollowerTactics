@@ -40,6 +40,7 @@ namespace ft
 [[nodiscard]] std::string_view WireName(ActionKind v) noexcept;
 [[nodiscard]] std::string_view WireName(Hand v) noexcept;
 [[nodiscard]] std::string_view WireName(StatusKind v) noexcept;
+[[nodiscard]] std::string_view WireName(DamageKind v) noexcept;
 
 // Parsing is fallible on purpose. A profile written by a NEWER version of the
 // mod will name things this build has never heard of, and the right response is
@@ -51,6 +52,7 @@ namespace ft
 [[nodiscard]] std::optional<ActionKind> ActionFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<Hand> HandFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<StatusKind> StatusFromWireName(std::string_view s) noexcept;
+[[nodiscard]] std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept;
 
 // ASCII letters and digits only, starting with a letter. Nothing else
 // round-trips safely through a JSON file, a forum post and a filesystem -- and,
@@ -67,6 +69,8 @@ namespace ft
 [[nodiscard]] std::string_view DisplayName(Hand v) noexcept;
 [[nodiscard]] std::string_view DisplayName(StatusKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(ArmorBand v) noexcept;
+[[nodiscard]] std::string_view DisplayName(DamageKind v) noexcept;
+[[nodiscard]] std::string_view DisplayName(ResistBand v) noexcept;
 
 // One line of help, for a tooltip. Kept beside the names so a new predicate
 // cannot be added without someone deciding what it means to a player.
@@ -83,11 +87,12 @@ namespace ft
 // hand-edited profile is loaded.
 enum class ArgumentKind : std::uint8_t
 {
-    None,     // the predicate takes no argument
-    Percent,  // 0.0 to 1.0, shown as 0-100%
-    Distance, // game units
-    Count,    // a whole number of actors
-    ArmorBand // an ArmorBand, as a number: Low, Medium, High
+    None,       // the predicate takes no argument
+    Percent,    // 0.0 to 1.0, shown as 0-100%
+    Distance,   // game units
+    Count,      // a whole number of actors
+    ArmorBand,  // an ArmorBand, as a number: Low, Medium, High
+    ResistBand, // a ResistBand, as a number: Weak, Normal, High, Immune
 };
 
 [[nodiscard]] ArgumentKind ArgumentFor(PredicateKind predicate) noexcept;

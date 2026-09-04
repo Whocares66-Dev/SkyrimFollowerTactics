@@ -63,7 +63,7 @@ constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
     {SubjectKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 19> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 20> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
@@ -76,6 +76,7 @@ constexpr std::array<Entry<PredicateKind>, 19> kPredicates{{
     {PredicateKind::CountAtLeast, "count-at-least", "Count"},
     {PredicateKind::Status, "status", "Status"},
     {PredicateKind::Armor, "armor", "Armor"},
+    {PredicateKind::Resistance, "resistance", "Resistance"},
     {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
     {PredicateKind::HealthHighest, "health-highest", "Health highest"},
     {PredicateKind::ArmorLowest, "armor-lowest", "Armor lowest"},
@@ -140,6 +141,23 @@ constexpr std::array<Entry<StatusKind>, 14> kStatuses{{
     {StatusKind::Sneaking, "sneaking", "Sneaking"},
 }};
 
+constexpr std::array<Entry<DamageKind>, 7> kDamageKinds{{
+    {DamageKind::Physical, "physical", "Physical"},
+    {DamageKind::Magic, "magic", "Magic"},
+    {DamageKind::Fire, "fire", "Fire"},
+    {DamageKind::Frost, "frost", "Frost"},
+    {DamageKind::Shock, "shock", "Shock"},
+    {DamageKind::Poison, "poison", "Poison"},
+    {DamageKind::Disease, "disease", "Disease"},
+}};
+
+constexpr std::array<Entry<ResistBand>, 4> kResistBands{{
+    {ResistBand::Weak, "weak", "Weak"},
+    {ResistBand::Normal, "normal", "Normal"},
+    {ResistBand::High, "high", "High"},
+    {ResistBand::Immune, "immune", "Immune"},
+}};
+
 constexpr std::array<Entry<ArmorBand>, 3> kArmorBands{{
     {ArmorBand::Low, "low", "Low"},
     {ArmorBand::Medium, "medium", "Medium"},
@@ -154,6 +172,8 @@ static_assert(kActionTargets.size() == static_cast<std::size_t>(ActionTargetKind
 static_assert(kActions.size() == static_cast<std::size_t>(ActionKind::COUNT));
 static_assert(kStatuses.size() == static_cast<std::size_t>(StatusKind::COUNT));
 static_assert(kArmorBands.size() == static_cast<std::size_t>(ArmorBand::COUNT));
+static_assert(kDamageKinds.size() == static_cast<std::size_t>(DamageKind::COUNT));
+static_assert(kResistBands.size() == static_cast<std::size_t>(ResistBand::COUNT));
 
 } // namespace
 
@@ -181,6 +201,10 @@ std::string_view WireName(StatusKind v) noexcept
 {
     return LookupWire(kStatuses, v);
 }
+std::string_view WireName(DamageKind v) noexcept
+{
+    return LookupWire(kDamageKinds, v);
+}
 
 std::optional<SubjectKind> SubjectFromWireName(std::string_view s) noexcept
 {
@@ -205,6 +229,10 @@ std::optional<Hand> HandFromWireName(std::string_view s) noexcept
 std::optional<StatusKind> StatusFromWireName(std::string_view s) noexcept
 {
     return Parse(kStatuses, s);
+}
+std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept
+{
+    return Parse(kDamageKinds, s);
 }
 
 bool IsWireName(std::string_view s) noexcept
@@ -269,6 +297,14 @@ std::string_view DisplayName(ArmorBand v) noexcept
 {
     return LookupDisplay(kArmorBands, v);
 }
+std::string_view DisplayName(DamageKind v) noexcept
+{
+    return LookupDisplay(kDamageKinds, v);
+}
+std::string_view DisplayName(ResistBand v) noexcept
+{
+    return LookupDisplay(kResistBands, v);
+}
 
 ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 {
@@ -290,6 +326,8 @@ ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 
     case PredicateKind::Armor:
         return ArgumentKind::ArmorBand;
+    case PredicateKind::Resistance:
+        return ArgumentKind::ResistBand;
 
     case PredicateKind::Any:
     case PredicateKind::InBleedout:
@@ -336,6 +374,8 @@ std::string_view Describe(PredicateKind v) noexcept
         return "In this state right now.";
     case PredicateKind::Armor:
         return "How much of a blow the armour turns away: under a quarter, up to half, or more.";
+    case PredicateKind::Resistance:
+        return "Resistance to that kind of damage: a weakness, none to speak of, half or more, or immune.";
     case PredicateKind::HealthLowest:
         return "The one with the least health.";
     case PredicateKind::HealthHighest:
