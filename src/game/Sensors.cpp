@@ -164,12 +164,12 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
 
 } // namespace
 
-// "3 min 24 s", "1 h 5 min", "12 s"; "constant" for an effect with no
+// "3 min 24 s", "1 h 5 min", "12 s"; nothing for an effect with no
 // duration, an ability's or an enchantment's.
 std::string RemainingText(float seconds)
 {
     if (seconds < 0.0f)
-        return "constant";
+        return {};
     const int total = static_cast<int>(std::lround(seconds));
     const int hours = total / 3600;
     const int minutes = (total % 3600) / 60;

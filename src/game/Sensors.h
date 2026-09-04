@@ -64,8 +64,8 @@ struct EffectRow
 {
     std::string name;
     float magnitude{0.0f};
-    float remaining{-1.0f}; // seconds left; below zero for a constant effect
-    std::string remainingText;
+    float remaining{-1.0f};    // seconds left; below zero for one with no duration
+    std::string remainingText; // empty for one with no duration
     std::string source;
 };
 

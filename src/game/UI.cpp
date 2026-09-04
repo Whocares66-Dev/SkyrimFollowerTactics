@@ -2830,10 +2830,7 @@ void DrawEffects(const FollowerView &view)
             TextRightInCell(num);
         }
         Im::TableSetColumnIndex(2);
-        if (row.remaining < 0.0f)
-            Im::TextDisabled("%s", row.remainingText.c_str());
-        else
-            Im::Text("%s", row.remainingText.c_str());
+        Im::Text("%s", row.remainingText.c_str());
         Im::TableSetColumnIndex(3);
         Im::Text("%s", row.source.c_str());
     }
