@@ -295,6 +295,7 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     v.skills = BuildSkillSheet(actor);
     v.inventory = ScanInventory(actor);
     v.magic = ScanMagic(actor);
+    v.effects = ScanActiveEffects(actor);
     MarkPins(actor, v.inventory, v.magic);
     v.combatStyle = BuildCombatStyleSheet(actor);
 }

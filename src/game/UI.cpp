@@ -2779,6 +2779,68 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
     }
 }
 
+// The Effects tab: what is running on the follower, as the game's own
+// Active Effects list shows it, with what is left of each and where it
+// comes from. Read on the tick, so with the clock frozen behind the panel
+// the times stand still, as they do in the game's own menu.
+void DrawEffects(const FollowerView &view)
+{
+    Im::Spacing();
+    if (view.effects.empty())
+    {
+        Im::SetCursorPosX(Im::GetCursorPosX() + kCellPadX);
+        Im::TextDisabled("Nothing is running on this follower.");
+        return;
+    }
+
+    const float gutter = kCellPadX * 2.0f;
+    float magnitudeWidth = TextWidth("Magnitude");
+    float remainingWidth = TextWidth("Remaining");
+    for (const auto &row : view.effects)
+    {
+        char num[32];
+        std::snprintf(num, sizeof(num), "%.0f", row.magnitude);
+        magnitudeWidth = (std::max)(magnitudeWidth, TextWidth(num));
+        remainingWidth = (std::max)(remainingWidth, TextWidth(row.remainingText));
+    }
+
+    constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
+    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
+    if (!Im::BeginTable("effects", 4, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+    {
+        Im::PopStyleVar(1);
+        return;
+    }
+    Im::TableSetupColumn("Effect", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+    Im::TableSetupColumn("Magnitude", Im::ImGuiTableColumnFlags_WidthFixed, magnitudeWidth + gutter, 0);
+    Im::TableSetupColumn("Remaining", Im::ImGuiTableColumnFlags_WidthFixed, remainingWidth + gutter, 0);
+    Im::TableSetupColumn("Source", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+    Im::TableHeadersRow();
+
+    for (const auto &row : view.effects)
+    {
+        Im::TableNextRow(0, 0.0f);
+        Im::TableSetColumnIndex(0);
+        Im::Text("%s", row.name.c_str());
+        Im::TableSetColumnIndex(1);
+        if (row.magnitude != 0.0f)
+        {
+            char num[32];
+            std::snprintf(num, sizeof(num), "%.0f", row.magnitude);
+            TextRightInCell(num);
+        }
+        Im::TableSetColumnIndex(2);
+        if (row.remaining < 0.0f)
+            Im::TextDisabled("%s", row.remainingText.c_str());
+        else
+            Im::Text("%s", row.remainingText.c_str());
+        Im::TableSetColumnIndex(3);
+        Im::Text("%s", row.source.c_str());
+    }
+    Im::EndTable();
+    Im::PopStyleVar(1);
+}
+
 void DrawMagic(const FollowerView &view)
 {
     MagicTabState &state = g_magicTabs[view.id];
@@ -2966,6 +3028,11 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     if (Im::BeginTabItem("Magic"))
     {
         DrawMagic(view);
+        Im::EndTabItem();
+    }
+    if (Im::BeginTabItem("Effects"))
+    {
+        DrawEffects(view);
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Skills"))

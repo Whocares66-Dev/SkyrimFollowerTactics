@@ -56,6 +56,23 @@ struct PotionOption
 // Every drinkable potion she carries, sorted by name. Menu content only.
 [[nodiscard]] std::vector<PotionOption> ScanCarriedPotions(RE::Actor *actor);
 
+// One effect running on the follower, for the Effects tab: the effect as
+// the game names it, its magnitude, what is left of it, and where it comes
+// from -- the spell, the potion, or for an enchantment the worn item that
+// carries it, "Robes of Health" rather than the enchantment record's name.
+struct EffectRow
+{
+    std::string name;
+    float magnitude{0.0f};
+    float remaining{-1.0f}; // seconds left; below zero for a constant effect
+    std::string remainingText;
+    std::string source;
+};
+
+// Everything running on the follower that the game would list, sorted by
+// name. Effects flagged hidden, and ones already run out, are left out.
+[[nodiscard]] std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor);
+
 // Every spell the follower can actually cast, sorted by name.
 //
 // Sorted here rather than in the UI because the order is a property of the

@@ -3,6 +3,7 @@
 #include "game/Pins.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -162,6 +163,87 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
 }
 
 } // namespace
+
+// "3 min 24 s", "1 h 5 min", "12 s"; "constant" for an effect with no
+// duration, an ability's or an enchantment's.
+std::string RemainingText(float seconds)
+{
+    if (seconds < 0.0f)
+        return "constant";
+    const int total = static_cast<int>(std::lround(seconds));
+    const int hours = total / 3600;
+    const int minutes = (total % 3600) / 60;
+    const int secs = total % 60;
+    char buf[32];
+    if (hours > 0)
+        std::snprintf(buf, sizeof(buf), "%d h %d min", hours, minutes);
+    else if (minutes > 0)
+        std::snprintf(buf, sizeof(buf), "%d min %d s", minutes, secs);
+    else
+        std::snprintf(buf, sizeof(buf), "%d s", secs);
+    return buf;
+}
+
+// The worn item carrying this enchantment, by the name the game shows for
+// it, or empty if none is worn.
+std::string WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic)
+{
+    for (const auto &[object, entry] : actor->GetInventory())
+    {
+        if (!object || entry.first <= 0 || !entry.second || !entry.second->IsWorn())
+            continue;
+        if (entry.second->GetEnchantment() != magic)
+            continue;
+        const char *given = entry.second->GetDisplayName();
+        if (given && *given)
+            return given;
+        return object->GetName() ? object->GetName() : "";
+    }
+    return {};
+}
+
+std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
+{
+    std::vector<EffectRow> out;
+    auto *target = actor ? actor->AsMagicTarget() : nullptr;
+    auto *effects = target ? target->GetActiveEffectList() : nullptr;
+    if (!effects)
+        return out;
+
+    for (auto *ae : *effects)
+    {
+        if (!ae || !ae->effect || !ae->effect->baseEffect)
+            continue;
+        const auto *base = ae->effect->baseEffect;
+        // As the game's own Active Effects list: hidden ones stay hidden,
+        // and one that has run out is gone.
+        if (base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
+            continue;
+        if (ae->duration > 0.0f && ae->elapsedSeconds >= ae->duration)
+            continue;
+        const char *name = base->GetName();
+        if (!name || !*name)
+            continue;
+
+        EffectRow row;
+        row.name = name;
+        row.magnitude = ae->magnitude;
+        row.remaining = ae->duration > 0.0f ? ae->duration - ae->elapsedSeconds : -1.0f;
+        row.remainingText = RemainingText(row.remaining);
+        if (ae->spell)
+        {
+            if (ae->spell->As<RE::EnchantmentItem>())
+                row.source = WornSourceOf(actor, ae->spell);
+            if (row.source.empty() && ae->spell->GetName())
+                row.source = ae->spell->GetName();
+        }
+        out.push_back(std::move(row));
+    }
+
+    std::sort(out.begin(), out.end(),
+              [](const EffectRow &a, const EffectRow &b) { return _stricmp(a.name.c_str(), b.name.c_str()) < 0; });
+    return out;
+}
 
 void LogActiveEffects(RE::Actor *actor, const char *when)
 {

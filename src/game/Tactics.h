@@ -77,6 +77,8 @@ struct FollowerView
     std::vector<InventoryItem> inventory;
     // The Magic tab: spells, powers and shouts, sorted by name.
     std::vector<MagicEntry> magic;
+    // The Effects tab: what is running on the follower, sorted by name.
+    std::vector<EffectRow> effects;
     // The Tactics tab's Combat Style section.
     std::vector<SheetSection> combatStyle;
 };
