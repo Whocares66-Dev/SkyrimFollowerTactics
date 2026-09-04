@@ -836,6 +836,34 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
         REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::AttackedBy));
 }
 
+TEST_CASE("a named follower is one ally asked about alone", "[follower]")
+{
+    Snapshot s = Healthy();
+    s.allies.push_back({kPlayerFormID, {100.0f, 100.0f}, 100.0f, false});
+    s.allies.push_back({0x201, {30.0f, 100.0f}, 400.0f, false}); // Lydia, hurt
+    s.allies.push_back({0x202, {90.0f, 100.0f}, 200.0f, false}); // Marcurio, fine
+
+    Rule r;
+    r.subject = SubjectKind::Follower;
+    r.subjectForm = 0x202;
+    r.predicate = PredicateKind::HealthPctBelow;
+    r.conditionArg = 0.5f;
+    // Marcurio is fine, though an ally is hurt: only the named one counts.
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    r.subjectForm = 0x201;
+    REQUIRE(EvaluateCondition(r, s).id == 0x201);
+
+    // Not with us: no match, not an error.
+    r.subjectForm = 0x203;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    // Everything an ally answers, less the count.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::InBleedout));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::Status));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::CountAtLeast));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::HealthLowest));
+}
+
 TEST_CASE("above and below are the same number from either side", "[evaluator]")
 {
     Rule r;

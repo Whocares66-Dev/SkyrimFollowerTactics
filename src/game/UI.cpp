@@ -260,11 +260,25 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
 }
 
 // The whole condition on one line: "Enemy health < 25%".
-std::string ConditionText(const ft::Rule &r, const std::string &playerName)
+// Who a condition is about, by name where it names someone: the player, or
+// one particular follower.
+std::string SubjectText(const ft::Rule &r, const FollowerView &view)
 {
-    std::string text(r.subject == ft::SubjectKind::Player && !playerName.empty()
-                         ? playerName
-                         : std::string(ft::DisplayName(r.subject)));
+    if (r.subject == ft::SubjectKind::Player && !view.playerName.empty())
+        return view.playerName;
+    if (r.subject == ft::SubjectKind::Follower)
+    {
+        for (const auto &peer : view.peers)
+            if (peer.id == r.subjectForm)
+                return peer.name;
+        return "Follower (away)";
+    }
+    return std::string(ft::DisplayName(r.subject));
+}
+
+std::string ConditionText(const ft::Rule &r, const FollowerView &view)
+{
+    std::string text = SubjectText(r, view);
     text += ' ';
     // A status reads as the status: "Self Poisoned", not "Self Status".
     if (r.predicate == ft::PredicateKind::Status)
@@ -539,11 +553,17 @@ bool IsCombatPredicate(ft::PredicateKind p)
            p == ft::PredicateKind::CombatEnds;
 }
 
-bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerName)
+// Is the rule about this subject -- and, for a named follower, this one?
+bool SubjectIs(const ft::Rule &rule, ft::SubjectKind subject, std::uint32_t form)
+{
+    return rule.subject == subject && (subject != ft::SubjectKind::Follower || rule.subjectForm == form);
+}
+
+bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
 {
     bool changed = false;
 
-    CellButtonOpensPopup(id, ConditionText(rule, playerName));
+    CellButtonOpensPopup(id, ConditionText(rule, view));
 
     PushPopupChrome();
     if (!Im::BeginPopup(id, 0))
@@ -553,15 +573,29 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
     }
 
     // Who first: the follower, the party, the enemy, the player by name,
-    // and last the one being fought.
-    constexpr ft::SubjectKind kOrder[] = {ft::SubjectKind::Self, ft::SubjectKind::Ally, ft::SubjectKind::Enemy,
-                                          ft::SubjectKind::Player, ft::SubjectKind::CurrentTarget};
-    for (const ft::SubjectKind subject : kOrder)
+    // the other followers by name, and last the one being fought.
+    struct Heading
     {
-        const std::string subjectName = subject == ft::SubjectKind::Player && !playerName.empty()
-                                            ? playerName
-                                            : std::string(ft::DisplayName(subject));
-        if (!BeginCascade(subjectName.c_str()))
+        ft::SubjectKind subject;
+        std::uint32_t form;
+        std::string label;
+    };
+    std::vector<Heading> headings{
+        {ft::SubjectKind::Self, 0, std::string(ft::DisplayName(ft::SubjectKind::Self))},
+        {ft::SubjectKind::Ally, 0, std::string(ft::DisplayName(ft::SubjectKind::Ally))},
+        {ft::SubjectKind::Enemy, 0, std::string(ft::DisplayName(ft::SubjectKind::Enemy))},
+        {ft::SubjectKind::Player, 0,
+         view.playerName.empty() ? std::string(ft::DisplayName(ft::SubjectKind::Player)) : view.playerName}};
+    for (const auto &peer : view.peers)
+        headings.push_back({ft::SubjectKind::Follower, peer.id, peer.name});
+    headings.push_back(
+        {ft::SubjectKind::CurrentTarget, 0, std::string(ft::DisplayName(ft::SubjectKind::CurrentTarget))});
+
+    for (const Heading &heading : headings)
+    {
+        const ft::SubjectKind subject = heading.subject;
+        const std::uint32_t form = heading.form;
+        if (!BeginCascade(heading.label.c_str()))
             continue;
 
         for (std::size_t pi = 0; pi < static_cast<std::size_t>(ft::PredicateKind::COUNT); ++pi)
@@ -594,10 +628,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
                 {
                     if (!ft::IsPredicateValidFor(subject, phase.predicate))
                         continue;
-                    const bool selected = rule.subject == subject && rule.predicate == phase.predicate;
+                    const bool selected = SubjectIs(rule, subject, form) && rule.predicate == phase.predicate;
                     if (CascadeItem(phase.label, selected))
                     {
                         rule.subject = subject;
+                        rule.subjectForm = form;
                         rule.predicate = phase.predicate;
                         changed = true;
                     }
@@ -626,11 +661,12 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
                         continue;
                     for (const float preset : PresetsFor(predicate))
                     {
-                        const bool selected = rule.subject == subject && rule.predicate == predicate &&
+                        const bool selected = SubjectIs(rule, subject, form) && rule.predicate == predicate &&
                                               rule.damageKind == kind && std::abs(rule.conditionArg - preset) < 0.001f;
                         if (CascadeItem(ArgumentText(predicate, preset).c_str(), selected))
                         {
                             rule.subject = subject;
+                            rule.subjectForm = form;
                             rule.predicate = predicate;
                             rule.damageKind = kind;
                             rule.conditionArg = preset;
@@ -655,10 +691,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
                     if (kind == ft::DamageKind::Disease)
                         continue;
                     const bool selected =
-                        rule.subject == subject && rule.predicate == predicate && rule.damageKind == kind;
+                        SubjectIs(rule, subject, form) && rule.predicate == predicate && rule.damageKind == kind;
                     if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
                     {
                         rule.subject = subject;
+                        rule.subjectForm = form;
                         rule.predicate = predicate;
                         rule.damageKind = kind;
                         changed = true;
@@ -677,10 +714,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
                 {
                     const auto kind = static_cast<ft::StatusKind>(ki);
                     const bool selected =
-                        rule.subject == subject && rule.predicate == predicate && rule.statusKind == kind;
+                        SubjectIs(rule, subject, form) && rule.predicate == predicate && rule.statusKind == kind;
                     if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
                     {
                         rule.subject = subject;
+                        rule.subjectForm = form;
                         rule.predicate = predicate;
                         rule.statusKind = kind;
                         changed = true;
@@ -693,10 +731,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
             if (presets.empty())
             {
                 // No argument -- a leaf.
-                const bool selected = rule.subject == subject && rule.predicate == predicate;
+                const bool selected = SubjectIs(rule, subject, form) && rule.predicate == predicate;
                 if (CascadeItem(predicateName.c_str(), selected))
                 {
                     rule.subject = subject;
+                    rule.subjectForm = form;
                     rule.predicate = predicate;
                     changed = true;
                 }
@@ -716,10 +755,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
                 for (const auto [which, label] :
                      {std::pair{extremes.lowest, "Lowest"}, std::pair{extremes.highest, "Highest"}})
                 {
-                    const bool selected = rule.subject == subject && rule.predicate == which;
+                    const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which;
                     if (CascadeItem(label, selected))
                     {
                         rule.subject = subject;
+                        rule.subjectForm = form;
                         rule.predicate = which;
                         changed = true;
                     }
@@ -732,11 +772,12 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
             const auto offer = [&](ft::PredicateKind which) {
                 for (const float preset : PresetsFor(which))
                 {
-                    const bool selected = rule.subject == subject && rule.predicate == which &&
+                    const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which &&
                                           std::abs(rule.conditionArg - preset) < 0.001f;
                     if (CascadeItem(ArgumentText(which, preset).c_str(), selected))
                     {
                         rule.subject = subject;
+                        rule.subjectForm = form;
                         rule.predicate = which;
                         rule.conditionArg = preset;
                         changed = true;
@@ -1480,7 +1521,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::Text("%zu", i + 1);
 
         Im::TableSetColumnIndex(2);
-        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view.playerName))
+        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view))
             changed = true;
 
         Im::TableSetColumnIndex(3);

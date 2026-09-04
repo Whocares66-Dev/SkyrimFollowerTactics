@@ -181,6 +181,11 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
             return false;
         }
 
+    case SubjectKind::Follower:
+        // One ally, asked about alone: everything an ally answers but the
+        // count, which is a group's.
+        return predicate != PredicateKind::CountAtLeast && IsPredicateValidFor(SubjectKind::Ally, predicate);
+
     case SubjectKind::Enemy:
         switch (predicate)
         {

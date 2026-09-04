@@ -358,6 +358,16 @@ Binding EvaluateCondition(const Rule &r, const Snapshot &s)
         return a ? Match(a->id) : NoMatch();
     }
 
+    case SubjectKind::Follower: {
+        // The one named, if they are with us, and only if they are.
+        for (const auto &a : s.allies)
+        {
+            if (a.id == r.subjectForm)
+                return AllySatisfies(a, r) ? Match(a.id) : NoMatch();
+        }
+        return NoMatch();
+    }
+
     case SubjectKind::Enemy: {
         const auto *e = SelectEnemy(s, r);
         return e ? Match(e->id) : NoMatch();

@@ -293,6 +293,11 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     v.potions = ScanCarriedPotions(actor);
     if (auto *player = RE::PlayerCharacter::GetSingleton())
         v.playerName = DisplayNameOf(player);
+    for (auto *other : CollectManagedFollowers())
+    {
+        if (other && other != actor)
+            v.peers.push_back({other->GetFormID(), DisplayNameOf(other)});
+    }
     v.sheet = BuildCharacterSheet(actor);
     v.skills = BuildSkillSheet(actor);
     v.inventory = ScanInventory(actor);

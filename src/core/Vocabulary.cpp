@@ -55,12 +55,13 @@ template <typename Enum, std::size_t N>
     return std::nullopt;
 }
 
-constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
+constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Self, "self", "Self"},
     {SubjectKind::Player, "player", "Player"},
     {SubjectKind::Ally, "ally", "Ally"},
     {SubjectKind::Enemy, "enemy", "Enemy"},
     {SubjectKind::CurrentTarget, "current-target", "Target"},
+    {SubjectKind::Follower, "follower", "Follower"},
 }};
 
 constexpr std::array<Entry<PredicateKind>, 21> kPredicates{{

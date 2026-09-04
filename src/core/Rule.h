@@ -35,6 +35,9 @@ enum class SubjectKind : std::uint8_t
     Ally,
     Enemy,
     CurrentTarget,
+    // One particular other follower, named by Rule::subjectForm: an ally
+    // asked about alone.
+    Follower,
 
     COUNT
 };
@@ -160,6 +163,9 @@ struct Rule
     bool enabled{true};
 
     SubjectKind subject{SubjectKind::Self};
+    // Which follower, for SubjectKind::Follower: the actor's FormID, as
+    // opaque here as an action's form is.
+    std::uint32_t subjectForm{0};
     PredicateKind predicate{PredicateKind::Any};
     float conditionArg{0.0f};
     // Which status, for PredicateKind::Status. Ignored by every other

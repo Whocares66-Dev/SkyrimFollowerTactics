@@ -38,6 +38,14 @@ struct FollowerView
     // The player's, for the condition menu: "Player" is a kind, and the
     // menu says who.
     std::string playerName;
+    // The other followers under tactics, by name, for the condition menu's
+    // named subjects.
+    struct Peer
+    {
+        ft::ActorId id{0};
+        std::string name;
+    };
+    std::vector<Peer> peers;
     ft::Snapshot snapshot;
     ft::Trace trace;             // per-rule verdict: the debug column
     ft::ActionTrace actionTrace; // per-action verdicts: the column's tooltip
