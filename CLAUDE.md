@@ -59,7 +59,7 @@ run copies as usual.
 `MO2\mods\FollowerTactics\SKSE\Plugins\`. New mods appear **unticked** in MO2 -- tick it
 or the DLL never loads.
 
-Last verified: 10 cases / 32 assertions green under MSVC 19.42 (`core` preset).
+Last verified: 83 cases green under MSVC 19.42 (`core` and `core-asan` presets), 2026-09-04.
 
 ## After every edit
 
@@ -236,9 +236,13 @@ follower back to fighting. The ESL is versioned at `esp/FollowerTactics.esp` (ed
 houseCARL, not the xEdit script). Recruit through dialogue (or `cqf DialogueFollower
 SetFollower`), never `setplayerteammate`. Cooldowns and leases run on game time.
 
-**Phase 2 — next.** The rule engine already has the subject/predicate model and is unit
-tested; what is missing is JSON load/save (the shareable profile format), per-follower
-profiles, and populating `Snapshot::enemies` / `allies` so group subjects work at all.
+**Phase 2 — in progress.** The rule engine has the subject/predicate model, a list of
+actions per rule done one per tick, equip actions that pin, and conditions for status,
+armour, resistance, attacked-by, the party's extremes and the player's fight
+(`docs/CONDITIONS.md`); `Snapshot::allies` / `enemies` are populated by definition
+(the party, and whoever the compass paints red). Still missing: JSON load/save (the
+shareable profile format) and per-follower profiles. Actions to come are in
+`docs/ACTIONS.md`.
 
 ## Where the log actually is — not where you would guess
 
