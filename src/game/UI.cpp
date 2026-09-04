@@ -1023,17 +1023,13 @@ float StatusColumnWidth()
 // its right on the table's -- with Status and Order the parent's widths,
 // so its columns line up with the parent's and need no headings of their
 // own. Returns whether the rules changed.
-bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView &view, float textLeft, float right,
+bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView &view, float left, float right,
                        float spacing)
 {
-    // The action text lines up with the parent's "N actions": the menu's
-    // button starts at the table's edge and puts its text one frame
-    // padding in, so the table starts that much before the parent's text.
-    const auto *style = Im::GetStyle();
-    const float left = textLeft - (style ? style->FramePadding.x : 4.0f);
-
-    Im::Dummy(Im::ImVec2(0.0f, spacing));
-    Im::SetCursorScreenPos(Im::ImVec2(left, Im::GetCursorScreenPos().y));
+    // Seamless with the row above: the drawer's left border on the Then
+    // column's, its top border on the row's bottom border -- one pixel up,
+    // so the two lines are one line and not a doubled one.
+    Im::SetCursorScreenPos(Im::ImVec2(left, Im::GetCursorScreenPos().y - 1.0f));
 
     const float row = Im::GetFrameHeight();
     const float gutter = kCellPadX * 2.0f;
@@ -1304,9 +1300,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             changed = true;
 
         Im::TableSetColumnIndex(3);
-        // Where the Then cell's text begins once the marker has had its
-        // width, for the drawer's actions to line up under it.
-        const float textLeft = Im::GetCursorScreenPos().x + DisclosureWidth();
+        // Where the Then column begins, for the drawer's border to sit on
+        // it: the cell's content less its padding is the column's border.
+        const float thenLeft = Im::GetCursorScreenPos().x - kCellPadX;
         if (rule.actions.empty())
             rule.actions.emplace_back();
         const std::string key = RuleKey(view.id, i);
@@ -1423,7 +1419,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // The drawer: close this piece, draw beneath, reopen for the rest.
         endPiece();
         Im::BeginDisabled(!rule.enabled);
-        if (DrawActionsDrawer(rule, i, view, textLeft, right, spacing))
+        if (DrawActionsDrawer(rule, i, view, thenLeft, right, spacing))
             changed = true;
         Im::EndDisabled();
         drawerOpen = true;
