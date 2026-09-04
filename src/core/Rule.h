@@ -75,6 +75,11 @@ enum class PredicateKind : std::uint8_t
     // The subject has been hit with Rule::damageKind in the last few
     // seconds. Any subject.
     AttackedBy,
+    // The enemy is going for the player, or is the one the player is
+    // going for: the two that make a party fight as one -- peel the one
+    // on the player, or hit what the player hits. Enemy and Target.
+    AttackingPlayer,
+    TargetOfPlayer,
     // The group's extremes: true of the group when it has anyone, binding
     // the member with the least or the most. Ally and Enemy only.
     HealthLowest,

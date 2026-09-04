@@ -193,6 +193,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::HealthPctBelow:
         case PredicateKind::WithinDistance:
         case PredicateKind::CountAtLeast:
+        case PredicateKind::AttackingPlayer:
+        case PredicateKind::TargetOfPlayer:
             return true;
         default:
             return false;
@@ -204,6 +206,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::Any:
         case PredicateKind::HealthPctBelow:
         case PredicateKind::WithinDistance:
+        case PredicateKind::AttackingPlayer:
+        case PredicateKind::TargetOfPlayer:
             return true;
         default:
             return false;

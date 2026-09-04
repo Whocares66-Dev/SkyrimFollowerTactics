@@ -228,6 +228,9 @@ struct Snapshot
     ActorTraits playerTraits{};
 
     ActorId currentTarget{0};
+    // Whom the player is fighting, for "target of the player": focus fire
+    // is the enemy the player has picked.
+    ActorId playerTarget{0};
 
     std::vector<EnemyView> enemies;
     std::vector<AllyView> allies;

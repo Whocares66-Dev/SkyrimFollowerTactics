@@ -864,6 +864,34 @@ TEST_CASE("a named follower is one ally asked about alone", "[follower]")
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::HealthLowest));
 }
 
+TEST_CASE("the enemy on the player, and the one the player is on", "[party]")
+{
+    Snapshot s = Healthy();
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x102, {100.0f, 100.0f}, 200.0f, false, true, true}); // going for the player
+    s.playerTarget = 0x101;
+
+    Rule r;
+    r.subject = SubjectKind::Enemy;
+    r.predicate = PredicateKind::AttackingPlayer;
+    REQUIRE(EvaluateCondition(r, s).id == 0x102);
+    r.predicate = PredicateKind::TargetOfPlayer;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+
+    // The player fighting no one: nothing is their target.
+    s.playerTarget = 0;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    // The follower's own target, asked the same.
+    s.currentTarget = 0x102;
+    r.subject = SubjectKind::CurrentTarget;
+    r.predicate = PredicateKind::AttackingPlayer;
+    REQUIRE(EvaluateCondition(r, s).id == 0x102);
+
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::AttackingPlayer));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::TargetOfPlayer));
+}
+
 TEST_CASE("above and below are the same number from either side", "[evaluator]")
 {
     Rule r;

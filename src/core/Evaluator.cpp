@@ -26,10 +26,14 @@ bool ResistsAs(const ActorTraits &t, const Rule &r)
     return ResistBandOf(t.Resist(r.damageKind)) == ResistArg(r);
 }
 
-bool EnemySatisfies(const EnemyView &e, const Rule &r)
+bool EnemySatisfies(const EnemyView &e, const Rule &r, const Snapshot &s)
 {
     switch (r.predicate)
     {
+    case PredicateKind::AttackingPlayer:
+        return e.isAttackingPlayer;
+    case PredicateKind::TargetOfPlayer:
+        return s.playerTarget != 0 && e.id == s.playerTarget;
     case PredicateKind::Any:
     case PredicateKind::HealthLowest:
     case PredicateKind::HealthHighest:
@@ -119,7 +123,7 @@ const EnemyView *SelectEnemy(const Snapshot &s, const Rule &r)
     const EnemyView *best = nullptr;
     for (const auto &e : s.enemies)
     {
-        if (!EnemySatisfies(e, r))
+        if (!EnemySatisfies(e, r, s))
             continue;
         if (!best ||
             Better(r.predicate, e.health, e.distance, e.traits.armor, best->health, best->distance, best->traits.armor))
@@ -327,7 +331,7 @@ Binding EvaluateCurrentTarget(const Snapshot &s, const Rule &r)
     const auto *e = FindEnemy(s, s.currentTarget);
     if (!e)
         return NoMatch();
-    return EnemySatisfies(*e, r) ? Match(s.currentTarget) : NoMatch();
+    return EnemySatisfies(*e, r, s) ? Match(s.currentTarget) : NoMatch();
 }
 
 } // namespace

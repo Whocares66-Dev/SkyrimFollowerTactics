@@ -64,7 +64,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Follower, "follower", "Follower"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 21> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 23> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
@@ -79,6 +79,8 @@ constexpr std::array<Entry<PredicateKind>, 21> kPredicates{{
     {PredicateKind::Armor, "armor", "Armor"},
     {PredicateKind::Resistance, "resistance", "Resistance"},
     {PredicateKind::AttackedBy, "attacked-by", "Attacked by"},
+    {PredicateKind::AttackingPlayer, "attacking-player", "Attacking player"},
+    {PredicateKind::TargetOfPlayer, "target-of-player", "Target of player"},
     {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
     {PredicateKind::HealthHighest, "health-highest", "Health highest"},
     {PredicateKind::ArmorLowest, "armor-lowest", "Armor lowest"},
@@ -381,6 +383,10 @@ std::string_view Describe(PredicateKind v) noexcept
         return "Resistance to that kind of damage: a weakness, none to speak of, half or more, or immune.";
     case PredicateKind::AttackedBy:
         return "Hit with that kind of damage in the last few seconds.";
+    case PredicateKind::AttackingPlayer:
+        return "Going for the player.";
+    case PredicateKind::TargetOfPlayer:
+        return "The one the player is fighting.";
     case PredicateKind::HealthLowest:
         return "The one with the least health.";
     case PredicateKind::HealthHighest:

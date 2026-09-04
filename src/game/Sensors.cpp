@@ -603,6 +603,11 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     // target" resolves to.
     if (auto target = actor->GetActorRuntimeData().currentCombatTarget.get(); target && !target->IsDead())
         s.currentTarget = target->GetFormID();
+    if (auto *player = RE::PlayerCharacter::GetSingleton())
+    {
+        if (auto target = player->GetActorRuntimeData().currentCombatTarget.get(); target && !target->IsDead())
+            s.playerTarget = target->GetFormID();
+    }
 
     // The party and the enemies, by definition (docs/CONDITIONS.md 6). An
     // ally is the player and every other actor with the teammate flag; an
