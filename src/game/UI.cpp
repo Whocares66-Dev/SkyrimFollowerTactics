@@ -1022,16 +1022,20 @@ float StatusColumnWidth()
 // its right on the table's -- with Status and Order the parent's widths,
 // so its columns line up with the parent's and need no headings of their
 // own. Returns whether the rules changed.
-bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView &view, float left, float right)
+bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView &view, float textLeft, float right,
+                       float spacing)
 {
-    constexpr float kGap = 6.0f;
+    // The action text lines up with the parent's "N actions": the menu's
+    // button starts at the table's edge and puts its text one frame
+    // padding in, so the table starts that much before the parent's text.
+    const auto *style = Im::GetStyle();
+    const float left = textLeft - (style ? style->FramePadding.x : 4.0f);
 
-    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    Im::Dummy(Im::ImVec2(0.0f, spacing));
     Im::SetCursorScreenPos(Im::ImVec2(left, Im::GetCursorScreenPos().y));
 
     const float row = Im::GetFrameHeight();
     const float gutter = kCellPadX * 2.0f;
-    const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
     const float statusWidth = StatusColumnWidth();
     const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
     const float width = (std::max)(0.0f, right - left);
@@ -1048,9 +1052,8 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             : nullptr;
 
     constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
-    if (Im::BeginTable(("actions##" + id).c_str(), 4, flags, Im::ImVec2(width, 0.0f), 0.0f))
+    if (Im::BeginTable(("actions##" + id).c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
     {
-        Im::TableSetupColumn("#", Im::ImGuiTableColumnFlags_WidthFixed, numWidth, 0);
         Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
         Im::TableSetupColumn("Status", Im::ImGuiTableColumnFlags_WidthFixed, statusWidth, 0);
         Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
@@ -1061,14 +1064,10 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::TableNextRow(0, 0.0f);
 
             Im::TableSetColumnIndex(0);
-            Im::AlignTextToFramePadding();
-            Im::Text("%zu", a + 1);
-
-            Im::TableSetColumnIndex(1);
             if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr))
                 changed = true;
 
-            Im::TableSetColumnIndex(2);
+            Im::TableSetColumnIndex(1);
             Im::AlignTextToFramePadding();
             if (!view.evaluated || !perAction)
             {
@@ -1082,7 +1081,7 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
                     Im::SetTooltip("%s", ft::Explain((*perAction)[a], rule.actions[a].kind));
             }
 
-            Im::TableSetColumnIndex(3);
+            Im::TableSetColumnIndex(2);
             {
                 const float group = row * 3.0f + kOrderGap * 2.0f;
                 const float cell = Im::GetContentRegionAvail().x;
@@ -1116,8 +1115,9 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
         Im::EndTable();
     }
 
-    // One more, done after the ones above: beneath the table, at its edge.
-    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    // One more, done after the ones above: beneath the table, at its edge,
+    // spaced as the rule table's own plus is spaced from it.
+    Im::Dummy(Im::ImVec2(0.0f, spacing));
     Im::SetCursorScreenPos(Im::ImVec2(left, Im::GetCursorScreenPos().y));
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
     if (GlyphButton("addact" + id, row, Glyph::Plus))
@@ -1140,7 +1140,7 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
         changed = true;
     }
 
-    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    Im::Dummy(Im::ImVec2(0.0f, spacing));
     return changed;
 }
 
@@ -1182,6 +1182,12 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     const auto hovered = Im::GetColorU32(Im::ImGuiCol_ButtonHovered, 1.0f);
     const auto opened = Im::GetColorU32(Im::ImGuiCol_Header, 1.0f);
     auto *draw = Im::GetWindowDrawList();
+
+    // The theme's spacing, read before it is pushed away: the drawer spaces
+    // its plus with it, as Spacing() spaces the table's own plus below.
+    const auto *style = Im::GetStyle();
+    const float spacing = style ? style->ItemSpacing.y : 4.0f;
+    const float framePadY = style ? style->FramePadding.y : 3.0f;
 
     // Cells keep a normal margin so headers and the number column are not
     // jammed against the border. The If/Then buttons cancel it locally -- see
@@ -1297,9 +1303,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             changed = true;
 
         Im::TableSetColumnIndex(3);
-        // Where the Then column begins, for the drawer to sit under it: the
-        // cell's content less its padding is the column's border.
-        const float thenLeft = Im::GetCursorScreenPos().x - kCellPadX;
+        // Where the Then cell's text begins once the marker has had its
+        // width, for the drawer's actions to line up under it.
+        const float textLeft = Im::GetCursorScreenPos().x + DisclosureWidth();
         if (rule.actions.empty())
             rule.actions.emplace_back();
         const std::string key = RuleKey(view.id, i);
@@ -1344,7 +1350,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 Im::TableSetBgColor(Im::ImGuiTableBgTarget_CellBg, hovered, -1);
             else if (open)
                 Im::TableSetBgColor(Im::ImGuiTableBgTarget_CellBg, opened, -1);
-            DrawDisclosure(pos, open);
+            // The marker on the text's line: the row is a frame high for
+            // its buttons, and the text sits a frame padding down in it.
+            DrawDisclosure(Im::ImVec2(pos.x, pos.y + framePadY), open);
             Im::SetCursorScreenPos(Im::ImVec2(pos.x + DisclosureWidth(), pos.y));
             Im::AlignTextToFramePadding();
             // How many, not which: the first by name and "2 more" did not
@@ -1414,7 +1422,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // The drawer: close this piece, draw beneath, reopen for the rest.
         endPiece();
         Im::BeginDisabled(!rule.enabled);
-        if (DrawActionsDrawer(rule, i, view, thenLeft, right))
+        if (DrawActionsDrawer(rule, i, view, textLeft, right, spacing))
             changed = true;
         Im::EndDisabled();
         drawerOpen = true;
