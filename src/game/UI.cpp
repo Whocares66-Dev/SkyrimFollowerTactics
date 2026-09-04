@@ -2997,7 +2997,9 @@ void DrawEffects(const FollowerView &view)
             TextRightInCell(num);
         }
         Im::TableSetColumnIndex(2);
-        Im::Text("%s", row->remainingText.c_str());
+        // Right-aligned, as a number: the minutes line up down the column.
+        if (!row->remainingText.empty())
+            TextRightInCell(row->remainingText);
         Im::TableSetColumnIndex(3);
         Im::Text("%s", row->source.c_str());
     }
