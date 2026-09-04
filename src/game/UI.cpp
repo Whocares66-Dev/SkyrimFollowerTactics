@@ -1775,7 +1775,19 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     onLink(row.form);
                 Im::SetCursorScreenPos(pos);
             }
-            Im::Text("%s", row.value.c_str());
+            if (row.icon != 0)
+            {
+                // A glyph in the value's place, the text line's height, so it
+                // sits on the line the value would have.
+                const Im::ImVec2 at = Im::GetCursorScreenPos();
+                const float h = Im::GetTextLineHeight();
+                DrawCodepoint(draw, row.icon, at, {at.x + h, at.y + h}, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
+                Im::Dummy(Im::ImVec2(h, h));
+            }
+            else
+            {
+                Im::Text("%s", row.value.c_str());
+            }
             if (modifiers)
             {
                 Im::TableSetColumnIndex(2);

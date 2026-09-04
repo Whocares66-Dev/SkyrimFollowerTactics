@@ -71,10 +71,16 @@ struct PotionOption
 // panel, because every value is an actor-value read and the RE:: enum naming
 // it belongs with the read; the panel then has nothing to know about what a
 // resistance cap is or which slot counts as armour.
+// Font Awesome's infinity, for a sheet row whose value is "no end": an
+// effect with no duration. The panel draws a row's icon in place of its
+// value text.
+inline constexpr unsigned kIconInfinity = 0xF534;
+
 struct SheetRow
 {
     std::string label;
     std::string value;
+    unsigned icon{0};      // a Font Awesome codepoint drawn instead of the value, when set
     std::string modifiers; // Skills tab only: "+35% damage, -17% cost"
     std::string note;      // tooltip on the modifiers; empty for none
     // Rows revealed by expanding this one: a skill's perks. Empty means the

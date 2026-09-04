@@ -279,11 +279,17 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         std::snprintf(num, sizeof(num), "%.0f", row.magnitude);
         if (row.magnitude != 0.0f)
             stats.rows.push_back(Row("Magnitude", num));
-        // Only what there is: no Duration row for an effect with none.
         if (ae->duration > 0.0f)
         {
             stats.rows.push_back(Row("Duration", RemainingText(ae->duration)));
             stats.rows.push_back(Row("Remaining", row.remainingText));
+        }
+        else
+        {
+            // No end to it: the infinity, and no Remaining row.
+            SheetRow forever = Row("Duration", "");
+            forever.icon = kIconInfinity;
+            stats.rows.push_back(std::move(forever));
         }
         if (!row.source.empty())
             stats.rows.push_back(Row("Source", row.source));
