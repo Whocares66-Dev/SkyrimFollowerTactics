@@ -117,6 +117,10 @@ struct EffectRow
     float remaining{-1.0f};    // seconds left; below zero for one with no duration
     std::string remainingText; // empty for one with no duration
     std::string source;
+    // False when the effect is running but changes nothing for this actor:
+    // Fortify One-handed on a follower, which writes a value nothing on a
+    // follower reads. Listed greyed, hovering as "Not applied".
+    bool applied{true};
 
     // The page: numbers as sections, and the effect's description with the
     // magnitude and duration filled in, as the item card shows it.

@@ -165,6 +165,32 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
 
 // Defined further down, in this same unnamed namespace, with the sheets.
 SheetRow Row(std::string label, std::string value);
+bool ReadsSkillMods(const RE::Actor *actor);
+bool ReadsSkillPowerMods(const RE::Actor *actor);
+
+// Does this effect change anything for this actor? A value-modifying effect
+// on a skill modifier -- Fortify One-handed's OneHandedModifier, Fortify
+// Destruction's DestructionModifier -- is read only by the two hidden perks
+// a follower does not carry (docs/RESEARCH.md 6): the value moves, and
+// nothing looks at it.
+bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base)
+{
+    using Archetype = RE::EffectArchetypes::ArchetypeID;
+    const auto archetype = base->GetArchetype();
+    if (archetype != Archetype::kValueModifier && archetype != Archetype::kPeakValueModifier &&
+        archetype != Archetype::kDualValueModifier)
+        return true;
+    const auto av = static_cast<int>(base->data.primaryAV);
+    constexpr int kFirstModifier = static_cast<int>(RE::ActorValue::kOneHandedModifier);
+    constexpr int kLastModifier = static_cast<int>(RE::ActorValue::kEnchantingModifier);
+    constexpr int kFirstPower = static_cast<int>(RE::ActorValue::kOneHandedPowerModifier);
+    constexpr int kLastPower = static_cast<int>(RE::ActorValue::kEnchantingPowerModifier);
+    if (av >= kFirstModifier && av <= kLastModifier)
+        return ReadsSkillMods(actor);
+    if (av >= kFirstPower && av <= kLastPower)
+        return ReadsSkillPowerMods(actor);
+    return true;
+}
 std::string Fmt(const char *fmt, double value);
 
 } // namespace
@@ -324,6 +350,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         EffectRow row;
         row.form = base->GetFormID();
         row.sourceForm = ae->spell ? ae->spell->GetFormID() : 0;
+        row.applied = EffectApplies(actor, base);
         row.name = name;
         row.magnitude = ae->magnitude;
         row.duration = ae->duration;

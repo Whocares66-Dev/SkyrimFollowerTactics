@@ -3013,6 +3013,10 @@ void DrawEffects(const FollowerView &view)
         std::snprintf(buf, sizeof(buf), "##effect%08X_%08X", row->form, row->sourceForm);
 
         Im::TableNextRow(0, 0.0f);
+        // Running but changing nothing for this follower: the row is drawn
+        // in the disabled colour, and its name hovers as "Not applied".
+        if (!row->applied)
+            Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
         Im::TableSetColumnIndex(0);
         const Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
@@ -3020,6 +3024,8 @@ void DrawEffects(const FollowerView &view)
             state.detailForm = row->form;
             state.detailSource = row->sourceForm;
         }
+        if (!row->applied && Im::IsItemHovered(0))
+            Im::SetTooltip("Not applied");
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", row->name.c_str());
 
@@ -3036,6 +3042,8 @@ void DrawEffects(const FollowerView &view)
             TextRightInCell(row->remainingText);
         Im::TableSetColumnIndex(3);
         Im::Text("%s", row->source.c_str());
+        if (!row->applied)
+            Im::PopStyleColor(1);
     }
     Im::EndTable();
     Im::PopStyleVar(1);
