@@ -781,6 +781,61 @@ TEST_CASE("resistance is asked by kind and band", "[resistance]")
         REQUIRE(DisplayName(static_cast<ResistBand>(i)).size() > 0);
 }
 
+TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[attacked]")
+{
+    // An ally under fire from an enemy: the condition binds the ally, and
+    // the Attacker target aims the action at the one doing it.
+    Snapshot s = Healthy();
+    s.allies.push_back({0x201, {60.0f, 100.0f}, 400.0f, false});
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
+
+    Rule r;
+    r.subject = SubjectKind::Ally;
+    r.predicate = PredicateKind::AttackedBy;
+    r.damageKind = DamageKind::Fire;
+    r.actionTarget = ActionTargetKind::Attacker;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    s.allies[0].traits.attackedBy = Bit(DamageKind::Fire) | Bit(DamageKind::Physical);
+    s.allies[0].traits.attacker = 0x101;
+    const Binding bound = EvaluateCondition(r, s);
+    REQUIRE(bound.id == 0x201);
+    bool ok = false;
+    REQUIRE(ResolveActionTarget(r, s, bound, &ok) == 0x101);
+    REQUIRE(ok);
+
+    // Another kind was not what hit them.
+    r.damageKind = DamageKind::Frost;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    r.damageKind = DamageKind::Physical;
+    REQUIRE(EvaluateCondition(r, s).ok);
+
+    // The follower's own attacker, and none when nothing has hit them.
+    r.subject = SubjectKind::Self;
+    r.damageKind = DamageKind::Physical;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    s.traits.attackedBy = Bit(DamageKind::Physical);
+    s.traits.attacker = 0x101;
+    const Binding self = EvaluateCondition(r, s);
+    REQUIRE(self.id == s.self);
+    REQUIRE(ResolveActionTarget(r, s, self, &ok) == 0x101);
+    s.traits.attacker = 0;
+    REQUIRE(ResolveActionTarget(r, s, self, &ok) == 0);
+    REQUIRE_FALSE(ok);
+
+    // The player's.
+    r.subject = SubjectKind::Player;
+    r.damageKind = DamageKind::Shock;
+    s.playerTraits.attackedBy = Bit(DamageKind::Shock);
+    s.playerTraits.attacker = 0x101;
+    const Binding player = EvaluateCondition(r, s);
+    REQUIRE(player.id == kPlayerFormID);
+    REQUIRE(ResolveActionTarget(r, s, player, &ok) == 0x101);
+
+    for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
+        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::AttackedBy));
+}
+
 TEST_CASE("above and below are the same number from either side", "[evaluator]")
 {
     Rule r;

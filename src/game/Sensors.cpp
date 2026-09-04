@@ -1,5 +1,6 @@
 #include "game/Sensors.h"
 
+#include "game/Hits.h"
 #include "game/Pins.h"
 
 #include <algorithm>
@@ -473,6 +474,9 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     if (!actor)
         return traits;
     traits.armor = DamageReduction(actor);
+    const Attacked attacked = AttackedLately(actor->GetFormID());
+    traits.attackedBy = attacked.kinds;
+    traits.attacker = attacked.attacker;
     if (auto *owner = actor->AsActorValueOwner())
     {
         traits.SetResist(ft::DamageKind::Magic, owner->GetActorValue(RE::ActorValue::kResistMagic));

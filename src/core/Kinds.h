@@ -87,6 +87,11 @@ enum class ResistBand : std::uint8_t
     COUNT
 };
 
+[[nodiscard]] constexpr std::uint8_t Bit(DamageKind kind) noexcept
+{
+    return static_cast<std::uint8_t>(1u << static_cast<unsigned>(kind));
+}
+
 [[nodiscard]] constexpr ResistBand ResistBandOf(float resistance) noexcept
 {
     if (resistance < 0.0f)

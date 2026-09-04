@@ -6,6 +6,7 @@
 // Catch2. Reading a real actor is Phase 1, and src/game/ does not exist yet.
 
 #include "core/Evaluator.h"
+#include "game/Hits.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
 #include "game/Tactics.h"
@@ -191,6 +192,7 @@ void OnDataLoaded()
     ft::game::ui::Install();
     ft::game::WatchCombatScores();
     ft::game::RefuseEquipsAgainstPins();
+    ft::game::WatchHits();
 
     const bool allPassed = passed == checks.size();
     if (auto *console = RE::ConsoleLog::GetSingleton())

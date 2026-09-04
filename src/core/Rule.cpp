@@ -132,7 +132,7 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     // carries, so they are answerable about any of them. The extremes are
     // of a group.
     if (predicate == PredicateKind::Status || predicate == PredicateKind::Armor ||
-        predicate == PredicateKind::Resistance)
+        predicate == PredicateKind::Resistance || predicate == PredicateKind::AttackedBy)
         return true;
     if (IsExtreme(predicate))
         return subject == SubjectKind::Ally || subject == SubjectKind::Enemy;

@@ -69,6 +69,9 @@ enum class PredicateKind : std::uint8_t
     // The subject's resistance to Rule::damageKind is in the band
     // conditionArg names (a ResistBand, as a number). Any subject.
     Resistance,
+    // The subject has been hit with Rule::damageKind in the last few
+    // seconds. Any subject.
+    AttackedBy,
     // The group's extremes: true of the group when it has anyone, binding
     // the member with the least or the most. Ally and Enemy only.
     HealthLowest,
@@ -93,6 +96,9 @@ enum class ActionTargetKind : std::uint8_t
     Self,
     Player,
     CurrentTarget,
+    // Whoever last attacked the condition's subject: the enemy at the
+    // ally's throat, for the rule that answers it.
+    Attacker,
 
     COUNT
 };
@@ -159,8 +165,8 @@ struct Rule
     // Which status, for PredicateKind::Status. Ignored by every other
     // predicate.
     StatusKind statusKind{StatusKind::Poisoned};
-    // Which kind of damage, for Resistance. Ignored by every other
-    // predicate.
+    // Which kind of damage, for Resistance and AttackedBy. Ignored by every
+    // other predicate.
     DamageKind damageKind{DamageKind::Fire};
 
     ActionTargetKind actionTarget{ActionTargetKind::ConditionSubject};

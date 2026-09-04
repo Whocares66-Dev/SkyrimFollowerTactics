@@ -273,8 +273,9 @@ std::string ConditionText(const ft::Rule &r, const std::string &playerName)
         return text;
     }
     text += ft::DisplayName(r.predicate);
-    // A resistance names its kind: "Enemy Resistance Fire High".
-    if (r.predicate == ft::PredicateKind::Resistance)
+    // A resistance names its kind: "Enemy Resistance Fire High"; so does
+    // an attack: "Ally Attacked by Fire".
+    if (r.predicate == ft::PredicateKind::Resistance || r.predicate == ft::PredicateKind::AttackedBy)
     {
         text += ' ';
         text += ft::DisplayName(r.damageKind);
@@ -637,6 +638,31 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
                         }
                     }
                     Im::EndMenu();
+                }
+                Im::EndMenu();
+                continue;
+            }
+
+            // Attacked by: the kinds of damage, one leaf each. Disease is
+            // not a way of attacking.
+            if (predicate == ft::PredicateKind::AttackedBy)
+            {
+                if (!BeginCascade(predicateName.c_str()))
+                    continue;
+                for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::DamageKind::COUNT); ++ki)
+                {
+                    const auto kind = static_cast<ft::DamageKind>(ki);
+                    if (kind == ft::DamageKind::Disease)
+                        continue;
+                    const bool selected =
+                        rule.subject == subject && rule.predicate == predicate && rule.damageKind == kind;
+                    if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
+                    {
+                        rule.subject = subject;
+                        rule.predicate = predicate;
+                        rule.damageKind = kind;
+                        changed = true;
+                    }
                 }
                 Im::EndMenu();
                 continue;

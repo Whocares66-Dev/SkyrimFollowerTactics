@@ -53,6 +53,17 @@ struct ActorTraits
     // physical answer.
     std::array<float, static_cast<std::size_t>(DamageKind::COUNT)> resist{};
 
+    // What has hit the actor in the last few seconds, a bit per DamageKind,
+    // and who did it last: the Attacked by condition, and the Attacker
+    // target. From the hit table on the game side.
+    std::uint8_t attackedBy{0};
+    ActorId attacker{0};
+
+    [[nodiscard]] constexpr bool AttackedBy(DamageKind kind) const noexcept
+    {
+        return (attackedBy & Bit(kind)) != 0;
+    }
+
     [[nodiscard]] constexpr float Resist(DamageKind kind) const noexcept
     {
         return resist[static_cast<std::size_t>(kind)];

@@ -63,7 +63,7 @@ constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
     {SubjectKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 20> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 21> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
@@ -77,6 +77,7 @@ constexpr std::array<Entry<PredicateKind>, 20> kPredicates{{
     {PredicateKind::Status, "status", "Status"},
     {PredicateKind::Armor, "armor", "Armor"},
     {PredicateKind::Resistance, "resistance", "Resistance"},
+    {PredicateKind::AttackedBy, "attacked-by", "Attacked by"},
     {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
     {PredicateKind::HealthHighest, "health-highest", "Health highest"},
     {PredicateKind::ArmorLowest, "armor-lowest", "Armor lowest"},
@@ -86,11 +87,12 @@ constexpr std::array<Entry<PredicateKind>, 20> kPredicates{{
     {PredicateKind::MagickaPctAbove, "magicka-pct-above", "Magicka"},
 }};
 
-constexpr std::array<Entry<ActionTargetKind>, 4> kActionTargets{{
+constexpr std::array<Entry<ActionTargetKind>, 5> kActionTargets{{
     {ActionTargetKind::ConditionSubject, "condition-subject", "Whoever matched"},
     {ActionTargetKind::Self, "self", "Self"},
     {ActionTargetKind::Player, "player", "Player"},
     {ActionTargetKind::CurrentTarget, "current-target", "Target"},
+    {ActionTargetKind::Attacker, "attacker", "Their attacker"},
 }};
 
 constexpr std::array<Entry<ActionKind>, 13> kActions{{
@@ -376,6 +378,8 @@ std::string_view Describe(PredicateKind v) noexcept
         return "How much of a blow the armour turns away: under a quarter, up to half, or more.";
     case PredicateKind::Resistance:
         return "Resistance to that kind of damage: a weakness, none to speak of, half or more, or immune.";
+    case PredicateKind::AttackedBy:
+        return "Hit with that kind of damage in the last few seconds.";
     case PredicateKind::HealthLowest:
         return "The one with the least health.";
     case PredicateKind::HealthHighest:

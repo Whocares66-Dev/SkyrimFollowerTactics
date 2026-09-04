@@ -40,6 +40,8 @@ bool EnemySatisfies(const EnemyView &e, const Rule &r)
         return BandOf(e.traits.armor) == BandArg(r);
     case PredicateKind::Resistance:
         return ResistsAs(e.traits, r);
+    case PredicateKind::AttackedBy:
+        return e.traits.AttackedBy(r.damageKind);
     case PredicateKind::HealthPctBelow:
         return e.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
@@ -67,6 +69,8 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
         return BandOf(a.traits.armor) == BandArg(r);
     case PredicateKind::Resistance:
         return ResistsAs(a.traits, r);
+    case PredicateKind::AttackedBy:
+        return a.traits.AttackedBy(r.damageKind);
     case PredicateKind::HealthPctBelow:
         return a.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
@@ -264,6 +268,9 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::Resistance:
         held = ResistsAs(s.traits, r);
         break;
+    case PredicateKind::AttackedBy:
+        held = s.traits.AttackedBy(r.damageKind);
+        break;
     default:
         break;
     }
@@ -298,6 +305,9 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
         break;
     case PredicateKind::Resistance:
         held = ResistsAs(s.playerTraits, r);
+        break;
+    case PredicateKind::AttackedBy:
+        held = s.playerTraits.AttackedBy(r.damageKind);
         break;
     default:
         break;
@@ -384,6 +394,26 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
         return yes(kPlayerFormID);
     case ActionTargetKind::CurrentTarget:
         return s.currentTarget ? yes(s.currentTarget) : no();
+    case ActionTargetKind::Attacker: {
+        // Whoever last hit the actor the condition bound: from that actor's
+        // own traits, wherever the snapshot carries them.
+        if (!binding.ok)
+            return no();
+        ActorId attacker = 0;
+        if (binding.id == s.self)
+            attacker = s.traits.attacker;
+        else if (binding.id == kPlayerFormID)
+            attacker = s.playerTraits.attacker;
+        else if (const auto *e = FindEnemy(s, binding.id))
+            attacker = e->traits.attacker;
+        else
+        {
+            for (const auto &a : s.allies)
+                if (a.id == binding.id)
+                    attacker = a.traits.attacker;
+        }
+        return attacker ? yes(attacker) : no();
+    }
     default:
         return no();
     }
