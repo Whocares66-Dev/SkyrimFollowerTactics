@@ -959,10 +959,23 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     }
 
     {
+        // The rate the follower actually regenerates at: the base rate times
+        // its multiplier, which is where every buff lands -- robes of
+        // Destruction's "magicka regenerates 100% faster" is +100 on the
+        // multiplier, and the rate itself stays at 3. The base and the
+        // multiplier are the row's hover text when they differ from plain.
         SheetSection s{"Regen", {}, {}};
-        s.rows.push_back(Row("Health Rate", Fmt("%.2f%%", av(RE::ActorValue::kHealRate))));
-        s.rows.push_back(Row("Stamina Rate", Fmt("%.2f%%", av(RE::ActorValue::kStaminaRate))));
-        s.rows.push_back(Row("Magicka Rate", Fmt("%.2f%%", av(RE::ActorValue::kMagickaRate))));
+        const auto regen = [&](const char *label, RE::ActorValue rate, RE::ActorValue mult) {
+            const float base = av(rate);
+            const float factor = av(mult) / 100.0f;
+            SheetRow row = Row(label, Fmt("%.2f%%", base * factor));
+            if (std::abs(factor - 1.0f) > 0.001f)
+                row.note = "base " + Fmt("%.2f%%", base) + " at " + Fmt("%.0f%%", factor * 100.0f) + " speed";
+            s.rows.push_back(std::move(row));
+        };
+        regen("Health Rate", RE::ActorValue::kHealRate, RE::ActorValue::kHealRateMult);
+        regen("Stamina Rate", RE::ActorValue::kStaminaRate, RE::ActorValue::kStaminaRateMult);
+        regen("Magicka Rate", RE::ActorValue::kMagickaRate, RE::ActorValue::kMagickaRateMult);
         out.push_back(std::move(s));
     }
 
