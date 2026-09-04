@@ -232,7 +232,10 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
     if (object->Is(RE::FormType::Weapon) && hands != Hand::Both && hands != Hand::None)
         slot = HandSlot(hands);
     const OwnEquip ours;
-    manager->EquipObject(actor, object, nullptr, 1, slot, !now, true, false, false);
+    // With the engine's equip sound, at the actor, as when a follower is
+    // handed armour. The watchdog's putting-back sounds too: it only acts
+    // when the thing is actually off, so each sound marks a real event.
+    manager->EquipObject(actor, object, nullptr, 1, slot, !now, true, true, false);
 }
 
 // Equip an item WITHOUT the pin, for letting go of one while it stays on.
@@ -245,7 +248,7 @@ void EquipPlain(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
     if (object->Is(RE::FormType::Weapon) && hands != Hand::Both && hands != Hand::None)
         slot = HandSlot(hands);
     const OwnEquip ours;
-    manager->EquipObject(actor, object, nullptr, 1, slot, false, false, false, false);
+    manager->EquipObject(actor, object, nullptr, 1, slot, false, false, true, false);
 }
 
 // Take a form off.
