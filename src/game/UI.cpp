@@ -837,7 +837,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 // the same guarantee the condition side gets from the validity matrix, and
 // for the same reason: an unfireable rule should be unauthorable, not merely
 // discouraged.
-bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *remove)
+bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *addAnother)
 {
     bool changed = false;
 
@@ -850,13 +850,15 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
         return false;
     }
 
-    // One of several: it can be taken out of the list. Offered first, in
-    // a section of its own, so it is not mistaken for an action.
-    if (remove)
+    // A rule with one action edits it here, in its row. The way to a second
+    // is this entry, first and in a section of its own so it is not taken
+    // for an action: the rule then opens as a drawer, where its actions
+    // are listed, ordered and added to.
+    if (addAnother)
     {
-        if (CascadeItem("Remove this action", false))
+        if (CascadeItem("Add another action...", false))
         {
-            *remove = true;
+            *addAnother = true;
             changed = true;
         }
         Im::Separator();
@@ -966,6 +968,182 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
     return changed;
 }
 
+// Which rows are open -- a skill's perks, a rule's actions -- keyed
+// "section/label" or "rule/<follower>/<index>". Ours rather than any ImGui
+// widget state, because widget state is keyed on the ID stack, and a row's
+// ID stack includes which table PIECE it landed in (see DrawSections) --
+// which changes as soon as a row above it opens, at which point ImGui
+// would forget the row was open. Render thread only.
+std::unordered_set<std::string> g_openRows;
+
+float DisclosureWidth();
+void DrawDisclosure(Im::ImVec2 pos, bool open);
+void PlainHeaderRow(std::initializer_list<const char *> labels);
+
+std::string RuleKey(ft::ActorId follower, std::size_t index)
+{
+    return "rule/" + std::to_string(follower) + "/" + std::to_string(index);
+}
+
+// The open state follows the rule when rules are moved or removed, so a
+// drawer does not stay behind at an index another rule has taken.
+void MoveOpenState(ft::ActorId follower, std::size_t from, std::size_t to)
+{
+    const bool fromOpen = g_openRows.erase(RuleKey(follower, from)) > 0;
+    const bool toOpen = g_openRows.erase(RuleKey(follower, to)) > 0;
+    if (fromOpen)
+        g_openRows.insert(RuleKey(follower, to));
+    if (toOpen)
+        g_openRows.insert(RuleKey(follower, from));
+}
+
+void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
+{
+    g_openRows.erase(RuleKey(follower, at));
+    for (std::size_t i = at + 1; i < count; ++i)
+    {
+        if (g_openRows.erase(RuleKey(follower, i)) > 0)
+            g_openRows.insert(RuleKey(follower, i - 1));
+    }
+}
+
+// The widest word the Status column shows, measured once.
+float StatusColumnWidth()
+{
+    return WidestLabel({"cooldown", "no target", "no potion", "no magicka", "invalid", "fired", "false", "pinned",
+                        "outranked"}) +
+           kCellPadX * 2.0f;
+}
+
+// The drawer an open rule reveals: its actions, one row each in the order
+// they are done, each its own menu; each action's own verdict; and up,
+// down and remove, as the rule table's Order column. A plus beneath for
+// one more. Set in from the parent table's edges like a skill's perks.
+// Returns whether the rules changed.
+bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView &view, float left, float right)
+{
+    constexpr float kGap = 6.0f;
+    const float inset = 4.0f * kCellPadX;
+
+    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    Im::SetCursorScreenPos(Im::ImVec2(left + inset, Im::GetCursorScreenPos().y));
+
+    const float row = Im::GetFrameHeight();
+    const float gutter = kCellPadX * 2.0f;
+    const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
+    const float statusWidth = StatusColumnWidth();
+    const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
+    const float width = (std::max)(0.0f, right - left - 2.0f * inset);
+
+    bool changed = false;
+    int moveFrom = -1;
+    int moveTo = -1;
+    int removeAt = -1;
+    const std::string id = std::to_string(view.id) + "/" + std::to_string(ruleIndex);
+
+    const auto *perAction =
+        ruleIndex < view.actionTrace.size() && view.actionTrace[ruleIndex].size() == rule.actions.size()
+            ? &view.actionTrace[ruleIndex]
+            : nullptr;
+
+    constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
+    if (Im::BeginTable(("actions##" + id).c_str(), 4, flags, Im::ImVec2(width, 0.0f), 0.0f))
+    {
+        Im::TableSetupColumn("#", Im::ImGuiTableColumnFlags_WidthFixed, numWidth, 0);
+        Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+        Im::TableSetupColumn("Status", Im::ImGuiTableColumnFlags_WidthFixed, statusWidth, 0);
+        Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
+        PlainHeaderRow({"#", "Action", "Status", "Order"});
+
+        for (std::size_t a = 0; a < rule.actions.size(); ++a)
+        {
+            const std::string actId = id + "/" + std::to_string(a);
+            Im::TableNextRow(0, 0.0f);
+
+            Im::TableSetColumnIndex(0);
+            Im::AlignTextToFramePadding();
+            Im::Text("%zu", a + 1);
+
+            Im::TableSetColumnIndex(1);
+            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr))
+                changed = true;
+
+            Im::TableSetColumnIndex(2);
+            Im::AlignTextToFramePadding();
+            if (!view.evaluated || !perAction)
+            {
+                Im::TextDisabled("-");
+            }
+            else
+            {
+                const Status status = StatusFor((*perAction)[a], rule.actions[a].kind);
+                Im::TextColored(status.color, "%s", status.text);
+                if (Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", ft::Explain((*perAction)[a], rule.actions[a].kind));
+            }
+
+            Im::TableSetColumnIndex(3);
+            {
+                const float group = row * 3.0f + kOrderGap * 2.0f;
+                const float cell = Im::GetContentRegionAvail().x;
+                if (cell > group)
+                    Im::SetCursorPosX(Im::GetCursorPosX() + (cell - group) * 0.5f);
+            }
+            Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+            Im::BeginDisabled(a == 0);
+            if (GlyphButton("up" + actId, row, Glyph::Up))
+            {
+                moveFrom = static_cast<int>(a);
+                moveTo = static_cast<int>(a) - 1;
+            }
+            Im::EndDisabled();
+            Im::SameLine(0.0f, kOrderGap);
+            Im::BeginDisabled(a + 1 >= rule.actions.size());
+            if (GlyphButton("dn" + actId, row, Glyph::Down))
+            {
+                moveFrom = static_cast<int>(a);
+                moveTo = static_cast<int>(a) + 1;
+            }
+            Im::EndDisabled();
+            Im::SameLine(0.0f, kOrderGap);
+            if (DeleteButton("rm" + actId, row))
+                removeAt = static_cast<int>(a);
+            if (Im::IsItemHovered(0))
+                Im::SetTooltip("Remove this action");
+            Im::PopStyleVar(1);
+        }
+
+        // One more, done after the ones above.
+        Im::TableNextRow(0, 0.0f);
+        Im::TableSetColumnIndex(1);
+        Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+        if (GlyphButton("addact" + id, row, Glyph::Plus))
+        {
+            rule.actions.emplace_back();
+            changed = true;
+        }
+        Im::PopStyleVar(1);
+        if (Im::IsItemHovered(0))
+            Im::SetTooltip("Add an action, done after the ones above.");
+
+        Im::EndTable();
+    }
+
+    if (moveFrom >= 0 && moveTo >= 0 && moveTo < static_cast<int>(rule.actions.size()))
+    {
+        std::swap(rule.actions[static_cast<std::size_t>(moveFrom)], rule.actions[static_cast<std::size_t>(moveTo)]);
+        changed = true;
+    }
+    if (removeAt >= 0)
+    {
+        rule.actions.erase(rule.actions.begin() + removeAt);
+        changed = true;
+    }
+
+    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    return changed;
+}
+
 // Draw and EDIT the rule table.
 //
 // The set is taken by reference and `changed` reported back, so the caller
@@ -976,21 +1154,15 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
 // Edits do not survive a reload yet. That is a real limitation, and the panel
 // says so rather than letting someone spend ten minutes on a rule set that
 // quietly evaporates.
+//
+// A rule with several actions opens like a drawer, as a skill opens its
+// perks, and the table is drawn in PIECES for the same reason and by the
+// same means as DrawSections: a piece is closed above the drawer and
+// another opened beneath it with the same columns, the striping counted
+// across pieces, the outer borders drawn by hand down the drawer's sides.
 bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 {
-    constexpr auto flags =
-        Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg | Im::ImGuiTableFlags_SizingStretchProp;
-
-    // Cells keep a normal margin so headers and the number column are not
-    // jammed against the border. The If/Then buttons cancel it locally -- see
-    // CellButtonOpensPopup -- so their highlight still fills the whole cell.
-    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 2.0f));
-
-    if (!Im::BeginTable("rules", 6, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
-    {
-        Im::PopStyleVar(1);
-        return false;
-    }
+    constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_SizingStretchProp;
 
     // Fixed widths are MEASURED, not hardcoded. The panel's font size comes
     // from SKSEMenuFramework.ini (FontSizeMedium, 32 by default), so a pixel
@@ -1002,21 +1174,70 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     // click target now, so it needs no room for a button around the glyph.
     const float onWidth = (std::max)(TextWidth("On"), row * 0.4f) + gutter;
     const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
-    const float statusWidth =
-        WidestLabel({"cooldown", "no target", "no potion", "no magicka", "invalid", "fired", "false"}) + gutter;
+    const float statusWidth = StatusColumnWidth();
     const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
 
-    Im::TableSetupColumn("On", Im::ImGuiTableColumnFlags_WidthFixed, onWidth, 0);
-    Im::TableSetupColumn("#", Im::ImGuiTableColumnFlags_WidthFixed, numWidth, 0);
-    Im::TableSetupColumn("If", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-    // The wider share, because an action reads as a phrase ("Drink magicka
-    // potion") where a condition is mostly short words and a number.
-    Im::TableSetupColumn("Then", Im::ImGuiTableColumnFlags_WidthStretch, 1.25f, 0);
-    // Fixed, not stretched: a stretched Status column grew with its longest
-    // verdict and ate the Then cell, which is what covered the action text.
-    Im::TableSetupColumn("Status", Im::ImGuiTableColumnFlags_WidthFixed, statusWidth, 0);
-    Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
-    Im::TableHeadersRow();
+    const auto border = Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f);
+    const auto stripe = Im::GetColorU32(Im::ImGuiCol_TableRowBgAlt, 1.0f);
+    const auto hovered = Im::GetColorU32(Im::ImGuiCol_ButtonHovered, 1.0f);
+    const auto opened = Im::GetColorU32(Im::ImGuiCol_Header, 1.0f);
+    auto *draw = Im::GetWindowDrawList();
+
+    // Cells keep a normal margin so headers and the number column are not
+    // jammed against the border. The If/Then buttons cancel it locally -- see
+    // CellButtonOpensPopup -- so their highlight still fills the whole cell.
+    // Pieces abut: no item spacing between one and the next.
+    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 2.0f));
+    Im::PushStyleVar(Im::ImGuiStyleVar_ItemSpacing, Im::ImVec2(kCellPadX, 0.0f));
+
+    int piece = 0;
+    bool inTable = false;
+    float left = 0.0f;
+    float right = 0.0f;
+    float drawerTop = 0.0f;
+    bool drawerOpen = false;
+
+    const auto beginPiece = [&]() {
+        const std::string id = "rules##" + std::to_string(piece++);
+        if (!Im::BeginTable(id.c_str(), 6, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+            return false;
+        Im::TableSetupColumn("On", Im::ImGuiTableColumnFlags_WidthFixed, onWidth, 0);
+        Im::TableSetupColumn("#", Im::ImGuiTableColumnFlags_WidthFixed, numWidth, 0);
+        Im::TableSetupColumn("If", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+        // The wider share, because an action reads as a phrase ("Drink magicka
+        // potion") where a condition is mostly short words and a number.
+        Im::TableSetupColumn("Then", Im::ImGuiTableColumnFlags_WidthStretch, 1.25f, 0);
+        // Fixed, not stretched: a stretched Status column grew with its longest
+        // verdict and ate the Then cell, which is what covered the action text.
+        Im::TableSetupColumn("Status", Im::ImGuiTableColumnFlags_WidthFixed, statusWidth, 0);
+        Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
+        if (piece == 1)
+            Im::TableHeadersRow();
+        inTable = true;
+        return true;
+    };
+
+    const auto endPiece = [&]() {
+        Im::EndTable();
+        inTable = false;
+        const Im::ImVec2 lo = Im::GetItemRectMin();
+        const Im::ImVec2 hi = Im::GetItemRectMax();
+        left = lo.x;
+        right = hi.x;
+        if (drawerOpen && draw)
+        {
+            Im::ImDrawListManager::AddLine(draw, {lo.x, drawerTop}, {lo.x, lo.y}, border, 1.0f);
+            Im::ImDrawListManager::AddLine(draw, {hi.x, drawerTop}, {hi.x, lo.y}, border, 1.0f);
+        }
+        drawerOpen = false;
+        drawerTop = hi.y;
+    };
+
+    if (!beginPiece())
+    {
+        Im::PopStyleVar(2);
+        return false;
+    }
 
     bool changed = false;
     int moveFrom = -1;
@@ -1025,9 +1246,14 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
     for (std::size_t i = 0; i < rules.rules.size(); ++i)
     {
+        if (!inTable && !beginPiece())
+            break;
+
         auto &rule = rules.rules[i];
         const std::string rowId = std::to_string(i);
         Im::TableNextRow(0, 0.0f);
+        if (i % 2 == 1)
+            Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg0, stripe, -1);
 
         Im::TableSetColumnIndex(0);
         {
@@ -1045,12 +1271,12 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 Im::SetTooltip(rule.enabled ? "On -- click to turn this rule off"
                                             : "Off -- click to turn this rule on");
 
-            if (auto *draw = Im::GetWindowDrawList(); draw && rule.enabled)
+            if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.enabled)
             {
                 const float size = Im::GetFrameHeight();
                 const float cell = Im::GetContentRegionAvail().x;
-                const float left = pos.x + (cell - size) * 0.5f;
-                DrawGlyph(draw, Glyph::Tick, {left, pos.y}, {left + size, pos.y + size},
+                const float leftEdge = pos.x + (cell - size) * 0.5f;
+                DrawGlyph(drawList, Glyph::Tick, {leftEdge, pos.y}, {leftEdge + size, pos.y + size},
                           Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
             }
         }
@@ -1071,41 +1297,60 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             changed = true;
 
         Im::TableSetColumnIndex(3);
+        if (rule.actions.empty())
+            rule.actions.emplace_back();
+        const std::string key = RuleKey(view.id, i);
+        bool open = false;
+        if (rule.actions.size() == 1)
         {
-            // The actions, one under another in the order they are done,
-            // each its own menu; a plus beneath them for one more. A rule
-            // always shows at least one, "Do nothing" until it is chosen.
-            if (rule.actions.empty())
-                rule.actions.emplace_back();
-            int removeAction = -1;
-            for (std::size_t a = 0; a < rule.actions.size(); ++a)
-            {
-                bool remove = false;
-                const std::string actId = "##act" + rowId + "_" + std::to_string(a);
-                if (ActionMenu(actId.c_str(), rule.actions[a], view, rule.actions.size() > 1 ? &remove : nullptr))
-                    changed = true;
-                if (remove)
-                    removeAction = static_cast<int>(a);
-            }
-            if (removeAction >= 0)
-            {
-                rule.actions.erase(rule.actions.begin() + removeAction);
+            // One action: edited here, in its row. Its menu offers a
+            // second, and the rule then opens as a drawer.
+            bool addAnother = false;
+            if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother))
                 changed = true;
-            }
-            Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-            if (GlyphButton("addact" + rowId, Im::GetFrameHeight(), Glyph::Plus))
+            if (addAnother)
             {
                 rule.actions.emplace_back();
-                changed = true;
+                g_openRows.insert(key);
             }
-            Im::PopStyleVar(1);
+        }
+        else
+        {
+            // Several: the cell says how many and opens the drawer they are
+            // listed in. A selectable the size of the cell, drawn invisible
+            // and lit through the cell background so it fits by
+            // construction, with the marker and the summary drawn over it.
+            open = g_openRows.count(key) > 0;
+            const Im::ImVec2 pos = Im::GetCursorScreenPos();
+            const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
+            Im::PushStyleColor(Im::ImGuiCol_Header, invisible);
+            Im::PushStyleColor(Im::ImGuiCol_HeaderHovered, invisible);
+            Im::PushStyleColor(Im::ImGuiCol_HeaderActive, invisible);
+            const bool clicked =
+                Im::Selectable(("##open" + key).c_str(), false, 0, Im::ImVec2(0.0f, Im::GetFrameHeight()));
+            Im::PopStyleColor(3);
+            if (clicked)
+            {
+                open = !open;
+                if (open)
+                    g_openRows.insert(key);
+                else
+                    g_openRows.erase(key);
+            }
             if (Im::IsItemHovered(0))
-                Im::SetTooltip("Add an action, done after the ones above.");
+                Im::TableSetBgColor(Im::ImGuiTableBgTarget_CellBg, hovered, -1);
+            else if (open)
+                Im::TableSetBgColor(Im::ImGuiTableBgTarget_CellBg, opened, -1);
+            DrawDisclosure(pos, open);
+            Im::SetCursorScreenPos(Im::ImVec2(pos.x + DisclosureWidth(), pos.y));
+            Im::AlignTextToFramePadding();
+            const std::string summary =
+                ActionText(rule.actions.front(), view) + " and " + std::to_string(rule.actions.size() - 1) + " more";
+            Im::Text("%s", summary.c_str());
         }
 
         Im::TableSetColumnIndex(4);
         Im::AlignTextToFramePadding();
-
         if (!view.evaluated)
         {
             Im::TextDisabled("-");
@@ -1113,29 +1358,11 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         else
         {
             const auto verdict = i < view.trace.size() ? view.trace[i] : ft::Verdict::NotReached;
-            const ft::ActionKind firstKind = rule.actions.empty() ? ft::ActionKind::None : rule.actions.front().kind;
+            const ft::ActionKind firstKind = rule.actions.front().kind;
             const Status status = StatusFor(verdict, firstKind);
             Im::TextColored(status.color, "%s", status.text);
             if (Im::IsItemHovered(0))
-            {
-                // One line per action when the rule carries several: which
-                // were done, which waited, which could not be.
-                const auto *perAction = i < view.actionTrace.size() ? &view.actionTrace[i] : nullptr;
-                if (rule.actions.size() > 1 && perAction && perAction->size() == rule.actions.size())
-                {
-                    std::string lines;
-                    for (std::size_t a = 0; a < rule.actions.size(); ++a)
-                    {
-                        lines += (a ? "\n" : "") + std::to_string(a + 1) + ". " + ActionText(rule.actions[a], view) +
-                                 ": " + ft::Explain((*perAction)[a], rule.actions[a].kind);
-                    }
-                    Im::SetTooltip("%s", lines.c_str());
-                }
-                else
-                {
-                    Im::SetTooltip("%s", ft::Explain(verdict, firstKind));
-                }
-            }
+                Im::SetTooltip("%s", ft::Explain(verdict, firstKind));
         }
 
         Im::EndDisabled();
@@ -1147,8 +1374,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // Centre the three as a group, using the SAME gap the layout below
             // actually uses. Measuring with ItemSpacing while laying out with
             // kOrderGap overstated the group by ~12px and shifted it left.
-            const float button = Im::GetFrameHeight();
-            const float group = button * 3.0f + kOrderGap * 2.0f;
+            const float group = row * 3.0f + kOrderGap * 2.0f;
             const float cell = Im::GetContentRegionAvail().x;
             if (cell > group)
                 Im::SetCursorPosX(Im::GetCursorPosX() + (cell - group) * 0.5f);
@@ -1156,7 +1382,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
         // Arrows from the icon font, like every other glyph on the row.
         Im::BeginDisabled(i == 0);
-        if (GlyphButton("up" + rowId, Im::GetFrameHeight(), Glyph::Up))
+        if (GlyphButton("up" + rowId, row, Glyph::Up))
         {
             moveFrom = static_cast<int>(i);
             moveTo = static_cast<int>(i) - 1;
@@ -1165,7 +1391,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         Im::SameLine(0.0f, kOrderGap);
         Im::BeginDisabled(i + 1 >= rules.rules.size());
-        if (GlyphButton("dn" + rowId, Im::GetFrameHeight(), Glyph::Down))
+        if (GlyphButton("dn" + rowId, row, Glyph::Down))
         {
             moveFrom = static_cast<int>(i);
             moveTo = static_cast<int>(i) + 1;
@@ -1173,29 +1399,53 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::EndDisabled();
 
         Im::SameLine(0.0f, kOrderGap);
-        if (DeleteButton("rm" + rowId, Im::GetFrameHeight()))
+        if (DeleteButton("rm" + rowId, row))
             removeAt = static_cast<int>(i);
         if (Im::IsItemHovered(0))
             Im::SetTooltip("Delete this rule");
         Im::PopStyleVar(1);
+
+        if (!open)
+            continue;
+
+        // The drawer: close this piece, draw beneath, reopen for the rest.
+        endPiece();
+        Im::BeginDisabled(!rule.enabled);
+        if (DrawActionsDrawer(rule, i, view, left, right))
+            changed = true;
+        Im::EndDisabled();
+        drawerOpen = true;
     }
 
-    Im::EndTable();
-    Im::PopStyleVar(1);
+    if (inTable)
+    {
+        endPiece();
+    }
+    else if (drawerOpen && draw)
+    {
+        // The drawer was the last thing in the table: close the frame under
+        // it by hand, since no piece follows to do so.
+        const float bottom = Im::GetCursorScreenPos().y;
+        Im::ImDrawListManager::AddLine(draw, {left, drawerTop}, {left, bottom}, border, 1.0f);
+        Im::ImDrawListManager::AddLine(draw, {right, drawerTop}, {right, bottom}, border, 1.0f);
+        Im::ImDrawListManager::AddLine(draw, {left, bottom}, {right, bottom}, border, 1.0f);
+    }
+    Im::PopStyleVar(2);
 
     // Applied after the loop: mutating the vector mid-iteration would invalidate
     // the reference the current row still holds.
     if (moveFrom >= 0 && moveTo >= 0 && moveTo < static_cast<int>(rules.rules.size()))
     {
         std::swap(rules.rules[static_cast<std::size_t>(moveFrom)], rules.rules[static_cast<std::size_t>(moveTo)]);
+        MoveOpenState(view.id, static_cast<std::size_t>(moveFrom), static_cast<std::size_t>(moveTo));
         changed = true;
     }
     if (removeAt >= 0)
     {
+        RemoveOpenState(view.id, static_cast<std::size_t>(removeAt), rules.rules.size());
         rules.rules.erase(rules.rules.begin() + removeAt);
         changed = true;
     }
-
     Im::Spacing();
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
     const bool addClicked = GlyphButton("addrule", Im::GetFrameHeight(), Glyph::Plus);
@@ -1264,13 +1514,6 @@ void DrawDisclosure(Im::ImVec2 pos, bool open)
         Im::ImDrawListManager::AddTriangleFilled(draw, {pos.x, top}, {pos.x + s * 0.8f, top + s * 0.5f},
                                                  {pos.x, top + s}, ink);
 }
-
-// Which skill rows are open, keyed "section/label". Ours rather than any
-// ImGui widget state, because widget state is keyed on the ID stack, and a
-// row's ID stack includes which table PIECE it landed in (see DrawSections)
-// -- which changes as soon as a row above it opens, at which point ImGui
-// would forget the row was open. Render thread only.
-std::unordered_set<std::string> g_openRows;
 
 // The drawer an open skill row reveals: its perks, name and description,
 // set in from both edges of the parent table and given air above and below.
