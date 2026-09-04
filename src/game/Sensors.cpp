@@ -165,6 +165,7 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
 
 // Defined further down, in this same unnamed namespace, with the sheets.
 SheetRow Row(std::string label, std::string value);
+std::string Fmt(const char *fmt, double value);
 
 } // namespace
 
@@ -232,6 +233,69 @@ std::string EffectDescription(const RE::EffectSetting *base, float magnitude, fl
     std::snprintf(num, sizeof(num), "%.0f", duration);
     replace("<dur>", num);
     return line;
+}
+
+// What a running effect is called by on the sheets: the worn item carrying
+// an enchantment, else the spell or potion.
+std::string SourceName(RE::Actor *actor, const RE::ActiveEffect *ae)
+{
+    std::string source;
+    if (!ae->spell)
+        return source;
+    if (ae->spell->As<RE::EnchantmentItem>())
+        source = WornSourceOf(actor, ae->spell);
+    if (source.empty() && ae->spell->GetName())
+        source = ae->spell->GetName();
+    return source;
+}
+
+std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
+{
+    std::vector<Contribution> out;
+    auto *target = actor ? actor->AsMagicTarget() : nullptr;
+    auto *effects = target ? target->GetActiveEffectList() : nullptr;
+    if (!effects)
+        return out;
+    using Archetype = RE::EffectArchetypes::ArchetypeID;
+    for (auto *ae : *effects)
+    {
+        if (!ae || !ae->effect || !ae->effect->baseEffect)
+            continue;
+        if (ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled))
+            continue;
+        const auto *base = ae->effect->baseEffect;
+        const auto archetype = base->GetArchetype();
+        const bool moves = archetype == Archetype::kValueModifier || archetype == Archetype::kPeakValueModifier ||
+                           archetype == Archetype::kDualValueModifier;
+        if (!moves)
+            continue;
+        const bool primary = base->data.primaryAV == value;
+        const bool secondary = archetype == Archetype::kDualValueModifier && base->data.secondaryAV == value;
+        if (!primary && !secondary)
+            continue;
+        std::string source = SourceName(actor, ae);
+        if (source.empty())
+            source = base->GetName() ? base->GetName() : "?";
+        out.push_back({std::move(source), base->IsDetrimental() ? -ae->magnitude : ae->magnitude});
+    }
+    return out;
+}
+
+std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
+{
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    if (!owner)
+        return {};
+    const float base = owner->GetBaseActorValue(value);
+    const float permanent = owner->GetPermanentActorValue(value);
+    std::string note = "Base: " + Fmt("%.0f", base) + unit;
+    for (const Contribution &c : Contributions(actor, value))
+        note += "\n" + c.source + ": " + Fmt("%+.0f", c.amount) + unit;
+    // What is permanent beyond the base is perks and race: not effects,
+    // which are temporary, and not damage, which is below the base.
+    if (const float perks = permanent - base; std::abs(perks) > 0.05f)
+        note += "\nPerks and race: " + Fmt("%+.0f", perks) + unit;
+    return note;
 }
 
 std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
@@ -949,12 +1013,19 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
 
         s.rows.push_back(Row("Armor", Fmt("%.0f", armor)));
         s.rows.push_back(Row("Resist Damage", CappedPercent(armorPct, GameSetting("fMaxArmorRating", 80.0f))));
-        s.rows.push_back(Row("Resist Disease", Fmt("%.0f%%", av(RE::ActorValue::kResistDisease))));
-        s.rows.push_back(Row("Resist Poison", CappedPercent(av(RE::ActorValue::kPoisonResist), resistCap)));
-        s.rows.push_back(Row("Resist Fire", CappedPercent(av(RE::ActorValue::kResistFire), resistCap)));
-        s.rows.push_back(Row("Resist Frost", CappedPercent(av(RE::ActorValue::kResistFrost), resistCap)));
-        s.rows.push_back(Row("Resist Shock", CappedPercent(av(RE::ActorValue::kResistShock), resistCap)));
-        s.rows.push_back(Row("Resist Magic", CappedPercent(av(RE::ActorValue::kResistMagic), resistCap)));
+        // Each resistance with where it comes from as its hover text: the
+        // ring, the potion, the race.
+        const auto resist = [&](const char *label, RE::ActorValue value, bool capped) {
+            SheetRow row = Row(label, capped ? CappedPercent(av(value), resistCap) : Fmt("%.0f%%", av(value)));
+            row.note = ValueNote(actor, value, "%");
+            s.rows.push_back(std::move(row));
+        };
+        resist("Resist Disease", RE::ActorValue::kResistDisease, false);
+        resist("Resist Poison", RE::ActorValue::kPoisonResist, true);
+        resist("Resist Fire", RE::ActorValue::kResistFire, true);
+        resist("Resist Frost", RE::ActorValue::kResistFrost, true);
+        resist("Resist Shock", RE::ActorValue::kResistShock, true);
+        resist("Resist Magic", RE::ActorValue::kResistMagic, true);
         out.push_back(std::move(s));
     }
 
@@ -969,8 +1040,13 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
             const float base = av(rate);
             const float factor = av(mult) / 100.0f;
             SheetRow row = Row(label, Fmt("%.2f%%", base * factor));
-            if (std::abs(factor - 1.0f) > 0.001f)
-                row.note = "base " + Fmt("%.2f%%", base) + " at " + Fmt("%.0f%%", factor * 100.0f) + " speed";
+            // The base rate, then what speeds it up and by whom.
+            row.note = "Base: " + Fmt("%.2f%%", base);
+            for (const Contribution &c : Contributions(actor, mult))
+                row.note += "\n" + c.source + ": " + Fmt("%+.0f%%", c.amount) + " speed";
+            if (const float perks = owner->GetPermanentActorValue(mult) - owner->GetBaseActorValue(mult);
+                std::abs(perks) > 0.05f)
+                row.note += "\nPerks and race: " + Fmt("%+.0f%%", perks) + " speed";
             s.rows.push_back(std::move(row));
         };
         regen("Health Rate", RE::ActorValue::kHealRate, RE::ActorValue::kHealRateMult);
@@ -1178,10 +1254,24 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                 add(Fmt("%+.0f%% ", k.mod.sign * m) + k.mod.effect);
         }
 
-        if (m != 0.0f)
-            row.note += std::string(k.mod.effect) + ": enchantments and perks " + Fmt("%+.0f", m);
-        if (p != 0.0f)
-            row.note += (row.note.empty() ? "" : "\n") + std::string(k.power.effect) + ": potions " + Fmt("%+.0f", p);
+        // Each modifier by its source: the gauntlets, the potion, and what
+        // is left to perks. A line per source, "+20% damage" each.
+        const auto bySource = [&](const Modifier &mod, float total) {
+            if (!mod.effect || total == 0.0f)
+                return;
+            float explained = 0.0f;
+            for (const Contribution &c : Contributions(actor, mod.value))
+            {
+                row.note += (row.note.empty() ? "" : "\n") + c.source + ": " + Fmt("%+.0f%% ", mod.sign * c.amount) +
+                            mod.effect;
+                explained += c.amount;
+            }
+            if (const float rest = total - explained; std::abs(rest) > 0.05f)
+                row.note += (row.note.empty() ? "" : "\n") + std::string("Perks: ") + Fmt("%+.0f%% ", mod.sign * rest) +
+                            mod.effect;
+        };
+        bySource(k.mod, m);
+        bySource(k.power, p);
 
         row.detail = OwnedPerks(actor, k.value);
         s.rows.push_back(std::move(row));

@@ -128,6 +128,24 @@ struct EffectRow
 // name. Effects flagged hidden, and ones already run out, are left out.
 [[nodiscard]] std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor);
 
+// Where a number on a sheet comes from. The engine keeps an actor value as
+// a base plus lumps -- what perks and race add, what magic adds -- and
+// names no source; but every running effect says which value it moves, by
+// how much, and what applied it. So the magic lump can be told by source
+// -- "Adept Robes of Destruction: +100" -- and only the perks-and-race
+// lump stays a lump.
+struct Contribution
+{
+    std::string source; // the worn item, the potion, the spell
+    float amount{0.0f}; // signed: a detrimental effect takes away
+};
+[[nodiscard]] std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value);
+
+// The hover text for a sheet row that reads an actor value: "Base: 3",
+// then each running effect by its source, then "Perks and race: +2" when
+// they add anything. `unit` follows each number ("%" or "").
+[[nodiscard]] std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit);
+
 // The Character tab: race, movement, defence and the equipped weapon. Display
 // only -- none of it is a rule input. Cheap reads, done in and out of combat
 // alike.
