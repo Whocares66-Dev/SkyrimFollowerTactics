@@ -483,6 +483,13 @@ void Tick()
         }
     }
 
+    // Pinned gear, independent of tactics. Cheap when nothing is pinned.
+    // BEFORE the rules, and it matters: the pin pass is what remembers the
+    // book when a fight begins, and a rule may pin on the very first tick
+    // of one. Run after the rules, it remembered the rule's pin as the
+    // player's, and restored it when the fight ended.
+    KeepPins(followers);
+
     // Out of combat there is nothing to decide, so the expensive work -- the
     // inventory scan inside BuildSnapshot, and the evaluation itself -- is
     // skipped entirely. What remains is a few actor-value reads, so the panel
@@ -518,9 +525,6 @@ void Tick()
     // Armed cast requests are withdrawn from here, whether or not anyone is
     // still fighting: a request must not outlive the moment it was made for.
     TickPackages(now, followers);
-
-    // Pinned gear, independent of tactics. Cheap when nothing is pinned.
-    KeepPins(followers);
 
     // Drop anyone who is no longer a managed follower -- dismissed, dead, or out
     // of range -- so the panel reflects the present rather than a history.
