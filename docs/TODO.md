@@ -60,6 +60,14 @@ in `docs/PLAN.md`.
   rule's package equips through it too and must be exempted (the lease
   knows the spell), or tactics stop being unlimited.
 
+- **The new conditions, in play** (docs/CONDITIONS.md 8): which of
+  `kParalyzed` and the archetype flips first; how long `staggered` holds;
+  whether the hit event fires for cloaks, hazards and concentration ticks;
+  logged armour figures for a fight's enemies against the estimated tiers.
+- **The Attacker target has no picker yet.** The editor sets no action
+  target; "their attacker" is reachable only from a profile. The plan is
+  an "On" choice per rule (docs/ACTIONS.md 5), which cast-on-target needs
+  too.
 - **Group subjects, in play.** Allies and enemies are sensed by
   definition (docs/CONDITIONS.md 6): the player and the teammates, and
   whoever is in combat and hostile to the player. Verify against the log's

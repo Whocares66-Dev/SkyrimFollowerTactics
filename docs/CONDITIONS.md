@@ -1,9 +1,12 @@
 # Conditions: Status, Armor, Resistance, Attacked By, Lowest/Highest
 
-Design for the next set of rule conditions, from research done 2026-09-04
-(sources at the end). Nothing here is built yet. The signals are read off
-the engine on the 500 ms tick, into the RE-free `Snapshot`, and the
-evaluator only ever compares what the snapshot carries.
+Design for the rule conditions built 2026-09-04 from research done the
+same day (sources at the end). All of it is built: Status, Armor with
+Lowest and Highest, Resistance, Attacked by with the Attacker target,
+Health lowest and highest, and the other followers as named subjects. The
+signals are read off the engine on the 500 ms tick, into the RE-free
+`Snapshot`, and the evaluator only ever compares what the snapshot
+carries. Section 8 is what remains to be seen in play.
 
 ## 1. The shape of a rule
 
@@ -136,14 +139,18 @@ This is what makes the Ally and Enemy subjects real, and it is what a
 named-follower subject needs: `SubjectKind::Follower` with the actor's
 form, listed by name in the menu after the player.
 
-## 7. Order of work
+## 7. What was built, where
 
-1. Group sensing, since Ally, Enemy, Lowest/Highest and named followers
-   all wait on it. One tick, one log line of who is who.
-2. Per-actor view: status bits, armour reduction, six resistances. Shared
-   by Self, Player, Ally, Enemy views.
-3. The hit table and the two sinks; Attacked by; the Attacker target.
-4. The menu, with kinds and bands; wire names; tests for each predicate.
+- `core/Kinds.h`: StatusKind, ArmorBand and BandOf, DamageKind, ResistBand.
+- `core/Snapshot.h`: ActorTraits -- status bits, armour reduction, six
+  resistances, attacked-by bits and the attacker -- on the follower, the
+  player, each ally and each enemy.
+- `core/Rule.h`: predicates Status, Armor, Resistance, AttackedBy,
+  HealthLowest/Highest, ArmorLowest/Highest; the rule's statusKind and
+  damageKind; SubjectKind::Follower with subjectForm; the Attacker target.
+- `game/Sensors.cpp`: ReadTraits and DamageReduction; the party and enemy
+  walk. `game/Hits.cpp`: the hit table and its two sinks.
+- `tests/test_evaluator.cpp`: one case per condition.
 
 ## 8. To test in play
 
