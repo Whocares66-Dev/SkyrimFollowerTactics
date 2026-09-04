@@ -874,11 +874,12 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     Hand hands = HandsFor(described.grip, hand);
     if (request == WearRequest::Pin && !Pinnable(described))
     {
-        // The panel does not offer this, but a pin is a promise, and it
-        // is kept here too: the AI would not choose it, so equip only.
-        logger::info("{} {} cannot be pinned (the AI would not choose it); equipping instead", Describe(actor),
+        // Neither the panel nor the rules offer this; a pin is a promise the
+        // AI would not keep, and it is refused here too rather than
+        // half-kept as an equip without a pin.
+        logger::warn("{} {} cannot be pinned: above the follower's skill, the AI would not choose it", Describe(actor),
                      thing->GetName() ? thing->GetName() : "?");
-        request = WearRequest::Equip;
+        return;
     }
     // One weapon cannot be in both hands. Asked to move her only copy to
     // the other hand, take it out of the first; otherwise the engine's
@@ -900,11 +901,10 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     {
         std::scoped_lock lock(g_pinMutex);
         auto &pins = g_pins[id];
-        if (request == WearRequest::Pin || request == WearRequest::Equip)
+        if (request == WearRequest::Pin)
         {
             ReleaseConflictingPins(actor, pins, described, hands);
-            if (request == WearRequest::Pin)
-                AddPin(pins, described, hands, moving);
+            AddPin(pins, described, hands, moving);
         }
         else
         {
@@ -917,11 +917,10 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         if (fromPanel && g_fighting.contains(id))
         {
             auto &before = g_pinsBeforeFight[id];
-            if (request == WearRequest::Pin || request == WearRequest::Equip)
+            if (request == WearRequest::Pin)
             {
                 [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands);
-                if (request == WearRequest::Pin)
-                    AddPin(before, described, hands, moving);
+                AddPin(before, described, hands, moving);
             }
             else
             {
@@ -934,10 +933,6 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     const char *name = thing->GetName() ? thing->GetName() : "?";
     switch (request)
     {
-    case WearRequest::Equip:
-        logger::info("{} told to ready {} (not pinned)", Describe(actor), name);
-        EquipPinned(actor, thing, hands, true);
-        break;
     case WearRequest::Pin:
         logger::info("{} told to ready {} (pinned)", Describe(actor), name);
         // Off for now, to see what her own style does with a left-hand

@@ -2081,7 +2081,7 @@ void SlashCell()
 }
 
 void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, bool pinned, Hand hand, bool clickable,
-            bool allowed = true, bool pinnable = true)
+            bool allowed = true)
 {
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
     if (!allowed)
@@ -2089,16 +2089,7 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
         SlashCell();
         return;
     }
-    if (clickable && !pinnable)
-    {
-        // A pin is a promise the AI will use it, and for this it would not
-        // be kept: equip and unequip only, two states.
-        if (CellClicked(id))
-            RequestWear(follower, form, !on ? WearRequest::Equip : WearRequest::TakeOff, hand);
-        if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", !on ? "Equip; it cannot be pinned, the AI would not use it." : "Unequip.");
-    }
-    else if (clickable)
+    if (clickable)
     {
         // Pinned first: a pin whose thing the AI has swapped out is still a
         // pin, and the click releases it rather than pinning it again.
@@ -2737,12 +2728,15 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         {
             std::snprintf(buf, sizeof(buf), "##left%08X", entry->form);
             Im::TableNextColumn();
+            // A spell above the follower's skill takes no hand at all, as
+            // the tactics menus offer it for neither casting nor pinning:
+            // one rule, not an equip-only state beside it.
             OnCell(buf, view.id, entry->form, entry->equippedLeft, entry->pinnedLeft, Hand::Left, !voice,
-                   voice || entry->leftAllowed, !entry->aboveSkill);
+                   voice || (entry->leftAllowed && !entry->aboveSkill));
             std::snprintf(buf, sizeof(buf), "##right%08X", entry->form);
             Im::TableNextColumn();
             OnCell(buf, view.id, entry->form, entry->equippedRight, entry->pinnedRight, Hand::Right, !voice,
-                   voice || entry->rightAllowed, !entry->aboveSkill);
+                   voice || (entry->rightAllowed && !entry->aboveSkill));
         }
         if (dim)
             Im::PopStyleColor(1);

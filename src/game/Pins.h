@@ -60,7 +60,6 @@ namespace ft::game
 enum class WearRequest
 {
     Pin,
-    Equip, // on, but no pin: for a spell the AI would not choose, where a pin would be a promise unkept
     Unpin,
     TakeOff
 };

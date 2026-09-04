@@ -49,11 +49,11 @@ struct MagicEntry
     std::string cost;
     float magnitude{0.0f}; // the costliest effect's, the column
     int levelValue{0};     // the minimum skill behind the word, for sorting
-    int skill{0};          // her level in the spell's school
-    // The level is above her skill: left to itself the combat AI will not
-    // choose it, whatever is pinned or set aside (Chain Lightning, Adept,
-    // against Destruction 39). Nothing stops it being CAST -- a cast rule's
-    // package makes her cast it regardless -- only chosen.
+    int skill{0};          // the follower's level in the spell's school
+    // The level is above the follower's skill: left to itself the combat AI
+    // will not choose it (Chain Lightning, Adept, against Destruction 39).
+    // The package could make them cast it regardless, but by our rule it is
+    // neither cast nor pinned, and the hand cells take no click for it.
     bool aboveSkill{false};
     int castValue{0};      // the delivery behind the word, for sorting
     float costValue{0.0f}; // magicka, for sorting; 0 for powers and shouts
