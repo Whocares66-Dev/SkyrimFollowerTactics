@@ -44,6 +44,12 @@ in `docs/PLAN.md`.
   away once she has it -- and what the game does after "Equip armor: None"
   takes pinned pieces off (her outfit may not come back until a cell
   change).
+- **Pins over a fight, in play.** The book is remembered on entering
+  combat and restored on leaving it (`NoteFight` / `RestorePinsAfterFight`
+  in Pins.cpp). Verify: a travelling outfit and dagger come back after a
+  fight in which rules pinned a bow and Flames; a panel pin made mid-fight
+  survives; a fight that flickers off and on (IsInCombat dropping for a
+  tick) restores and re-remembers without a visible swap.
 - **The equip detour, in play.** `RefuseEquipsAgainstPins` refuses the
   engine's own `EquipObject` calls that would break a pin (the sword it
   puts in the right hand when a fight ends, over pinned Flames). Verify

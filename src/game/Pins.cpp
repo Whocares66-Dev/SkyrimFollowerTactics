@@ -7,6 +7,7 @@
 #include "game/Tactics.h"
 #include "game/Util.h"
 
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <mutex>
@@ -421,19 +422,102 @@ std::uint64_t ReadyKey(const RE::Actor *actor, const RE::TESForm *form)
     return (static_cast<std::uint64_t>(actor->GetFormID()) << 32) | form->GetFormID();
 }
 
+// --- pins over a fight -------------------------------------------------------
+//
+// What the book held when a fight began is put back when it ends. The rules
+// pin for the fight -- the bow at range, Flames over the travelling dagger,
+// None to let the AI choose -- and every one of those displaces or drops a
+// pin the player made in the panel. The player's pins are what the follower
+// travels in, and a fight should not rewrite them: the outfit goes back on,
+// the dagger goes back in hand, the rule's bow is let go. A pin the player
+// makes in the panel DURING the fight is applied to the remembered book
+// too, so it is what comes back. Keyed by follower; the transitions are
+// read on the watchdog's tick, which already asks IsInCombat every half
+// second.
+std::unordered_map<ft::ActorId, std::vector<Pin>> g_pinsBeforeFight;
+std::unordered_set<ft::ActorId> g_fighting;
+
+bool SamePin(const Pin &a, const Pin &b)
+{
+    return a.thing.form == b.thing.form && a.hands == b.hands;
+}
+
+bool Holds(const std::vector<Pin> &pins, const Pin &pin)
+{
+    return std::any_of(pins.begin(), pins.end(), [&](const Pin &p) { return SamePin(p, pin); });
+}
+
+// The fight is over: what it pinned is let go and taken off, what it
+// displaced is pinned again. The watchdog, running next in the same pass
+// and now out of combat, puts the restored pins back on. Under g_pinMutex.
+void RestorePinsAfterFight(RE::Actor *actor, std::vector<Pin> &pins, const std::vector<Pin> &before)
+{
+    bool changed = false;
+    for (const Pin &pin : pins)
+    {
+        if (Holds(before, pin))
+            continue;
+        changed = true;
+        if (auto *thing = RE::TESForm::LookupByID(pin.thing.form))
+        {
+            logger::info("{} fight over -- letting go of {}{}, pinned during it", Describe(actor),
+                         thing->GetName() ? thing->GetName() : "?", HandTag(pin.hands));
+            UnequipForm(actor, thing, pin.hands, true);
+        }
+    }
+    for (const Pin &pin : before)
+    {
+        if (Holds(pins, pin))
+            continue;
+        changed = true;
+        const auto *thing = RE::TESForm::LookupByID(pin.thing.form);
+        logger::info("{} fight over -- {}{} pinned again, as before it", Describe(actor),
+                     thing && thing->GetName() ? thing->GetName() : "?", HandTag(pin.hands));
+    }
+    pins = before;
+    if (!changed)
+        return;
+    // A fresh start for the spell watchdog and the refusal log: the book is
+    // what it was, and anything they gave up on may hold now.
+    std::erase_if(g_spellReadies, [&](const auto &entry) { return (entry.first >> 32) == actor->GetFormID(); });
+    g_refusedLogged.clear();
+    actor->Update3DModel();
+}
+
+// Note a follower entering or leaving combat. Under g_pinMutex.
+void NoteFight(RE::Actor *actor, std::vector<Pin> &pins, bool fighting)
+{
+    const ft::ActorId id = actor->GetFormID();
+    const bool was = g_fighting.contains(id);
+    if (fighting && !was)
+    {
+        g_fighting.insert(id);
+        g_pinsBeforeFight[id] = pins;
+        if (!pins.empty())
+            logger::info("{} fight begins -- {} pin(s) remembered for after it", Describe(actor), pins.size());
+        return;
+    }
+    if (!fighting && was)
+    {
+        g_fighting.erase(id);
+        if (auto saved = g_pinsBeforeFight.extract(id); !saved.empty())
+            RestorePinsAfterFight(actor, pins, saved.mapped());
+    }
+}
+
 void EnforcePins(const std::vector<RE::Actor *> &followers)
 {
     std::scoped_lock lock(g_pinMutex);
-    if (g_pins.empty())
-        return;
 
     for (auto *actor : followers)
     {
-        const auto it = g_pins.find(actor->GetFormID());
-        if (it == g_pins.end())
-            continue;
-        auto &pins = it->second;
+        // Every follower, pins or none: a fight that begins with an empty
+        // book and ends with a rule's pin in it still has to be put right.
+        auto &pins = g_pins[actor->GetFormID()];
         const bool fighting = actor->IsInCombat();
+        NoteFight(actor, pins, fighting);
+        if (pins.empty())
+            continue;
 
         for (auto pin = pins.begin(); pin != pins.end();)
         {
@@ -800,7 +884,7 @@ namespace
 
 // One request against the book, on the game thread: the panel's task and
 // the rules' tick both come here.
-void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand)
+void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, bool fromPanel)
 {
     const ft::ActorId id = actor->GetFormID();
     const Holdable described = DescribeHoldable(actor, thing);
@@ -842,6 +926,24 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand)
         else
         {
             hands = LetGo(pins, described, hands);
+        }
+        // The panel's word mid-fight is the new normal: the same change goes
+        // into the book remembered for after the fight, so the player's pin
+        // is what comes back, not the one it replaced. A rule's pin is for
+        // the fight only and leaves the remembered book alone.
+        if (fromPanel && g_fighting.contains(id))
+        {
+            auto &before = g_pinsBeforeFight[id];
+            if (request == WearRequest::Pin || request == WearRequest::Equip)
+            {
+                [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands);
+                if (request == WearRequest::Pin)
+                    AddPin(before, described, hands, moving);
+            }
+            else
+            {
+                [[maybe_unused]] const Hand gone = LetGo(before, described, HandsFor(described.grip, hand));
+            }
         }
         g_refusedLogged.clear();
     }
@@ -941,7 +1043,7 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         auto *thing = RE::TESForm::LookupByID(form);
         if (!actor || !thing)
             return;
-        Wear(actor, thing, request, hand);
+        Wear(actor, thing, request, hand, true);
         PublishFollower(actor);
     });
 }
@@ -956,11 +1058,11 @@ bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand)
     // record gives it, whatever was asked.
     if (hand == Hand::Both && DescribeHoldable(actor, thing).grip == Grip::Either)
     {
-        Wear(actor, thing, WearRequest::Pin, Hand::Left);
-        Wear(actor, thing, WearRequest::Pin, Hand::Right);
+        Wear(actor, thing, WearRequest::Pin, Hand::Left, false);
+        Wear(actor, thing, WearRequest::Pin, Hand::Right, false);
         return true;
     }
-    Wear(actor, thing, WearRequest::Pin, hand);
+    Wear(actor, thing, WearRequest::Pin, hand, false);
     return true;
 }
 
