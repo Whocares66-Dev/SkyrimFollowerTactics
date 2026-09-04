@@ -564,6 +564,44 @@ TEST_CASE("a rule does its actions one per tick, in order, and waits rather than
     REQUIRE_FALSE(ctx.pending.Active());
 }
 
+TEST_CASE("a list whose remainder cannot be done is through, and the tick goes on", "[sequence]")
+{
+    constexpr std::uint32_t kHeal = 0x00012FCC;
+
+    // Drink, then cast. The potion goes; next tick the cast is
+    // unaffordable -- a cannot, not a not-yet -- so it is skipped, the list
+    // is through, and the next rule gets the same tick.
+    Rule r = HealBelow(0.5f);
+    r.actions.push_back({ActionKind::CastSpell, kHeal});
+    Rule other = HealBelow(0.5f);
+    other.actionTarget = ActionTargetKind::Self;
+    other.FirstAction().kind = ActionKind::Flee;
+    RuleSet rs;
+    rs.rules = {r, other};
+
+    Snapshot s = Healthy();
+    s.health = {40.0f, 100.0f};
+    s.spells.known.push_back(kHeal);
+    s.spells.costs.push_back({kHeal, 80.0f});
+    s.magicka = {10.0f, 100.0f};
+    EvalContext ctx;
+
+    Trace trace;
+    ActionTrace actions;
+    Decision d = Evaluate(rs, s, ctx, &trace, &actions);
+    REQUIRE(d.action() == ActionKind::DrinkHealthPotion);
+    REQUIRE(ctx.pending.Active());
+
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace, &actions);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(d.action() == ActionKind::Flee);
+    REQUIRE_FALSE(ctx.pending.Active());
+    // The first rule was re-read from the top on the same tick: the potion
+    // is inside its settle.
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+}
+
 TEST_CASE("a list in progress is dropped when the fight ends", "[sequence]")
 {
     Rule r = HealBelow(0.5f);

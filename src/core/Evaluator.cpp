@@ -552,20 +552,23 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
     if (snap.combatEnded)
         ctx.pending = {};
 
-    // A rule in progress owns the tick until its list is through. Nothing
-    // else is evaluated, and the status column says so.
+    // A rule in progress owns the tick while it is doing or waiting. If
+    // what remains of its list turns out to be nothing it can do -- no
+    // potion left, the cast unaffordable -- the list is through, and the
+    // tick goes on to the rules from the top, as it would have without it.
     if (ctx.pending.Active())
     {
         const EvalContext::Sequence seq = ctx.pending;
         std::vector<Pin> none;
         std::vector<Verdict> verdicts;
-        Run(seq.actions, seq.next, seq.ruleIndex, seq.target, snap, ctx, decision, verdicts, none);
+        const bool waiting = Run(seq.actions, seq.next, seq.ruleIndex, seq.target, snap, ctx, decision, verdicts, none);
         const auto i = static_cast<std::size_t>(seq.ruleIndex);
         if (trace && i < trace->size())
             (*trace)[i] = Summary(decision, verdicts);
         if (actionTrace && i < actionTrace->size() && (*actionTrace)[i].size() == verdicts.size())
             (*actionTrace)[i] = verdicts;
-        return decision;
+        if (decision.Fired() || waiting)
+            return decision;
     }
 
     // What the satisfied equip rules above hold. An equip rule whose
