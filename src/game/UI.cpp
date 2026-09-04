@@ -1565,6 +1565,8 @@ void DrawPerkDrawer(const SheetRow &row, float left, float right)
     Im::Dummy(Im::ImVec2(0.0f, kGap));
 }
 
+void NoteTooltip(const std::string &note);
+
 // A run of headed sections, each a bordered table in the style of the rule
 // table. The name and value columns are FIXED, measured across every section
 // in the run so the tables line up down the page, and sized to their
@@ -1723,7 +1725,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 // A row's note is hover text on its label, where there is no
                 // Modifiers column to carry it.
                 if (!modifiers && !row.note.empty() && Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", row.note.c_str());
+                    NoteTooltip(row.note);
             }
             else
             {
@@ -1794,7 +1796,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Im::TableSetColumnIndex(2);
                 Im::Text("%s", row.modifiers.c_str());
                 if (!row.note.empty() && Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", row.note.c_str());
+                    NoteTooltip(row.note);
             }
 
             if (!open)
@@ -1945,6 +1947,40 @@ void TextRightInCell(const std::string &text)
     if (slack > 0.0f)
         Im::SetCursorPosX(Im::GetCursorPosX() + slack);
     Im::Text("%s", text.c_str());
+}
+
+// A sheet row's hover text as a table: each "Label: value" line a row, the
+// values right-aligned so the numbers line up down the column -- "3.00%"
+// under "+3.00%" ends on the same edge. A line with no ": " is a plain
+// line.
+void NoteTooltip(const std::string &note)
+{
+    Im::BeginTooltip();
+    if (Im::BeginTable("note", 2, Im::ImGuiTableFlags_SizingFixedFit, Im::ImVec2(0.0f, 0.0f), 0.0f))
+    {
+        std::size_t from = 0;
+        while (from <= note.size())
+        {
+            const std::size_t end = note.find('\n', from);
+            const std::string line = note.substr(from, end == std::string::npos ? std::string::npos : end - from);
+            from = end == std::string::npos ? note.size() + 1 : end + 1;
+            if (line.empty())
+                continue;
+            Im::TableNextRow(0, 0.0f);
+            Im::TableSetColumnIndex(0);
+            const std::size_t colon = line.rfind(": ");
+            if (colon == std::string::npos)
+            {
+                Im::Text("%s", line.c_str());
+                continue;
+            }
+            Im::Text("%s", line.substr(0, colon + 1).c_str());
+            Im::TableSetColumnIndex(1);
+            TextRightInCell(line.substr(colon + 2));
+        }
+        Im::EndTable();
+    }
+    Im::EndTooltip();
 }
 
 // An invisible, cell-filling click target, lit through the cell background
