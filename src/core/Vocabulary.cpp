@@ -63,7 +63,7 @@ constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
     {SubjectKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 13> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 14> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
@@ -74,6 +74,7 @@ constexpr std::array<Entry<PredicateKind>, 13> kPredicates{{
     {PredicateKind::CombatEnds, "combat-ends", "Combat ends"},
     {PredicateKind::WithinDistance, "within-distance", "Distance"},
     {PredicateKind::CountAtLeast, "count-at-least", "Count"},
+    {PredicateKind::Status, "status", "Status"},
     {PredicateKind::HealthPctAbove, "health-pct-above", "Health"},
     {PredicateKind::StaminaPctAbove, "stamina-pct-above", "Stamina"},
     {PredicateKind::MagickaPctAbove, "magicka-pct-above", "Magicka"},
@@ -116,12 +117,31 @@ constexpr std::array<Entry<Hand>, 4> kHands{{
     {Hand::Both, "both", "Both"},
 }};
 
+// A status, as the rule names it and as the menu shows it.
+constexpr std::array<Entry<StatusKind>, 14> kStatuses{{
+    {StatusKind::Poisoned, "poisoned", "Poisoned"},
+    {StatusKind::Burning, "burning", "Burning"},
+    {StatusKind::Frostbitten, "frostbitten", "Frostbitten"},
+    {StatusKind::Shocked, "shocked", "Shocked"},
+    {StatusKind::Diseased, "diseased", "Diseased"},
+    {StatusKind::Paralysed, "paralysed", "Paralysed"},
+    {StatusKind::Staggered, "staggered", "Staggered"},
+    {StatusKind::Fleeing, "fleeing", "Fleeing"},
+    {StatusKind::BleedingOut, "bleeding-out", "Bleeding out"},
+    {StatusKind::Invisible, "invisible", "Invisible"},
+    {StatusKind::Ethereal, "ethereal", "Ethereal"},
+    {StatusKind::Blocking, "blocking", "Blocking"},
+    {StatusKind::Casting, "casting", "Casting"},
+    {StatusKind::Sneaking, "sneaking", "Sneaking"},
+}};
+
 // Every enumerator must appear in its table, or a rule would serialise as
 // "Unknown" and fail to load back. Cheap to assert, impossible to forget.
 static_assert(kSubjects.size() == static_cast<std::size_t>(SubjectKind::COUNT));
 static_assert(kPredicates.size() == static_cast<std::size_t>(PredicateKind::COUNT));
 static_assert(kActionTargets.size() == static_cast<std::size_t>(ActionTargetKind::COUNT));
 static_assert(kActions.size() == static_cast<std::size_t>(ActionKind::COUNT));
+static_assert(kStatuses.size() == static_cast<std::size_t>(StatusKind::COUNT));
 
 } // namespace
 
@@ -145,6 +165,10 @@ std::string_view WireName(Hand v) noexcept
 {
     return LookupWire(kHands, v);
 }
+std::string_view WireName(StatusKind v) noexcept
+{
+    return LookupWire(kStatuses, v);
+}
 
 std::optional<SubjectKind> SubjectFromWireName(std::string_view s) noexcept
 {
@@ -165,6 +189,10 @@ std::optional<ActionKind> ActionFromWireName(std::string_view s) noexcept
 std::optional<Hand> HandFromWireName(std::string_view s) noexcept
 {
     return Parse(kHands, s);
+}
+std::optional<StatusKind> StatusFromWireName(std::string_view s) noexcept
+{
+    return Parse(kStatuses, s);
 }
 
 bool IsWireName(std::string_view s) noexcept
@@ -220,6 +248,10 @@ std::string_view DisplayName(ActionKind v) noexcept
 std::string_view DisplayName(Hand v) noexcept
 {
     return LookupDisplay(kHands, v);
+}
+std::string_view DisplayName(StatusKind v) noexcept
+{
+    return LookupDisplay(kStatuses, v);
 }
 
 ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
@@ -281,6 +313,8 @@ std::string_view Describe(PredicateKind v) noexcept
         return "Closer than this many units.";
     case PredicateKind::CountAtLeast:
         return "At least this many of them.";
+    case PredicateKind::Status:
+        return "In this state right now.";
     default:
         return "";
     }

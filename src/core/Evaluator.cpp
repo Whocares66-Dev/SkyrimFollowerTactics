@@ -22,6 +22,8 @@ bool EnemySatisfies(const EnemyView &e, const Rule &r)
         return e.health.Pct() > r.conditionArg;
     case PredicateKind::WithinDistance:
         return e.distance <= r.conditionArg;
+    case PredicateKind::Status:
+        return e.traits.Has(r.statusKind);
     default:
         return false;
     }
@@ -41,6 +43,8 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
         return a.inBleedout;
     case PredicateKind::WithinDistance:
         return a.distance <= r.conditionArg;
+    case PredicateKind::Status:
+        return a.traits.Has(r.statusKind);
     default:
         return false;
     }
@@ -208,6 +212,9 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::CombatEnds:
         held = s.combatEnded;
         break;
+    case PredicateKind::Status:
+        held = s.traits.Has(r.statusKind);
+        break;
     default:
         break;
     }
@@ -233,6 +240,9 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
         break;
     case PredicateKind::WithinDistance:
         held = s.distanceToPlayer <= r.conditionArg;
+        break;
+    case PredicateKind::Status:
+        held = s.playerTraits.Has(r.statusKind);
         break;
     default:
         break;

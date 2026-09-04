@@ -9,6 +9,7 @@
 // src/game/ builds one of these per follower per tick. Everything in
 // src/core/ consumes it and nothing else.
 
+#include "Kinds.h"
 #include "Loadout.h"
 
 #include <algorithm>
@@ -35,6 +36,25 @@ struct Stat
     }
 };
 
+// What is true of an actor beyond the numbers, read off the actor each
+// tick: the statuses it is in, as one bit each. The same for the follower,
+// the player, an ally and an enemy, so a Status condition asks the same
+// question of any of them.
+struct ActorTraits
+{
+    std::uint32_t status{0};
+
+    [[nodiscard]] constexpr bool Has(StatusKind kind) const noexcept
+    {
+        return (status & Bit(kind)) != 0;
+    }
+
+    constexpr void Set(StatusKind kind) noexcept
+    {
+        status |= Bit(kind);
+    }
+};
+
 struct EnemyView
 {
     ActorId id{0};
@@ -43,6 +63,7 @@ struct EnemyView
     bool isCasting{false};
     bool isAttackingPlayer{false};
     bool hasLineOfSight{false};
+    ActorTraits traits{};
 };
 
 struct AllyView
@@ -51,6 +72,7 @@ struct AllyView
     Stat health{};
     float distance{0.0f};
     bool inBleedout{false};
+    ActorTraits traits{};
 };
 
 // Counts and best-available magnitude per potion kind. Populated by an
@@ -168,10 +190,12 @@ struct Snapshot
     bool inBleedout{false};
     bool weaponDrawn{false};
     bool sneaking{false};
+    ActorTraits traits{};
 
     Stat playerHealth{};
     float distanceToPlayer{0.0f};
     bool playerInCombat{false};
+    ActorTraits playerTraits{};
 
     ActorId currentTarget{0};
 

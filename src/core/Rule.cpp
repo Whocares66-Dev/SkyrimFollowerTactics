@@ -109,6 +109,10 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         }
         return false;
     }
+    // A status is read off every actor the snapshot carries, so it is
+    // answerable about any of them.
+    if (predicate == PredicateKind::Status)
+        return true;
     switch (subject)
     {
     case SubjectKind::Self:

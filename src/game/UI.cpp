@@ -258,6 +258,12 @@ std::string ConditionText(const ft::Rule &r, const std::string &playerName)
                          ? playerName
                          : std::string(ft::DisplayName(r.subject)));
     text += ' ';
+    // A status reads as the status: "Self Poisoned", not "Self Status".
+    if (r.predicate == ft::PredicateKind::Status)
+    {
+        text += ft::DisplayName(r.statusKind);
+        return text;
+    }
     text += ft::DisplayName(r.predicate);
 
     if (const std::string arg = ArgumentText(r.predicate, r.conditionArg); !arg.empty())
@@ -588,6 +594,28 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerN
 
             const auto presets = PresetsFor(predicate);
             const std::string predicateName(ft::DisplayName(predicate));
+
+            // A status: the kinds, one leaf each, under "Status".
+            if (predicate == ft::PredicateKind::Status)
+            {
+                if (!BeginCascade(predicateName.c_str()))
+                    continue;
+                for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::StatusKind::COUNT); ++ki)
+                {
+                    const auto kind = static_cast<ft::StatusKind>(ki);
+                    const bool selected =
+                        rule.subject == subject && rule.predicate == predicate && rule.statusKind == kind;
+                    if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
+                    {
+                        rule.subject = subject;
+                        rule.predicate = predicate;
+                        rule.statusKind = kind;
+                        changed = true;
+                    }
+                }
+                Im::EndMenu();
+                continue;
+            }
 
             if (presets.empty())
             {

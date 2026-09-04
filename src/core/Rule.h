@@ -11,6 +11,7 @@
 // a genuine cascade and the engine composes: any valid subject may be paired
 // with any valid predicate, and IsPredicateValidFor says which pairs are valid.
 
+#include "Kinds.h"
 #include "Loadout.h"
 
 #include <array>
@@ -59,6 +60,9 @@ enum class PredicateKind : std::uint8_t
     CombatEnds,
     WithinDistance,
     CountAtLeast,
+    // The subject is in the status Rule::statusKind names: poisoned,
+    // burning, fleeing ... Any subject.
+    Status,
     // The other side of the three Pct predicates. Listed after the rest so
     // the editor's menu, which walks this enum, keeps them beneath their
     // below-counterparts; AboveOf pairs the two.
@@ -140,6 +144,9 @@ struct Rule
     SubjectKind subject{SubjectKind::Self};
     PredicateKind predicate{PredicateKind::Any};
     float conditionArg{0.0f};
+    // Which status, for PredicateKind::Status. Ignored by every other
+    // predicate.
+    StatusKind statusKind{StatusKind::Poisoned};
 
     ActionTargetKind actionTarget{ActionTargetKind::ConditionSubject};
 

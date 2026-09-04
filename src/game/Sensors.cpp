@@ -441,6 +441,96 @@ void LogActiveEffects(RE::Actor *actor, const char *when)
         logger::info("  active effects [{}]: <none>", when);
 }
 
+// What an actor is in the middle of, as docs/CONDITIONS.md 2 reads it: the
+// hostile effects running on them by the kind of damage, the poison and
+// the disease by their spell type, the paralysis and the rest by the
+// actor's own flags. One walk of the effect list, a handful of flag reads.
+ft::ActorTraits ReadTraits(RE::Actor *actor)
+{
+    ft::ActorTraits traits;
+    if (!actor)
+        return traits;
+    using Archetype = RE::EffectArchetypes::ArchetypeID;
+
+    if (auto *target = actor->AsMagicTarget())
+    {
+        if (auto *effects = target->GetActiveEffectList())
+        {
+            for (auto *ae : *effects)
+            {
+                if (!ae || !ae->effect || !ae->effect->baseEffect)
+                    continue;
+                if (ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled))
+                    continue;
+                const auto *base = ae->effect->baseEffect;
+                // Burning, frostbitten, shocked: a hostile effect resisted by
+                // that element. The keyword would say the same of vanilla
+                // spells; the resist value says it of modded ones too.
+                if (base->IsDetrimental())
+                {
+                    switch (base->data.resistVariable)
+                    {
+                    case RE::ActorValue::kResistFire:
+                        traits.Set(ft::StatusKind::Burning);
+                        break;
+                    case RE::ActorValue::kResistFrost:
+                        traits.Set(ft::StatusKind::Frostbitten);
+                        break;
+                    case RE::ActorValue::kResistShock:
+                        traits.Set(ft::StatusKind::Shocked);
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                if (ae->spell)
+                {
+                    if (ae->spell->IsPoison())
+                        traits.Set(ft::StatusKind::Poisoned);
+                    if (ae->spell->GetSpellType() == RE::MagicSystem::SpellType::kDisease)
+                        traits.Set(ft::StatusKind::Diseased);
+                }
+                switch (base->GetArchetype())
+                {
+                case Archetype::kParalysis:
+                    traits.Set(ft::StatusKind::Paralysed);
+                    break;
+                case Archetype::kInvisibility:
+                    traits.Set(ft::StatusKind::Invisible);
+                    break;
+                case Archetype::kEtherealize:
+                    traits.Set(ft::StatusKind::Ethereal);
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+    }
+
+    const auto &runtime = actor->GetActorRuntimeData();
+    if (runtime.boolBits.any(RE::Actor::BOOL_BITS::kParalyzed))
+        traits.Set(ft::StatusKind::Paralysed);
+    if (auto *state = actor->AsActorState())
+    {
+        if (state->actorState2.staggered)
+            traits.Set(ft::StatusKind::Staggered);
+        if (state->IsBleedingOut())
+            traits.Set(ft::StatusKind::BleedingOut);
+    }
+    if (runtime.combatController && runtime.combatController->IsFleeing())
+        traits.Set(ft::StatusKind::Fleeing);
+    if (actor->IsBlocking())
+        traits.Set(ft::StatusKind::Blocking);
+    if (actor->IsSneaking())
+        traits.Set(ft::StatusKind::Sneaking);
+    // A hand charging or casting. WhoIsCasting is the engine's own summary
+    // of the casters' states, one bit per source.
+    if (actor->WhoIsCasting() != 0)
+        traits.Set(ft::StatusKind::Casting);
+    return traits;
+}
+
 ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
 {
     ft::Snapshot s;
@@ -464,11 +554,13 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         s.sneaking = state->IsSneaking();
     }
 
+    s.traits = ReadTraits(actor);
     if (auto *player = RE::PlayerCharacter::GetSingleton())
     {
         s.playerHealth = ReadStat(player, RE::ActorValue::kHealth);
         s.playerInCombat = player->IsInCombat();
         s.distanceToPlayer = actor->GetPosition().GetDistance(player->GetPosition());
+        s.playerTraits = ReadTraits(player);
     }
 
     // Whom the follower is fighting, as the engine sees it: what "current
@@ -493,6 +585,8 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         }
         bool losArg = false;
         enemy.hasLineOfSight = actor->HasLineOfSight(other, losArg);
+        enemy.traits = ReadTraits(other);
+        enemy.isCasting = enemy.traits.Has(ft::StatusKind::Casting);
         return enemy;
     };
     const auto allyOf = [&](RE::Actor *other) {
@@ -501,6 +595,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         ally.health = ReadStat(other, RE::ActorValue::kHealth);
         ally.distance = actor->GetPosition().GetDistance(other->GetPosition());
         ally.inBleedout = other->AsActorState() && other->AsActorState()->IsBleedingOut();
+        ally.traits = ReadTraits(other);
         return ally;
     };
     if (player && !player->IsDead())

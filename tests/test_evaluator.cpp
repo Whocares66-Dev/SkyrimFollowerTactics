@@ -621,6 +621,56 @@ TEST_CASE("a list in progress is dropped when the fight ends", "[sequence]")
     REQUIRE_FALSE(ctx.pending.Active());
 }
 
+TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[status]")
+{
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Status;
+    r.statusKind = StatusKind::Poisoned;
+
+    Snapshot s = Healthy();
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    s.traits.Set(StatusKind::Poisoned);
+    REQUIRE(EvaluateCondition(r, s).ok);
+    // Another status is another question.
+    r.statusKind = StatusKind::Burning;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    // The player's own.
+    r.subject = SubjectKind::Player;
+    r.statusKind = StatusKind::Staggered;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    s.playerTraits.Set(StatusKind::Staggered);
+    REQUIRE(EvaluateCondition(r, s).ok);
+    REQUIRE(EvaluateCondition(r, s).id == kPlayerFormID);
+
+    // An ally in it binds that ally; the nearest when several are.
+    s.allies.push_back({0x201, {100.0f, 100.0f}, 500.0f, false});
+    s.allies.push_back({0x202, {100.0f, 100.0f}, 200.0f, false});
+    r.subject = SubjectKind::Ally;
+    r.statusKind = StatusKind::Fleeing;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    s.allies[0].traits.Set(StatusKind::Fleeing);
+    REQUIRE(EvaluateCondition(r, s).id == 0x201);
+    s.allies[1].traits.Set(StatusKind::Fleeing);
+    REQUIRE(EvaluateCondition(r, s).id == 0x202);
+
+    // An enemy, and the target when it is the one.
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
+    s.currentTarget = 0x101;
+    r.subject = SubjectKind::CurrentTarget;
+    r.statusKind = StatusKind::Casting;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    s.enemies[0].traits.Set(StatusKind::Casting);
+    REQUIRE(EvaluateCondition(r, s).ok);
+    r.subject = SubjectKind::Enemy;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+
+    // Answerable about everyone.
+    for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
+        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::Status));
+}
+
 TEST_CASE("above and below are the same number from either side", "[evaluator]")
 {
     Rule r;
@@ -1724,6 +1774,14 @@ TEST_CASE("every wire name round-trips", "[vocabulary]")
         REQUIRE(Str(WireName(v)) != "Unknown");
         REQUIRE(IsWireName(WireName(v)));
         REQUIRE(HandFromWireName(WireName(v)) == v);
+        REQUIRE(DisplayName(v).size() > 0);
+    }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(StatusKind::COUNT); ++i)
+    {
+        const auto v = static_cast<StatusKind>(i);
+        REQUIRE(Str(WireName(v)) != "Unknown");
+        REQUIRE(IsWireName(WireName(v)));
+        REQUIRE(StatusFromWireName(WireName(v)) == v);
         REQUIRE(DisplayName(v).size() > 0);
     }
 }
