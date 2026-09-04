@@ -121,31 +121,77 @@ struct EvalContext
     // remedy for the same problem is tried immediately, in the same tick.
 
     Capabilities caps{Capabilities::All()};
+
+    // A rule's list of actions in progress. A rule commits when its first
+    // action is done; from then on an action that cannot be done yet is
+    // waited for, tick after tick, and no other rule is evaluated until the
+    // list is through. Held as a copy of the actions, so editing the rules
+    // mid-list changes nothing already begun. Dropped when a fight ends and
+    // when a new one begins.
+    struct Sequence
+    {
+        int ruleIndex{-1};
+        ActorId target{0};
+        std::vector<Action> actions;
+        std::size_t next{0}; // the first action not yet done
+
+        [[nodiscard]] bool Active() const noexcept
+        {
+            return next < actions.size();
+        }
+    };
+    Sequence pending;
 };
 
+// What to do this tick: the actions of one rule that can be done now, in
+// order, each with the actor it applies to. Carried through from the rule so
+// dispatch needs only the Decision; core never resolves a form.
 struct Decision
 {
-    int ruleIndex{-1};
-    ActionKind action{ActionKind::None};
-    ActorId targetId{0};
-    float actionArg{0.0f};
+    struct Step
+    {
+        Action action;
+        ActorId target{0};
+    };
 
-    // Carried through from the rule so dispatch needs only the Decision. Core
-    // never looks at it -- it is an opaque id the game side resolves.
-    std::uint32_t actionForm{0};
-    Hand hand{Hand::None};
+    int ruleIndex{-1};
+    std::vector<Step> steps;
 
     [[nodiscard]] bool Fired() const noexcept
     {
-        return ruleIndex >= 0;
+        return !steps.empty();
+    }
+
+    // The first step's parts, for the log and the tests; None/0 with no step.
+    [[nodiscard]] ActionKind action() const noexcept
+    {
+        return steps.empty() ? ActionKind::None : steps.front().action.kind;
+    }
+    [[nodiscard]] std::uint32_t actionForm() const noexcept
+    {
+        return steps.empty() ? 0 : steps.front().action.form;
+    }
+    [[nodiscard]] Hand hand() const noexcept
+    {
+        return steps.empty() ? Hand::None : steps.front().action.hand;
+    }
+    [[nodiscard]] ActorId targetId() const noexcept
+    {
+        return steps.empty() ? 0 : steps.front().target;
     }
 };
 
 using Trace = std::vector<Verdict>;
+// Per rule, per action: why each action did or did not happen, for the
+// status tooltip. NotReached for an action after one still being waited
+// for, and for every action of a rule that was not reached.
+using ActionTrace = std::vector<std::vector<Verdict>>;
 
 // Pure. Reads the snapshot, mutates only ctx's bookkeeping when a rule fires.
-// Pass a trace to get a per-rule verdict for the debug column.
-Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace = nullptr);
+// Pass a trace to get a per-rule verdict for the debug column, and an action
+// trace for the per-action breakdown.
+Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace = nullptr,
+                  ActionTrace *actionTrace = nullptr);
 
 // Evaluate one rule's condition and report which actor satisfied it.
 //
@@ -162,8 +208,8 @@ Binding EvaluateCondition(const Rule &r, const Snapshot &snap);
 ActorId ResolveActionTarget(const Rule &r, const Snapshot &snap, Binding binding, bool *ok);
 
 // Exposed for testing and for the UI's live readout.
-bool HasResource(ActionKind action, const Snapshot &snap);
-bool EffectAlreadyActive(ActionKind action, const Snapshot &snap);
+bool HasResource(const Action &action, const Snapshot &snap);
+bool EffectAlreadyActive(const Action &action, const Snapshot &snap);
 
 const char *ToString(Verdict v) noexcept;
 

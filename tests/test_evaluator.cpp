@@ -35,7 +35,7 @@ Rule HealBelow(float pct)
     r.predicate = PredicateKind::HealthPctBelow;
     r.conditionArg = pct;
     r.actionTarget = ActionTargetKind::ConditionSubject;
-    r.action = ActionKind::DrinkHealthPotion;
+    r.FirstAction().kind = ActionKind::DrinkHealthPotion;
     r.label = "heal";
     return r;
 }
@@ -72,8 +72,8 @@ TEST_CASE("the marquee rule: health below 50% drinks a potion", "[evaluator]")
         Trace trace;
         const auto d = Evaluate(rs, s, ctx, &trace);
         REQUIRE(d.Fired());
-        REQUIRE(d.action == ActionKind::DrinkHealthPotion);
-        REQUIRE(d.targetId == s.self);
+        REQUIRE(d.action() == ActionKind::DrinkHealthPotion);
+        REQUIRE(d.targetId() == s.self);
         REQUIRE(trace.at(0) == Verdict::Fired);
     }
 
@@ -138,8 +138,8 @@ TEST_CASE("a cooldown belongs to the action, not to the rule's position", "[eval
     cast.subject = SubjectKind::Self;
     cast.predicate = PredicateKind::InCombat;
     cast.actionTarget = ActionTargetKind::Self;
-    cast.action = ActionKind::CastSpell;
-    cast.actionForm = kHeal;
+    cast.FirstAction().kind = ActionKind::CastSpell;
+    cast.FirstAction().form = kHeal;
     cast.label = "cast";
 
     RuleSet rs;
@@ -161,7 +161,7 @@ TEST_CASE("a cooldown belongs to the action, not to the rule's position", "[eval
     Trace trace;
     const auto d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 0); // the cast rule, unblocked, fires from its new slot
-    REQUIRE(d.action == ActionKind::CastSpell);
+    REQUIRE(d.action() == ActionKind::CastSpell);
     REQUIRE(trace.at(1) == Verdict::NotReached);
 
     // And the potion's cooldown is on the ACTION, wherever its rule now sits.
@@ -182,8 +182,8 @@ TEST_CASE("a cooldown is as fine as the spell and the target", "[cooldown]")
         r.subject = SubjectKind::Self;
         r.predicate = PredicateKind::InCombat;
         r.actionTarget = target;
-        r.action = ActionKind::CastSpell;
-        r.actionForm = spell;
+        r.FirstAction().kind = ActionKind::CastSpell;
+        r.FirstAction().form = spell;
         return r;
     };
 
@@ -305,7 +305,7 @@ TEST_CASE("the action follows the binding of the condition by default", "[bindin
     r.predicate = PredicateKind::HealthPctBelow;
     r.conditionArg = 0.2f;
     r.actionTarget = ActionTargetKind::ConditionSubject;
-    r.action = ActionKind::StopCombat;
+    r.FirstAction().kind = ActionKind::StopCombat;
     rs.rules.push_back(r);
 
     EvalContext ctx;
@@ -314,7 +314,7 @@ TEST_CASE("the action follows the binding of the condition by default", "[bindin
     REQUIRE(d.Fired());
     // The whole point of the split: the enemy is named once, in the condition,
     // and the action lands on that same enemy.
-    REQUIRE(d.targetId == 0x102);
+    REQUIRE(d.targetId() == 0x102);
 }
 
 TEST_CASE("the action target can be overridden away from the subject", "[binding]")
@@ -331,7 +331,7 @@ TEST_CASE("the action target can be overridden away from the subject", "[binding
     const auto d = Evaluate(rs, s, ctx);
 
     REQUIRE(d.Fired());
-    REQUIRE(d.targetId == kPlayerFormID);
+    REQUIRE(d.targetId() == kPlayerFormID);
 }
 
 TEST_CASE("ally conditions bind the ally, not the follower", "[binding]")
@@ -410,7 +410,7 @@ TEST_CASE("no binding means the rule is skipped, not fired at nobody", "[evaluat
     r.subject = SubjectKind::Enemy;
     r.predicate = PredicateKind::Any;
     r.actionTarget = ActionTargetKind::ConditionSubject;
-    r.action = ActionKind::StopCombat;
+    r.FirstAction().kind = ActionKind::StopCombat;
     rs.rules.push_back(r);
 
     EvalContext ctx;
@@ -454,15 +454,15 @@ TEST_CASE("the edges of a fight hold for one evaluation each", "[evaluator]")
     onBegin.subject = SubjectKind::Self;
     onBegin.predicate = PredicateKind::CombatBegins;
     onBegin.actionTarget = ActionTargetKind::Self;
-    onBegin.action = ActionKind::HoldPosition;
+    onBegin.FirstAction().kind = ActionKind::HoldPosition;
 
     Rule always = onBegin;
     always.predicate = PredicateKind::Any;
-    always.action = ActionKind::Flee;
+    always.FirstAction().kind = ActionKind::Flee;
 
     Rule onEnd = onBegin;
     onEnd.predicate = PredicateKind::CombatEnds;
-    onEnd.action = ActionKind::StopCombat;
+    onEnd.FirstAction().kind = ActionKind::StopCombat;
 
     RuleSet rs;
     rs.rules = {onBegin, always, onEnd};
@@ -493,6 +493,94 @@ TEST_CASE("the edges of a fight hold for one evaluation each", "[evaluator]")
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::CombatEnds));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::CombatBegins));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::CombatEnds));
+}
+
+TEST_CASE("a rule does its actions one per tick, in order, and waits rather than yields mid-list", "[sequence]")
+{
+    constexpr std::uint32_t kHeal = 0x00012FCC;
+
+    // One rule, three actions: drink, cast, hold. The whole list is what
+    // the player asked for, in that order, one per tick, before anything
+    // else is decided.
+    Rule r = HealBelow(0.5f);
+    r.actions.push_back({ActionKind::CastSpell, kHeal});
+    r.actions.push_back({ActionKind::HoldPosition});
+    Rule other = HealBelow(0.5f);
+    other.actionTarget = ActionTargetKind::Self;
+    other.FirstAction().kind = ActionKind::Flee;
+
+    RuleSet rs;
+    rs.rules = {r, other};
+
+    Snapshot s = Healthy();
+    s.health = {40.0f, 100.0f};
+    s.spells.known.push_back(kHeal);
+    EvalContext ctx;
+
+    Trace trace;
+    ActionTrace actions;
+    Decision d = Evaluate(rs, s, ctx, &trace, &actions);
+    // Tick one: the potion, and only the potion; the rest waits.
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.steps.size() == 1);
+    REQUIRE(d.action() == ActionKind::DrinkHealthPotion);
+    REQUIRE(trace.at(0) == Verdict::Fired);
+    REQUIRE(actions.at(0) == std::vector<Verdict>{Verdict::Fired, Verdict::NotReached, Verdict::NotReached});
+    REQUIRE(trace.at(1) == Verdict::NotReached);
+    REQUIRE(ctx.pending.Active());
+
+    // Tick two: the cast pool is busy. The rule owns the tick and waits;
+    // the second rule does not get it even though its condition holds.
+    ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = true;
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace, &actions);
+    REQUIRE_FALSE(d.Fired());
+    REQUIRE(trace.at(0) == Verdict::Busy);
+    REQUIRE(actions.at(0) == std::vector<Verdict>{Verdict::NotReached, Verdict::Busy, Verdict::NotReached});
+    REQUIRE(trace.at(1) == Verdict::NotReached);
+
+    // Tick three: the pool frees, the cast goes.
+    ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = false;
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace, &actions);
+    REQUIRE(d.steps.size() == 1);
+    REQUIRE(d.action() == ActionKind::CastSpell);
+    REQUIRE(ctx.pending.Active());
+
+    // Tick four: the hold, and the list is through.
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace, &actions);
+    REQUIRE(d.steps.size() == 1);
+    REQUIRE(d.action() == ActionKind::HoldPosition);
+    REQUIRE(actions.at(0) == std::vector<Verdict>{Verdict::NotReached, Verdict::NotReached, Verdict::Fired});
+    REQUIRE_FALSE(ctx.pending.Active());
+
+    // Tick five: everything on cooldown. The first action is merely blocked
+    // for the moment, so the rule has not begun and yields to the next one.
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace, &actions);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+    REQUIRE_FALSE(ctx.pending.Active());
+}
+
+TEST_CASE("a list in progress is dropped when the fight ends", "[sequence]")
+{
+    Rule r = HealBelow(0.5f);
+    r.actions.push_back({ActionKind::HoldPosition});
+    RuleSet rs;
+    rs.rules = {r};
+
+    Snapshot s = Healthy();
+    s.health = {40.0f, 100.0f};
+    EvalContext ctx;
+    REQUIRE(Evaluate(rs, s, ctx).steps.size() == 1);
+    REQUIRE(ctx.pending.Active());
+
+    s.combatEnded = true;
+    s.inCombat = false;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx).Fired());
+    REQUIRE_FALSE(ctx.pending.Active());
 }
 
 TEST_CASE("above and below are the same number from either side", "[evaluator]")
@@ -527,7 +615,7 @@ TEST_CASE("an unanswerable pair reports InvalidCondition, not ConditionFalse", "
     r.subject = SubjectKind::Self;
     r.predicate = PredicateKind::WithinDistance; // nonsense
     r.conditionArg = 100.0f;
-    r.action = ActionKind::StopCombat;
+    r.FirstAction().kind = ActionKind::StopCombat;
     rs.rules.push_back(r);
 
     EvalContext ctx;
@@ -553,7 +641,7 @@ namespace
 Rule HurtBut(float pct, ActionKind action, const char *label)
 {
     Rule r = HealBelow(pct);
-    r.action = action;
+    r.FirstAction().kind = action;
     r.label = label;
     return r;
 }
@@ -630,7 +718,7 @@ TEST_CASE("two rules sharing an action cannot repeat it back to back", "[cooldow
     Rule spare;
     spare.subject = SubjectKind::Self;
     spare.predicate = PredicateKind::InCombat;
-    spare.action = ActionKind::DrinkHealthPotion;
+    spare.FirstAction().kind = ActionKind::DrinkHealthPotion;
     spare.label = "top up while fighting";
     rs.rules.push_back(spare);
 
@@ -661,7 +749,7 @@ TEST_CASE("a different situation is still free to draw a response", "[cooldown]"
     swarmed.predicate = PredicateKind::CountAtLeast;
     swarmed.conditionArg = 2.0f;
     swarmed.actionTarget = ActionTargetKind::Self;
-    swarmed.action = ActionKind::HoldPosition;
+    swarmed.FirstAction().kind = ActionKind::HoldPosition;
     swarmed.label = "back off when swarmed";
     rs.rules.push_back(swarmed);
 
@@ -698,12 +786,12 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
     hold.predicate = PredicateKind::WithinDistance;
     hold.conditionArg = 1000.0f;
     hold.actionTarget = ActionTargetKind::Self;
-    hold.action = ActionKind::HoldPosition;
+    hold.FirstAction().kind = ActionKind::HoldPosition;
     hold.label = "brace: hold position";
     rs.rules.push_back(hold);
 
     Rule disengage = hold;
-    disengage.action = ActionKind::StopCombat;
+    disengage.FirstAction().kind = ActionKind::StopCombat;
     disengage.label = "brace: break off";
     rs.rules.push_back(disengage);
 
@@ -744,13 +832,13 @@ TEST_CASE("a busy action is skipped without spending a cooldown", "[capabilities
     cast.predicate = PredicateKind::HealthPctBelow;
     cast.conditionArg = 0.9f;
     cast.actionTarget = ActionTargetKind::Self;
-    cast.action = ActionKind::CastSpell;
-    cast.actionForm = kOakflesh;
+    cast.FirstAction().kind = ActionKind::CastSpell;
+    cast.FirstAction().form = kOakflesh;
     rs.rules.push_back(cast);
 
     Rule potion = cast;
-    potion.action = ActionKind::DrinkHealthPotion;
-    potion.actionForm = 0;
+    potion.FirstAction().kind = ActionKind::DrinkHealthPotion;
+    potion.FirstAction().form = 0;
     rs.rules.push_back(potion);
 
     Snapshot s = Healthy();
@@ -786,13 +874,13 @@ TEST_CASE("a cast she cannot afford is reported and spends no cooldown", "[resou
     cast.predicate = PredicateKind::HealthPctBelow;
     cast.conditionArg = 0.9f;
     cast.actionTarget = ActionTargetKind::Self;
-    cast.action = ActionKind::CastSpell;
-    cast.actionForm = kHeal;
+    cast.FirstAction().kind = ActionKind::CastSpell;
+    cast.FirstAction().form = kHeal;
     rs.rules.push_back(cast);
 
     Rule potion = cast;
-    potion.action = ActionKind::DrinkHealthPotion;
-    potion.actionForm = 0;
+    potion.FirstAction().kind = ActionKind::DrinkHealthPotion;
+    potion.FirstAction().form = 0;
     rs.rules.push_back(potion);
 
     Snapshot s = Healthy();
@@ -839,8 +927,8 @@ TEST_CASE("a named potion is drunk only while carried, and cools down per potion
         r.subject = SubjectKind::Self;
         r.predicate = PredicateKind::InCombat;
         r.actionTarget = ActionTargetKind::Self;
-        r.action = ActionKind::DrinkPotion;
-        r.actionForm = form;
+        r.FirstAction().kind = ActionKind::DrinkPotion;
+        r.FirstAction().form = form;
         return r;
     };
 
@@ -903,8 +991,8 @@ TEST_CASE("a spell the follower does not know is not castable", "[spell]")
     buff.subject = SubjectKind::Self;
     buff.predicate = PredicateKind::Any;
     buff.actionTarget = ActionTargetKind::Self;
-    buff.action = ActionKind::CastSpell;
-    buff.actionForm = 0x0005AD5C;
+    buff.FirstAction().kind = ActionKind::CastSpell;
+    buff.FirstAction().form = 0x0005AD5C;
     rs.rules.push_back(buff);
 
     Snapshot s = Healthy();
@@ -916,7 +1004,7 @@ TEST_CASE("a spell the follower does not know is not castable", "[spell]")
 
     // A cast rule with no spell chosen is the same kind of unusable, and is
     // what a freshly added rule looks like before it is filled in.
-    rs.rules[0].actionForm = 0;
+    rs.rules[0].FirstAction().form = 0;
     s.spells.known.push_back(0x0005AD5C);
     Trace blank;
     REQUIRE(Evaluate(rs, s, ctx, &blank).ruleIndex < 0);
@@ -967,9 +1055,9 @@ Rule Equip(ActionKind action, std::uint32_t form, Hand hand = Hand::None)
     r.subject = SubjectKind::Self;
     r.predicate = PredicateKind::Any;
     r.actionTarget = ActionTargetKind::Self;
-    r.action = action;
-    r.actionForm = form;
-    r.hand = hand;
+    r.FirstAction().kind = action;
+    r.FirstAction().form = form;
+    r.FirstAction().hand = hand;
     return r;
 }
 
@@ -977,9 +1065,9 @@ Rule Equip(ActionKind action, std::uint32_t form, Hand hand = Hand::None)
 // thing, in the hands the decision names, and whatever it displaces goes.
 void Pinned(Snapshot &s, const Decision &d)
 {
-    const Holdable *thing = FindHoldable(s.loadout, d.actionForm);
+    const Holdable *thing = FindHoldable(s.loadout, d.actionForm());
     REQUIRE(thing != nullptr);
-    const Hand hands = thing->grip == Grip::None ? Hand::None : HandsFor(thing->grip, d.hand);
+    const Hand hands = thing->grip == Grip::None ? Hand::None : HandsFor(thing->grip, d.hand());
     [[maybe_unused]] const auto displaced = MakeRoom(s.pins, *thing, hands);
     AddPin(s.pins, *thing, hands, false);
 }
@@ -1001,9 +1089,9 @@ TEST_CASE("an equip rule pins once, reports done, and lets the rules beneath it 
 
     Decision d = Evaluate(rs, s, ctx);
     REQUIRE(d.ruleIndex == 0);
-    REQUIRE(d.action == ActionKind::EquipWeapon);
-    REQUIRE(d.actionForm == kShield);
-    REQUIRE(d.hand == Hand::Left);
+    REQUIRE(d.action() == ActionKind::EquipWeapon);
+    REQUIRE(d.actionForm() == kShield);
+    REQUIRE(d.hand() == Hand::Left);
     Pinned(s, d);
 
     // The shield is pinned, so the helm gets its turn on the next tick.
@@ -1049,7 +1137,7 @@ TEST_CASE("a satisfied equip rule holds its hand against the rules beneath it", 
     EvalContext ctx;
 
     Decision d = Evaluate(rs, s, ctx);
-    REQUIRE(d.actionForm == kSword);
+    REQUIRE(d.actionForm() == kSword);
     Pinned(s, d);
 
     // Sword pinned, enemy still close: the bow rule is outranked, not fired.
@@ -1077,7 +1165,7 @@ TEST_CASE("a satisfied equip rule holds its hand against the rules beneath it", 
     s.now += 0.5;
     d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 0);
-    REQUIRE(d.actionForm == kSword);
+    REQUIRE(d.actionForm() == kSword);
 
     // A rule beneath that takes no hand the sword holds is not outranked:
     // the shield goes in the left.
@@ -1106,8 +1194,8 @@ TEST_CASE("none lets go of every pin of its kind, unless a rule above holds one"
     AddPin(s.pins, *FindHoldable(s.loadout, kSword), Hand::Right, false);
     Decision d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 0);
-    REQUIRE(d.action == ActionKind::EquipWeapon);
-    REQUIRE(d.actionForm == 0);
+    REQUIRE(d.action() == ActionKind::EquipWeapon);
+    REQUIRE(d.actionForm() == 0);
 
     // Pinned armour is another kind, and none of this rule's business.
     s.pins.clear();
@@ -1152,7 +1240,7 @@ TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI wo
     rs.rules[0] = Equip(ActionKind::EquipSpell, kFirebolt, Hand::Both);
     Decision d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 0);
-    REQUIRE(d.hand == Hand::Both);
+    REQUIRE(d.hand() == Hand::Both);
     // Pinned in one hand only, it is not yet done.
     AddPin(s.pins, *FindHoldable(s.loadout, kFirebolt), Hand::Left, false);
     s.now += 5.0;

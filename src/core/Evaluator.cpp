@@ -133,18 +133,18 @@ constexpr Binding NoMatch()
     return Binding{};
 }
 
-// The hands an equip rule asks for: the rule's own for a weapon or a spell,
+// The hands an equip action asks for: its own for a weapon or a spell,
 // none for armour and ammunition, which have no hand.
-Hand HandsWanted(const Rule &r)
+Hand HandsWanted(const Action &a)
 {
-    return (r.action == ActionKind::EquipWeapon || r.action == ActionKind::EquipSpell) ? r.hand : Hand::None;
+    return (a.kind == ActionKind::EquipWeapon || a.kind == ActionKind::EquipSpell) ? a.hand : Hand::None;
 }
 
-// A "none" rule: an equip action naming nothing, which lets go of every pin
-// of its kind.
-bool LetsGo(const Rule &r)
+// A "none" action: an equip naming nothing, which lets go of every pin of
+// its kind.
+bool LetsGo(const Action &a)
 {
-    return IsEquip(r.action) && r.actionForm == 0;
+    return IsEquip(a.kind) && a.form == 0;
 }
 
 bool AnyPinOf(const std::vector<Pin> &pins, Kind kind)
@@ -324,12 +324,12 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
     }
 }
 
-// Takes the whole rule, not just the action: a spell rule is only answerable
-// with the spell in hand, and splitting that across two lookups is how the two
-// drift apart.
-bool HasResource(const Rule &r, const Snapshot &s)
+// Takes the whole action, not just its kind: a spell action is only
+// answerable with the spell in hand, and splitting that across two lookups is
+// how the two drift apart.
+bool HasResource(const Action &a, const Snapshot &s)
 {
-    switch (r.action)
+    switch (a.kind)
     {
     case ActionKind::DrinkHealthPotion:
         return s.potions.healthCount > 0;
@@ -338,14 +338,14 @@ bool HasResource(const Rule &r, const Snapshot &s)
     case ActionKind::DrinkStaminaPotion:
         return s.potions.staminaCount > 0;
     case ActionKind::DrinkPotion:
-        return r.actionForm != 0 && s.potions.CountOf(r.actionForm) > 0;
+        return a.form != 0 && s.potions.CountOf(a.form) > 0;
 
     case ActionKind::CastSpell:
         // Knowing the spell is the inventory equivalent. Whether she can AFFORD
         // to cast it is a separate question and deliberately not asked here:
         // magicka cost depends on perks and skill, which live on the game side.
         // The action reports that back instead.
-        return r.actionForm != 0 && s.spells.Knows(r.actionForm);
+        return a.form != 0 && s.spells.Knows(a.form);
 
     case ActionKind::EquipWeapon:
     case ActionKind::EquipSpell:
@@ -354,10 +354,10 @@ bool HasResource(const Rule &r, const Snapshot &s)
         // "None" needs nothing. A named thing must be hers, and of the kind
         // the action says: a hand-edited profile could put a spell under
         // equip-weapon, and that is a rule that can never work.
-        if (LetsGo(r))
+        if (LetsGo(a))
             return true;
-        const Holdable *thing = FindHoldable(s.loadout, r.actionForm);
-        return thing && thing->kind == KindOf(r.action);
+        const Holdable *thing = FindHoldable(s.loadout, a.form);
+        return thing && thing->kind == KindOf(a.kind);
     }
 
     default:
@@ -365,11 +365,11 @@ bool HasResource(const Rule &r, const Snapshot &s)
     }
 }
 
-bool EffectAlreadyActive(const Rule &r, const Snapshot &s)
+bool EffectAlreadyActive(const Action &a, const Snapshot &s)
 {
     // Reported separately from "no potion" because the fix is different: the
     // follower has plenty, she is simply still absorbing the last one.
-    switch (r.action)
+    switch (a.kind)
     {
     case ActionKind::DrinkHealthPotion:
         return s.potions.healthEffectActive;
@@ -386,7 +386,7 @@ bool EffectAlreadyActive(const Rule &r, const Snapshot &s)
         // The sustained-buff case. Oakflesh runs sixty seconds and no cooldown
         // worth picking is that long, so re-casting can only be stopped by
         // seeing the effect still running.
-        return r.actionForm != 0 && s.spells.IsActive(r.actionForm);
+        return a.form != 0 && s.spells.IsActive(a.form);
 
     case ActionKind::EquipWeapon:
     case ActionKind::EquipSpell:
@@ -399,10 +399,10 @@ bool EffectAlreadyActive(const Rule &r, const Snapshot &s)
         // Pinned, not merely equipped: the rule's promise is the pin, and a
         // thing the AI happens to be holding is not yet kept. "None" is done
         // when there is nothing of its kind to let go of.
-        if (LetsGo(r))
-            return !AnyPinOf(s.pins, KindOf(r.action));
-        const Pin *pin = FindPin(s.pins, r.actionForm);
-        return pin && Covers(pin->hands, HandsWanted(r));
+        if (LetsGo(a))
+            return !AnyPinOf(s.pins, KindOf(a.kind));
+        const Pin *pin = FindPin(s.pins, a.form);
+        return pin && Covers(pin->hands, HandsWanted(a));
     }
 
     default:
@@ -410,12 +410,163 @@ bool EffectAlreadyActive(const Rule &r, const Snapshot &s)
     }
 }
 
-Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace)
+namespace
+{
+
+// Can this action be done now? Fired if so; otherwise why not. The equip
+// actions add their satisfied pin to `heldAbove`, which is what outranks a
+// conflicting equip beneath them.
+Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &ctx, ActorId target,
+                     std::vector<Pin> &heldAbove)
+{
+    if (a.kind == ActionKind::None || !ctx.caps.Supports(a.kind))
+        return Verdict::Unsupported;
+    if (ctx.caps.Busy(a.kind))
+        return Verdict::Busy;
+    if (!HasResource(a, snap))
+        return Verdict::NoResource;
+
+    if (IsEquip(a.kind))
+    {
+        const Holdable *thing = LetsGo(a) ? nullptr : FindHoldable(snap.loadout, a.form);
+        // A pin is a promise the AI will use it. A spell above her skill it
+        // never would, so the promise cannot be kept, and the rule says so
+        // rather than equipping something that gets swapped straight out.
+        if (thing && thing->unusable)
+            return Verdict::CannotHold;
+        const Hand hands = HandsWanted(a);
+        const bool outranked = std::any_of(heldAbove.begin(), heldAbove.end(), [&](const Pin &held) {
+            return thing ? Conflicts(*thing, hands, held.thing, held.hands) : held.thing.kind == KindOf(a.kind);
+        });
+        if (outranked)
+            return Verdict::Outranked;
+        if (EffectAlreadyActive(a, snap))
+        {
+            if (const Pin *pin = thing ? FindPin(snap.pins, thing->form) : nullptr)
+                heldAbove.push_back(*pin);
+            return Verdict::EffectActive;
+        }
+    }
+    else
+    {
+        // A cast she cannot pay for is not a cast. The AI would decline the
+        // package and the rule would have spent its cooldown on nothing --
+        // the 12:20 run fired four heals at empty magicka.
+        if (a.kind == ActionKind::CastSpell && snap.magicka.current < snap.spells.CostOf(a.form))
+            return Verdict::CannotAfford;
+        // Exact where the settle time is a guess: on a game whose potions
+        // restore over time, the previous dose may still have seconds to run.
+        if (EffectAlreadyActive(a, snap))
+            return Verdict::EffectActive;
+    }
+
+    const EvalContext::ActionKey key{a.kind, a.form, target};
+    if (snap.now < ctx.BlockedUntil(key))
+        return Verdict::ActionCooldown;
+    return Verdict::Fired;
+}
+
+// Cannot be done YET, as opposed to cannot be done: worth waiting for.
+bool Transient(Verdict v)
+{
+    return v == Verdict::Busy || v == Verdict::ActionCooldown;
+}
+
+// Do the NEXT action of a list, from `from`, in order: one per tick, like
+// nested rules firing on successive ticks. Not as many as can be done at
+// once -- ten casts on one tick would want ten UseMagic records and an AI
+// that could run them, and a half-second stagger is the cadence of
+// everything else here. The action done goes into the decision and onto
+// cooldown, and the list waits at the one after it for the next tick.
+// One that cannot be done at all is skipped. One that cannot be done YET
+// stops the run: it is left for the next tick -- IF the rule has
+// committed, which it has once any of its actions is done. A rule whose
+// very first action is only blocked for the moment has not begun, and
+// yields to the rules beneath it, as a single-action rule always did.
+// Returns whether the run stopped on a wait.
+bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, ActorId target, const Snapshot &snap,
+         EvalContext &ctx, Decision &decision, std::vector<Verdict> &verdicts, std::vector<Pin> &heldAbove)
+{
+    verdicts.assign(actions.size(), Verdict::NotReached);
+    for (std::size_t i = from; i < actions.size(); ++i)
+    {
+        const Action &a = actions[i];
+        const Verdict v = Availability(a, snap, ctx, target, heldAbove);
+        verdicts[i] = v;
+        if (v == Verdict::Fired)
+        {
+            decision.ruleIndex = ruleIndex;
+            decision.steps.push_back({a, target});
+            // The one cooldown there is: the ACTION goes on cooldown for as
+            // long as its effect takes to show, and every rule that uses it
+            // reports it. Nothing is keyed by rule or by condition.
+            ctx.Block({a.kind, a.form, target}, snap.now + MinimumCooldown(a.kind));
+            // The rest waits for the next tick, or the list is through.
+            ctx.pending = i + 1 < actions.size() ? EvalContext::Sequence{ruleIndex, target, actions, i + 1}
+                                                 : EvalContext::Sequence{};
+            return false;
+        }
+        if (!Transient(v))
+            continue; // cannot be done at all: skipped
+        const bool committed = from > 0;
+        if (committed)
+        {
+            ctx.pending = {ruleIndex, target, actions, i};
+            return true;
+        }
+        // Not begun: the rest of this rule is not reached this tick either.
+        return false;
+    }
+    ctx.pending = {};
+    return false;
+}
+
+// The word for the whole rule: fired if anything was done, else the first
+// action's reason -- which for a single-action rule is the reason.
+Verdict Summary(const Decision &decision, const std::vector<Verdict> &verdicts)
+{
+    if (decision.Fired())
+        return Verdict::Fired;
+    for (const Verdict v : verdicts)
+        if (v != Verdict::NotReached)
+            return v;
+    return Verdict::Unsupported;
+}
+
+} // namespace
+
+Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace, ActionTrace *actionTrace)
 {
     if (trace)
         trace->assign(rs.rules.size(), Verdict::NotReached);
+    if (actionTrace)
+    {
+        actionTrace->resize(rs.rules.size());
+        for (std::size_t i = 0; i < rs.rules.size(); ++i)
+            (*actionTrace)[i].assign(rs.rules[i].actions.size(), Verdict::NotReached);
+    }
 
     Decision decision;
+
+    // The fight is over: what a rule was in the middle of is dropped.
+    if (snap.combatEnded)
+        ctx.pending = {};
+
+    // A rule in progress owns the tick until its list is through. Nothing
+    // else is evaluated, and the status column says so.
+    if (ctx.pending.Active())
+    {
+        const EvalContext::Sequence seq = ctx.pending;
+        std::vector<Pin> none;
+        std::vector<Verdict> verdicts;
+        Run(seq.actions, seq.next, seq.ruleIndex, seq.target, snap, ctx, decision, verdicts, none);
+        const auto i = static_cast<std::size_t>(seq.ruleIndex);
+        if (trace && i < trace->size())
+            (*trace)[i] = Summary(decision, verdicts);
+        if (actionTrace && i < actionTrace->size() && (*actionTrace)[i].size() == verdicts.size())
+            (*actionTrace)[i] = verdicts;
+        return decision;
+    }
 
     // What the satisfied equip rules above hold. An equip rule whose
     // condition holds and whose thing is pinned is DONE, and falls through
@@ -440,14 +591,14 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             put(Verdict::Disabled);
             continue;
         }
-        if (r.action == ActionKind::None || !ctx.caps.Supports(r.action))
+        // Nothing this runtime can do: said before the condition is looked
+        // at, because the answer does not depend on it.
+        const bool anySupported = std::any_of(r.actions.begin(), r.actions.end(), [&](const Action &a) {
+            return a.kind != ActionKind::None && ctx.caps.Supports(a.kind);
+        });
+        if (!anySupported)
         {
             put(Verdict::Unsupported);
-            continue;
-        }
-        if (ctx.caps.Busy(r.action))
-        {
-            put(Verdict::Busy);
             continue;
         }
         // Reported separately from ConditionFalse on purpose: a pair that can
@@ -466,56 +617,6 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             put(Verdict::ConditionFalse);
             continue;
         }
-        if (!HasResource(r, snap))
-        {
-            put(Verdict::NoResource);
-            continue;
-        }
-        if (IsEquip(r.action))
-        {
-            const Holdable *thing = LetsGo(r) ? nullptr : FindHoldable(snap.loadout, r.actionForm);
-            // A pin is a promise the AI will use it. A spell above her skill
-            // it never would, so the promise cannot be kept, and the rule
-            // says so rather than equipping something that gets swapped
-            // straight out again.
-            if (thing && thing->unusable)
-            {
-                put(Verdict::CannotHold);
-                continue;
-            }
-            const Hand hands = HandsWanted(r);
-            const bool outranked = std::any_of(heldAbove.begin(), heldAbove.end(), [&](const Pin &held) {
-                return thing ? Conflicts(*thing, hands, held.thing, held.hands) : held.thing.kind == KindOf(r.action);
-            });
-            if (outranked)
-            {
-                put(Verdict::Outranked);
-                continue;
-            }
-            if (EffectAlreadyActive(r, snap))
-            {
-                put(Verdict::EffectActive);
-                if (const Pin *pin = thing ? FindPin(snap.pins, thing->form) : nullptr)
-                    heldAbove.push_back(*pin);
-                continue;
-            }
-        }
-        // A cast she cannot pay for is not a cast. The AI would decline the
-        // package and the rule would have spent its cooldown on nothing -- the
-        // 12:20 run fired four heals at empty magicka. Reported, not fired, so
-        // no cooldown moves and the next rule gets its turn.
-        if (r.action == ActionKind::CastSpell && snap.magicka.current < snap.spells.CostOf(r.actionForm))
-        {
-            put(Verdict::CannotAfford);
-            continue;
-        }
-        // Exact where the settle time is a guess: on a game whose potions
-        // restore over time, the previous dose may still have seconds to run.
-        if (EffectAlreadyActive(r, snap))
-        {
-            put(Verdict::EffectActive);
-            continue;
-        }
 
         bool targetOk = false;
         const ActorId target = ResolveActionTarget(r, snap, binding, &targetOk);
@@ -525,31 +626,15 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             continue;
         }
 
-        // The cooldown key needs the resolved target, which is why this check
-        // sits after target resolution rather than with the other cheap ones.
-        const EvalContext::ActionKey key{r.action, r.actionForm, target};
-        if (snap.now < ctx.BlockedUntil(key))
-        {
-            put(Verdict::ActionCooldown);
-            continue;
-        }
-
-        put(Verdict::Fired);
-        decision.ruleIndex = static_cast<int>(i);
-        decision.action = r.action;
-        decision.targetId = target;
-        decision.actionArg = r.actionArg;
-        decision.actionForm = r.actionForm;
-        decision.hand = r.hand;
-
-        // The one cooldown there is: the ACTION goes on cooldown for as long
-        // as its effect takes to show, and every rule that uses that action
-        // reports it. Nothing is keyed by rule or by condition. Two rules on
-        // the same condition with different actions therefore fire on
-        // successive turns -- the list expresses preference, and the next
-        // remedy applies if the first has not fixed things yet.
-        ctx.Block(key, snap.now + MinimumCooldown(r.action));
-        break;
+        std::vector<Verdict> verdicts;
+        const bool waiting = Run(r.actions, 0, static_cast<int>(i), target, snap, ctx, decision, verdicts, heldAbove);
+        put(Summary(decision, verdicts));
+        if (actionTrace)
+            (*actionTrace)[i] = verdicts;
+        if (decision.Fired() || waiting)
+            break;
+        // Nothing of this rule could be done: the next gets its turn, in the
+        // same tick, exactly as for "no potion in the bag".
     }
 
     return decision;

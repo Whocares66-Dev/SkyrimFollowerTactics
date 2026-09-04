@@ -108,6 +108,31 @@ enum class ActionKind : std::uint8_t
     COUNT
 };
 
+// One thing to do. A rule carries a list of these, in order.
+struct Action
+{
+    ActionKind kind{ActionKind::None};
+
+    // Which spell, for CastSpell; which potion, for DrinkPotion; which
+    // thing, for the equip actions. A FormID, and deliberately opaque here:
+    // core has no idea what a spell is, it only compares this against the
+    // ids the snapshot reports as known, carried, running or pinned.
+    //
+    // A separate field from arg because arg is a float, and a float cannot
+    // hold a 32-bit FormID without loss -- the mantissa is 24 bits, so ids
+    // above 0xFFFFFF would silently round to a different form.
+    std::uint32_t form{0};
+
+    // Which hand, for EquipWeapon and EquipSpell: Left, Right, or Both for a
+    // two-hander, a bow, a master spell -- or an either-hand spell in each
+    // hand at once. Ignored by every other action.
+    Hand hand{Hand::None};
+
+    // A number the action takes, when it does: the sustain time of a
+    // concentration spell, for CastSpell.
+    float arg{0.0f};
+};
+
 struct Rule
 {
     bool enabled{true};
@@ -117,23 +142,23 @@ struct Rule
     float conditionArg{0.0f};
 
     ActionTargetKind actionTarget{ActionTargetKind::ConditionSubject};
-    ActionKind action{ActionKind::None};
-    float actionArg{0.0f};
 
-    // Which spell, for CastSpell; which potion, for DrinkPotion; which
-    // thing, for the equip actions. A FormID, and deliberately opaque here:
-    // core has no idea what a spell is, it only compares this against the
-    // ids the snapshot reports as known, carried, running or pinned.
-    //
-    // A separate field from actionArg because actionArg is a float, and a float
-    // cannot hold a 32-bit FormID without loss -- the mantissa is 24 bits, so
-    // ids above 0x FFFFFF would silently round to a different form.
-    std::uint32_t actionForm{0};
+    // What to do, in order -- ALL of it. The rule is the unit of the list:
+    // the first rule whose condition holds and which can do something wins
+    // the tick, and then every action it carries is done in order, each
+    // on its own availability. One that cannot be done at all is skipped;
+    // one that cannot be done YET -- a cast while the last is still in the
+    // air, a potion inside its settle -- is waited for, and nothing else
+    // is decided until the list is through. See Evaluator.h. The common
+    // rule carries one action, and FirstAction is the short way to it.
+    std::vector<Action> actions;
 
-    // Which hand, for EquipWeapon and EquipSpell: Left, Right, or Both for a
-    // two-hander, a bow, a master spell -- or an either-hand spell in each
-    // hand at once. Ignored by every other action.
-    Hand hand{Hand::None};
+    [[nodiscard]] Action &FirstAction()
+    {
+        if (actions.empty())
+            actions.emplace_back();
+        return actions.front();
+    }
 
     // No per-rule cooldown, deliberately. A cooldown is a property of the
     // remedy -- how long a potion takes to show, how long a cast takes to

@@ -142,7 +142,7 @@ const ft::RuleSet &DefaultRuleSetImpl()
         heal.predicate = ft::PredicateKind::HealthPctBelow;
         heal.conditionArg = 0.5f;
         heal.actionTarget = ft::ActionTargetKind::ConditionSubject;
-        heal.action = ft::ActionKind::DrinkHealthPotion;
+        heal.actions = {{ft::ActionKind::DrinkHealthPotion}};
         rs.rules.push_back(heal);
 
         return rs;
@@ -229,6 +229,20 @@ std::vector<RE::Actor *> CollectManagedFollowers()
 
 // --- per-follower evaluation -------------------------------------------------
 
+// A rule's actions by wire name, "+"-joined, for the log.
+std::string ActionNames(const ft::Rule &rule)
+{
+    std::string names;
+    for (const auto &action : rule.actions)
+        names += (names.empty() ? "" : "+") + std::string(ft::WireName(action.kind));
+    return names.empty() ? "none" : names;
+}
+
+ft::ActionKind FirstKind(const ft::Rule &rule)
+{
+    return rule.actions.empty() ? ft::ActionKind::None : rule.actions.front().kind;
+}
+
 void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet &rules, const ft::Trace &trace)
 {
     logger::info("{} health {:.0f}/{:.0f} ({:.0f}%) combat={} potions={}", Describe(actor), snap.health.current,
@@ -237,8 +251,8 @@ void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet
     for (std::size_t i = 0; i < trace.size(); ++i)
     {
         const auto &rule = rules.rules[i];
-        logger::info("    rule {} \"{}\" [{}]: {}", i, rule.label, ft::WireName(rule.action),
-                     ft::Explain(trace[i], rule.action));
+        logger::info("    rule {} \"{}\" [{}]: {}", i, rule.label, ActionNames(rule),
+                     ft::Explain(trace[i], FirstKind(rule)));
     }
 }
 
@@ -315,8 +329,8 @@ void PublishIdle(RE::Actor *actor, double now, bool inCombat)
     PublishOne(std::move(v));
 }
 
-void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace, const ft::Decision &decision,
-                 double now);
+void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace,
+                 const ft::ActionTrace &actionTrace, const ft::Decision &decision, double now);
 
 void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 {
@@ -343,30 +357,38 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     // making them per-follower.
     const ft::RuleSet rules = GetRules(id);
     ft::Trace trace;
-    const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace);
+    ft::ActionTrace actionTrace;
+    const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
 
-    PublishView(actor, snapshot, trace, decision, now);
+    PublishView(actor, snapshot, trace, actionTrace, decision, now);
 
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
     if (decision.Fired())
     {
-        const auto result = Execute(decision, actor, choice);
+        // Every step, in order. A rule's list is the player's, whole.
+        const auto index = static_cast<std::size_t>(decision.ruleIndex);
+        const std::string label = index < rules.rules.size() ? rules.rules[index].label : "";
+        for (const auto &step : decision.steps)
+        {
+            const auto result = Execute(step.action, actor, choice);
 
-        logger::info("{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
-                     decision.ruleIndex, rules.rules[decision.ruleIndex].label, ft::WireName(decision.action),
-                     ToString(result), snapshot.health.current, snapshot.health.max, snapshot.health.Pct() * 100.0);
+            logger::info("{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
+                         decision.ruleIndex, label, ft::WireName(step.action.kind), ToString(result),
+                         snapshot.health.current, snapshot.health.max, snapshot.health.Pct() * 100.0);
+
+            if (result != ActionResult::Performed)
+            {
+                // A rule that fires but does not take effect is the failure
+                // worth shouting about: the engine believed it acted, and it
+                // did not.
+                logger::warn("{} action did NOT take effect: {}", Describe(actor), ToString(result));
+            }
+        }
 
         // Empirical check for whether a drunk potion leaves a lingering effect
         // we could test against, rather than relying on a fixed settle time.
         LogActiveEffects(actor, "just after firing");
-
-        if (result != ActionResult::Performed)
-        {
-            // A rule that fires but does not take effect is the failure worth
-            // shouting about: the engine believed it acted, and it did not.
-            logger::warn("{} action did NOT take effect: {}", Describe(actor), ToString(result));
-        }
         return;
     }
 
@@ -380,14 +402,15 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 // Replace this follower's entry in the observable view. Called for every
 // follower every tick, whether or not a rule fired -- the debug column is most
 // useful precisely when nothing is firing.
-void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace, const ft::Decision &decision,
-                 double now)
+void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace,
+                 const ft::ActionTrace &actionTrace, const ft::Decision &decision, double now)
 {
     FollowerView v;
     v.id = actor->GetFormID();
     v.name = DisplayNameOf(actor);
     v.snapshot = snapshot;
     v.trace = trace;
+    v.actionTrace = actionTrace;
     v.decision = decision;
     v.lastEvaluatedAt = now;
     v.evaluated = true;

@@ -36,7 +36,8 @@ struct FollowerView
     // player can get from the console if they ever need it.
     std::string name;
     ft::Snapshot snapshot;
-    ft::Trace trace; // per-rule verdict: the debug column
+    ft::Trace trace;             // per-rule verdict: the debug column
+    ft::ActionTrace actionTrace; // per-action verdicts: the column's tooltip
     ft::Decision decision;
     double lastEvaluatedAt{0.0};
 

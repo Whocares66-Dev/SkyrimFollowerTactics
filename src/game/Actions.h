@@ -32,6 +32,8 @@ enum class ActionResult : std::uint8_t
 
 [[nodiscard]] const char *ToString(ActionResult r) noexcept;
 
-ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const PotionChoice &choice);
+// One action of a decision. A decision's steps are executed in order, each
+// through here.
+ActionResult Execute(const ft::Action &action, RE::Actor *actor, const PotionChoice &choice);
 
 } // namespace ft::game

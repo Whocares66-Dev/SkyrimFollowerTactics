@@ -64,7 +64,7 @@ ft::Rule HealBelow(float pct)
     r.predicate = ft::PredicateKind::HealthPctBelow;
     r.conditionArg = pct;
     r.actionTarget = ft::ActionTargetKind::ConditionSubject;
-    r.action = ft::ActionKind::DrinkHealthPotion;
+    r.FirstAction().kind = ft::ActionKind::DrinkHealthPotion;
     r.label = "heal";
     return r;
 }
@@ -84,8 +84,8 @@ std::vector<Check> RunSelfCheck()
         const auto d = ft::Evaluate(rs, s, ctx);
 
         checks.push_back({"health 40% < 50% -> drink potion",
-                          d.Fired() && d.action == ft::ActionKind::DrinkHealthPotion && d.targetId == s.self,
-                          fmt::format("fired={} target={:08X}", d.Fired(), d.targetId)});
+                          d.Fired() && d.action() == ft::ActionKind::DrinkHealthPotion && d.targetId() == s.self,
+                          fmt::format("fired={} target={:08X}", d.Fired(), d.targetId())});
     }
 
     // 2. ...and stays quiet when it should not. An empty result must be as
@@ -115,14 +115,14 @@ std::vector<Check> RunSelfCheck()
         r.predicate = ft::PredicateKind::HealthPctBelow;
         r.conditionArg = 0.6f;
         r.actionTarget = ft::ActionTargetKind::ConditionSubject;
-        r.action = ft::ActionKind::StopCombat;
+        r.FirstAction().kind = ft::ActionKind::StopCombat;
         rs.rules.push_back(r);
 
         ft::EvalContext ctx;
         const auto d = ft::Evaluate(rs, s, ctx);
 
         checks.push_back({"enemy < 60% health -> binds the weakest (0x102, not 0x101)",
-                          d.Fired() && d.targetId == 0x102, fmt::format("target={:08X}", d.targetId)});
+                          d.Fired() && d.targetId() == 0x102, fmt::format("target={:08X}", d.targetId())});
     }
 
     // 4. The action can be aimed away from the condition's subject.
@@ -138,8 +138,8 @@ std::vector<Check> RunSelfCheck()
         ft::EvalContext ctx;
         const auto d = ft::Evaluate(rs, s, ctx);
 
-        checks.push_back({"action target override -> player", d.Fired() && d.targetId == ft::kPlayerFormID,
-                          fmt::format("target={:08X}", d.targetId)});
+        checks.push_back({"action target override -> player", d.Fired() && d.targetId() == ft::kPlayerFormID,
+                          fmt::format("target={:08X}", d.targetId())});
     }
 
     // 5. An unanswerable subject/predicate pair is reported as broken authoring,
@@ -150,7 +150,7 @@ std::vector<Check> RunSelfCheck()
         r.subject = ft::SubjectKind::Self;
         r.predicate = ft::PredicateKind::WithinDistance; // nonsense
         r.conditionArg = 100.0f;
-        r.action = ft::ActionKind::StopCombat;
+        r.FirstAction().kind = ft::ActionKind::StopCombat;
         rs.rules.push_back(r);
 
         ft::EvalContext ctx;

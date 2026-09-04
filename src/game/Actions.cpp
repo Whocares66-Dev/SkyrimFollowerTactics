@@ -93,12 +93,12 @@ const char *ToString(ActionResult r) noexcept
     return "?";
 }
 
-ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const PotionChoice &choice)
+ActionResult Execute(const ft::Action &action, RE::Actor *actor, const PotionChoice &choice)
 {
     if (!actor)
         return ActionResult::MissingItem;
 
-    switch (decision.action)
+    switch (action.kind)
     {
     case ft::ActionKind::DrinkHealthPotion:
         return DrinkPotion(actor, choice.health);
@@ -110,7 +110,7 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
         // One named potion. The evaluator only fires this when the snapshot
         // says she carries it, so a null here is a form that stopped being a
         // potion between snapshot and dispatch.
-        return DrinkPotion(actor, RE::TESForm::LookupByID<RE::AlchemyItem>(decision.actionForm));
+        return DrinkPotion(actor, RE::TESForm::LookupByID<RE::AlchemyItem>(action.form));
 
     case ft::ActionKind::CastSpell: {
         // The package route, on its own. The combat-AI hook is off by default
@@ -124,7 +124,7 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
         // targeted spell (Healing Hands) will need the player instead -- that
         // is the case to revisit when such a spell is authored.
         std::uint32_t targetId = actor->GetFormID();
-        auto *spell = FindSpell(decision.actionForm);
+        auto *spell = FindSpell(action.form);
         if (spell)
             logger::info("  cast: {} is {} / {}", spell->GetName() ? spell->GetName() : "?",
                          spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration ? "concentration"
@@ -144,7 +144,7 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
 
         // actionArg is the sustain time for a concentration spell, when a rule
         // sets one; zero takes the default.
-        const auto request = RequestCast(actor, decision.actionForm, targetId, decision.actionArg);
+        const auto request = RequestCast(actor, action.form, targetId, action.arg);
         logger::info("  cast: {}", ToString(request));
         switch (request)
         {
@@ -172,12 +172,12 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
         // decides again. The evaluator only fires this when the snapshot
         // says she has the thing, so a miss here is a form that left her
         // between snapshot and dispatch.
-        if (decision.actionForm == 0)
+        if (action.form == 0)
         {
-            ReleaseKind(actor, ft::KindOf(decision.action));
+            ReleaseKind(actor, ft::KindOf(action.kind));
             return ActionResult::Performed;
         }
-        return PinNow(actor, decision.actionForm, decision.hand) ? ActionResult::Performed : ActionResult::MissingItem;
+        return PinNow(actor, action.form, action.hand) ? ActionResult::Performed : ActionResult::MissingItem;
 
     default:
         // Every other action is Phase 4. The rule engine's Capabilities table is

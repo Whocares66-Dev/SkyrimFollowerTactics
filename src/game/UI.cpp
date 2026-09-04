@@ -625,17 +625,17 @@ std::string EquipNoun(ft::ActionKind action)
 
 // The name of the thing an equip rule names, as she carries or knows it;
 // empty if she does not.
-std::string EquipTargetName(const ft::Rule &rule, const FollowerView &view)
+std::string EquipTargetName(const ft::Action &act, const FollowerView &view)
 {
-    if (rule.action == ft::ActionKind::EquipSpell)
+    if (act.kind == ft::ActionKind::EquipSpell)
     {
         for (const auto &entry : view.magic)
-            if (entry.form == rule.actionForm)
+            if (entry.form == act.form)
                 return entry.name;
         return {};
     }
     for (const auto &item : view.inventory)
-        if (item.form == rule.actionForm)
+        if (item.form == act.form)
             return item.name;
     return {};
 }
@@ -676,40 +676,40 @@ std::string DrinkSubmenuLabel(ft::ActionKind action)
 // the point of naming the spell is that a rule reads as an instruction. The id
 // is what the rule stores; this is what the player sees. Same split as wire
 // names versus display names.
-std::string ActionText(const ft::Rule &rule, const FollowerView &view)
+std::string ActionText(const ft::Action &act, const FollowerView &view)
 {
-    const std::string base(ft::DisplayName(rule.action));
+    const std::string base(ft::DisplayName(act.kind));
 
-    if (rule.action == ft::ActionKind::DrinkPotion)
+    if (act.kind == ft::ActionKind::DrinkPotion)
     {
-        if (rule.actionForm == 0)
+        if (act.form == 0)
             return base + "...";
         for (const auto &option : view.potions)
-            if (option.form == rule.actionForm)
+            if (option.form == act.form)
                 return "Drink " + option.name;
         return base + " (not carried)";
     }
 
-    if (ft::IsEquip(rule.action))
+    if (ft::IsEquip(act.kind))
     {
-        if (rule.actionForm == 0)
-            return "Unequip " + EquipNoun(rule.action);
-        const std::string name = EquipTargetName(rule, view);
+        if (act.form == 0)
+            return "Unequip " + EquipNoun(act.kind);
+        const std::string name = EquipTargetName(act, view);
         if (name.empty())
-            return base + (rule.action == ft::ActionKind::EquipSpell ? " (not known)" : " (not carried)");
-        const bool handed = rule.action == ft::ActionKind::EquipWeapon || rule.action == ft::ActionKind::EquipSpell;
-        return "Equip " + name + (handed ? " (" + Lower(ft::DisplayName(rule.hand)) + ")" : "");
+            return base + (act.kind == ft::ActionKind::EquipSpell ? " (not known)" : " (not carried)");
+        const bool handed = act.kind == ft::ActionKind::EquipWeapon || act.kind == ft::ActionKind::EquipSpell;
+        return "Equip " + name + (handed ? " (" + Lower(ft::DisplayName(act.hand)) + ")" : "");
     }
 
-    if (!TakesSpell(rule.action))
+    if (!TakesSpell(act.kind))
         return base;
 
-    if (rule.actionForm == 0)
+    if (act.form == 0)
         return base + "...";
 
     for (const auto &option : view.spells)
     {
-        if (option.form != rule.actionForm)
+        if (option.form != act.form)
             continue;
         return "Cast " + option.name;
     }
@@ -723,7 +723,7 @@ std::string ActionText(const ft::Rule &rule, const FollowerView &view)
 // One leaf of an equip menu: a thing she has, pinned in `hand` when
 // chosen. A spell above her skill is listed but cannot be chosen: the AI
 // would never pick it, so a pin on it is a promise the rule could not keep.
-bool EquipLeaf(ft::Rule &rule, ft::ActionKind action, std::uint32_t form, const std::string &name, Hand hand,
+bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const std::string &name, Hand hand,
                bool unusable)
 {
     if (unusable)
@@ -731,12 +731,12 @@ bool EquipLeaf(ft::Rule &rule, ft::ActionKind action, std::uint32_t form, const 
         Im::MenuItem((name + " (above their skill)").c_str(), nullptr, false, false);
         return false;
     }
-    const bool selected = rule.action == action && rule.actionForm == form && rule.hand == hand;
+    const bool selected = act.kind == action && act.form == form && act.hand == hand;
     if (!CascadeItem(name.c_str(), selected))
         return false;
-    rule.action = action;
-    rule.actionForm = form;
-    rule.hand = hand;
+    act.kind = action;
+    act.form = form;
+    act.hand = hand;
     return true;
 }
 
@@ -747,16 +747,16 @@ bool EquipLeaf(ft::Rule &rule, ft::ActionKind action, std::uint32_t form, const 
 // Both, each listing what fits that hand; for arrows and armour, the things
 // themselves. Every list is hers, so a rule cannot name a thing she does
 // not have.
-bool EquipMenu(ft::Rule &rule, ft::ActionKind action, const FollowerView &view)
+bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 {
     bool changed = false;
 
-    const bool none = rule.action == action && rule.actionForm == 0;
+    const bool none = act.kind == action && act.form == 0;
     if (CascadeItem("None", none))
     {
-        rule.action = action;
-        rule.actionForm = 0;
-        rule.hand = Hand::None;
+        act.kind = action;
+        act.form = 0;
+        act.hand = Hand::None;
         changed = true;
     }
     Im::Separator();
@@ -773,7 +773,7 @@ bool EquipMenu(ft::Rule &rule, ft::ActionKind action, const FollowerView &view)
             if (item.category != category)
                 continue;
             any = true;
-            if (EquipLeaf(rule, action, item.form, item.name, Hand::None, false))
+            if (EquipLeaf(act, action, item.form, item.name, Hand::None, false))
                 changed = true;
         }
         if (!any)
@@ -810,7 +810,7 @@ bool EquipMenu(ft::Rule &rule, ft::ActionKind action, const FollowerView &view)
                 if (entry.category == MagicCategory::Shouts || entry.category == MagicCategory::Powers ||
                     !Fits(entry.grip, hand, true))
                     continue;
-                if (EquipLeaf(rule, action, entry.form, entry.name, hand, entry.aboveSkill))
+                if (EquipLeaf(act, action, entry.form, entry.name, hand, entry.aboveSkill))
                     changed = true;
             }
         }
@@ -820,7 +820,7 @@ bool EquipMenu(ft::Rule &rule, ft::ActionKind action, const FollowerView &view)
             {
                 if (item.category != ItemCategory::Weapons || !Fits(item.grip, hand, false))
                     continue;
-                if (EquipLeaf(rule, action, item.form, item.name, hand, false))
+                if (EquipLeaf(act, action, item.form, item.name, hand, false))
                     changed = true;
             }
         }
@@ -837,17 +837,29 @@ bool EquipMenu(ft::Rule &rule, ft::ActionKind action, const FollowerView &view)
 // the same guarantee the condition side gets from the validity matrix, and
 // for the same reason: an unfireable rule should be unauthorable, not merely
 // discouraged.
-bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
+bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *remove)
 {
     bool changed = false;
 
-    CellButtonOpensPopup(id, ActionText(rule, view));
+    CellButtonOpensPopup(id, ActionText(act, view));
 
     PushPopupChrome();
     if (!Im::BeginPopup(id, 0))
     {
         Im::PopStyleVar(kPopupChromeVars);
         return false;
+    }
+
+    // One of several: it can be taken out of the list. Offered first, in
+    // a section of its own, so it is not mistaken for an action.
+    if (remove)
+    {
+        if (CascadeItem("Remove this action", false))
+        {
+            *remove = true;
+            changed = true;
+        }
+        Im::Separator();
     }
 
     for (std::size_t i = 0; i < static_cast<std::size_t>(ft::ActionKind::COUNT); ++i)
@@ -867,11 +879,11 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
             for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
                               ft::ActionKind::DrinkMagickaPotion})
             {
-                const bool selected = rule.action == kind;
+                const bool selected = act.kind == kind;
                 if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
                 {
-                    rule.action = kind;
-                    rule.actionForm = 0;
+                    act.kind = kind;
+                    act.form = 0;
                     changed = true;
                 }
                 if (Im::IsItemHovered(0))
@@ -884,11 +896,11 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
                 for (const auto &option : view.potions)
                 {
                     const std::string label = option.name + " (" + std::to_string(option.count) + ")";
-                    const bool selected = rule.action == ft::ActionKind::DrinkPotion && rule.actionForm == option.form;
+                    const bool selected = act.kind == ft::ActionKind::DrinkPotion && act.form == option.form;
                     if (CascadeItem(label.c_str(), selected))
                     {
-                        rule.action = ft::ActionKind::DrinkPotion;
-                        rule.actionForm = option.form;
+                        act.kind = ft::ActionKind::DrinkPotion;
+                        act.form = option.form;
                         changed = true;
                     }
                 }
@@ -904,7 +916,7 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
                 Im::SetTooltip("%s", std::string(ft::Describe(action)).c_str());
             if (!open)
                 continue;
-            if (EquipMenu(rule, action, view))
+            if (EquipMenu(act, action, view))
                 changed = true;
             Im::EndMenu();
             continue;
@@ -912,12 +924,12 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
 
         if (!TakesSpell(action))
         {
-            const bool selected = rule.action == action;
+            const bool selected = act.kind == action;
             if (CascadeItem(name.c_str(), selected))
             {
-                rule.action = action;
-                rule.actionForm = 0;
-                rule.hand = Hand::None;
+                act.kind = action;
+                act.form = 0;
+                act.hand = Hand::None;
                 changed = true;
             }
             if (Im::IsItemHovered(0))
@@ -938,11 +950,11 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
 
         for (const auto &option : view.spells)
         {
-            const bool selected = rule.action == action && rule.actionForm == option.form;
+            const bool selected = act.kind == action && act.form == option.form;
             if (CascadeItem(option.name.c_str(), selected))
             {
-                rule.action = action;
-                rule.actionForm = option.form;
+                act.kind = action;
+                act.form = option.form;
                 changed = true;
             }
         }
@@ -1059,8 +1071,37 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             changed = true;
 
         Im::TableSetColumnIndex(3);
-        if (ActionMenu(("##act" + rowId).c_str(), rule, view))
-            changed = true;
+        {
+            // The actions, one under another in the order they are done,
+            // each its own menu; a plus beneath them for one more. A rule
+            // always shows at least one, "Do nothing" until it is chosen.
+            if (rule.actions.empty())
+                rule.actions.emplace_back();
+            int removeAction = -1;
+            for (std::size_t a = 0; a < rule.actions.size(); ++a)
+            {
+                bool remove = false;
+                const std::string actId = "##act" + rowId + "_" + std::to_string(a);
+                if (ActionMenu(actId.c_str(), rule.actions[a], view, rule.actions.size() > 1 ? &remove : nullptr))
+                    changed = true;
+                if (remove)
+                    removeAction = static_cast<int>(a);
+            }
+            if (removeAction >= 0)
+            {
+                rule.actions.erase(rule.actions.begin() + removeAction);
+                changed = true;
+            }
+            Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+            if (GlyphButton("addact" + rowId, Im::GetFrameHeight(), Glyph::Plus))
+            {
+                rule.actions.emplace_back();
+                changed = true;
+            }
+            Im::PopStyleVar(1);
+            if (Im::IsItemHovered(0))
+                Im::SetTooltip("Add an action, done after the ones above.");
+        }
 
         Im::TableSetColumnIndex(4);
         Im::AlignTextToFramePadding();
@@ -1072,10 +1113,29 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         else
         {
             const auto verdict = i < view.trace.size() ? view.trace[i] : ft::Verdict::NotReached;
-            const Status status = StatusFor(verdict, rule.action);
+            const ft::ActionKind firstKind = rule.actions.empty() ? ft::ActionKind::None : rule.actions.front().kind;
+            const Status status = StatusFor(verdict, firstKind);
             Im::TextColored(status.color, "%s", status.text);
             if (Im::IsItemHovered(0))
-                Im::SetTooltip("%s", ft::ToString(verdict));
+            {
+                // One line per action when the rule carries several: which
+                // were done, which waited, which could not be.
+                const auto *perAction = i < view.actionTrace.size() ? &view.actionTrace[i] : nullptr;
+                if (rule.actions.size() > 1 && perAction && perAction->size() == rule.actions.size())
+                {
+                    std::string lines;
+                    for (std::size_t a = 0; a < rule.actions.size(); ++a)
+                    {
+                        lines += (a ? "\n" : "") + std::to_string(a + 1) + ". " + ActionText(rule.actions[a], view) +
+                                 ": " + ft::Explain((*perAction)[a], rule.actions[a].kind);
+                    }
+                    Im::SetTooltip("%s", lines.c_str());
+                }
+                else
+                {
+                    Im::SetTooltip("%s", ft::Explain(verdict, firstKind));
+                }
+            }
         }
 
         Im::EndDisabled();
@@ -1156,7 +1216,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         fresh.predicate = ft::PredicateKind::Any;
         fresh.conditionArg = 0.0f;
         fresh.actionTarget = ft::ActionTargetKind::ConditionSubject;
-        fresh.action = ft::ActionKind::None;
+        fresh.actions = {{ft::ActionKind::None}};
         rules.rules.push_back(fresh);
         changed = true;
     }
