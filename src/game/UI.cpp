@@ -2653,12 +2653,6 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
         DrawCharacter(view);
         Im::EndTabItem();
     }
-    if (Im::BeginTabItem("Skills"))
-    {
-        Im::Spacing();
-        DrawSections(view.skills, true);
-        Im::EndTabItem();
-    }
     if (Im::BeginTabItem("Inventory", nullptr, select == Tab::Inventory ? Im::ImGuiTabItemFlags_SetSelected : 0))
     {
         DrawInventory(view);
@@ -2667,6 +2661,12 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     if (Im::BeginTabItem("Magic"))
     {
         DrawMagic(view);
+        Im::EndTabItem();
+    }
+    if (Im::BeginTabItem("Skills"))
+    {
+        Im::Spacing();
+        DrawSections(view.skills, true);
         Im::EndTabItem();
     }
     // What the combat AI is tuned by, before what it is told: a rule works
