@@ -190,4 +190,37 @@ std::vector<Pin> Shadowing(const std::vector<Pin> &pins, const Holdable &thing)
     return out;
 }
 
+namespace
+{
+bool SamePin(const Pin &a, const Pin &b) noexcept
+{
+    return a.thing.form == b.thing.form && a.hands == b.hands;
+}
+
+bool Holds(const std::vector<Pin> &pins, const Pin &pin) noexcept
+{
+    return std::any_of(pins.begin(), pins.end(), [&](const Pin &p) { return SamePin(p, pin); });
+}
+} // namespace
+
+AfterFight SettleAfterFight(const std::vector<Pin> &now, const std::vector<Pin> &before)
+{
+    AfterFight out;
+    for (const Pin &pin : now)
+    {
+        if (Holds(before, pin))
+            continue;
+        const bool displaced = std::any_of(before.begin(), before.end(), [&](const Pin &saved) {
+            return saved.thing.form != pin.thing.form && Conflicts(pin.thing, pin.hands, saved.thing, saved.hands);
+        });
+        out.released.push_back({pin.thing.form, pin.hands, displaced});
+    }
+    for (const Pin &pin : before)
+    {
+        if (!Holds(now, pin))
+            out.restored.push_back(pin);
+    }
+    return out;
+}
+
 } // namespace ft

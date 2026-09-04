@@ -248,7 +248,8 @@ void EquipPlain(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
     if (object->Is(RE::FormType::Weapon) && hands != Hand::Both && hands != Hand::None)
         slot = HandSlot(hands);
     const OwnEquip ours;
-    manager->EquipObject(actor, object, nullptr, 1, slot, false, false, true, false);
+    // Silent: this is the thing already on, put back without its lock.
+    manager->EquipObject(actor, object, nullptr, 1, slot, false, false, false, false);
 }
 
 // Take a form off.
@@ -428,45 +429,50 @@ std::uint64_t ReadyKey(const RE::Actor *actor, const RE::TESForm *form)
 std::unordered_map<ft::ActorId, std::vector<Pin>> g_pinsBeforeFight;
 std::unordered_set<ft::ActorId> g_fighting;
 
-bool SamePin(const Pin &a, const Pin &b)
-{
-    return a.thing.form == b.thing.form && a.hands == b.hands;
-}
-
-bool Holds(const std::vector<Pin> &pins, const Pin &pin)
-{
-    return std::any_of(pins.begin(), pins.end(), [&](const Pin &p) { return SamePin(p, pin); });
-}
-
-// The fight is over: what it pinned is let go and taken off, what it
-// displaced is pinned again. The watchdog, running next in the same pass
-// and now out of combat, puts the restored pins back on. Under g_pinMutex.
+// The fight is over: what it pinned is let go, what it displaced is pinned
+// again, and the watchdog, running next in the same pass and now out of
+// combat, puts the restored pins back on. Which is which is the core's
+// SettleAfterFight, tested: a fight's pin is let go IN PLACE -- the bow
+// stays in hand, the cuirass stays on, the AI's to change as it likes --
+// unless something from before the fight is coming back to that hand or
+// slot, in which case it is taken off to make way. Taking everything off
+// left Jenassa stripped after a fight that began with an empty book
+// (21:02). Under g_pinMutex.
 void RestorePinsAfterFight(RE::Actor *actor, std::vector<Pin> &pins, const std::vector<Pin> &before)
 {
-    bool changed = false;
-    for (const Pin &pin : pins)
+    const AfterFight settle = SettleAfterFight(pins, before);
+    for (const Released &gone : settle.released)
     {
-        if (Holds(before, pin))
+        auto *thing = RE::TESForm::LookupByID(gone.form);
+        if (!thing)
             continue;
-        changed = true;
-        if (auto *thing = RE::TESForm::LookupByID(pin.thing.form))
+        const char *name = thing->GetName() ? thing->GetName() : "?";
+        if (gone.takeOff)
         {
-            logger::info("{} fight over -- letting go of {}{}, pinned during it", Describe(actor),
-                         thing->GetName() ? thing->GetName() : "?", HandTag(pin.hands));
-            UnequipForm(actor, thing, pin.hands, true);
+            logger::info("{} fight over -- {}{} pinned during it comes off; what was there before comes back",
+                         Describe(actor), name, HandTag(gone.hands));
+            UnequipForm(actor, thing, gone.hands, true);
+            continue;
+        }
+        logger::info("{} fight over -- {}{} pinned during it stays on, unpinned", Describe(actor), name,
+                     HandTag(gone.hands));
+        // An item's lock lives on the worn item, and the engine offers no
+        // way to lift it in place: off, then on again without the flag. A
+        // spell has no lock; forgetting the pin is the whole of it.
+        if (auto *object = thing->As<RE::TESBoundObject>(); object && !thing->Is(RE::FormType::Spell))
+        {
+            UnequipForm(actor, object, gone.hands, true);
+            EquipPlain(actor, object, gone.hands);
         }
     }
-    for (const Pin &pin : before)
+    for (const Pin &pin : settle.restored)
     {
-        if (Holds(pins, pin))
-            continue;
-        changed = true;
         const auto *thing = RE::TESForm::LookupByID(pin.thing.form);
         logger::info("{} fight over -- {}{} pinned again, as before it", Describe(actor),
                      thing && thing->GetName() ? thing->GetName() : "?", HandTag(pin.hands));
     }
     pins = before;
-    if (!changed)
+    if (settle.released.empty() && settle.restored.empty())
         return;
     // A fresh start for the refusal log: the book is what it was.
     g_refusedLogged.clear();

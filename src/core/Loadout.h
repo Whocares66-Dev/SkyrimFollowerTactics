@@ -210,4 +210,29 @@ void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool movi
 // aside.
 [[nodiscard]] std::vector<Pin> Shadowing(const std::vector<Pin> &pins, const Holdable &thing);
 
+// ---- The fight is over. What the book held when it began comes back, and
+// what the fight pinned is let go.
+
+// A fight's pin let go: left on and unpinned, the AI's to change; or taken
+// off, because a pin from before the fight is coming back to that hand or
+// slot.
+struct Released
+{
+    std::uint32_t form{0};
+    Hand hands{Hand::None};
+    bool takeOff{false};
+};
+
+struct AfterFight
+{
+    std::vector<Released> released; // the fight's pins, in `now` and not in `before`
+    std::vector<Pin> restored;      // the pins from before that the fight displaced
+};
+
+// With `before` empty nothing is taken off: the fight's gear stays on,
+// unpinned. With pins in `before`, only those come back, and a fight's
+// pin comes off only to make way for one of them. A pin in both -- kept
+// through the fight, or made in the panel during it -- is untouched.
+[[nodiscard]] AfterFight SettleAfterFight(const std::vector<Pin> &now, const std::vector<Pin> &before);
+
 } // namespace ft

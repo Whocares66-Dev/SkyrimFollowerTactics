@@ -46,9 +46,10 @@ namespace ft::game
 //
 // A fight does not rewrite the book. What is pinned when a follower enters
 // combat is remembered and put back when combat ends: the rules' pins for
-// the fight are let go, and the player's pins they displaced are pinned
-// again and put back on. A pin the player makes in the panel mid-fight
-// counts as the new normal and survives.
+// the fight are let go in place -- the gear stays on, the AI's to change
+// -- or taken off where a pin from before the fight is coming back, and
+// the player's pins are pinned again and put back on. A pin the player
+// makes in the panel mid-fight counts as the new normal and survives.
 //
 // Independent of tactics: pins are enforced whether the tactics switch is on
 // or off, on the same half-second clock, by a watchdog that looks only at the

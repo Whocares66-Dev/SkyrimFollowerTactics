@@ -360,3 +360,77 @@ TEST_CASE("making room for armour goes by body slot")
     REQUIRE(pins.size() == 1);
     CHECK(pins[0].thing.form == kIronShield);
 }
+
+// ---- The fight is over.
+
+TEST_CASE("a fight that began with nothing pinned takes nothing off")
+{
+    // The rules pinned a bow and a cuirass for the fight. Both are let go
+    // in place: the gear stays on, the AI's to change. Nothing comes back
+    // because nothing was there. This is the case that stripped Jenassa.
+    const std::vector<Pin> before;
+    const std::vector<Pin> now{{Thing(kHuntingBow, Grip::Both), Hand::Both}, {Armour(kIronArmor, 0x4), Hand::None}};
+
+    const AfterFight settle = SettleAfterFight(now, before);
+    REQUIRE(settle.released.size() == 2);
+    CHECK(settle.released[0].form == kHuntingBow);
+    CHECK(settle.released[0].hands == Hand::Both);
+    CHECK_FALSE(settle.released[0].takeOff);
+    CHECK(settle.released[1].form == kIronArmor);
+    CHECK_FALSE(settle.released[1].takeOff);
+    CHECK(settle.restored.empty());
+}
+
+TEST_CASE("what was pinned before the fight comes back, and only that")
+{
+    // Before: a dagger in the right hand and robes. The fight pinned a bow
+    // -- both hands, over the dagger -- and iron armour over the robes,
+    // and a helmet in a slot nothing before it used. The bow and the
+    // armour come off to make way; the helmet stays on, unpinned; the
+    // dagger and the robes are pinned again.
+    const std::vector<Pin> before{{Thing(kSteelDagger, Grip::Either), Hand::Right}, {Armour(10, 0x4), Hand::None}};
+    const std::vector<Pin> now{{Thing(kHuntingBow, Grip::Both), Hand::Both},
+                               {Armour(kIronArmor, 0x4), Hand::None},
+                               {Armour(11, 0x2), Hand::None}};
+
+    const AfterFight settle = SettleAfterFight(now, before);
+    REQUIRE(settle.released.size() == 3);
+    CHECK(settle.released[0].form == kHuntingBow);
+    CHECK(settle.released[0].takeOff);
+    CHECK(settle.released[1].form == kIronArmor);
+    CHECK(settle.released[1].takeOff);
+    CHECK(settle.released[2].form == 11);
+    CHECK_FALSE(settle.released[2].takeOff);
+    REQUIRE(settle.restored.size() == 2);
+    CHECK(settle.restored[0].thing.form == kSteelDagger);
+    CHECK(settle.restored[0].hands == Hand::Right);
+    CHECK(settle.restored[1].thing.form == 10);
+}
+
+TEST_CASE("a pin kept through the fight, or made in the panel during it, is untouched")
+{
+    // The helmet was pinned before and is pinned still: not released, not
+    // restored. The sword the rules pinned in a hand nothing before it
+    // used is let go in place.
+    const std::vector<Pin> before{{Armour(kIronArmor, 0x2), Hand::None}};
+    const std::vector<Pin> now{{Armour(kIronArmor, 0x2), Hand::None}, {Thing(kSteelDagger, Grip::Either), Hand::Right}};
+
+    const AfterFight settle = SettleAfterFight(now, before);
+    REQUIRE(settle.released.size() == 1);
+    CHECK(settle.released[0].form == kSteelDagger);
+    CHECK_FALSE(settle.released[0].takeOff);
+    CHECK(settle.restored.empty());
+
+    // The same pin in other hands is a change: the fight moved the dagger
+    // to the left, and it comes back to the right. Not taken off -- it is
+    // the same thing -- the watchdog puts it in the right hand.
+    const std::vector<Pin> moved{{Armour(kIronArmor, 0x2), Hand::None},
+                                 {Thing(kSteelDagger, Grip::Either), Hand::Left}};
+    const std::vector<Pin> wasRight{{Armour(kIronArmor, 0x2), Hand::None},
+                                    {Thing(kSteelDagger, Grip::Either), Hand::Right}};
+    const AfterFight back = SettleAfterFight(moved, wasRight);
+    REQUIRE(back.released.size() == 1);
+    CHECK_FALSE(back.released[0].takeOff);
+    REQUIRE(back.restored.size() == 1);
+    CHECK(back.restored[0].hands == Hand::Right);
+}
