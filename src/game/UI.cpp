@@ -1033,8 +1033,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         {
             // The whole cell is the switch, lit while hovered; the tick is
             // drawn centred in it at the size of the other glyphs on the row.
-            // Off is the tick ghosted rather than gone: an empty cell would
-            // not read as something to click.
+            // Off is no tick at all, as an unequipped item's cell on the
+            // Inventory tab; the row's dimming says the rest.
             const Im::ImVec2 pos = Im::GetCursorScreenPos();
             if (CellClicked(("##on" + rowId).c_str(), Im::GetFrameHeight()))
             {
@@ -1045,13 +1045,13 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 Im::SetTooltip(rule.enabled ? "On -- click to turn this rule off"
                                             : "Off -- click to turn this rule on");
 
-            if (auto *draw = Im::GetWindowDrawList())
+            if (auto *draw = Im::GetWindowDrawList(); draw && rule.enabled)
             {
                 const float size = Im::GetFrameHeight();
                 const float cell = Im::GetContentRegionAvail().x;
                 const float left = pos.x + (cell - size) * 0.5f;
                 DrawGlyph(draw, Glyph::Tick, {left, pos.y}, {left + size, pos.y + size},
-                          Im::GetColorU32(rule.enabled ? Im::ImGuiCol_Text : Im::ImGuiCol_TextDisabled, 1.0f));
+                          Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
             }
         }
 
