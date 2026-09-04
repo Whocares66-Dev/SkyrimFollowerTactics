@@ -202,6 +202,12 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::InCombat:
         held = s.inCombat;
         break;
+    case PredicateKind::CombatBegins:
+        held = s.combatBegan;
+        break;
+    case PredicateKind::CombatEnds:
+        held = s.combatEnded;
+        break;
     default:
         break;
     }
@@ -254,6 +260,11 @@ Binding EvaluateCurrentTarget(const Snapshot &s, const Rule &r)
 Binding EvaluateCondition(const Rule &r, const Snapshot &s)
 {
     if (!IsPredicateValidFor(r.subject, r.predicate))
+        return NoMatch();
+
+    // The farewell pass after a fight: the fight is over, and the only thing
+    // true of this moment is that it has ended.
+    if (s.combatEnded && r.predicate != PredicateKind::CombatEnds)
         return NoMatch();
 
     if (r.predicate == PredicateKind::CountAtLeast)

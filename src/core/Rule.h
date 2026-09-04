@@ -49,6 +49,14 @@ enum class PredicateKind : std::uint8_t
     MagickaPctBelow,
     InBleedout,
     InCombat,
+    // The edges of a fight, true on one tick each. CombatBegins holds on the
+    // first evaluation of a fight and the list runs on as usual beneath it.
+    // CombatEnds holds on one farewell evaluation after the follower leaves
+    // combat -- and on THAT evaluation nothing else holds: a standing "Any"
+    // rule must not re-pin the bow the moment the after-fight restore has
+    // put the travelling gear back.
+    CombatBegins,
+    CombatEnds,
     WithinDistance,
     CountAtLeast,
     // The other side of the three Pct predicates. Listed after the rest so

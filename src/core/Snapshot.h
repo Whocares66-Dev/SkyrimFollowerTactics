@@ -160,6 +160,11 @@ struct Snapshot
     Stat stamina{};
 
     bool inCombat{false};
+    // The edges: this is the first evaluation of a fight, or the one
+    // farewell evaluation after it. On the farewell pass only CombatEnds
+    // holds -- see PredicateKind.
+    bool combatBegan{false};
+    bool combatEnded{false};
     bool inBleedout{false};
     bool weaponDrawn{false};
     bool sneaking{false};

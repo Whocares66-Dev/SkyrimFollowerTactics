@@ -67,6 +67,9 @@ struct FollowerState
     ft::EvalContext eval;
     double lastEvaluatedAt{-1.0e9};
     double lastDiagnosticAt{-1.0e9};
+    // In combat on the last tick, for the edges: the first evaluation of a
+    // fight, and the one farewell evaluation after it.
+    bool fighting{false};
 };
 
 std::unordered_map<ft::ActorId, FollowerState> g_followers;
@@ -315,7 +318,7 @@ void PublishIdle(RE::Actor *actor, double now, bool inCombat)
 void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace, const ft::Decision &decision,
                  double now);
 
-void EvaluateFollower(RE::Actor *actor, double now)
+void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 {
     const ft::ActorId id = actor->GetFormID();
     auto &state = g_followers[id];
@@ -332,7 +335,9 @@ void EvaluateFollower(RE::Actor *actor, double now)
     const auto started = std::chrono::steady_clock::now();
 
     PotionChoice choice;
-    const ft::Snapshot snapshot = BuildSnapshot(actor, now, choice);
+    ft::Snapshot snapshot = BuildSnapshot(actor, now, choice);
+    snapshot.combatBegan = began;
+    snapshot.combatEnded = ended;
 
     // This follower's own rules, not a shared static -- the whole point of
     // making them per-follower.
@@ -516,8 +521,16 @@ void Tick()
                 g_bleedingOut.erase(follower->GetFormID());
         }
 
-        if (g_enabled.load() && fighting && !down && IsFollowerEnabled(follower->GetFormID()))
-            EvaluateFollower(follower, now);
+        // The edges of a fight, from the tick: one evaluation is the first
+        // of the fight, and one more runs after it ends, for the rules that
+        // ask about exactly that.
+        auto &state = g_followers[follower->GetFormID()];
+        const bool began = fighting && !state.fighting;
+        const bool ended = !fighting && state.fighting;
+        state.fighting = fighting;
+
+        if (g_enabled.load() && (fighting || ended) && !down && IsFollowerEnabled(follower->GetFormID()))
+            EvaluateFollower(follower, now, began, ended);
         else
             PublishIdle(follower, now, fighting);
     }

@@ -120,6 +120,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::StaminaPctBelow:
         case PredicateKind::InBleedout:
         case PredicateKind::InCombat:
+        case PredicateKind::CombatBegins:
+        case PredicateKind::CombatEnds:
             return true;
         default:
             // WithinDistance is meaningless (distance to what?) and CountAtLeast

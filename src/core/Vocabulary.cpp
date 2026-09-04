@@ -63,13 +63,15 @@ constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
     {SubjectKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 11> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 13> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
     {PredicateKind::MagickaPctBelow, "magicka-pct-below", "Magicka"},
     {PredicateKind::InBleedout, "in-bleedout", "Bleeding out"},
     {PredicateKind::InCombat, "in-combat", "In combat"},
+    {PredicateKind::CombatBegins, "combat-begins", "Combat begins"},
+    {PredicateKind::CombatEnds, "combat-ends", "Combat ends"},
     {PredicateKind::WithinDistance, "within-distance", "Distance"},
     {PredicateKind::CountAtLeast, "count-at-least", "Count"},
     {PredicateKind::HealthPctAbove, "health-pct-above", "Health"},
@@ -271,6 +273,10 @@ std::string_view Describe(PredicateKind v) noexcept
         return "Down and dying, not dead.";
     case PredicateKind::InCombat:
         return "Fighting something.";
+    case PredicateKind::CombatBegins:
+        return "A fight has just begun.";
+    case PredicateKind::CombatEnds:
+        return "A fight has just ended; no other condition holds on that pass.";
     case PredicateKind::WithinDistance:
         return "Closer than this many units.";
     case PredicateKind::CountAtLeast:

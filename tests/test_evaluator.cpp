@@ -448,6 +448,53 @@ TEST_CASE("the subject and predicate validity matrix", "[validity]")
     REQUIRE(AboveOf(PredicateKind::InCombat) == PredicateKind::InCombat);
 }
 
+TEST_CASE("the edges of a fight hold for one evaluation each", "[evaluator]")
+{
+    Rule onBegin;
+    onBegin.subject = SubjectKind::Self;
+    onBegin.predicate = PredicateKind::CombatBegins;
+    onBegin.actionTarget = ActionTargetKind::Self;
+    onBegin.action = ActionKind::HoldPosition;
+
+    Rule always = onBegin;
+    always.predicate = PredicateKind::Any;
+    always.action = ActionKind::Flee;
+
+    Rule onEnd = onBegin;
+    onEnd.predicate = PredicateKind::CombatEnds;
+    onEnd.action = ActionKind::StopCombat;
+
+    RuleSet rs;
+    rs.rules = {onBegin, always, onEnd};
+    EvalContext ctx;
+    Trace trace;
+
+    // The first evaluation of a fight: begins holds, and wins by order.
+    Snapshot s = Healthy();
+    s.combatBegan = true;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+
+    // The next: begins has passed, and the standing rule has its turn.
+    s.combatBegan = false;
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::ConditionFalse);
+
+    // The farewell pass: only ends holds. The standing rule is false on it,
+    // so it cannot re-pin what the after-fight restore just put back.
+    s.inCombat = false;
+    s.combatEnded = true;
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 2);
+    REQUIRE(trace.at(0) == Verdict::ConditionFalse);
+    REQUIRE(trace.at(1) == Verdict::ConditionFalse);
+
+    // Only the follower's own fight has edges.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::CombatEnds));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::CombatBegins));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::CombatEnds));
+}
+
 TEST_CASE("above and below are the same number from either side", "[evaluator]")
 {
     Rule r;
