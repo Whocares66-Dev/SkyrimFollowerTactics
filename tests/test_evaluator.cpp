@@ -1297,6 +1297,243 @@ TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI wo
     REQUIRE(trace.at(0) == Verdict::EffectActive);
 }
 
+// ---------------------------------------------------------------------------
+// A rule's list of actions: ordering and timing.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+// A tick: half a second on, evaluate, and pin whatever equip steps fired,
+// as the game side would.
+Decision Tick(RuleSet &rs, Snapshot &s, EvalContext &ctx, Trace &trace, ActionTrace &actions)
+{
+    s.now += 0.5;
+    const Decision d = Evaluate(rs, s, ctx, &trace, &actions);
+    for (const auto &step : d.steps)
+        if (IsEquip(step.action.kind) && step.action.form != 0)
+            Pinned(s, Decision{d.ruleIndex, {step}});
+    return d;
+}
+
+std::vector<ActionKind> Kinds(const Decision &d)
+{
+    std::vector<ActionKind> out;
+    for (const auto &step : d.steps)
+        out.push_back(step.action.kind);
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("a list is done in its order, one action a tick", "[sequence]")
+{
+    // The outfit for a fight: sword, then cuirass, then arrows. Three ticks,
+    // in that order, and never two on one tick.
+    Rule outfit = Equip(ActionKind::EquipWeapon, kSword, Hand::Right);
+    outfit.actions.push_back({ActionKind::EquipArmor, kHelmet});
+    outfit.actions.push_back({ActionKind::EquipArrows, kArrows});
+    RuleSet rs;
+    rs.rules = {outfit, Equip(ActionKind::EquipWeapon, kShield, Hand::Left)};
+
+    Snapshot s = Armed();
+    EvalContext ctx;
+    Trace trace;
+    ActionTrace actions;
+
+    Decision d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(Kinds(d) == std::vector<ActionKind>{ActionKind::EquipWeapon});
+    REQUIRE(d.actionForm() == kSword);
+    REQUIRE(FindPin(s.pins, kSword) != nullptr);
+    REQUIRE(FindPin(s.pins, kHelmet) == nullptr);
+
+    d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(d.actionForm() == kHelmet);
+    REQUIRE(FindPin(s.pins, kArrows) == nullptr);
+    // Meanwhile the shield rule beneath is not reached, though it could
+    // fire: the list owns the ticks.
+    REQUIRE(trace.at(1) == Verdict::NotReached);
+
+    d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(d.actionForm() == kArrows);
+    REQUIRE_FALSE(ctx.pending.Active());
+
+    // Through: all three pinned, the rule reports itself done, and the
+    // shield rule beneath gets the tick.
+    d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(d.actionForm() == kShield);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    REQUIRE(actions.at(0) == std::vector<Verdict>{Verdict::EffectActive, Verdict::EffectActive, Verdict::EffectActive});
+}
+
+TEST_CASE("what cannot be done is passed over, and the rest of the list keeps its order", "[sequence]")
+{
+    // Sword already pinned, no potion carried: the cuirass goes on the first
+    // tick and the cast on the second. Two ticks for four actions.
+    constexpr std::uint32_t kOakflesh = 0x0005AD5C;
+    Rule r = Equip(ActionKind::EquipWeapon, kSword, Hand::Right);
+    r.actions.push_back({ActionKind::EquipArmor, kHelmet});
+    r.actions.push_back({ActionKind::DrinkHealthPotion});
+    r.actions.push_back({ActionKind::CastSpell, kOakflesh});
+    RuleSet rs;
+    rs.rules = {r};
+
+    Snapshot s = Armed();
+    s.potions.healthCount = 0;
+    s.spells.known.push_back(kOakflesh);
+    AddPin(s.pins, *FindHoldable(s.loadout, kSword), Hand::Right, false);
+    EvalContext ctx;
+    Trace trace;
+    ActionTrace actions;
+
+    Decision d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(d.actionForm() == kHelmet);
+    REQUIRE(actions.at(0) ==
+            std::vector<Verdict>{Verdict::EffectActive, Verdict::Fired, Verdict::NotReached, Verdict::NotReached});
+
+    d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(Kinds(d) == std::vector<ActionKind>{ActionKind::CastSpell});
+    REQUIRE(actions.at(0) ==
+            std::vector<Verdict>{Verdict::NotReached, Verdict::NotReached, Verdict::NoResource, Verdict::Fired});
+    REQUIRE_FALSE(ctx.pending.Active());
+}
+
+TEST_CASE("two casts in a list wait for each other", "[sequence]")
+{
+    // Cast A, cast B. B is asked for while A is still in the air -- the
+    // pool is busy -- and waits for it; it is not skipped, or a list of
+    // casts could never be written.
+    constexpr std::uint32_t kA = 0x00012FCC;
+    constexpr std::uint32_t kB = 0x0005AD5C;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Any;
+    r.actionTarget = ActionTargetKind::Self;
+    r.actions = {{ActionKind::CastSpell, kA}, {ActionKind::CastSpell, kB}};
+    RuleSet rs;
+    rs.rules = {r, HealBelow(0.5f)};
+
+    Snapshot s = Healthy();
+    s.health = {40.0f, 100.0f}; // the potion rule beneath could fire throughout
+    s.spells.known = {kA, kB};
+    EvalContext ctx;
+    Trace trace;
+    ActionTrace actions;
+
+    REQUIRE(Tick(rs, s, ctx, trace, actions).actionForm() == kA);
+
+    // A in the air: B waits, and so does the potion rule.
+    ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = true;
+    REQUIRE_FALSE(Tick(rs, s, ctx, trace, actions).Fired());
+    REQUIRE(trace.at(0) == Verdict::Busy);
+    REQUIRE(trace.at(1) == Verdict::NotReached);
+
+    ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = false;
+    REQUIRE(Tick(rs, s, ctx, trace, actions).actionForm() == kB);
+    REQUIRE_FALSE(ctx.pending.Active());
+
+    // Through, and A is still inside its cooldown: the rule has not begun
+    // again, so it yields and the potion is finally drunk.
+    const Decision d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+}
+
+TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
+{
+    // Bound to the weakest enemy when it began, the list keeps aiming at
+    // that enemy though another becomes the weakest; and it keeps its
+    // actions though the rule is edited under it.
+    constexpr std::uint32_t kA = 0x00012FCC;
+    constexpr std::uint32_t kB = 0x0005AD5C;
+    Rule r;
+    r.subject = SubjectKind::Enemy;
+    r.predicate = PredicateKind::HealthPctBelow;
+    r.conditionArg = 0.9f;
+    r.actions = {{ActionKind::CastSpell, kA}, {ActionKind::CastSpell, kB}};
+    RuleSet rs;
+    rs.rules = {r};
+
+    Snapshot s = Healthy();
+    s.spells.known = {kA, kB};
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x102, {80.0f, 100.0f}, 300.0f, false, false, true});
+    EvalContext ctx;
+    Trace trace;
+    ActionTrace actions;
+
+    Decision d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(d.targetId() == 0x101);
+
+    // The other enemy is now the weakest, and the rule now says something
+    // else entirely: the list in progress is unmoved by either.
+    s.enemies[0].health = {90.0f, 100.0f};
+    s.enemies[1].health = {10.0f, 100.0f};
+    rs.rules[0].actions = {{ActionKind::HoldPosition}};
+    d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(d.actionForm() == kB);
+    REQUIRE(d.targetId() == 0x101);
+    REQUIRE_FALSE(ctx.pending.Active());
+}
+
+TEST_CASE("a list goes on after its condition has lapsed", "[sequence]")
+{
+    // Deliberate. "Health below half: drink, then cast the heal" -- the
+    // potion works, health is above half by the next tick, and the heal is
+    // cast anyway. The list is a commitment once begun, and it has to be:
+    // "combat begins" holds for one tick only, and re-reading it would
+    // strand every list written on it after its first action.
+    constexpr std::uint32_t kHeal = 0x00012FCC;
+    Rule r = HealBelow(0.5f);
+    r.actions.push_back({ActionKind::CastSpell, kHeal});
+    RuleSet rs;
+    rs.rules = {r};
+
+    Snapshot s = Healthy();
+    s.health = {40.0f, 100.0f};
+    s.spells.known.push_back(kHeal);
+    EvalContext ctx;
+    Trace trace;
+    ActionTrace actions;
+
+    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkHealthPotion);
+    s.health = {90.0f, 100.0f};
+    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::CastSpell);
+}
+
+TEST_CASE("the cooldowns a list spends are the actions' own", "[sequence]")
+{
+    // Drinking as the first step of a list spaces the next drink exactly as
+    // a single-action rule's would, wherever it sits: the settle belongs to
+    // the action, and a list does not get a second potion inside it.
+    Rule r = HealBelow(0.5f);
+    r.actions.push_back({ActionKind::HoldPosition});
+    RuleSet rs;
+    rs.rules = {r, HealBelow(0.5f)};
+
+    Snapshot s = Healthy();
+    s.health = {40.0f, 100.0f};
+    EvalContext ctx;
+    Trace trace;
+    ActionTrace actions;
+
+    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkHealthPotion);
+    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::HoldPosition);
+
+    // One second in: both potion rules are inside the settle.
+    Decision d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE_FALSE(d.Fired());
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+    REQUIRE(trace.at(1) == Verdict::ActionCooldown);
+
+    // Past it, the list begins again from its first action.
+    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion);
+    d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.action() == ActionKind::DrinkHealthPotion);
+}
+
 TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
 {
     // The two mechanisms compose as a max, not an either/or:
