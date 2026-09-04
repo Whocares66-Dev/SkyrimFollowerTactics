@@ -1445,6 +1445,39 @@ TEST_CASE("two casts in a list wait for each other", "[sequence]")
     REQUIRE(trace.at(0) == Verdict::ActionCooldown);
 }
 
+TEST_CASE("everything after a cast waits while the cast is in the air", "[sequence]")
+{
+    // "Combat begins: cast Stoneflesh, equip Flames." The game side marks
+    // every action busy while a cast of ours is in the air, so the equip
+    // waits rather than putting Flames in the casting hand mid-cast.
+    constexpr std::uint32_t kStoneflesh = 0x0005AD5D;
+    Rule r = Equip(ActionKind::EquipSpell, kFirebolt, Hand::Right);
+    r.actions.insert(r.actions.begin(), {ActionKind::CastSpell, kStoneflesh});
+    RuleSet rs;
+    rs.rules = {r, HealBelow(0.5f)};
+
+    Snapshot s = Armed();
+    s.health = {40.0f, 100.0f};
+    s.spells.known.push_back(kStoneflesh);
+    EvalContext ctx;
+    Trace trace;
+    ActionTrace actions;
+
+    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::CastSpell);
+
+    // In the air: the equip waits, and so would any other rule.
+    ctx.caps.busy.fill(true);
+    REQUIRE_FALSE(Tick(rs, s, ctx, trace, actions).Fired());
+    REQUIRE(trace.at(0) == Verdict::Busy);
+    REQUIRE(trace.at(1) == Verdict::NotReached);
+
+    // Landed: the equip goes.
+    ctx.caps.busy.fill(false);
+    const Decision d = Tick(rs, s, ctx, trace, actions);
+    REQUIRE(d.action() == ActionKind::EquipSpell);
+    REQUIRE(d.actionForm() == kFirebolt);
+}
+
 TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
 {
     // Bound to the weakest enemy when it began, the list keeps aiming at

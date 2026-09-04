@@ -173,8 +173,18 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     // Transient, unlike the line above: every slot mid-cast means a cast rule
     // is skipped for THIS evaluation only, with no cooldown spent, and the
     // next rule down gets its turn.
-    caps.busy[static_cast<std::size_t>(ft::ActionKind::CastSpell)] =
-        PackagesAvailable() && (!HasFreeSlot() || IsMidCast(actor));
+    caps.busy[static_cast<std::size_t>(ft::ActionKind::CastSpell)] = PackagesAvailable() && !HasFreeSlot();
+
+    // A cast of OURS still in the air -- the lease is held from the request
+    // until the follower's own spell-fire event names the spell -- makes
+    // every action wait, not just another cast: a pin into the casting hand
+    // or a potion would cut it off. "Combat begins: cast Stoneflesh, equip
+    // Flames" put Flames in the hand half a second into the cast. A list in
+    // progress waits on the next tick; a fresh rule yields for this one.
+    // Ours only: the AI's own casting, a pinned Flames streaming all fight,
+    // holds nothing up.
+    if (IsMidCast(actor))
+        caps.busy.fill(true);
     return caps;
 }
 
