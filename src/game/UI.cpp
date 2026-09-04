@@ -1882,6 +1882,10 @@ bool FilterBox(const char *id, char *buffer, std::size_t size)
 {
     const float width = Im::GetFontSize() * 9.0f;
     Im::SetNextItemWidth(width);
+    // The cross is drawn over the box's right end, and ImGui gives the
+    // hover to the item drawn first unless it allows overlap: without this
+    // the cross could be seen but never clicked.
+    Im::SetNextItemAllowOverlap();
     bool changed = Im::InputTextWithHint(id, "Filter name", buffer, size);
     if (buffer[0] == '\0')
         return changed;
