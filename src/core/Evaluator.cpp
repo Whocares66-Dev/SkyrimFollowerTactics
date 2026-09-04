@@ -1,5 +1,7 @@
 #include "Evaluator.h"
 
+#include <algorithm>
+
 namespace ft
 {
 namespace
@@ -16,6 +18,8 @@ bool EnemySatisfies(const EnemyView &e, const Rule &r)
         return true;
     case PredicateKind::HealthPctBelow:
         return e.health.Pct() < r.conditionArg;
+    case PredicateKind::HealthPctAbove:
+        return e.health.Pct() > r.conditionArg;
     case PredicateKind::WithinDistance:
         return e.distance <= r.conditionArg;
     default:
@@ -31,6 +35,8 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
         return true;
     case PredicateKind::HealthPctBelow:
         return a.health.Pct() < r.conditionArg;
+    case PredicateKind::HealthPctAbove:
+        return a.health.Pct() > r.conditionArg;
     case PredicateKind::InBleedout:
         return a.inBleedout;
     case PredicateKind::WithinDistance:
@@ -42,12 +48,21 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
 
 // When several group members match, which one does the rule bind to? Ordering
 // by the predicate's own dimension is what makes the answer intuitive: asking
-// about health should hand you the most hurt one, asking about distance the
-// closest one.
+// about low health should hand you the most hurt one, about high health the
+// healthiest, about distance the closest one.
 bool OrdersByHealth(PredicateKind p)
 {
     return p == PredicateKind::HealthPctBelow || p == PredicateKind::MagickaPctBelow ||
-           p == PredicateKind::StaminaPctBelow;
+           p == PredicateKind::StaminaPctBelow || IsAbove(p);
+}
+
+// Is `candidate` a better binding than `best` for this predicate?
+bool Better(PredicateKind p, const Stat &candidateHealth, float candidateDistance, const Stat &bestHealth,
+            float bestDistance)
+{
+    if (!OrdersByHealth(p))
+        return candidateDistance < bestDistance;
+    return IsAbove(p) ? candidateHealth.Pct() > bestHealth.Pct() : candidateHealth.Pct() < bestHealth.Pct();
 }
 
 const EnemyView *SelectEnemy(const Snapshot &s, const Rule &r)
@@ -57,9 +72,7 @@ const EnemyView *SelectEnemy(const Snapshot &s, const Rule &r)
     {
         if (!EnemySatisfies(e, r))
             continue;
-        if (!best)
-            best = &e;
-        else if (OrdersByHealth(r.predicate) ? (e.health.Pct() < best->health.Pct()) : (e.distance < best->distance))
+        if (!best || Better(r.predicate, e.health, e.distance, best->health, best->distance))
             best = &e;
     }
     return best;
@@ -72,9 +85,7 @@ const AllyView *SelectAlly(const Snapshot &s, const Rule &r)
     {
         if (!AllySatisfies(a, r))
             continue;
-        if (!best)
-            best = &a;
-        else if (OrdersByHealth(r.predicate) ? (a.health.Pct() < best->health.Pct()) : (a.distance < best->distance))
+        if (!best || Better(r.predicate, a.health, a.distance, best->health, best->distance))
             best = &a;
     }
     return best;
@@ -122,6 +133,25 @@ constexpr Binding NoMatch()
     return Binding{};
 }
 
+// The hands an equip rule asks for: the rule's own for a weapon or a spell,
+// none for armour and ammunition, which have no hand.
+Hand HandsWanted(const Rule &r)
+{
+    return (r.action == ActionKind::EquipWeapon || r.action == ActionKind::EquipSpell) ? r.hand : Hand::None;
+}
+
+// A "none" rule: an equip action naming nothing, which lets go of every pin
+// of its kind.
+bool LetsGo(const Rule &r)
+{
+    return IsEquip(r.action) && r.actionForm == 0;
+}
+
+bool AnyPinOf(const std::vector<Pin> &pins, Kind kind)
+{
+    return std::any_of(pins.begin(), pins.end(), [kind](const Pin &p) { return p.thing.kind == kind; });
+}
+
 // CountAtLeast asks about the group, not a member, so there is no natural
 // binding. Binding the nearest member keeps the action targetable.
 Binding EvaluateCount(const Snapshot &s, const Rule &r)
@@ -151,11 +181,20 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::HealthPctBelow:
         held = s.health.Pct() < r.conditionArg;
         break;
+    case PredicateKind::HealthPctAbove:
+        held = s.health.Pct() > r.conditionArg;
+        break;
     case PredicateKind::MagickaPctBelow:
         held = s.magicka.Pct() < r.conditionArg;
         break;
+    case PredicateKind::MagickaPctAbove:
+        held = s.magicka.Pct() > r.conditionArg;
+        break;
     case PredicateKind::StaminaPctBelow:
         held = s.stamina.Pct() < r.conditionArg;
+        break;
+    case PredicateKind::StaminaPctAbove:
+        held = s.stamina.Pct() > r.conditionArg;
         break;
     case PredicateKind::InBleedout:
         held = s.inBleedout;
@@ -179,6 +218,9 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
         break;
     case PredicateKind::HealthPctBelow:
         held = s.playerHealth.Pct() < r.conditionArg;
+        break;
+    case PredicateKind::HealthPctAbove:
+        held = s.playerHealth.Pct() > r.conditionArg;
         break;
     case PredicateKind::InCombat:
         held = s.playerInCombat;
@@ -288,12 +330,24 @@ bool HasResource(const Rule &r, const Snapshot &s)
         return r.actionForm != 0 && s.potions.CountOf(r.actionForm) > 0;
 
     case ActionKind::CastSpell:
-    case ActionKind::EquipSpell:
         // Knowing the spell is the inventory equivalent. Whether she can AFFORD
         // to cast it is a separate question and deliberately not asked here:
         // magicka cost depends on perks and skill, which live on the game side.
         // The action reports that back instead.
         return r.actionForm != 0 && s.spells.Knows(r.actionForm);
+
+    case ActionKind::EquipWeapon:
+    case ActionKind::EquipSpell:
+    case ActionKind::EquipArrows:
+    case ActionKind::EquipArmor: {
+        // "None" needs nothing. A named thing must be hers, and of the kind
+        // the action says: a hand-edited profile could put a spell under
+        // equip-weapon, and that is a rule that can never work.
+        if (LetsGo(r))
+            return true;
+        const Holdable *thing = FindHoldable(s.loadout, r.actionForm);
+        return thing && thing->kind == KindOf(r.action);
+    }
 
     default:
         return true; // most actions cost nothing from inventory
@@ -323,19 +377,22 @@ bool EffectAlreadyActive(const Rule &r, const Snapshot &s)
         // seeing the effect still running.
         return r.actionForm != 0 && s.spells.IsActive(r.actionForm);
 
+    case ActionKind::EquipWeapon:
     case ActionKind::EquipSpell:
-        // Two ways this is already done, and both matter.
-        //
-        // IsEquipped is availability, the mechanism the note in Rule.h says
-        // every state-setting action owes: without it a rule that equips what
-        // is already in hand wins every evaluation and starves every rule below
+    case ActionKind::EquipArrows:
+    case ActionKind::EquipArmor: {
+        // Availability, the mechanism the note in Rule.h says every
+        // state-setting action owes: without it a rule that pins what is
+        // already pinned wins every evaluation and starves every rule below
         // it -- first-match-wins makes that a monopoly, not a nuisance.
-        //
-        // IsActive is the sustained-buff case. Oakflesh runs sixty seconds, and
-        // no cooldown worth picking is that long; putting it back in her hand
-        // while it is still up asks her to spend magicka renewing a buff that
-        // never lapsed. Only the effect list can answer that.
-        return r.actionForm != 0 && (s.spells.IsEquipped(r.actionForm) || s.spells.IsActive(r.actionForm));
+        // Pinned, not merely equipped: the rule's promise is the pin, and a
+        // thing the AI happens to be holding is not yet kept. "None" is done
+        // when there is nothing of its kind to let go of.
+        if (LetsGo(r))
+            return !AnyPinOf(s.pins, KindOf(r.action));
+        const Pin *pin = FindPin(s.pins, r.actionForm);
+        return pin && Covers(pin->hands, HandsWanted(r));
+    }
 
     default:
         return false;
@@ -348,6 +405,16 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         trace->assign(rs.rules.size(), Verdict::NotReached);
 
     Decision decision;
+
+    // What the satisfied equip rules above hold. An equip rule whose
+    // condition holds and whose thing is pinned is DONE, and falls through
+    // so a complementary rule beneath it -- the helm after the shield --
+    // gets its turn; but a rule beneath it that would take the same hand or
+    // slot must not, or the two trade places every tick: the sword rule
+    // pins the sword, falls through as done, the bow rule takes the hands,
+    // the sword rule is undone and fires again. Priority means the rule
+    // above keeps what it holds for as long as its condition holds.
+    std::vector<Pin> heldAbove;
 
     for (std::size_t i = 0; i < rs.rules.size(); ++i)
     {
@@ -393,6 +460,35 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             put(Verdict::NoResource);
             continue;
         }
+        if (IsEquip(r.action))
+        {
+            const Holdable *thing = LetsGo(r) ? nullptr : FindHoldable(snap.loadout, r.actionForm);
+            // A pin is a promise the AI will use it. A spell above her skill
+            // it never would, so the promise cannot be kept, and the rule
+            // says so rather than equipping something that gets swapped
+            // straight out again.
+            if (thing && thing->unusable)
+            {
+                put(Verdict::CannotHold);
+                continue;
+            }
+            const Hand hands = HandsWanted(r);
+            const bool outranked = std::any_of(heldAbove.begin(), heldAbove.end(), [&](const Pin &held) {
+                return thing ? Conflicts(*thing, hands, held.thing, held.hands) : held.thing.kind == KindOf(r.action);
+            });
+            if (outranked)
+            {
+                put(Verdict::Outranked);
+                continue;
+            }
+            if (EffectAlreadyActive(r, snap))
+            {
+                put(Verdict::EffectActive);
+                if (const Pin *pin = thing ? FindPin(snap.pins, thing->form) : nullptr)
+                    heldAbove.push_back(*pin);
+                continue;
+            }
+        }
         // A cast she cannot pay for is not a cast. The AI would decline the
         // package and the rule would have spent its cooldown on nothing -- the
         // 12:20 run fired four heals at empty magicka. Reported, not fired, so
@@ -433,6 +529,7 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         decision.targetId = target;
         decision.actionArg = r.actionArg;
         decision.actionForm = r.actionForm;
+        decision.hand = r.hand;
 
         // The one cooldown there is: the ACTION goes on cooldown for as long
         // as its effect takes to show, and every rule that uses that action
@@ -449,19 +546,30 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
 
 const char *Explain(Verdict v, ActionKind action) noexcept
 {
-    const bool spell = action == ActionKind::EquipSpell || action == ActionKind::CastSpell;
-
     switch (v)
     {
     case Verdict::NoResource:
-        if (action == ActionKind::DrinkPotion)
+        switch (action)
+        {
+        case ActionKind::DrinkPotion:
             return "does not carry that potion";
-        return spell ? "does not know that spell" : "no potion";
+        case ActionKind::CastSpell:
+        case ActionKind::EquipSpell:
+            return "does not know that spell";
+        case ActionKind::EquipWeapon:
+            return "does not carry that weapon";
+        case ActionKind::EquipArrows:
+            return "does not carry those arrows";
+        case ActionKind::EquipArmor:
+            return "does not carry that armour";
+        default:
+            return "no potion";
+        }
 
     case Verdict::EffectActive:
-        if (action == ActionKind::EquipSpell)
-            return "that spell is already in hand or still running";
-        return spell ? "that spell is still running" : "previous dose still active";
+        if (IsEquip(action))
+            return "already pinned, or nothing of that kind pinned to let go";
+        return action == ActionKind::CastSpell ? "that spell is still running" : "previous dose still active";
 
     default:
         return ToString(v);
@@ -488,6 +596,10 @@ const char *ToString(Verdict v) noexcept
         return "not enough magicka";
     case Verdict::EffectActive:
         return "previous dose still active";
+    case Verdict::CannotHold:
+        return "cannot be pinned: above the follower's skill, so the AI would never choose it";
+    case Verdict::Outranked:
+        return "a rule above holds that hand or slot";
     case Verdict::Unsupported:
         return "unsupported";
     case Verdict::Busy:

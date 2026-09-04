@@ -34,7 +34,7 @@ bool Conflicts(const Holdable &incoming, Hand hands, const Holdable &held, Hand 
         return Overlap(hands, heldHands);
     if (incoming.slots != 0 && held.slots != 0)
         return (incoming.slots & held.slots) != 0;
-    return incoming.ammo && held.ammo;
+    return incoming.IsAmmo() && held.IsAmmo();
 }
 
 bool Competes(Grip grip, Hand pinned) noexcept
@@ -52,6 +52,12 @@ bool Competes(Grip grip, Hand pinned) noexcept
     default:
         return false;
     }
+}
+
+const Holdable *FindHoldable(const std::vector<Holdable> &things, std::uint32_t form) noexcept
+{
+    const auto it = std::find_if(things.begin(), things.end(), [form](const Holdable &t) { return t.form == form; });
+    return it == things.end() ? nullptr : &*it;
 }
 
 Pin *FindPin(std::vector<Pin> &pins, std::uint32_t form) noexcept
@@ -145,7 +151,7 @@ bool HoldsPlaceOf(const Pin &pin, const Holdable &thing) noexcept
 {
     if (pin.thing.form == thing.form)
         return false;
-    return (pin.thing.slots & thing.slots) != 0 || (pin.thing.ammo && thing.ammo);
+    return (pin.thing.slots & thing.slots) != 0 || (pin.thing.IsAmmo() && thing.IsAmmo());
 }
 
 bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept

@@ -1,5 +1,7 @@
 #include "game/Inventory.h"
 
+#include "game/Pins.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -223,6 +225,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.category = ItemCategory::Weapons;
         item.equipable = true;
         item.handItem = true;
+        item.grip = DescribeHoldable(actor, weapon).grip;
         // In her hands, as the inventory menu would show it; the record's
         // own figure beneath it, for the curious.
         item.damage = WeaponDamage(actor, weapon, entry);
@@ -238,18 +241,19 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     if (auto *armor = object->As<RE::TESObjectARMO>())
     {
         item.type = ArmorTypeName(armor);
-        item.category = ItemCategory::Apparel;
+        item.category = ItemCategory::Armor;
         item.equipable = true;
         // Armour that takes a hand -- a shield, or a mod's hand-held piece
         // -- lists with the weapons, as ammunition does: it is chosen with
-        // the sword, and a shield bashes. That leaves apparel with no hand
+        // the sword, and a shield bashes. That leaves armour with no hand
         // and a single Equipped column.
-        if (const ft::Grip grip = ArmorGrip(armor); grip != ft::Grip::None)
+        item.grip = ArmorGrip(armor);
+        if (item.grip != ft::Grip::None)
         {
             item.category = ItemCategory::Weapons;
             item.handItem = true;
-            item.leftOnly = grip == ft::Grip::LeftOnly;
-            item.rightOnly = grip == ft::Grip::RightOnly;
+            item.leftOnly = item.grip == ft::Grip::LeftOnly;
+            item.rightOnly = item.grip == ft::Grip::RightOnly;
         }
         if (armor->GetArmorType() != RE::BGSBipedObjectForm::ArmorType::kClothing)
         {
@@ -346,6 +350,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.equipable = true;
         item.handItem = true;
         item.leftOnly = true;
+        item.grip = ft::Grip::LeftOnly;
         return;
     }
     if (object->Is(RE::FormType::Misc))
@@ -385,8 +390,8 @@ const char *DisplayName(ItemCategory category)
         return "Weapons";
     case ItemCategory::Arrows:
         return "Arrows";
-    case ItemCategory::Apparel:
-        return "Apparel";
+    case ItemCategory::Armor:
+        return "Armor";
     case ItemCategory::Potions:
         return "Potions";
     case ItemCategory::Food:

@@ -30,7 +30,7 @@ enum class ItemCategory : std::uint8_t
 {
     Weapons,
     Arrows,
-    Apparel,
+    Armor,
     Potions,
     Food,
     Ingredients,
@@ -65,12 +65,14 @@ struct InventoryItem
     bool handItem{false};
     bool leftOnly{false};
     bool rightOnly{false};
+    // Which hands its record lets it take, for the equip menu's hand lists.
+    ft::Grip grip{ft::Grip::None};
     // For a weapon, shield or torch: which hand holds it.
     bool equippedLeft{false};
     bool equippedRight{false};
     bool pinnedLeft{false};
     bool pinnedRight{false};
-    // Something she can put on: a weapon, a piece of apparel, ammunition, a
+    // Something she can put on: a weapon, a piece of armour, ammunition, a
     // torch. Only these take a click in the Worn column.
     bool equipable{false};
     // Kept on by us: the tick puts it back whenever the game takes it off.

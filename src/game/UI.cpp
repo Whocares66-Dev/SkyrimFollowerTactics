@@ -88,9 +88,13 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
     // word has to match or it sends someone looking in the wrong place: a
     // spell rule reporting "no potion" is worse than reporting nothing.
     case ft::Verdict::NoResource:
-        return {TakesSpell(action) ? "no spell" : "no potion", held};
+        return {TakesSpell(action) ? "no spell" : ft::IsEquip(action) ? "not carried" : "no potion", held};
     case ft::Verdict::EffectActive:
-        return {action == ft::ActionKind::EquipSpell ? "equipped" : "active", held};
+        return {ft::IsEquip(action) ? "pinned" : "active", held};
+    case ft::Verdict::CannotHold:
+        return {"can't pin", held};
+    case ft::Verdict::Outranked:
+        return {"outranked", held};
     case ft::Verdict::NoTarget:
         return {"no target", held};
     case ft::Verdict::CannotAfford:
@@ -211,7 +215,7 @@ std::string ArgumentText(ft::PredicateKind predicate, float value)
     switch (ft::ArgumentFor(predicate))
     {
     case ft::ArgumentKind::Percent:
-        return "< " + std::to_string(static_cast<int>(value * 100.0f + 0.5f)) + "%";
+        return (ft::IsAbove(predicate) ? "> " : "< ") + std::to_string(static_cast<int>(value * 100.0f + 0.5f)) + "%";
     case ft::ArgumentKind::Distance:
         return "< " + std::to_string(static_cast<int>(value));
     case ft::ArgumentKind::Count:
@@ -236,7 +240,7 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
     switch (ft::ArgumentFor(predicate))
     {
     case ft::ArgumentKind::Percent:
-        return {0.10f, 0.25f, 0.50f, 0.75f, 0.90f};
+        return {0.25f, 0.50f, 0.75f};
     case ft::ArgumentKind::Distance:
         return {200.0f, 500.0f, 1000.0f, 2000.0f};
     case ft::ArgumentKind::Count:
@@ -527,6 +531,10 @@ bool ConditionCascade(const char *id, ft::Rule &rule)
             const auto predicate = static_cast<ft::PredicateKind>(pi);
             if (!ft::IsPredicateValidFor(subject, predicate))
                 continue;
+            // An above predicate is listed under its below counterpart's
+            // heading, after a divider, not as a heading of its own.
+            if (ft::IsAbove(predicate))
+                continue;
 
             const auto presets = PresetsFor(predicate);
             const std::string predicateName(ft::DisplayName(predicate));
@@ -549,17 +557,26 @@ bool ConditionCascade(const char *id, ft::Rule &rule)
             if (!BeginCascade(predicateName.c_str()))
                 continue;
 
-            for (const float preset : presets)
-            {
-                const bool selected = rule.subject == subject && rule.predicate == predicate &&
-                                      std::abs(rule.conditionArg - preset) < 0.001f;
-                if (CascadeItem(ArgumentText(predicate, preset).c_str(), selected))
+            const auto offer = [&](ft::PredicateKind which) {
+                for (const float preset : PresetsFor(which))
                 {
-                    rule.subject = subject;
-                    rule.predicate = predicate;
-                    rule.conditionArg = preset;
-                    changed = true;
+                    const bool selected = rule.subject == subject && rule.predicate == which &&
+                                          std::abs(rule.conditionArg - preset) < 0.001f;
+                    if (CascadeItem(ArgumentText(which, preset).c_str(), selected))
+                    {
+                        rule.subject = subject;
+                        rule.predicate = which;
+                        rule.conditionArg = preset;
+                        changed = true;
+                    }
                 }
+            };
+            offer(predicate);
+            // The other side of the same number, below first.
+            if (const auto above = ft::AboveOf(predicate); above != predicate)
+            {
+                Im::Separator();
+                offer(above);
             }
             Im::EndMenu();
         }
@@ -571,13 +588,64 @@ bool ConditionCascade(const char *id, ft::Rule &rule)
     return changed;
 }
 
-// The action side. Flat for now: actions have no sub-options until selectors
-// land (docs/PLAN.md 3.5.2), at which point "equip item" grows a submenu of
-// what to equip and this becomes a cascade too.
+// The action side.
 // Does this action name a spell?
 bool TakesSpell(ft::ActionKind action)
 {
     return action == ft::ActionKind::CastSpell || action == ft::ActionKind::EquipSpell;
+}
+
+// Could a thing with this grip be pinned in this hand, as the equip menu
+// asks it? Both means a two-hander, or a spell in each hand at once; one
+// weapon cannot be in both hands.
+bool Fits(ft::Grip grip, Hand hand, bool spell)
+{
+    switch (hand)
+    {
+    case Hand::Left:
+        return grip == ft::Grip::Either || grip == ft::Grip::LeftOnly;
+    case Hand::Right:
+        return grip == ft::Grip::Either || grip == ft::Grip::RightOnly;
+    case Hand::Both:
+        return grip == ft::Grip::Both || (spell && grip == ft::Grip::Either);
+    default:
+        return false;
+    }
+}
+
+// "Equip weapon" -> "weapon", for "Unequip weapon" and the None tooltip.
+std::string EquipNoun(ft::ActionKind action)
+{
+    std::string name(ft::DisplayName(action));
+    constexpr std::string_view prefix = "Equip ";
+    if (name.rfind(prefix, 0) == 0)
+        name.erase(0, prefix.size());
+    return name;
+}
+
+// The name of the thing an equip rule names, as she carries or knows it;
+// empty if she does not.
+std::string EquipTargetName(const ft::Rule &rule, const FollowerView &view)
+{
+    if (rule.action == ft::ActionKind::EquipSpell)
+    {
+        for (const auto &entry : view.magic)
+            if (entry.form == rule.actionForm)
+                return entry.name;
+        return {};
+    }
+    for (const auto &item : view.inventory)
+        if (item.form == rule.actionForm)
+            return item.name;
+    return {};
+}
+
+std::string Lower(std::string_view text)
+{
+    std::string out(text);
+    for (char &c : out)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return out;
 }
 
 // The four ways of drinking share one "Drink potion" submenu: the three
@@ -622,6 +690,17 @@ std::string ActionText(const ft::Rule &rule, const FollowerView &view)
         return base + " (not carried)";
     }
 
+    if (ft::IsEquip(rule.action))
+    {
+        if (rule.actionForm == 0)
+            return "Unequip " + EquipNoun(rule.action);
+        const std::string name = EquipTargetName(rule, view);
+        if (name.empty())
+            return base + (rule.action == ft::ActionKind::EquipSpell ? " (not known)" : " (not carried)");
+        const bool handed = rule.action == ft::ActionKind::EquipWeapon || rule.action == ft::ActionKind::EquipSpell;
+        return "Equip " + name + (handed ? " (" + Lower(ft::DisplayName(rule.hand)) + ")" : "");
+    }
+
     if (!TakesSpell(rule.action))
         return base;
 
@@ -632,7 +711,7 @@ std::string ActionText(const ft::Rule &rule, const FollowerView &view)
     {
         if (option.form != rule.actionForm)
             continue;
-        return (rule.action == ft::ActionKind::CastSpell ? "Cast " : "Equip ") + option.name;
+        return "Cast " + option.name;
     }
 
     // Named a spell this follower does not know. Says so rather than showing a
@@ -641,13 +720,123 @@ std::string ActionText(const ft::Rule &rule, const FollowerView &view)
     return base + " (not known)";
 }
 
+// One leaf of an equip menu: a thing she has, pinned in `hand` when
+// chosen. A spell above her skill is listed but cannot be chosen: the AI
+// would never pick it, so a pin on it is a promise the rule could not keep.
+bool EquipLeaf(ft::Rule &rule, ft::ActionKind action, std::uint32_t form, const std::string &name, Hand hand,
+               bool unusable)
+{
+    if (unusable)
+    {
+        Im::MenuItem((name + " (above their skill)").c_str(), nullptr, false, false);
+        return false;
+    }
+    const bool selected = rule.action == action && rule.actionForm == form && rule.hand == hand;
+    if (!CascadeItem(name.c_str(), selected))
+        return false;
+    rule.action = action;
+    rule.actionForm = form;
+    rule.hand = hand;
+    return true;
+}
+
+// The Equip weapon / Equip spell / Equip arrows / Equip armor cascades.
+//
+// None first, in a section by itself: let go of every pin of this kind, and
+// the AI chooses again. Then, for the two that take a hand, Left, Right and
+// Both, each listing what fits that hand; for arrows and armour, the things
+// themselves. Every list is hers, so a rule cannot name a thing she does
+// not have.
+bool EquipMenu(ft::Rule &rule, ft::ActionKind action, const FollowerView &view)
+{
+    bool changed = false;
+
+    const bool none = rule.action == action && rule.actionForm == 0;
+    if (CascadeItem("None", none))
+    {
+        rule.action = action;
+        rule.actionForm = 0;
+        rule.hand = Hand::None;
+        changed = true;
+    }
+    Im::Separator();
+
+    const bool spell = action == ft::ActionKind::EquipSpell;
+    const bool handed = spell || action == ft::ActionKind::EquipWeapon;
+    if (!handed)
+    {
+        const ItemCategory category =
+            action == ft::ActionKind::EquipArrows ? ItemCategory::Arrows : ItemCategory::Armor;
+        bool any = false;
+        for (const auto &item : view.inventory)
+        {
+            if (item.category != category)
+                continue;
+            any = true;
+            if (EquipLeaf(rule, action, item.form, item.name, Hand::None, false))
+                changed = true;
+        }
+        if (!any)
+            Im::MenuItem("(carries none)", nullptr, false, false);
+        return changed;
+    }
+
+    for (const Hand hand : {Hand::Left, Hand::Right, Hand::Both})
+    {
+        const std::string label(ft::DisplayName(hand));
+        bool any = false;
+        if (spell)
+        {
+            for (const auto &entry : view.magic)
+                any = any || (entry.category != MagicCategory::Shouts && entry.category != MagicCategory::Powers &&
+                              Fits(entry.grip, hand, true));
+        }
+        else
+        {
+            for (const auto &item : view.inventory)
+                any = any || (item.category == ItemCategory::Weapons && Fits(item.grip, hand, false));
+        }
+        if (!any)
+        {
+            Im::MenuItem((label + " (nothing fits)").c_str(), nullptr, false, false);
+            continue;
+        }
+        if (!BeginCascade(label.c_str()))
+            continue;
+        if (spell)
+        {
+            for (const auto &entry : view.magic)
+            {
+                if (entry.category == MagicCategory::Shouts || entry.category == MagicCategory::Powers ||
+                    !Fits(entry.grip, hand, true))
+                    continue;
+                if (EquipLeaf(rule, action, entry.form, entry.name, hand, entry.aboveSkill))
+                    changed = true;
+            }
+        }
+        else
+        {
+            for (const auto &item : view.inventory)
+            {
+                if (item.category != ItemCategory::Weapons || !Fits(item.grip, hand, false))
+                    continue;
+                if (EquipLeaf(rule, action, item.form, item.name, hand, false))
+                    changed = true;
+            }
+        }
+        Im::EndMenu();
+    }
+    return changed;
+}
+
 // The action side of the cascade.
 //
 // Flat for everything that takes no argument; a submenu of the follower's own
-// spells for the two that do. The list is hers, so a rule cannot name a spell
-// she does not have -- the same guarantee the condition side gets from the
-// validity matrix, and for the same reason: an unfireable rule should be
-// unauthorable, not merely discouraged.
+// spells for the one that casts, and the equip cascades for the four that
+// pin. Every list is hers, so a rule cannot name a thing she does not have --
+// the same guarantee the condition side gets from the validity matrix, and
+// for the same reason: an unfireable rule should be unauthorable, not merely
+// discouraged.
 bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
 {
     bool changed = false;
@@ -708,6 +897,19 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
             continue;
         }
 
+        if (ft::IsEquip(action))
+        {
+            const bool open = BeginCascade(name.c_str());
+            if (Im::IsItemHovered(0))
+                Im::SetTooltip("%s", std::string(ft::Describe(action)).c_str());
+            if (!open)
+                continue;
+            if (EquipMenu(rule, action, view))
+                changed = true;
+            Im::EndMenu();
+            continue;
+        }
+
         if (!TakesSpell(action))
         {
             const bool selected = rule.action == action;
@@ -715,6 +917,7 @@ bool ActionMenu(const char *id, ft::Rule &rule, const FollowerView &view)
             {
                 rule.action = action;
                 rule.actionForm = 0;
+                rule.hand = Hand::None;
                 changed = true;
             }
             if (Im::IsItemHovered(0))
@@ -840,6 +1043,13 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             }
         }
 
+        // A rule that is off reads as off: its number, condition, action and
+        // status dim together, and the If and Then cells stop answering, so
+        // it cannot be edited without turning it on. The switch itself and
+        // the order and delete controls stay live: an off rule is still in
+        // the list and can still be moved or removed.
+        Im::BeginDisabled(!rule.enabled);
+
         Im::TableSetColumnIndex(1);
         Im::AlignTextToFramePadding();
         Im::Text("%zu", i + 1);
@@ -867,6 +1077,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             if (Im::IsItemHovered(0))
                 Im::SetTooltip("%s", ft::ToString(verdict));
         }
+
+        Im::EndDisabled();
 
         // Order is semantics, not decoration: rules are first-match-wins, so
         // moving a row changes which rule shadows which.
@@ -1330,7 +1542,7 @@ unsigned IconFor(ItemCategory category)
         return 0xF6E3; // hammer
     case ItemCategory::Arrows:
         return 0xF140; // bullseye
-    case ItemCategory::Apparel:
+    case ItemCategory::Armor:
         return 0xF553; // tshirt
     case ItemCategory::Potions:
         return 0xF0C3; // flask
@@ -1569,8 +1781,7 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
         if (CellClicked(id))
             RequestWear(follower, form, !on ? WearRequest::Equip : WearRequest::TakeOff, hand);
         if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", !on ? "Click to equip it. It cannot be pinned: the AI would not choose it."
-                                     : "Equipped. Click to unequip it.");
+            Im::SetTooltip("%s", !on ? "Equip; it cannot be pinned, the AI would not use it." : "Unequip.");
     }
     else if (clickable)
     {
@@ -1583,9 +1794,7 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
                                : WearRequest::TakeOff,
                         hand);
         if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", pinned ? "Pinned. Click to release the pin; it stays equipped."
-                                 : !on  ? "Click to equip it and keep it equipped."
-                                        : "Equipped. Click to unequip it.");
+            Im::SetTooltip("%s", pinned ? "Release the pin; it stays equipped." : !on ? "Equip and pin." : "Unequip.");
     }
     DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), on, pinned);
 }
@@ -1671,12 +1880,12 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     Im::Spacing();
 
     // Which columns this list has. A stat column only where the stat means
-    // something -- damage for weapons, armour for apparel -- and an Equipped
+    // something -- damage for weapons, rating for armour -- and an Equipped
     // column only where something can be equipped. SkyUI's lists differ the
     // same way.
     const bool weapons = state.category == static_cast<int>(ItemCategory::Weapons) ||
                          state.category == static_cast<int>(ItemCategory::Arrows);
-    const bool apparel = state.category == static_cast<int>(ItemCategory::Apparel);
+    const bool armour = state.category == static_cast<int>(ItemCategory::Armor);
     // Hand columns where something is held in a hand; an Equipped column
     // where something is worn. A cell that does not apply to its row -- a
     // right hand for a shield, a hand for a cuirass -- is slashed. Not on
@@ -1712,7 +1921,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     const float wornWidth = (std::max)(TextWidth("Equipped") + arrow, Im::GetFontSize() * 2.0f) + gutter;
 
     const float handWidth = (std::max)(TextWidth("Right") + arrow, Im::GetFontSize() * 2.0f) + gutter;
-    const int columnCount = 4 + ((weapons || apparel) ? 1 : 0) + (anyHand ? 2 : 0) + (anyWorn ? 1 : 0);
+    const int columnCount = 4 + ((weapons || armour) ? 1 : 0) + (anyHand ? 2 : 0) + (anyWorn ? 1 : 0);
 
     Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
     if (!Im::BeginTable("inventory", columnCount, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
@@ -1730,7 +1939,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         Im::TableSetupColumn("Dmg",
                              Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                              damageWidth, static_cast<Im::ImGuiID>(Column::Damage));
-    else if (apparel)
+    else if (armour)
         Im::TableSetupColumn("Armor",
                              Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                              armorWidth, static_cast<Im::ImGuiID>(Column::Armor));
@@ -1800,7 +2009,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         Im::Text("%s", item->type.c_str());
 
         char num[32];
-        if (weapons || apparel)
+        if (weapons || armour)
         {
             Im::TableNextColumn();
             const float stat = weapons ? item->damage : item->armor;

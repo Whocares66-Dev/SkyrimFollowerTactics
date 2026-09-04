@@ -181,6 +181,12 @@ Verified against the 3.7.0 headers. Do not "simplify" these away:
   is ours. Tutorials imply the library provides it. It does not.
 - **`spdlog` sinks are not in NG's PCH.** `<spdlog/sinks/basic_file_sink.h>` must be
   included explicitly.
+- **`SKSE::Trampoline::write_branch` / `write_call` are not function detours.** They
+  overwrite an EXISTING jump or call instruction and preserve nothing, so pointing one at
+  a function's first bytes corrupts its prologue. A function-entry hook (the
+  `ActorEquipManager::EquipObject` detour in `Pins.cpp`) goes through Microsoft Detours
+  (vcpkg `detours`), which relocates the displaced instructions and returns a callable
+  original. The score hook is a vtable write and needs neither.
 - **`SKSE::PluginDeclaration::GetSingleton()` does not exist.** The CMake generates a global
   `SKSEPlugin_Version` via `SKSEPluginInfo(...)`. Use a literal name instead.
 

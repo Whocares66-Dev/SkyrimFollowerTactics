@@ -63,7 +63,7 @@ constexpr std::array<Entry<SubjectKind>, 5> kSubjects{{
     {SubjectKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 8> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 11> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
@@ -72,6 +72,9 @@ constexpr std::array<Entry<PredicateKind>, 8> kPredicates{{
     {PredicateKind::InCombat, "in-combat", "In combat"},
     {PredicateKind::WithinDistance, "within-distance", "Distance"},
     {PredicateKind::CountAtLeast, "count-at-least", "Count"},
+    {PredicateKind::HealthPctAbove, "health-pct-above", "Health"},
+    {PredicateKind::StaminaPctAbove, "stamina-pct-above", "Stamina"},
+    {PredicateKind::MagickaPctAbove, "magicka-pct-above", "Magicka"},
 }};
 
 constexpr std::array<Entry<ActionTargetKind>, 4> kActionTargets{{
@@ -81,7 +84,7 @@ constexpr std::array<Entry<ActionTargetKind>, 4> kActionTargets{{
     {ActionTargetKind::CurrentTarget, "current-target", "Target"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 10> kActions{{
+constexpr std::array<Entry<ActionKind>, 13> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. It also
     // leaves room: "drink-health-potion-weakest" -- don't burn a strong potion
@@ -93,10 +96,22 @@ constexpr std::array<Entry<ActionKind>, 10> kActions{{
     {ActionKind::DrinkStaminaPotion, "drink-strongest-stamina-potion", "Drink strongest stamina potion"},
     {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
     {ActionKind::CastSpell, "cast-spell", "Cast spell"},
+    {ActionKind::EquipWeapon, "equip-weapon", "Equip weapon"},
+    {ActionKind::EquipArrows, "equip-arrows", "Equip arrows"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
+    {ActionKind::EquipArmor, "equip-armor", "Equip armor"},
     {ActionKind::StopCombat, "stop-combat", "Stop fighting"},
     {ActionKind::Flee, "flee", "Flee"},
     {ActionKind::HoldPosition, "hold-position", "Hold position"},
+}};
+
+// The hand an equip rule names. Both is one value, not two flags, on the
+// wire: a profile says "both", not a bit set.
+constexpr std::array<Entry<Hand>, 4> kHands{{
+    {Hand::None, "none", "None"},
+    {Hand::Left, "left", "Left"},
+    {Hand::Right, "right", "Right"},
+    {Hand::Both, "both", "Both"},
 }};
 
 // Every enumerator must appear in its table, or a rule would serialise as
@@ -124,6 +139,10 @@ std::string_view WireName(ActionKind v) noexcept
 {
     return LookupWire(kActions, v);
 }
+std::string_view WireName(Hand v) noexcept
+{
+    return LookupWire(kHands, v);
+}
 
 std::optional<SubjectKind> SubjectFromWireName(std::string_view s) noexcept
 {
@@ -140,6 +159,10 @@ std::optional<ActionTargetKind> ActionTargetFromWireName(std::string_view s) noe
 std::optional<ActionKind> ActionFromWireName(std::string_view s) noexcept
 {
     return Parse(kActions, s);
+}
+std::optional<Hand> HandFromWireName(std::string_view s) noexcept
+{
+    return Parse(kHands, s);
 }
 
 bool IsWireName(std::string_view s) noexcept
@@ -192,6 +215,10 @@ std::string_view DisplayName(ActionKind v) noexcept
 {
     return LookupDisplay(kActions, v);
 }
+std::string_view DisplayName(Hand v) noexcept
+{
+    return LookupDisplay(kHands, v);
+}
 
 ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 {
@@ -200,6 +227,9 @@ ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
     case PredicateKind::HealthPctBelow:
     case PredicateKind::MagickaPctBelow:
     case PredicateKind::StaminaPctBelow:
+    case PredicateKind::HealthPctAbove:
+    case PredicateKind::MagickaPctAbove:
+    case PredicateKind::StaminaPctAbove:
         return ArgumentKind::Percent;
 
     case PredicateKind::WithinDistance:
@@ -220,24 +250,31 @@ ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 
 std::string_view Describe(PredicateKind v) noexcept
 {
+    // One short sentence each: these are tooltips.
     switch (v)
     {
     case PredicateKind::Any:
-        return "Any. True whenever the subject exists -- for a rule that should fire whenever it is reached.";
+        return "Always true.";
     case PredicateKind::HealthPctBelow:
-        return "Health has fallen below this fraction of its maximum.";
+        return "Health under this share of its maximum.";
+    case PredicateKind::HealthPctAbove:
+        return "Health over this share of its maximum.";
     case PredicateKind::MagickaPctBelow:
-        return "Magicka has fallen below this fraction of its maximum.";
+        return "Magicka under this share of its maximum.";
+    case PredicateKind::MagickaPctAbove:
+        return "Magicka over this share of its maximum.";
     case PredicateKind::StaminaPctBelow:
-        return "Stamina has fallen below this fraction of its maximum.";
+        return "Stamina under this share of its maximum.";
+    case PredicateKind::StaminaPctAbove:
+        return "Stamina over this share of its maximum.";
     case PredicateKind::InBleedout:
-        return "Down and dying, but not dead.";
+        return "Down and dying, not dead.";
     case PredicateKind::InCombat:
-        return "Currently fighting something.";
+        return "Fighting something.";
     case PredicateKind::WithinDistance:
-        return "Closer than this many game units.";
+        return "Closer than this many units.";
     case PredicateKind::CountAtLeast:
-        return "There are at least this many of them.";
+        return "At least this many of them.";
     default:
         return "";
     }
@@ -256,20 +293,23 @@ std::string_view Describe(ActionKind v) noexcept
     case ActionKind::DrinkStaminaPotion:
         return "Drink the strongest stamina potion carried.";
     case ActionKind::DrinkPotion:
-        return "Drink one particular potion she carries, chosen by name.";
+        return "Drink this potion.";
     case ActionKind::CastSpell:
-        return "Tell the follower to cast it now, through the game's own casting behaviour -- with "
-               "the animation, and interruptible. Needs the FollowerTactics plugin enabled.";
+        return "Cast this spell now.";
+    case ActionKind::EquipWeapon:
+        return "Hold this in that hand until another rule or the Inventory tab lets go.";
     case ActionKind::EquipSpell:
-        return "Put a spell in the follower's hand and let her own combat AI cast it -- with the "
-               "animation, and interruptible. She chooses the moment, not the rule. Skipped when "
-               "it is already in hand or its effect is still running.";
+        return "Ready this spell in that hand until another rule or the Magic tab lets go.";
+    case ActionKind::EquipArrows:
+        return "Use this ammunition until another rule or the Inventory tab lets go.";
+    case ActionKind::EquipArmor:
+        return "Wear this until another rule or the Inventory tab lets go.";
     case ActionKind::StopCombat:
-        return "Break off the current fight.";
+        return "Break off the fight.";
     case ActionKind::Flee:
         return "Retreat from the fight.";
     case ActionKind::HoldPosition:
-        return "Stay put rather than closing on a target.";
+        return "Stay put.";
     default:
         return "";
     }

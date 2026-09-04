@@ -26,7 +26,9 @@ enum class Verdict : std::uint8_t
     NoTarget,
     NoResource,
     CannotAfford,     // knows the spell, cannot pay for it right now
-    EffectActive,     // a previous dose is still running
+    EffectActive,     // a previous dose is still running; or the thing is already pinned
+    CannotHold,       // it cannot be pinned: the AI would never choose it, so a pin would be a promise unkept
+    Outranked,        // a rule above holds the hand or slot this would take
     Unsupported,      // the action cannot be performed on this runtime
     Busy,             // it can, but not this evaluation: its resource pool is exhausted
     InvalidCondition, // this subject/predicate pair is not answerable at all
@@ -131,6 +133,7 @@ struct Decision
     // Carried through from the rule so dispatch needs only the Decision. Core
     // never looks at it -- it is an opaque id the game side resolves.
     std::uint32_t actionForm{0};
+    Hand hand{Hand::None};
 
     [[nodiscard]] bool Fired() const noexcept
     {

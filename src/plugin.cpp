@@ -190,6 +190,7 @@ void OnDataLoaded()
     ft::game::Install();
     ft::game::ui::Install();
     ft::game::WatchCombatScores();
+    ft::game::RefuseEquipsAgainstPins();
 
     const bool allPassed = passed == checks.size();
     if (auto *console = RE::ConsoleLog::GetSingleton())

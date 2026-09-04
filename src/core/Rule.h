@@ -11,6 +11,8 @@
 // a genuine cascade and the engine composes: any valid subject may be paired
 // with any valid predicate, and IsPredicateValidFor says which pairs are valid.
 
+#include "Loadout.h"
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -49,6 +51,12 @@ enum class PredicateKind : std::uint8_t
     InCombat,
     WithinDistance,
     CountAtLeast,
+    // The other side of the three Pct predicates. Listed after the rest so
+    // the editor's menu, which walks this enum, keeps them beneath their
+    // below-counterparts; AboveOf pairs the two.
+    HealthPctAbove,
+    StaminaPctAbove,
+    MagickaPctAbove,
 
     COUNT
 };
@@ -73,7 +81,18 @@ enum class ActionKind : std::uint8_t
     DrinkStaminaPotion, // the strongest carried
     DrinkPotion,        // one specific potion, named by actionForm
     CastSpell,
+    // The equip actions PIN: what they put on stays on, against the engine's
+    // own swap and the combat AI's choice, until another rule or the panel
+    // lets it go. A plain equip would not do -- the AI re-derives what to
+    // hold on its own schedule, so a sword put in her hand without a pin
+    // lasts until its next decision, which may be the same second. Each
+    // names a thing by actionForm, and Weapon and Spell a hand as well; a
+    // form of 0 is "none": let go of every pin of that kind and take those
+    // things off, so the AI decides again.
+    EquipWeapon,
+    EquipArrows,
     EquipSpell,
+    EquipArmor,
     StopCombat,
     Flee,
     HoldPosition,
@@ -93,15 +112,20 @@ struct Rule
     ActionKind action{ActionKind::None};
     float actionArg{0.0f};
 
-    // Which spell, for EquipSpell and CastSpell; which potion, for DrinkPotion.
-    // A FormID, and deliberately opaque here: core
-    // has no idea what a spell is, it only compares this against the ids the
-    // snapshot reports as known and as currently running.
+    // Which spell, for CastSpell; which potion, for DrinkPotion; which
+    // thing, for the equip actions. A FormID, and deliberately opaque here:
+    // core has no idea what a spell is, it only compares this against the
+    // ids the snapshot reports as known, carried, running or pinned.
     //
     // A separate field from actionArg because actionArg is a float, and a float
     // cannot hold a 32-bit FormID without loss -- the mantissa is 24 bits, so
     // ids above 0x FFFFFF would silently round to a different form.
     std::uint32_t actionForm{0};
+
+    // Which hand, for EquipWeapon and EquipSpell: Left, Right, or Both for a
+    // two-hander, a bow, a master spell -- or an either-hand spell in each
+    // hand at once. Ignored by every other action.
+    Hand hand{Hand::None};
 
     // No per-rule cooldown, deliberately. A cooldown is a property of the
     // remedy -- how long a potion takes to show, how long a cast takes to
@@ -162,6 +186,10 @@ struct RuleSet
 // different values; they have not yet, so this stays a single table.
 [[nodiscard]] double MinimumCooldown(ActionKind action) noexcept;
 
+// Is this one of the equip actions, and what kind of thing does it name?
+[[nodiscard]] bool IsEquip(ActionKind action) noexcept;
+[[nodiscard]] Kind KindOf(ActionKind action) noexcept;
+
 // Not every predicate means anything about every subject. The Snapshot carries
 // no magicka for allies, and "distance" is meaningless for Self. Rather than
 // quietly answering false -- which would look identical to a condition that was
@@ -172,6 +200,12 @@ struct RuleSet
 // so a rule that cannot work says so instead of never firing for no visible
 // reason.
 [[nodiscard]] bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept;
+
+// The above-counterpart of a below predicate -- HealthPctAbove for
+// HealthPctBelow -- or the predicate itself for one with no counterpart.
+// The editor lists both under one heading, the below values first.
+[[nodiscard]] PredicateKind AboveOf(PredicateKind predicate) noexcept;
+[[nodiscard]] bool IsAbove(PredicateKind predicate) noexcept;
 
 // Which actions the current runtime can actually perform. src/game/ fills this
 // in at startup. The UI greys out unsupported actions rather than letting

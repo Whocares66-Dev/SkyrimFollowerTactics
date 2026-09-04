@@ -2,6 +2,7 @@
 // A follower's magic, worded for the panel: the spells she knows, her powers,
 // her shouts. Built on the game thread, copied with the view.
 
+#include "core/Loadout.h"
 #include "game/Sensors.h"
 
 #include <cstdint>
@@ -66,6 +67,8 @@ struct MagicEntry
     // variants take one, and a master spell takes both at once.
     bool leftAllowed{true};
     bool rightAllowed{true};
+    // The same, as the pin book words it, for the equip menu's hand lists.
+    ft::Grip grip{ft::Grip::None};
     // Kept from the combat AI in a fight because it would take a hand a
     // pin holds: it scores zero whenever the combat AI asks. Still known, and a
     // cast rule can still make her cast it. Listed dimmed.

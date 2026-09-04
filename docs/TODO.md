@@ -37,11 +37,22 @@ in `docs/PLAN.md`.
 
 ## Rule engine
 
-- **Equipment swapping, and pins.** There is no "equip item" action yet. When
-  there is, it meets the Inventory tab's pins: a rule that swaps to a bow
-  should not fight a pinned sword, and the watchdog should not undo a swap
-  the rules made. Likely shape: a rule's swap releases the pin on what it
-  displaces, and re-pins it (or not) when the rule's condition lapses.
+- **Equip rules, in play.** The four equip actions pin through the same
+  book as the Inventory tab, and the evaluator is tested; what is not yet
+  verified in game is a pin landing mid-fight when she holds something
+  else -- whether the AI switches to it, or is only kept from switching
+  away once she has it -- and what the game does after "Equip armor: None"
+  takes pinned pieces off (her outfit may not come back until a cell
+  change).
+- **The equip detour, in play.** `RefuseEquipsAgainstPins` refuses the
+  engine's own `EquipObject` calls that would break a pin (the sword it
+  puts in the right hand when a fight ends, over pinned Flames). Verify
+  the log shows the refusal and Jenassa keeps Flames; then decide whether
+  the watchdog's out-of-combat spell case, and its stand-down after two
+  tries, can go. `EquipSpell` (37939 / 38895) could be detoured the same
+  way to hold a pinned hand against the AI's spell choice, but a CastSpell
+  rule's package equips through it too and must be exempted (the lease
+  knows the spell), or tactics stop being unlimited.
 
 - **Group subjects.** The snapshot carries one enemy, the one she is
   engaging, and no allies. "Any enemy below 30% health" and "ally in

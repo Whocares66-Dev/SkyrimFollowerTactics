@@ -137,6 +137,17 @@ if(FT_BUILD_PLUGIN)
     target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
     target_link_libraries(${PROJECT_NAME} PRIVATE ft_core)
 
+    # Microsoft Detours, for the one function-ENTRY hook (Pins.cpp, on
+    # ActorEquipManager::EquipObject). CommonLibSSE's trampoline
+    # write_branch/write_call overwrite an existing jump or call instruction
+    # and preserve nothing, so they cannot detour a function's first bytes;
+    # Detours relocates the displaced prologue and hands back a callable
+    # original.
+    find_path(DETOURS_INCLUDE_DIRS "detours/detours.h" REQUIRED)
+    find_library(DETOURS_LIBRARY detours REQUIRED)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${DETOURS_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${DETOURS_LIBRARY})
+
     if(DEFINED OUTPUT_FOLDER)
         set(DLL_FOLDER "${OUTPUT_FOLDER}/SKSE/Plugins")
         message(STATUS "SKSE plugin output folder: ${DLL_FOLDER}")

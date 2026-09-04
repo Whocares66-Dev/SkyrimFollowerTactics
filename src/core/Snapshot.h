@@ -9,6 +9,8 @@
 // src/game/ builds one of these per follower per tick. Everything in
 // src/core/ consumes it and nothing else.
 
+#include "Loadout.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <vector>
@@ -173,6 +175,14 @@ struct Snapshot
 
     PotionStock potions;
     SpellState spells;
+
+    // What she could hold or wear, as the pin book describes it -- weapons,
+    // shields, torches, armour, ammunition, and the spells she knows -- and
+    // what is pinned right now, by the panel or by a rule. The equip actions
+    // read both: a thing not here cannot be pinned, and one already pinned
+    // in the hands asked for is done, so the rule falls through.
+    std::vector<Holdable> loadout;
+    std::vector<Pin> pins;
 };
 
 } // namespace ft

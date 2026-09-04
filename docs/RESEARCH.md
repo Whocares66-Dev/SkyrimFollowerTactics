@@ -391,3 +391,81 @@ is a bonus the game may not be applying.
 **Consequence for the Skills tab** (`src/game/Sensors.cpp`, `BuildSkillSheet`): one
 bracketed bonus per non-magic skill, "cost" and "magnitude/duration" for a school, nothing
 for Enchanting, and a tooltip naming the source of each number.
+
+## 7. Out-of-combat equipment: what decides it, and where to hook (2026-09-04)
+
+Researched after a pinned spell lost its hand when a fight ended (Jenassa, Flames in
+both hands, the right hand swapped for a sword and the watchdog fighting it at 2 Hz).
+
+**Two different mechanisms.** In combat, equipment is chosen from `RE::CombatInventory`,
+owned by the `CombatController`, through the `CombatInventoryItem` score virtuals we hook.
+Out of combat there is no controller and no scored list. The rename database (meh321's
+`skyrimae.rename`, ~42k names) has **no** `EquipBest`/`SelectBestWeapon` function; every
+"score" name it holds is combat-side. `HighProcessData::reEquipArmorTimer` (+0x394) is
+referenced nowhere outside the CommonLib header.
+
+**The functions that are known, verified to resolve in `versionlib-1-6-1170-0-1.bin`:**
+
+| Function | SE / AE id | Notes |
+|---|---|---|
+| `ActorEquipManager::EquipObject` | 37938 / 38894 | Param 7 is Papyrus `abPreventRemoval` (SKSE `PapyrusActor.cpp:338`). Non-virtual: trampoline, not a vtable write. |
+| `ActorEquipManager::UnequipObject`, `EquipSpell` | 37945 / 38901, 37939 / 38895 | |
+| "UpdateNPCOutfit" (community name, a `TESNPC` member) | 24234 / 418622 | `void(TESNPC*, Actor*, int64, bool checkDead, int, char)`. Re-dresses the actor in the default outfit after inventory resets and cell transitions. |
+| `InventoryChanges::InitOutfitItems` / `InitLeveledItems` | 15833 / 16072, 15889 / 16129 | |
+
+**Prior art.** *Follower Equip Control* (github.com/iRonoa9/FollowerEquipControl) detours
+`EquipObject`, `UnequipObject`, `EquipSpell`, `UpdateNPCOutfit` and `InitOutfitItems`. Its
+`NonCombatEquipBlocker` drops AI-originated `EquipObject` calls for weapon/shield/ammo when
+the follower is out of combat with weapons sheathed, telling its own calls apart with a
+`thread_local` bypass depth. It re-applies saved hand ITEMS after `UpdateNPCOutfit`, and
+excludes spells. *Better Follower Equip Control* (github.com/IHateMyKite/BFEC) detours only
+`UpdateNPCOutfit`; its author: "there is still no hook for function which decide what weapon
+will be used". UESP: followers use the highest-damage weapon and highest-rated apparel, and
+put their default equipment back on when travelling between cells.
+
+**Conclusion.** The out-of-combat chooser itself is not located; the swap it makes is
+observable and blockable where it lands, in `EquipObject`. A log-only detour there first
+(flags, `IsInCombat`, return address) to confirm the post-combat sword arrives through it;
+then refuse, for our followers, an AI-originated weapon/shield/torch equip into a hand a
+pinned spell holds. `UpdateNPCOutfit` is the second hook if cell transitions still strip the
+hand. No data-level lever exists for a spell: `ExtraCannotWear`/`ExtraShouldWear` are
+undocumented, and outfits cover armour only.
+
+### 7.1 Follower Equip Control and BFEC, read in full (2026-09-04)
+
+Both cloned and read (FEC 2.1.0, GPL v3 -- approach only, no code; BFEC). FEC is a 40k-line
+trade-menu extension: the player picks a follower's gear in the container menu, and three
+layers make the choice stick -- a score BONUS on the combat AI (+600, the same
+`CalculateScore` vtable slot we hook, melee/ranged/shield/staff classes only, no spell
+casters), an `EquipObject`/`UnequipObject` detour that blocks or REDIRECTS AI equips, and
+restore tasks after combat and after the outfit re-dress, all state SKSE-serialised.
+
+Where ours differs, and why we keep it:
+
+- **Zero beats bonus.** Zeroing every competitor for a pinned hand cannot be out-bid; a
+  bonus can. And we cover every spell-caster class; FEC leaves spells alone entirely
+  (its `EquipSpell` hook is telemetry, its hand-item restore excludes spells).
+- **Shape the decision, do not redirect the act.** FEC can swap the AI's equip to the
+  preferred item at the call; the AI then believes it holds what it asked for. Our score
+  hook makes the AI choose the pinned thing, so plan and hands agree; the detour is a
+  tripwire, logged, not a redirect.
+- **Refuse only pin conflicts.** FEC blocks every out-of-combat equip of weapon/shield/
+  ammo/scroll while sheathed, and suppresses `UpdateNPCOutfit` outright. Prevent-removal
+  plus the watchdog has not been shown to lose, so the heavier hammers stay out.
+- **Same origin test.** Both tell their own calls from the engine's by a thread-local
+  depth only; neither checks return addresses. Another mod's Papyrus `EquipItem` against
+  a pin is refused like the engine's. Accepted, and worth documenting for users.
+
+Facts FEC records that we did not have: `UnequipObject` with `a_slotToReplace` set is the
+unequip half of an engine weapon swap (the exemption if unequips are ever gated);
+refusing or force-unequipping a BOUND weapon ends the conjuration, so bound weapons are
+exempt in `Refused()`; queued equips leave `GetEquippedObject` stale within the same call
+(our detour reads the hand from the request's slot, not the actor); actors with no default
+outfit get outfits from AI packages through `UpdateNPCOutfit`'s third argument; FEC never
+writes `CombatInventory::equippedItems`, so blocking at `EquipObject` is not known to
+corrupt it, and neither codebase has evidence on whether the engine retries a refused
+equip. Rule adopted from their design: never mutate the actor from inside the detour;
+`Refused()` reads only.
+
+BFEC: one detour on `UpdateNPCOutfit` that, for followers, adds each default-outfit armour
+to inventory, equips it, and returns without running the engine's re-dress. Armour only.

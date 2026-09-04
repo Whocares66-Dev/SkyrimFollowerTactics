@@ -45,56 +45,6 @@ ActionResult DrinkPotion(RE::Actor *actor, RE::AlchemyItem *potion)
     return ActionResult::Performed;
 }
 
-// Put the spell in her hand and leave the choice of when to use it to her own
-// combat AI. A different thing from casting it, and worth having both: a buff
-// wants casting now, an attack spell wants equipping and trusting.
-ActionResult EquipKnownSpell(RE::Actor *actor, RE::SpellItem *spell)
-{
-    if (!spell)
-        return ActionResult::MissingItem;
-
-    if (!RE::ActorEquipManager::GetSingleton())
-        return ActionResult::NoEquipManager;
-
-    // A no-op when it is already in a hand: the rule may fire every turn.
-    EquipSpellIn(actor, spell, Hand::None);
-
-    // Equipping always "works" -- the spell goes in her hand whether or not she
-    // will ever cast it -- so on its own this action cannot tell the difference
-    // between the two ways it fails, and they need opposite fixes:
-    //
-    //   she CANNOT cast it   too expensive for her pool and skill. Nothing
-    //                        about packages or combat styles will help.
-    //   she WILL NOT cast it can afford it, her combat AI simply chose
-    //                        something else. That is the UseMagic package case.
-    //
-    // CheckCast answers the first question directly, using the game's own
-    // arithmetic including her Alteration skill, so the log separates them
-    // instead of leaving it to inference.
-    auto *caster = actor->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
-    if (!caster)
-        return ActionResult::Performed;
-
-    float alchStrength = 1.0f;
-    RE::MagicSystem::CannotCastReason reason{};
-    const bool couldCast = caster->CheckCast(spell, /*dualCast*/ false, &alchStrength, &reason, false);
-
-    float magicka = 0.0f;
-    if (auto *owner = actor->AsActorValueOwner())
-        magicka = owner->GetActorValue(RE::ActorValue::kMagicka);
-
-    // CalculateMagickaCost(actor), not caster->GetCurrentSpellCost(). The latter
-    // reports whatever spell the caster happens to have selected right now,
-    // which is usually something else entirely -- it logged "cost 1" for a
-    // spell with a base cost of 73, which is not a number anyone can act on.
-    // This one is the cost of THIS spell for THIS actor, skill included.
-    logger::info("  equipped {}: castable={} ({}), cost {:.0f}, magicka {:.0f}",
-                 spell->GetName() ? spell->GetName() : "?", couldCast,
-                 CannotCastText(static_cast<std::uint32_t>(reason)), spell->CalculateMagickaCost(actor), magicka);
-
-    return ActionResult::Performed;
-}
-
 } // namespace
 
 const char *CannotCastText(std::uint32_t reason) noexcept
@@ -185,7 +135,7 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
             auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
             if (!enemy)
             {
-                logger::info("  cast: {} needs a target and she is fighting no one",
+                logger::info("  cast: {} needs a target and the follower is fighting no one",
                              spell->GetName() ? spell->GetName() : "?");
                 return ActionResult::NoTarget;
             }
@@ -213,8 +163,21 @@ ActionResult Execute(const ft::Decision &decision, RE::Actor *actor, const Potio
         return ActionResult::NoSuchAction;
     }
 
+    case ft::ActionKind::EquipWeapon:
     case ft::ActionKind::EquipSpell:
-        return EquipKnownSpell(actor, FindSpell(decision.actionForm));
+    case ft::ActionKind::EquipArrows:
+    case ft::ActionKind::EquipArmor:
+        // A pin, in the same book as the panel's. Naming nothing lets go of
+        // every pin of the kind and takes those things off, so the AI
+        // decides again. The evaluator only fires this when the snapshot
+        // says she has the thing, so a miss here is a form that left her
+        // between snapshot and dispatch.
+        if (decision.actionForm == 0)
+        {
+            ReleaseKind(actor, ft::KindOf(decision.action));
+            return ActionResult::Performed;
+        }
+        return PinNow(actor, decision.actionForm, decision.hand) ? ActionResult::Performed : ActionResult::MissingItem;
 
     default:
         // Every other action is Phase 4. The rule engine's Capabilities table is

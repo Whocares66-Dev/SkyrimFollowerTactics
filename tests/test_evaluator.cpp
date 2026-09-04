@@ -255,6 +255,21 @@ TEST_CASE("a group condition binds the member that best satisfies it", "[binding
         REQUIRE(b.id == 0x102); // 10% health, though it is further away
     }
 
+    SECTION("an above predicate binds the healthiest match")
+    {
+        Rule r;
+        r.subject = SubjectKind::Enemy;
+        r.predicate = PredicateKind::HealthPctAbove;
+        r.conditionArg = 0.05f; // both qualify
+
+        const auto b = EvaluateCondition(r, s);
+        REQUIRE(b.ok);
+        REQUIRE(b.id == 0x101); // 50% health
+
+        r.conditionArg = 0.6f; // neither
+        REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    }
+
     SECTION("a distance predicate binds the nearest match")
     {
         Rule r;
@@ -423,6 +438,39 @@ TEST_CASE("the subject and predicate validity matrix", "[validity]")
     // The Snapshot carries no magicka or stamina for anyone but the follower.
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::MagickaPctBelow));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::StaminaPctBelow));
+
+    // Above is answerable exactly where below is.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::MagickaPctAbove));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::HealthPctAbove));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::MagickaPctAbove));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::StaminaPctAbove));
+    REQUIRE(AboveOf(PredicateKind::HealthPctBelow) == PredicateKind::HealthPctAbove);
+    REQUIRE(AboveOf(PredicateKind::InCombat) == PredicateKind::InCombat);
+}
+
+TEST_CASE("above and below are the same number from either side", "[evaluator]")
+{
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::MagickaPctAbove;
+    r.conditionArg = 0.5f;
+
+    Snapshot s = Healthy();
+    s.magicka = {80.0f, 100.0f};
+    REQUIRE(EvaluateCondition(r, s).ok);
+    s.magicka = {20.0f, 100.0f};
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    // Exactly at the line is neither above nor below.
+    s.magicka = {50.0f, 100.0f};
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    r.predicate = PredicateKind::MagickaPctBelow;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    r.subject = SubjectKind::Player;
+    r.predicate = PredicateKind::HealthPctAbove;
+    s.playerHealth = {90.0f, 100.0f};
+    REQUIRE(EvaluateCondition(r, s).ok);
 }
 
 TEST_CASE("an unanswerable pair reports InvalidCondition, not ConditionFalse", "[validity]")
@@ -781,10 +829,11 @@ TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
     // the rule. Same verdict, different action, different sentence.
     REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkHealthPotion)) == "previous dose still active");
     REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::EquipSpell)) ==
-            "that spell is already in hand or still running");
+            "already pinned, or nothing of that kind pinned to let go");
 
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkHealthPotion)) == "no potion");
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EquipSpell)) == "does not know that spell");
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EquipWeapon)) == "does not carry that weapon");
 
     // Everything else is action-independent and must not drift from ToString.
     for (std::size_t i = 0; i < static_cast<std::size_t>(ActionKind::COUNT); ++i)
@@ -797,46 +846,6 @@ TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
     }
 }
 
-TEST_CASE("a sustained buff is not re-equipped while it is still up", "[spell]")
-{
-    // The case a cooldown cannot solve. Oakflesh runs for sixty seconds, and
-    // no settle worth choosing is that long -- pick two seconds and the rule
-    // re-casts thirty times, pick sixty and every other spell in the game gets
-    // the wrong number. Only the effect list answers it.
-    constexpr std::uint32_t kOakflesh = 0x0005AD5C;
-
-    RuleSet rs;
-    Rule buff;
-    buff.subject = SubjectKind::Self;
-    buff.predicate = PredicateKind::InCombat;
-    buff.actionTarget = ActionTargetKind::Self;
-    buff.action = ActionKind::EquipSpell;
-    buff.actionForm = kOakflesh;
-    buff.label = "armour up";
-    rs.rules.push_back(buff);
-
-    Snapshot s = Healthy();
-    s.inCombat = true;
-    s.spells.known.push_back(kOakflesh);
-
-    EvalContext ctx;
-
-    // Nothing up yet, so it casts.
-    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
-
-    // The effect is now running. Well past the settle, it still must not fire.
-    s.spells.active.push_back(kOakflesh);
-    s.now += MinimumCooldown(ActionKind::EquipSpell) * 10.0;
-
-    Trace trace;
-    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
-    REQUIRE(trace.at(0) == Verdict::EffectActive);
-
-    // It lapses, and the rule takes it again.
-    s.spells.active.clear();
-    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
-}
-
 TEST_CASE("a spell the follower does not know is not castable", "[spell]")
 {
     // Distinct from EffectActive on purpose: "never learned it" and "learned
@@ -847,7 +856,7 @@ TEST_CASE("a spell the follower does not know is not castable", "[spell]")
     buff.subject = SubjectKind::Self;
     buff.predicate = PredicateKind::Any;
     buff.actionTarget = ActionTargetKind::Self;
-    buff.action = ActionKind::EquipSpell;
+    buff.action = ActionKind::CastSpell;
     buff.actionForm = 0x0005AD5C;
     rs.rules.push_back(buff);
 
@@ -858,13 +867,261 @@ TEST_CASE("a spell the follower does not know is not castable", "[spell]")
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
     REQUIRE(trace.at(0) == Verdict::NoResource);
 
-    // An EquipSpell rule with no spell chosen is the same kind of unusable, and
-    // is what a freshly added rule looks like before it is filled in.
+    // A cast rule with no spell chosen is the same kind of unusable, and is
+    // what a freshly added rule looks like before it is filled in.
     rs.rules[0].actionForm = 0;
     s.spells.known.push_back(0x0005AD5C);
     Trace blank;
     REQUIRE(Evaluate(rs, s, ctx, &blank).ruleIndex < 0);
     REQUIRE(blank.at(0) == Verdict::NoResource);
+}
+
+namespace
+{
+
+constexpr std::uint32_t kSword = 0x00012EB7;
+constexpr std::uint32_t kBow = 0x00013985;
+constexpr std::uint32_t kShield = 0x00012EB6;
+constexpr std::uint32_t kHelmet = 0x00012E4D;
+constexpr std::uint32_t kArrows = 0x0001397D;
+constexpr std::uint32_t kFirebolt = 0x00012FCD;
+constexpr std::uint32_t kChainLightning = 0x00045F9D;
+
+Holdable Held(std::uint32_t form, Kind kind, Grip grip, std::uint32_t slots = 0)
+{
+    Holdable h;
+    h.form = form;
+    h.kind = kind;
+    h.grip = grip;
+    h.slots = slots;
+    return h;
+}
+
+// A follower with a sword, a bow, a shield, a helmet, arrows, and two spells,
+// one of them above her skill. Nothing pinned.
+Snapshot Armed()
+{
+    Snapshot s = Healthy();
+    s.loadout.push_back(Held(kSword, Kind::Weapon, Grip::Either));
+    s.loadout.push_back(Held(kBow, Kind::Weapon, Grip::Both));
+    s.loadout.push_back(Held(kShield, Kind::Weapon, Grip::LeftOnly));
+    s.loadout.push_back(Held(kHelmet, Kind::Armor, Grip::None, 0x2));
+    s.loadout.push_back(Held(kArrows, Kind::Ammo, Grip::None));
+    s.loadout.push_back(Held(kFirebolt, Kind::Spell, Grip::Either));
+    Holdable chain = Held(kChainLightning, Kind::Spell, Grip::Either);
+    chain.unusable = true;
+    s.loadout.push_back(chain);
+    return s;
+}
+
+Rule Equip(ActionKind action, std::uint32_t form, Hand hand = Hand::None)
+{
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Any;
+    r.actionTarget = ActionTargetKind::Self;
+    r.action = action;
+    r.actionForm = form;
+    r.hand = hand;
+    return r;
+}
+
+// What the game side does when a pin rule fires: the pin book gains the
+// thing, in the hands the decision names, and whatever it displaces goes.
+void Pinned(Snapshot &s, const Decision &d)
+{
+    const Holdable *thing = FindHoldable(s.loadout, d.actionForm);
+    REQUIRE(thing != nullptr);
+    const Hand hands = thing->grip == Grip::None ? Hand::None : HandsFor(thing->grip, d.hand);
+    [[maybe_unused]] const auto displaced = MakeRoom(s.pins, *thing, hands);
+    AddPin(s.pins, *thing, hands, false);
+}
+
+} // namespace
+
+TEST_CASE("an equip rule pins once, reports done, and lets the rules beneath it through", "[equip]")
+{
+    // The shield and the helm: two complementary preparations for one
+    // standing situation. Rules are first-match-wins, so the only way both
+    // happen is for the shield rule to report itself done once the shield is
+    // pinned, and fall through -- see the note in Rule.h.
+    RuleSet rs;
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, kShield, Hand::Left));
+    rs.rules.push_back(Equip(ActionKind::EquipArmor, kHelmet));
+
+    Snapshot s = Armed();
+    EvalContext ctx;
+
+    Decision d = Evaluate(rs, s, ctx);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.action == ActionKind::EquipWeapon);
+    REQUIRE(d.actionForm == kShield);
+    REQUIRE(d.hand == Hand::Left);
+    Pinned(s, d);
+
+    // The shield is pinned, so the helm gets its turn on the next tick.
+    s.now += 0.5;
+    Trace trace;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    Pinned(s, d);
+
+    // Both pinned: both done, nothing fires, and nothing re-fires however
+    // long the cooldowns have been over.
+    s.now += 100.0;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    REQUIRE(trace.at(1) == Verdict::EffectActive);
+
+    // A thing the AI happens to hold is not done: only a pin is.
+    s.pins.clear();
+    s.spells.equipped.push_back(kFirebolt);
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+}
+
+TEST_CASE("a satisfied equip rule holds its hand against the rules beneath it", "[equip]")
+{
+    // The sword up close, the bow otherwise. Written the natural way -- a
+    // specific rule above a catch-all -- and without this the two would
+    // trade places every tick: the sword rule pins the sword, falls through
+    // as done, the bow rule takes both hands, the sword rule is undone and
+    // fires again. Priority means the rule above keeps what it holds for as
+    // long as its condition holds.
+    RuleSet rs;
+    Rule close = Equip(ActionKind::EquipWeapon, kSword, Hand::Right);
+    close.subject = SubjectKind::Enemy;
+    close.predicate = PredicateKind::WithinDistance;
+    close.conditionArg = 300.0f;
+    rs.rules.push_back(close);
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, kBow, Hand::Both));
+
+    Snapshot s = Armed();
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 200.0f, false, false, true});
+    EvalContext ctx;
+
+    Decision d = Evaluate(rs, s, ctx);
+    REQUIRE(d.actionForm == kSword);
+    Pinned(s, d);
+
+    // Sword pinned, enemy still close: the bow rule is outranked, not fired.
+    s.now += 0.5;
+    Trace trace;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    REQUIRE(trace.at(1) == Verdict::Outranked);
+
+    // The enemy backs off: the sword rule's condition lapses, and the bow
+    // rule takes the hands. The sword's pin goes with them.
+    s.enemies[0].distance = 900.0f;
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::ConditionFalse);
+    Pinned(s, d);
+    REQUIRE(FindPin(s.pins, kSword) == nullptr);
+    REQUIRE(FindPin(s.pins, kBow) != nullptr);
+
+    // Close again: the sword rule is available again -- its pin is gone --
+    // and takes the right hand back.
+    s.enemies[0].distance = 200.0f;
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.actionForm == kSword);
+
+    // A rule beneath that takes no hand the sword holds is not outranked:
+    // the shield goes in the left.
+    Pinned(s, d);
+    rs.rules[1] = Equip(ActionKind::EquipWeapon, kShield, Hand::Left);
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+}
+
+TEST_CASE("none lets go of every pin of its kind, unless a rule above holds one", "[equip]")
+{
+    RuleSet rs;
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, 0));
+
+    Snapshot s = Armed();
+    EvalContext ctx;
+
+    // Nothing pinned: nothing to let go of, so it is done and falls through.
+    Trace trace;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+
+    // A pinned sword: the rule fires, naming nothing.
+    AddPin(s.pins, *FindHoldable(s.loadout, kSword), Hand::Right, false);
+    Decision d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.action == ActionKind::EquipWeapon);
+    REQUIRE(d.actionForm == 0);
+
+    // Pinned armour is another kind, and none of this rule's business.
+    s.pins.clear();
+    AddPin(s.pins, *FindHoldable(s.loadout, kHelmet), Hand::None, false);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+
+    // A rule above holding a weapon outranks a none beneath it, or the two
+    // would pin and release the sword in turn.
+    rs.rules.insert(rs.rules.begin(), Equip(ActionKind::EquipWeapon, kSword, Hand::Right));
+    AddPin(s.pins, *FindHoldable(s.loadout, kSword), Hand::Right, false);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    REQUIRE(trace.at(1) == Verdict::Outranked);
+}
+
+TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI would use", "[equip]")
+{
+    Snapshot s = Armed();
+    EvalContext ctx;
+    Trace trace;
+
+    // Not hers.
+    RuleSet rs;
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, 0xDEAD, Hand::Right));
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+
+    // Hers, but a spell under equip-weapon: a hand-edited profile's mistake.
+    rs.rules[0] = Equip(ActionKind::EquipWeapon, kFirebolt, Hand::Right);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+
+    // Above her skill: the AI would never choose it, so a pin would be a
+    // promise unkept. Said so, not fired.
+    rs.rules[0] = Equip(ActionKind::EquipSpell, kChainLightning, Hand::Right);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::CannotHold);
+
+    // A spell she can use, in both hands at once.
+    rs.rules[0] = Equip(ActionKind::EquipSpell, kFirebolt, Hand::Both);
+    Decision d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.hand == Hand::Both);
+    // Pinned in one hand only, it is not yet done.
+    AddPin(s.pins, *FindHoldable(s.loadout, kFirebolt), Hand::Left, false);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+    AddPin(s.pins, *FindHoldable(s.loadout, kFirebolt), Hand::Right, false);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+
+    // Arrows and armour take no hand, and are done once pinned at all.
+    rs.rules[0] = Equip(ActionKind::EquipArrows, kArrows);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+    AddPin(s.pins, *FindHoldable(s.loadout, kArrows), Hand::None, false);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
 }
 
 TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
@@ -1014,6 +1271,13 @@ TEST_CASE("every wire name round-trips", "[vocabulary]")
         REQUIRE(Str(WireName(v)) != "Unknown");
         REQUIRE(ActionFromWireName(WireName(v)) == v);
     }
+    for (const Hand v : {Hand::None, Hand::Left, Hand::Right, Hand::Both})
+    {
+        REQUIRE(Str(WireName(v)) != "Unknown");
+        REQUIRE(IsWireName(WireName(v)));
+        REQUIRE(HandFromWireName(WireName(v)) == v);
+        REQUIRE(DisplayName(v).size() > 0);
+    }
 }
 
 TEST_CASE("every wire name is a slug, and no display name is", "[vocabulary]")
@@ -1064,7 +1328,7 @@ TEST_CASE("an unknown wire name is rejected, not guessed at", "[vocabulary]")
     // A profile written by a newer build will name things this one has never
     // heard of. Returning nullopt lets the loader drop that rule with a log
     // line instead of refusing the whole file.
-    REQUIRE_FALSE(PredicateFromWireName("health-pct-above").has_value());
+    REQUIRE_FALSE(PredicateFromWireName("armour-rating-below").has_value());
     REQUIRE_FALSE(ActionFromWireName("cast-healing-spell").has_value());
     REQUIRE_FALSE(SubjectFromWireName("").has_value());
 

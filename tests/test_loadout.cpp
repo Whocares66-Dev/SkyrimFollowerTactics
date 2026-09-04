@@ -215,9 +215,9 @@ TEST_CASE("a pinned cuirass keeps other cuirasses off, and nothing else")
 TEST_CASE("pinned ammunition keeps other ammunition off")
 {
     Holdable arrows = Thing(12, Grip::None);
-    arrows.ammo = true;
+    arrows.kind = Kind::Ammo;
     Holdable bolts = Thing(13, Grip::None);
-    bolts.ammo = true;
+    bolts.kind = Kind::Ammo;
     const std::vector<Pin> pins{{arrows, Hand::None}};
     CHECK(SetAside(pins, bolts));
     CHECK_FALSE(SetAside(pins, Armour(kIronArmor, 0x4)));
@@ -254,9 +254,9 @@ TEST_CASE("pinning releases what it displaces")
     CHECK_FALSE(Conflicts(dagger, Hand::Right, cuirass, Hand::None));
     // Ammunition against ammunition, and only that.
     Holdable arrows = Thing(12, Grip::None);
-    arrows.ammo = true;
+    arrows.kind = Kind::Ammo;
     Holdable bolts = Thing(13, Grip::None);
-    bolts.ammo = true;
+    bolts.kind = Kind::Ammo;
     CHECK(Conflicts(arrows, Hand::None, bolts, Hand::None));
     CHECK_FALSE(Conflicts(arrows, Hand::None, cuirass, Hand::None));
 }

@@ -1,5 +1,7 @@
 #include "game/Magic.h"
 
+#include "game/Pins.h"
+
 #include "game/Inventory.h"
 
 #include <algorithm>
@@ -177,6 +179,7 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
                      : !entry.leftAllowed   ? "Right"
                      : !entry.rightAllowed  ? "Left"
                                             : "Either";
+        entry.grip = DescribeHoldable(actor, spell).grip;
     }
     {
         const auto &data = actor->GetActorRuntimeData();

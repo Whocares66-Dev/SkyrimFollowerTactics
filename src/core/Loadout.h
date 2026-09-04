@@ -85,10 +85,23 @@ enum class Grip : std::uint8_t
     }
 }
 
+// What a thing is to a rule: the four kinds an equip rule names. A shield
+// or a torch is a Weapon here, as the panel lists it, because it is chosen
+// with the sword and takes a hand; Armor is what is worn.
+enum class Kind : std::uint8_t
+{
+    Other,
+    Weapon,
+    Spell,
+    Armor,
+    Ammo
+};
+
 // One thing she has, as the planner sees it.
 struct Holdable
 {
     std::uint32_t form{0};
+    Kind kind{Kind::Other};
     Grip grip{Grip::None};
     // A spell above her skill. The combat AI will not choose it on its own,
     // so a pin on it would be a promise unkept: it can be equipped, not
@@ -97,8 +110,21 @@ struct Holdable
     // The body slots a piece of armour covers, for armour against armour;
     // 0 for everything else.
     std::uint32_t slots{0};
-    bool ammo{false};
+
+    [[nodiscard]] constexpr bool IsAmmo() const noexcept
+    {
+        return kind == Kind::Ammo;
+    }
 };
+
+[[nodiscard]] const Holdable *FindHoldable(const std::vector<Holdable> &things, std::uint32_t form) noexcept;
+
+// Does a pin in `pinned` hold every hand in `wanted`? None is held by
+// anything: a thing with no hand asks for no hand.
+[[nodiscard]] constexpr bool Covers(Hand pinned, Hand wanted) noexcept
+{
+    return Common(pinned, wanted) == wanted;
+}
 
 // A thing pinned, and the hands it is pinned in: None for armour and
 // ammunition, which have no hand; Both for a two-hander, or for an

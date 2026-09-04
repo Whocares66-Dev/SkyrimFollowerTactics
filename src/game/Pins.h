@@ -60,6 +60,23 @@ enum class WearRequest
 
 void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None);
 
+// The rules' side of the same book, on the game thread, from the tick. A
+// rule's pin is the panel's pin: it goes in the same book, shows in the
+// same cells, and the panel can let it go. Pin puts `form` in `hand` --
+// Both for an either-hand spell is once in each hand -- and returns whether
+// the form was found. Release lets go of every pin of `kind` and takes
+// those things off, so the AI decides again.
+bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand);
+void ReleaseKind(RE::Actor *actor, Kind kind);
+
+// This follower's pins, as the planner and the snapshot take them.
+[[nodiscard]] std::vector<Pin> PinsOf(ft::ActorId id);
+
+// The planner's description of a form: what it is, which hands its record
+// lets it take, whether the combat AI would choose it, which body slots it
+// covers. The ONLY place the pin rules meet a record.
+[[nodiscard]] Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form);
+
 // Put a spell in a hand -- Left, Right, or None for the engine's choice --
 // unless it is there already. The engine's item equip is a no-op for an
 // item already worn; its spell equip is not, and each call plays the equip
@@ -81,6 +98,14 @@ void KeepPins(const std::vector<RE::Actor *> &followers);
 // scores zero whenever the AI asks, and is never chosen. Reactive: nothing
 // is computed until the AI asks, and nothing on the tick.
 void WatchCombatScores();
+
+// Once, at data load: detour the engine's equip so that an equip of ITS
+// choosing -- the best weapon on leaving combat, the outfit on a cell
+// change, a better arrow -- is refused when it would take a hand or slot a
+// pin holds. Our own equips pass. This is what holds a pinned SPELL out of
+// combat, where it has no prevent-removal flag to hold it; for items it
+// doubles the flag. The approach Follower Equip Control ships.
+void RefuseEquipsAgainstPins();
 
 // Republish the views owed after a spell left a hand: the Papyrus native
 // that does it runs a frame after the request. Called first thing in the

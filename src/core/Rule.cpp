@@ -24,10 +24,13 @@ double MinimumCooldown(ActionKind action) noexcept
         // the package pool's lease covers the case where it has not landed.
         return 2.0;
 
+    case ActionKind::EquipWeapon:
     case ActionKind::EquipSpell:
-        // Swapping what is in hand is cheap and its result is visible at once,
-        // so this only needs to be long enough not to thrash. Re-equipping what
-        // is already equipped is prevented by availability, not by this.
+    case ActionKind::EquipArrows:
+    case ActionKind::EquipArmor:
+        // A pin is cheap and its result is visible at once, so this only
+        // needs to be long enough not to thrash. Re-pinning what is already
+        // pinned is prevented by availability, not by this.
         return 1.0;
 
     case ActionKind::StopCombat:
@@ -45,11 +48,67 @@ double MinimumCooldown(ActionKind action) noexcept
     }
 }
 
+bool IsEquip(ActionKind action) noexcept
+{
+    return KindOf(action) != Kind::Other;
+}
+
+Kind KindOf(ActionKind action) noexcept
+{
+    switch (action)
+    {
+    case ActionKind::EquipWeapon:
+        return Kind::Weapon;
+    case ActionKind::EquipSpell:
+        return Kind::Spell;
+    case ActionKind::EquipArrows:
+        return Kind::Ammo;
+    case ActionKind::EquipArmor:
+        return Kind::Armor;
+    default:
+        return Kind::Other;
+    }
+}
+
+PredicateKind AboveOf(PredicateKind predicate) noexcept
+{
+    switch (predicate)
+    {
+    case PredicateKind::HealthPctBelow:
+        return PredicateKind::HealthPctAbove;
+    case PredicateKind::StaminaPctBelow:
+        return PredicateKind::StaminaPctAbove;
+    case PredicateKind::MagickaPctBelow:
+        return PredicateKind::MagickaPctAbove;
+    default:
+        return predicate;
+    }
+}
+
+bool IsAbove(PredicateKind predicate) noexcept
+{
+    return predicate == PredicateKind::HealthPctAbove || predicate == PredicateKind::StaminaPctAbove ||
+           predicate == PredicateKind::MagickaPctAbove;
+}
+
 bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
 {
     // The matrix is driven by what Snapshot actually carries. When a sensor is
     // added -- ally magicka, say -- this table is the one place to widen, and
     // the UI menu widens with it for free.
+    //
+    // An above predicate is answerable exactly where its below counterpart
+    // is: the same number, the other side.
+    if (IsAbove(predicate))
+    {
+        for (std::size_t i = 0; i < static_cast<std::size_t>(PredicateKind::COUNT); ++i)
+        {
+            const auto below = static_cast<PredicateKind>(i);
+            if (below != predicate && AboveOf(below) == predicate)
+                return IsPredicateValidFor(subject, below);
+        }
+        return false;
+    }
     switch (subject)
     {
     case SubjectKind::Self:

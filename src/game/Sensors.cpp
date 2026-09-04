@@ -1,5 +1,7 @@
 #include "game/Sensors.h"
 
+#include "game/Pins.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <string>
@@ -259,7 +261,24 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         // Her cost, not the base cost: CalculateMagickaCost applies her skill
         // and perks, which is what the AI will charge her.
         s.spells.costs.push_back({spell->GetFormID(), spell->CalculateMagickaCost(actor)});
+        // And as the pin book sees it, for an equip rule.
+        s.loadout.push_back(DescribeHoldable(actor, spell));
     });
+
+    // What she could hold or wear, as the pin book sees it, and what is
+    // pinned. A walk of her inventory that keeps only the equipable kinds;
+    // the potion scan above walks it too, and the two could share one pass
+    // if the cost ever showed, which at tens of microseconds it does not.
+    for (const auto &[object, entry] : actor->GetInventory())
+    {
+        if (!object || entry.first <= 0)
+            continue;
+        if (!(object->Is(RE::FormType::Weapon) || object->Is(RE::FormType::Armor) || object->Is(RE::FormType::Ammo) ||
+              object->Is(RE::FormType::Light)))
+            continue;
+        s.loadout.push_back(DescribeHoldable(actor, object));
+    }
+    s.pins = PinsOf(s.self);
 
     if (auto *target = actor->AsMagicTarget())
     {

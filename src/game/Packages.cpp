@@ -176,7 +176,8 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
             const std::uint32_t firedID = spell ? spell->GetFormID() : 0;
             const bool ours = firedID == slot.spell;
             logger::info("  anim {:08X}: {} hand fired {:08X} \"{}\" -- {}", who, right ? "right" : "left", firedID,
-                         spell && spell->GetName() ? spell->GetName() : "?", ours ? "OURS" : "her own, ignored");
+                         spell && spell->GetName() ? spell->GetName() : "?",
+                         ours ? "OURS" : "the follower's own, ignored");
             if (ours)
                 slot.fired.store(true, std::memory_order_relaxed);
         }
@@ -693,7 +694,7 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
     // The diagnostic that decides what a silence means. Not in the alias: our
     // list was never consulted and no amount of package tuning will help.
     logger::info("  {} in the DialogueFollower alias: {}", actor->GetName() ? actor->GetName() : "?",
-                 InFollowerAlias(actor) ? "yes" : "NO -- recruit her through dialogue, not the console");
+                 InFollowerAlias(actor) ? "yes" : "NO -- recruit through dialogue, not the console");
 
     slot.armedAt = TacticsSeconds();
     // The window covers the AI's start-up latency. For a stream it is
