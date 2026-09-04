@@ -291,6 +291,8 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     // cached until something invalidates it.
     v.spells = ScanCastableSpells(actor);
     v.potions = ScanCarriedPotions(actor);
+    if (auto *player = RE::PlayerCharacter::GetSingleton())
+        v.playerName = DisplayNameOf(player);
     v.sheet = BuildCharacterSheet(actor);
     v.skills = BuildSkillSheet(actor);
     v.inventory = ScanInventory(actor);

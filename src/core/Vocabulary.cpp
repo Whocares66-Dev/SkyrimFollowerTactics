@@ -92,7 +92,7 @@ constexpr std::array<Entry<ActionKind>, 13> kActions{{
     // leaves room: "drink-health-potion-weakest" -- don't burn a strong potion
     // on a scratch -- becomes a new value rather than a breaking change to an
     // existing one.
-    {ActionKind::None, "none", "Do nothing"},
+    {ActionKind::None, "none", "None"},
     {ActionKind::DrinkHealthPotion, "drink-strongest-health-potion", "Drink strongest health potion"},
     {ActionKind::DrinkMagickaPotion, "drink-strongest-magicka-potion", "Drink strongest magicka potion"},
     {ActionKind::DrinkStaminaPotion, "drink-strongest-stamina-potion", "Drink strongest stamina potion"},
@@ -291,7 +291,7 @@ std::string_view Describe(ActionKind v) noexcept
     switch (v)
     {
     case ActionKind::None:
-        return "Do nothing.";
+        return "Nothing.";
     case ActionKind::DrinkHealthPotion:
         return "Drink the strongest healing potion carried.";
     case ActionKind::DrinkMagickaPotion:

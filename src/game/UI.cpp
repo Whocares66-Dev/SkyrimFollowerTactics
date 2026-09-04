@@ -252,9 +252,11 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
 }
 
 // The whole condition on one line: "Enemy health < 25%".
-std::string ConditionText(const ft::Rule &r)
+std::string ConditionText(const ft::Rule &r, const std::string &playerName)
 {
-    std::string text(ft::DisplayName(r.subject));
+    std::string text(r.subject == ft::SubjectKind::Player && !playerName.empty()
+                         ? playerName
+                         : std::string(ft::DisplayName(r.subject)));
     text += ' ';
     text += ft::DisplayName(r.predicate);
 
@@ -509,11 +511,18 @@ bool CascadeItem(const char *label, bool selected)
     return clicked;
 }
 
-bool ConditionCascade(const char *id, ft::Rule &rule)
+// The three about a fight, under one "Combat" heading: Start, During, End.
+bool IsCombatPredicate(ft::PredicateKind p)
+{
+    return p == ft::PredicateKind::CombatBegins || p == ft::PredicateKind::InCombat ||
+           p == ft::PredicateKind::CombatEnds;
+}
+
+bool ConditionCascade(const char *id, ft::Rule &rule, const std::string &playerName)
 {
     bool changed = false;
 
-    CellButtonOpensPopup(id, ConditionText(rule));
+    CellButtonOpensPopup(id, ConditionText(rule, playerName));
 
     PushPopupChrome();
     if (!Im::BeginPopup(id, 0))
@@ -522,10 +531,16 @@ bool ConditionCascade(const char *id, ft::Rule &rule)
         return false;
     }
 
-    for (std::size_t si = 0; si < static_cast<std::size_t>(ft::SubjectKind::COUNT); ++si)
+    // Who first: the follower, the party, the enemy, the player by name,
+    // and last the one being fought.
+    constexpr ft::SubjectKind kOrder[] = {ft::SubjectKind::Self, ft::SubjectKind::Ally, ft::SubjectKind::Enemy,
+                                          ft::SubjectKind::Player, ft::SubjectKind::CurrentTarget};
+    for (const ft::SubjectKind subject : kOrder)
     {
-        const auto subject = static_cast<ft::SubjectKind>(si);
-        if (!BeginCascade(std::string(ft::DisplayName(subject)).c_str()))
+        const std::string subjectName = subject == ft::SubjectKind::Player && !playerName.empty()
+                                            ? playerName
+                                            : std::string(ft::DisplayName(subject));
+        if (!BeginCascade(subjectName.c_str()))
             continue;
 
         for (std::size_t pi = 0; pi < static_cast<std::size_t>(ft::PredicateKind::COUNT); ++pi)
@@ -537,6 +552,39 @@ bool ConditionCascade(const char *id, ft::Rule &rule)
             // heading, after a divider, not as a heading of its own.
             if (ft::IsAbove(predicate))
                 continue;
+
+            // The fight's three, grouped where the first of them falls.
+            if (IsCombatPredicate(predicate))
+            {
+                if (predicate != ft::PredicateKind::InCombat)
+                    continue;
+                if (!BeginCascade("Combat"))
+                    continue;
+                struct Phase
+                {
+                    ft::PredicateKind predicate;
+                    const char *label;
+                };
+                constexpr Phase kPhases[] = {{ft::PredicateKind::CombatBegins, "Start"},
+                                             {ft::PredicateKind::InCombat, "During"},
+                                             {ft::PredicateKind::CombatEnds, "End"}};
+                for (const Phase &phase : kPhases)
+                {
+                    if (!ft::IsPredicateValidFor(subject, phase.predicate))
+                        continue;
+                    const bool selected = rule.subject == subject && rule.predicate == phase.predicate;
+                    if (CascadeItem(phase.label, selected))
+                    {
+                        rule.subject = subject;
+                        rule.predicate = phase.predicate;
+                        changed = true;
+                    }
+                    if (Im::IsItemHovered(0))
+                        Im::SetTooltip("%s", std::string(ft::Describe(phase.predicate)).c_str());
+                }
+                Im::EndMenu();
+                continue;
+            }
 
             const auto presets = PresetsFor(predicate);
             const std::string predicateName(ft::DisplayName(predicate));
@@ -914,15 +962,29 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
             continue;
         }
 
+        // The four equips under one "Equip" heading, drawn where the first
+        // of them falls: Weapon, Arrows, Spell, Armor, each its own menu.
         if (ft::IsEquip(action))
         {
-            const bool open = BeginCascade(name.c_str());
-            if (Im::IsItemHovered(0))
-                Im::SetTooltip("%s", std::string(ft::Describe(action)).c_str());
-            if (!open)
+            if (action != ft::ActionKind::EquipWeapon)
                 continue;
-            if (EquipMenu(act, action, view))
-                changed = true;
+            if (!BeginCascade("Equip"))
+                continue;
+            for (const auto kind : {ft::ActionKind::EquipWeapon, ft::ActionKind::EquipArrows,
+                                    ft::ActionKind::EquipSpell, ft::ActionKind::EquipArmor})
+            {
+                std::string noun = EquipNoun(kind);
+                if (!noun.empty())
+                    noun[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(noun[0])));
+                const bool open = BeginCascade(noun.c_str());
+                if (Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+                if (!open)
+                    continue;
+                if (EquipMenu(act, kind, view))
+                    changed = true;
+                Im::EndMenu();
+            }
             Im::EndMenu();
             continue;
         }
@@ -1296,7 +1358,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::Text("%zu", i + 1);
 
         Im::TableSetColumnIndex(2);
-        if (ConditionCascade(("##cond" + rowId).c_str(), rule))
+        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view.playerName))
             changed = true;
 
         Im::TableSetColumnIndex(3);

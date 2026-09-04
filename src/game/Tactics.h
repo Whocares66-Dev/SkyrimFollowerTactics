@@ -35,6 +35,9 @@ struct FollowerView
     // in the log, where Describe() still emits it -- on screen it is noise the
     // player can get from the console if they ever need it.
     std::string name;
+    // The player's, for the condition menu: "Player" is a kind, and the
+    // menu says who.
+    std::string playerName;
     ft::Snapshot snapshot;
     ft::Trace trace;             // per-rule verdict: the debug column
     ft::ActionTrace actionTrace; // per-action verdicts: the column's tooltip
