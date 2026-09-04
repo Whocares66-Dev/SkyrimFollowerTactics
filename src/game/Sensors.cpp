@@ -1262,13 +1262,11 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
 
     const auto skill = [&](SheetSection &s, const Skill &k) {
         SheetRow row = Row(k.label, Fmt("%.0f", av(k.value)));
-        // What the values hold. Whether anything on this actor reads them
-        // is the row's flag: a follower has Fortify One-handed +35 on the
-        // value and no perk to turn it into damage, so the bonus is shown
-        // greyed, with "Not applied" for its hover.
-        const float m = k.mod.effect ? av(k.mod.value) : 0.0f;
-        const float p = k.power.effect ? av(k.power.value) : 0.0f;
-        row.modifiersApplied = (m == 0.0f || ReadsSkillMods(actor)) && (p == 0.0f || ReadsSkillPowerMods(actor));
+        // Only what applies. A follower has Fortify One-handed +35 on the
+        // value and no perk to turn it into damage; a bonus that changes
+        // nothing is not shown.
+        const float m = k.mod.effect && ReadsSkillMods(actor) ? av(k.mod.value) : 0.0f;
+        const float p = k.power.effect && ReadsSkillPowerMods(actor) ? av(k.power.value) : 0.0f;
 
         // Every modifier is a signed change from normal: "+90% damage",
         // "-17% cost". Power first, then the other, as the two read best.
@@ -1308,15 +1306,8 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                 row.note += (row.note.empty() ? "" : "\n") + std::string("Perks: ") + Fmt("%+.0f%% ", mod.sign * rest) +
                             mod.effect;
         };
-        if (row.modifiersApplied)
-        {
-            bySource(k.mod, m);
-            bySource(k.power, p);
-        }
-        else
-        {
-            row.note = "Not applied";
-        }
+        bySource(k.mod, m);
+        bySource(k.power, p);
 
         row.detail = OwnedPerks(actor, k.value);
         s.rows.push_back(std::move(row));

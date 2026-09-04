@@ -1716,11 +1716,6 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             Im::TableNextRow(0, 0.0f);
             if (stripeIndex++ % 2 == 1)
                 Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg0, stripe, -1);
-            // A row whose bonus nothing on this actor reads is greyed whole,
-            // as a set-aside spell is on the Magic tab; the hover says why.
-            if (!row.modifiersApplied)
-                Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
-
             Im::TableSetColumnIndex(0);
             bool open = false;
             if (row.detail.empty())
@@ -1802,9 +1797,6 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 if (!row.note.empty() && Im::IsItemHovered(0))
                     NoteTooltip(row.note);
             }
-            if (!row.modifiersApplied)
-                Im::PopStyleColor(1);
-
             if (!open)
                 continue;
 
