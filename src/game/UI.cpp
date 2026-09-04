@@ -2889,7 +2889,9 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state)
     Im::SameLine(0.0f, kCellPadX);
     Im::AlignTextToFramePadding();
     Im::Text("%s", row.name.c_str());
-    if (!row.source.empty())
+    // The source beside the name, unless it only repeats it: an ability's
+    // effect is named for the ability.
+    if (!row.source.empty() && row.source != row.name)
     {
         Im::SameLine(0.0f, kCellPadX * 2.0f);
         Im::AlignTextToFramePadding();

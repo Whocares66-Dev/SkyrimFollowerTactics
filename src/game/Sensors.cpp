@@ -277,10 +277,14 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         SheetSection stats{"Effect", {}, {}};
         char num[32];
         std::snprintf(num, sizeof(num), "%.0f", row.magnitude);
-        stats.rows.push_back(Row("Magnitude", num));
-        stats.rows.push_back(Row("Duration", ae->duration > 0.0f ? RemainingText(ae->duration) : "none"));
-        if (row.remaining >= 0.0f)
+        if (row.magnitude != 0.0f)
+            stats.rows.push_back(Row("Magnitude", num));
+        // Only what there is: no Duration row for an effect with none.
+        if (ae->duration > 0.0f)
+        {
+            stats.rows.push_back(Row("Duration", RemainingText(ae->duration)));
             stats.rows.push_back(Row("Remaining", row.remainingText));
+        }
         if (!row.source.empty())
             stats.rows.push_back(Row("Source", row.source));
         // Whoever cast it, when it was not the follower: the player's
@@ -289,6 +293,18 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             stats.rows.push_back(Row("Caster", caster->GetName()));
         row.detail.push_back(std::move(stats));
         row.description = EffectDescription(base, row.magnitude, row.duration);
+        // An ability's text lives on the spell, not its effect: Imperial
+        // Luck's effect record says nothing, the ability says "find more
+        // gold". The spell's own description, as the Magic tab reads it.
+        if (row.description.empty())
+        {
+            if (auto *spell = ae->spell ? ae->spell->As<RE::SpellItem>() : nullptr)
+            {
+                RE::BSString text;
+                spell->GetDescription(text, spell);
+                row.description = text.c_str() ? text.c_str() : "";
+            }
+        }
 
         out.push_back(std::move(row));
     }
