@@ -1875,6 +1875,42 @@ unsigned IconFor(ItemCategory category)
 
 constexpr Im::ImVec4 kEnchanted{0.70f, 0.75f, 1.00f, 1.0f};
 
+// The name filter the list tabs share: a box with "Filter name" for its
+// hint, and a cross inside its right end to clear it, shown only while
+// there is something to clear. Returns whether the text changed.
+bool FilterBox(const char *id, char *buffer, std::size_t size)
+{
+    const float width = Im::GetFontSize() * 9.0f;
+    Im::SetNextItemWidth(width);
+    bool changed = Im::InputTextWithHint(id, "Filter name", buffer, size);
+    if (buffer[0] == '\0')
+        return changed;
+
+    // The cross sits over the box's right end: a square button the box's
+    // height, painted invisible, the glyph drawn over it.
+    const Im::ImVec2 lo = Im::GetItemRectMin();
+    const Im::ImVec2 hi = Im::GetItemRectMax();
+    const float side = hi.y - lo.y;
+    const Im::ImVec2 keep = Im::GetCursorScreenPos();
+    Im::SetCursorScreenPos(Im::ImVec2(hi.x - side, lo.y));
+    const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
+    Im::PushStyleColor(Im::ImGuiCol_Button, invisible);
+    Im::PushStyleColor(Im::ImGuiCol_ButtonHovered, invisible);
+    Im::PushStyleColor(Im::ImGuiCol_ButtonActive, invisible);
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    if (GlyphButton(std::string(id) + "clear", side, Glyph::Cross))
+    {
+        buffer[0] = '\0';
+        changed = true;
+    }
+    Im::PopStyleVar(1);
+    Im::PopStyleColor(3);
+    if (Im::IsItemHovered(0))
+        Im::SetTooltip("Clear the filter");
+    Im::SetCursorScreenPos(keep);
+    return changed;
+}
+
 bool ContainsNoCase(const std::string &text, const char *needle)
 {
     const auto same = [](char a, char b) {
@@ -2050,7 +2086,9 @@ enum class Column : unsigned
     Cost,
     Left,
     Right,
-    Magnitude
+    Magnitude,
+    Remaining,
+    Source
 };
 
 // A cell that says whether something is on -- in a hand, or worn -- with a
@@ -2177,8 +2215,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     DrawCategoryRow(view, state);
     Im::Spacing();
 
-    Im::SetNextItemWidth(Im::GetFontSize() * 9.0f);
-    Im::InputTextWithHint("##invfilter", "Filter", g_inventoryFilter, sizeof(g_inventoryFilter));
+    FilterBox("##invfilter", g_inventoryFilter, sizeof(g_inventoryFilter));
     Im::Spacing();
 
     // Which columns this list has. A stat column only where the stat means
@@ -2573,8 +2610,7 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     }
     Im::Spacing();
 
-    Im::SetNextItemWidth(Im::GetFontSize() * 9.0f);
-    Im::InputTextWithHint("##magicfilter", "Filter", g_magicFilter, sizeof(g_magicFilter));
+    FilterBox("##magicfilter", g_magicFilter, sizeof(g_magicFilter));
     Im::Spacing();
 
     // Which columns. A school's own list needs no School column. Spells
@@ -2782,10 +2818,112 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
 // The Effects tab: what is running on the follower, as the game's own
 // Active Effects list shows it, with what is left of each and where it
 // comes from. Read on the tick, so with the clock frozen behind the panel
-// the times stand still, as they do in the game's own menu.
-void DrawEffects(const FollowerView &view)
+// the times stand still, as they do in the game's own menu. A name opens
+// the effect's page, as on the Inventory and Magic tabs.
+struct EffectsTabState
+{
+    // The row open in detail, by effect and source; 0 for the list.
+    std::uint32_t detailForm{0};
+    std::uint32_t detailSource{0};
+};
+
+std::unordered_map<ft::ActorId, EffectsTabState> g_effectsTabs;
+char g_effectsFilter[64]{};
+
+// The rows that pass the filter, in the order the header asks for.
+std::vector<const EffectRow *> VisibleEffects(const FollowerView &view)
+{
+    std::vector<const EffectRow *> rows;
+    for (const auto &row : view.effects)
+    {
+        if (!ContainsNoCase(row.name, g_effectsFilter))
+            continue;
+        rows.push_back(&row);
+    }
+
+    const auto *specs = Im::TableGetSortSpecs();
+    if (!specs || specs->SpecsCount < 1 || !specs->Specs)
+        return rows;
+    const auto &spec = specs->Specs[0];
+    const bool ascending = spec.SortDirection != Im::ImGuiSortDirection_Descending;
+
+    const auto compare = [&](const EffectRow &a, const EffectRow &b) -> int {
+        const auto number = [](float x, float y) { return x < y ? -1 : (x > y ? 1 : 0); };
+        // No duration sorts after every duration: it is the one that never
+        // runs out.
+        const auto left = [](const EffectRow &e) { return e.remaining < 0.0f ? 1.0e9f : e.remaining; };
+        switch (static_cast<Column>(spec.ColumnUserID))
+        {
+        case Column::Magnitude:
+            return number(a.magnitude, b.magnitude);
+        case Column::Remaining:
+            return number(left(a), left(b));
+        case Column::Source:
+            return a.source.compare(b.source);
+        case Column::Name:
+        default:
+            return a.name.compare(b.name);
+        }
+    };
+    std::stable_sort(rows.begin(), rows.end(), [&](const EffectRow *a, const EffectRow *b) {
+        const int c = compare(*a, *b);
+        if (c == 0)
+            return a->name < b->name;
+        return ascending ? c < 0 : c > 0;
+    });
+    return rows;
+}
+
+void DrawEffectDetail(const EffectRow &row, EffectsTabState &state)
 {
     Im::Spacing();
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    if (GlyphButton("back", Im::GetFrameHeight(), Glyph::Back))
+        state = {};
+    Im::PopStyleVar(1);
+
+    Im::SameLine(0.0f, kCellPadX);
+    Im::AlignTextToFramePadding();
+    Im::Text("%s", row.name.c_str());
+    if (!row.source.empty())
+    {
+        Im::SameLine(0.0f, kCellPadX * 2.0f);
+        Im::AlignTextToFramePadding();
+        Im::TextDisabled("%s", row.source.c_str());
+    }
+
+    Im::Spacing();
+    DrawSections(row.detail, false);
+
+    if (!row.description.empty())
+    {
+        CentredHeading("Description");
+        Im::TextWrapped("%s", row.description.c_str());
+        Im::Spacing();
+    }
+}
+
+void DrawEffects(const FollowerView &view)
+{
+    auto &state = g_effectsTabs[view.id];
+    if (state.detailForm != 0)
+    {
+        for (const auto &row : view.effects)
+        {
+            if (row.form == state.detailForm && row.sourceForm == state.detailSource)
+            {
+                DrawEffectDetail(row, state);
+                return;
+            }
+        }
+        // It has run out since the page was opened: back to the list.
+        state = {};
+    }
+
+    Im::Spacing();
+    FilterBox("##effectsfilter", g_effectsFilter, sizeof(g_effectsFilter));
+    Im::Spacing();
+
     if (view.effects.empty())
     {
         Im::SetCursorPosX(Im::GetCursorPosX() + kCellPadX);
@@ -2794,8 +2932,10 @@ void DrawEffects(const FollowerView &view)
     }
 
     const float gutter = kCellPadX * 2.0f;
-    float magnitudeWidth = TextWidth("Magnitude");
-    float remainingWidth = TextWidth("Remaining");
+    const auto *tableStyle = Im::GetStyle();
+    const float arrow = std::floor(Im::GetFontSize() * 0.65f + (tableStyle ? tableStyle->FramePadding.x : 4.0f));
+    float magnitudeWidth = TextWidth("Magnitude") + arrow;
+    float remainingWidth = TextWidth("Remaining") + arrow;
     for (const auto &row : view.effects)
     {
         char num[32];
@@ -2804,35 +2944,51 @@ void DrawEffects(const FollowerView &view)
         remainingWidth = (std::max)(remainingWidth, TextWidth(row.remainingText));
     }
 
-    constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
+    constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg | Im::ImGuiTableFlags_Sortable;
     Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
     if (!Im::BeginTable("effects", 4, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
     {
         Im::PopStyleVar(1);
         return;
     }
-    Im::TableSetupColumn("Effect", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-    Im::TableSetupColumn("Magnitude", Im::ImGuiTableColumnFlags_WidthFixed, magnitudeWidth + gutter, 0);
-    Im::TableSetupColumn("Remaining", Im::ImGuiTableColumnFlags_WidthFixed, remainingWidth + gutter, 0);
-    Im::TableSetupColumn("Source", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+    Im::TableSetupColumn("Effect", Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
+                         static_cast<Im::ImGuiID>(Column::Name));
+    Im::TableSetupColumn("Magnitude",
+                         Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                         magnitudeWidth + gutter, static_cast<Im::ImGuiID>(Column::Magnitude));
+    Im::TableSetupColumn("Remaining", Im::ImGuiTableColumnFlags_WidthFixed, remainingWidth + gutter,
+                         static_cast<Im::ImGuiID>(Column::Remaining));
+    Im::TableSetupColumn("Source", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f,
+                         static_cast<Im::ImGuiID>(Column::Source));
     Im::TableHeadersRow();
 
-    for (const auto &row : view.effects)
+    for (const EffectRow *row : VisibleEffects(view))
     {
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "##effect%08X_%08X", row->form, row->sourceForm);
+
         Im::TableNextRow(0, 0.0f);
         Im::TableSetColumnIndex(0);
-        Im::Text("%s", row.name.c_str());
+        const Im::ImVec2 pos = Im::GetCursorScreenPos();
+        if (CellClicked(buf))
+        {
+            state.detailForm = row->form;
+            state.detailSource = row->sourceForm;
+        }
+        Im::SetCursorScreenPos(pos);
+        Im::Text("%s", row->name.c_str());
+
         Im::TableSetColumnIndex(1);
-        if (row.magnitude != 0.0f)
+        if (row->magnitude != 0.0f)
         {
             char num[32];
-            std::snprintf(num, sizeof(num), "%.0f", row.magnitude);
+            std::snprintf(num, sizeof(num), "%.0f", row->magnitude);
             TextRightInCell(num);
         }
         Im::TableSetColumnIndex(2);
-        Im::Text("%s", row.remainingText.c_str());
+        Im::Text("%s", row->remainingText.c_str());
         Im::TableSetColumnIndex(3);
-        Im::Text("%s", row.source.c_str());
+        Im::Text("%s", row->source.c_str());
     }
     Im::EndTable();
     Im::PopStyleVar(1);

@@ -3,6 +3,7 @@
 #include "game/Pins.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -162,6 +163,9 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
     return ft::Stat{owner->GetActorValue(av), owner->GetPermanentActorValue(av)};
 }
 
+// Defined further down, in this same unnamed namespace, with the sheets.
+SheetRow Row(std::string label, std::string value);
+
 } // namespace
 
 // "3 min 24 s", "1 h 5 min", "12 s"; nothing for an effect with no
@@ -202,6 +206,34 @@ std::string WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic)
     return {};
 }
 
+// The effect's description with <mag> and <dur> filled in. Skyrim.esm
+// writes the tokens in lower case; mods are not so consistent, and the
+// engine takes either.
+std::string EffectDescription(const RE::EffectSetting *base, float magnitude, float duration)
+{
+    const char *text = base->magicItemDescription.c_str();
+    std::string line = text ? text : "";
+    const auto replace = [&line](std::string_view token, const std::string &with) {
+        const auto same = [](char a, char b) {
+            return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+        };
+        auto at = std::search(line.begin(), line.end(), token.begin(), token.end(), same);
+        while (at != line.end())
+        {
+            const auto index = static_cast<std::size_t>(at - line.begin());
+            line.replace(index, token.size(), with);
+            at = std::search(line.begin() + static_cast<std::ptrdiff_t>(index + with.size()), line.end(), token.begin(),
+                             token.end(), same);
+        }
+    };
+    char num[32];
+    std::snprintf(num, sizeof(num), "%.0f", magnitude);
+    replace("<mag>", num);
+    std::snprintf(num, sizeof(num), "%.0f", duration);
+    replace("<dur>", num);
+    return line;
+}
+
 std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
 {
     std::vector<EffectRow> out;
@@ -226,8 +258,11 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             continue;
 
         EffectRow row;
+        row.form = base->GetFormID();
+        row.sourceForm = ae->spell ? ae->spell->GetFormID() : 0;
         row.name = name;
         row.magnitude = ae->magnitude;
+        row.duration = ae->duration;
         row.remaining = ae->duration > 0.0f ? ae->duration - ae->elapsedSeconds : -1.0f;
         row.remainingText = RemainingText(row.remaining);
         if (ae->spell)
@@ -237,6 +272,24 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             if (row.source.empty() && ae->spell->GetName())
                 row.source = ae->spell->GetName();
         }
+
+        // The page.
+        SheetSection stats{"Effect", {}, {}};
+        char num[32];
+        std::snprintf(num, sizeof(num), "%.0f", row.magnitude);
+        stats.rows.push_back(Row("Magnitude", num));
+        stats.rows.push_back(Row("Duration", ae->duration > 0.0f ? RemainingText(ae->duration) : "none"));
+        if (row.remaining >= 0.0f)
+            stats.rows.push_back(Row("Remaining", row.remainingText));
+        if (!row.source.empty())
+            stats.rows.push_back(Row("Source", row.source));
+        // Whoever cast it, when it was not the follower: the player's
+        // Courage, an enemy's Fury.
+        if (auto caster = ae->caster.get(); caster && caster.get() != actor && caster->GetName() && *caster->GetName())
+            stats.rows.push_back(Row("Caster", caster->GetName()));
+        row.detail.push_back(std::move(stats));
+        row.description = EffectDescription(base, row.magnitude, row.duration);
+
         out.push_back(std::move(row));
     }
 

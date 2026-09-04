@@ -56,23 +56,6 @@ struct PotionOption
 // Every drinkable potion she carries, sorted by name. Menu content only.
 [[nodiscard]] std::vector<PotionOption> ScanCarriedPotions(RE::Actor *actor);
 
-// One effect running on the follower, for the Effects tab: the effect as
-// the game names it, its magnitude, what is left of it, and where it comes
-// from -- the spell, the potion, or for an enchantment the worn item that
-// carries it, "Robes of Health" rather than the enchantment record's name.
-struct EffectRow
-{
-    std::string name;
-    float magnitude{0.0f};
-    float remaining{-1.0f};    // seconds left; below zero for one with no duration
-    std::string remainingText; // empty for one with no duration
-    std::string source;
-};
-
-// Everything running on the follower that the game would list, sorted by
-// name. Effects flagged hidden, and ones already run out, are left out.
-[[nodiscard]] std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor);
-
 // Every spell the follower can actually cast, sorted by name.
 //
 // Sorted here rather than in the UI because the order is a property of the
@@ -111,6 +94,33 @@ struct SheetSection
     // is the heading.
     std::string group;
 };
+
+// One effect running on the follower, for the Effects tab: the effect as
+// the game names it, its magnitude, what is left of it, and where it comes
+// from -- the spell, the potion, or for an enchantment the worn item that
+// carries it, "Robes of Health" rather than the enchantment record's name.
+struct EffectRow
+{
+    // The base effect and what applied it, together the row's identity:
+    // the same effect can run twice from two sources.
+    std::uint32_t form{0};
+    std::uint32_t sourceForm{0};
+    std::string name;
+    float magnitude{0.0f};
+    float duration{0.0f};      // in all; 0 for one with no duration
+    float remaining{-1.0f};    // seconds left; below zero for one with no duration
+    std::string remainingText; // empty for one with no duration
+    std::string source;
+
+    // The page: numbers as sections, and the effect's description with the
+    // magnitude and duration filled in, as the item card shows it.
+    std::vector<SheetSection> detail;
+    std::string description;
+};
+
+// Everything running on the follower that the game would list, sorted by
+// name. Effects flagged hidden, and ones already run out, are left out.
+[[nodiscard]] std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor);
 
 // The Character tab: race, movement, defence and the equipped weapon. Display
 // only -- none of it is a rule input. Cheap reads, done in and out of combat
