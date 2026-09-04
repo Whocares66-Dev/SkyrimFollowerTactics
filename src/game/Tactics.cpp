@@ -406,7 +406,7 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
         const std::string label = index < rules.rules.size() ? rules.rules[index].label : "";
         for (const auto &step : decision.steps)
         {
-            const auto result = Execute(step.action, actor, choice);
+            const auto result = Execute(step.action, step.target, actor, choice);
 
             logger::info("{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
                          decision.ruleIndex, label, ft::WireName(step.action.kind), ToString(result),

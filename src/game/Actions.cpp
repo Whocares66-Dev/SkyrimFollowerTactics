@@ -93,7 +93,7 @@ const char *ToString(ActionResult r) noexcept
     return "?";
 }
 
-ActionResult Execute(const ft::Action &action, RE::Actor *actor, const PotionChoice &choice)
+ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor, const PotionChoice &choice)
 {
     if (!actor)
         return ActionResult::MissingItem;
@@ -117,12 +117,12 @@ ActionResult Execute(const ft::Action &action, RE::Actor *actor, const PotionCho
         // and not called here: running two mechanisms would mean a cast could
         // not be attributed to either, which is what made the earlier
         // animation-event experiment worthless.
-        // Who the spell goes at is decided by the SPELL, not by the rule. A
-        // Self-delivery spell (Fast Healing, Oakflesh) cannot take a target;
-        // anything else goes at the enemy she is engaging. No target picker in
-        // the editor yet, and this is what one would default to. A non-hostile
-        // targeted spell (Healing Hands) will need the player instead -- that
-        // is the case to revisit when such a spell is authored.
+        // Who the spell goes at. A Self-delivery spell (Fast Healing,
+        // Oakflesh) cannot take a target. Anything else goes at whom the
+        // RULE aimed it: the ally it matched, the player, their attacker --
+        // that is how Heal Other reaches the hurt one. Aimed at the follower
+        // themself, or at no one, a targeted spell goes at the enemy they
+        // are engaging, as it always did.
         std::uint32_t targetId = actor->GetFormID();
         auto *spell = FindSpell(action.form);
         if (spell)
@@ -132,14 +132,21 @@ ActionResult Execute(const ft::Action &action, RE::Actor *actor, const PotionCho
                          spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf ? "self" : "targeted");
         if (spell && spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
         {
-            auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
-            if (!enemy)
+            if (target != 0 && target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
             {
-                logger::info("  cast: {} needs a target and the follower is fighting no one",
-                             spell->GetName() ? spell->GetName() : "?");
-                return ActionResult::NoTarget;
+                targetId = target;
             }
-            targetId = enemy->GetFormID();
+            else
+            {
+                auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
+                if (!enemy)
+                {
+                    logger::info("  cast: {} needs a target and the follower is fighting no one",
+                                 spell->GetName() ? spell->GetName() : "?");
+                    return ActionResult::NoTarget;
+                }
+                targetId = enemy->GetFormID();
+            }
         }
 
         // actionArg is the sustain time for a concentration spell, when a rule

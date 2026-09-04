@@ -64,10 +64,12 @@ in `docs/PLAN.md`.
   `kParalyzed` and the archetype flips first; how long `staggered` holds;
   whether the hit event fires for cloaks, hazards and concentration ticks;
   logged armour figures for a fight's enemies against the estimated tiers.
-- **The Attacker target has no picker yet.** The editor sets no action
-  target; "their attacker" is reachable only from a profile. The plan is
-  an "On" choice per rule (docs/ACTIONS.md 5), which cast-on-target needs
-  too.
+- **Cast on a chosen target, in play.** A targeted spell now goes at whom
+  the rule aimed it (the "On" choice in every action's menu: whoever
+  matched, self, the player, the target, their attacker). Verify Heal
+  Other lands on the hurt ally and on the player through the package's
+  Target input, and what an aimed stream (Healing Hands) does at a moving
+  ally.
 - **Group subjects, in play.** Allies and enemies are sensed by
   definition (docs/CONDITIONS.md 6): the player and the teammates, and
   whoever is in combat and hostile to the player. Verify against the log's

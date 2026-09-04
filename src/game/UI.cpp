@@ -889,6 +889,26 @@ std::string DrinkSubmenuLabel(ft::ActionKind action)
 // the point of naming the spell is that a rule reads as an instruction. The id
 // is what the rule stores; this is what the player sees. Same split as wire
 // names versus display names.
+// Whom the rule aims its actions at, for the row: nothing for the default,
+// whoever the condition matched; otherwise " on ..." by name.
+std::string TargetSuffix(const ft::Rule &rule, const FollowerView &view)
+{
+    switch (rule.actionTarget)
+    {
+    case ft::ActionTargetKind::Self:
+        return " on self";
+    case ft::ActionTargetKind::Player:
+        return " on " + (view.playerName.empty() ? std::string("the player") : view.playerName);
+    case ft::ActionTargetKind::CurrentTarget:
+        return " on target";
+    case ft::ActionTargetKind::Attacker:
+        return " on their attacker";
+    case ft::ActionTargetKind::ConditionSubject:
+    default:
+        return {};
+    }
+}
+
 std::string ActionText(const ft::Action &act, const FollowerView &view)
 {
     const std::string base(ft::DisplayName(act.kind));
@@ -1051,11 +1071,43 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 // the same guarantee the condition side gets from the validity matrix, and
 // for the same reason: an unfireable rule should be unauthorable, not merely
 // discouraged.
-bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *addAnother)
+// The "On" cascade: whom the rule's actions are aimed at. A rule's, not an
+// action's, so every action's menu shows the same choice.
+bool TargetMenu(ft::Rule &rule, const FollowerView &view)
+{
+    bool changed = false;
+    if (!BeginCascade("On"))
+        return false;
+    struct Choice
+    {
+        ft::ActionTargetKind target;
+        std::string label;
+    };
+    const Choice choices[] = {
+        {ft::ActionTargetKind::ConditionSubject, std::string(ft::DisplayName(ft::ActionTargetKind::ConditionSubject))},
+        {ft::ActionTargetKind::Self, std::string(ft::DisplayName(ft::ActionTargetKind::Self))},
+        {ft::ActionTargetKind::Player,
+         view.playerName.empty() ? std::string(ft::DisplayName(ft::ActionTargetKind::Player)) : view.playerName},
+        {ft::ActionTargetKind::CurrentTarget, std::string(ft::DisplayName(ft::ActionTargetKind::CurrentTarget))},
+        {ft::ActionTargetKind::Attacker, std::string(ft::DisplayName(ft::ActionTargetKind::Attacker))},
+    };
+    for (const Choice &choice : choices)
+    {
+        if (CascadeItem(choice.label.c_str(), rule.actionTarget == choice.target))
+        {
+            rule.actionTarget = choice.target;
+            changed = true;
+        }
+    }
+    Im::EndMenu();
+    return changed;
+}
+
+bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *addAnother, ft::Rule &rule)
 {
     bool changed = false;
 
-    CellButtonOpensPopup(id, ActionText(act, view));
+    CellButtonOpensPopup(id, ActionText(act, view) + TargetSuffix(rule, view));
 
     PushPopupChrome();
     if (!Im::BeginPopup(id, 0))
@@ -1063,6 +1115,13 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
         Im::PopStyleVar(kPopupChromeVars);
         return false;
     }
+
+    // Whom the rule aims at, first: a cast on the hurt ally, on the
+    // player, on their attacker. The default is whoever the condition
+    // matched.
+    if (TargetMenu(rule, view))
+        changed = true;
+    Im::Separator();
 
     // A rule with one action edits it here, in its row. The way to a second
     // is this entry, first and in a section of its own so it is not taken
@@ -1286,7 +1345,7 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::TableNextRow(0, 0.0f);
 
             Im::TableSetColumnIndex(0);
-            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr))
+            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr, rule))
                 changed = true;
 
             Im::TableSetColumnIndex(1);
@@ -1537,7 +1596,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // One action: edited here, in its row. Its menu offers a
             // second, and the rule then opens as a drawer.
             bool addAnother = false;
-            if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother))
+            if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother, rule))
                 changed = true;
             if (addAnother)
             {
