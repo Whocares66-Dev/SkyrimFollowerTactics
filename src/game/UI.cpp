@@ -361,14 +361,16 @@ void DrawGlyph(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 lo, Im::ImVec2 hi, 
     DrawCodepoint(draw, Codepoint(glyph), lo, hi, ink, scale);
 }
 
-// A square button whose label is the glyph, so ImGui centres it and dims it
-// with the button when disabled. The icon font is pushed for the button
-// alone.
+// A square button with the glyph painted over it, centred on the button's
+// own rect the way the On cell's tick is. Not as the button's label: ImGui
+// centres a label only when it fits inside the frame padding, and the icon
+// font's glyph is taller than the text font's line, so the plus sat up and
+// to the left. The text colour carries the disabled dimming.
 bool GlyphButton(const std::string &id, float size, Glyph glyph)
 {
-    FontAwesome::PushSolid();
-    const bool clicked = Im::Button((Utf8(Codepoint(glyph)) + "##" + id).c_str(), Im::ImVec2(size, size));
-    FontAwesome::Pop();
+    const bool clicked = Im::Button(("##" + id).c_str(), Im::ImVec2(size, size));
+    if (auto *draw = Im::GetWindowDrawList())
+        DrawGlyph(draw, glyph, Im::GetItemRectMin(), Im::GetItemRectMax(), Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
     return clicked;
 }
 
@@ -978,8 +980,6 @@ std::unordered_set<std::string> g_openRows;
 
 float DisclosureWidth();
 void DrawDisclosure(Im::ImVec2 pos, bool open);
-void PlainHeaderRow(std::initializer_list<const char *> labels);
-
 std::string RuleKey(ft::ActorId follower, std::size_t index)
 {
     return "rule/" + std::to_string(follower) + "/" + std::to_string(index);
@@ -1018,22 +1018,23 @@ float StatusColumnWidth()
 // The drawer an open rule reveals: its actions, one row each in the order
 // they are done, each its own menu; each action's own verdict; and up,
 // down and remove, as the rule table's Order column. A plus beneath for
-// one more. Set in from the parent table's edges like a skill's perks.
-// Returns whether the rules changed.
+// one more. Set under the Then column -- its left edge on Then's border,
+// its right on the table's -- with Status and Order the parent's widths,
+// so its columns line up with the parent's and need no headings of their
+// own. Returns whether the rules changed.
 bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView &view, float left, float right)
 {
     constexpr float kGap = 6.0f;
-    const float inset = 4.0f * kCellPadX;
 
     Im::Dummy(Im::ImVec2(0.0f, kGap));
-    Im::SetCursorScreenPos(Im::ImVec2(left + inset, Im::GetCursorScreenPos().y));
+    Im::SetCursorScreenPos(Im::ImVec2(left, Im::GetCursorScreenPos().y));
 
     const float row = Im::GetFrameHeight();
     const float gutter = kCellPadX * 2.0f;
     const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
     const float statusWidth = StatusColumnWidth();
     const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
-    const float width = (std::max)(0.0f, right - left - 2.0f * inset);
+    const float width = (std::max)(0.0f, right - left);
 
     bool changed = false;
     int moveFrom = -1;
@@ -1053,7 +1054,6 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
         Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
         Im::TableSetupColumn("Status", Im::ImGuiTableColumnFlags_WidthFixed, statusWidth, 0);
         Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
-        PlainHeaderRow({"#", "Action", "Status", "Order"});
 
         for (std::size_t a = 0; a < rule.actions.size(); ++a)
         {
@@ -1113,21 +1113,21 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::PopStyleVar(1);
         }
 
-        // One more, done after the ones above.
-        Im::TableNextRow(0, 0.0f);
-        Im::TableSetColumnIndex(1);
-        Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-        if (GlyphButton("addact" + id, row, Glyph::Plus))
-        {
-            rule.actions.emplace_back();
-            changed = true;
-        }
-        Im::PopStyleVar(1);
-        if (Im::IsItemHovered(0))
-            Im::SetTooltip("Add an action, done after the ones above.");
-
         Im::EndTable();
     }
+
+    // One more, done after the ones above: beneath the table, at its edge.
+    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    Im::SetCursorScreenPos(Im::ImVec2(left, Im::GetCursorScreenPos().y));
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    if (GlyphButton("addact" + id, row, Glyph::Plus))
+    {
+        rule.actions.emplace_back();
+        changed = true;
+    }
+    Im::PopStyleVar(1);
+    if (Im::IsItemHovered(0))
+        Im::SetTooltip("Add an action, done after the ones above.");
 
     if (moveFrom >= 0 && moveTo >= 0 && moveTo < static_cast<int>(rule.actions.size()))
     {
@@ -1297,6 +1297,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             changed = true;
 
         Im::TableSetColumnIndex(3);
+        // Where the Then column begins, for the drawer to sit under it: the
+        // cell's content less its padding is the column's border.
+        const float thenLeft = Im::GetCursorScreenPos().x - kCellPadX;
         if (rule.actions.empty())
             rule.actions.emplace_back();
         const std::string key = RuleKey(view.id, i);
@@ -1344,9 +1347,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             DrawDisclosure(pos, open);
             Im::SetCursorScreenPos(Im::ImVec2(pos.x + DisclosureWidth(), pos.y));
             Im::AlignTextToFramePadding();
-            const std::string summary =
-                ActionText(rule.actions.front(), view) + " and " + std::to_string(rule.actions.size() - 1) + " more";
-            Im::Text("%s", summary.c_str());
+            // How many, not which: the first by name and "2 more" did not
+            // fit the column, and the drawer is one click away.
+            Im::Text("%zu actions", rule.actions.size());
         }
 
         Im::TableSetColumnIndex(4);
@@ -1411,7 +1414,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // The drawer: close this piece, draw beneath, reopen for the rest.
         endPiece();
         Im::BeginDisabled(!rule.enabled);
-        if (DrawActionsDrawer(rule, i, view, left, right))
+        if (DrawActionsDrawer(rule, i, view, thenLeft, right))
             changed = true;
         Im::EndDisabled();
         drawerOpen = true;
