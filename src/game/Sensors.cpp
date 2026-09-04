@@ -851,6 +851,28 @@ float Tempering(RE::InventoryEntryData *entry)
 
 } // namespace
 
+namespace
+{
+// The two hidden perks that turn the Fortify skill values into anything:
+// PerkSkillBoosts reads the enchantment values (OneHandedModifier and its
+// kin), AlchemySkillBoosts the potion ones (OneHandedPowerModifier ...).
+// The player carries both. On the records no follower does (docs/RESEARCH.md
+// 6), and UESP agrees: Fortify One-handed on a follower's gauntlets does
+// nothing. So the sheets multiply a Fortify value in only for an actor who
+// has the perk that reads it, and say so otherwise.
+bool ReadsSkillMods(const RE::Actor *actor)
+{
+    static auto *perk = RE::TESForm::LookupByID<RE::BGSPerk>(0x000CF788);
+    return perk && actor && actor->HasPerk(perk);
+}
+
+bool ReadsSkillPowerMods(const RE::Actor *actor)
+{
+    static auto *perk = RE::TESForm::LookupByID<RE::BGSPerk>(0x000A725C);
+    return perk && actor && actor->HasPerk(perk);
+}
+} // namespace
+
 float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry)
 {
     if (!actor || !weapon)
@@ -901,9 +923,14 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
                                         &damage);
 
     // Fortify One-handed and its kin: enchantments on the first value,
-    // potions on the second, both in percent.
+    // potions on the second, both in percent -- for an actor with the perk
+    // that reads them, which a follower is not.
     if (owner)
-        damage *= 1.0f + (owner->GetActorValue(fortify) + owner->GetActorValue(fortifyPower)) / 100.0f;
+    {
+        const float mods = (ReadsSkillMods(actor) ? owner->GetActorValue(fortify) : 0.0f) +
+                           (ReadsSkillPowerMods(actor) ? owner->GetActorValue(fortifyPower) : 0.0f);
+        damage *= 1.0f + mods / 100.0f;
+    }
 
     return damage;
 }
@@ -944,7 +971,11 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModArmorRating, actor, armor, &rating);
 
     if (owner)
-        rating *= 1.0f + (owner->GetActorValue(fortify) + owner->GetActorValue(fortifyPower)) / 100.0f;
+    {
+        const float mods = (ReadsSkillMods(actor) ? owner->GetActorValue(fortify) : 0.0f) +
+                           (ReadsSkillPowerMods(actor) ? owner->GetActorValue(fortifyPower) : 0.0f);
+        rating *= 1.0f + mods / 100.0f;
+    }
     return rating;
 }
 
@@ -1041,12 +1072,14 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
             const float factor = av(mult) / 100.0f;
             SheetRow row = Row(label, Fmt("%.2f%%", base * factor));
             // The base rate, then what speeds it up and by whom.
+            // Each as the rate it adds, not the speed it multiplies by:
+            // "+3.00%" for robes that double a 3% base reads straight off.
             row.note = "Base: " + Fmt("%.2f%%", base);
             for (const Contribution &c : Contributions(actor, mult))
-                row.note += "\n" + c.source + ": " + Fmt("%+.0f%%", c.amount) + " speed";
+                row.note += "\n" + c.source + ": " + Fmt("%+.2f%%", base * c.amount / 100.0f);
             if (const float perks = owner->GetPermanentActorValue(mult) - owner->GetBaseActorValue(mult);
                 std::abs(perks) > 0.05f)
-                row.note += "\nPerks and race: " + Fmt("%+.0f%%", perks) + " speed";
+                row.note += "\nPerks and race: " + Fmt("%+.2f%%", base * perks / 100.0f);
             s.rows.push_back(std::move(row));
         };
         regen("Health Rate", RE::ActorValue::kHealRate, RE::ActorValue::kHealRateMult);
@@ -1229,8 +1262,15 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
 
     const auto skill = [&](SheetSection &s, const Skill &k) {
         SheetRow row = Row(k.label, Fmt("%.0f", av(k.value)));
-        const float m = k.mod.effect ? av(k.mod.value) : 0.0f;
-        const float p = k.power.effect ? av(k.power.value) : 0.0f;
+        // What the values hold, and whether anything on this actor reads
+        // them: a follower has Fortify One-handed +35 on the value and no
+        // perk to turn it into damage, so it is not shown as a bonus.
+        const float mRaw = k.mod.effect ? av(k.mod.value) : 0.0f;
+        const float pRaw = k.power.effect ? av(k.power.value) : 0.0f;
+        const bool mApplies = ReadsSkillMods(actor);
+        const bool pApplies = ReadsSkillPowerMods(actor);
+        const float m = mApplies ? mRaw : 0.0f;
+        const float p = pApplies ? pRaw : 0.0f;
 
         // Every modifier is a signed change from normal: "+90% damage",
         // "-17% cost". Power first, then the other, as the two read best.
@@ -1272,6 +1312,16 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         };
         bySource(k.mod, m);
         bySource(k.power, p);
+        const auto unread = [&](const Modifier &mod, float raw, const char *from) {
+            if (!mod.effect || raw == 0.0f)
+                return;
+            row.note += (row.note.empty() ? "" : "\n") + std::string("Fortify from ") + from + " " + Fmt("%+.0f", raw) +
+                        ": not applied, nothing on this follower reads it";
+        };
+        if (!mApplies)
+            unread(k.mod, mRaw, "enchantments");
+        if (!pApplies)
+            unread(k.power, pRaw, "potions");
 
         row.detail = OwnedPerks(actor, k.value);
         s.rows.push_back(std::move(row));
