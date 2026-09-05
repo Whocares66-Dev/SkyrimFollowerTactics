@@ -16,7 +16,9 @@
 namespace RE
 {
 class Actor;
+class Effect;
 class MagicItem;
+class TESDescription;
 } // namespace RE
 
 namespace ft::game
@@ -96,6 +98,28 @@ struct InventoryItem
 // One line per effect of a spell, potion or enchantment: its description
 // with the magnitude and duration filled in, as the item card shows it.
 [[nodiscard]] std::string EffectLines(const RE::MagicItem *magic);
+// The same for a spell the actor casts: <mag> and <dur> are what THEY would
+// get, perks and Fortify effects applied, not the record's base numbers.
+[[nodiscard]] std::string EffectLines(RE::Actor *caster, RE::MagicItem *spell);
+
+// An effect's magnitude and duration as this actor casts it. The record's
+// number, put through the perk entry points the engine applies when the
+// effect is made (ModSpellMagnitude, ModSpellDuration): real perks such as
+// Augmented Flames and Necromage, and the hidden per-actor perks that turn
+// the Fortify <School> actor values into the same entry points -- the
+// PowerModifier for potions, the Modifier for enchantments (docs/RESEARCH.md
+// 6). What it does NOT include is dual casting, a flag of the cast itself.
+[[nodiscard]] float ActualMagnitude(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect);
+[[nodiscard]] float ActualDuration(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect);
+
+// A spell's description with <mag>, <dur> and <area> filled for THIS caster,
+// from the costliest effect, as the engine fills them -- for the player. The
+// engine's own substitution is the player's wherever it runs (the magic
+// menu is the player's), so a follower's page asks for the text with no
+// parent, which leaves the tokens in, and fills them with the same numbers
+// the effect lines above it carry. Falls back to the engine's text when the
+// tokens have already been filled.
+[[nodiscard]] std::string DescriptionFor(RE::Actor *caster, RE::MagicItem *spell, RE::TESDescription &description);
 
 // The hands a piece of armour takes, read from its equip slot and that
 // slot's parents rather than from a list of known shields: the game's

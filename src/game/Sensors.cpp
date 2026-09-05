@@ -1,6 +1,7 @@
 #include "game/Sensors.h"
 
 #include "game/Hits.h"
+#include "game/Inventory.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
 
@@ -778,13 +779,15 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         s.spells.costs.push_back({spell->GetFormID(), spell->CalculateMagickaCost(actor)});
         // A Reanimate's cap: the level of corpse it can raise is its
         // effect's magnitude (Reanimate Corpse 13, Revenant 21, Dread
-        // Zombie 30). The Corpse subject measures the dead against it.
+        // Zombie 30) -- as SHE casts it, perks and Fortify effects in, the
+        // same way the engine judges the corpse. The Corpse subject
+        // measures the dead against it.
         for (const auto *effect : spell->effects)
         {
             if (effect && effect->baseEffect &&
                 effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate)
             {
-                s.spells.caps.push_back({spell->GetFormID(), static_cast<int>(effect->effectItem.magnitude)});
+                s.spells.caps.push_back({spell->GetFormID(), static_cast<int>(ActualMagnitude(actor, spell, effect))});
                 break;
             }
         }

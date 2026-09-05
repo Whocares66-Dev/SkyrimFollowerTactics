@@ -201,7 +201,9 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     }
     entry.cast = CastWord(spell->GetDelivery(), spell->GetCastingType());
     entry.castValue = static_cast<int>(spell->GetDelivery());
-    entry.magnitude = costliest ? costliest->effectItem.magnitude : 0.0f;
+    // Her numbers, not the record's: the perk entry points applied, as the
+    // engine applies them when the effect is made.
+    entry.magnitude = costliest ? ActualMagnitude(actor, spell, costliest) : 0.0f;
     {
         // The equip slot record: the left-hand or right-hand slot means that
         // hand only -- the NPC-only variants, which carry the same display
@@ -247,9 +249,9 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     }
     if (costliest)
     {
-        stats.rows.push_back(Row("Magnitude", Fmt("%.0f", costliest->effectItem.magnitude)));
-        if (costliest->effectItem.duration > 0)
-            stats.rows.push_back(Row("Duration", std::to_string(costliest->effectItem.duration) + " s"));
+        stats.rows.push_back(Row("Magnitude", Fmt("%.0f", entry.magnitude)));
+        if (const float duration = ActualDuration(actor, spell, costliest); duration > 0.0f)
+            stats.rows.push_back(Row("Duration", Fmt("%.0f", duration) + " s"));
     }
     if (const float charge = spell->GetChargeTime(); charge > 0.0f)
         stats.rows.push_back(Row("Charge Time", Fmt("%.1f s", charge)));
@@ -263,10 +265,8 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     if (power)
         AddTimeSection(actor, {spell}, entry);
 
-    entry.effects = EffectLines(spell);
-    RE::BSString text;
-    spell->GetDescription(text, spell);
-    entry.description = text.c_str() ? text.c_str() : "";
+    entry.effects = EffectLines(actor, spell);
+    entry.description = DescriptionFor(actor, spell, *spell);
     return true;
 }
 
@@ -311,10 +311,10 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
     }
 
     if (shout->variations[0].spell)
-        entry.effects = EffectLines(shout->variations[0].spell);
-    RE::BSString text;
-    shout->GetDescription(text, shout);
-    entry.description = text.c_str() ? text.c_str() : "";
+        entry.effects = EffectLines(actor, shout->variations[0].spell);
+    // A shout's description is its own record's; its numbers, when it has
+    // any, are the first word's spell's.
+    entry.description = DescriptionFor(actor, shout->variations[0].spell, *shout);
     return true;
 }
 

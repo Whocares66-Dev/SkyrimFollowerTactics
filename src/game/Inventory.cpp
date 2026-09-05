@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -359,7 +360,12 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
 
 } // namespace
 
-std::string EffectLines(const RE::MagicItem *magic)
+namespace
+{
+// One line per effect: the effect's own description with its numbers put
+// in, or its name. `magnitude` and `duration` say what numbers.
+std::string EffectLinesWith(const RE::MagicItem *magic, const std::function<float(const RE::Effect *)> &magnitude,
+                            const std::function<float(const RE::Effect *)> &duration)
 {
     std::string out;
     if (!magic)
@@ -372,14 +378,64 @@ std::string EffectLines(const RE::MagicItem *magic)
         std::string line = text && *text ? text : NameOf(effect->baseEffect);
         if (line.empty())
             continue;
-        ReplaceNoCase(line, "<mag>", Fmt("%.0f", effect->effectItem.magnitude));
-        ReplaceNoCase(line, "<dur>", std::to_string(effect->effectItem.duration));
+        ReplaceNoCase(line, "<mag>", Fmt("%.0f", magnitude(effect)));
+        ReplaceNoCase(line, "<dur>", Fmt("%.0f", duration(effect)));
         ReplaceNoCase(line, "<area>", std::to_string(effect->effectItem.area));
         if (!out.empty())
             out += '\n';
         out += line;
     }
     return out;
+}
+} // namespace
+
+std::string EffectLines(const RE::MagicItem *magic)
+{
+    return EffectLinesWith(
+        magic, [](const RE::Effect *e) { return e->effectItem.magnitude; },
+        [](const RE::Effect *e) { return static_cast<float>(e->effectItem.duration); });
+}
+
+std::string EffectLines(RE::Actor *caster, RE::MagicItem *spell)
+{
+    return EffectLinesWith(
+        spell, [&](const RE::Effect *e) { return ActualMagnitude(caster, spell, e); },
+        [&](const RE::Effect *e) { return ActualDuration(caster, spell, e); });
+}
+
+float ActualMagnitude(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect)
+{
+    float value = effect ? effect->effectItem.magnitude : 0.0f;
+    if (caster && spell)
+        RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModSpellMagnitude, caster, spell,
+                                            static_cast<RE::Actor *>(nullptr), &value);
+    return value;
+}
+
+std::string DescriptionFor(RE::Actor *caster, RE::MagicItem *spell, RE::TESDescription &description)
+{
+    RE::BSString text;
+    description.GetDescription(text, nullptr);
+    std::string out = text.c_str() ? text.c_str() : "";
+    if (out.empty())
+        return out;
+    const auto *costliest = spell ? spell->GetCostliestEffectItem() : nullptr;
+    if (costliest)
+    {
+        ReplaceNoCase(out, "<mag>", Fmt("%.0f", ActualMagnitude(caster, spell, costliest)));
+        ReplaceNoCase(out, "<dur>", Fmt("%.0f", ActualDuration(caster, spell, costliest)));
+        ReplaceNoCase(out, "<area>", std::to_string(costliest->effectItem.area));
+    }
+    return out;
+}
+
+float ActualDuration(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect)
+{
+    float value = effect ? static_cast<float>(effect->effectItem.duration) : 0.0f;
+    if (caster && spell)
+        RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModSpellDuration, caster, spell,
+                                            static_cast<RE::Actor *>(nullptr), &value);
+    return value;
 }
 
 const char *DisplayName(ItemCategory category)
