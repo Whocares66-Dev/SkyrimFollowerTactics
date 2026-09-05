@@ -193,8 +193,16 @@ bool EquippedIn(RE::Actor *actor, RE::TESForm *form, Hand hands)
 // for the actor's next update, and an actor gets no update while the clock
 // is frozen, so a click in the panel showed nothing until the panel closed
 // (20:26, Marcurio's boots). The click path takes `now`; the tick, with
-// time running, keeps the queue. Items go on with the prevent-removal flag,
-// the pin; a spell has no such flag.
+// time running, keeps the queue.
+//
+// WITHOUT the engine's prevent-removal flag, since 2026-09-04. The flag is
+// worn-item state that lives in the save, so it outlived the mod: with the
+// DLL removed, the engine's equip-best swap had its unequip of a pinned
+// dagger refused by the flag while its equip of the new sword went ahead,
+// and the follower stood with both marked equipped in one hand. The pin is
+// kept by the equip detour, the score hook and the watchdog, all of which
+// exist only while the DLL does -- so now the pin does too, and nothing of
+// ours is left in a save.
 // For the log: the selected spell and the hand's caster, both hands. The
 // two differ while a spell equip is only half done -- the menu's equip
 // sounds once at the click and once more when the panel closes (14:19),
@@ -237,21 +245,7 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
     // With the engine's equip sound, at the actor, as when a follower is
     // handed armour. The watchdog's putting-back sounds too: it only acts
     // when the thing is actually off, so each sound marks a real event.
-    manager->EquipObject(actor, object, nullptr, 1, slot, !now, true, true, false);
-}
-
-// Equip an item WITHOUT the pin, for letting go of one while it stays on.
-void EquipPlain(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
-{
-    auto *manager = RE::ActorEquipManager::GetSingleton();
-    if (!manager)
-        return;
-    const RE::BGSEquipSlot *slot = nullptr;
-    if (object->Is(RE::FormType::Weapon) && hands != Hand::Both && hands != Hand::None)
-        slot = HandSlot(hands);
-    const OwnEquip ours;
-    // Silent: this is the thing already on, put back without its lock.
-    manager->EquipObject(actor, object, nullptr, 1, slot, false, false, false, false);
+    manager->EquipObject(actor, object, nullptr, 1, slot, !now, false, true, false);
 }
 
 // Take a form off.
@@ -367,11 +361,13 @@ constexpr bool kDualWieldOnLeftPin = false;
                  style->GetFormID(), ours->GetFormID());
 }
 
-// A pinned item is locked against the engine's own swap -- the Creation Kit
-// wiki: prevent-removal "does prevent removal when using EquipItem(OtherItem)"
-// -- so before something new goes on, whatever it displaces has to be
-// unpinned and taken off by us, or the equip silently does nothing. That is
-// what happened with iron armour pinned and robes clicked.
+// Before something new goes on, whatever it displaces is unpinned and
+// taken off by us, so the book and the body agree: the engine's own
+// displacement would leave the old pin in the book, and the watchdog would
+// put it straight back over the new thing. (While pins carried the
+// prevent-removal flag this was the only way at all -- the locked item
+// made the engine's equip silently do nothing, iron armour pinned and
+// robes clicked.)
 // What the planner says must give way for a new pin, taken off.
 void ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Holdable &incoming, Hand hands)
 {
@@ -457,16 +453,10 @@ void RestorePinsAfterFight(RE::Actor *actor, std::vector<Pin> &pins, const std::
             UnequipForm(actor, thing, gone.hands, true);
             continue;
         }
+        // Forgetting the pin is the whole of it: nothing on the item marks
+        // it pinned, so there is nothing to lift.
         logger::info("{} fight over -- {}{} pinned during it stays on, unpinned", Describe(actor), name,
                      HandTag(gone.hands));
-        // An item's lock lives on the worn item, and the engine offers no
-        // way to lift it in place: off, then on again without the flag. A
-        // spell has no lock; forgetting the pin is the whole of it.
-        if (auto *object = thing->As<RE::TESBoundObject>(); object && !thing->Is(RE::FormType::Spell))
-        {
-            UnequipForm(actor, object, gone.hands, true);
-            EquipPlain(actor, object, gone.hands);
-        }
     }
     for (const Pin &pin : settle.restored)
     {
@@ -530,12 +520,11 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             // Spells first: a SpellItem is a bound object too, and the
             // inventory branch dropped every spell pin as "no longer
             // carried" (00:26, Close Wounds).
-            // A spell has no prevent-removal flag. Out of combat the engine's
-            // equip-best put a sword over pinned Flames every update, and
-            // this put it back every tick -- the draw loop of 17:31. The
-            // equip detour refuses that sword now; if this line repeats, the
-            // detour has missed a path, and the hand state beside it says
-            // which.
+            // Out of combat the engine's equip-best put a sword over pinned
+            // Flames every update, and this put it back every tick -- the
+            // draw loop of 17:31. The equip detour refuses that sword now,
+            // for items as for spells; if this line repeats, the detour has
+            // missed a path, and the hand state beside it says which.
             const bool casting = IsMidCast(actor);
             if (form->Is(RE::FormType::Spell))
             {
@@ -971,20 +960,12 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         }
         break;
     case WearRequest::Unpin:
-        // An item's lock lives on the worn item, and the engine offers no
-        // way to lift it in place: off, then on again without the flag.
-        // A spell has no lock; forgetting the pin is the whole of it.
+        // Forgetting the pin is the whole of it, for an item as for a
+        // spell: nothing on the thing marks it pinned. (With the
+        // prevent-removal flag an item had to come off and go back on
+        // without it -- and that path once took a spell off and "put it
+        // back" with an item equip, 01:47, Chain Lightning.)
         logger::info("{} told to keep {}{} but not held to it", Describe(actor), name, HandTag(hands));
-        // Spell first: a SpellItem is a bound object too, and the item
-        // branch took a spell off and "put it back" with an item equip,
-        // which left it off (01:47, Chain Lightning).
-        if (thing->Is(RE::FormType::Spell))
-            break;
-        if (auto *object = thing->As<RE::TESBoundObject>())
-        {
-            UnequipForm(actor, object, hands, true);
-            EquipPlain(actor, object, hands);
-        }
         break;
     case WearRequest::TakeOff:
         logger::info("{} told to put away {}{}", Describe(actor), name, HandTag(hands));

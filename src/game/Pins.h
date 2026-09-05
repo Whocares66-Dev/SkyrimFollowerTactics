@@ -128,9 +128,9 @@ void WatchCombatScores();
 // Once, at data load: detour the engine's equip so that an equip of ITS
 // choosing -- the best weapon on leaving combat, the outfit on a cell
 // change, a better arrow -- is refused when it would take a hand or slot a
-// pin holds. Our own equips pass. This is what holds a pinned SPELL out of
-// combat, where it has no prevent-removal flag to hold it; for items it
-// doubles the flag. The approach Follower Equip Control ships.
+// pin holds. Our own equips pass. This is what holds a pin out of combat,
+// item or spell: the engine's prevent-removal flag is deliberately not
+// used (EquipPinned says why). The approach Follower Equip Control ships.
 void RefuseEquipsAgainstPins();
 
 // Republish the views owed after a spell left a hand: the Papyrus native

@@ -81,7 +81,7 @@ The record carries only the fields a rule reads, so a status is written only und
 
 A pin is a promise about what is worn, and a load re-dresses nobody. So a saved pin is taken back only if, when the follower is first seen, they still have the thing **on**, in those hands (worn, for armour and ammunition), and it is still pinnable. Otherwise it is forgotten with an `info` line: the thing is gone, or the save was played on without the mod and the game re-dressed them in the meantime. Nothing is equipped on load.
 
-Removing the mod: SKSE drops our co-save block on the next save, the follower keeps whatever they had on, and a later reinstall starts with no tactics. The one trace left behind is the engine's own prevent-removal flag on the items the mod pinned (`EquipObject`'s force flag); what the engine does with that flag once nothing renews it is not verified and is in `docs/TODO.md`.
+Removing the mod: SKSE drops our co-save block on the next save, the follower keeps whatever they had on, and a later reinstall starts with no tactics. Nothing is written onto a pinned item either. The engine's prevent-removal flag was set on pins until 2026-09-04, and it outlived the mod: it does not lift on its own, and it left the engine's equip-best swap half done, with the old and the new weapon both marked equipped. Pins are now kept entirely by the mod's own equip detour, score hook and watchdog, which go away with the DLL. A save made with a build older than that still carries the flag on whatever was pinned then; unpin those in the panel once, or take the item off, and it is gone.
 
 ## Versioning, and what an unknown entry does
 

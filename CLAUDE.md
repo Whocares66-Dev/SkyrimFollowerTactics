@@ -168,13 +168,17 @@ exists.
   and the item and model change at once. The item's ENCHANTMENT still waits
   for her next update. Do not apply it early with `UpdateArmorAbility`: the
   engine applies it again when time runs, and the effect doubles.
-- **Prevent-removal (the force flag on EquipObject) holds against the
-  equip-best swap but not against a spell equip.** Verified in play: pinned
-  robes stop iron armour going on; a pinned dagger comes off the moment a
-  spell goes into that hand, the combat AI's own or our UseMagic package's.
-  The watchdog in `Pins.cpp` puts it back, by the core's `PutBackNow`: at
-  once, except while one of our casts holds the hand. The rule is tested
-  against a simulation of this behaviour in `tests/test_loadout.cpp`.
+- **Prevent-removal (the force flag on EquipObject) is worn-item state in
+  the save, and it outlives the mod.** Verified in play (2026-09-04): with the
+  DLL removed, the engine's equip-best swap had its unequip of a pinned dagger
+  refused by the flag while its equip of the new sword went ahead, leaving
+  both marked equipped in one hand. Pins no longer set it; the equip detour,
+  the score hook and the watchdog in `Pins.cpp` keep the pin instead, and all
+  three go away with the DLL. Also verified earlier: neither the flag nor the
+  detour holds against a SPELL equip, the combat AI's own or our UseMagic
+  package's; the watchdog puts the item back, by the core's `PutBackNow`: at
+  once, except while one of our casts holds the hand. Tested against a
+  simulation in `tests/test_loadout.cpp`.
 
 ## CommonLibSSE gotchas already hit
 

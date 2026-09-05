@@ -109,10 +109,16 @@ in `docs/PLAN.md`.
   while they are away ("carried from the loaded save"); a pin survives,
   and a pin on a thing sold before the save is forgotten ("does not hold
   -- not worn now" in the log).
-- **Uninstall, in play.** Pin an item, save, remove the DLL, load: does
-  the engine's prevent-removal flag keep the item on for good, or lift on
-  the next outfit refresh? If it holds, the mod's uninstall note has to
-  say "unpin before removing", or the take-off must clear it.
+- **Pins without the prevent-removal flag, in play.** The flag outlived
+  the mod (2026-09-04: DLL removed, an elven sword handed over, the
+  pinned iron dagger's unequip refused and the sword's equip done
+  anyway, both marked equipped in one hand), so pins no longer set it
+  and rely on the equip detour, the score hook and the watchdog alone.
+  Verify what the flag used to cover: a pinned dagger holds through a
+  fight (the best-weapon swap on leaving it) and a cell change (the
+  outfit refresh); pinned robes keep handed-over iron armour off. If
+  the watchdog's "took off pinned ... putting it back on" line repeats
+  out of combat, the detour has missed a path the flag was covering.
 - **Shareable named profiles.** One file per follower is the whole of
   it today; copying a list between followers, or a profile a forum can
   hand round, is a second kind of file over the same format.

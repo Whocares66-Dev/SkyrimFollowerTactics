@@ -11,14 +11,17 @@
 // how; that is what keeps it testable.
 //
 // A pin keeps its promise by three means, each covering what the others
-// cannot. An ITEM is equipped with the engine's prevent-removal flag, which
-// stops the engine's own equip-best swap (verified: pinned robes kept iron
-// armour off). The combat AI SCORES every option in its list each time it
+// cannot, and all of them ours: nothing is written onto the item, so a
+// save played without the mod carries no pin. The engine's own EQUIP is
+// detoured, and one of its choosing -- the best weapon on leaving combat,
+// the outfit on a cell change -- is refused when it would take a pinned
+// hand or slot. The combat AI SCORES every option in its list each time it
 // decides what to hold, and that score is answered by us: zero for anything
 // that competes for a pinned hand, so it is never chosen (verified: a pinned
 // bow held at melee range against a sword the AI kept re-listing). And a
-// WATCHDOG puts back, out of combat, whatever got past both. A spell has no
-// flag, so for it the last two carry the promise alone.
+// WATCHDOG puts back, out of combat, whatever got past both. (The engine's
+// prevent-removal flag once doubled the first for items; it lives on the
+// worn item in the save and outlived the mod, so it is no longer set.)
 
 #include <cstdint>
 #include <vector>
@@ -215,8 +218,8 @@ void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool movi
 // A pin the game has taken off goes back on -- except a HAND pin while one
 // of our own casts is in progress: the UseMagic package puts its spell in a
 // hand, and a pinned dagger comes off the moment a spell wants the hand
-// (the prevent-removal flag holds against the engine's equip-best swap,
-// not against a spell equip). The cast is a borrow: once it has run, the
+// (the equip detour answers the engine's equip-best swap, not a spell
+// equip). The cast is a borrow: once it has run, the
 // dagger goes back. Until it has, putting it back would knock the spell
 // out of the hand mid-cast. Armour and ammunition are contested by no cast
 // and hold throughout. Out of a fight, everything goes straight back; the
