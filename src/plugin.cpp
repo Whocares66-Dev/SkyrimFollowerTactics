@@ -9,6 +9,7 @@
 #include "game/Hits.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
+#include "game/Profiles.h"
 #include "game/Tactics.h"
 #include "game/UI.h"
 
@@ -215,6 +216,10 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
 
     logger::info("FollowerTactics starting up");
 
+    // Tactics live in the co-save: registered here, before any save can
+    // be loaded.
+    ft::game::InstallSerialization();
+
     SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message *message) {
         if (message->type == SKSE::MessagingInterface::kDataLoaded)
             OnDataLoaded();
@@ -222,12 +227,11 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
         // A load or a new game invalidates every handle the package pool
         // holds, and a save made mid-cast can carry a follower's rank into
         // the new session. Drop the pool; the first tick sweeps the ranks.
+        // (The rules, switches and pins are reset by the serialization
+        // revert callback, which runs before the save's records load.)
         if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
             message->type == SKSE::MessagingInterface::kNewGame)
-        {
             ft::game::ResetPackages();
-            ft::game::ReloadProfiles();
-        }
     });
 
     return true;

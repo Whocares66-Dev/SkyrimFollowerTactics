@@ -1,26 +1,112 @@
 #include "game/Profiles.h"
 
+#include "game/Tactics.h"
 #include "game/Util.h"
 
-#include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <string>
-#include <system_error>
+#include <unordered_map>
+#include <vector>
 
 namespace ft::game
 {
 namespace
 {
 
-// Relative to the game's working directory, which is the game folder --
-// where every SKSE plugin keeps its files. Under Mod Organizer the writes
-// land in its overwrite folder, as they do for any mod that writes here.
-const std::filesystem::path kFolder = "Data/SKSE/Plugins/FollowerTactics/followers";
+// The co-save. SKSE keeps one block per plugin, by this id, and drops the
+// block on the next save when the plugin is gone -- which is what makes
+// removing the mod clean.
+constexpr std::uint32_t kPluginId = 'FTAC';
+// One record per follower: the key, then the JSON text, each as a length
+// and the bytes. The record's version is the format's schema number, so
+// a record from a newer build says so before it is parsed.
+constexpr std::uint32_t kFollowerRecord = 'PROF';
 
-std::filesystem::path FileFor(const Identity &who)
+// The records the loaded save holds, by key, until a follower claims
+// theirs. Whatever is still here when the game saves is written back as
+// it came: a dismissed follower's tactics survive any number of saves
+// made while they are away. Game thread.
+std::unordered_map<std::string, std::string> g_saved;
+
+bool WriteString(const SKSE::SerializationInterface *intfc, const std::string &s)
 {
-    return kFolder / (who.key + ".json");
+    const auto length = static_cast<std::uint32_t>(s.size());
+    return intfc->WriteRecordData(length) && (length == 0 || intfc->WriteRecordData(s.data(), length));
+}
+
+bool ReadString(const SKSE::SerializationInterface *intfc, std::string &s)
+{
+    std::uint32_t length = 0;
+    if (intfc->ReadRecordData(length) != sizeof length)
+        return false;
+    s.resize(length);
+    return length == 0 || intfc->ReadRecordData(s.data(), length) == length;
+}
+
+bool WriteFollower(const SKSE::SerializationInterface *intfc, const std::string &key, const std::string &text)
+{
+    return intfc->OpenRecord(kFollowerRecord, static_cast<std::uint32_t>(ft::kProfileSchema)) &&
+           WriteString(intfc, key) && WriteString(intfc, text);
+}
+
+void OnSave(SKSE::SerializationInterface *intfc)
+{
+    std::size_t live = 0;
+    std::size_t carried = 0;
+    for (const Filed &filed : ProfilesToSave())
+    {
+        if (!WriteFollower(intfc, filed.who.key, ft::WriteProfile(filed.profile, GameFormCodec())))
+        {
+            logger::error("tactics: {}: could not write tactics to the save", filed.who.name);
+            continue;
+        }
+        ++live;
+    }
+    for (const auto &[key, text] : g_saved)
+    {
+        if (!WriteFollower(intfc, key, text))
+        {
+            logger::error("tactics: {}: could not write tactics back to the save", key);
+            continue;
+        }
+        ++carried;
+    }
+    logger::info("tactics: saved {} follower record(s), {} carried from the loaded save", live, carried);
+}
+
+void OnLoad(SKSE::SerializationInterface *intfc)
+{
+    g_saved.clear();
+    std::uint32_t type = 0;
+    std::uint32_t version = 0;
+    std::uint32_t length = 0;
+    while (intfc->GetNextRecordInfo(type, version, length))
+    {
+        if (type != kFollowerRecord)
+        {
+            logger::warn("tactics: co-save record {:08X} is not one this build knows -- skipped", type);
+            continue;
+        }
+        std::string key;
+        std::string text;
+        if (!ReadString(intfc, key) || !ReadString(intfc, text))
+        {
+            logger::error("tactics: a co-save record is cut short -- skipped");
+            continue;
+        }
+        if (version > static_cast<std::uint32_t>(ft::kProfileSchema))
+            logger::warn("tactics: {}: saved by a newer build (schema {}) -- reading what this one understands", key,
+                         version);
+        g_saved[key] = std::move(text);
+    }
+    logger::info("tactics: the save holds tactics for {} follower(s)", g_saved.size());
+}
+
+// Before a load and on a new game: nothing from the last session may
+// carry over. The new save's records follow, in OnLoad, or none do.
+void OnRevert(SKSE::SerializationInterface *)
+{
+    g_saved.clear();
+    ForgetSession();
 }
 
 } // namespace
@@ -74,102 +160,42 @@ Identity IdentifyFollower(RE::Actor *actor)
     {
         who.key = fmt::format("dynamic-{:08X}", actor->GetFormID());
         who.form = fmt::format("0x{:X}", actor->GetFormID());
-        logger::warn("tactics: {} has no record in any plugin -- tactics file keyed by reference id, "
-                     "which another save will not share",
-                     Describe(actor));
+        logger::warn("tactics: {} has no record in any plugin -- tactics keyed by reference id", Describe(actor));
     }
     return who;
 }
 
-std::optional<ft::Profile> LoadProfile(const Identity &who)
+void InstallSerialization()
 {
-    const auto path = FileFor(who);
-    std::error_code ec;
-    if (!std::filesystem::exists(path, ec))
-        return std::nullopt;
-
-    std::ifstream in(path, std::ios::binary);
-    if (!in)
+    const auto *serialization = SKSE::GetSerializationInterface();
+    if (!serialization)
     {
-        logger::error("tactics: {}: cannot open {}", who.name, path.string());
-        return std::nullopt;
+        logger::error("tactics: no SKSE serialization interface -- tactics will not be saved");
+        return;
     }
-    std::stringstream text;
-    text << in.rdbuf();
-
-    auto read = ft::ReadProfile(text.str(), GameFormCodec());
-    for (const auto &warning : read.warnings)
-        logger::warn("tactics: {}: {}: {}", who.name, path.filename().string(), warning);
-    if (!read.profile)
-    {
-        logger::error("tactics: {}: {} is not a tactics file -- starting with none; the next edit "
-                      "overwrites it",
-                      who.name, path.string());
-        return std::nullopt;
-    }
-    logger::info("tactics: {}: read {} rule(s) from {}, {}", who.name, read.profile->rules.rules.size(), path.string(),
-                 read.profile->enabled ? "on" : "off");
-    return std::move(read.profile);
+    serialization->SetUniqueID(kPluginId);
+    serialization->SetSaveCallback(OnSave);
+    serialization->SetLoadCallback(OnLoad);
+    serialization->SetRevertCallback(OnRevert);
 }
 
-void SaveProfile(const Identity &who, const ft::Profile &profile)
+std::optional<ft::Profile> ClaimSaved(const Identity &who)
 {
-    const auto path = FileFor(who);
-    std::error_code ec;
-    std::filesystem::create_directories(kFolder, ec);
-    if (ec)
-    {
-        logger::error("tactics: {}: cannot create {}: {}", who.name, kFolder.string(), ec.message());
-        return;
-    }
+    auto node = g_saved.extract(who.key);
+    if (node.empty())
+        return std::nullopt;
 
-    // Never into the file itself. The new text goes to a file beside it,
-    // is confirmed there -- written without error, and the size on disk
-    // is the size of the text -- and only then swapped into place, one
-    // rename that replaces the old file in the same step (MoveFileEx with
-    // REPLACE_EXISTING, atomic on NTFS). A crash at any point leaves
-    // either the last good file or the new one, never half of either.
-    const std::string text = ft::WriteProfile(profile, GameFormCodec());
-    const auto temp = path.string() + ".tmp";
+    auto read = ft::ReadProfile(node.mapped(), GameFormCodec());
+    for (const auto &warning : read.warnings)
+        logger::warn("tactics: {}: saved tactics: {}", who.name, warning);
+    if (!read.profile)
     {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out)
-        {
-            logger::error("tactics: {}: cannot write {}", who.name, temp);
-            return;
-        }
-        out << text;
-        out.flush();
-        if (!out.good())
-        {
-            logger::error("tactics: {}: writing {} failed -- the last good file is kept", who.name, temp);
-            out.close();
-            std::filesystem::remove(temp, ec);
-            return;
-        }
+        logger::error("tactics: {}: the saved tactics could not be read -- starting with none", who.name);
+        return std::nullopt;
     }
-    const auto written = std::filesystem::file_size(temp, ec);
-    if (ec || written != text.size())
-    {
-        logger::error("tactics: {}: {} holds {} of {} bytes -- the last good file is kept", who.name, temp,
-                      ec ? 0 : written, text.size());
-        std::filesystem::remove(temp, ec);
-        return;
-    }
-    std::filesystem::rename(temp, path, ec);
-    if (ec)
-    {
-        // A virtual filesystem may refuse to move over a file it serves
-        // from elsewhere; copying into place is the fallback.
-        std::filesystem::copy_file(temp, path, std::filesystem::copy_options::overwrite_existing, ec);
-        std::filesystem::remove(temp);
-        if (ec)
-        {
-            logger::error("tactics: {}: cannot replace {}: {}", who.name, path.string(), ec.message());
-            return;
-        }
-    }
-    logger::info("tactics: {}: wrote {} rule(s) to {}", who.name, profile.rules.rules.size(), path.string());
+    logger::info("tactics: {}: {} rule(s) and {} pin(s) from the save, {}", who.name, read.profile->rules.rules.size(),
+                 read.profile->pins.size(), read.profile->enabled ? "on" : "off");
+    return std::move(read.profile);
 }
 
 } // namespace ft::game

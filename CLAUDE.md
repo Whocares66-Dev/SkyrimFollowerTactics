@@ -5,7 +5,7 @@ A Dragon Age: Origins-style tactics system for Skyrim SE/AE followers: an ordere
 
 Read `docs/PLAN.md` first. `docs/RESEARCH.md` has the sourced findings behind it, with
 explicit uncertainty flags. `docs/MAGIC.md` is how casting works and what does not;
-`docs/PROFILES.md` is the tactics file on disk (format, location, versioning);
+`docs/PROFILES.md` is how tactics live in the save (format, when, versioning);
 `docs/TODO.md` is what is still to do.
 
 ## The one architectural rule
@@ -243,10 +243,10 @@ SetFollower`), never `setplayerteammate`. Cooldowns and leases run on game time.
 actions per rule done one per tick, equip actions that pin, and conditions for status,
 armour, resistance, attacked-by, the party's extremes and the player's fight
 (`docs/CONDITIONS.md`); `Snapshot::allies` / `enemies` are populated by definition
-(the party, and whoever the compass paints red). Rules persist: one JSON file per
-follower with the rules, the switch and the player's pins, read when the tick first
-sees them and written when the panel closes (`docs/PROFILES.md`; built 2026-09-04, not
-yet verified in play). Still missing:
+(the party, and whoever the compass paints red). Rules persist in the SKSE co-save:
+one JSON record per follower with the rules, the switch and the player's pins, written
+when the game saves and taken back when the tick first sees the follower after a load
+(`docs/PROFILES.md`; built 2026-09-04, not yet verified in play). Still missing:
 shareable named profiles. Actions to come are in `docs/ACTIONS.md`.
 
 **Defaults (2026-09-04):** a follower starts with NO rules; both switches start on,

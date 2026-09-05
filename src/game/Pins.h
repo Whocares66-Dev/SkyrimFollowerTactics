@@ -57,9 +57,8 @@ namespace ft::game
 // or off, on the same half-second clock, by a watchdog that looks only at the
 // pinned items and does nothing at all when nothing is pinned.
 //
-// Callable from any thread: the work is queued to the game thread. A
-// request from the panel is an edit the follower's file must see, and is
-// noted as one (Tactics.h NoteEdit).
+// Callable from any thread: the work is queued to the game thread. The
+// pins go into the save with the rules (game/Profiles.h).
 enum class WearRequest
 {
     Pin,
@@ -81,22 +80,20 @@ void ReleaseKind(RE::Actor *actor, Kind kind);
 // This follower's pins, as the planner and the snapshot take them.
 [[nodiscard]] std::vector<Pin> PinsOf(ft::ActorId id);
 
-// The player's pins, for the file: the book as the panel left it, which in
-// a fight is the one remembered for after it, not the one the rules are
-// using. Game thread.
+// The player's pins, for the save: the book as the panel left it, which
+// in a fight is the one remembered for after it, not the one the rules
+// are using. Game thread.
 [[nodiscard]] std::vector<ft::PinEntry> PlayerPinsOf(ft::ActorId id);
 
-// The pins from the follower's file, taken back into the book -- each only
-// if the follower still has the thing on, in those hands; a pin is a
-// promise about what is worn, and a load re-dresses nobody. One that does
-// not hold is logged and forgotten: the thing was lost, sold or swapped,
-// or the save was made with the mod removed. Game thread, at first sight,
-// before the watchdog's first pass.
+// The pins from the follower's saved record, taken back into the book --
+// each only if the follower still has the thing on, in those hands; a pin
+// is a promise about what is worn, and a load re-dresses nobody. One that
+// does not hold is logged and forgotten: the thing is gone, or the save
+// was played on without the mod. Game thread, at first sight, before the
+// watchdog's first pass.
 void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins);
 
-// Forget every book: on load game and new game, before the files are read
-// again. A different save's followers may share reference ids with the
-// last one's.
+// Forget every book: before a save loads, and on a new game.
 void ForgetPins();
 
 // The planner's description of a form: what it is, which hands its record

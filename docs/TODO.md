@@ -100,14 +100,15 @@ in `docs/PLAN.md`.
   whoever is in combat and hostile to the player. Verify against the log's
   once-per-fight "allies / enemies" line that a dead enemy drops out and a
   distant hostile is not counted before the player is in its fight.
-- **Tactics files, in play.** Written on panel close and read at first
-  sight (`docs/PROFILES.md`), built 2026-09-04 and not yet run in game.
-  Verify: a rule survives a restart; the file lands in MO2's overwrite;
-  the panel's close event fires from the framework (the log says
-  "wrote N rule(s)"); a hand-edited file with an unknown predicate loses
-  that rule and keeps the rest, with the warning in the log; a pin
-  survives a restart, and a pin on a thing sold before the restart is
-  forgotten ("does not hold -- not worn now" in the log).
+- **Tactics in the save, in play.** Written by the SKSE save callback
+  and taken back at first sight after a load (`docs/PROFILES.md`), built
+  2026-09-04 and not yet run in game. Verify: a rule survives save and
+  load ("saved N follower record(s)" and "N rule(s) ... from the save" in
+  the log); an earlier save shows its own, earlier rules; a quicksave
+  carries them too; a dismissed follower's record survives a save made
+  while they are away ("carried from the loaded save"); a pin survives,
+  and a pin on a thing sold before the save is forgotten ("does not hold
+  -- not worn now" in the log).
 - **Uninstall, in play.** Pin an item, save, remove the DLL, load: does
   the engine's prevent-removal flag keep the item on for good, or lift on
   the next outfit refresh? If it holds, the mod's uninstall note has to

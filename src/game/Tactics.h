@@ -14,6 +14,7 @@
 #include "core/Evaluator.h"
 #include "game/Inventory.h"
 #include "game/Magic.h"
+#include "game/Profiles.h"
 #include "game/Sensors.h"
 
 #include <string>
@@ -122,24 +123,23 @@ void SetRules(ft::ActorId id, ft::RuleSet rules);
 // install changes nothing until a rule is written.
 [[nodiscard]] const ft::RuleSet &DefaultRuleSet();
 
-// The rules and the switch live on disk, one file per follower
-// (game/Profiles.h), and nothing is kept in the save. A follower's file is
-// read the first time the tick sees them -- the first tick after a load,
-// or on recruitment -- and edits are written by SaveEdits, which the panel
-// calls as it closes: every follower with an unsaved edit, in one pass.
-// Game thread, both.
-void SaveEdits();
+// The rules, the switch and the player's pins live in the save, one
+// record per follower (game/Profiles.h). Edits are the session's state,
+// and the game's own save is what keeps them: this is everything the
+// session holds, for the save callback. A follower's record is taken back
+// the first time the tick sees them after a load. Game thread.
+struct Filed
+{
+    Identity who;
+    ft::Profile profile;
+};
+[[nodiscard]] std::vector<Filed> ProfilesToSave();
 
-// An edit made outside SetRules and SetFollowerEnabled -- a pin from the
-// panel -- that the follower's file must see at the next SaveEdits. Any
-// thread.
-void NoteEdit(ft::ActorId id);
-
-// A different save is a different set of followers with, possibly, the
-// same reference ids: forget what was read, so the next tick reads each
-// follower's file afresh. Unsaved edits are written first. Game thread, on
-// load game and new game.
-void ReloadProfiles();
+// Before a save loads, and on a new game: forget every follower's rules,
+// switch and pins, so nothing from the last session carries into the
+// next. The loaded save's records follow. Game thread, from the revert
+// callback.
+void ForgetSession();
 
 // Rebuild and publish one follower's view now, out of turn: for a request
 // that has just changed her, so the panel answers before the next tick --

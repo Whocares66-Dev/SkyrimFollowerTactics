@@ -1026,7 +1026,6 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         if (!actor || !thing)
             return;
         Wear(actor, thing, request, hand, true);
-        NoteEdit(id);
         PublishFollower(actor);
     });
 }
