@@ -3613,7 +3613,8 @@ void DrawSummon(const SummonView &summon)
 
     Im::Spacing();
     {
-        // Who it is, for the console: the reference and its base.
+        // Who it is: the reference and its base, for the console, and the
+        // name beneath them.
         SheetSection identity{"Identity", {}, {}};
         char id[16];
         std::snprintf(id, sizeof(id), "%08X", summon.id);
@@ -3626,6 +3627,10 @@ void DrawSummon(const SummonView &summon)
         base.label = "Base ID";
         base.value = id;
         identity.rows.push_back(std::move(base));
+        SheetRow name;
+        name.label = "Name";
+        name.value = summon.name;
+        identity.rows.push_back(std::move(name));
         std::vector<SheetSection> sections{std::move(identity)};
         sections.insert(sections.end(), summon.sheet.begin(), summon.sheet.end());
         DrawSections(sections, false);

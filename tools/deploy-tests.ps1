@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Deploy the console batch files from test/ to everywhere Skyrim might look for them.
+    Deploy the console batch files from bat/ to everywhere Skyrim might look for them.
 
 .DESCRIPTION
     Two things about `bat` are easy to get wrong, and both fail the same way -- the
@@ -29,7 +29,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$src = Join-Path $repo 'test'
+$src = Join-Path $repo 'bat'
 
 if (-not (Test-Path (Join-Path $GameFolder 'SkyrimSE.exe'))) {
     throw "$GameFolder does not look like the Skyrim root (no SkyrimSE.exe)."

@@ -538,7 +538,7 @@ approach mostly routes around it.
 4. VS2022 + CMake + vcpkg + CommonLibSSE-NG. Start from
    [SkyrimDev/HelloWorld-using-CommonLibSSE-NG](https://github.com/SkyrimDev/HelloWorld-using-CommonLibSSE-NG)
    and set `SKYRIM_MODS_FOLDER` so a rebuild deploys the DLL straight into the MO2 dev mod.
-5. Test scenario — **no Creation Kit needed**, it is four console batch files in `test/`
+5. Test scenario — **no Creation Kit needed**, it is four console batch files in `bat/`
    (see `docs/TESTING.md`): `coc QASmoke` manually, then `bat ftsetup` / `ftspawn` /
    `fthurt` / `ftclean`. Plus a saved "clean dev save" parked in the test cell.
    **Discipline: any structural script/plugin change means a fresh save.** Papyrus bakes

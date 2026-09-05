@@ -3,7 +3,7 @@
 The Phase 1 scenario — player + follower + hostile monster, follower drinks a potion at low
 health — needs **no Creation Kit work at all**. It's four console batch files.
 
-Files live in `test/`. Copy them to the **Skyrim root**, next to `SkyrimSE.exe`.
+Files live in `bat/` (the console batch files; `tests/` is the Catch2 suite). Copy them to the **Skyrim root**, next to `SkyrimSE.exe`.
 (Two sources say root, one says `Data\`. Try root first; if `bat` reports it can't find the
 file, move them to `Data\`.)
 
@@ -62,7 +62,7 @@ prints the RefID, `cqf DialogueFollower SetFollower <refid>` calls the quest's o
 function, which is what the dialogue calls. It takes the ID as an argument, so it does not
 suffer from the batch-file selection problem. The alias log line is the check either way.
 
-Editing a file in `test/` changes nothing until `tools\deploy-tests.ps1` is run again: the
+Editing a file in `bat/` changes nothing until `tools\deploy-tests.ps1` is run again: the
 game reads the copies in the Skyrim root. A stale copy is invisible in the log except as
 `in the DialogueFollower alias: NO` on a follower who was "set up correctly".
 

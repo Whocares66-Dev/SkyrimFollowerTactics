@@ -143,7 +143,7 @@ packages: Marcurio releases slot 0 after 2.0 s: spell fired
 3. A self-cast rule: `IF self health < 50% THEN cast Fast Healing ON self`.
 4. `bat ftbear`, then read `FollowerTactics.log`.
 
-Edits under `test/` do nothing until `tools\deploy-tests.ps1` runs: the game
+Edits under `bat/` do nothing until `tools\deploy-tests.ps1` runs: the game
 reads the copies in the Skyrim root.
 
 ---
