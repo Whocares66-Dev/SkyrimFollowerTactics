@@ -447,25 +447,51 @@ void LogActiveEffects(RE::Actor *actor, const char *when)
 // hostile effects running on them by the kind of damage, the poison and
 // the disease by their spell type, the paralysis and the rest by the
 // actor's own flags. One walk of the effect list, a handful of flag reads.
-// The share of a blow the actor's armour turns away, as the engine works it
-// out: the rating it shows, plus a hidden 25 for each of the four main
-// pieces worn, times the scaling factor, capped. The Character sheet's
-// Resist Damage row does the same sum.
+// The share of a blow the actor's armour turns away, from the engine's own
+// two numbers rather than a recount of the slots: CalcArmorRating is the
+// rating as the engine applies it, perks included, and GetArmorBaseFactorSum
+// the hidden bonus for the pieces worn -- fArmorBaseFactor (0.03) per piece,
+// which is the "25 armour per piece" of the wikis in the engine's own
+// terms. Combined as the vanilla damage code does: rating x
+// fArmorScalingFactor / 100 + the hidden sum, capped at fMaxArmorRating.
+// The combination is the one thing not read from the engine -- it is inline
+// in the damage code, so a mod that hooks the FORMULA (Armor Rating
+// Rescaled, Armor Rating Redux) is not reflected; one that changes the
+// settings or the ratings is. The Character sheet's Armor row shows this
+// number in parentheses after the rating, and ArmorReadings logs the parts
+// once per actor so the semantics can be checked against the sheet in play.
 float DamageReduction(RE::Actor *actor)
 {
-    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
-    if (!owner)
+    if (!actor)
         return 0.0f;
-    float rating = owner->GetActorValue(RE::ActorValue::kDamageResist);
-    using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
-    for (const Slot slot : {Slot::kBody, Slot::kHead, Slot::kHands, Slot::kFeet})
-    {
-        if (actor->GetWornArmor(slot))
-            rating += 25.0f;
-    }
     static const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
     static const float cap = GameSetting("fMaxArmorRating", 80.0f) / 100.0f;
-    return (std::min)(cap, (std::max)(0.0f, rating * scale));
+    const float rating = actor->CalcArmorRating();
+    const float hidden = actor->GetArmorBaseFactorSum();
+    return (std::min)(cap, (std::max)(0.0f, rating * scale + hidden));
+}
+
+// For the log, once per actor per session: the engine's armour numbers
+// beside the actor value and our old slot count, so a wrong reading of
+// either accessor shows up as a disagreement rather than a wrong percent.
+std::unordered_set<std::uint32_t> g_armorLogged;
+void LogArmorReadings(RE::Actor *actor)
+{
+    if (!actor || !g_armorLogged.insert(actor->GetFormID()).second)
+        return;
+    auto *owner = actor->AsActorValueOwner();
+    int pieces = 0;
+    using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
+    for (const Slot slot : {Slot::kBody, Slot::kHead, Slot::kHands, Slot::kFeet})
+        if (actor->GetWornArmor(slot))
+            ++pieces;
+    const auto &runtime = actor->GetActorRuntimeData();
+    logger::info("armor {}: AV DamageResist {:.1f}, CalcArmorRating {:.1f} (cached {:.1f}), base factor sum {:.3f} "
+                 "(cached {:.3f}) over {} pieces x fArmorBaseFactor {:.2f} -- reduction {:.1f}%",
+                 actor->GetName() ? actor->GetName() : "?",
+                 owner ? owner->GetActorValue(RE::ActorValue::kDamageResist) : 0.0f, actor->CalcArmorRating(),
+                 runtime.armorRating, actor->GetArmorBaseFactorSum(), runtime.armorBaseFactorSum, pieces,
+                 GameSetting("fArmorBaseFactor", 0.03f), DamageReduction(actor) * 100.0f);
 }
 
 ft::ActorTraits ReadTraits(RE::Actor *actor)
@@ -474,6 +500,7 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     if (!actor)
         return traits;
     traits.armor = DamageReduction(actor);
+    LogArmorReadings(actor);
     const Attacked attacked = AttackedLately(actor->GetFormID());
     traits.attackedBy = attacked.kinds;
     traits.attacker = attacked.attacker;
@@ -484,7 +511,6 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
         traits.SetResist(ft::DamageKind::Frost, owner->GetActorValue(RE::ActorValue::kResistFrost));
         traits.SetResist(ft::DamageKind::Shock, owner->GetActorValue(RE::ActorValue::kResistShock));
         traits.SetResist(ft::DamageKind::Poison, owner->GetActorValue(RE::ActorValue::kPoisonResist));
-        traits.SetResist(ft::DamageKind::Disease, owner->GetActorValue(RE::ActorValue::kResistDisease));
     }
     using Archetype = RE::EffectArchetypes::ArchetypeID;
 
@@ -519,13 +545,8 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
                         break;
                     }
                 }
-                if (ae->spell)
-                {
-                    if (ae->spell->IsPoison())
-                        traits.Set(ft::StatusKind::Poisoned);
-                    if (ae->spell->GetSpellType() == RE::MagicSystem::SpellType::kDisease)
-                        traits.Set(ft::StatusKind::Diseased);
-                }
+                if (ae->spell && ae->spell->IsPoison())
+                    traits.Set(ft::StatusKind::Poisoned);
                 switch (base->GetArchetype())
                 {
                 case Archetype::kParalysis:
@@ -585,7 +606,6 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     s.inCombat = actor->IsInCombat();
     if (auto *state = actor->AsActorState())
     {
-        s.inBleedout = state->IsBleedingOut();
         s.weaponDrawn = state->IsWeaponDrawn();
         s.sneaking = state->IsSneaking();
     }
@@ -594,8 +614,8 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     if (auto *player = RE::PlayerCharacter::GetSingleton())
     {
         s.playerHealth = ReadStat(player, RE::ActorValue::kHealth);
-        s.playerInCombat = player->IsInCombat();
-        s.distanceToPlayer = actor->GetPosition().GetDistance(player->GetPosition());
+        s.playerMagicka = ReadStat(player, RE::ActorValue::kMagicka);
+        s.playerStamina = ReadStat(player, RE::ActorValue::kStamina);
         s.playerTraits = ReadTraits(player);
     }
 
@@ -618,6 +638,8 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         ft::EnemyView enemy;
         enemy.id = other->GetFormID();
         enemy.health = ReadStat(other, RE::ActorValue::kHealth);
+        enemy.magicka = ReadStat(other, RE::ActorValue::kMagicka);
+        enemy.stamina = ReadStat(other, RE::ActorValue::kStamina);
         enemy.distance = actor->GetPosition().GetDistance(other->GetPosition());
         if (player)
         {
@@ -635,7 +657,8 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         ally.id = other->GetFormID();
         ally.health = ReadStat(other, RE::ActorValue::kHealth);
         ally.distance = actor->GetPosition().GetDistance(other->GetPosition());
-        ally.inBleedout = other->AsActorState() && other->AsActorState()->IsBleedingOut();
+        ally.magicka = ReadStat(other, RE::ActorValue::kMagicka);
+        ally.stamina = ReadStat(other, RE::ActorValue::kStamina);
         ally.traits = ReadTraits(other);
         return ally;
     };
@@ -769,7 +792,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         std::string name = spell->GetName() ? spell->GetName() : "";
         if (name.empty())
             return; // nameless entries are internal; nothing to show a player
-        out.push_back(SpellOption{id, std::move(name)});
+        out.push_back(SpellOption{id, std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf});
     });
 
     std::sort(out.begin(), out.end(), [](const SpellOption &a, const SpellOption &b) { return a.name < b.name; });
@@ -1222,24 +1245,18 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     }
 
     {
-        SheetSection s{"Defence", {}, {}};
-        // The armour rating the game shows is not the one it applies. Each of
-        // the four main pieces worn adds a hidden 25 before the scaling factor,
-        // which is why a displayed 609 lands at 85% and not 73%. Whether a
-        // shield also counts is disputed; it is left out here.
+        SheetSection s{"Defense", {}, {}};
+        // The armour rating the game shows is not the one it applies: each
+        // piece worn adds a hidden bonus before the scaling factor, which is
+        // why a displayed 609 lands at 85% and not 73%. One row: the rating
+        // the game shows, and in parentheses the share of a blow it turns
+        // away -- the same DamageReduction the Armor condition reads, so the
+        // sheet and the rules cannot disagree. Robes and boots alone read
+        // 6%: two pieces' hidden bonus and no rating.
         const float armor = av(RE::ActorValue::kDamageResist);
-        float hidden = 0.0f;
-        using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
-        for (const Slot slot : {Slot::kBody, Slot::kHead, Slot::kHands, Slot::kFeet})
-        {
-            if (actor->GetWornArmor(slot))
-                hidden += 25.0f;
-        }
-        const float armorPct = (armor + hidden) * GameSetting("fArmorScalingFactor", 0.12f);
         const float resistCap = GameSetting("fPlayerMaxResistance", 85.0f);
-
-        s.rows.push_back(Row("Armor", Fmt("%.0f", armor)));
-        s.rows.push_back(Row("Resist Damage", CappedPercent(armorPct, GameSetting("fMaxArmorRating", 80.0f))));
+        s.rows.push_back(
+            Row("Armor", Fmt("%.0f", armor) + " (" + Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")"));
         // Each resistance with where it comes from as its hover text: the
         // ring, the potion, the race.
         const auto resist = [&](const char *label, RE::ActorValue value, bool capped) {
@@ -1247,12 +1264,14 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
             row.note = ValueNote(actor, value, "%");
             s.rows.push_back(std::move(row));
         };
-        resist("Resist Disease", RE::ActorValue::kResistDisease, false);
-        resist("Resist Poison", RE::ActorValue::kPoisonResist, true);
-        resist("Resist Fire", RE::ActorValue::kResistFire, true);
-        resist("Resist Frost", RE::ActorValue::kResistFrost, true);
-        resist("Resist Shock", RE::ActorValue::kResistShock, true);
-        resist("Resist Magic", RE::ActorValue::kResistMagic, true);
+        // Magic first, then the elements, then poison; disease last, the one
+        // that matters to the player alone.
+        resist("Magic", RE::ActorValue::kResistMagic, true);
+        resist("Fire", RE::ActorValue::kResistFire, true);
+        resist("Frost", RE::ActorValue::kResistFrost, true);
+        resist("Shock", RE::ActorValue::kResistShock, true);
+        resist("Poison", RE::ActorValue::kPoisonResist, true);
+        resist("Disease", RE::ActorValue::kResistDisease, false);
         out.push_back(std::move(s));
     }
 

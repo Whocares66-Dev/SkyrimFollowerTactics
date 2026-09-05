@@ -1,7 +1,7 @@
 # Skyrim Follower Tactics — Implementation Plan
 
 A Dragon Age: Origins-style tactics system for Skyrim SE/AE followers: an ordered,
-player-authored list of `IF <condition> THEN <action> ON <target>` rules, evaluated
+player-authored list of `IF <subject>: <condition> THEN <target>: <action>` rules, evaluated
 per follower, editable in-game.
 
 **Decisions locked (2026-09-01):**

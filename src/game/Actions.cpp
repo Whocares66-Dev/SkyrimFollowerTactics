@@ -186,6 +186,39 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         }
         return PinNow(actor, action.form, action.hand) ? ActionResult::Performed : ActionResult::MissingItem;
 
+    case ft::ActionKind::Target: {
+        // Point the combat AI at whom the rule aimed: the target the
+        // controller holds and the actor's own mirror of it. Everything
+        // else -- weapon, spell, spacing -- stays the AI's, re-scored for
+        // the new target. Whether the standard target selector lets the
+        // choice stand is the open question (docs/ACTIONS.md 6): the rule
+        // reports "already fighting them" on the next tick if it did, and
+        // fires again after its cooldown if it did not, so the log answers
+        // it without any extra instrumentation.
+        auto *enemy = RE::TESForm::LookupByID<RE::Actor>(target);
+        if (!enemy || enemy->IsDead())
+            return ActionResult::MissingItem;
+        auto &runtime = actor->GetActorRuntimeData();
+        auto *controller = runtime.combatController;
+        if (!controller)
+        {
+            logger::info("  target: {} has no combat controller -- not fighting",
+                         actor->GetName() ? actor->GetName() : "?");
+            return ActionResult::NoTarget;
+        }
+        const auto before = runtime.currentCombatTarget.get();
+        logger::info("  target: {} was fighting {} ({:08X}), now {} ({:08X})",
+                     actor->GetName() ? actor->GetName() : "?",
+                     before && before->GetName() ? before->GetName() : "no one", before ? before->GetFormID() : 0,
+                     enemy->GetName() ? enemy->GetName() : "?", enemy->GetFormID());
+        const RE::ActorHandle handle = enemy->GetHandle();
+        controller->previousTargetHandle = controller->targetHandle;
+        controller->targetHandle = handle;
+        controller->cachedTarget = RE::NiPointer<RE::Actor>(enemy);
+        runtime.currentCombatTarget = handle;
+        return ActionResult::Performed;
+    }
+
     default:
         // Every other action is Phase 4. The rule engine's Capabilities table is
         // what should stop these being authored at all; reaching here means the

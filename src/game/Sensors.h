@@ -43,6 +43,9 @@ struct SpellOption
 {
     std::uint32_t form{0};
     std::string name;
+    // Delivery Self: cast on oneself and on no one else. The menu offers it
+    // under Self only, and everything aimed under everyone but Self.
+    bool selfOnly{false};
 };
 
 // One drinkable potion a follower carries, for the editor's menu.

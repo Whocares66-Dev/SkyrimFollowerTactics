@@ -64,7 +64,7 @@ ft::Rule HealBelow(float pct)
     r.subject = ft::SubjectKind::Self;
     r.predicate = ft::PredicateKind::HealthPctBelow;
     r.conditionArg = pct;
-    r.actionTarget = ft::ActionTargetKind::ConditionSubject;
+    r.actionTarget = ft::ActionTargetKind::Self;
     r.FirstAction().kind = ft::ActionKind::DrinkHealthPotion;
     r.label = "heal";
     return r;
@@ -115,8 +115,8 @@ std::vector<Check> RunSelfCheck()
         r.subject = ft::SubjectKind::Enemy;
         r.predicate = ft::PredicateKind::HealthPctBelow;
         r.conditionArg = 0.6f;
-        r.actionTarget = ft::ActionTargetKind::ConditionSubject;
-        r.FirstAction().kind = ft::ActionKind::StopCombat;
+        r.actionTarget = ft::ActionTargetKind::Enemy;
+        r.FirstAction().kind = ft::ActionKind::Target;
         rs.rules.push_back(r);
 
         ft::EvalContext ctx;
@@ -126,7 +126,9 @@ std::vector<Check> RunSelfCheck()
                           d.Fired() && d.targetId() == 0x102, fmt::format("target={:08X}", d.targetId())});
     }
 
-    // 4. The action can be aimed away from the condition's subject.
+    // 4. The action is aimed where the rule says, within what makes sense:
+    //    a potion is only ever drunk by oneself, so one "on the player" is
+    //    unfireable rather than fired at the wrong actor.
     {
         ft::RuleSet rs;
         auto r = HealBelow(0.5f);
@@ -137,10 +139,12 @@ std::vector<Check> RunSelfCheck()
         s.health = {40.0f, 100.0f};
 
         ft::EvalContext ctx;
-        const auto d = ft::Evaluate(rs, s, ctx);
+        ft::Trace trace;
+        const auto d = ft::Evaluate(rs, s, ctx, &trace);
 
-        checks.push_back({"action target override -> player", d.Fired() && d.targetId() == ft::kPlayerFormID,
-                          fmt::format("target={:08X}", d.targetId())});
+        checks.push_back({"a potion aimed at the player -> unsupported, not drunk",
+                          !d.Fired() && trace.at(0) == ft::Verdict::Unsupported,
+                          fmt::format("fired={} verdict={}", d.Fired(), ft::ToString(trace.at(0)))});
     }
 
     // 5. An unanswerable subject/predicate pair is reported as broken authoring,
@@ -149,16 +153,16 @@ std::vector<Check> RunSelfCheck()
         ft::RuleSet rs;
         ft::Rule r;
         r.subject = ft::SubjectKind::Self;
-        r.predicate = ft::PredicateKind::WithinDistance; // nonsense
-        r.conditionArg = 100.0f;
-        r.FirstAction().kind = ft::ActionKind::StopCombat;
+        r.predicate = ft::PredicateKind::CountAtLeast; // nonsense: a count of oneself
+        r.conditionArg = 2.0f;
+        r.FirstAction().kind = ft::ActionKind::DrinkHealthPotion;
         rs.rules.push_back(r);
 
         ft::EvalContext ctx;
         ft::Trace trace;
         const auto d = ft::Evaluate(rs, BaseSnapshot(), ctx, &trace);
 
-        checks.push_back({"Self + WithinDistance -> invalid condition",
+        checks.push_back({"Self + CountAtLeast -> invalid condition",
                           !d.Fired() && trace.at(0) == ft::Verdict::InvalidCondition,
                           fmt::format("verdict={}", ft::ToString(trace.at(0)))});
     }

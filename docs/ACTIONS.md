@@ -1,4 +1,4 @@
-# Actions: heal, buff, debuff, shouts, transformations, dual casting
+# Actions: heal, buff, debuff, shouts, transformations, dual casting, attack
 
 What the engine lets a follower do on request, from research done
 2026-09-04 (sources at the end). The existing actions are potions, a cast
@@ -97,18 +97,41 @@ abilities might too.
 
 ## 5. What to build, in order
 
-1. **Cast on a chosen target**: Execute takes the step's target; an "On"
-   choice in the editor (whoever matched, self, the player, the target,
-   their attacker). Heal the player, heal the hurt ally, buff the one about
+1. **Cast on a chosen target**: Execute takes the step's target; the
+   Then cascade's first level names it (self, the ally or enemy the
+   condition matched, the player, a named follower, the target, the
+   attacker), as the If cascade's names the subject. Heal the player, heal the hurt ally, buff the one about
    to engage. Vanilla spells only.
 2. **Use poison** on the weapon: NPCsUsePotions' path, follower-aware.
 3. **Shout**: the package pool, the recovery time in the snapshot.
 4. **Dual cast** as a flag on a cast action, needing the perk.
 5. **Transform / Revert**, werewolf first.
 
+## 6. Attack: focus aggression on one enemy
+
+Research 2026-09-04. **The engine has no "attack" verb.** An actor in combat attacks whoever the combat controller's *target selector* has chosen; the behaviour tree and the inventory scoring then decide how (swing, shoot, cast). So the action is "focus on this enemy", and once the target changes the follower's own scoring picks the weapon or spell for it. Nothing here needs to branch by class.
+
+**What exists, verified against the 3.7.0 headers in this build tree:** `CombatController` has `targetHandle`, `previousTargetHandle`, a `targetSelectors` array and a `currentTargetSelector`; `Actor` mirrors the target as `currentCombatTarget`. Two selector classes are in the RTTI and vtable tables, `CombatTargetSelectorStandard` (the AI's own choice) and `CombatTargetSelectorFixed` (the engine's own "this one, regardless"). Neither has a mapped layout, so using the fixed one means reverse engineering. The `CombatGroup` holds one `targets` list for the whole group with a threat value and attacker count per target; followers and the player share a group.
+
+**What the game files say (Skyrim.esm through houseCARL):** no game setting tunes target selection. The 96 `*Combat*` settings cover stealth points, regen, dialogue timers and radii; the only threat-related one is `fCombatThreatRatioUpdateTime` = 5 s. The INIs (game default, My Games, MO2 profiles) carry no target or selector settings either. So the standard selector's weights are hardcoded and can only be measured.
+
+**Papyrus `StartCombat(target)` is not the tool.** The CK wiki says only "attempts to get this actor to initiate combat with the target". All 155 vanilla scripts that call it start a fight (Jorrvaskr brawl, Vilkas training, Cicero, the Silver Hand ambush); none retargets an actor already fighting, and that case is undocumented. A one-console-command test would settle what it does mid-combat.
+
+**Bethesda's own "keep attacking this one" is a UseWeapon combat override.** Karliah and Brynjolf in Blindsighted run `TG08B*UseWeaponCombatOverride`: template `UseWeaponAlreadyHeld`, Target to Attack = an alias, Never End = true, `InterruptOverride = Combat`. The template's inputs are Weapon Type, Target to Attack, Always Hit, Do No Damage, Hold when Blocked, Never End, barrage counts and pauses, Max Time spent Attacking, Always Power Attack, Headtrack Target. The CK wiki adds: the actor attacks only "if the actor has a weapon of the specified Weapon type", and with an object list only the first target counts. So it is weapon-bound: a caster would need UseMagic instead, and the package drives the attacks rather than the combat style. Our eight `FT_CastSlot` records are the UseMagic twin (template `UseMagic`, flag IgnoreCombat, faction-rank condition) spliced at runtime to the front of the follower alias's combat-override form list, so a UseWeapon pool would splice the same way.
+
+**Routes, in the order to try them:**
+
+1. **Assert the target directly.** Each tick while a focus lease is held, write `targetHandle` and `currentCombatTarget` to the enemy and measure whether the standard selector snaps back before the next 500 ms tick. Twenty lines. If it holds, the whole AI stays in charge of everything but the target, which is the "bias, don't puppet" principle exactly.
+2. **Hook the standard selector.** A vtable write like the score hook, returning our target while the lease lives. Cleanest, but the virtual's index and signature are unknown. Unverified.
+3. **A UseWeapon combat-override pool**, spliced like the cast slots, with UseMagic for casters. Heaviest, class-branching, and it puppets.
+
+Availability: the target is alive, hostile and in the follower's combat group. Release on death, on combat end, or after a timeout, like a cast lease.
+
+**Built 2026-09-04 as the `Target` action, route 1.** `IF Ally: Attacked by Ranged THEN Attacker: Target` is the shape. Core: the action is available only in combat, only when its target is one of the snapshot's enemies, and not when they are already the follower's current target, so a standing rule falls through instead of re-firing; its cooldown is 2 s keyed by the action alone, so two Target rules cannot flick the follower between two enemies on consecutive ticks. Game: `Execute` writes the combat controller's `targetHandle`, `previousTargetHandle` and `cachedTarget`, and the actor's `currentCombatTarget`, and logs the old and new target. There is no separate instrumentation for the open question: if the standard selector lets the choice stand the rule reports "already fighting them" on the next tick, and if it snaps back the rule fires again after its cooldown, so the log answers it. Not yet measured in play. Ranged is a damage kind of its own: a physical hit whose event carries a projectile; a blow without one is Melee.
+
 ## Sources
 
-CK wiki UseMagic (Procedure), Shout (Procedure), Package Flags, Combat
+CK wiki UseMagic (Procedure), UseWeapon (Procedure), Shout (Procedure), StartCombat - Actor, GetCombatTarget - Actor, IsCombatTarget, Package Flags, Combat
 Style, Magic Effect; UESP Shouts, Magic Overview, Weakness to Fire;
 CommonLibSSE-NG ActorMagicCaster and MagicCaster; powerof3/DualCastingFix;
 Nexus: Shouty People, Heroes of Yore, Shout Recovery Utilities, Vampire
@@ -116,4 +139,4 @@ Lord Traveler, Vampire Bloodline, Beastblood, The Beast Within, Growl, All
 NPC use Healing, Be With Healer, MSFF, Apocalypse, Odin, Mysticism,
 Apocalypse Spells For NPCs; 3DNPC's Combat AI article; vanilla Papyrus
 sources (WerewolfChangeEffectScript, DLC1VampireTurnScript,
-DLC1VampireChangeEffectScript); Skyrim.esm records through houseCARL.
+DLC1VampireChangeEffectScript); Skyrim.esm records through houseCARL (the UseWeapon, UseWeaponAlreadyHeld, UseWeaponMultiTarget and UseMagic templates, the TG08B combat overrides, dunCGUseWeaponArcher, the Combat game settings); CommonLibSSE-NG CombatController, CombatGroup, Offsets_RTTI and Offsets_VTABLE.

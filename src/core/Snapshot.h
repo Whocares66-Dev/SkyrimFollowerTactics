@@ -49,8 +49,8 @@ struct ActorTraits
     // the engine does it.
     float armor{0.0f};
     // The resistance to each kind of damage, as the game holds it: percent,
-    // negative for a weakness, uncapped. Physical stays 0; armour is the
-    // physical answer.
+    // negative for a weakness, uncapped. Melee, Ranged and Any stay 0;
+    // armour is the physical answer.
     std::array<float, static_cast<std::size_t>(DamageKind::COUNT)> resist{};
 
     // What has hit the actor in the last few seconds, a bit per DamageKind,
@@ -61,6 +61,8 @@ struct ActorTraits
 
     [[nodiscard]] constexpr bool AttackedBy(DamageKind kind) const noexcept
     {
+        if (kind == DamageKind::Any)
+            return attackedBy != 0;
         return (attackedBy & Bit(kind)) != 0;
     }
 
@@ -94,6 +96,9 @@ struct EnemyView
     bool isAttackingPlayer{false};
     bool hasLineOfSight{false};
     ActorTraits traits{};
+    // Last, so the tests' positional initialisers above them stand.
+    Stat magicka{};
+    Stat stamina{};
 };
 
 struct AllyView
@@ -101,8 +106,9 @@ struct AllyView
     ActorId id{0};
     Stat health{};
     float distance{0.0f};
-    bool inBleedout{false};
     ActorTraits traits{};
+    Stat magicka{};
+    Stat stamina{};
 };
 
 // Counts and best-available magnitude per potion kind. Populated by an
@@ -217,14 +223,13 @@ struct Snapshot
     // holds -- see PredicateKind.
     bool combatBegan{false};
     bool combatEnded{false};
-    bool inBleedout{false};
     bool weaponDrawn{false};
     bool sneaking{false};
     ActorTraits traits{};
 
     Stat playerHealth{};
-    float distanceToPlayer{0.0f};
-    bool playerInCombat{false};
+    Stat playerMagicka{};
+    Stat playerStamina{};
     ActorTraits playerTraits{};
 
     ActorId currentTarget{0};

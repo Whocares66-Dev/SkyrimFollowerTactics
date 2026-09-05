@@ -68,9 +68,7 @@ namespace ft
 [[nodiscard]] std::string_view DisplayName(ActionKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(Hand v) noexcept;
 [[nodiscard]] std::string_view DisplayName(StatusKind v) noexcept;
-[[nodiscard]] std::string_view DisplayName(ArmorBand v) noexcept;
 [[nodiscard]] std::string_view DisplayName(DamageKind v) noexcept;
-[[nodiscard]] std::string_view DisplayName(ResistBand v) noexcept;
 
 // One line of help, for a tooltip. Kept beside the names so a new predicate
 // cannot be added without someone deciding what it means to a player.
@@ -87,12 +85,9 @@ namespace ft
 // hand-edited profile is loaded.
 enum class ArgumentKind : std::uint8_t
 {
-    None,       // the predicate takes no argument
-    Percent,    // 0.0 to 1.0, shown as 0-100%
-    Distance,   // game units
-    Count,      // a whole number of actors
-    ArmorBand,  // an ArmorBand, as a number: Low, Medium, High
-    ResistBand, // a ResistBand, as a number: Weak, Normal, High, Immune
+    None,    // the predicate takes no argument
+    Percent, // 0.0 to 1.0, shown as 0-100%
+    Count,   // a whole number of actors
 };
 
 [[nodiscard]] ArgumentKind ArgumentFor(PredicateKind predicate) noexcept;

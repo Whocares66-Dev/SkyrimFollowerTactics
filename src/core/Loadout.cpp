@@ -203,6 +203,15 @@ bool Holds(const std::vector<Pin> &pins, const Pin &pin) noexcept
 }
 } // namespace
 
+bool PutBackNow(const Pin &pin, bool on, bool fighting, bool castInProgress) noexcept
+{
+    if (on)
+        return false;
+    if (pin.hands == Hand::None)
+        return true;
+    return !(fighting && castInProgress);
+}
+
 AfterFight SettleAfterFight(const std::vector<Pin> &now, const std::vector<Pin> &before)
 {
     AfterFight out;

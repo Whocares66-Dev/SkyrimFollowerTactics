@@ -101,6 +101,8 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
         return {"no magicka", held};
     case ft::Verdict::Busy:
         return {"busy", held};
+    case ft::Verdict::Casting:
+        return {"casting", held};
 
     case ft::Verdict::Disabled:
         return {"off", quiet};
@@ -216,14 +218,8 @@ std::string ArgumentText(ft::PredicateKind predicate, float value)
     {
     case ft::ArgumentKind::Percent:
         return (ft::IsAbove(predicate) ? "> " : "< ") + std::to_string(static_cast<int>(value * 100.0f + 0.5f)) + "%";
-    case ft::ArgumentKind::Distance:
-        return "< " + std::to_string(static_cast<int>(value));
     case ft::ArgumentKind::Count:
         return ">= " + std::to_string(static_cast<int>(value));
-    case ft::ArgumentKind::ArmorBand:
-        return std::string(ft::DisplayName(static_cast<ft::ArmorBand>(static_cast<int>(value + 0.5f))));
-    case ft::ArgumentKind::ResistBand:
-        return std::string(ft::DisplayName(static_cast<ft::ResistBand>(static_cast<int>(value + 0.5f))));
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -245,14 +241,8 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
     {
     case ft::ArgumentKind::Percent:
         return {0.25f, 0.50f, 0.75f};
-    case ft::ArgumentKind::Distance:
-        return {200.0f, 500.0f, 1000.0f, 2000.0f};
     case ft::ArgumentKind::Count:
         return {2.0f, 3.0f, 4.0f, 5.0f};
-    case ft::ArgumentKind::ArmorBand:
-        return {0.0f, 1.0f, 2.0f};
-    case ft::ArgumentKind::ResistBand:
-        return {0.0f, 1.0f, 2.0f, 3.0f};
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -278,21 +268,35 @@ std::string SubjectText(const ft::Rule &r, const FollowerView &view)
 
 std::string ConditionText(const ft::Rule &r, const FollowerView &view)
 {
+    // Who, a colon, then what: "Self: Attacked by Fire". The colon keeps
+    // the two halves from having to agree grammatically.
     std::string text = SubjectText(r, view);
-    text += ' ';
+    text += ": ";
     // A status reads as the status: "Self Poisoned", not "Self Status".
     if (r.predicate == ft::PredicateKind::Status)
     {
         text += ft::DisplayName(r.statusKind);
         return text;
     }
-    text += ft::DisplayName(r.predicate);
-    // A resistance names its kind: "Enemy Resistance Fire High"; so does
-    // an attack: "Ally Attacked by Fire".
-    if (r.predicate == ft::PredicateKind::Resistance || r.predicate == ft::PredicateKind::AttackedBy)
+    // A resistance reads as "Resistance Fire", then lowest, highest or the
+    // number; an attack as "Attacked by Fire".
+    if (ft::IsResistance(r.predicate))
     {
-        text += ' ';
+        text += "Resistance ";
         text += ft::DisplayName(r.damageKind);
+        if (r.predicate == ft::PredicateKind::ResistanceLowest)
+            return text + " lowest";
+        if (r.predicate == ft::PredicateKind::ResistanceHighest)
+            return text + " highest";
+    }
+    else
+    {
+        text += ft::DisplayName(r.predicate);
+        if (r.predicate == ft::PredicateKind::AttackedBy)
+        {
+            text += ' ';
+            text += ft::DisplayName(r.damageKind);
+        }
     }
 
     if (const std::string arg = ArgumentText(r.predicate, r.conditionArg); !arg.empty())
@@ -403,10 +407,12 @@ void DrawGlyph(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 lo, Im::ImVec2 hi, 
 // centres a label only when it fits inside the frame padding, and the icon
 // font's glyph is taller than the text font's line, so the plus sat up and
 // to the left. The text colour carries the disabled dimming.
-bool GlyphButton(const std::string &id, float size, Glyph glyph)
+// `painted` false leaves the square empty: a switch that is off shows no
+// tick, as the rule rows' On cells do, rather than a ghost of one.
+bool GlyphButton(const std::string &id, float size, Glyph glyph, bool painted = true)
 {
     const bool clicked = Im::Button(("##" + id).c_str(), Im::ImVec2(size, size));
-    if (auto *draw = Im::GetWindowDrawList())
+    if (auto *draw = Im::GetWindowDrawList(); draw && painted)
         DrawGlyph(draw, glyph, Im::GetItemRectMin(), Im::GetItemRectMax(), Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
     return clicked;
 }
@@ -549,14 +555,22 @@ bool CascadeItem(const char *label, bool selected)
 // The three about a fight, under one "Combat" heading: Start, During, End.
 bool IsCombatPredicate(ft::PredicateKind p)
 {
-    return p == ft::PredicateKind::CombatBegins || p == ft::PredicateKind::InCombat ||
-           p == ft::PredicateKind::CombatEnds;
+    return p == ft::PredicateKind::CombatBegins || p == ft::PredicateKind::CombatEnds;
 }
 
 // Is the rule about this subject -- and, for a named follower, this one?
 bool SubjectIs(const ft::Rule &rule, ft::SubjectKind subject, std::uint32_t form)
 {
     return rule.subject == subject && (subject != ft::SubjectKind::Follower || rule.subjectForm == form);
+}
+
+// The other followers, by name, for the two cascades' headings.
+std::vector<FollowerView::Peer> SortedPeers(const FollowerView &view)
+{
+    std::vector<FollowerView::Peer> peers = view.peers;
+    std::sort(peers.begin(), peers.end(),
+              [](const FollowerView::Peer &a, const FollowerView::Peer &b) { return a.name < b.name; });
+    return peers;
 }
 
 bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
@@ -572,8 +586,9 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
         return false;
     }
 
-    // Who first: the follower, the party, the enemy, the player by name,
-    // the other followers by name, and last the one being fought.
+    // Who first: the follower, the player by name, the other followers by
+    // name, any ally; then the one being fought, and any enemy. Self first,
+    // allies above enemies, the particular above the general.
     struct Heading
     {
         ft::SubjectKind subject;
@@ -582,14 +597,14 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
     };
     std::vector<Heading> headings{
         {ft::SubjectKind::Self, 0, std::string(ft::DisplayName(ft::SubjectKind::Self))},
-        {ft::SubjectKind::Ally, 0, std::string(ft::DisplayName(ft::SubjectKind::Ally))},
-        {ft::SubjectKind::Enemy, 0, std::string(ft::DisplayName(ft::SubjectKind::Enemy))},
         {ft::SubjectKind::Player, 0,
          view.playerName.empty() ? std::string(ft::DisplayName(ft::SubjectKind::Player)) : view.playerName}};
-    for (const auto &peer : view.peers)
+    for (const auto &peer : SortedPeers(view))
         headings.push_back({ft::SubjectKind::Follower, peer.id, peer.name});
+    headings.push_back({ft::SubjectKind::Ally, 0, std::string(ft::DisplayName(ft::SubjectKind::Ally))});
     headings.push_back(
         {ft::SubjectKind::CurrentTarget, 0, std::string(ft::DisplayName(ft::SubjectKind::CurrentTarget))});
+    headings.push_back({ft::SubjectKind::Enemy, 0, std::string(ft::DisplayName(ft::SubjectKind::Enemy))});
 
     for (const Heading &heading : headings)
     {
@@ -612,7 +627,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
             // The fight's three, grouped where the first of them falls.
             if (IsCombatPredicate(predicate))
             {
-                if (predicate != ft::PredicateKind::InCombat)
+                if (predicate != ft::PredicateKind::CombatBegins)
                     continue;
                 if (!BeginCascade("Combat"))
                     continue;
@@ -622,7 +637,6 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                     const char *label;
                 };
                 constexpr Phase kPhases[] = {{ft::PredicateKind::CombatBegins, "Start"},
-                                             {ft::PredicateKind::InCombat, "During"},
                                              {ft::PredicateKind::CombatEnds, "End"}};
                 for (const Phase &phase : kPhases)
                 {
@@ -646,50 +660,62 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
             const auto presets = PresetsFor(predicate);
             const std::string predicateName(ft::DisplayName(predicate));
 
-            // A resistance: the kinds of damage under "Resistance", the
-            // bands under each.
-            if (predicate == ft::PredicateKind::Resistance)
+            // A resistance: the kinds of damage under "Resistance"; under
+            // each, Lowest and Highest for a group, the percents below, then
+            // above -- the same shape as Health.
+            if (predicate == ft::PredicateKind::ResistancePctBelow)
             {
                 if (!BeginCascade(predicateName.c_str()))
                     continue;
                 for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::DamageKind::COUNT); ++ki)
                 {
                     const auto kind = static_cast<ft::DamageKind>(ki);
-                    if (kind == ft::DamageKind::Physical)
-                        continue; // armour is the physical answer, and its own heading
+                    if (kind == ft::DamageKind::Melee || kind == ft::DamageKind::Ranged || kind == ft::DamageKind::Any)
+                        continue; // nothing resists a blow or an arrow but armour, its own heading
                     if (!BeginCascade(std::string(ft::DisplayName(kind)).c_str()))
                         continue;
-                    for (const float preset : PresetsFor(predicate))
-                    {
-                        const bool selected = SubjectIs(rule, subject, form) && rule.predicate == predicate &&
-                                              rule.damageKind == kind && std::abs(rule.conditionArg - preset) < 0.001f;
-                        if (CascadeItem(ArgumentText(predicate, preset).c_str(), selected))
+                    const auto pick = [&](ft::PredicateKind which, float arg, const std::string &label) {
+                        const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which &&
+                                              rule.damageKind == kind &&
+                                              (ft::IsExtreme(which) || std::abs(rule.conditionArg - arg) < 0.001f);
+                        if (CascadeItem(label.c_str(), selected))
                         {
                             rule.subject = subject;
                             rule.subjectForm = form;
-                            rule.predicate = predicate;
+                            rule.predicate = which;
                             rule.damageKind = kind;
-                            rule.conditionArg = preset;
+                            rule.conditionArg = arg;
                             changed = true;
                         }
+                        if (Im::IsItemHovered(0))
+                            Im::SetTooltip("%s", std::string(ft::Describe(which)).c_str());
+                    };
+                    if (const auto extremes = ft::ExtremesOf(predicate);
+                        ft::IsPredicateValidFor(subject, extremes.lowest))
+                    {
+                        pick(extremes.lowest, 0.0f, "Lowest");
+                        pick(extremes.highest, 0.0f, "Highest");
+                        Im::Separator();
                     }
+                    for (const float preset : PresetsFor(predicate))
+                        pick(predicate, preset, ArgumentText(predicate, preset));
+                    Im::Separator();
+                    const auto above = ft::AboveOf(predicate);
+                    for (const float preset : PresetsFor(above))
+                        pick(above, preset, ArgumentText(above, preset));
                     Im::EndMenu();
                 }
                 Im::EndMenu();
                 continue;
             }
 
-            // Attacked by: the kinds of damage, one leaf each. Disease is
-            // not a way of attacking.
+            // Attacked by: Any; then how -- a blow, an arrow, a spell of any
+            // kind; then what the spell was. A divider between each group.
             if (predicate == ft::PredicateKind::AttackedBy)
             {
                 if (!BeginCascade(predicateName.c_str()))
                     continue;
-                for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::DamageKind::COUNT); ++ki)
-                {
-                    const auto kind = static_cast<ft::DamageKind>(ki);
-                    if (kind == ft::DamageKind::Disease)
-                        continue;
+                const auto pick = [&](ft::DamageKind kind) {
                     const bool selected =
                         SubjectIs(rule, subject, form) && rule.predicate == predicate && rule.damageKind == kind;
                     if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
@@ -700,19 +726,34 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                         rule.damageKind = kind;
                         changed = true;
                     }
-                }
+                };
+                pick(ft::DamageKind::Any);
+                Im::Separator();
+                pick(ft::DamageKind::Melee);
+                pick(ft::DamageKind::Ranged);
+                pick(ft::DamageKind::Magic);
+                Im::Separator();
+                pick(ft::DamageKind::Fire);
+                pick(ft::DamageKind::Frost);
+                pick(ft::DamageKind::Shock);
+                pick(ft::DamageKind::Poison);
                 Im::EndMenu();
                 continue;
             }
 
-            // A status: the kinds, one leaf each, under "Status".
+            // A status: the kinds, one leaf each, under "Status", in the
+            // order a person looks for them -- by name, not by the enum.
             if (predicate == ft::PredicateKind::Status)
             {
                 if (!BeginCascade(predicateName.c_str()))
                     continue;
+                std::vector<ft::StatusKind> kinds;
                 for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::StatusKind::COUNT); ++ki)
+                    kinds.push_back(static_cast<ft::StatusKind>(ki));
+                std::sort(kinds.begin(), kinds.end(),
+                          [](ft::StatusKind a, ft::StatusKind b) { return ft::DisplayName(a) < ft::DisplayName(b); });
+                for (const ft::StatusKind kind : kinds)
                 {
-                    const auto kind = static_cast<ft::StatusKind>(ki);
                     const bool selected =
                         SubjectIs(rule, subject, form) && rule.predicate == predicate && rule.statusKind == kind;
                     if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
@@ -741,6 +782,9 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 }
                 if (Im::IsItemHovered(0))
                     Im::SetTooltip("%s", std::string(ft::Describe(predicate)).c_str());
+                // Any stands apart from the conditions proper.
+                if (predicate == ft::PredicateKind::Any)
+                    Im::Separator();
                 continue;
             }
 
@@ -798,6 +842,12 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
 
     Im::EndPopup();
     Im::PopStyleVar(kPopupChromeVars);
+    // A new subject may not supply the target the actions were aimed at --
+    // "Ally" after the condition stopped being about an ally -- so the Then
+    // side is put back in order: the target falls to Self, and an action
+    // that makes no sense there is blanked.
+    if (changed)
+        ft::Reconcile(rule);
     return changed;
 }
 
@@ -889,23 +939,21 @@ std::string DrinkSubmenuLabel(ft::ActionKind action)
 // the point of naming the spell is that a rule reads as an instruction. The id
 // is what the rule stores; this is what the player sees. Same split as wire
 // names versus display names.
-// Whom the rule aims its actions at, for the row: nothing for the default,
-// whoever the condition matched; otherwise " on ..." by name.
-std::string TargetSuffix(const ft::Rule &rule, const FollowerView &view)
+// Whom the rule's actions are aimed at, by name where it names someone: the
+// first half of the Then cell, before the colon, as the subject is of the If.
+std::string TargetText(const ft::Rule &rule, const FollowerView &view)
 {
     switch (rule.actionTarget)
     {
-    case ft::ActionTargetKind::Self:
-        return " on self";
     case ft::ActionTargetKind::Player:
-        return " on " + (view.playerName.empty() ? std::string("the player") : view.playerName);
-    case ft::ActionTargetKind::CurrentTarget:
-        return " on target";
-    case ft::ActionTargetKind::Attacker:
-        return " on their attacker";
-    case ft::ActionTargetKind::ConditionSubject:
+        return view.playerName.empty() ? std::string(ft::DisplayName(rule.actionTarget)) : view.playerName;
+    case ft::ActionTargetKind::Follower:
+        for (const auto &peer : view.peers)
+            if (peer.id == rule.actionTargetForm)
+                return peer.name;
+        return "Follower (away)";
     default:
-        return {};
+        return std::string(ft::DisplayName(rule.actionTarget));
     }
 }
 
@@ -1071,75 +1119,28 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 // the same guarantee the condition side gets from the validity matrix, and
 // for the same reason: an unfireable rule should be unauthorable, not merely
 // discouraged.
-// The "On" cascade: whom the rule's actions are aimed at. A rule's, not an
-// action's, so every action's menu shows the same choice.
-bool TargetMenu(ft::Rule &rule, const FollowerView &view)
+// The actions offered under one target heading of the Then cascade: those
+// that make sense on that target (IsActionValidFor), with the drink, equip
+// and cast submenus as before. Choosing one sets the rule's target and the
+// action together, as choosing a condition sets subject and predicate.
+bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, std::uint32_t form,
+                 const FollowerView &view)
 {
     bool changed = false;
-    if (!BeginCascade("On"))
-        return false;
-    struct Choice
-    {
-        ft::ActionTargetKind target;
-        std::string label;
-    };
-    const Choice choices[] = {
-        {ft::ActionTargetKind::ConditionSubject, std::string(ft::DisplayName(ft::ActionTargetKind::ConditionSubject))},
-        {ft::ActionTargetKind::Self, std::string(ft::DisplayName(ft::ActionTargetKind::Self))},
-        {ft::ActionTargetKind::Player,
-         view.playerName.empty() ? std::string(ft::DisplayName(ft::ActionTargetKind::Player)) : view.playerName},
-        {ft::ActionTargetKind::CurrentTarget, std::string(ft::DisplayName(ft::ActionTargetKind::CurrentTarget))},
-        {ft::ActionTargetKind::Attacker, std::string(ft::DisplayName(ft::ActionTargetKind::Attacker))},
-    };
-    for (const Choice &choice : choices)
-    {
-        if (CascadeItem(choice.label.c_str(), rule.actionTarget == choice.target))
-        {
-            rule.actionTarget = choice.target;
-            changed = true;
-        }
-    }
-    Im::EndMenu();
-    return changed;
-}
-
-bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *addAnother, ft::Rule &rule)
-{
-    bool changed = false;
-
-    CellButtonOpensPopup(id, ActionText(act, view) + TargetSuffix(rule, view));
-
-    PushPopupChrome();
-    if (!Im::BeginPopup(id, 0))
-    {
-        Im::PopStyleVar(kPopupChromeVars);
-        return false;
-    }
-
-    // Whom the rule aims at, first: a cast on the hurt ally, on the
-    // player, on their attacker. The default is whoever the condition
-    // matched.
-    if (TargetMenu(rule, view))
+    // Is this heading the rule's current target? Only then is an item under
+    // it shown selected.
+    const bool here = rule.actionTarget == target && rule.actionTargetForm == form;
+    const auto choose = [&]() {
+        rule.actionTarget = target;
+        rule.actionTargetForm = form;
         changed = true;
-    Im::Separator();
-
-    // A rule with one action edits it here, in its row. The way to a second
-    // is this entry, first and in a section of its own so it is not taken
-    // for an action: the rule then opens as a drawer, where its actions
-    // are listed, ordered and added to.
-    if (addAnother)
-    {
-        if (CascadeItem("Add another action...", false))
-        {
-            *addAnother = true;
-            changed = true;
-        }
-        Im::Separator();
-    }
+    };
 
     for (std::size_t i = 0; i < static_cast<std::size_t>(ft::ActionKind::COUNT); ++i)
     {
         const auto action = static_cast<ft::ActionKind>(i);
+        if (action == ft::ActionKind::None || !ft::IsActionValidFor(target, action))
+            continue;
         const std::string name(ft::DisplayName(action));
 
         // The drink actions collapse into one submenu, drawn where the first
@@ -1154,12 +1155,12 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
             for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
                               ft::ActionKind::DrinkMagickaPotion})
             {
-                const bool selected = act.kind == kind;
+                const bool selected = here && act.kind == kind;
                 if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
                 {
                     act.kind = kind;
                     act.form = 0;
-                    changed = true;
+                    choose();
                 }
                 if (Im::IsItemHovered(0))
                     Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
@@ -1171,12 +1172,12 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
                 for (const auto &option : view.potions)
                 {
                     const std::string label = option.name + " (" + std::to_string(option.count) + ")";
-                    const bool selected = act.kind == ft::ActionKind::DrinkPotion && act.form == option.form;
+                    const bool selected = here && act.kind == ft::ActionKind::DrinkPotion && act.form == option.form;
                     if (CascadeItem(label.c_str(), selected))
                     {
                         act.kind = ft::ActionKind::DrinkPotion;
                         act.form = option.form;
-                        changed = true;
+                        choose();
                     }
                 }
             }
@@ -1204,7 +1205,7 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
                 if (!open)
                     continue;
                 if (EquipMenu(act, kind, view))
-                    changed = true;
+                    choose();
                 Im::EndMenu();
             }
             Im::EndMenu();
@@ -1213,22 +1214,29 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
 
         if (!TakesSpell(action))
         {
-            const bool selected = act.kind == action;
+            const bool selected = here && act.kind == action;
             if (CascadeItem(name.c_str(), selected))
             {
                 act.kind = action;
                 act.form = 0;
                 act.hand = Hand::None;
-                changed = true;
+                choose();
             }
             if (Im::IsItemHovered(0))
                 Im::SetTooltip("%s", std::string(ft::Describe(action)).c_str());
             continue;
         }
 
-        // A follower with no castable spells is offered nothing rather than an
-        // empty submenu that looks broken.
-        if (view.spells.empty())
+        // The spells that suit this target: a Self-delivery spell (Fast
+        // Healing, Oakflesh) is cast on oneself and on no one else; an aimed
+        // one (Heal Other, Firebolt) goes at someone else. A follower with
+        // none that fit is offered nothing rather than an empty submenu that
+        // looks broken.
+        std::vector<const SpellOption *> suited;
+        for (const auto &option : view.spells)
+            if (option.selfOnly == (target == ft::ActionTargetKind::Self))
+                suited.push_back(&option);
+        if (suited.empty())
         {
             Im::MenuItem((name + " (knows none)").c_str(), nullptr, false, false);
             continue;
@@ -1237,16 +1245,82 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
         if (!BeginCascade(name.c_str()))
             continue;
 
-        for (const auto &option : view.spells)
+        for (const auto *option : suited)
         {
-            const bool selected = act.kind == action && act.form == option.form;
-            if (CascadeItem(option.name.c_str(), selected))
+            const bool selected = here && act.kind == action && act.form == option->form;
+            if (CascadeItem(option->name.c_str(), selected))
             {
                 act.kind = action;
-                act.form = option.form;
-                changed = true;
+                act.form = option->form;
+                choose();
             }
         }
+        Im::EndMenu();
+    }
+    return changed;
+}
+
+// The Then cascade: whom first, then what -- the mirror of the If cascade's
+// subject, then predicate. The headings are the same cast, less those the
+// condition cannot supply: "Ally" on this side means the ally the condition
+// matched, so it is offered only when the condition is about one.
+bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *addAnother, ft::Rule &rule)
+{
+    bool changed = false;
+
+    CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
+
+    PushPopupChrome();
+    if (!Im::BeginPopup(id, 0))
+    {
+        Im::PopStyleVar(kPopupChromeVars);
+        return false;
+    }
+
+    // A rule with one action edits it here, in its row. The way to a second
+    // is this entry, first and in a section of its own so it is not taken
+    // for an action: the rule then opens as a drawer, where its actions
+    // are listed, ordered and added to.
+    if (addAnother)
+    {
+        if (CascadeItem("Add action...", false))
+        {
+            *addAnother = true;
+            changed = true;
+        }
+        Im::Separator();
+    }
+
+    struct Heading
+    {
+        ft::ActionTargetKind target;
+        std::uint32_t form;
+        std::string label;
+    };
+    // The same order as the If cascade's: self, the player, the other
+    // followers by name, any ally; then the threats, the particular before
+    // the general -- the attacker, the target, any enemy.
+    std::vector<Heading> headings{
+        {ft::ActionTargetKind::Self, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Self))},
+        {ft::ActionTargetKind::Player, 0,
+         view.playerName.empty() ? std::string(ft::DisplayName(ft::ActionTargetKind::Player)) : view.playerName}};
+    for (const auto &peer : SortedPeers(view))
+        headings.push_back({ft::ActionTargetKind::Follower, peer.id, peer.name});
+    headings.push_back({ft::ActionTargetKind::Ally, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Ally))});
+    headings.push_back(
+        {ft::ActionTargetKind::Attacker, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Attacker))});
+    headings.push_back(
+        {ft::ActionTargetKind::CurrentTarget, 0, std::string(ft::DisplayName(ft::ActionTargetKind::CurrentTarget))});
+    headings.push_back({ft::ActionTargetKind::Enemy, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Enemy))});
+
+    for (const Heading &heading : headings)
+    {
+        if (!ft::IsActionTargetValidFor(rule.subject, heading.target))
+            continue;
+        if (!BeginCascade(heading.label.c_str()))
+            continue;
+        if (ActionItems(rule, act, heading.target, heading.form, view))
+            changed = true;
         Im::EndMenu();
     }
 
@@ -1757,7 +1831,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         fresh.subject = ft::SubjectKind::Self;
         fresh.predicate = ft::PredicateKind::Any;
         fresh.conditionArg = 0.0f;
-        fresh.actionTarget = ft::ActionTargetKind::ConditionSubject;
+        fresh.actionTarget = ft::ActionTargetKind::Self;
         fresh.actions = {{ft::ActionKind::None}};
         rules.rules.push_back(fresh);
         changed = true;
@@ -3038,10 +3112,11 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         if (CellClicked(buf))
             state.detail = entry->form;
         // Why the row is dimmed, over the whole cell: asked of the
-        // Selectable, before the name is drawn over it.
-        if (dim && entry->setAside && Im::IsItemHovered(0))
-            Im::SetTooltip("%s", entry->asideBy.c_str());
-        else if (dim && entry->aboveSkill && Im::IsItemHovered(0))
+        // Selectable, before the name is drawn over it. A spell above the
+        // follower's skill says so first, even when a pin shadows it too:
+        // the skill is the reason nothing about the row can change, the
+        // pin only the reason for now.
+        if (dim && entry->aboveSkill && Im::IsItemHovered(0))
         {
             // The two labels right-aligned to one edge, so the school and
             // the numbers line up beneath each other.
@@ -3057,6 +3132,8 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
             line("Has:", entry->skill);
             Im::EndTooltip();
         }
+        else if (dim && entry->setAside && Im::IsItemHovered(0))
+            Im::SetTooltip("%s", entry->asideBy.c_str());
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", entry->name.c_str());
 
@@ -3446,16 +3523,12 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // The global switch on the Settings page never had this problem because
     // it reads its flag directly; this now does the same.
     const bool followerEnabled = IsFollowerEnabled(view.id);
-    // The same tick as the rule rows, ghosted when off, with the word beside
-    // it: one glyph for "on" everywhere on this tab, not ImGui's boxed tick
-    // next to ours.
-    if (!followerEnabled)
-        Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
+    // The same tick as the rule rows, and like theirs absent when off --
+    // not a ghost of one -- with the word beside it: one glyph for "on"
+    // everywhere on this tab, not ImGui's boxed tick next to ours.
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-    const bool toggled = GlyphButton("enabled", Im::GetFrameHeight(), Glyph::Tick);
+    const bool toggled = GlyphButton("enabled", Im::GetFrameHeight(), Glyph::Tick, followerEnabled);
     Im::PopStyleVar(1);
-    if (!followerEnabled)
-        Im::PopStyleColor(1);
     if (toggled)
         SetFollowerEnabled(view.id, !followerEnabled);
     if (Im::IsItemHovered(0))

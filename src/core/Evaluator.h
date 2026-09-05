@@ -31,6 +31,7 @@ enum class Verdict : std::uint8_t
     Outranked,        // a rule above holds the hand or slot this would take
     Unsupported,      // the action cannot be performed on this runtime
     Busy,             // it can, but not this evaluation: its resource pool is exhausted
+    Casting,          // a cast rule, while the follower is mid-cast on a spell of their own: it waits
     InvalidCondition, // this subject/predicate pair is not answerable at all
     NotReached,       // an earlier rule already fired
 };
@@ -131,6 +132,7 @@ struct EvalContext
     struct Sequence
     {
         int ruleIndex{-1};
+        ActionTargetKind aimedAt{ActionTargetKind::Self};
         ActorId target{0};
         std::vector<Action> actions;
         std::size_t next{0}; // the first action not yet done
@@ -204,7 +206,7 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
 Binding EvaluateCondition(const Rule &r, const Snapshot &snap);
 
 // Resolve the action's recipient. `binding` is the condition's result, used
-// when the rule targets ActionTargetKind::ConditionSubject.
+// when the rule aims at the ally or enemy the condition matched.
 ActorId ResolveActionTarget(const Rule &r, const Snapshot &snap, Binding binding, bool *ok);
 
 // Exposed for testing and for the UI's live readout.

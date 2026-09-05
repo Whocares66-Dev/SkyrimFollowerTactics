@@ -43,17 +43,17 @@ enum class SubjectKind : std::uint8_t
 };
 
 // What is being asked about the subject. Rule::conditionArg carries the
-// threshold where one applies: a 0..1 fraction for the Pct predicates, game
-// units for WithinDistance, a plain count for CountAtLeast.
+// threshold where one applies: a 0..1 fraction for the Pct predicates, a
+// plain count for CountAtLeast.
 enum class PredicateKind : std::uint8_t
 {
     Any,
     HealthPctBelow,
     StaminaPctBelow,
     MagickaPctBelow,
-    InBleedout,
-    InCombat,
-    // The edges of a fight, true on one tick each. CombatBegins holds on the
+    // The edges of a fight, true on one tick each. There is no "in combat"
+    // beside them: tactics only run in a fight, so it would always hold,
+    // and bleeding out is a Status. CombatBegins holds on the
     // first evaluation of a fight and the list runs on as usual beneath it.
     // CombatEnds holds on one farewell evaluation after the follower leaves
     // combat -- and on THAT evaluation nothing else holds: a standing "Any"
@@ -61,17 +61,17 @@ enum class PredicateKind : std::uint8_t
     // put the travelling gear back.
     CombatBegins,
     CombatEnds,
-    WithinDistance,
     CountAtLeast,
     // The subject is in the status Rule::statusKind names: poisoned,
     // burning, fleeing ... Any subject.
     Status,
-    // The subject's armour is in the band conditionArg names (an ArmorBand,
-    // as a number). Any subject.
-    Armor,
-    // The subject's resistance to Rule::damageKind is in the band
-    // conditionArg names (a ResistBand, as a number). Any subject.
-    Resistance,
+    // The share of a blow the subject's armour turns away, 0 to 0.8, under
+    // conditionArg. Any subject.
+    ArmorPctBelow,
+    // The subject's resistance to Rule::damageKind, the game's percent as
+    // a fraction (50% is 0.5; a weakness is below zero), under
+    // conditionArg. Any subject.
+    ResistancePctBelow,
     // The subject has been hit with Rule::damageKind in the last few
     // seconds. Any subject.
     AttackedBy,
@@ -81,32 +81,49 @@ enum class PredicateKind : std::uint8_t
     AttackingPlayer,
     TargetOfPlayer,
     // The group's extremes: true of the group when it has anyone, binding
-    // the member with the least or the most. Ally and Enemy only.
+    // the member with the least or the most of the measure. Ally and Enemy
+    // only. The resistance ones are of Rule::damageKind.
     HealthLowest,
     HealthHighest,
+    StaminaLowest,
+    StaminaHighest,
+    MagickaLowest,
+    MagickaHighest,
     ArmorLowest,
     ArmorHighest,
-    // The other side of the three Pct predicates. Listed after the rest so
+    ResistanceLowest,
+    ResistanceHighest,
+    // The other side of the five Pct predicates. Listed after the rest so
     // the editor's menu, which walks this enum, keeps them beneath their
     // below-counterparts; AboveOf pairs the two.
     HealthPctAbove,
     StaminaPctAbove,
     MagickaPctAbove,
+    ArmorPctAbove,
+    ResistancePctAbove,
 
     COUNT
 };
 
-// Who the action is applied to. ConditionSubject -- the default -- means
-// whoever the condition matched.
+// Who the action is applied to. The same cast as the condition's subject,
+// so THEN reads like IF: "Player: Attacked by fire -> Player: Cast fire
+// shield". Ally and Enemy mean THE ally or enemy the condition matched --
+// "Ally attacked by fire -> Ally cast fire shield" is one ally -- so they
+// are only valid when the condition is about one (IsActionTargetValidFor).
+// Not every action makes sense on every target: a potion is only ever
+// drunk by oneself (IsActionValidFor).
 enum class ActionTargetKind : std::uint8_t
 {
-    ConditionSubject,
     Self,
     Player,
+    Ally,
+    Enemy,
     CurrentTarget,
     // Whoever last attacked the condition's subject: the enemy at the
     // ally's throat, for the rule that answers it.
     Attacker,
+    // One particular other follower, named by Rule::actionTargetForm.
+    Follower,
 
     COUNT
 };
@@ -118,7 +135,18 @@ enum class ActionKind : std::uint8_t
     DrinkMagickaPotion, // the strongest carried
     DrinkStaminaPotion, // the strongest carried
     DrinkPotion,        // one specific potion, named by actionForm
+    // Fight the one the rule aims at: make them the follower's combat
+    // target, and leave HOW to the AI -- a warrior swings, an archer shoots,
+    // a mage casts, each by their own scoring. There is no "attack" in the
+    // engine, only a target; this sets it. Done already when they are the
+    // current target, so the rule falls through instead of re-firing.
+    // Listed before Cast so the menu offers it first under Enemy and
+    // Attacker: the order of the enum is the order of the menu.
+    Target,
     CastSpell,
+    // No "stop fighting", "flee" or "hold position": the combat AI decides
+    // whether it respects a pushed package, and a rule that may or may not
+    // be obeyed is worse than none (removed 2026-09-04).
     // The equip actions PIN: what they put on stays on, against the engine's
     // own swap and the combat AI's choice, until another rule or the panel
     // lets it go. A plain equip would not do -- the AI re-derives what to
@@ -131,9 +159,6 @@ enum class ActionKind : std::uint8_t
     EquipArrows,
     EquipSpell,
     EquipArmor,
-    StopCombat,
-    Flee,
-    HoldPosition,
 
     COUNT
 };
@@ -176,11 +201,13 @@ struct Rule
     // Which status, for PredicateKind::Status. Ignored by every other
     // predicate.
     StatusKind statusKind{StatusKind::Poisoned};
-    // Which kind of damage, for Resistance and AttackedBy. Ignored by every
-    // other predicate.
+    // Which kind of damage, for the Resistance predicates and AttackedBy.
+    // Ignored by every other predicate.
     DamageKind damageKind{DamageKind::Fire};
 
-    ActionTargetKind actionTarget{ActionTargetKind::ConditionSubject};
+    ActionTargetKind actionTarget{ActionTargetKind::Self};
+    // Which follower, for ActionTargetKind::Follower.
+    std::uint32_t actionTargetForm{0};
 
     // What to do, in order -- ALL of it. The rule is the unit of the list:
     // the first rule whose condition holds and which can do something wins
@@ -273,6 +300,25 @@ struct RuleSet
 // reason.
 [[nodiscard]] bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept;
 
+// The same for the THEN side. A target of Ally or Enemy is "the one the
+// condition matched", so it needs a condition about an ally (Ally, or a
+// named follower) or an enemy (Enemy, or the current target); every other
+// target stands on its own. And an action must make sense on its target: a
+// potion, an equip, a retreat are the follower's own; Target picks an
+// enemy, so it takes Enemy or Attacker and nothing else -- on the current
+// target it would always be done already. Cast is the one action aimed
+// anywhere; which spells suit which target is the menu's business, since
+// core does not know a spell's delivery.
+[[nodiscard]] bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target) noexcept;
+[[nodiscard]] bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept;
+
+// Put a rule back in order after its condition changed: a target the new
+// subject cannot supply falls back to Self, and an action that makes no
+// sense on the target that results is blanked. What the editor calls after
+// every change to the IF side, so the THEN side never shows a pair the
+// menus would not offer.
+void Reconcile(Rule &rule) noexcept;
+
 // The above-counterpart of a below predicate -- HealthPctAbove for
 // HealthPctBelow -- or the predicate itself for one with no counterpart.
 // The editor lists both under one heading, the below values first.
@@ -290,6 +336,10 @@ struct Extremes
 };
 [[nodiscard]] Extremes ExtremesOf(PredicateKind predicate) noexcept;
 [[nodiscard]] bool IsExtreme(PredicateKind predicate) noexcept;
+
+// The resistance family -- below, above, lowest, highest -- the predicates
+// that read Rule::damageKind as the resistance asked about.
+[[nodiscard]] bool IsResistance(PredicateKind predicate) noexcept;
 
 // Which actions the current runtime can actually perform. src/game/ fills this
 // in at startup. The UI greys out unsupported actions rather than letting

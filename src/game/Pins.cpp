@@ -4,6 +4,8 @@
 
 #include "game/Pins.h"
 
+#include "game/Packages.h"
+
 #include "game/Tactics.h"
 #include "game/Util.h"
 
@@ -391,15 +393,16 @@ void ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Hold
 // with nothing pinned it costs a lock and a look at an empty map. With pins
 // it asks the engine for each pinned item's entry alone -- a walk of pointer
 // compares, no names, no strings -- so a follower with two pins costs two
-// lookups a tick, not a sweep of her bag.
+// lookups a tick, not a sweep of the bag.
 //
-// In a fight her hands are the combat AI's, and the rules': a mage with a
-// pinned dagger wants that hand for a spell, and putting the dagger back
-// every half second had the two trading blows -- the flicker seen with
-// Marcurio. So anything pinned to a hand -- weapon, spell, shield, torch --
-// is what she carries out of combat and starts a fight with; once it is
-// over, it goes back. Armour and ammunition are contested by nothing and
-// hold throughout.
+// When a pin goes back is the core's PutBackNow, tested: at once, except a
+// hand pin while one of OUR casts is in progress -- the UseMagic package
+// has the hand, and the dagger goes back once the spell has left it. The
+// first version stood every hand pin down for the whole fight, against the
+// flicker of the combat AI wanting a pinned hand for its own spell; the
+// score hook now keeps the AI's choice off a pinned hand, and the
+// stand-down left Marcurio dagger-less from his first Lightning Bolt to the
+// end of the fight (12:37).
 // For the log: what each hand holds right now, spell or item.
 std::string HandsState(RE::Actor *actor)
 {
@@ -533,9 +536,10 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             // equip detour refuses that sword now; if this line repeats, the
             // detour has missed a path, and the hand state beside it says
             // which.
+            const bool casting = IsMidCast(actor);
             if (form->Is(RE::FormType::Spell))
             {
-                if (!fighting && !EquippedIn(actor, form, hands))
+                if (PutBackNow(*pin, EquippedIn(actor, form, hands), fighting, casting))
                 {
                     logger::info("{} put away pinned {} -- readying it again -- {}", Describe(actor),
                                  form->GetName() ? form->GetName() : "?", HandsState(actor));
@@ -557,7 +561,7 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                 }
                 const bool on = hands == Hand::None ? (found->second.second && found->second.second->IsWorn())
                                                     : EquippedIn(actor, object, hands);
-                if (!on && !(fighting && hands != Hand::None))
+                if (PutBackNow(*pin, on, fighting, casting))
                 {
                     logger::info("{} took off pinned {} -- putting it back on", Describe(actor),
                                  object->GetName() ? object->GetName() : "?");

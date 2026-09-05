@@ -1,7 +1,7 @@
 # FollowerTactics — project context
 
 A Dragon Age: Origins-style tactics system for Skyrim SE/AE followers: an ordered list of
-`IF <condition> THEN <action> ON <target>` rules, per follower, editable in game.
+`IF <subject>: <condition> THEN <target>: <action>` rules, per follower, editable in game.
 
 Read `docs/PLAN.md` first. `docs/RESEARCH.md` has the sourced findings behind it, with
 explicit uncertainty flags. `docs/MAGIC.md` is how casting works and what does not;
@@ -59,7 +59,7 @@ run copies as usual.
 `MO2\mods\FollowerTactics\SKSE\Plugins\`. New mods appear **unticked** in MO2 -- tick it
 or the DLL never loads.
 
-Last verified: 83 cases green under MSVC 19.42 (`core` and `core-asan` presets), 2026-09-04.
+Last verified: 88 cases green under MSVC 19.42 (`core` and `core-asan` presets), 2026-09-04.
 
 ## After every edit
 
@@ -168,10 +168,12 @@ exists.
   for her next update. Do not apply it early with `UpdateArmorAbility`: the
   engine applies it again when time runs, and the effect doubles.
 - **Prevent-removal (the force flag on EquipObject) holds against the
-  equip-best swap but not against the combat AI's spell hand.** Verified in
-  play: pinned robes stop iron armour going on; a pinned dagger comes off the
-  moment a mage wants that hand for a spell. See the pin watchdog in
-  `Tactics.cpp`.
+  equip-best swap but not against a spell equip.** Verified in play: pinned
+  robes stop iron armour going on; a pinned dagger comes off the moment a
+  spell goes into that hand, the combat AI's own or our UseMagic package's.
+  The watchdog in `Pins.cpp` puts it back, by the core's `PutBackNow`: at
+  once, except while one of our casts holds the hand. The rule is tested
+  against a simulation of this behaviour in `tests/test_loadout.cpp`.
 
 ## CommonLibSSE gotchas already hit
 
@@ -244,6 +246,11 @@ armour, resistance, attacked-by, the party's extremes and the player's fight
 shareable profile format) and per-follower profiles. Actions to come are in
 `docs/ACTIONS.md`.
 
+**Defaults (2026-09-04):** a follower starts with NO rules; both switches start on,
+which is safe because an empty list does nothing. A fresh install changes nothing
+until a rule is written. The Phase 1 "emergency heal" rule above was the hardcoded
+default until then.
+
 ## Where the log actually is — not where you would guess
 
 ```
@@ -269,6 +276,10 @@ Two independent surprises stack up in that path, both verified on this machine:
 
    Harmless (logging works), but it is a real data point for the fork migration in
    `docs/COMMONLIB.md`: worth re-checking against alandtse/CommonLibSSE-NG v7.0.0.
+
+## Fetching UESP / Nexus pages
+
+`WebFetch` is blocked on `uesp.net` (both subdomains) and `nexusmods.com`. Don't retry it or spoof curl headers at these -- use, respectively, the `search-uesp` skill, the `search-creation-kit-wiki` skill, and houseCARL's keyless Nexus tools (`housecarl_nexus_*`, see its MCP instructions) for the verified working methods.
 
 ## Working style
 

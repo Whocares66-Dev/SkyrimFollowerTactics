@@ -210,6 +210,22 @@ void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool movi
 // aside.
 [[nodiscard]] std::vector<Pin> Shadowing(const std::vector<Pin> &pins, const Holdable &thing);
 
+// ---- The watchdog's decision, each tick, for one pin.
+//
+// A pin the game has taken off goes back on -- except a HAND pin while one
+// of our own casts is in progress: the UseMagic package puts its spell in a
+// hand, and a pinned dagger comes off the moment a spell wants the hand
+// (the prevent-removal flag holds against the engine's equip-best swap,
+// not against a spell equip). The cast is a borrow: once it has run, the
+// dagger goes back. Until it has, putting it back would knock the spell
+// out of the hand mid-cast. Armour and ammunition are contested by no cast
+// and hold throughout. Out of a fight, everything goes straight back; the
+// combat AI's own spell choice is kept off a pinned hand by the score hook,
+// so a fight no longer stands the hand pins down for its whole length --
+// that left a mage dagger-less from the first cast to the end of the fight
+// (2026-09-04, Marcurio's daggers and Lightning Bolt).
+[[nodiscard]] bool PutBackNow(const Pin &pin, bool on, bool fighting, bool castInProgress) noexcept;
+
 // ---- The fight is over. What the book held when it began comes back, and
 // what the fight pinned is let go.
 

@@ -35,10 +35,11 @@ namespace ft::game
 // Pinning releases any pin it conflicts with (same body slot, other hand),
 // since the engine will not displace a pinned item on its own.
 //
-// A pinned weapon or torch is held only OUT of combat. In a fight the hands
-// are the combat AI's and the rules' -- a spell wants one -- and holding a
-// dagger there against them only flickers. It goes back on when the fight
-// ends. Armour and ammunition hold throughout.
+// A pinned weapon, spell or torch is held in and out of combat alike, with
+// one exception: while a CastSpell rule's package has a hand for its spell,
+// the pin in that hand waits, and goes back once the spell has left it. A
+// cast borrows the hand; the pin is what the follower fights with
+// otherwise. Armour and ammunition hold throughout.
 //
 // Unpin leaves it worn but hers to change again. TakeOff takes it off and
 // forgets it; the game may put it back, and what it wears by default is
@@ -94,9 +95,11 @@ bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand);
 // those the AI is kept from, for the panel; drop pins for things gone.
 void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<MagicEntry> &magic);
 
-// Keep the promise on the tick: put back what the game took off (hands
-// stand down in combat), and log what the AI is choosing from once per
-// fight. In a fight the promise is kept by WatchCombatScores, not here.
+// Keep the promise on the tick: put back what the game took off, in a
+// fight or out of one (a hand pin waits only while our own cast holds the
+// hand -- PutBackNow), and log what the AI is choosing from once per fight.
+// Corrective, where WatchCombatScores and RefuseEquipsAgainstPins are
+// preventive: a spell equip gets past both, and this is what answers it.
 void KeepPins(const std::vector<RE::Actor *> &followers);
 
 // Once, at data load: take over the scoring of every kind of entry in the

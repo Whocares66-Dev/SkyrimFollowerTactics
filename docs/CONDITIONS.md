@@ -15,11 +15,13 @@ conditions take a *kind* as well as, or instead of, a number:
 
 | Condition | Kind | Number |
 |---|---|---|
-| Status | poisoned, burning, frostbitten, shocked, diseased, paralysed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking | none |
-| Resistance | fire, frost, shock, magic, poison, disease | a band |
-| Attacked by | physical, magic, fire, frost, shock, poison | none |
-| Armor | none | a band |
+| Status | poisoned, burning, frostbitten, shocked, paralysed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking | none |
+| Resistance | fire, frost, shock, magic, poison | a percent, below or above; or lowest / highest |
+| Attacked by | any; melee, ranged, magic; fire, frost, shock, poison | none |
+| Armor | none | a percent, below or above; or lowest / highest |
 | Health / Stamina / Magicka | lowest, highest | or the existing below / above % |
+
+Every measure -- health, stamina, magicka, armour, a resistance -- is asked the same way: a percent below or above, or a group's lowest or highest of it (changed 2026-09-04 from named bands; the bands below are kept as reference values).
 
 So `Rule` gains one field, `conditionKind`, an enum on the wire like
 everything else (`"poisoned"`, `"fire"`), read only by the predicates that
@@ -42,7 +44,6 @@ All from the actor, per tick. "Effect" means a walk of
 | frostbitten | same with `kResistFrost` / `MagicDamageFrost` 0x01CEAE | medium: fire-and-forget frost bolts are `NoDuration` and leave no effect; the hit table (section 5) backs it |
 | shocked | same with `kResistShock` / `MagicDamageShock` 0x01CEAF | medium, same caveat |
 | poisoned | an effect whose `spell->IsPoison()` | high |
-| diseased | an effect whose spell type is `kDisease` | high |
 | paralysed | `boolBits kParalyzed`, or an effect with archetype `kParalysis` | medium: which flips first is to be seen |
 | staggered | `actorState2.staggered` | medium |
 | fleeing | `combatController->IsFleeing()`, null-checked | high |
@@ -62,13 +63,7 @@ Snapshot: a `status` bit set per actor view.
 
 ## 3. Armor
 
-Damage reduction = min(80%, (displayed + 25 per worn piece) x 0.12). The
-cap is reached at a displayed 567 with four pieces. `kDamageResist` is the
-displayed figure, worn armour with tempering and skill included; the
-runtime's `armorRating` and `armorBaseFactorSum` give the reduction
-exactly, and that is what the snapshot carries: the follower's reduction as
-a fraction, not the displayed number, so the bands mean the same thing on
-a bandit in fur and a chief in plate.
+Damage reduction = min(fMaxArmorRating 80%, rating x fArmorScalingFactor 0.12 / 100 + pieces x fArmorBaseFactor 0.03). The cap is reached at a displayed 567 with four pieces. `kDamageResist` is the displayed figure, worn armour with tempering and skill included. Since 2026-09-04 the two inputs come from the engine's own accessors, `Actor::CalcArmorRating()` and `Actor::GetArmorBaseFactorSum()`, rather than a recount of the worn slots; only the combination is ours, because the engine does it inline in the damage code. A mod that changes the settings or the ratings is reflected; one that hooks the formula itself (Armor Rating Rescaled, Armor Rating Redux) is not. The snapshot carries the reduction as a fraction, not the displayed number, so the condition means the same thing on a bandit in fur and a chief in plate.
 
 Creature skins all rate 0; a dragon or a giant reads as Low, which is what
 a rule about armour should say about them.
@@ -83,8 +78,7 @@ Estimated tiers (to be replaced by logged values):
 | 150-300 | 40-60% | chiefs, deathlords, Thalmor |
 | 300-567 | 60-80% | late named enemies, the player, geared followers |
 
-**Bands:** Low under 25%, Medium 25% to 55%, High 55% and up. Lowest and
-Highest bind the group's extreme, as Health's do.
+**The condition:** the reduction as a percent, below or above 25 / 50 / 75%, or a group's Lowest and Highest, as Health's. (The named bands Low / Medium / High, at 25% and 55%, were the first version and are gone.)
 
 ## 4. Resistance
 
@@ -95,8 +89,7 @@ are uncapped: 100 is immunity. Vanilla values cluster at 25, 33, 50 and
 poison 100, atronachs 100 to their own element and -33 to the opposite,
 dragons 50 own and -25 opposite, vampires frost 50 and fire -50).
 
-**Bands:** Weak below 0, Normal 0-24, High 50 and up, Immune 100 and up.
-The snapshot carries the six values per actor view.
+**The condition:** the value as a percent, below or above 25 / 50 / 75%, or a group's Lowest and Highest of that kind: "Resistance Fire > 75%" is the atronach, "Resistance Frost < 25%" catches the weakness too. (The named bands Weak / Normal / High / Immune were the first version and are gone.) The snapshot carries the values per actor view.
 
 ## 5. Attacked by
 
@@ -106,8 +99,10 @@ into one per-actor table of `kind -> (game time, attacker)`:
 
 1. A sink on `TESHitEvent` (target, cause, source form, projectile, flags).
    It fires once for a physical hit and once per magic effect. The source
-   form says the kind: a weapon or nothing is physical; a magic item's
-   effects bucket by `resistVariable` and `IsPoison()`.
+   form says the kind: a weapon or nothing is a blow -- **melee**, or
+   **ranged** when the event names a projectile, an arrow or a bolt; a
+   magic item is **magic**, and its effects bucket by `resistVariable` and
+   `IsPoison()` as well, so a fire hit is magic and fire both. "Attacked by ranged" is the archer in particular, "attacked by melee" the one at the follower's face, "attacked by magic" any caster (2026-09-04, for the Target action in docs/ACTIONS.md 6 and for armour buffs against blows).
 2. A sink on `TESMagicEffectApplyEvent` for effects that skip the hit event
    (`kNoHitEvent`): cloaks, hazards, spit. Which ones do is to be tested.
 3. The active-effect scan of section 2, with the effect's `caster` as the
@@ -116,8 +111,8 @@ into one per-actor table of `kind -> (game time, attacker)`:
 The window is 3 s. "Attacked by" is true within it; the attacker is the
 most recent. The snapshot carries, per actor view, the kinds seen in the
 window and the attacker's id, and the rule can aim its action at the
-attacker: a new action target, `Attacker`, alongside Self, Player and
-Target. That is what "hit the enemy who is doing the attacking" needs.
+attacker: `Attacker` on the Then side, beside Self, Player, Ally, Enemy,
+Target and a named follower. That is what "hit the enemy who is doing the attacking" needs.
 
 ## 6. Sensing the party and the enemies
 
@@ -160,8 +155,11 @@ form, listed by name in the menu after the player.
   and how often.
 - The walk's list against the player's combat group `targets`, once, in
   the log; and how soon a dead or fled enemy drops out.
-- Logged `kDamageResist`, `armorRating` and `armorBaseFactorSum` for a
-  fight's enemies, to replace the estimated tiers.
+- The `armor ...:` line the sensors log once per actor: that
+  `GetArmorBaseFactorSum` reads as pieces x 0.03 (0.06 for robes and boots)
+  and `CalcArmorRating` as the displayed rating, so the reduction in the
+  sheet's Armor row matches the 6% / 10% seen with the old slot count. And
+  the logged values for a fight's enemies, to replace the estimated tiers.
 
 ## Sources
 

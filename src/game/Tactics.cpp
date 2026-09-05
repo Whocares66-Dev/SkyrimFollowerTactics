@@ -81,6 +81,9 @@ std::unordered_map<ft::ActorId, FollowerState> g_followers;
 // across rendering, and never across BuildSnapshot.
 // Only the exceptions are stored, so a follower we have never seen -- or a new
 // one -- defaults to enabled without needing an entry.
+// The followers switched OFF. A follower starts on: with the default rule
+// set empty, on is safe -- an empty list does nothing -- and the switch is
+// for silencing a written list without losing it.
 std::mutex g_disabledMutex;
 std::unordered_set<ft::ActorId> g_disabledFollowers;
 
@@ -128,23 +131,17 @@ struct TickCost
 TickCost g_cost;
 double g_lastCostReport = -1.0e9;
 
-// --- the hardcoded Phase 1 rule --------------------------------------------
+// --- what a follower starts with ---------------------------------------------
 
+// Nothing. Installing the mod must not change how anyone's followers fight
+// until the player has written a rule and switched that follower on: the
+// Phase 1 "emergency heal" rule that used to sit here surprised a fresh
+// install with a follower drinking potions on her own initiative.
 const ft::RuleSet &DefaultRuleSetImpl()
 {
     static const ft::RuleSet rules = [] {
         ft::RuleSet rs;
-        rs.name = "phase1-spike";
-
-        ft::Rule heal;
-        heal.label = "emergency heal";
-        heal.subject = ft::SubjectKind::Self;
-        heal.predicate = ft::PredicateKind::HealthPctBelow;
-        heal.conditionArg = 0.5f;
-        heal.actionTarget = ft::ActionTargetKind::ConditionSubject;
-        heal.actions = {{ft::ActionKind::DrinkHealthPotion}};
-        rs.rules.push_back(heal);
-
+        rs.name = "empty";
         return rs;
     }();
     return rules;
@@ -164,6 +161,7 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipSpell)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipArrows)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipArmor)] = true;
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::Target)] = true;
 
     // Casting needs the ESL. Without it the action reports Unsupported and the
     // panel greys it out, which is a truthful "not available here" rather than
@@ -450,7 +448,7 @@ void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace
     v.lastEvaluatedAt = now;
     v.evaluated = true;
     v.inCombat = true;
-    v.tacticsEnabled = true;
+    v.tacticsEnabled = IsFollowerEnabled(v.id);
     FillDisplayFields(actor, v);
     PublishOne(std::move(v));
 }

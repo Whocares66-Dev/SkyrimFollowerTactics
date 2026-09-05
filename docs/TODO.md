@@ -6,6 +6,14 @@ in `docs/PLAN.md`.
 
 ## Casting
 
+- **Deferring to the AI's own cast, in play.** A cast rule now waits
+  (verdict "casting") while the follower is mid-cast on a spell of their
+  own, instead of interrupting it (2026-09-04, Lightning Bolt on "magicka
+  above half" cut off every spell Marcurio began). The risk is the other
+  way: an AI that casts back to back never lets the rule through. Watch
+  for a cast rule whose Status sits on "casting" for whole fights; if it
+  does, the next knob is the cast cooldown, 2 s to 4 s, or letting the
+  rule through once it has waited some seconds.
 - **Sustain length in the editor.** A concentration rule's stream length is
   the rule's numeric argument, which the panel does not expose; every stream
   runs the 3 s default. Likely shape: a random length within a range, which
@@ -44,6 +52,15 @@ in `docs/PLAN.md`.
   away once she has it -- and what the game does after "Equip armor: None"
   takes pinned pieces off (her outfit may not come back until a cell
   change).
+- **A hand pin back after a cast, in play.** The watchdog now puts a
+  pinned weapon or spell back mid-fight as soon as our cast has released
+  its hand (`PutBackNow`, after Marcurio was left dagger-less from his
+  first Lightning Bolt to the end of the fight). Watch the log for the
+  put-back landing after the spell equip of the NEXT cast -- an
+  "InterruptCast" right after "putting it back on" -- in which case the
+  in-fight put-back should equip immediately rather than queued. Also
+  whether the combat AI re-equips its own spell into the hand once the
+  dagger is back (it should not: the score hook zeroes those entries).
 - **Pins over a fight, in play.** The book is remembered on entering
   combat and restored on leaving it (`NoteFight` / `RestorePinsAfterFight`
   in Pins.cpp). Verify: a travelling outfit and dagger come back after a
@@ -64,9 +81,17 @@ in `docs/PLAN.md`.
   `kParalyzed` and the archetype flips first; how long `staggered` holds;
   whether the hit event fires for cloaks, hazards and concentration ticks;
   logged armour figures for a fight's enemies against the estimated tiers.
+- **Target, in play** (docs/ACTIONS.md 6). Whether the standard target
+  selector lets a written `targetHandle` stand: `Ally: Attacked by Ranged ->
+  Attacker: Target` against a bandit archer, and read the log for
+  "already fighting them" on the next tick, or the rule re-firing every
+  two seconds. If it snaps back, the fallbacks are a selector vtable hook
+  or a UseWeapon pool. Also whether a hit event's `projectile` is set for
+  every arrow and bolt, and never for a thrown or melee hit.
 - **Cast on a chosen target, in play.** A targeted spell now goes at whom
-  the rule aimed it (the "On" choice in every action's menu: whoever
-  matched, self, the player, the target, their attacker). Verify Heal
+  the rule aimed it (the Then cascade's first level: self, the ally or
+  enemy the condition matched, the player, a named follower, the target,
+  the attacker). Verify Heal
   Other lands on the hurt ally and on the player through the package's
   Target input, and what an aimed stream (Healing Hands) does at a moving
   ally.

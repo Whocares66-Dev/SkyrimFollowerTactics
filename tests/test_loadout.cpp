@@ -434,3 +434,182 @@ TEST_CASE("a pin kept through the fight, or made in the panel during it, is unto
     REQUIRE(back.restored.size() == 1);
     CHECK(back.restored[0].hands == Hand::Right);
 }
+
+// ---- The watchdog against the game's hands, simulated.
+//
+// There is no headless Skyrim, so what the engine does with a hand is
+// written down here as it was learned in play, and the watchdog's rule is
+// run against it. The three facts, each verified in game (CLAUDE.md, the
+// SKSE gotchas):
+//   1. Our own equip puts an item in a hand with the prevent-removal flag,
+//      the pin, which holds against the engine's equip-best swap.
+//   2. The engine's own equips land in our detour of EquipObject, which
+//      refuses one that would break a pin -- the sword over pinned Flames
+//      when a fight ends -- unless the thing is the pinned one itself.
+//   3. EquipSpell is not detoured, and a spell going into a hand displaces
+//      whatever is there, pinned or not: a pinned dagger comes off the
+//      moment a spell wants the hand. The UseMagic package our cast rules
+//      run does exactly this for the spell they cast.
+namespace
+{
+
+struct Hands
+{
+    std::uint32_t left{0};
+    std::uint32_t right{0};
+};
+
+struct World
+{
+    Hands hands;
+    std::vector<Pin> pins;
+    bool fighting{false};
+    bool casting{false}; // one of OUR casts holds a package record
+    int putBacks{0};
+
+    // 1. Our equip: the pin's thing into the pin's hands.
+    void OurEquip(const Holdable &thing, Hand hands)
+    {
+        if (Overlap(hands, Hand::Left))
+            this->hands.left = thing.form;
+        if (Overlap(hands, Hand::Right))
+            this->hands.right = thing.form;
+    }
+
+    // 2. The engine's equip, through the detour: refused against a pin.
+    bool EngineEquip(const Holdable &thing, Hand hands)
+    {
+        if (!FindPin(pins, thing.form))
+        {
+            for (const Pin &pin : pins)
+                if (Conflicts(thing, hands, pin.thing, pin.hands))
+                    return false;
+        }
+        OurEquip(thing, hands);
+        return true;
+    }
+
+    // 3. A spell into a hand, by the package or the AI: displaces, always.
+    void EquipSpell(const Holdable &spell, Hand hand)
+    {
+        OurEquip(spell, hand);
+    }
+
+    [[nodiscard]] bool On(const Pin &pin) const
+    {
+        const bool left = !Overlap(pin.hands, Hand::Left) || hands.left == pin.thing.form;
+        const bool right = !Overlap(pin.hands, Hand::Right) || hands.right == pin.thing.form;
+        return left && right;
+    }
+
+    // The watchdog's tick: each pin, back on when PutBackNow says so.
+    void Watchdog()
+    {
+        for (const Pin &pin : pins)
+        {
+            if (PutBackNow(pin, On(pin), fighting, casting))
+            {
+                OurEquip(pin.thing, pin.hands);
+                ++putBacks;
+            }
+        }
+    }
+};
+
+constexpr std::uint32_t kIronDagger = 12; // Either
+constexpr std::uint32_t kIronSword = 13;  // Either
+
+} // namespace
+
+TEST_CASE("when a pin goes back: at once, except a hand our cast is using")
+{
+    const Pin dagger{Thing(kSteelDagger, Grip::Either), Hand::Left};
+    const Pin armour{Armour(kIronArmor, 0x4), Hand::None};
+
+    // On already: nothing to do, whatever else is true.
+    for (const bool fighting : {false, true})
+        for (const bool casting : {false, true})
+        {
+            CHECK_FALSE(PutBackNow(dagger, true, fighting, casting));
+            CHECK_FALSE(PutBackNow(armour, true, fighting, casting));
+        }
+    // Off, out of a fight: back, cast or no cast (a cast out of combat is
+    // not ours to worry about; the package only runs in one).
+    CHECK(PutBackNow(dagger, false, false, false));
+    CHECK(PutBackNow(dagger, false, false, true));
+    // Off, in a fight: back -- unless our cast has the hands.
+    CHECK(PutBackNow(dagger, false, true, false));
+    CHECK_FALSE(PutBackNow(dagger, false, true, true));
+    // Armour and ammunition are contested by no cast.
+    CHECK(PutBackNow(armour, false, true, true));
+}
+
+TEST_CASE("a dagger in each hand survives a Lightning Bolt cast, and comes back after it")
+{
+    // Marcurio, 2026-09-04 12:37: Iron Dagger pinned right, Steel Dagger
+    // pinned left, a rule casting Lightning Bolt (a left-hand spell) when
+    // the player is attacked. The cast put the bolt in the left hand and
+    // the dagger came off; with the watchdog standing down for the whole
+    // fight, it stayed off, still pinned, to the end of the fight.
+    World w;
+    const Holdable iron = Thing(kIronDagger, Grip::Either);
+    const Holdable steel = Thing(kSteelDagger, Grip::Either);
+    const Holdable bolt = Thing(kLightningBolt, Grip::LeftOnly);
+    w.pins = {{iron, Hand::Right}, {steel, Hand::Left}};
+    w.OurEquip(iron, Hand::Right);
+    w.OurEquip(steel, Hand::Left);
+    REQUIRE(w.hands.left == kSteelDagger);
+    REQUIRE(w.hands.right == kIronDagger);
+
+    // The fight begins; nothing has moved, and the watchdog does nothing.
+    w.fighting = true;
+    w.Watchdog();
+    CHECK(w.putBacks == 0);
+
+    // The cast rule fires: the package takes the left hand for the bolt,
+    // and the dagger is off. While the cast is in progress the watchdog
+    // leaves the hand alone -- putting the dagger back now would knock the
+    // bolt out mid-cast.
+    w.casting = true;
+    w.EquipSpell(bolt, Hand::Left);
+    REQUIRE(w.hands.left == kLightningBolt);
+    w.Watchdog();
+    CHECK(w.hands.left == kLightningBolt);
+    CHECK(w.putBacks == 0);
+
+    // The bolt has left the hand; the record is released. The next tick
+    // puts the dagger back, and the pins are as they were.
+    w.casting = false;
+    w.Watchdog();
+    CHECK(w.hands.left == kSteelDagger);
+    CHECK(w.hands.right == kIronDagger);
+    CHECK(w.putBacks == 1);
+    REQUIRE(w.pins.size() == 2);
+    CHECK(w.pins[0].thing.form == kIronDagger);
+    CHECK(w.pins[1].thing.form == kSteelDagger);
+
+    // The second cast, two seconds on: the same borrow, the same return.
+    w.casting = true;
+    w.EquipSpell(bolt, Hand::Left);
+    w.Watchdog();
+    CHECK(w.hands.left == kLightningBolt);
+    w.casting = false;
+    w.Watchdog();
+    CHECK(w.hands.left == kSteelDagger);
+    CHECK(w.putBacks == 2);
+
+    // Meanwhile the engine's own choices are refused against the pins: the
+    // sword it would put in the right hand, the bow that wants both.
+    CHECK_FALSE(w.EngineEquip(Thing(kIronSword, Grip::Either), Hand::Right));
+    CHECK_FALSE(w.EngineEquip(Thing(kHuntingBow, Grip::Both), Hand::Both));
+    CHECK(w.hands.right == kIronDagger);
+    // The pinned thing itself always passes, whichever hand.
+    CHECK(w.EngineEquip(iron, Hand::Right));
+
+    // Out of the fight, the same rule holds: a dagger knocked out by
+    // anything comes straight back.
+    w.fighting = false;
+    w.EquipSpell(bolt, Hand::Left);
+    w.Watchdog();
+    CHECK(w.hands.left == kSteelDagger);
+}

@@ -118,7 +118,8 @@ struct CostStats
 [[nodiscard]] ft::RuleSet GetRules(ft::ActorId id);
 void SetRules(ft::ActorId id, ft::RuleSet rules);
 
-// The rules a follower starts with, before anyone edits them.
+// The rules a follower starts with, before anyone edits them: none. A fresh
+// install changes nothing until a rule is written.
 [[nodiscard]] const ft::RuleSet &DefaultRuleSet();
 
 // Rebuild and publish one follower's view now, out of turn: for a request
@@ -158,7 +159,8 @@ void SetEnabled(bool enabled);
 [[nodiscard]] bool IsEnabled();
 
 // Per follower, on top of the global switch. A follower is evaluated only when
-// both are on. Defaults to on for anyone not explicitly turned off.
+// both are on. Both start on: with no rules by default, on is safe, and the
+// switch is for silencing a written list without losing it.
 void SetFollowerEnabled(ft::ActorId id, bool enabled);
 [[nodiscard]] bool IsFollowerEnabled(ft::ActorId id);
 

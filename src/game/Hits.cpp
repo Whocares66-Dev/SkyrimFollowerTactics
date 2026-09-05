@@ -40,7 +40,9 @@ void Note(ft::ActorId target, DamageKind kind, ft::ActorId attacker)
 
 // The kind of damage a magic effect does, by what resists it -- the same
 // reading as the Status condition's burning, frostbitten and shocked --
-// else magic. Physical is the weapon's, never an effect's.
+// else magic. Every effect is noted as Magic as well, so "attacked by
+// magic" is any spell and "attacked by fire" the fire in particular. Melee
+// and Ranged are the weapon's, never an effect's.
 DamageKind KindOfEffect(const RE::EffectSetting *base)
 {
     switch (base->data.resistVariable)
@@ -53,8 +55,6 @@ DamageKind KindOfEffect(const RE::EffectSetting *base)
         return DamageKind::Shock;
     case RE::ActorValue::kPoisonResist:
         return DamageKind::Poison;
-    case RE::ActorValue::kResistDisease:
-        return DamageKind::Disease;
     default:
         return DamageKind::Magic;
     }
@@ -82,7 +82,10 @@ class HitSink : public RE::BSTEventSink<RE::TESHitEvent>
             for (const auto *effect : magic->effects)
             {
                 if (effect && effect->baseEffect && effect->baseEffect->IsDetrimental())
+                {
+                    Note(target, DamageKind::Magic, attacker);
                     Note(target, KindOfEffect(effect->baseEffect), attacker);
+                }
             }
             // A poison's effects say poison by their resist value; a poison
             // with none still is one.
@@ -90,8 +93,11 @@ class HitSink : public RE::BSTEventSink<RE::TESHitEvent>
                 Note(target, DamageKind::Poison, attacker);
             return RE::BSEventNotifyControl::kContinue;
         }
-        // A weapon, a fist, a trap: physical.
-        Note(target, DamageKind::Physical, attacker);
+        // A weapon, a fist, a trap. One that arrived as a projectile -- an
+        // arrow, a bolt -- is ranged; anything else is a blow. A rule can
+        // answer the archer, or the one in the follower's face, in
+        // particular.
+        Note(target, ev->projectile != 0 ? DamageKind::Ranged : DamageKind::Melee, attacker);
         return RE::BSEventNotifyControl::kContinue;
     }
 };
@@ -108,6 +114,7 @@ class ApplySink : public RE::BSTEventSink<RE::TESMagicEffectApplyEvent>
         auto *base = RE::TESForm::LookupByID<RE::EffectSetting>(ev->magicEffect);
         if (!base || !base->IsDetrimental())
             return RE::BSEventNotifyControl::kContinue;
+        Note(IdOf(ev->target), DamageKind::Magic, IdOf(ev->caster));
         Note(IdOf(ev->target), KindOfEffect(base), IdOf(ev->caster));
         return RE::BSEventNotifyControl::kContinue;
     }

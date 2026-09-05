@@ -1,6 +1,7 @@
 #include "Evaluator.h"
 
 #include <algorithm>
+#include <optional>
 
 namespace ft
 {
@@ -10,20 +11,33 @@ namespace
 // Does one specific enemy satisfy the rule's predicate? Predicates that are not
 // answerable about an enemy return false; IsPredicateValidFor rejects those
 // pairs before we get here, so this is belt and braces.
-// The band a rule's number names.
-ArmorBand BandArg(const Rule &r)
+// A resistance as the rule's number reads it: the game's percent as a
+// fraction, so 50 is 0.5 and a weakness is negative.
+float ResistFraction(const ActorTraits &t, DamageKind kind)
 {
-    return static_cast<ArmorBand>(static_cast<int>(r.conditionArg + 0.5f));
+    return t.Resist(kind) / 100.0f;
 }
 
-ResistBand ResistArg(const Rule &r)
+// The armour and resistance predicates, the same for every subject.
+bool ArmourOrResistance(const ActorTraits &t, const Rule &r, bool *held)
 {
-    return static_cast<ResistBand>(static_cast<int>(r.conditionArg + 0.5f));
-}
-
-bool ResistsAs(const ActorTraits &t, const Rule &r)
-{
-    return ResistBandOf(t.Resist(r.damageKind)) == ResistArg(r);
+    switch (r.predicate)
+    {
+    case PredicateKind::ArmorPctBelow:
+        *held = t.armor < r.conditionArg;
+        return true;
+    case PredicateKind::ArmorPctAbove:
+        *held = t.armor > r.conditionArg;
+        return true;
+    case PredicateKind::ResistancePctBelow:
+        *held = ResistFraction(t, r.damageKind) < r.conditionArg;
+        return true;
+    case PredicateKind::ResistancePctAbove:
+        *held = ResistFraction(t, r.damageKind) > r.conditionArg;
+        return true;
+    default:
+        return false;
+    }
 }
 
 bool EnemySatisfies(const EnemyView &e, const Rule &r, const Snapshot &s)
@@ -35,27 +49,31 @@ bool EnemySatisfies(const EnemyView &e, const Rule &r, const Snapshot &s)
     case PredicateKind::TargetOfPlayer:
         return s.playerTarget != 0 && e.id == s.playerTarget;
     case PredicateKind::Any:
-    case PredicateKind::HealthLowest:
-    case PredicateKind::HealthHighest:
-    case PredicateKind::ArmorLowest:
-    case PredicateKind::ArmorHighest:
-        return true; // the group's extreme: everyone qualifies, the selection binds the one
-    case PredicateKind::Armor:
-        return BandOf(e.traits.armor) == BandArg(r);
-    case PredicateKind::Resistance:
-        return ResistsAs(e.traits, r);
+        return true;
     case PredicateKind::AttackedBy:
         return e.traits.AttackedBy(r.damageKind);
     case PredicateKind::HealthPctBelow:
         return e.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
         return e.health.Pct() > r.conditionArg;
-    case PredicateKind::WithinDistance:
-        return e.distance <= r.conditionArg;
+    case PredicateKind::MagickaPctBelow:
+        return e.magicka.Pct() < r.conditionArg;
+    case PredicateKind::MagickaPctAbove:
+        return e.magicka.Pct() > r.conditionArg;
+    case PredicateKind::StaminaPctBelow:
+        return e.stamina.Pct() < r.conditionArg;
+    case PredicateKind::StaminaPctAbove:
+        return e.stamina.Pct() > r.conditionArg;
     case PredicateKind::Status:
         return e.traits.Has(r.statusKind);
-    default:
-        return false;
+    default: {
+        // The group's extreme: everyone qualifies, the selection binds the
+        // one. Otherwise armour or a resistance, or nothing.
+        if (IsExtreme(r.predicate))
+            return true;
+        bool held = false;
+        return ArmourOrResistance(e.traits, r, &held) && held;
+    }
     }
 }
 
@@ -64,58 +82,97 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
     switch (r.predicate)
     {
     case PredicateKind::Any:
-    case PredicateKind::HealthLowest:
-    case PredicateKind::HealthHighest:
-    case PredicateKind::ArmorLowest:
-    case PredicateKind::ArmorHighest:
         return true;
-    case PredicateKind::Armor:
-        return BandOf(a.traits.armor) == BandArg(r);
-    case PredicateKind::Resistance:
-        return ResistsAs(a.traits, r);
     case PredicateKind::AttackedBy:
         return a.traits.AttackedBy(r.damageKind);
     case PredicateKind::HealthPctBelow:
         return a.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
         return a.health.Pct() > r.conditionArg;
-    case PredicateKind::InBleedout:
-        return a.inBleedout;
-    case PredicateKind::WithinDistance:
-        return a.distance <= r.conditionArg;
+    case PredicateKind::MagickaPctBelow:
+        return a.magicka.Pct() < r.conditionArg;
+    case PredicateKind::MagickaPctAbove:
+        return a.magicka.Pct() > r.conditionArg;
+    case PredicateKind::StaminaPctBelow:
+        return a.stamina.Pct() < r.conditionArg;
+    case PredicateKind::StaminaPctAbove:
+        return a.stamina.Pct() > r.conditionArg;
     case PredicateKind::Status:
         return a.traits.Has(r.statusKind);
-    default:
-        return false;
+    default: {
+        if (IsExtreme(r.predicate))
+            return true;
+        bool held = false;
+        return ArmourOrResistance(a.traits, r, &held) && held;
+    }
     }
 }
 
-// When several group members match, which one does the rule bind to? Ordering
-// by the predicate's own dimension is what makes the answer intuitive: asking
-// about low health should hand you the most hurt one, about high health the
-// healthiest, about distance the closest one.
-bool OrdersByHealth(PredicateKind p)
+// When several group members match, which one does the rule bind to? By
+// the predicate's own measure: asking about low health hands you the most
+// hurt one, about high armour the best armoured, about resistance to fire
+// the most or least resistant to fire; anything else binds the nearest.
+// That rule matters -- it is what makes "enemy below 30% health" mean the
+// WEAKEST such enemy rather than an arbitrary one.
+std::optional<float> MeasureOf(const Rule &r, const Stat &health, const Stat &magicka, const Stat &stamina,
+                               const ActorTraits &traits)
 {
-    return p == PredicateKind::HealthPctBelow || p == PredicateKind::MagickaPctBelow ||
-           p == PredicateKind::StaminaPctBelow || IsAbove(p) || p == PredicateKind::HealthLowest ||
-           p == PredicateKind::HealthHighest;
+    switch (r.predicate)
+    {
+    case PredicateKind::HealthPctBelow:
+    case PredicateKind::HealthPctAbove:
+    case PredicateKind::HealthLowest:
+    case PredicateKind::HealthHighest:
+        return health.Pct();
+    case PredicateKind::MagickaPctBelow:
+    case PredicateKind::MagickaPctAbove:
+    case PredicateKind::MagickaLowest:
+    case PredicateKind::MagickaHighest:
+        return magicka.Pct();
+    case PredicateKind::StaminaPctBelow:
+    case PredicateKind::StaminaPctAbove:
+    case PredicateKind::StaminaLowest:
+    case PredicateKind::StaminaHighest:
+        return stamina.Pct();
+    case PredicateKind::ArmorPctBelow:
+    case PredicateKind::ArmorPctAbove:
+    case PredicateKind::ArmorLowest:
+    case PredicateKind::ArmorHighest:
+        return traits.armor;
+    case PredicateKind::ResistancePctBelow:
+    case PredicateKind::ResistancePctAbove:
+    case PredicateKind::ResistanceLowest:
+    case PredicateKind::ResistanceHighest:
+        return ResistFraction(traits, r.damageKind);
+    default:
+        return std::nullopt;
+    }
 }
 
-bool OrdersByArmor(PredicateKind p)
+// Does the predicate want the MOST of its measure -- an above, or a
+// highest -- rather than the least?
+bool WantsMost(PredicateKind p)
 {
-    return p == PredicateKind::ArmorLowest || p == PredicateKind::ArmorHighest;
+    switch (p)
+    {
+    case PredicateKind::HealthHighest:
+    case PredicateKind::MagickaHighest:
+    case PredicateKind::StaminaHighest:
+    case PredicateKind::ArmorHighest:
+    case PredicateKind::ResistanceHighest:
+        return true;
+    default:
+        return IsAbove(p);
+    }
 }
 
-// Is `candidate` a better binding than `best` for this predicate?
-bool Better(PredicateKind p, const Stat &candidateHealth, float candidateDistance, float candidateArmor,
-            const Stat &bestHealth, float bestDistance, float bestArmor)
+// Is the candidate a better binding than the best so far?
+bool Better(const Rule &r, std::optional<float> candidate, float candidateDistance, std::optional<float> best,
+            float bestDistance)
 {
-    if (OrdersByArmor(p))
-        return p == PredicateKind::ArmorHighest ? candidateArmor > bestArmor : candidateArmor < bestArmor;
-    if (!OrdersByHealth(p))
+    if (!candidate || !best)
         return candidateDistance < bestDistance;
-    const bool most = IsAbove(p) || p == PredicateKind::HealthHighest;
-    return most ? candidateHealth.Pct() > bestHealth.Pct() : candidateHealth.Pct() < bestHealth.Pct();
+    return WantsMost(r.predicate) ? *candidate > *best : *candidate < *best;
 }
 
 const EnemyView *SelectEnemy(const Snapshot &s, const Rule &r)
@@ -125,8 +182,8 @@ const EnemyView *SelectEnemy(const Snapshot &s, const Rule &r)
     {
         if (!EnemySatisfies(e, r, s))
             continue;
-        if (!best ||
-            Better(r.predicate, e.health, e.distance, e.traits.armor, best->health, best->distance, best->traits.armor))
+        if (!best || Better(r, MeasureOf(r, e.health, e.magicka, e.stamina, e.traits), e.distance,
+                            MeasureOf(r, best->health, best->magicka, best->stamina, best->traits), best->distance))
             best = &e;
     }
     return best;
@@ -139,8 +196,8 @@ const AllyView *SelectAlly(const Snapshot &s, const Rule &r)
     {
         if (!AllySatisfies(a, r))
             continue;
-        if (!best ||
-            Better(r.predicate, a.health, a.distance, a.traits.armor, best->health, best->distance, best->traits.armor))
+        if (!best || Better(r, MeasureOf(r, a.health, a.magicka, a.stamina, a.traits), a.distance,
+                            MeasureOf(r, best->health, best->magicka, best->stamina, best->traits), best->distance))
             best = &a;
     }
     return best;
@@ -251,12 +308,6 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::StaminaPctAbove:
         held = s.stamina.Pct() > r.conditionArg;
         break;
-    case PredicateKind::InBleedout:
-        held = s.inBleedout;
-        break;
-    case PredicateKind::InCombat:
-        held = s.inCombat;
-        break;
     case PredicateKind::CombatBegins:
         held = s.combatBegan;
         break;
@@ -266,16 +317,11 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::Status:
         held = s.traits.Has(r.statusKind);
         break;
-    case PredicateKind::Armor:
-        held = BandOf(s.traits.armor) == BandArg(r);
-        break;
-    case PredicateKind::Resistance:
-        held = ResistsAs(s.traits, r);
-        break;
     case PredicateKind::AttackedBy:
         held = s.traits.AttackedBy(r.damageKind);
         break;
     default:
+        ArmourOrResistance(s.traits, r, &held);
         break;
     }
     return held ? Match(s.self) : NoMatch();
@@ -295,25 +341,26 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
     case PredicateKind::HealthPctAbove:
         held = s.playerHealth.Pct() > r.conditionArg;
         break;
-    case PredicateKind::InCombat:
-        held = s.playerInCombat;
+    case PredicateKind::MagickaPctBelow:
+        held = s.playerMagicka.Pct() < r.conditionArg;
         break;
-    case PredicateKind::WithinDistance:
-        held = s.distanceToPlayer <= r.conditionArg;
+    case PredicateKind::MagickaPctAbove:
+        held = s.playerMagicka.Pct() > r.conditionArg;
+        break;
+    case PredicateKind::StaminaPctBelow:
+        held = s.playerStamina.Pct() < r.conditionArg;
+        break;
+    case PredicateKind::StaminaPctAbove:
+        held = s.playerStamina.Pct() > r.conditionArg;
         break;
     case PredicateKind::Status:
         held = s.playerTraits.Has(r.statusKind);
-        break;
-    case PredicateKind::Armor:
-        held = BandOf(s.playerTraits.armor) == BandArg(r);
-        break;
-    case PredicateKind::Resistance:
-        held = ResistsAs(s.playerTraits, r);
         break;
     case PredicateKind::AttackedBy:
         held = s.playerTraits.AttackedBy(r.damageKind);
         break;
     default:
+        ArmourOrResistance(s.playerTraits, r, &held);
         break;
     }
     return held ? Match(kPlayerFormID) : NoMatch();
@@ -400,12 +447,21 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
 
     switch (r.actionTarget)
     {
-    case ActionTargetKind::ConditionSubject:
-        return binding.ok ? yes(binding.id) : no();
     case ActionTargetKind::Self:
         return yes(s.self);
     case ActionTargetKind::Player:
         return yes(kPlayerFormID);
+    case ActionTargetKind::Ally:
+    case ActionTargetKind::Enemy:
+        // THE ally or enemy the condition matched -- the rule names them
+        // once, in the condition. Valid only for a condition about one,
+        // which IsActionTargetValidFor holds and Evaluate has checked.
+        return binding.ok && IsActionTargetValidFor(r.subject, r.actionTarget) ? yes(binding.id) : no();
+    case ActionTargetKind::Follower:
+        for (const auto &a : s.allies)
+            if (a.id == r.actionTargetForm && a.id != kPlayerFormID)
+                return yes(a.id);
+        return no();
     case ActionTargetKind::CurrentTarget:
         return s.currentTarget ? yes(s.currentTarget) : no();
     case ActionTargetKind::Attacker: {
@@ -522,13 +578,28 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s)
 namespace
 {
 
+// What goes on cooldown when this action fires. The action, its form and
+// its target, so that healing the player does not block healing an ally --
+// except Target, which is keyed by the action alone: the point of its
+// cooldown is that the follower is not flicked between two enemies on
+// consecutive ticks, and per-target keys would allow exactly that.
+EvalContext::ActionKey CooldownKey(const Action &a, ActorId target)
+{
+    if (a.kind == ActionKind::Target)
+        return {a.kind, 0, 0};
+    return {a.kind, a.form, target};
+}
+
 // Can this action be done now? Fired if so; otherwise why not. The equip
 // actions add their satisfied pin to `heldAbove`, which is what outranks a
 // conflicting equip beneath them.
-Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &ctx, ActorId target,
-                     std::vector<Pin> &heldAbove)
+Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &ctx, ActionTargetKind aimedAt,
+                     ActorId target, std::vector<Pin> &heldAbove)
 {
-    if (a.kind == ActionKind::None || !ctx.caps.Supports(a.kind))
+    // An action that makes no sense on its target -- a potion drunk on the
+    // player -- is one the menus never offer; from a hand-edited profile it
+    // is as unfireable as an action this runtime cannot do.
+    if (a.kind == ActionKind::None || !ctx.caps.Supports(a.kind) || !IsActionValidFor(aimedAt, a.kind))
         return Verdict::Unsupported;
     if (ctx.caps.Busy(a.kind))
         return Verdict::Busy;
@@ -572,14 +643,37 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         }
         if (a.kind == ActionKind::CastSpell && snap.magicka.current < snap.spells.CostOf(a.form))
             return Verdict::CannotAfford;
+        // A follower mid-cast on a spell of their own is left to finish it.
+        // Firing our package then interrupts the cast in progress -- a
+        // Lightning Bolt rule on "magicka above half" cut off every spell
+        // the AI began -- so the rule waits, as it does for a busy pool: no
+        // cooldown spent, the next rule gets its turn. The risk, stated: an
+        // AI that never stops casting never lets the rule through. If that
+        // shows in play, the cast cooldown is the next knob (2 s to 4 s).
+        // Our own cast in progress is reported Busy above, before this.
+        if (a.kind == ActionKind::CastSpell && snap.traits.Has(StatusKind::Casting))
+            return Verdict::Casting;
+        // A target is picked from a fight, and only an enemy can be one:
+        // aimed at the player, an ally, or someone who has died or fled
+        // since the hit, the rule has no one to point at. Already fighting
+        // them is the done state, so the rule falls through -- the
+        // availability every state-setting action owes (Rule.h).
+        if (a.kind == ActionKind::Target)
+        {
+            if (!snap.inCombat)
+                return Verdict::NoResource;
+            if (target == 0 || !FindEnemy(snap, target))
+                return Verdict::NoTarget;
+            if (target == snap.currentTarget)
+                return Verdict::EffectActive;
+        }
         // Exact where the settle time is a guess: on a game whose potions
         // restore over time, the previous dose may still have seconds to run.
         if (EffectAlreadyActive(a, snap))
             return Verdict::EffectActive;
     }
 
-    const EvalContext::ActionKey key{a.kind, a.form, target};
-    if (snap.now < ctx.BlockedUntil(key))
+    if (snap.now < ctx.BlockedUntil(CooldownKey(a, target)))
         return Verdict::ActionCooldown;
     return Verdict::Fired;
 }
@@ -587,7 +681,7 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
 // Cannot be done YET, as opposed to cannot be done: worth waiting for.
 bool Transient(Verdict v)
 {
-    return v == Verdict::Busy || v == Verdict::ActionCooldown;
+    return v == Verdict::Busy || v == Verdict::Casting || v == Verdict::ActionCooldown;
 }
 
 // Do the NEXT action of a list, from `from`, in order: one per tick, like
@@ -602,14 +696,15 @@ bool Transient(Verdict v)
 // very first action is only blocked for the moment has not begun, and
 // yields to the rules beneath it, as a single-action rule always did.
 // Returns whether the run stopped on a wait.
-bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, ActorId target, const Snapshot &snap,
-         EvalContext &ctx, Decision &decision, std::vector<Verdict> &verdicts, std::vector<Pin> &heldAbove)
+bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, ActionTargetKind aimedAt, ActorId target,
+         const Snapshot &snap, EvalContext &ctx, Decision &decision, std::vector<Verdict> &verdicts,
+         std::vector<Pin> &heldAbove)
 {
     verdicts.assign(actions.size(), Verdict::NotReached);
     for (std::size_t i = from; i < actions.size(); ++i)
     {
         const Action &a = actions[i];
-        const Verdict v = Availability(a, snap, ctx, target, heldAbove);
+        const Verdict v = Availability(a, snap, ctx, aimedAt, target, heldAbove);
         verdicts[i] = v;
         if (v == Verdict::Fired)
         {
@@ -618,9 +713,9 @@ bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, Ac
             // The one cooldown there is: the ACTION goes on cooldown for as
             // long as its effect takes to show, and every rule that uses it
             // reports it. Nothing is keyed by rule or by condition.
-            ctx.Block({a.kind, a.form, target}, snap.now + MinimumCooldown(a.kind));
+            ctx.Block(CooldownKey(a, target), snap.now + MinimumCooldown(a.kind));
             // The rest waits for the next tick, or the list is through.
-            ctx.pending = i + 1 < actions.size() ? EvalContext::Sequence{ruleIndex, target, actions, i + 1}
+            ctx.pending = i + 1 < actions.size() ? EvalContext::Sequence{ruleIndex, aimedAt, target, actions, i + 1}
                                                  : EvalContext::Sequence{};
             return false;
         }
@@ -629,7 +724,7 @@ bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, Ac
         const bool committed = from > 0;
         if (committed)
         {
-            ctx.pending = {ruleIndex, target, actions, i};
+            ctx.pending = {ruleIndex, aimedAt, target, actions, i};
             return true;
         }
         // Not begun: the rest of this rule is not reached this tick either.
@@ -679,7 +774,8 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         const EvalContext::Sequence seq = ctx.pending;
         std::vector<Pin> none;
         std::vector<Verdict> verdicts;
-        const bool waiting = Run(seq.actions, seq.next, seq.ruleIndex, seq.target, snap, ctx, decision, verdicts, none);
+        const bool waiting =
+            Run(seq.actions, seq.next, seq.ruleIndex, seq.aimedAt, seq.target, snap, ctx, decision, verdicts, none);
         const auto i = static_cast<std::size_t>(seq.ruleIndex);
         if (trace && i < trace->size())
             (*trace)[i] = Summary(decision, verdicts);
@@ -726,7 +822,7 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         // never be answered is an authoring mistake, not a condition that
         // happens to be untrue right now, and the debug column must not send
         // someone off to investigate a follower's health for nothing.
-        if (!IsPredicateValidFor(r.subject, r.predicate))
+        if (!IsPredicateValidFor(r.subject, r.predicate) || !IsActionTargetValidFor(r.subject, r.actionTarget))
         {
             put(Verdict::InvalidCondition);
             continue;
@@ -748,7 +844,8 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         }
 
         std::vector<Verdict> verdicts;
-        const bool waiting = Run(r.actions, 0, static_cast<int>(i), target, snap, ctx, decision, verdicts, heldAbove);
+        const bool waiting =
+            Run(r.actions, 0, static_cast<int>(i), r.actionTarget, target, snap, ctx, decision, verdicts, heldAbove);
         put(Summary(decision, verdicts));
         if (actionTrace)
             (*actionTrace)[i] = verdicts;
@@ -779,13 +876,22 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "does not carry those arrows";
         case ActionKind::EquipArmor:
             return "does not carry that armour";
+        case ActionKind::Target:
+            return "not in a fight";
         default:
             return "no potion";
         }
 
+    case Verdict::NoTarget:
+        if (action == ActionKind::Target)
+            return "no enemy to point at";
+        return ToString(v);
+
     case Verdict::EffectActive:
         if (IsEquip(action))
             return "already pinned, or nothing of that kind pinned to let go";
+        if (action == ActionKind::Target)
+            return "already fighting them";
         return action == ActionKind::CastSpell ? "that spell is still running" : "previous dose still active";
 
     default:
@@ -821,6 +927,8 @@ const char *ToString(Verdict v) noexcept
         return "unsupported";
     case Verdict::Busy:
         return "busy, skipped this evaluation";
+    case Verdict::Casting:
+        return "mid-cast on their own spell, waiting";
     case Verdict::InvalidCondition:
         return "invalid condition";
     case Verdict::NotReached:

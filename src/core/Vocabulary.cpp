@@ -64,41 +64,48 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Follower, "follower", "Follower"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 23> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 28> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
     {PredicateKind::MagickaPctBelow, "magicka-pct-below", "Magicka"},
-    {PredicateKind::InBleedout, "in-bleedout", "Bleeding out"},
-    {PredicateKind::InCombat, "in-combat", "In combat"},
     {PredicateKind::CombatBegins, "combat-begins", "Combat begins"},
     {PredicateKind::CombatEnds, "combat-ends", "Combat ends"},
-    {PredicateKind::WithinDistance, "within-distance", "Distance"},
     {PredicateKind::CountAtLeast, "count-at-least", "Count"},
     {PredicateKind::Status, "status", "Status"},
-    {PredicateKind::Armor, "armor", "Armor"},
-    {PredicateKind::Resistance, "resistance", "Resistance"},
+    {PredicateKind::ArmorPctBelow, "armor-pct-below", "Armor"},
+    {PredicateKind::ResistancePctBelow, "resistance-pct-below", "Resistance"},
     {PredicateKind::AttackedBy, "attacked-by", "Attacked by"},
     {PredicateKind::AttackingPlayer, "attacking-player", "Attacking player"},
     {PredicateKind::TargetOfPlayer, "target-of-player", "Target of player"},
     {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
     {PredicateKind::HealthHighest, "health-highest", "Health highest"},
+    {PredicateKind::StaminaLowest, "stamina-lowest", "Stamina lowest"},
+    {PredicateKind::StaminaHighest, "stamina-highest", "Stamina highest"},
+    {PredicateKind::MagickaLowest, "magicka-lowest", "Magicka lowest"},
+    {PredicateKind::MagickaHighest, "magicka-highest", "Magicka highest"},
     {PredicateKind::ArmorLowest, "armor-lowest", "Armor lowest"},
     {PredicateKind::ArmorHighest, "armor-highest", "Armor highest"},
+    {PredicateKind::ResistanceLowest, "resistance-lowest", "Resistance lowest"},
+    {PredicateKind::ResistanceHighest, "resistance-highest", "Resistance highest"},
     {PredicateKind::HealthPctAbove, "health-pct-above", "Health"},
     {PredicateKind::StaminaPctAbove, "stamina-pct-above", "Stamina"},
     {PredicateKind::MagickaPctAbove, "magicka-pct-above", "Magicka"},
+    {PredicateKind::ArmorPctAbove, "armor-pct-above", "Armor"},
+    {PredicateKind::ResistancePctAbove, "resistance-pct-above", "Resistance"},
 }};
 
-constexpr std::array<Entry<ActionTargetKind>, 5> kActionTargets{{
-    {ActionTargetKind::ConditionSubject, "condition-subject", "Whoever matched"},
+constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Self, "self", "Self"},
     {ActionTargetKind::Player, "player", "Player"},
+    {ActionTargetKind::Ally, "ally", "Ally"},
+    {ActionTargetKind::Enemy, "enemy", "Enemy"},
     {ActionTargetKind::CurrentTarget, "current-target", "Target"},
-    {ActionTargetKind::Attacker, "attacker", "Their attacker"},
+    {ActionTargetKind::Attacker, "attacker", "Attacker"},
+    {ActionTargetKind::Follower, "follower", "Follower"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 13> kActions{{
+constexpr std::array<Entry<ActionKind>, 11> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. It also
     // leaves room: "drink-health-potion-weakest" -- don't burn a strong potion
@@ -114,9 +121,7 @@ constexpr std::array<Entry<ActionKind>, 13> kActions{{
     {ActionKind::EquipArrows, "equip-arrows", "Equip arrows"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
     {ActionKind::EquipArmor, "equip-armor", "Equip armor"},
-    {ActionKind::StopCombat, "stop-combat", "Stop fighting"},
-    {ActionKind::Flee, "flee", "Flee"},
-    {ActionKind::HoldPosition, "hold-position", "Hold position"},
+    {ActionKind::Target, "target", "Target"},
 }};
 
 // The hand an equip rule names. Both is one value, not two flags, on the
@@ -129,12 +134,11 @@ constexpr std::array<Entry<Hand>, 4> kHands{{
 }};
 
 // A status, as the rule names it and as the menu shows it.
-constexpr std::array<Entry<StatusKind>, 14> kStatuses{{
+constexpr std::array<Entry<StatusKind>, 13> kStatuses{{
     {StatusKind::Poisoned, "poisoned", "Poisoned"},
     {StatusKind::Burning, "burning", "Burning"},
     {StatusKind::Frostbitten, "frostbitten", "Frostbitten"},
     {StatusKind::Shocked, "shocked", "Shocked"},
-    {StatusKind::Diseased, "diseased", "Diseased"},
     {StatusKind::Paralysed, "paralysed", "Paralysed"},
     {StatusKind::Staggered, "staggered", "Staggered"},
     {StatusKind::Fleeing, "fleeing", "Fleeing"},
@@ -146,27 +150,15 @@ constexpr std::array<Entry<StatusKind>, 14> kStatuses{{
     {StatusKind::Sneaking, "sneaking", "Sneaking"},
 }};
 
-constexpr std::array<Entry<DamageKind>, 7> kDamageKinds{{
-    {DamageKind::Physical, "physical", "Physical"},
+constexpr std::array<Entry<DamageKind>, 8> kDamageKinds{{
+    {DamageKind::Melee, "melee", "Melee"},
+    {DamageKind::Ranged, "ranged", "Ranged"},
     {DamageKind::Magic, "magic", "Magic"},
     {DamageKind::Fire, "fire", "Fire"},
     {DamageKind::Frost, "frost", "Frost"},
     {DamageKind::Shock, "shock", "Shock"},
     {DamageKind::Poison, "poison", "Poison"},
-    {DamageKind::Disease, "disease", "Disease"},
-}};
-
-constexpr std::array<Entry<ResistBand>, 4> kResistBands{{
-    {ResistBand::Weak, "weak", "Weak"},
-    {ResistBand::Normal, "normal", "Normal"},
-    {ResistBand::High, "high", "High"},
-    {ResistBand::Immune, "immune", "Immune"},
-}};
-
-constexpr std::array<Entry<ArmorBand>, 3> kArmorBands{{
-    {ArmorBand::Low, "low", "Low"},
-    {ArmorBand::Medium, "medium", "Medium"},
-    {ArmorBand::High, "high", "High"},
+    {DamageKind::Any, "any", "Any"},
 }};
 
 // Every enumerator must appear in its table, or a rule would serialise as
@@ -176,9 +168,7 @@ static_assert(kPredicates.size() == static_cast<std::size_t>(PredicateKind::COUN
 static_assert(kActionTargets.size() == static_cast<std::size_t>(ActionTargetKind::COUNT));
 static_assert(kActions.size() == static_cast<std::size_t>(ActionKind::COUNT));
 static_assert(kStatuses.size() == static_cast<std::size_t>(StatusKind::COUNT));
-static_assert(kArmorBands.size() == static_cast<std::size_t>(ArmorBand::COUNT));
 static_assert(kDamageKinds.size() == static_cast<std::size_t>(DamageKind::COUNT));
-static_assert(kResistBands.size() == static_cast<std::size_t>(ResistBand::COUNT));
 
 } // namespace
 
@@ -298,19 +288,10 @@ std::string_view DisplayName(StatusKind v) noexcept
 {
     return LookupDisplay(kStatuses, v);
 }
-std::string_view DisplayName(ArmorBand v) noexcept
-{
-    return LookupDisplay(kArmorBands, v);
-}
 std::string_view DisplayName(DamageKind v) noexcept
 {
     return LookupDisplay(kDamageKinds, v);
 }
-std::string_view DisplayName(ResistBand v) noexcept
-{
-    return LookupDisplay(kResistBands, v);
-}
-
 ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 {
     switch (predicate)
@@ -318,25 +299,19 @@ ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
     case PredicateKind::HealthPctBelow:
     case PredicateKind::MagickaPctBelow:
     case PredicateKind::StaminaPctBelow:
+    case PredicateKind::ArmorPctBelow:
+    case PredicateKind::ResistancePctBelow:
     case PredicateKind::HealthPctAbove:
     case PredicateKind::MagickaPctAbove:
     case PredicateKind::StaminaPctAbove:
+    case PredicateKind::ArmorPctAbove:
+    case PredicateKind::ResistancePctAbove:
         return ArgumentKind::Percent;
-
-    case PredicateKind::WithinDistance:
-        return ArgumentKind::Distance;
 
     case PredicateKind::CountAtLeast:
         return ArgumentKind::Count;
 
-    case PredicateKind::Armor:
-        return ArgumentKind::ArmorBand;
-    case PredicateKind::Resistance:
-        return ArgumentKind::ResistBand;
-
     case PredicateKind::Any:
-    case PredicateKind::InBleedout:
-    case PredicateKind::InCombat:
         return ArgumentKind::None;
 
     default:
@@ -363,24 +338,34 @@ std::string_view Describe(PredicateKind v) noexcept
         return "Stamina under this share of its maximum.";
     case PredicateKind::StaminaPctAbove:
         return "Stamina over this share of its maximum.";
-    case PredicateKind::InBleedout:
-        return "Down and dying, not dead.";
-    case PredicateKind::InCombat:
-        return "Fighting something.";
     case PredicateKind::CombatBegins:
         return "A fight has just begun.";
     case PredicateKind::CombatEnds:
         return "A fight has just ended; no other condition holds on that pass.";
-    case PredicateKind::WithinDistance:
-        return "Closer than this many units.";
     case PredicateKind::CountAtLeast:
         return "At least this many of them.";
     case PredicateKind::Status:
         return "In this state right now.";
-    case PredicateKind::Armor:
-        return "How much of a blow the armour turns away: under a quarter, up to half, or more.";
-    case PredicateKind::Resistance:
-        return "Resistance to that kind of damage: a weakness, none to speak of, half or more, or immune.";
+    case PredicateKind::ArmorPctBelow:
+        return "The armour turns away under this share of a blow; the most is 80%.";
+    case PredicateKind::ArmorPctAbove:
+        return "The armour turns away over this share of a blow; the most is 80%.";
+    case PredicateKind::ResistancePctBelow:
+        return "Resistance to that kind of damage under this much; a weakness is below zero.";
+    case PredicateKind::ResistancePctAbove:
+        return "Resistance to that kind of damage over this much; 100% is immune.";
+    case PredicateKind::StaminaLowest:
+        return "The one with the least stamina.";
+    case PredicateKind::StaminaHighest:
+        return "The one with the most stamina.";
+    case PredicateKind::MagickaLowest:
+        return "The one with the least magicka.";
+    case PredicateKind::MagickaHighest:
+        return "The one with the most magicka.";
+    case PredicateKind::ResistanceLowest:
+        return "The one least resistant to that kind of damage.";
+    case PredicateKind::ResistanceHighest:
+        return "The one most resistant to that kind of damage.";
     case PredicateKind::AttackedBy:
         return "Hit with that kind of damage in the last few seconds.";
     case PredicateKind::AttackingPlayer:
@@ -424,12 +409,9 @@ std::string_view Describe(ActionKind v) noexcept
         return "Use this ammunition until another rule or the Inventory tab lets go.";
     case ActionKind::EquipArmor:
         return "Wear this until another rule or the Inventory tab lets go.";
-    case ActionKind::StopCombat:
-        return "Break off the fight.";
-    case ActionKind::Flee:
-        return "Retreat from the fight.";
-    case ActionKind::HoldPosition:
-        return "Stay put.";
+    case ActionKind::Target:
+        return "Fight them: make them the combat target, and attack however the follower fights. Nothing happens "
+               "if they already are.";
     default:
         return "";
     }

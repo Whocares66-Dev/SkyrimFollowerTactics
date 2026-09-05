@@ -24,6 +24,10 @@ Snapshot Healthy()
     s.inCombat = true;
     s.playerHealth = {100.0f, 100.0f};
     s.potions.healthCount = 5;
+    // The other two kinds too: the tests use them as spare, resource-free
+    // actions to tell one rule's firing from another's.
+    s.potions.magickaCount = 5;
+    s.potions.staminaCount = 5;
     return s;
 }
 
@@ -34,7 +38,7 @@ Rule HealBelow(float pct)
     r.subject = SubjectKind::Self;
     r.predicate = PredicateKind::HealthPctBelow;
     r.conditionArg = pct;
-    r.actionTarget = ActionTargetKind::ConditionSubject;
+    r.actionTarget = ActionTargetKind::Self;
     r.FirstAction().kind = ActionKind::DrinkHealthPotion;
     r.label = "heal";
     return r;
@@ -136,7 +140,7 @@ TEST_CASE("a cooldown belongs to the action, not to the rule's position", "[eval
     Rule potion = HealBelow(0.5f);
     Rule cast;
     cast.subject = SubjectKind::Self;
-    cast.predicate = PredicateKind::InCombat;
+    cast.predicate = PredicateKind::Any;
     cast.actionTarget = ActionTargetKind::Self;
     cast.FirstAction().kind = ActionKind::CastSpell;
     cast.FirstAction().form = kHeal;
@@ -180,7 +184,7 @@ TEST_CASE("a cooldown is as fine as the spell and the target", "[cooldown]")
     auto castRule = [](std::uint32_t spell, ActionTargetKind target) {
         Rule r;
         r.subject = SubjectKind::Self;
-        r.predicate = PredicateKind::InCombat;
+        r.predicate = PredicateKind::Any;
         r.actionTarget = target;
         r.FirstAction().kind = ActionKind::CastSpell;
         r.FirstAction().form = spell;
@@ -270,12 +274,11 @@ TEST_CASE("a group condition binds the member that best satisfies it", "[binding
         REQUIRE_FALSE(EvaluateCondition(r, s).ok);
     }
 
-    SECTION("a distance predicate binds the nearest match")
+    SECTION("a predicate with no measure of its own binds the nearest match")
     {
         Rule r;
         r.subject = SubjectKind::Enemy;
-        r.predicate = PredicateKind::WithinDistance;
-        r.conditionArg = 1000.0f; // both qualify
+        r.predicate = PredicateKind::Any; // both qualify
 
         const auto b = EvaluateCondition(r, s);
         REQUIRE(b.ok);
@@ -304,8 +307,8 @@ TEST_CASE("the action follows the binding of the condition by default", "[bindin
     r.subject = SubjectKind::Enemy;
     r.predicate = PredicateKind::HealthPctBelow;
     r.conditionArg = 0.2f;
-    r.actionTarget = ActionTargetKind::ConditionSubject;
-    r.FirstAction().kind = ActionKind::StopCombat;
+    r.actionTarget = ActionTargetKind::Enemy;
+    r.FirstAction().kind = ActionKind::Target;
     rs.rules.push_back(r);
 
     EvalContext ctx;
@@ -313,12 +316,15 @@ TEST_CASE("the action follows the binding of the condition by default", "[bindin
 
     REQUIRE(d.Fired());
     // The whole point of the split: the enemy is named once, in the condition,
-    // and the action lands on that same enemy.
+    // and "Enemy" on the action side is that same enemy.
     REQUIRE(d.targetId() == 0x102);
 }
 
-TEST_CASE("the action target can be overridden away from the subject", "[binding]")
+TEST_CASE("the action target is its own choice, within what makes sense", "[binding]")
 {
+    // A cast goes wherever the rule aims it; a potion is only ever drunk by
+    // oneself, so a potion "on the player" is as unfireable as an action
+    // this runtime cannot do -- and the menu never offers it.
     RuleSet rs;
     Rule r = HealBelow(0.5f);
     r.actionTarget = ActionTargetKind::Player;
@@ -328,18 +334,73 @@ TEST_CASE("the action target can be overridden away from the subject", "[binding
     s.health = {40.0f, 100.0f};
 
     EvalContext ctx;
-    const auto d = Evaluate(rs, s, ctx);
+    Trace trace;
+    auto d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE_FALSE(d.Fired());
+    REQUIRE(trace.at(0) == Verdict::Unsupported);
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Player, ActionKind::DrinkHealthPotion));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Player, ActionKind::CastSpell));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Self, ActionKind::DrinkHealthPotion));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Self, ActionKind::Target));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::CurrentTarget, ActionKind::Target));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Attacker, ActionKind::Target));
 
+    constexpr std::uint32_t kHeal = 0x00012FCD;
+    rs.rules[0].FirstAction().kind = ActionKind::CastSpell;
+    rs.rules[0].FirstAction().form = kHeal;
+    s.spells.known.push_back(kHeal);
+    ctx.caps = Capabilities::All();
+    d = Evaluate(rs, s, ctx);
     REQUIRE(d.Fired());
     REQUIRE(d.targetId() == kPlayerFormID);
+
+    // "Ally" and "Enemy" on the action side mean the one the condition
+    // matched, so they need a condition about one: a hand-edited profile
+    // that says otherwise is invalid, not silently aimed at no one.
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Ally));
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Follower, ActionTargetKind::Ally));
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Enemy));
+    REQUIRE(IsActionTargetValidFor(SubjectKind::CurrentTarget, ActionTargetKind::Enemy));
+    REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Self, ActionTargetKind::Ally));
+    REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Enemy));
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Self, ActionTargetKind::Attacker));
+    rs.rules[0].actionTarget = ActionTargetKind::Ally;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(trace.at(0) == Verdict::InvalidCondition);
+
+    // Reconcile is what the editor does after the IF side changes: the
+    // target falls back to Self and an action that makes no sense there is
+    // blanked, so the THEN cell never shows a pair the menu would not offer.
+    Rule mixed;
+    mixed.subject = SubjectKind::Ally;
+    mixed.actionTarget = ActionTargetKind::Ally;
+    mixed.actions = {{ActionKind::Target}, {ActionKind::CastSpell, kHeal}};
+    mixed.subject = SubjectKind::Self;
+    Reconcile(mixed);
+    REQUIRE(mixed.actionTarget == ActionTargetKind::Self);
+    REQUIRE(mixed.actions[0].kind == ActionKind::None);
+    REQUIRE(mixed.actions[1].kind == ActionKind::CastSpell);
+
+    // A named follower as the target: that ally, when with us.
+    Rule named;
+    named.subject = SubjectKind::Self;
+    named.actionTarget = ActionTargetKind::Follower;
+    named.actionTargetForm = 0x202;
+    named.FirstAction() = {ActionKind::CastSpell, kHeal};
+    bool ok = false;
+    REQUIRE(ResolveActionTarget(named, s, Binding{s.self, true}, &ok) == 0);
+    REQUIRE_FALSE(ok);
+    s.allies.push_back({0x202, {50.0f, 100.0f}, 200.0f});
+    REQUIRE(ResolveActionTarget(named, s, Binding{s.self, true}, &ok) == 0x202);
+    REQUIRE(ok);
 }
 
 TEST_CASE("ally conditions bind the ally, not the follower", "[binding]")
 {
     Snapshot s = Healthy();
     //                  id     health          dist   bleedout
-    s.allies.push_back({0x201, {80.0f, 100.0f}, 100.0f, false});
-    s.allies.push_back({0x202, {20.0f, 100.0f}, 500.0f, false});
+    s.allies.push_back({0x201, {80.0f, 100.0f}, 100.0f});
+    s.allies.push_back({0x202, {20.0f, 100.0f}, 500.0f});
 
     Rule r;
     r.subject = SubjectKind::Ally;
@@ -409,8 +470,8 @@ TEST_CASE("no binding means the rule is skipped, not fired at nobody", "[evaluat
     Rule r;
     r.subject = SubjectKind::Enemy;
     r.predicate = PredicateKind::Any;
-    r.actionTarget = ActionTargetKind::ConditionSubject;
-    r.FirstAction().kind = ActionKind::StopCombat;
+    r.actionTarget = ActionTargetKind::Enemy;
+    r.FirstAction().kind = ActionKind::Target;
     rs.rules.push_back(r);
 
     EvalContext ctx;
@@ -429,23 +490,33 @@ TEST_CASE("the subject and predicate validity matrix", "[validity]")
 {
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::MagickaPctBelow));
     REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::CountAtLeast));
-    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::InBleedout));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Status));
 
-    // Distance to oneself is meaningless, and a lone subject has no count.
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::WithinDistance));
+    // A lone subject has no count.
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::CountAtLeast));
 
-    // The Snapshot carries no magicka or stamina for anyone but the follower.
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::MagickaPctBelow));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::StaminaPctBelow));
+    // "Any" of the player or of an ally is always true -- the player is
+    // always there -- so it is Self: Any and not offered again. A named
+    // follower's Any is "they are with us", and stays.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Any));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Any));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Any));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::Any));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Any));
+
+    // Every actor view carries all three stats, so magicka and stamina are
+    // asked of anyone health is.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::MagickaPctBelow));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::StaminaPctBelow));
+    REQUIRE(IsPredicateValidFor(SubjectKind::CurrentTarget, PredicateKind::StaminaPctBelow));
 
     // Above is answerable exactly where below is.
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::MagickaPctAbove));
     REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::HealthPctAbove));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::MagickaPctAbove));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::StaminaPctAbove));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::MagickaPctAbove));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::StaminaPctAbove));
     REQUIRE(AboveOf(PredicateKind::HealthPctBelow) == PredicateKind::HealthPctAbove);
-    REQUIRE(AboveOf(PredicateKind::InCombat) == PredicateKind::InCombat);
+    REQUIRE(AboveOf(PredicateKind::CombatBegins) == PredicateKind::CombatBegins);
 }
 
 TEST_CASE("the edges of a fight hold for one evaluation each", "[evaluator]")
@@ -454,15 +525,15 @@ TEST_CASE("the edges of a fight hold for one evaluation each", "[evaluator]")
     onBegin.subject = SubjectKind::Self;
     onBegin.predicate = PredicateKind::CombatBegins;
     onBegin.actionTarget = ActionTargetKind::Self;
-    onBegin.FirstAction().kind = ActionKind::HoldPosition;
+    onBegin.FirstAction().kind = ActionKind::DrinkStaminaPotion;
 
     Rule always = onBegin;
     always.predicate = PredicateKind::Any;
-    always.FirstAction().kind = ActionKind::Flee;
+    always.FirstAction().kind = ActionKind::DrinkMagickaPotion;
 
     Rule onEnd = onBegin;
     onEnd.predicate = PredicateKind::CombatEnds;
-    onEnd.FirstAction().kind = ActionKind::StopCombat;
+    onEnd.FirstAction().kind = ActionKind::DrinkMagickaPotion;
 
     RuleSet rs;
     rs.rules = {onBegin, always, onEnd};
@@ -504,10 +575,10 @@ TEST_CASE("a rule does its actions one per tick, in order, and waits rather than
     // else is decided.
     Rule r = HealBelow(0.5f);
     r.actions.push_back({ActionKind::CastSpell, kHeal});
-    r.actions.push_back({ActionKind::HoldPosition});
+    r.actions.push_back({ActionKind::DrinkStaminaPotion});
     Rule other = HealBelow(0.5f);
     other.actionTarget = ActionTargetKind::Self;
-    other.FirstAction().kind = ActionKind::Flee;
+    other.FirstAction().kind = ActionKind::DrinkMagickaPotion;
 
     RuleSet rs;
     rs.rules = {r, other};
@@ -551,7 +622,7 @@ TEST_CASE("a rule does its actions one per tick, in order, and waits rather than
     s.now += 0.5;
     d = Evaluate(rs, s, ctx, &trace, &actions);
     REQUIRE(d.steps.size() == 1);
-    REQUIRE(d.action() == ActionKind::HoldPosition);
+    REQUIRE(d.action() == ActionKind::DrinkStaminaPotion);
     REQUIRE(actions.at(0) == std::vector<Verdict>{Verdict::NotReached, Verdict::NotReached, Verdict::Fired});
     REQUIRE_FALSE(ctx.pending.Active());
 
@@ -575,7 +646,7 @@ TEST_CASE("a list whose remainder cannot be done is through, and the tick goes o
     r.actions.push_back({ActionKind::CastSpell, kHeal});
     Rule other = HealBelow(0.5f);
     other.actionTarget = ActionTargetKind::Self;
-    other.FirstAction().kind = ActionKind::Flee;
+    other.FirstAction().kind = ActionKind::DrinkMagickaPotion;
     RuleSet rs;
     rs.rules = {r, other};
 
@@ -595,7 +666,7 @@ TEST_CASE("a list whose remainder cannot be done is through, and the tick goes o
     s.now += 0.5;
     d = Evaluate(rs, s, ctx, &trace, &actions);
     REQUIRE(d.ruleIndex == 1);
-    REQUIRE(d.action() == ActionKind::Flee);
+    REQUIRE(d.action() == ActionKind::DrinkMagickaPotion);
     REQUIRE_FALSE(ctx.pending.Active());
     // The first rule was re-read from the top on the same tick: the potion
     // is inside its settle.
@@ -605,7 +676,7 @@ TEST_CASE("a list whose remainder cannot be done is through, and the tick goes o
 TEST_CASE("a list in progress is dropped when the fight ends", "[sequence]")
 {
     Rule r = HealBelow(0.5f);
-    r.actions.push_back({ActionKind::HoldPosition});
+    r.actions.push_back({ActionKind::DrinkStaminaPotion});
     RuleSet rs;
     rs.rules = {r};
 
@@ -645,8 +716,8 @@ TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[stat
     REQUIRE(EvaluateCondition(r, s).id == kPlayerFormID);
 
     // An ally in it binds that ally; the nearest when several are.
-    s.allies.push_back({0x201, {100.0f, 100.0f}, 500.0f, false});
-    s.allies.push_back({0x202, {100.0f, 100.0f}, 200.0f, false});
+    s.allies.push_back({0x201, {100.0f, 100.0f}, 500.0f});
+    s.allies.push_back({0x202, {100.0f, 100.0f}, 200.0f});
     r.subject = SubjectKind::Ally;
     r.statusKind = StatusKind::Fleeing;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
@@ -671,41 +742,39 @@ TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[stat
         REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::Status));
 }
 
-TEST_CASE("armour is asked by band, and the group's extremes bind the least and the most", "[armor]")
+TEST_CASE("armour is asked as a percent, and every measure has a lowest and a highest", "[armor]")
 {
-    // The bands, at the lines docs/CONDITIONS.md draws.
-    REQUIRE(BandOf(0.0f) == ArmorBand::Low);
-    REQUIRE(BandOf(0.24f) == ArmorBand::Low);
-    REQUIRE(BandOf(0.25f) == ArmorBand::Medium);
-    REQUIRE(BandOf(0.54f) == ArmorBand::Medium);
-    REQUIRE(BandOf(0.55f) == ArmorBand::High);
-    REQUIRE(BandOf(0.80f) == ArmorBand::High);
-
+    // The value is the damage reduction, 0 to 0.8, read as a percent like
+    // health: Self: Armor > 50%.
     Rule r;
     r.subject = SubjectKind::Self;
-    r.predicate = PredicateKind::Armor;
-    r.conditionArg = static_cast<float>(ArmorBand::High);
+    r.predicate = PredicateKind::ArmorPctAbove;
+    r.conditionArg = 0.5f;
 
     Snapshot s = Healthy();
     s.traits.armor = 0.6f;
     REQUIRE(EvaluateCondition(r, s).ok);
-    r.conditionArg = static_cast<float>(ArmorBand::Low);
+    r.predicate = PredicateKind::ArmorPctBelow;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    r.conditionArg = 0.75f;
+    REQUIRE(EvaluateCondition(r, s).ok);
 
     // The player, in fur.
     r.subject = SubjectKind::Player;
+    r.conditionArg = 0.25f;
     s.playerTraits.armor = 0.1f;
     REQUIRE(EvaluateCondition(r, s).ok);
 
-    // Enemies: a mage in robes, a chief in plate. The band picks by band;
-    // Lowest and Highest bind the extremes whatever the bands.
+    // Enemies: a mage in robes, a chief in plate. The percent binds among
+    // those that pass, by the measure; Lowest and Highest bind the
+    // extremes of it whatever the number.
     s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
     s.enemies.push_back({0x102, {40.0f, 100.0f}, 300.0f, false, false, true});
     s.enemies[0].traits.armor = 0.05f;
     s.enemies[1].traits.armor = 0.7f;
     r.subject = SubjectKind::Enemy;
-    r.predicate = PredicateKind::Armor;
-    r.conditionArg = static_cast<float>(ArmorBand::High);
+    r.predicate = PredicateKind::ArmorPctAbove;
+    r.conditionArg = 0.5f;
     REQUIRE(EvaluateCondition(r, s).id == 0x102);
     r.predicate = PredicateKind::ArmorLowest;
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
@@ -716,60 +785,95 @@ TEST_CASE("armour is asked by band, and the group's extremes bind the least and 
     r.predicate = PredicateKind::HealthHighest;
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
 
+    // Stamina and magicka have their extremes too, of their own measure.
+    s.enemies[0].stamina = {20.0f, 100.0f};
+    s.enemies[1].stamina = {80.0f, 100.0f};
+    s.enemies[0].magicka = {90.0f, 100.0f};
+    s.enemies[1].magicka = {10.0f, 100.0f};
+    r.predicate = PredicateKind::StaminaLowest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+    r.predicate = PredicateKind::StaminaHighest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x102);
+    r.predicate = PredicateKind::MagickaLowest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x102);
+    r.predicate = PredicateKind::MagickaHighest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+
     // No enemies: no extreme to bind.
     s.enemies.clear();
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
-    // The extremes are of a group only; the band is anyone's.
-    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::HealthLowest));
+    // The extremes are of a group only; the percent is anyone's.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::StaminaLowest));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::MagickaHighest));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::ArmorHighest));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::HealthLowest));
-    REQUIRE(IsPredicateValidFor(SubjectKind::CurrentTarget, PredicateKind::Armor));
-    REQUIRE(ExtremesOf(PredicateKind::Armor).highest == PredicateKind::ArmorHighest);
-    REQUIRE(ExtremesOf(PredicateKind::InCombat).lowest == PredicateKind::InCombat);
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::MagickaLowest));
+    REQUIRE(IsPredicateValidFor(SubjectKind::CurrentTarget, PredicateKind::ArmorPctBelow));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::ArmorPctAbove));
+    REQUIRE(ExtremesOf(PredicateKind::ArmorPctBelow).highest == PredicateKind::ArmorHighest);
+    REQUIRE(ExtremesOf(PredicateKind::StaminaPctBelow).lowest == PredicateKind::StaminaLowest);
+    REQUIRE(ExtremesOf(PredicateKind::MagickaPctBelow).highest == PredicateKind::MagickaHighest);
+    REQUIRE(ExtremesOf(PredicateKind::CombatBegins).lowest == PredicateKind::CombatBegins);
+    REQUIRE(AboveOf(PredicateKind::ArmorPctBelow) == PredicateKind::ArmorPctAbove);
+    REQUIRE(IsAbove(PredicateKind::ArmorPctAbove));
+    REQUIRE(ArgumentFor(PredicateKind::ArmorPctBelow) == ArgumentKind::Percent);
 }
 
-TEST_CASE("resistance is asked by kind and band", "[resistance]")
+TEST_CASE("resistance is asked by kind as a percent, with a lowest and a highest", "[resistance]")
 {
-    // The bands: a weakness, nothing to speak of, half or more, immune.
-    REQUIRE(ResistBandOf(-50.0f) == ResistBand::Weak);
-    REQUIRE(ResistBandOf(0.0f) == ResistBand::Normal);
-    REQUIRE(ResistBandOf(25.0f) == ResistBand::Normal);
-    REQUIRE(ResistBandOf(50.0f) == ResistBand::High);
-    REQUIRE(ResistBandOf(99.0f) == ResistBand::High);
-    REQUIRE(ResistBandOf(100.0f) == ResistBand::Immune);
-
-    // A flame atronach: immune to fire, weak to frost.
+    // A flame atronach, immune to fire and weak to frost, and a bandit with
+    // half fire resistance. The game's value is a percent; the rule's
+    // number is a fraction of it, so 50 reads as 50%.
     Snapshot s = Healthy();
     s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x102, {100.0f, 100.0f}, 300.0f, false, false, true});
     s.enemies[0].traits.SetResist(DamageKind::Fire, 100.0f);
     s.enemies[0].traits.SetResist(DamageKind::Frost, -33.0f);
+    s.enemies[1].traits.SetResist(DamageKind::Fire, 50.0f);
 
     Rule r;
     r.subject = SubjectKind::Enemy;
-    r.predicate = PredicateKind::Resistance;
+    r.predicate = PredicateKind::ResistancePctAbove;
     r.damageKind = DamageKind::Fire;
-    r.conditionArg = static_cast<float>(ResistBand::Immune);
-    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+    r.conditionArg = 0.75f;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101); // only the immune one
+    r.conditionArg = 0.25f;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101); // both pass; the MOST resistant binds
+    r.predicate = PredicateKind::ResistancePctBelow;
+    r.conditionArg = 0.75f;
+    REQUIRE(EvaluateCondition(r, s).id == 0x102); // only the bandit
     r.damageKind = DamageKind::Frost;
-    r.conditionArg = static_cast<float>(ResistBand::Weak);
-    REQUIRE(EvaluateCondition(r, s).ok);
+    r.conditionArg = 0.25f;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101); // both pass; the weakness is the least
     r.damageKind = DamageKind::Shock;
+    REQUIRE(EvaluateCondition(r, s).ok); // nobody resists shock: below 25% holds
+    r.predicate = PredicateKind::ResistancePctAbove;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    r.conditionArg = static_cast<float>(ResistBand::Normal);
-    REQUIRE(EvaluateCondition(r, s).ok);
+
+    // The extremes, of the kind asked about.
+    r.damageKind = DamageKind::Frost;
+    r.predicate = PredicateKind::ResistanceLowest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+    r.predicate = PredicateKind::ResistanceHighest;
+    REQUIRE(EvaluateCondition(r, s).id == 0x102);
+    r.damageKind = DamageKind::Fire;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
 
     // The follower, a Nord: frost half off.
     r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::ResistancePctAbove;
     r.damageKind = DamageKind::Frost;
-    r.conditionArg = static_cast<float>(ResistBand::High);
+    r.conditionArg = 0.25f;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
     s.traits.SetResist(DamageKind::Frost, 50.0f);
     REQUIRE(EvaluateCondition(r, s).ok);
 
-    // Everyone can be asked; every kind and band has a name.
+    // Everyone can be asked; the extremes are a group's; every kind has a
+    // name; the family is known as one.
     for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
-        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::Resistance));
+        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::ResistancePctBelow));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::ResistanceLowest));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::ResistanceHighest));
     for (std::size_t i = 0; i < static_cast<std::size_t>(DamageKind::COUNT); ++i)
     {
         const auto v = static_cast<DamageKind>(i);
@@ -777,8 +881,11 @@ TEST_CASE("resistance is asked by kind and band", "[resistance]")
         REQUIRE(DamageFromWireName(WireName(v)) == v);
         REQUIRE(DisplayName(v).size() > 0);
     }
-    for (std::size_t i = 0; i < static_cast<std::size_t>(ResistBand::COUNT); ++i)
-        REQUIRE(DisplayName(static_cast<ResistBand>(i)).size() > 0);
+    REQUIRE(IsResistance(PredicateKind::ResistanceLowest));
+    REQUIRE(IsResistance(PredicateKind::ResistancePctAbove));
+    REQUIRE_FALSE(IsResistance(PredicateKind::AttackedBy));
+    REQUIRE(ExtremesOf(PredicateKind::ResistancePctBelow).lowest == PredicateKind::ResistanceLowest);
+    REQUIRE(AboveOf(PredicateKind::ResistancePctBelow) == PredicateKind::ResistancePctAbove);
 }
 
 TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[attacked]")
@@ -786,7 +893,7 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
     // An ally under fire from an enemy: the condition binds the ally, and
     // the Attacker target aims the action at the one doing it.
     Snapshot s = Healthy();
-    s.allies.push_back({0x201, {60.0f, 100.0f}, 400.0f, false});
+    s.allies.push_back({0x201, {60.0f, 100.0f}, 400.0f});
     s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
 
     Rule r;
@@ -796,7 +903,7 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
     r.actionTarget = ActionTargetKind::Attacker;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
-    s.allies[0].traits.attackedBy = Bit(DamageKind::Fire) | Bit(DamageKind::Physical);
+    s.allies[0].traits.attackedBy = Bit(DamageKind::Fire) | Bit(DamageKind::Melee);
     s.allies[0].traits.attacker = 0x101;
     const Binding bound = EvaluateCondition(r, s);
     REQUIRE(bound.id == 0x201);
@@ -807,14 +914,14 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
     // Another kind was not what hit them.
     r.damageKind = DamageKind::Frost;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    r.damageKind = DamageKind::Physical;
+    r.damageKind = DamageKind::Melee;
     REQUIRE(EvaluateCondition(r, s).ok);
 
     // The follower's own attacker, and none when nothing has hit them.
     r.subject = SubjectKind::Self;
-    r.damageKind = DamageKind::Physical;
+    r.damageKind = DamageKind::Melee;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    s.traits.attackedBy = Bit(DamageKind::Physical);
+    s.traits.attackedBy = Bit(DamageKind::Melee);
     s.traits.attacker = 0x101;
     const Binding self = EvaluateCondition(r, s);
     REQUIRE(self.id == s.self);
@@ -839,9 +946,9 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
 TEST_CASE("a named follower is one ally asked about alone", "[follower]")
 {
     Snapshot s = Healthy();
-    s.allies.push_back({kPlayerFormID, {100.0f, 100.0f}, 100.0f, false});
-    s.allies.push_back({0x201, {30.0f, 100.0f}, 400.0f, false}); // Lydia, hurt
-    s.allies.push_back({0x202, {90.0f, 100.0f}, 200.0f, false}); // Marcurio, fine
+    s.allies.push_back({kPlayerFormID, {100.0f, 100.0f}, 100.0f});
+    s.allies.push_back({0x201, {30.0f, 100.0f}, 400.0f}); // Lydia, hurt
+    s.allies.push_back({0x202, {90.0f, 100.0f}, 200.0f}); // Marcurio, fine
 
     Rule r;
     r.subject = SubjectKind::Follower;
@@ -858,7 +965,7 @@ TEST_CASE("a named follower is one ally asked about alone", "[follower]")
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
     // Everything an ally answers, less the count.
-    REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::InBleedout));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::MagickaPctBelow));
     REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::Status));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::CountAtLeast));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::HealthLowest));
@@ -922,9 +1029,9 @@ TEST_CASE("an unanswerable pair reports InvalidCondition, not ConditionFalse", "
     RuleSet rs;
     Rule r;
     r.subject = SubjectKind::Self;
-    r.predicate = PredicateKind::WithinDistance; // nonsense
-    r.conditionArg = 100.0f;
-    r.FirstAction().kind = ActionKind::StopCombat;
+    r.predicate = PredicateKind::CountAtLeast; // nonsense: a count of oneself
+    r.conditionArg = 2.0f;
+    r.FirstAction().kind = ActionKind::DrinkMagickaPotion;
     rs.rules.push_back(r);
 
     EvalContext ctx;
@@ -965,7 +1072,7 @@ TEST_CASE("one situation draws its remedies in list order, one per turn", "[cool
     RuleSet rs;
     rs.rules.push_back(HurtBut(0.25f, ActionKind::DrinkHealthPotion, "potion"));
     rs.rules.push_back(HurtBut(0.25f, ActionKind::DrinkMagickaPotion, "heal spell"));
-    rs.rules.push_back(HurtBut(0.25f, ActionKind::Flee, "back off"));
+    rs.rules.push_back(HurtBut(0.25f, ActionKind::DrinkStaminaPotion, "back off"));
 
     Snapshot s = Healthy();
     s.health = {20.0f, 100.0f};
@@ -1001,7 +1108,7 @@ TEST_CASE("an unavailable action falls through immediately, in the same tick", "
     // wait. This is the distinction the condition cooldown must not blur.
     RuleSet rs;
     rs.rules.push_back(HurtBut(0.5f, ActionKind::DrinkHealthPotion, "potion"));
-    rs.rules.push_back(HurtBut(0.5f, ActionKind::Flee, "back off"));
+    rs.rules.push_back(HurtBut(0.5f, ActionKind::DrinkMagickaPotion, "back off"));
 
     Snapshot s = Healthy();
     s.health = {40.0f, 100.0f};
@@ -1026,7 +1133,7 @@ TEST_CASE("two rules sharing an action cannot repeat it back to back", "[cooldow
 
     Rule spare;
     spare.subject = SubjectKind::Self;
-    spare.predicate = PredicateKind::InCombat;
+    spare.predicate = PredicateKind::Any;
     spare.FirstAction().kind = ActionKind::DrinkHealthPotion;
     spare.label = "top up while fighting";
     rs.rules.push_back(spare);
@@ -1058,7 +1165,7 @@ TEST_CASE("a different situation is still free to draw a response", "[cooldown]"
     swarmed.predicate = PredicateKind::CountAtLeast;
     swarmed.conditionArg = 2.0f;
     swarmed.actionTarget = ActionTargetKind::Self;
-    swarmed.FirstAction().kind = ActionKind::HoldPosition;
+    swarmed.FirstAction().kind = ActionKind::DrinkStaminaPotion;
     swarmed.label = "back off when swarmed";
     rs.rules.push_back(swarmed);
 
@@ -1092,15 +1199,14 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
 
     Rule hold;
     hold.subject = SubjectKind::Enemy;
-    hold.predicate = PredicateKind::WithinDistance;
-    hold.conditionArg = 1000.0f;
+    hold.predicate = PredicateKind::Any;
     hold.actionTarget = ActionTargetKind::Self;
-    hold.FirstAction().kind = ActionKind::HoldPosition;
+    hold.FirstAction().kind = ActionKind::DrinkStaminaPotion;
     hold.label = "brace: hold position";
     rs.rules.push_back(hold);
 
     Rule disengage = hold;
-    disengage.FirstAction().kind = ActionKind::StopCombat;
+    disengage.FirstAction().kind = ActionKind::DrinkMagickaPotion;
     disengage.label = "brace: break off";
     rs.rules.push_back(disengage);
 
@@ -1111,15 +1217,15 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
 
     // Rule 0 wins now, and keeps winning every time it comes off cooldown.
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
-    s.now += MinimumCooldown(ActionKind::HoldPosition) + 0.01;
+    s.now += MinimumCooldown(ActionKind::DrinkStaminaPotion) + 0.01;
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
 
     // Make rule 0's action unavailable -- which is what an "already in effect"
     // check will do -- and rule 1 gets its turn. Note the wait: rule 0's fire
     // also blocked the condition they share, so the settle has to elapse first.
     // Availability decides WHO acts; the cooldown decides WHEN.
-    ctx.caps.supported[static_cast<std::size_t>(ActionKind::HoldPosition)] = false;
-    s.now += MinimumCooldown(ActionKind::HoldPosition) + 0.01;
+    ctx.caps.supported[static_cast<std::size_t>(ActionKind::DrinkStaminaPotion)] = false;
+    s.now += MinimumCooldown(ActionKind::DrinkStaminaPotion) + 0.01;
 
     Trace trace;
     const auto d = Evaluate(rs, s, ctx, &trace);
@@ -1234,7 +1340,7 @@ TEST_CASE("a named potion is drunk only while carried, and cools down per potion
     auto drink = [](std::uint32_t form) {
         Rule r;
         r.subject = SubjectKind::Self;
-        r.predicate = PredicateKind::InCombat;
+        r.predicate = PredicateKind::Any;
         r.actionTarget = ActionTargetKind::Self;
         r.FirstAction().kind = ActionKind::DrinkPotion;
         r.FirstAction().form = form;
@@ -1436,8 +1542,8 @@ TEST_CASE("a satisfied equip rule holds its hand against the rules beneath it", 
     RuleSet rs;
     Rule close = Equip(ActionKind::EquipWeapon, kSword, Hand::Right);
     close.subject = SubjectKind::Enemy;
-    close.predicate = PredicateKind::WithinDistance;
-    close.conditionArg = 300.0f;
+    close.predicate = PredicateKind::HealthPctAbove; // the sword while the enemy is fresh
+    close.conditionArg = 0.5f;
     rs.rules.push_back(close);
     rs.rules.push_back(Equip(ActionKind::EquipWeapon, kBow, Hand::Both));
 
@@ -1457,9 +1563,9 @@ TEST_CASE("a satisfied equip rule holds its hand against the rules beneath it", 
     REQUIRE(trace.at(0) == Verdict::EffectActive);
     REQUIRE(trace.at(1) == Verdict::Outranked);
 
-    // The enemy backs off: the sword rule's condition lapses, and the bow
-    // rule takes the hands. The sword's pin goes with them.
-    s.enemies[0].distance = 900.0f;
+    // The enemy is worn down: the sword rule's condition lapses, and the
+    // bow rule takes the hands. The sword's pin goes with them.
+    s.enemies[0].health = {20.0f, 100.0f};
     s.now += 0.5;
     d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 1);
@@ -1468,9 +1574,9 @@ TEST_CASE("a satisfied equip rule holds its hand against the rules beneath it", 
     REQUIRE(FindPin(s.pins, kSword) == nullptr);
     REQUIRE(FindPin(s.pins, kBow) != nullptr);
 
-    // Close again: the sword rule is available again -- its pin is gone --
+    // Fresh again: the sword rule is available again -- its pin is gone --
     // and takes the right hand back.
-    s.enemies[0].distance = 200.0f;
+    s.enemies[0].health = {100.0f, 100.0f};
     s.now += 0.5;
     d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 0);
@@ -1760,6 +1866,7 @@ TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
     r.subject = SubjectKind::Enemy;
     r.predicate = PredicateKind::HealthPctBelow;
     r.conditionArg = 0.9f;
+    r.actionTarget = ActionTargetKind::Enemy;
     r.actions = {{ActionKind::CastSpell, kA}, {ActionKind::CastSpell, kB}};
     RuleSet rs;
     rs.rules = {r};
@@ -1779,7 +1886,7 @@ TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
     // else entirely: the list in progress is unmoved by either.
     s.enemies[0].health = {90.0f, 100.0f};
     s.enemies[1].health = {10.0f, 100.0f};
-    rs.rules[0].actions = {{ActionKind::HoldPosition}};
+    rs.rules[0].actions = {{ActionKind::DrinkStaminaPotion}};
     d = Tick(rs, s, ctx, trace, actions);
     REQUIRE(d.actionForm() == kB);
     REQUIRE(d.targetId() == 0x101);
@@ -1817,7 +1924,7 @@ TEST_CASE("the cooldowns a list spends are the actions' own", "[sequence]")
     // a single-action rule's would, wherever it sits: the settle belongs to
     // the action, and a list does not get a second potion inside it.
     Rule r = HealBelow(0.5f);
-    r.actions.push_back({ActionKind::HoldPosition});
+    r.actions.push_back({ActionKind::DrinkStaminaPotion});
     RuleSet rs;
     rs.rules = {r, HealBelow(0.5f)};
 
@@ -1828,7 +1935,7 @@ TEST_CASE("the cooldowns a list spends are the actions' own", "[sequence]")
     ActionTrace actions;
 
     REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkHealthPotion);
-    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::HoldPosition);
+    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkStaminaPotion);
 
     // One second in: both potion rules are inside the settle.
     Decision d = Tick(rs, s, ctx, trace, actions);
@@ -1960,6 +2067,201 @@ std::string Str(std::string_view v)
 }
 } // namespace
 
+TEST_CASE("target points the follower at an enemy, once, and not at anyone else", "[target]")
+{
+    // Ally -> Attacked by -> Ranged -> Target on their attacker: the archer
+    // shooting the ally becomes the follower's fight. Beneath it, the enemy
+    // on the player, and a potion as the witness that the rules above fell
+    // through.
+    Snapshot s = Healthy();
+    s.allies.push_back({kPlayerFormID, {100.0f, 100.0f}, 100.0f});
+    s.allies.push_back({0x201, {60.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 900.0f}); // the archer
+    s.enemies.push_back({0x102, {100.0f, 100.0f}, 150.0f}); // the one in the follower's face
+    s.enemies[1].isAttackingPlayer = true;
+    s.currentTarget = 0x102;
+    s.allies[1].traits.attackedBy = Bit(DamageKind::Melee) | Bit(DamageKind::Ranged);
+    s.allies[1].traits.attacker = 0x101;
+
+    Rule archer;
+    archer.subject = SubjectKind::Ally;
+    archer.predicate = PredicateKind::AttackedBy;
+    archer.damageKind = DamageKind::Ranged;
+    archer.actionTarget = ActionTargetKind::Attacker;
+    archer.FirstAction().kind = ActionKind::Target;
+
+    Rule peel;
+    peel.subject = SubjectKind::Enemy;
+    peel.predicate = PredicateKind::AttackingPlayer;
+    peel.actionTarget = ActionTargetKind::Enemy;
+    peel.FirstAction().kind = ActionKind::Target;
+
+    RuleSet rs;
+    rs.rules.push_back(archer);
+    rs.rules.push_back(peel);
+    rs.rules.push_back(HealBelow(2.0f)); // always true: the witness
+
+    EvalContext ctx;
+    Trace trace;
+    Decision d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.action() == ActionKind::Target);
+    REQUIRE(d.targetId() == 0x101);
+
+    // The engine took it: the archer rule is done and falls through. The
+    // peel rule wants a different enemy, and is held by the SAME cooldown --
+    // the action's, not the target's -- so the follower is not flicked
+    // between the two. The witness gets the tick.
+    s.now += 0.5;
+    s.currentTarget = 0x101;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    REQUIRE(trace.at(1) == Verdict::ActionCooldown);
+    REQUIRE(d.ruleIndex == 2);
+
+    // Cooldown over: the peel rule gets its turn.
+    s.now += 2.0;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(d.targetId() == 0x102);
+
+    // The engine did NOT take it: the target snaps back, and the rule
+    // fires again once its cooldown is over, which is how the log shows
+    // whether the choice stands.
+    s.now += 2.5;
+    s.currentTarget = 0x102;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.targetId() == 0x101);
+
+    // An attacker who is not an enemy -- dead, fled, or an ally's stray
+    // arrow -- is no one to point at.
+    s.now += 5.0;
+    s.allies[1].traits.attacker = 0x103;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(trace.at(0) == Verdict::NoTarget);
+    REQUIRE(std::string(Explain(Verdict::NoTarget, ActionKind::Target)) == "no enemy to point at");
+    s.allies[1].traits.attacker = 0x101;
+
+    // Out of a fight there is no target to set.
+    s.inCombat = false;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::Target)) == "not in a fight");
+    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::Target)) == "already fighting them");
+
+    // Ranged is a kind of its own: a sword blow on the ally is not it.
+    s.inCombat = true;
+    s.allies[1].traits.attackedBy = Bit(DamageKind::Melee);
+    REQUIRE_FALSE(EvaluateCondition(archer, s).ok);
+    REQUIRE(MinimumCooldown(ActionKind::Target) == 2.0);
+}
+
+TEST_CASE("a cast rule waits while the follower is casting a spell of their own", "[spell]")
+{
+    // Lightning Bolt on "magicka above half": fired into the AI's own cast
+    // it interrupted every spell the follower began. So while they are
+    // mid-cast the rule waits, spends no cooldown, and the rules beneath
+    // get the tick; when the hands are free it fires.
+    constexpr std::uint32_t kBolt = 0x000C96A2;
+    Rule bolt;
+    bolt.subject = SubjectKind::Self;
+    bolt.predicate = PredicateKind::MagickaPctAbove;
+    bolt.conditionArg = 0.5f;
+    bolt.actionTarget = ActionTargetKind::Enemy;
+    bolt.FirstAction() = {ActionKind::CastSpell, kBolt};
+    // Enemy on the action side needs a condition about an enemy.
+    bolt.subject = SubjectKind::Enemy;
+    bolt.predicate = PredicateKind::Any;
+
+    RuleSet rs;
+    rs.rules.push_back(bolt);
+    rs.rules.push_back(HealBelow(2.0f)); // always true: the witness
+
+    Snapshot s = Healthy();
+    s.spells.known.push_back(kBolt);
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
+    s.traits.Set(StatusKind::Casting);
+
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+    Trace trace;
+    Decision d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(trace.at(0) == Verdict::Casting);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(std::string(ToString(Verdict::Casting)) == "mid-cast on their own spell, waiting");
+
+    // Still casting a second later: still waiting, still no cooldown.
+    s.now += 1.0;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(trace.at(0) == Verdict::Casting);
+
+    // Hands free: the bolt goes at once -- nothing was spent while waiting.
+    s.traits.status = 0;
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.action() == ActionKind::CastSpell);
+    REQUIRE(d.targetId() == 0x101);
+
+    // Our own cast in progress is the pool's business, reported before
+    // this: Busy, not Casting.
+    ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = true;
+    s.traits.Set(StatusKind::Casting);
+    s.now += 5.0;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(trace.at(0) == Verdict::Busy);
+}
+
+TEST_CASE("attacked by anything, and an ally's magicka and stamina", "[conditions]")
+{
+    Snapshot s = Healthy();
+    s.allies.push_back({kPlayerFormID, {100.0f, 100.0f}, 100.0f});
+    s.allies.push_back({0x201, {100.0f, 100.0f}, 300.0f});
+    s.allies.push_back({0x202, {100.0f, 100.0f}, 200.0f});
+    s.allies[0].magicka = {100.0f, 100.0f};
+    s.allies[0].stamina = {60.0f, 100.0f};
+    s.allies[1].magicka = {10.0f, 100.0f};
+    s.allies[2].magicka = {40.0f, 100.0f};
+    s.allies[1].stamina = {90.0f, 100.0f};
+    s.allies[2].stamina = {20.0f, 100.0f};
+
+    // Attacked by Any: hit with anything at all in the window.
+    Rule hit;
+    hit.subject = SubjectKind::Ally;
+    hit.predicate = PredicateKind::AttackedBy;
+    hit.damageKind = DamageKind::Any;
+    REQUIRE_FALSE(EvaluateCondition(hit, s).ok);
+    s.allies[2].traits.attackedBy = Bit(DamageKind::Frost);
+    REQUIRE(EvaluateCondition(hit, s).id == 0x202);
+    hit.damageKind = DamageKind::Fire;
+    REQUIRE_FALSE(EvaluateCondition(hit, s).ok);
+
+    // An ally's magicka and stamina, binding the one with the least of the
+    // stat asked about -- not the least health.
+    Rule low;
+    low.subject = SubjectKind::Ally;
+    low.predicate = PredicateKind::MagickaPctBelow;
+    low.conditionArg = 0.5f;
+    REQUIRE(EvaluateCondition(low, s).id == 0x201);
+    low.predicate = PredicateKind::StaminaPctBelow;
+    REQUIRE(EvaluateCondition(low, s).id == 0x202);
+    low.predicate = PredicateKind::StaminaPctAbove;
+    low.conditionArg = 0.5f;
+    REQUIRE(EvaluateCondition(low, s).id == 0x201);
+
+    // The player's too.
+    Rule player;
+    player.subject = SubjectKind::Player;
+    player.predicate = PredicateKind::MagickaPctBelow;
+    player.conditionArg = 0.3f;
+    s.playerMagicka = {50.0f, 100.0f};
+    REQUIRE_FALSE(EvaluateCondition(player, s).ok);
+    s.playerMagicka = {20.0f, 100.0f};
+    REQUIRE(EvaluateCondition(player, s).ok);
+}
+
 TEST_CASE("every wire name round-trips", "[vocabulary]")
 {
     // A name that does not parse back is a rule that cannot be loaded from the
@@ -2067,14 +2369,12 @@ TEST_CASE("an unknown wire name is rejected, not guessed at", "[vocabulary]")
 TEST_CASE("the argument shape tells the UI which widget to draw", "[vocabulary]")
 {
     REQUIRE(ArgumentFor(PredicateKind::HealthPctBelow) == ArgumentKind::Percent);
-    REQUIRE(ArgumentFor(PredicateKind::WithinDistance) == ArgumentKind::Distance);
     REQUIRE(ArgumentFor(PredicateKind::CountAtLeast) == ArgumentKind::Count);
 
     // A predicate that takes no argument must not be given a slider that
     // silently writes a meaningless number into the profile.
     REQUIRE(ArgumentFor(PredicateKind::Any) == ArgumentKind::None);
-    REQUIRE(ArgumentFor(PredicateKind::InCombat) == ArgumentKind::None);
-    REQUIRE(ArgumentFor(PredicateKind::InBleedout) == ArgumentKind::None);
+    REQUIRE(ArgumentFor(PredicateKind::CombatBegins) == ArgumentKind::None);
 }
 
 TEST_CASE("every value has display text and help text", "[vocabulary]")
