@@ -20,6 +20,10 @@ namespace ft::game
 namespace
 {
 
+// MagicNoReanimate, Skyrim.esm: the keyword the Reanimate archetype's one
+// condition refuses.
+constexpr std::uint32_t kMagicNoReanimateKeyword = 0x0006F6FB;
+
 // Highest restore magnitude this potion offers for the given actor value, or 0
 // if it does not restore it at all. Poisons and food are filtered out by the
 // caller, so anything reaching here that restores health is a healing potion.
@@ -519,6 +523,10 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
         return traits;
     traits.armor = DamageReduction(actor);
     LogArmorReadings(actor);
+    // The engine's own list of what the actor commands: a summon, a raised
+    // corpse, each with the effect that made it.
+    if (const auto *process = actor->GetActorRuntimeData().currentProcess; process && process->middleHigh)
+        traits.summons = static_cast<int>(process->middleHigh->commandedActors.size());
     const Attacked attacked = AttackedLately(actor->GetFormID());
     traits.attackedBy = attacked.kinds;
     traits.attacker = attacked.attacker;
@@ -700,6 +708,28 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
             return RE::BSContainer::ForEachResult::kContinue;
         });
     }
+    // The corpses: the dead nearby that a Reanimate could take. Not one
+    // already commanded (a raised corpse is someone's), not one the effect's
+    // own condition refuses (the MagicNoReanimate keyword, 06F6FB, which is
+    // the Reanimate archetype's one condition), and within the reach a rule
+    // could act on. The level is what the spell's cap is measured against.
+    if (auto *lists = RE::ProcessLists::GetSingleton())
+    {
+        constexpr float kCorpseReach = 3000.0f;
+        auto *noReanimate = RE::TESForm::LookupByID<RE::BGSKeyword>(kMagicNoReanimateKeyword);
+        lists->ForEachHighActor([&](RE::Actor &other) {
+            if (&other == actor || !other.IsDead() || other.IsCommandedActor())
+                return RE::BSContainer::ForEachResult::kContinue;
+            if (noReanimate && other.HasKeyword(noReanimate))
+                return RE::BSContainer::ForEachResult::kContinue;
+            const float distance = actor->GetPosition().GetDistance(other.GetPosition());
+            if (distance > kCorpseReach)
+                return RE::BSContainer::ForEachResult::kContinue;
+            s.corpses.push_back({other.GetFormID(), static_cast<int>(other.GetLevel()), distance});
+            return RE::BSContainer::ForEachResult::kContinue;
+        });
+    }
+
     // The follower's own target is an enemy whether or not the player is
     // in its fight yet.
     if (s.currentTarget != 0 && !std::any_of(s.enemies.begin(), s.enemies.end(),
@@ -746,6 +776,18 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         // Her cost, not the base cost: CalculateMagickaCost applies her skill
         // and perks, which is what the AI will charge her.
         s.spells.costs.push_back({spell->GetFormID(), spell->CalculateMagickaCost(actor)});
+        // A Reanimate's cap: the level of corpse it can raise is its
+        // effect's magnitude (Reanimate Corpse 13, Revenant 21, Dread
+        // Zombie 30). The Corpse subject measures the dead against it.
+        for (const auto *effect : spell->effects)
+        {
+            if (effect && effect->baseEffect &&
+                effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate)
+            {
+                s.spells.caps.push_back({spell->GetFormID(), static_cast<int>(effect->effectItem.magnitude)});
+                break;
+            }
+        }
         // And as the pin book sees it, for an equip rule.
         s.loadout.push_back(DescribeHoldable(actor, spell));
     });
@@ -844,6 +886,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         if (name.empty())
             return; // nameless entries are internal; nothing to show a player
         out.push_back(SpellOption{id, std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
+                                  spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation,
                                   power ? SpellOption::Kind::Power : SpellOption::Kind::Spell});
     });
 
@@ -860,7 +903,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
                     continue;
                 const auto *word = shout->variations[0].spell;
                 const bool self = word && word->GetDelivery() == RE::MagicSystem::Delivery::kSelf;
-                out.push_back(SpellOption{shout->GetFormID(), shout->GetName(), self, SpellOption::Kind::Shout});
+                out.push_back(SpellOption{shout->GetFormID(), shout->GetName(), self, false, SpellOption::Kind::Shout});
             }
         }
     }
@@ -1687,6 +1730,41 @@ RE::SpellItem *FindSpell(std::uint32_t form)
     if (form == 0)
         return nullptr;
     return RE::TESForm::LookupByID<RE::SpellItem>(form);
+}
+
+std::vector<SummonView> ScanSummons(RE::Actor *actor)
+{
+    std::vector<SummonView> out;
+    const auto *process = actor ? actor->GetActorRuntimeData().currentProcess : nullptr;
+    if (!process || !process->middleHigh)
+        return out;
+    for (const auto &commanded : process->middleHigh->commandedActors)
+    {
+        auto summon = commanded.commandedActor.get();
+        if (!summon)
+            continue;
+        SummonView view;
+        view.id = summon->GetFormID();
+        view.baseId = summon->GetActorBase() ? summon->GetActorBase()->GetFormID() : 0;
+        view.name = summon->GetName() ? summon->GetName() : "?";
+        view.level = summon->GetLevel();
+        view.health = ReadStat(summon.get(), RE::ActorValue::kHealth);
+        view.magicka = ReadStat(summon.get(), RE::ActorValue::kMagicka);
+        view.stamina = ReadStat(summon.get(), RE::ActorValue::kStamina);
+        // The commanding effect runs on the FOLLOWER: its duration less its
+        // elapsed time is how long the summon has left. A reanimate's effect
+        // is a ReanimateEffect; a summon's a SummonCreatureEffect.
+        if (const auto *effect = commanded.activeEffect)
+        {
+            if (effect->duration > 0.0f)
+                view.remaining = (std::max)(0.0f, effect->duration - effect->elapsedSeconds);
+            view.raised = effect->GetBaseObject() &&
+                          effect->GetBaseObject()->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate;
+        }
+        view.sheet = BuildCharacterSheet(summon.get());
+        out.push_back(std::move(view));
+    }
+    return out;
 }
 
 } // namespace ft::game

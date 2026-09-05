@@ -737,9 +737,10 @@ TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[stat
     r.subject = SubjectKind::Enemy;
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
 
-    // Answerable about everyone.
+    // Answerable about everyone alive; a corpse has its own three questions.
     for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
-        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::Status));
+        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::Status) ==
+                (static_cast<SubjectKind>(i) != SubjectKind::Corpse));
 }
 
 TEST_CASE("armour is asked as a percent, and every measure has a lowest and a highest", "[armor]")
@@ -871,7 +872,8 @@ TEST_CASE("resistance is asked by kind as a percent, with a lowest and a highest
     // Everyone can be asked; the extremes are a group's; every kind has a
     // name; the family is known as one.
     for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
-        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::ResistancePctBelow));
+        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::ResistancePctBelow) ==
+                (static_cast<SubjectKind>(i) != SubjectKind::Corpse));
     REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::ResistanceLowest));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::ResistanceHighest));
     for (std::size_t i = 0; i < static_cast<std::size_t>(DamageKind::COUNT); ++i)
@@ -940,7 +942,8 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
     REQUIRE(ResolveActionTarget(r, s, player, &ok) == 0x101);
 
     for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
-        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::AttackedBy));
+        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::AttackedBy) ==
+                (static_cast<SubjectKind>(i) != SubjectKind::Corpse));
 }
 
 TEST_CASE("a named follower is one ally asked about alone", "[follower]")
@@ -2523,4 +2526,114 @@ TEST_CASE("Stat::Pct does not divide by zero", "[snapshot]")
 {
     REQUIRE(Stat{}.Pct() == 0.0f);
     REQUIRE(Stat{50.0f, 200.0f}.Pct() == 0.25f);
+}
+
+TEST_CASE("a summon is a condition on any actor: none or active", "[summon]")
+{
+    RuleSet rs;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::SummonNone;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = 0x000204C3; // Conjure Flame Atronach
+    rs.rules.push_back(r);
+
+    Snapshot s = Healthy();
+    s.spells.known.push_back(0x000204C3);
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+
+    // Nothing commanded: none holds, so the atronach is called.
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+
+    // One commanded: none no longer holds, active does.
+    s.now += 10.0;
+    s.traits.summons = 1;
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::ConditionFalse);
+    rs.rules[0].predicate = PredicateKind::SummonActive;
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+
+    // Answerable about anyone with traits, never about a corpse.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::SummonActive));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::SummonNone));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::SummonActive));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Corpse, PredicateKind::SummonActive));
+}
+
+TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", "[corpse]")
+{
+    constexpr std::uint32_t kReanimate = 0x00065BD7; // cap 13
+    constexpr ActorId kRat = 0x1001;
+    constexpr ActorId kBandit = 0x1002;
+    constexpr ActorId kGiant = 0x1003;
+
+    RuleSet rs;
+    Rule r;
+    r.subject = SubjectKind::Corpse;
+    r.predicate = PredicateKind::LevelHighest;
+    r.actionTarget = ActionTargetKind::Corpse;
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = kReanimate;
+    rs.rules.push_back(r);
+
+    Snapshot s = Healthy();
+    s.inCombat = true;
+    s.spells.known.push_back(kReanimate);
+    s.spells.caps.push_back({kReanimate, 13});
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+
+    // No corpses: nothing to bind; None holds instead.
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::ConditionFalse);
+
+    // A rat, a bandit and a giant: the giant is above the cap and is passed
+    // over; the bandit outranks the rat. The cast is aimed at the bandit.
+    s.corpses.push_back({kRat, 1, 100.0f});
+    s.corpses.push_back({kBandit, 9, 300.0f});
+    s.corpses.push_back({kGiant, 32, 200.0f});
+    auto decision = Evaluate(rs, s, ctx);
+    REQUIRE(decision.ruleIndex == 0);
+    REQUIRE(decision.steps.at(0).target == kBandit);
+
+    // Lowest picks the rat -- that is what the player asked for.
+    s.now += 10.0;
+    rs.rules[0].predicate = PredicateKind::LevelLowest;
+    decision = Evaluate(rs, s, ctx);
+    REQUIRE(decision.ruleIndex == 0);
+    REQUIRE(decision.steps.at(0).target == kRat);
+
+    // A rule with no cap on its spell sees the giant.
+    s.now += 10.0;
+    rs.rules[0].predicate = PredicateKind::LevelHighest;
+    rs.rules[0].FirstAction().form = 0x000204C3;
+    s.spells.known.push_back(0x000204C3);
+    decision = Evaluate(rs, s, ctx);
+    REQUIRE(decision.ruleIndex == 0);
+    REQUIRE(decision.steps.at(0).target == kGiant);
+
+    // None: only when nothing raisable is about. With only the giant and a
+    // capped spell, none holds and the action goes on the follower.
+    s.now += 10.0;
+    s.corpses.clear();
+    s.corpses.push_back({kGiant, 32, 200.0f});
+    rs.rules[0].predicate = PredicateKind::CorpseNone;
+    rs.rules[0].actionTarget = ActionTargetKind::Self;
+    rs.rules[0].FirstAction().form = kReanimate;
+    decision = Evaluate(rs, s, ctx);
+    REQUIRE(decision.ruleIndex == 0);
+    REQUIRE(decision.steps.at(0).target == s.self);
+
+    // The corpse's questions are its own, and only a spell goes at one.
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Corpse, PredicateKind::HealthPctBelow));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::LevelHighest));
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Corpse, ActionTargetKind::Corpse));
+    REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Corpse));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::CastSpell));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::Shout));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::Target));
 }

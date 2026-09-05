@@ -615,6 +615,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
     headings.push_back(
         {ft::SubjectKind::CurrentTarget, 0, std::string(ft::DisplayName(ft::SubjectKind::CurrentTarget))});
     headings.push_back({ft::SubjectKind::Enemy, 0, std::string(ft::DisplayName(ft::SubjectKind::Enemy))});
+    headings.push_back({ft::SubjectKind::Corpse, 0, std::string(ft::DisplayName(ft::SubjectKind::Corpse))});
 
     for (const Heading &heading : headings)
     {
@@ -662,6 +663,31 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                     }
                     if (Im::IsItemHovered(0))
                         Im::SetTooltip("%s", std::string(ft::Describe(phase.predicate)).c_str());
+                }
+                Im::EndMenu();
+                continue;
+            }
+
+            // The summons, under one "Summon" heading: None, Active.
+            if (predicate == ft::PredicateKind::SummonNone || predicate == ft::PredicateKind::SummonActive)
+            {
+                if (predicate != ft::PredicateKind::SummonNone)
+                    continue;
+                if (!BeginCascade("Summon"))
+                    continue;
+                for (const auto [which, label] : {std::pair{ft::PredicateKind::SummonNone, "None"},
+                                                  std::pair{ft::PredicateKind::SummonActive, "Active"}})
+                {
+                    const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which;
+                    if (CascadeItem(label, selected))
+                    {
+                        rule.subject = subject;
+                        rule.subjectForm = form;
+                        rule.predicate = which;
+                        changed = true;
+                    }
+                    if (Im::IsItemHovered(0))
+                        Im::SetTooltip("%s", std::string(ft::Describe(which)).c_str());
                 }
                 Im::EndMenu();
                 continue;
@@ -1304,7 +1330,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                                                              : SpellOption::Kind::Spell;
         std::vector<const SpellOption *> suited;
         for (const auto &option : view.spells)
-            if (option.kind == kind && option.selfOnly == (target == ft::ActionTargetKind::Self))
+            if (option.kind == kind && (option.location || option.selfOnly == (target == ft::ActionTargetKind::Self)))
                 suited.push_back(&option);
         if (suited.empty())
             continue;
@@ -1379,10 +1405,14 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
     headings.push_back(
         {ft::ActionTargetKind::CurrentTarget, 0, std::string(ft::DisplayName(ft::ActionTargetKind::CurrentTarget))});
     headings.push_back({ft::ActionTargetKind::Enemy, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Enemy))});
+    headings.push_back({ft::ActionTargetKind::Corpse, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Corpse))});
 
     for (const Heading &heading : headings)
     {
         if (!ft::IsActionTargetValidFor(rule.subject, heading.target))
+            continue;
+        // Under "Corpse: None" there is no corpse to aim at.
+        if (heading.target == ft::ActionTargetKind::Corpse && rule.predicate == ft::PredicateKind::CorpseNone)
             continue;
         if (!BeginCascade(heading.label.c_str()))
             continue;
@@ -3040,6 +3070,9 @@ unsigned IconFor(MagicCategory category)
 }
 
 constexpr unsigned kIconMagicAll = 0xF6E8; // hat-wizard
+// The Summons tab's chips: a summoned creature, a raised corpse.
+constexpr unsigned kIconSummoned = 0xF6D5; // dragon
+constexpr unsigned kIconRaised = 0xF54C;   // skull
 
 std::vector<const MagicEntry *> VisibleMagic(const FollowerView &view, const MagicTabState &state)
 {
@@ -3538,6 +3571,89 @@ void DrawMagic(const FollowerView &view)
     DrawMagicList(view, state);
 }
 
+// One summon or raised corpse, laid out as the Character tab is: the three
+// bars on the left, level, kind and time left on the right, then its sheet.
+// The sheet's links go nowhere: a summon's sword is not in her inventory.
+void DrawSummon(const SummonView &summon)
+{
+    Im::Spacing();
+
+    const std::string levelText = std::to_string(static_cast<unsigned>(summon.level));
+    const std::string kindText = summon.raised ? "raised" : "summoned";
+    char remainingBuf[32];
+    if (summon.remaining > 0.0f)
+        std::snprintf(remainingBuf, sizeof(remainingBuf), "%.0f s", summon.remaining);
+    else
+        std::snprintf(remainingBuf, sizeof(remainingBuf), "-");
+    const std::string remainingText = remainingBuf;
+
+    const float originX = Im::GetCursorPosX();
+    const auto *style = Im::GetStyle();
+    const float inset = style ? style->ItemSpacing.x : 8.0f;
+
+    RowGeometry geo;
+    geo.barLabelRight = originX + inset + WidestLabel({"Health", "Stamina", "Magicka"});
+    geo.barLeft = geo.barLabelRight + 12.0f;
+    const float contentRight = originX + Im::GetContentRegionAvail().x - inset;
+    const float valueWidth = (std::max)({TextWidth(levelText), TextWidth(kindText), TextWidth(remainingText)});
+    geo.valueLeft = contentRight - valueWidth;
+    geo.statLabelRight = geo.valueLeft - 12.0f;
+
+    DrawStatRow(geo, "Health", summon.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
+                [&] { Im::Text("%s", levelText.c_str()); });
+    DrawStatRow(geo, "Stamina", summon.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Kind",
+                [&] { Im::TextDisabled("%s", kindText.c_str()); });
+    DrawStatRow(geo, "Magicka", summon.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Remaining",
+                [&] { Im::Text("%s", remainingText.c_str()); });
+
+    Im::Spacing();
+    {
+        // Who it is, for the console: the reference and its base.
+        SheetSection identity{"Identity", {}, {}};
+        char id[16];
+        std::snprintf(id, sizeof(id), "%08X", summon.id);
+        SheetRow ref;
+        ref.label = "Ref ID";
+        ref.value = id;
+        identity.rows.push_back(std::move(ref));
+        std::snprintf(id, sizeof(id), "%08X", summon.baseId);
+        SheetRow base;
+        base.label = "Base ID";
+        base.value = id;
+        identity.rows.push_back(std::move(base));
+        std::vector<SheetSection> sections{std::move(identity)};
+        sections.insert(sections.end(), summon.sheet.begin(), summon.sheet.end());
+        DrawSections(sections, false);
+    }
+}
+
+// The Summons tab: what she commands right now. One page; with more than
+// one, a chip per summon above it, as the Inventory tab has categories.
+std::unordered_map<ft::ActorId, int> g_summonTabs;
+
+void DrawSummons(const FollowerView &view)
+{
+    if (view.summons.empty())
+    {
+        Im::Spacing();
+        Im::TextDisabled("Nothing summoned or raised.");
+        return;
+    }
+    int &chosen = g_summonTabs[view.id];
+    if (chosen < 0 || chosen >= static_cast<int>(view.summons.size()))
+        chosen = 0;
+    if (view.summons.size() > 1)
+    {
+        Im::Spacing();
+        std::vector<Chip> chips;
+        for (std::size_t i = 0; i < view.summons.size(); ++i)
+            chips.push_back(
+                {view.summons[i].name, view.summons[i].raised ? kIconRaised : kIconSummoned, static_cast<int>(i)});
+        DrawChips(chips, chosen);
+    }
+    DrawSummon(view.summons[static_cast<std::size_t>(chosen)]);
+}
+
 // The character sheet: what she is, as opposed to what she has been told to
 // do. Everything here is display only and already on the view, so it costs
 // the game thread nothing extra to show.
@@ -3695,6 +3811,11 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     if (Im::BeginTabItem("Magic"))
     {
         DrawMagic(view);
+        Im::EndTabItem();
+    }
+    if (Im::BeginTabItem("Summons"))
+    {
+        DrawSummons(view);
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Effects"))

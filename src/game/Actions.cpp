@@ -184,11 +184,16 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
                          spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf ? "self" : "targeted");
         if (spell && spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
         {
+            // A Location spell -- a conjuration -- aimed at the follower goes
+            // at their own feet, which is where a summon is wanted; every
+            // other aimed spell aimed at no one goes at the enemy.
+            const bool atOwnFeet =
+                target == actor->GetFormID() && spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation;
             if (target != 0 && target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
             {
                 targetId = target;
             }
-            else
+            else if (!atOwnFeet)
             {
                 auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
                 if (!enemy)

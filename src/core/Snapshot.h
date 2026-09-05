@@ -59,6 +59,10 @@ struct ActorTraits
     std::uint8_t attackedBy{0};
     ActorId attacker{0};
 
+    // How many summons and raised corpses the actor commands right now:
+    // the engine's commanded-actor list, counted. The Summon condition.
+    int summons{0};
+
     [[nodiscard]] constexpr bool AttackedBy(DamageKind kind) const noexcept
     {
         if (kind == DamageKind::Any)
@@ -109,6 +113,15 @@ struct AllyView
     ActorTraits traits{};
     Stat magicka{};
     Stat stamina{};
+};
+
+// A corpse nearby: dead, not already raised or summoned, loaded. Its level
+// is what a Reanimate's cap is measured against.
+struct CorpseView
+{
+    ActorId id{0};
+    int level{0};
+    float distance{0.0f};
 };
 
 // Counts and best-available magnitude per potion kind. Populated by an
@@ -196,6 +209,24 @@ struct SpellState
         return 0.0f;
     }
 
+    // The level cap of a Reanimate spell: the highest level of corpse it
+    // raises, read off its effect's magnitude on the game side. Absent for
+    // every other spell. The Corpse subject filters by the rule's spell.
+    struct Cap
+    {
+        std::uint32_t form{0};
+        int maxLevel{0};
+    };
+    std::vector<Cap> caps;
+
+    [[nodiscard]] int CapOf(std::uint32_t form) const
+    {
+        for (const auto &c : caps)
+            if (c.form == form)
+                return c.maxLevel;
+        return 0;
+    }
+
     [[nodiscard]] bool Knows(std::uint32_t form) const
     {
         return std::find(known.begin(), known.end(), form) != known.end();
@@ -248,6 +279,7 @@ struct Snapshot
 
     std::vector<EnemyView> enemies;
     std::vector<AllyView> allies;
+    std::vector<CorpseView> corpses;
 
     PotionStock potions;
     SpellState spells;

@@ -38,6 +38,11 @@ enum class SubjectKind : std::uint8_t
     // One particular other follower, named by Rule::subjectForm: an ally
     // asked about alone.
     Follower,
+    // The dead nearby, a group like Enemy: a corpse the rule can bind and
+    // aim a Reanimate at. Its own predicates: none about, or the highest
+    // or lowest level -- filtered to what the rule's spell can raise, so
+    // "highest" never picks a corpse the spell then fails on.
+    Corpse,
 
     COUNT
 };
@@ -101,6 +106,17 @@ enum class PredicateKind : std::uint8_t
     MagickaPctAbove,
     ArmorPctAbove,
     ResistancePctAbove,
+    // The subject commands a summon or a raised corpse right now, or does
+    // not. Any actor the snapshot has traits for: the engine keeps a
+    // commanded-actor list per actor. Listed under one "Summon" heading.
+    SummonNone,
+    SummonActive,
+    // The corpses: none about, or the one of the highest or lowest level.
+    // Corpse only. Not IsExtreme: they have no below-predicate to hang
+    // under, and their measure is a level, not a fraction.
+    CorpseNone,
+    LevelHighest,
+    LevelLowest,
 
     COUNT
 };
@@ -124,6 +140,8 @@ enum class ActionTargetKind : std::uint8_t
     Attacker,
     // One particular other follower, named by Rule::actionTargetForm.
     Follower,
+    // THE corpse the condition bound: where a Reanimate goes.
+    Corpse,
 
     COUNT
 };

@@ -45,8 +45,11 @@ struct SpellOption
     std::uint32_t form{0};
     std::string name;
     // Delivery Self: cast on oneself and on no one else. The menu offers it
-    // under Self only, and everything aimed under everyone but Self.
+    // under Self only, and everything aimed under everyone but Self -- save
+    // a Location spell (a conjuration), which goes at whoever's feet the
+    // rule names, the follower's included, and is offered under everyone.
     bool selfOnly{false};
+    bool location{false};
     // Which menu lists it: Cast spell, Use power, or Shout. One list
     // because all three are found by the same walk of what she knows.
     enum class Kind : std::uint8_t
@@ -172,6 +175,26 @@ struct EffectRow
     std::vector<SheetSection> detail;
     std::string description;
 };
+
+// What a follower commands right now: a summon or a raised corpse, for the
+// Summons tab. Its numbers come from its own actor, its page from the same
+// sheet builder as the follower's, so the two tabs read alike.
+struct SummonView
+{
+    ft::ActorId id{0};
+    std::uint32_t baseId{0};
+    std::string name;
+    std::uint16_t level{0};
+    ft::Stat health{};
+    ft::Stat magicka{};
+    ft::Stat stamina{};
+    float remaining{0.0f}; // seconds left on the effect that commands it; 0 when unknown
+    bool raised{false};    // a reanimated corpse, as opposed to a summon
+    std::vector<SheetSection> sheet;
+};
+
+// Everything the follower commands, in the engine's order.
+[[nodiscard]] std::vector<SummonView> ScanSummons(RE::Actor *actor);
 
 // Everything running on the follower that the game would list, sorted by
 // name. Effects flagged hidden, and ones already run out, are left out.

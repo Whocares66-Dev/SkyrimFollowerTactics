@@ -117,6 +117,8 @@ bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target) noexce
         return subject == SubjectKind::Ally || subject == SubjectKind::Follower;
     case ActionTargetKind::Enemy:
         return subject == SubjectKind::Enemy || subject == SubjectKind::CurrentTarget;
+    case ActionTargetKind::Corpse:
+        return subject == SubjectKind::Corpse;
     default:
         return true;
     }
@@ -127,10 +129,13 @@ bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept
     switch (action)
     {
     case ActionKind::None:
+        return true;
     case ActionKind::CastSpell:
+        return true;
     case ActionKind::UsePower:
     case ActionKind::Shout:
-        return true;
+        // Aimed anywhere but at a corpse: a Reanimate is a spell.
+        return target != ActionTargetKind::Corpse;
     case ActionKind::Target:
         return target == ActionTargetKind::Enemy || target == ActionTargetKind::Attacker;
     default:
@@ -250,11 +255,18 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         }
         return false;
     }
-    // A status, the armour, the resistances and the hits are read off every
-    // actor the snapshot carries, so they are answerable about any of them.
-    // The extremes are of a group.
+    // The corpses answer their own three questions and no other; nobody
+    // else answers them.
+    const bool corpseQuestion = predicate == PredicateKind::CorpseNone || predicate == PredicateKind::LevelHighest ||
+                                predicate == PredicateKind::LevelLowest;
+    if (subject == SubjectKind::Corpse || corpseQuestion)
+        return subject == SubjectKind::Corpse && corpseQuestion;
+    // A status, the armour, the resistances, the hits and the summons are
+    // read off every actor the snapshot carries, so they are answerable
+    // about any of them. The extremes are of a group.
     if (predicate == PredicateKind::Status || predicate == PredicateKind::ArmorPctBelow ||
-        predicate == PredicateKind::ResistancePctBelow || predicate == PredicateKind::AttackedBy)
+        predicate == PredicateKind::ResistancePctBelow || predicate == PredicateKind::AttackedBy ||
+        predicate == PredicateKind::SummonNone || predicate == PredicateKind::SummonActive)
         return true;
     if (IsExtreme(predicate))
         return subject == SubjectKind::Ally || subject == SubjectKind::Enemy;

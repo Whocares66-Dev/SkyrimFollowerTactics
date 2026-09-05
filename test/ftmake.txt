@@ -85,6 +85,18 @@
 ;               addshout puts it on the base record's shout list, where
 ;               the Greybeards' are, and the Magic tab's Shouts chip.
 ;
+;  CONJURATION, for the Summon and Corpse conditions to come.
+;    000204C3   Conjure Flame Atronach  Location delivery, the spell
+;               itself (0A26EC is its tome). One summon at a time is the
+;               engine's rule for an NPC too; "Summon: Active" reads the
+;               commanded-actor list on the follower.
+;    00065BD7   Reanimate Corpse  Aimed at a corpse of level 13 or less
+;               for 60 s (the effect's magnitude is the level cap). Kill a
+;               bandit with bat ftman first: the bear leaves no corpse the
+;               spell will take -- well, it does, but a bear at level 12
+;               is exactly the Serana-raises-a-rat case the Corpse
+;               condition is meant to rank away from.
+;
 ;  FOOD and INGREDIENTS, for the Consume menu's other two lists.
 ;  Both go through the same equip call as a potion; whether an
 ;  NPC gets the effect is unverified (the player eating an
@@ -122,6 +134,8 @@ additem 00039BE8 5
 addspell 00012FCD
 addspell 00088821
 addshout 00013E07
+addspell 000204C3
+addspell 00065BD7
 
 additem 00064B33 3
 additem 0004B0BA 5

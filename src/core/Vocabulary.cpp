@@ -55,16 +55,17 @@ template <typename Enum, std::size_t N>
     return std::nullopt;
 }
 
-constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
+constexpr std::array<Entry<SubjectKind>, 7> kSubjects{{
     {SubjectKind::Self, "self", "Self"},
     {SubjectKind::Player, "player", "Player"},
     {SubjectKind::Ally, "ally", "Ally"},
     {SubjectKind::Enemy, "enemy", "Enemy"},
     {SubjectKind::CurrentTarget, "current-target", "Target"},
     {SubjectKind::Follower, "follower", "Follower"},
+    {SubjectKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 28> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 33> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
@@ -93,9 +94,14 @@ constexpr std::array<Entry<PredicateKind>, 28> kPredicates{{
     {PredicateKind::MagickaPctAbove, "magicka-pct-above", "Magicka"},
     {PredicateKind::ArmorPctAbove, "armor-pct-above", "Armor"},
     {PredicateKind::ResistancePctAbove, "resistance-pct-above", "Resistance"},
+    {PredicateKind::SummonNone, "summon-none", "Summon: none"},
+    {PredicateKind::SummonActive, "summon-active", "Summon: active"},
+    {PredicateKind::CorpseNone, "corpse-none", "None"},
+    {PredicateKind::LevelHighest, "level-highest", "Highest level"},
+    {PredicateKind::LevelLowest, "level-lowest", "Lowest level"},
 }};
 
-constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
+constexpr std::array<Entry<ActionTargetKind>, 8> kActionTargets{{
     {ActionTargetKind::Self, "self", "Self"},
     {ActionTargetKind::Player, "player", "Player"},
     {ActionTargetKind::Ally, "ally", "Ally"},
@@ -103,6 +109,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::CurrentTarget, "current-target", "Target"},
     {ActionTargetKind::Attacker, "attacker", "Attacker"},
     {ActionTargetKind::Follower, "follower", "Follower"},
+    {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
 constexpr std::array<Entry<ActionKind>, 15> kActions{{
@@ -384,6 +391,16 @@ std::string_view Describe(PredicateKind v) noexcept
         return "The least armoured one.";
     case PredicateKind::ArmorHighest:
         return "The best armoured one.";
+    case PredicateKind::SummonNone:
+        return "Commands no summon or raised corpse right now.";
+    case PredicateKind::SummonActive:
+        return "Commands a summon or a raised corpse right now.";
+    case PredicateKind::CorpseNone:
+        return "No corpse nearby that the rule's spell could raise.";
+    case PredicateKind::LevelHighest:
+        return "The nearby corpse of the highest level the rule's spell can raise.";
+    case PredicateKind::LevelLowest:
+        return "The nearby corpse of the lowest level the rule's spell can raise.";
     default:
         return "";
     }

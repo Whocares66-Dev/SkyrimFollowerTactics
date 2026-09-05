@@ -1,4 +1,4 @@
-# Conditions: Status, Armor, Resistance, Attacked By, Lowest/Highest
+# Conditions: Status, Armor, Resistance, Attacked By, Lowest/Highest, Summon, Corpse
 
 Design for the rule conditions built 2026-09-04 from research done the
 same day (sources at the end). All of it is built: Status, Armor with
@@ -133,6 +133,20 @@ compare against once, in the log; the walk is what the definition says.
 This is what makes the Ally and Enemy subjects real, and it is what a
 named-follower subject needs: `SubjectKind::Follower` with the actor's
 form, listed by name in the menu after the player.
+
+## 6a. Summon and Corpse (built 2026-09-05, not yet played)
+
+**Summon: None / Active** asks whether an actor commands a summon or a raised corpse right now. The engine keeps a per-actor list of commanded actors on the middle-high process (`commandedActors`, one entry per summon or reanimated corpse with the active effect that made it), and the sensor counts it into the actor's traits, so the question is answerable about the follower, the player, an ally, a named follower or an enemy. The two sit under one "Summon" heading in the Condition cascade. The typical pair: `Self: Summon none -> Self: Cast Conjure Flame Atronach`, above a rule that does something else while the atronach is out.
+
+**Corpse** is a group subject beside Ally and Enemy, with its own three questions and no other: **None**, **Highest level**, **Lowest level**. The sensor walks the loaded actors for the dead within 3000 units, skipping any already commanded (a raised corpse is someone's) and any carrying `MagicNoReanimate` (06F6FB), which is the Reanimate archetype's one condition. Each corpse carries its level. Highest and Lowest bind the corpse, so the Then side offers **Corpse** as a target and `Corpse: Highest level -> Corpse: Cast Reanimate Corpse` aims the cast at it through the existing target input. None binds the follower, for `Corpse: None -> Self: Cast Conjure ...`, and the Corpse target is not offered under it.
+
+**The rat problem.** Reanimate spells raise corpses up to a level: the effect's magnitude, 6 for Raise Zombie, 13 for Reanimate Corpse, 21 for Revenant, 30 for Dread Zombie, read off each known spell into the snapshot as a cap. The Corpse subject measures the dead against the cap of the rule's own cast spell, so Highest level is the highest the spell can actually raise, and a rule whose spell has no cap (a conjuration) sees every corpse. Serana raises the rat because vanilla picks whatever is nearest; this picks the strongest the spell will take.
+
+**A Location spell** -- a conjuration -- is offered under every target and, aimed at Self, goes at the follower's own feet rather than the enemy's; every other aimed spell aimed at no one still goes at the enemy.
+
+**Not yet seen in play:** the UseMagic package aiming at a dead actor (every target so far has been alive), the engine's own level check agreeing with ours, and a raised corpse counting in `commandedActors` for the follower rather than for nobody.
+
+**The Summons tab**, after Magic, shows what the follower commands: health, stamina and magicka bars, level, whether summoned or raised, seconds remaining on the commanding effect, the reference and base FormIDs, and the same sheet the Character tab builds for the follower. With more than one, a chip per summon.
 
 ## 7. What was built, where
 

@@ -35,6 +35,12 @@ bool ArmourOrResistance(const ActorTraits &t, const Rule &r, bool *held)
     case PredicateKind::ResistancePctAbove:
         *held = ResistFraction(t, r.damageKind) > r.conditionArg;
         return true;
+    case PredicateKind::SummonNone:
+        *held = t.summons == 0;
+        return true;
+    case PredicateKind::SummonActive:
+        *held = t.summons > 0;
+        return true;
     default:
         return false;
     }
@@ -160,6 +166,7 @@ bool WantsMost(PredicateKind p)
     case PredicateKind::StaminaHighest:
     case PredicateKind::ArmorHighest:
     case PredicateKind::ResistanceHighest:
+    case PredicateKind::LevelHighest:
         return true;
     default:
         return IsAbove(p);
@@ -199,6 +206,49 @@ const AllyView *SelectAlly(const Snapshot &s, const Rule &r)
         if (!best || Better(r, MeasureOf(r, a.health, a.magicka, a.stamina, a.traits), a.distance,
                             MeasureOf(r, best->health, best->magicka, best->stamina, best->traits), best->distance))
             best = &a;
+    }
+    return best;
+}
+
+// The corpses the rule's spell can raise: the first cast action naming a
+// spell with a level cap sets the cap; a rule with no such spell -- one
+// that conjures, say -- sees every corpse.
+int CapFor(const Rule &r, const Snapshot &s)
+{
+    for (const auto &a : r.actions)
+    {
+        if (a.kind == ActionKind::CastSpell && a.form != 0)
+        {
+            if (const int cap = s.spells.CapOf(a.form); cap > 0)
+                return cap;
+        }
+    }
+    return 0;
+}
+
+bool Raisable(const CorpseView &c, int cap)
+{
+    return cap == 0 || c.level <= cap;
+}
+
+// The corpse the rule binds: the highest or lowest level the spell can
+// raise, the nearer of two at the same level.
+const CorpseView *SelectCorpse(const Snapshot &s, const Rule &r)
+{
+    const int cap = CapFor(r, s);
+    const CorpseView *best = nullptr;
+    for (const auto &c : s.corpses)
+    {
+        if (!Raisable(c, cap))
+            continue;
+        if (!best)
+        {
+            best = &c;
+            continue;
+        }
+        if (c.level == best->level ? c.distance < best->distance
+                                   : (WantsMost(r.predicate) ? c.level > best->level : c.level < best->level))
+            best = &c;
     }
     return best;
 }
@@ -427,6 +477,14 @@ Binding EvaluateCondition(const Rule &r, const Snapshot &s)
     case SubjectKind::CurrentTarget:
         return EvaluateCurrentTarget(s, r);
 
+    case SubjectKind::Corpse: {
+        // None: no corpse the spell could raise. Otherwise the one bound.
+        const auto *c = SelectCorpse(s, r);
+        if (r.predicate == PredicateKind::CorpseNone)
+            return c ? NoMatch() : Match(s.self);
+        return c ? Match(c->id) : NoMatch();
+    }
+
     default:
         return NoMatch();
     }
@@ -453,9 +511,14 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
         return yes(kPlayerFormID);
     case ActionTargetKind::Ally:
     case ActionTargetKind::Enemy:
-        // THE ally or enemy the condition matched -- the rule names them
-        // once, in the condition. Valid only for a condition about one,
-        // which IsActionTargetValidFor holds and Evaluate has checked.
+    case ActionTargetKind::Corpse:
+        // THE ally, enemy or corpse the condition matched -- the rule names
+        // them once, in the condition. Valid only for a condition about one,
+        // which IsActionTargetValidFor holds and Evaluate has checked. A
+        // Corpse: None binds the follower, so a cast aimed at "the corpse"
+        // under it has no one; the menu does not offer that pairing.
+        if (r.actionTarget == ActionTargetKind::Corpse && r.predicate == PredicateKind::CorpseNone)
+            return no();
         return binding.ok && IsActionTargetValidFor(r.subject, r.actionTarget) ? yes(binding.id) : no();
     case ActionTargetKind::Follower:
         for (const auto &a : s.allies)

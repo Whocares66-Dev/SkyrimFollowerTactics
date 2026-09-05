@@ -89,6 +89,8 @@ struct FollowerView
     // The Character and Skills tabs' sections, worded on the game thread.
     std::vector<SheetSection> sheet;
     std::vector<SheetSection> skills;
+    // What she commands right now, for the Summons tab.
+    std::vector<SummonView> summons;
     // The Inventory tab: everything she carries, sorted by name.
     std::vector<InventoryItem> inventory;
     // The Magic tab: spells, powers and shouts, sorted by name.
