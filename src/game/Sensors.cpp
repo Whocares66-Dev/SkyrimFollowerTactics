@@ -1,12 +1,14 @@
 #include "game/Sensors.h"
 
 #include "game/Hits.h"
+#include "game/Packages.h"
 #include "game/Pins.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -17,42 +19,6 @@ namespace ft::game
 {
 namespace
 {
-
-// Walk every spell an actor has, from both places the game keeps them.
-//
-// Two sources, and missing either loses spells that are plainly there:
-//   TESNPC::GetSpellList()  what the character was authored with -- Marcurio's
-//                           destruction spells come from here.
-//   addedSpells             everything granted at runtime, which is what the
-//                           console's addspell writes to.
-template <typename Fn> void ForEachSpell(RE::Actor *actor, Fn &&fn)
-{
-    if (auto *npc = actor->GetActorBase())
-    {
-        if (auto *list = npc->GetSpellList())
-        {
-            for (std::uint32_t i = 0; i < list->numSpells; ++i)
-            {
-                if (list->spells[i])
-                    fn(list->spells[i]);
-            }
-        }
-    }
-
-    for (auto *spell : actor->GetActorRuntimeData().addedSpells)
-    {
-        if (spell)
-            fn(spell);
-    }
-}
-
-// Castable means SpellType::kSpell. An actor's spell list also carries
-// abilities, diseases and passive racial effects, none of which a follower can
-// choose to cast, so a rule naming one could never fire.
-bool IsCastable(RE::SpellItem *spell)
-{
-    return spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell;
-}
 
 // Highest restore magnitude this potion offers for the given actor value, or 0
 // if it does not restore it at all. Poisons and food are filtered out by the
@@ -92,29 +58,43 @@ void RecordPotion(RE::AlchemyItem *alch, std::int32_t count, ft::PotionStock &st
     consider(RE::ActorValue::kStamina, stock.staminaCount, stock.bestStaminaMagnitude, choice.stamina);
 }
 
+// Which consumable kind an inventory object is, or nothing for what is not
+// eaten: a poison goes on a weapon, and everything else is not food.
+std::optional<ft::ConsumableKind> ConsumableKindOf(RE::TESBoundObject *object)
+{
+    if (auto *alch = object->As<RE::AlchemyItem>())
+    {
+        if (alch->IsPoison())
+            return std::nullopt;
+        return alch->IsFood() ? ft::ConsumableKind::Food : ft::ConsumableKind::Potion;
+    }
+    if (object->As<RE::IngredientItem>())
+        return ft::ConsumableKind::Ingredient;
+    return std::nullopt;
+}
+
 void ScanPotions(RE::Actor *actor, ft::PotionStock &stock, PotionChoice &choice)
 {
-    // Filtered at the source: asking GetInventory for only AlchemyItems is
-    // markedly cheaper than pulling the whole inventory and sorting it here,
-    // and a follower's bag can be large.
-    auto inventory = actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::AlchemyItem); });
+    // Filtered at the source: asking GetInventory for only the consumable
+    // types is markedly cheaper than pulling the whole inventory and sorting
+    // it here, and a follower's bag can be large.
+    auto inventory = actor->GetInventory(
+        [](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::AlchemyItem) || obj.Is(RE::FormType::Ingredient); });
 
     for (auto &[object, entry] : inventory)
     {
         const auto count = entry.first;
-        if (count <= 0)
+        if (count <= 0 || !object)
+            continue;
+        const auto kind = ConsumableKindOf(object);
+        if (!kind)
             continue;
 
-        auto *alch = object->As<RE::AlchemyItem>();
-        if (!alch)
-            continue;
-        // Poisons are applied to weapons, not drunk; food is a different action
-        // with different timing. Neither belongs in the potion stock.
-        if (alch->IsPoison() || alch->IsFood())
-            continue;
-
-        stock.carried.push_back({alch->GetFormID(), static_cast<int>(count)});
-        RecordPotion(alch, count, stock, choice);
+        stock.carried.push_back({object->GetFormID(), static_cast<int>(count), *kind});
+        // Only a potion is a candidate for the three "strongest" policies:
+        // food restores too, but slowly, and is its own action.
+        if (*kind == ft::ConsumableKind::Potion)
+            RecordPotion(object->As<RE::AlchemyItem>(), count, stock, choice);
     }
 }
 
@@ -196,6 +176,44 @@ std::string Fmt(const char *fmt, double value);
 float GameSetting(const char *name, float vanilla);
 
 } // namespace
+
+void ForEachSpell(RE::Actor *actor, const std::function<void(RE::SpellItem *)> &fn)
+{
+    if (!actor)
+        return;
+    const auto walk = [&fn](const RE::TESSpellList::SpellData *list) {
+        if (!list)
+            return;
+        for (std::uint32_t i = 0; i < list->numSpells; ++i)
+        {
+            if (list->spells[i])
+                fn(list->spells[i]);
+        }
+    };
+    if (auto *npc = actor->GetActorBase())
+        walk(npc->GetSpellList());
+    if (auto *race = actor->GetRace())
+        walk(race->actorEffects);
+    for (auto *spell : actor->GetActorRuntimeData().addedSpells)
+    {
+        if (spell)
+            fn(spell);
+    }
+}
+
+bool IsCastable(const RE::SpellItem *spell)
+{
+    return spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell;
+}
+
+bool IsPower(const RE::SpellItem *spell)
+{
+    if (!spell)
+        return false;
+    const auto type = spell->GetSpellType();
+    return type == RE::MagicSystem::SpellType::kPower || type == RE::MagicSystem::SpellType::kLesserPower ||
+           IsLeasedPower(spell->GetFormID());
+}
 
 // "3 min 24 s", "1 h 5 min", "12 s"; nothing for an effect with no
 // duration, an ability's or an enchantment's.
@@ -604,6 +622,12 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     s.stamina = ReadStat(actor, RE::ActorValue::kStamina);
 
     s.inCombat = actor->IsInCombat();
+    // Per actor, NPCs included: the last shout's word recovery, counting
+    // down. Negative or nonsense reads as "can shout".
+    {
+        const float recovery = actor->GetVoiceRecoveryTime();
+        s.voiceRecovery = recovery > 0.0f && recovery < 3600.0f ? recovery : 0.0f;
+    }
     if (auto *state = actor->AsActorState())
     {
         s.weaponDrawn = state->IsWeaponDrawn();
@@ -695,7 +719,27 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     // ids only -- Snapshot never sees an RE:: type -- and all three are needed
     // to tell "cannot", "already up" and "already held" apart in the status
     // column.
+    // The shouts on the base record, for a Shout rule: known, cost nothing,
+    // held in no hand.
+    if (auto *npc = actor->GetActorBase())
+    {
+        if (auto *list = npc->GetSpellList())
+        {
+            for (std::uint32_t i = 0; i < list->numShouts; ++i)
+            {
+                if (list->shouts[i] && !IsWrapperShout(list->shouts[i]->GetFormID()))
+                    s.spells.known.push_back(list->shouts[i]->GetFormID());
+            }
+        }
+    }
     ForEachSpell(actor, [&s, actor](RE::SpellItem *spell) {
+        // A power is known too, for a Use power rule; it costs nothing and
+        // is not held in a hand, so it is in neither of the lists below.
+        if (IsPower(spell))
+        {
+            s.spells.known.push_back(spell->GetFormID());
+            return;
+        }
         if (!IsCastable(spell))
             return;
         s.spells.known.push_back(spell->GetFormID());
@@ -752,22 +796,27 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     return s;
 }
 
-std::vector<PotionOption> ScanCarriedPotions(RE::Actor *actor)
+std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
 {
-    std::vector<PotionOption> out;
+    std::vector<ConsumableOption> out;
     if (!actor)
         return out;
 
-    auto inventory = actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::AlchemyItem); });
+    auto inventory = actor->GetInventory(
+        [](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::AlchemyItem) || obj.Is(RE::FormType::Ingredient); });
     for (auto &[object, entry] : inventory)
     {
         const auto count = entry.first;
-        auto *alch = object->As<RE::AlchemyItem>();
-        if (count <= 0 || !alch || alch->IsPoison() || alch->IsFood())
+        if (count <= 0 || !object)
             continue;
-        out.push_back({alch->GetFormID(), alch->GetName() ? alch->GetName() : "?", static_cast<int>(count)});
+        const auto kind = ConsumableKindOf(object);
+        if (!kind)
+            continue;
+        out.push_back(
+            {object->GetFormID(), object->GetName() ? object->GetName() : "?", static_cast<int>(count), *kind});
     }
-    std::sort(out.begin(), out.end(), [](const PotionOption &a, const PotionOption &b) { return a.name < b.name; });
+    std::sort(out.begin(), out.end(),
+              [](const ConsumableOption &a, const ConsumableOption &b) { return a.name < b.name; });
     return out;
 }
 
@@ -778,11 +827,13 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         return out;
 
     ForEachSpell(actor, [&out, actor](RE::SpellItem *spell) {
-        if (!IsCastable(spell))
+        const bool power = IsPower(spell);
+        if (!IsCastable(spell) && !power)
             return;
         // Above the follower's skill: not offered for casting, as it is not
-        // for pinning, so the two menus agree on what they can use.
-        if (DescribeHoldable(actor, spell).unusable)
+        // for pinning, so the two menus agree on what they can use. A power
+        // has no level.
+        if (!power && DescribeHoldable(actor, spell).unusable)
             return;
         // The same spell can appear in both sources; show it once.
         const std::uint32_t id = spell->GetFormID();
@@ -792,8 +843,27 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         std::string name = spell->GetName() ? spell->GetName() : "";
         if (name.empty())
             return; // nameless entries are internal; nothing to show a player
-        out.push_back(SpellOption{id, std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf});
+        out.push_back(SpellOption{id, std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
+                                  power ? SpellOption::Kind::Power : SpellOption::Kind::Spell});
     });
+
+    // The shouts on the base record. A shout's delivery is its first word's
+    // spell's: Whirlwind Sprint and Become Ethereal are Self, the rest aimed.
+    if (auto *npc = actor->GetActorBase())
+    {
+        if (auto *list = npc->GetSpellList())
+        {
+            for (std::uint32_t i = 0; i < list->numShouts; ++i)
+            {
+                auto *shout = list->shouts[i];
+                if (!shout || IsWrapperShout(shout->GetFormID()) || !shout->GetName() || !*shout->GetName())
+                    continue;
+                const auto *word = shout->variations[0].spell;
+                const bool self = word && word->GetDelivery() == RE::MagicSystem::Delivery::kSelf;
+                out.push_back(SpellOption{shout->GetFormID(), shout->GetName(), self, SpellOption::Kind::Shout});
+            }
+        }
+    }
 
     std::sort(out.begin(), out.end(), [](const SpellOption &a, const SpellOption &b) { return a.name < b.name; });
     return out;

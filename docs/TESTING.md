@@ -128,6 +128,7 @@ Repeat for the second follower. Then:
 
 ```
 bat ftbear         <- a cave bear; it can drive them under a threshold on its own
+bat ftman          <- a level-1 bandit: a HUMAN enemy, for powers that only read people
 bat ftstatus       <- read the selected follower's state
 bat fthurt         <- force the threshold directly, if the bear is not obliging
 bat ftclean        <- restore and un-follow. Non-destructive; safe on a real NPC
@@ -138,6 +139,7 @@ bat ftclean        <- restore and un-follow. Non-destructive; safe on a real NPC
 | `ftmake` | selection | teammate, faction, and two tiers each of health, magicka and stamina potions. Contains **no `prid`** — that is the point |
 | `ftspawn` | player | one draugr, feeble on purpose: keeps a follower in combat without threatening them |
 | `ftbear` | player | one cave bear (`00023A8B`) — hits hard enough to cross a threshold through real damage |
+| `ftman` | player | one level-1 Nord bandit (`0003DE8A`) — a human enemy, so Voice of the Emperor's calm has someone to land on; a bear shows nothing |
 | `fthurt` | selection | `damageav health 100`. One command, deliberately: a before/after print in the same file cannot be trusted to bracket the damage |
 | `ftstatus` | selection | health/magicka/stamina, `isincombat`, combat target, and both potion tiers |
 | `ftclean` | selection | restore and un-follow. **Non-destructive** — safe on a real quest NPC |

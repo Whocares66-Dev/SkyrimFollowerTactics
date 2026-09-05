@@ -131,22 +131,16 @@ enum class ActionTargetKind : std::uint8_t
 enum class ActionKind : std::uint8_t
 {
     None,
-    DrinkHealthPotion,  // the strongest carried
-    DrinkMagickaPotion, // the strongest carried
-    DrinkStaminaPotion, // the strongest carried
-    DrinkPotion,        // one specific potion, named by actionForm
+    // The order of the enum is the order of the menu: Target first, which
+    // is only offered under Enemy and Attacker; then, under Self, Equip,
+    // Consume, Cast spell, Use power.
+    //
     // Fight the one the rule aims at: make them the follower's combat
     // target, and leave HOW to the AI -- a warrior swings, an archer shoots,
     // a mage casts, each by their own scoring. There is no "attack" in the
     // engine, only a target; this sets it. Done already when they are the
     // current target, so the rule falls through instead of re-firing.
-    // Listed before Cast so the menu offers it first under Enemy and
-    // Attacker: the order of the enum is the order of the menu.
     Target,
-    CastSpell,
-    // No "stop fighting", "flee" or "hold position": the combat AI decides
-    // whether it respects a pushed package, and a rule that may or may not
-    // be obeyed is worse than none (removed 2026-09-04).
     // The equip actions PIN: what they put on stays on, against the engine's
     // own swap and the combat AI's choice, until another rule or the panel
     // lets it go. A plain equip would not do -- the AI re-derives what to
@@ -159,17 +153,50 @@ enum class ActionKind : std::uint8_t
     EquipArrows,
     EquipSpell,
     EquipArmor,
+    // Consume: the three "strongest carried" potion policies, then one
+    // named thing of each consumable kind. All go through the game's own
+    // equip routine, which is what consumes an item.
+    DrinkHealthPotion,  // the strongest carried
+    DrinkMagickaPotion, // the strongest carried
+    DrinkStaminaPotion, // the strongest carried
+    DrinkPotion,        // one specific potion, named by actionForm
+    EatFood,            // one specific food, named by actionForm
+    EatIngredient,      // one specific ingredient, named by actionForm
+    CastSpell,
+    // A power (Embrace of Shadows, Battle Cry): a spell record cast from
+    // the voice rather than a hand, no magicka. Performed through a Shout
+    // package wrapping the power as a one-word shout, since the UseMagic
+    // package never fires one (measured 2026-09-04, docs/ACTIONS.md 7).
+    // Otherwise a cast: a lease, a deadline, and it waits on the
+    // follower's own cast in progress.
+    UsePower,
+    // A shout (Unrelenting Force): a TESShout record the follower has,
+    // through the same Shout package with the shout itself in its input.
+    Shout,
+    // No "stop fighting", "flee" or "hold position": the combat AI decides
+    // whether it respects a pushed package, and a rule that may or may not
+    // be obeyed is worse than none (removed 2026-09-04).
 
     COUNT
 };
+
+// The consume actions, named or by policy; and the kind a named one names
+// (Potion for the three policies, which are potions too).
+[[nodiscard]] bool IsConsume(ActionKind action) noexcept;
+[[nodiscard]] ConsumableKind ConsumableOf(ActionKind action) noexcept;
+
+// The three actions that fire through the package pool: a spell from a
+// hand, a power and a shout from the voice.
+[[nodiscard]] bool IsCast(ActionKind action) noexcept;
 
 // One thing to do. A rule carries a list of these, in order.
 struct Action
 {
     ActionKind kind{ActionKind::None};
 
-    // Which spell, for CastSpell; which potion, for DrinkPotion; which
-    // thing, for the equip actions. A FormID, and deliberately opaque here:
+    // Which spell, for CastSpell; which power, for UsePower; which potion,
+    // food or ingredient, for the named consume actions; which thing, for
+    // the equip actions. A FormID, and deliberately opaque here:
     // core has no idea what a spell is, it only compares this against the
     // ids the snapshot reports as known, carried, running or pinned.
     //

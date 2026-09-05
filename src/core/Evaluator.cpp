@@ -503,13 +503,19 @@ bool HasResource(const Action &a, const Snapshot &s)
     case ActionKind::DrinkStaminaPotion:
         return s.potions.staminaCount > 0;
     case ActionKind::DrinkPotion:
-        return a.form != 0 && s.potions.CountOf(a.form) > 0;
+    case ActionKind::EatFood:
+    case ActionKind::EatIngredient:
+        return a.form != 0 && s.potions.CountOf(a.form, ConsumableOf(a.kind)) > 0;
 
     case ActionKind::CastSpell:
+    case ActionKind::UsePower:
+    case ActionKind::Shout:
         // Knowing the spell is the inventory equivalent. Whether she can AFFORD
         // to cast it is a separate question and deliberately not asked here:
         // magicka cost depends on perks and skill, which live on the game side.
-        // The action reports that back instead.
+        // The action reports that back instead. A power and a shout are in
+        // the same known list and cost nothing; the menu keeps the three
+        // apart by the record's type.
         return a.form != 0 && s.spells.Knows(a.form);
 
     case ActionKind::EquipWeapon:
@@ -543,14 +549,19 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s)
     case ActionKind::DrinkStaminaPotion:
         return s.potions.staminaEffectActive;
     case ActionKind::DrinkPotion:
-        // A named potion could restore anything or nothing; only the per-form
-        // cooldown spaces it.
+    case ActionKind::EatFood:
+    case ActionKind::EatIngredient:
+        // A named consumable could restore anything or nothing; only the
+        // per-form cooldown spaces it.
         return false;
 
     case ActionKind::CastSpell:
+    case ActionKind::UsePower:
+    case ActionKind::Shout:
         // The sustained-buff case. Oakflesh runs sixty seconds and no cooldown
         // worth picking is that long, so re-casting can only be stopped by
-        // seeing the effect still running.
+        // seeing the effect still running. Embrace of Shadows runs three
+        // minutes, and a greater power is once a day besides.
         return a.form != 0 && s.spells.IsActive(a.form);
 
     case ActionKind::EquipWeapon:
@@ -651,8 +662,15 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         // AI that never stops casting never lets the rule through. If that
         // shows in play, the cast cooldown is the next knob (2 s to 4 s).
         // Our own cast in progress is reported Busy above, before this.
-        if (a.kind == ActionKind::CastSpell && snap.traits.Has(StatusKind::Casting))
+        // A power goes through a package too, and would interrupt as well.
+        if (IsCast(a.kind) && snap.traits.Has(StatusKind::Casting))
             return Verdict::Casting;
+        // The voice recovers between shouts, NPCs included; a shout asked for
+        // inside that is one the AI will not make, so the rule waits -- no
+        // cooldown spent, the next rule gets its turn. A power's wrapper has
+        // a one-second recovery of its own and is gated by the same number.
+        if ((a.kind == ActionKind::Shout || a.kind == ActionKind::UsePower) && snap.voiceRecovery > 0.0f)
+            return Verdict::Recovering;
         // A target is picked from a fight, and only an enemy can be one:
         // aimed at the player, an ally, or someone who has died or fled
         // since the hit, the rule has no one to point at. Already fighting
@@ -681,7 +699,7 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
 // Cannot be done YET, as opposed to cannot be done: worth waiting for.
 bool Transient(Verdict v)
 {
-    return v == Verdict::Busy || v == Verdict::Casting || v == Verdict::ActionCooldown;
+    return v == Verdict::Busy || v == Verdict::Casting || v == Verdict::Recovering || v == Verdict::ActionCooldown;
 }
 
 // Do the NEXT action of a list, from `from`, in order: one per tick, like
@@ -863,13 +881,18 @@ const char *Explain(Verdict v, ActionKind action) noexcept
     switch (v)
     {
     case Verdict::NoResource:
+        // The consumables read the way the Consume menu shows them, by count.
+        if (IsConsume(action))
+            return "none in inventory";
         switch (action)
         {
-        case ActionKind::DrinkPotion:
-            return "does not carry that potion";
         case ActionKind::CastSpell:
         case ActionKind::EquipSpell:
             return "does not know that spell";
+        case ActionKind::UsePower:
+            return "does not know that power";
+        case ActionKind::Shout:
+            return "does not know that shout";
         case ActionKind::EquipWeapon:
             return "does not carry that weapon";
         case ActionKind::EquipArrows:
@@ -879,7 +902,7 @@ const char *Explain(Verdict v, ActionKind action) noexcept
         case ActionKind::Target:
             return "not in a fight";
         default:
-            return "no potion";
+            return ToString(v);
         }
 
     case Verdict::NoTarget:
@@ -892,6 +915,8 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "already pinned, or nothing of that kind pinned to let go";
         if (action == ActionKind::Target)
             return "already fighting them";
+        if (action == ActionKind::UsePower || action == ActionKind::Shout)
+            return "that power is still running";
         return action == ActionKind::CastSpell ? "that spell is still running" : "previous dose still active";
 
     default:
@@ -908,13 +933,13 @@ const char *ToString(Verdict v) noexcept
     case Verdict::Disabled:
         return "disabled";
     case Verdict::ConditionFalse:
-        return "condition false";
+        return "does not meet condition";
     case Verdict::ActionCooldown:
         return "action used too recently";
     case Verdict::NoTarget:
         return "no target";
     case Verdict::NoResource:
-        return "no potion";
+        return "none in inventory";
     case Verdict::CannotAfford:
         return "not enough magicka";
     case Verdict::EffectActive:
@@ -929,6 +954,8 @@ const char *ToString(Verdict v) noexcept
         return "busy, skipped this evaluation";
     case Verdict::Casting:
         return "mid-cast on their own spell, waiting";
+    case Verdict::Recovering:
+        return "shout on cooldown, waiting";
     case Verdict::InvalidCondition:
         return "invalid condition";
     case Verdict::NotReached:

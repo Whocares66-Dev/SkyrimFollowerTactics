@@ -83,6 +83,31 @@ Profile Everything()
         r.FirstAction().kind = ActionKind::Target;
         p.rules.rules.push_back(r);
     }
+    {
+        // The consume and power actions, each naming a form.
+        Rule r;
+        r.subject = SubjectKind::Self;
+        r.predicate = PredicateKind::HealthPctBelow;
+        r.conditionArg = 0.5f;
+        r.actionTarget = ActionTargetKind::Self;
+        Action food;
+        food.kind = ActionKind::EatFood;
+        food.form = 0x64B33;
+        r.actions.push_back(food);
+        Action ingredient;
+        ingredient.kind = ActionKind::EatIngredient;
+        ingredient.form = 0x727DE;
+        r.actions.push_back(ingredient);
+        Action power;
+        power.kind = ActionKind::UsePower;
+        power.form = 0x88821;
+        r.actions.push_back(power);
+        Action shout;
+        shout.kind = ActionKind::Shout;
+        shout.form = 0x13E07;
+        r.actions.push_back(shout);
+        p.rules.rules.push_back(r);
+    }
     p.pins.push_back({0x13989, Hand::Both}); // a bow
     p.pins.push_back({0x12E49, Hand::None}); // a cuirass
     p.pins.push_back({0x12FCD, Hand::Left}); // a spell in one hand

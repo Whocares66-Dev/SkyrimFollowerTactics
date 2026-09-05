@@ -86,9 +86,16 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
 
     // The same verdict means different things to different actions, and the
     // word has to match or it sends someone looking in the wrong place: a
-    // spell rule reporting "no potion" is worse than reporting nothing.
+    // spell rule reporting "count: 0" is worse than reporting nothing. A
+    // consumable the follower is out of reads as its count, the way the
+    // Consume menu shows one.
     case ft::Verdict::NoResource:
-        return {TakesSpell(action) ? "no spell" : ft::IsEquip(action) ? "not carried" : "no potion", held};
+        return {action == ft::ActionKind::UsePower ? "no power"
+                : action == ft::ActionKind::Shout  ? "no shout"
+                : TakesSpell(action)               ? "no spell"
+                : ft::IsEquip(action)              ? "not carried"
+                                                   : "count: 0",
+                held};
     case ft::Verdict::EffectActive:
         return {ft::IsEquip(action) ? "pinned" : "active", held};
     case ft::Verdict::AboveSkill:
@@ -103,11 +110,13 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
         return {"busy", held};
     case ft::Verdict::Casting:
         return {"casting", held};
+    case ft::Verdict::Recovering:
+        return {"cooldown", held}; // the shout's own, told apart from the action's in the tooltip
 
     case ft::Verdict::Disabled:
         return {"off", quiet};
     case ft::Verdict::NotReached:
-        return {"-", quiet};
+        return {"", quiet}; // nothing to say: an empty cell, not a placeholder
 
     case ft::Verdict::InvalidCondition:
         return {"invalid", broken};
@@ -115,7 +124,7 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
         return {"n/a", broken};
 
     default:
-        return {"-", quiet};
+        return {"", quiet};
     }
 }
 
@@ -419,6 +428,7 @@ bool GlyphButton(const std::string &id, float size, Glyph glyph, bool painted = 
 
 bool CellClicked(const char *id, float height = 0.0f);
 void CentredHeading(const char *title);
+void BulletedLines(const std::string &text);
 
 bool DeleteButton(const std::string &id, float size)
 {
@@ -852,10 +862,17 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
 }
 
 // The action side.
-// Does this action name a spell?
+// Does this action name a spell (or a power, which is a spell record)?
 bool TakesSpell(ft::ActionKind action)
 {
-    return action == ft::ActionKind::CastSpell || action == ft::ActionKind::EquipSpell;
+    return ft::IsCast(action) || action == ft::ActionKind::EquipSpell;
+}
+
+// Is this action one named consumable: a potion, a food, an ingredient?
+bool NamesConsumable(ft::ActionKind action)
+{
+    return action == ft::ActionKind::DrinkPotion || action == ft::ActionKind::EatFood ||
+           action == ft::ActionKind::EatIngredient;
 }
 
 // Could a thing with this grip be pinned in this hand, as the equip menu
@@ -911,17 +928,27 @@ std::string Lower(std::string_view text)
     return out;
 }
 
-// The four ways of drinking share one "Drink potion" submenu: the three
-// "strongest of a kind" policies at the top, then every potion she carries
-// by name. One entry in the action list, not four.
-bool IsDrinkKind(ft::ActionKind action)
+// A tooltip reads as a sentence: the core's explanations are lowercase so
+// they can sit inside a log line, and get their capital here.
+std::string Sentence(std::string_view text)
 {
-    return action == ft::ActionKind::DrinkHealthPotion || action == ft::ActionKind::DrinkMagickaPotion ||
-           action == ft::ActionKind::DrinkStaminaPotion || action == ft::ActionKind::DrinkPotion;
+    std::string out(text);
+    if (!out.empty())
+        out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+    return out;
+}
+
+// The status cell's tooltip. The core's sentence, with the one number the
+// core does not have: how long the shout's cooldown has to run.
+std::string VerdictTooltip(ft::Verdict verdict, ft::ActionKind action, const FollowerView &view)
+{
+    if (verdict == ft::Verdict::Recovering && view.voiceRecovery > 0.0f)
+        return "Shout on cooldown (" + std::to_string(static_cast<int>(view.voiceRecovery + 0.5f)) + " s)";
+    return Sentence(ft::Explain(verdict, action));
 }
 
 // "Drink strongest health potion" -> "Strongest health potion", for use under
-// a menu already headed "Drink potion".
+// a menu already headed "Potion".
 std::string DrinkSubmenuLabel(ft::ActionKind action)
 {
     std::string name(ft::DisplayName(action));
@@ -961,14 +988,16 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
 {
     const std::string base(ft::DisplayName(act.kind));
 
-    if (act.kind == ft::ActionKind::DrinkPotion)
+    if (NamesConsumable(act.kind))
     {
         if (act.form == 0)
             return base + "...";
-        for (const auto &option : view.potions)
-            if (option.form == act.form)
-                return "Drink " + option.name;
-        return base + " (not carried)";
+        const char *verb = act.kind == ft::ActionKind::DrinkPotion ? "Drink " : "Eat ";
+        for (const auto &option : view.consumables)
+            if (option.form == act.form && option.kind == ft::ConsumableOf(act.kind))
+                return verb + option.name;
+        // Not carried: the Status column says "count: 0", so the cell need not.
+        return base;
     }
 
     if (ft::IsEquip(act.kind))
@@ -988,11 +1017,22 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     if (act.form == 0)
         return base + "...";
 
+    const auto kind = act.kind == ft::ActionKind::UsePower ? SpellOption::Kind::Power
+                      : act.kind == ft::ActionKind::Shout  ? SpellOption::Kind::Shout
+                                                           : SpellOption::Kind::Spell;
     for (const auto &option : view.spells)
     {
-        if (option.form != act.form)
+        if (option.form != act.form || option.kind != kind)
             continue;
-        return "Cast " + option.name;
+        switch (kind)
+        {
+        case SpellOption::Kind::Power:
+            return "Use " + option.name;
+        case SpellOption::Kind::Shout:
+            return "Shout " + option.name;
+        default:
+            return "Cast " + option.name;
+        }
     }
 
     // Named a spell this follower does not know. Says so rather than showing a
@@ -1043,27 +1083,31 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         act.hand = Hand::None;
         changed = true;
     }
-    Im::Separator();
 
+    // What is not there is not listed: no greyed "(carries none)" lines,
+    // an empty kind simply offers None and nothing beneath it.
     const bool spell = action == ft::ActionKind::EquipSpell;
     const bool handed = spell || action == ft::ActionKind::EquipWeapon;
     if (!handed)
     {
         const ItemCategory category =
             action == ft::ActionKind::EquipArrows ? ItemCategory::Arrows : ItemCategory::Armor;
-        bool any = false;
+        bool separated = false;
         for (const auto &item : view.inventory)
         {
             if (item.category != category)
                 continue;
-            any = true;
+            if (!separated)
+            {
+                Im::Separator();
+                separated = true;
+            }
             if (EquipLeaf(act, action, item.form, item.name, Hand::None))
                 changed = true;
         }
-        if (!any)
-            Im::MenuItem("(carries none)", nullptr, false, false);
         return changed;
     }
+    Im::Separator();
 
     for (const Hand hand : {Hand::Left, Hand::Right, Hand::Both})
     {
@@ -1079,12 +1123,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             for (const auto &item : view.inventory)
                 any = any || (item.category == ItemCategory::Weapons && Fits(item.grip, hand, false));
         }
-        if (!any)
-        {
-            Im::MenuItem((label + " (nothing fits)").c_str(), nullptr, false, false);
-            continue;
-        }
-        if (!BeginCascade(label.c_str()))
+        if (!any || !BeginCascade(label.c_str()))
             continue;
         if (spell)
         {
@@ -1143,43 +1182,70 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             continue;
         const std::string name(ft::DisplayName(action));
 
-        // The drink actions collapse into one submenu, drawn where the first
-        // of them falls in the list; the others are skipped.
-        if (IsDrinkKind(action))
+        // The consume actions collapse into one "Consume" submenu, drawn
+        // where the first of them falls in the list; the others are skipped.
+        // Potion holds the three "strongest of a kind" policies, then every
+        // potion she carries by name; Food and Ingredient, what she carries
+        // of each. Every list is hers.
+        if (ft::IsConsume(action))
         {
             if (action != ft::ActionKind::DrinkHealthPotion)
                 continue;
-            if (!BeginCascade("Drink potion"))
+            if (!BeginCascade("Consume"))
                 continue;
 
-            for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
-                              ft::ActionKind::DrinkMagickaPotion})
-            {
-                const bool selected = here && act.kind == kind;
-                if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
+            const auto carried = [&](ft::ConsumableKind kind) {
+                bool any = false;
+                for (const auto &option : view.consumables)
+                    any = any || option.kind == kind;
+                return any;
+            };
+            // The named entries of one kind, under a menu already open.
+            const auto named = [&](ft::ActionKind kind) {
+                for (const auto &option : view.consumables)
                 {
-                    act.kind = kind;
-                    act.form = 0;
-                    choose();
-                }
-                if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
-            }
-
-            if (!view.potions.empty())
-            {
-                Im::Separator();
-                for (const auto &option : view.potions)
-                {
+                    if (option.kind != ft::ConsumableOf(kind))
+                        continue;
                     const std::string label = option.name + " (" + std::to_string(option.count) + ")";
-                    const bool selected = here && act.kind == ft::ActionKind::DrinkPotion && act.form == option.form;
+                    const bool selected = here && act.kind == kind && act.form == option.form;
                     if (CascadeItem(label.c_str(), selected))
                     {
-                        act.kind = ft::ActionKind::DrinkPotion;
+                        act.kind = kind;
                         act.form = option.form;
                         choose();
                     }
                 }
+            };
+
+            if (BeginCascade("Potion"))
+            {
+                for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
+                                  ft::ActionKind::DrinkMagickaPotion})
+                {
+                    const bool selected = here && act.kind == kind;
+                    if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
+                    {
+                        act.kind = kind;
+                        act.form = 0;
+                        choose();
+                    }
+                    if (Im::IsItemHovered(0))
+                        Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+                }
+                if (carried(ft::ConsumableKind::Potion))
+                {
+                    Im::Separator();
+                    named(ft::ActionKind::DrinkPotion);
+                }
+                Im::EndMenu();
+            }
+            for (const auto [label, kind] :
+                 {std::pair{"Food", ft::ActionKind::EatFood}, std::pair{"Ingredient", ft::ActionKind::EatIngredient}})
+            {
+                if (!carried(ft::ConsumableOf(kind)) || !BeginCascade(label))
+                    continue;
+                named(kind);
+                Im::EndMenu();
             }
             Im::EndMenu();
             continue;
@@ -1231,16 +1297,17 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         // Healing, Oakflesh) is cast on oneself and on no one else; an aimed
         // one (Heal Other, Firebolt) goes at someone else. A follower with
         // none that fit is offered nothing rather than an empty submenu that
-        // looks broken.
+        // looks broken, nor a greyed line. Cast spell lists the spells, Use
+        // power the powers, Shout the shouts.
+        const auto kind = action == ft::ActionKind::UsePower ? SpellOption::Kind::Power
+                          : action == ft::ActionKind::Shout  ? SpellOption::Kind::Shout
+                                                             : SpellOption::Kind::Spell;
         std::vector<const SpellOption *> suited;
         for (const auto &option : view.spells)
-            if (option.selfOnly == (target == ft::ActionTargetKind::Self))
+            if (option.kind == kind && option.selfOnly == (target == ft::ActionTargetKind::Self))
                 suited.push_back(&option);
         if (suited.empty())
-        {
-            Im::MenuItem((name + " (knows none)").c_str(), nullptr, false, false);
             continue;
-        }
 
         if (!BeginCascade(name.c_str()))
             continue;
@@ -1369,8 +1436,8 @@ void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
 // The widest word the Status column shows, measured once.
 float StatusColumnWidth()
 {
-    return WidestLabel({"cooldown", "no target", "no potion", "no magicka", "invalid", "fired", "false", "pinned",
-                        "outranked"}) +
+    return WidestLabel({"cooldown", "no target", "count: 0", "no magicka", "invalid", "fired", "false", "pinned",
+                        "outranked", "not carried"}) +
            kCellPadX * 2.0f;
 }
 
@@ -1426,14 +1493,14 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::AlignTextToFramePadding();
             if (!view.evaluated || !perAction)
             {
-                Im::TextDisabled("-");
+                // Not evaluated yet: an empty cell, not a placeholder.
             }
             else
             {
                 const Status status = StatusFor((*perAction)[a], rule.actions[a].kind);
                 Im::TextColored(status.color, "%s", status.text);
                 if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", ft::Explain((*perAction)[a], rule.actions[a].kind));
+                    Im::SetTooltip("%s", VerdictTooltip((*perAction)[a], rule.actions[a].kind, view).c_str());
             }
 
             Im::TableSetColumnIndex(2);
@@ -1564,10 +1631,10 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             return false;
         Im::TableSetupColumn("On", Im::ImGuiTableColumnFlags_WidthFixed, onWidth, 0);
         Im::TableSetupColumn("#", Im::ImGuiTableColumnFlags_WidthFixed, numWidth, 0);
-        Im::TableSetupColumn("If", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+        Im::TableSetupColumn("Condition", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
         // The wider share, because an action reads as a phrase ("Drink magicka
         // potion") where a condition is mostly short words and a number.
-        Im::TableSetupColumn("Then", Im::ImGuiTableColumnFlags_WidthStretch, 1.25f, 0);
+        Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.25f, 0);
         // Fixed, not stretched: a stretched Status column grew with its longest
         // verdict and ate the Then cell, which is what covered the action text.
         Im::TableSetupColumn("Status", Im::ImGuiTableColumnFlags_WidthFixed, statusWidth, 0);
@@ -1719,7 +1786,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::AlignTextToFramePadding();
         if (!view.evaluated)
         {
-            Im::TextDisabled("-");
+            // Not evaluated yet: an empty cell, not a placeholder.
         }
         else
         {
@@ -1728,7 +1795,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             const Status status = StatusFor(verdict, firstKind);
             Im::TextColored(status.color, "%s", status.text);
             if (Im::IsItemHovered(0))
-                Im::SetTooltip("%s", ft::Explain(verdict, firstKind));
+                Im::SetTooltip("%s", VerdictTooltip(verdict, firstKind, view).c_str());
         }
 
         Im::EndDisabled();
@@ -2142,6 +2209,11 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 // over the cell's left border.
                 FontAwesome::PushSolid();
                 Im::Text("%s", Utf8(row.icon).c_str());
+                if (row.icon2 != 0)
+                {
+                    Im::SameLine(0.0f, -1.0f);
+                    Im::Text("%s", Utf8(row.icon2).c_str());
+                }
                 FontAwesome::Pop();
             }
             else
@@ -2382,6 +2454,31 @@ void DrawTickAt(Im::ImVec2 pos, Im::ImU32 ink, bool on, bool pinned)
     }
     if (pinned)
         DrawGlyph(draw, Glyph::Pin, {left, pos.y}, {left + box, pos.y + h}, ink, kPinScale);
+}
+
+// One bullet per line of `text`, each wrapped: the effects of a spell, a
+// shout, an enchantment, a potion, which come one per line. The bullet is a
+// plain dash. ImGui's Bullet() draws a circle tessellated with a handful of
+// segments at that radius and reads as a polygon; U+2022 the framework's
+// text face does not carry (a "?"); and U+00B7 came out as a stray symbol
+// (2026-09-05). ASCII is the one thing every face has.
+void BulletedLines(const std::string &text)
+{
+    const std::string bullet = "-";
+    std::size_t start = 0;
+    while (start < text.size())
+    {
+        std::size_t end = text.find('\n', start);
+        if (end == std::string::npos)
+            end = text.size();
+        if (end > start)
+        {
+            Im::TextUnformatted(bullet.c_str(), nullptr);
+            Im::SameLine(0.0f, -1.0f);
+            Im::TextWrapped("%s", text.substr(start, end - start).c_str());
+        }
+        start = end + 1;
+    }
 }
 
 void CentredHeading(const char *title)
@@ -2866,7 +2963,7 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
     if (!item.effects.empty())
     {
         CentredHeading("Effects");
-        Im::TextWrapped("%s", item.effects.c_str());
+        BulletedLines(item.effects);
         Im::Spacing();
     }
     if (!item.description.empty())
@@ -3024,8 +3121,9 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
 
     // Which columns. A school's own list needs no School column. Spells
     // show a cell per hand; powers and shouts, which are selected rather
-    // than held, show one Equipped cell, read-only: they are readied by the
-    // voice slot, which this does not drive.
+    // than held, show one Equipped cell for the voice slot, clicked like a
+    // hand cell: ready it, pin it, put it away. One voice pin sets every
+    // other power and shout aside, as a pinned quiver does the arrows.
     const bool schoolList = state.category >= 0 && state.category < static_cast<int>(MagicCategory::Shouts);
     const bool voiceList = state.category == static_cast<int>(MagicCategory::Shouts) ||
                            state.category == static_cast<int>(MagicCategory::Powers);
@@ -3137,13 +3235,18 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", entry->name.c_str());
 
+        // A power or a shout has no school, level or cost: those cells stay
+        // empty rather than saying "Power" or "0".
+        const bool voice = entry->category == MagicCategory::Shouts || entry->category == MagicCategory::Powers;
         if (!schoolList)
         {
             Im::TableNextColumn();
-            Im::Text("%s", entry->school.c_str());
+            if (!voice)
+                Im::Text("%s", entry->school.c_str());
         }
         Im::TableNextColumn();
-        Im::Text("%s", entry->level.c_str());
+        if (!voice)
+            Im::Text("%s", entry->level.c_str());
         Im::TableNextColumn();
         if (entry->magnitude > 0.0f)
         {
@@ -3152,21 +3255,20 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
             TextRightInCell(num);
         }
         Im::TableNextColumn();
-        TextRightInCell(entry->cost);
+        if (!voice)
+            TextRightInCell(entry->cost);
         Im::TableNextColumn();
         Im::Text("%s", entry->cast.c_str());
 
-        const bool voice = entry->category == MagicCategory::Shouts || entry->category == MagicCategory::Powers;
         if (allList)
         {
             // no equip cells
         }
         else if (voiceList)
         {
+            std::snprintf(buf, sizeof(buf), "##voice%08X", entry->form);
             Im::TableNextColumn();
-            pos = Im::GetCursorScreenPos();
-            if (entry->equipped)
-                DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), true, false);
+            OnCell(buf, view.id, entry->form, entry->equipped, entry->pinned, Hand::None, true, true);
         }
         else
         {
@@ -3216,7 +3318,7 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
     if (!entry.effects.empty())
     {
         CentredHeading("Effects");
-        Im::TextWrapped("%s", entry.effects.c_str());
+        BulletedLines(entry.effects);
         Im::Spacing();
     }
     if (!entry.description.empty())

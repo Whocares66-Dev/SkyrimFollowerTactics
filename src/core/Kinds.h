@@ -60,4 +60,14 @@ enum class DamageKind : std::uint8_t
     return static_cast<std::uint8_t>(1u << static_cast<unsigned>(kind));
 }
 
+// Which consumable a consume action names, and which each carried one is.
+// The snapshot tags every carried consumable with one, so a hand-edited
+// profile cannot drink a cabbage: the form has to be carried AS that kind.
+enum class ConsumableKind : std::uint8_t
+{
+    Potion,
+    Food,
+    Ingredient,
+};
+
 } // namespace ft

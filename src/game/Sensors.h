@@ -7,6 +7,7 @@
 
 #include "core/Snapshot.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -46,18 +47,30 @@ struct SpellOption
     // Delivery Self: cast on oneself and on no one else. The menu offers it
     // under Self only, and everything aimed under everyone but Self.
     bool selfOnly{false};
+    // Which menu lists it: Cast spell, Use power, or Shout. One list
+    // because all three are found by the same walk of what she knows.
+    enum class Kind : std::uint8_t
+    {
+        Spell,
+        Power,
+        Shout
+    };
+    Kind kind{Kind::Spell};
 };
 
-// One drinkable potion a follower carries, for the editor's menu.
-struct PotionOption
+// One consumable she carries -- a potion, a food, an ingredient -- for the
+// editor's Consume menu.
+struct ConsumableOption
 {
     std::uint32_t form{0};
     std::string name;
     int count{0};
+    ft::ConsumableKind kind{ft::ConsumableKind::Potion};
 };
 
-// Every drinkable potion she carries, sorted by name. Menu content only.
-[[nodiscard]] std::vector<PotionOption> ScanCarriedPotions(RE::Actor *actor);
+// Every consumable she carries, sorted by name. Menu content only. Poisons
+// are left out: they go on a weapon, not down the throat.
+[[nodiscard]] std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor);
 
 // Every spell the follower can actually cast, sorted by name.
 //
@@ -65,10 +78,32 @@ struct PotionOption
 // list, not of how it is drawn, and doing it once per rebuild beats doing it
 // every frame the menu is open.
 //
-// Filtered to SpellType::kSpell. Abilities, diseases and passive effects also
-// live in an actor's spell list and none of them are castable, so offering
-// them would be offering rules that can never work.
+// Filtered to SpellType::kSpell and the two power types, plus the shouts on
+// the base record. Abilities, diseases and passive effects also live in an
+// actor's spell list and none of them are castable, so offering them would
+// be offering rules that can never work.
 [[nodiscard]] std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor);
+
+// Castable means SpellType::kSpell; a power is kPower or kLesserPower -- or
+// a power a shout slot is leasing, which reads as Voice for the lease
+// (Packages.cpp). An actor's spell list also carries abilities, diseases and
+// passive racial effects, none of which a follower can choose to cast, so a
+// rule naming one could never fire.
+[[nodiscard]] bool IsCastable(const RE::SpellItem *spell);
+[[nodiscard]] bool IsPower(const RE::SpellItem *spell);
+
+// Walk every spell an actor has, from the three places the game keeps them.
+// Missing any loses spells that are plainly there:
+//   TESNPC::GetSpellList()  what the character was authored with -- Marcurio's
+//                           destruction spells come from here.
+//   TESRace::actorEffects   the race's: the passive resistances, and the
+//                           racial power (Voice of the Emperor on an
+//                           Imperial), which is why the Powers chip is not
+//                           empty for a vanilla follower.
+//   addedSpells             everything granted at runtime, which is what the
+//                           console's addspell writes to.
+// The same spell can appear in more than one; callers dedupe by form.
+void ForEachSpell(RE::Actor *actor, const std::function<void(RE::SpellItem *)> &fn);
 
 // One line of the character sheet, already worded. Worded HERE, not in the
 // panel, because every value is an actor-value read and the RE:: enum naming
@@ -79,11 +114,18 @@ struct PotionOption
 // value text.
 inline constexpr unsigned kIconInfinity = 0xF534;
 
+// The two glyphs an Equipped row is made of, Font Awesome's check and
+// thumbtack: the same codepoints the panel's own Glyph table uses, so the
+// row reads as the Inventory and Magic tabs' cells do.
+inline constexpr unsigned kGlyphTick = 0xF00C;
+inline constexpr unsigned kGlyphPin = 0xF08D;
+
 struct SheetRow
 {
     std::string label;
     std::string value;
     unsigned icon{0};      // a Font Awesome codepoint drawn instead of the value, when set
+    unsigned icon2{0};     // a second glyph after the first: the pin beside the tick
     std::string modifiers; // Skills tab only: "+35% damage, -17% cost"
     std::string note;      // tooltip on the modifiers; empty for none
     // Rows revealed by expanding this one: a skill's perks. Empty means the

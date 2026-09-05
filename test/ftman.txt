@@ -1,0 +1,25 @@
+; ============================================================
+;  FollowerTactics - spawn a low-level HUMAN enemy
+;  Run:  bat ftman
+;
+;  A level-1 Nord bandit, EncBandit01Melee1HTankNordM 0003DE8A,
+;  one-handed with a shield. Not a threat: the point is the
+;  RACE, not the fight. Voice of the Emperor's Pacify is a calm
+;  on people, and a bear is not people -- the first power runs
+;  (2026-09-05) landed the effect on Marcurio and showed nothing
+;  on the cave bear, which is exactly what a calm-on-humanoids
+;  looks like against an animal. A bandit is the enemy that can
+;  show the power WORKING: he stops fighting.
+;
+;  Also the enemy for anything else that reads humans and not
+;  animals: Frenzy, Fear on a bandit-level foe, Disarm.
+;
+;  Re-runnable: each call adds another bandit. One is a fair
+;  fight for a follower; the bear (bat ftbear) is the one that
+;  actually hurts.
+;
+;  YOU ARE IN GOD MODE (the setup scripts run player.tgm), so he
+;  cannot reach you -- but your follower is not protected.
+; ============================================================
+
+player.placeatme 0003DE8A 1

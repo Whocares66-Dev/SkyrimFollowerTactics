@@ -34,7 +34,7 @@ bool Conflicts(const Holdable &incoming, Hand hands, const Holdable &held, Hand 
         return Overlap(hands, heldHands);
     if (incoming.slots != 0 && held.slots != 0)
         return (incoming.slots & held.slots) != 0;
-    return incoming.IsAmmo() && held.IsAmmo();
+    return (incoming.IsAmmo() && held.IsAmmo()) || (incoming.IsVoice() && held.IsVoice());
 }
 
 bool Competes(Grip grip, Hand pinned) noexcept
@@ -134,10 +134,14 @@ Hand PinnedHands(const std::vector<Pin> &pins) noexcept
 
 bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) noexcept
 {
+    const Pin *pin = FindPin(pins, thing.form);
+    // The voice: the AI's shout entries carry no hand, and one is kept from
+    // it while another power or shout is pinned there.
+    if (thing.IsVoice())
+        return pin == nullptr && std::any_of(pins.begin(), pins.end(), [](const Pin &p) { return p.thing.IsVoice(); });
     const Hand pinned = PinnedHands(pins);
     if (pinned == Hand::None)
         return false;
-    const Pin *pin = FindPin(pins, thing.form);
     if (slot == Hand::None)
         return pin == nullptr && Competes(thing.grip, pinned);
     if (pin != nullptr)
@@ -146,12 +150,13 @@ bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) 
 }
 
 // A pin with no hand holding the place a thing would take: a body slot
-// they share, or the quiver.
+// they share, the quiver, or the voice.
 bool HoldsPlaceOf(const Pin &pin, const Holdable &thing) noexcept
 {
     if (pin.thing.form == thing.form)
         return false;
-    return (pin.thing.slots & thing.slots) != 0 || (pin.thing.IsAmmo() && thing.IsAmmo());
+    return (pin.thing.slots & thing.slots) != 0 || (pin.thing.IsAmmo() && thing.IsAmmo()) ||
+           (pin.thing.IsVoice() && thing.IsVoice());
 }
 
 bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept

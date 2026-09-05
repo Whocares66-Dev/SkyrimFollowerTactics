@@ -35,7 +35,8 @@ using json = nlohmann::ordered_json;
 
 [[nodiscard]] bool UsesForm(ActionKind a) noexcept
 {
-    return a == ActionKind::CastSpell || a == ActionKind::DrinkPotion || IsEquip(a);
+    return IsCast(a) || a == ActionKind::DrinkPotion || a == ActionKind::EatFood || a == ActionKind::EatIngredient ||
+           IsEquip(a);
 }
 
 [[nodiscard]] bool UsesHand(ActionKind a) noexcept

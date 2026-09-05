@@ -11,17 +11,25 @@ double MinimumCooldown(ActionKind action) noexcept
     case ActionKind::DrinkMagickaPotion:
     case ActionKind::DrinkStaminaPotion:
     case ActionKind::DrinkPotion:
+    case ActionKind::EatFood:
+    case ActionKind::EatIngredient:
         // The measured queue-to-effect latency is about two seconds, plus a
         // margin so the next evaluation sees the result of this one.
         // Deliberately not longer: one potion is often not enough, and a
         // follower who is still badly hurt should drink again promptly.
+        // Food and ingredients take the potion's number until one of their
+        // own is measured; they go through the same equip call.
         return 3.0;
 
     case ActionKind::CastSpell:
+    case ActionKind::UsePower:
+    case ActionKind::Shout:
         // Measured: the AI picks the package up on the same tick, and a heal
         // lands 0.9-2.2 s later. Two seconds lets the next evaluation see the
         // result of this one without re-firing into a cast still in progress;
         // the package pool's lease covers the case where it has not landed.
+        // A power or a shout rides a package of its own and takes the same
+        // number; the shout's own recovery time is the engine's.
         return 2.0;
 
     case ActionKind::EquipWeapon:
@@ -48,6 +56,40 @@ double MinimumCooldown(ActionKind action) noexcept
 bool IsEquip(ActionKind action) noexcept
 {
     return KindOf(action) != Kind::Other;
+}
+
+bool IsConsume(ActionKind action) noexcept
+{
+    switch (action)
+    {
+    case ActionKind::DrinkHealthPotion:
+    case ActionKind::DrinkMagickaPotion:
+    case ActionKind::DrinkStaminaPotion:
+    case ActionKind::DrinkPotion:
+    case ActionKind::EatFood:
+    case ActionKind::EatIngredient:
+        return true;
+    default:
+        return false;
+    }
+}
+
+ConsumableKind ConsumableOf(ActionKind action) noexcept
+{
+    switch (action)
+    {
+    case ActionKind::EatFood:
+        return ConsumableKind::Food;
+    case ActionKind::EatIngredient:
+        return ConsumableKind::Ingredient;
+    default:
+        return ConsumableKind::Potion;
+    }
+}
+
+bool IsCast(ActionKind action) noexcept
+{
+    return action == ActionKind::CastSpell || action == ActionKind::UsePower || action == ActionKind::Shout;
 }
 
 Kind KindOf(ActionKind action) noexcept
@@ -86,6 +128,8 @@ bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept
     {
     case ActionKind::None:
     case ActionKind::CastSpell:
+    case ActionKind::UsePower:
+    case ActionKind::Shout:
         return true;
     case ActionKind::Target:
         return target == ActionTargetKind::Enemy || target == ActionTargetKind::Attacker;

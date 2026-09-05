@@ -136,20 +136,24 @@ struct PotionStock
     bool magickaEffectActive{false};
     bool staminaEffectActive{false};
 
-    // Every drinkable potion she carries, by form, with its count -- what a
-    // DrinkPotion rule (one named potion) checks against. Names are display
-    // and live on the game side.
+    // Every consumable she carries -- potion, food, ingredient -- by form,
+    // with its count and kind: what a named consume rule checks against.
+    // Names are display and live on the game side. The kind is checked as
+    // well as the form so a hand-edited profile cannot put food under
+    // drink-potion: that is a rule that could never work, and the evaluator
+    // says so instead of drinking it.
     struct Carried
     {
         std::uint32_t form{0};
         int count{0};
+        ConsumableKind kind{ConsumableKind::Potion};
     };
     std::vector<Carried> carried;
 
-    [[nodiscard]] int CountOf(std::uint32_t form) const
+    [[nodiscard]] int CountOf(std::uint32_t form, ConsumableKind kind) const
     {
         for (const auto &c : carried)
-            if (c.form == form)
+            if (c.form == form && c.kind == kind)
                 return c.count;
         return 0;
     }
@@ -225,6 +229,11 @@ struct Snapshot
     bool combatEnded{false};
     bool weaponDrawn{false};
     bool sneaking{false};
+    // Seconds until the voice can shout again, 0 when it can. The engine
+    // keeps this per actor -- NPCs too -- as a shout's word recovery time
+    // set when the shout fires, and a Shout rule inside it reports
+    // Recovering rather than firing into a shout the AI will not make.
+    float voiceRecovery{0.0f};
     ActorTraits traits{};
 
     Stat playerHealth{};

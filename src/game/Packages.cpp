@@ -2,6 +2,7 @@
 
 #include "game/Util.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstring>
@@ -25,9 +26,15 @@ bool g_available = false;
 // in that second case -- it is how long she stands held and unreactive -- so
 // it is set just above the slowest measured start.
 constexpr double kArmWindowSeconds = 2.5;
+// A shout slot releases on the voice's fire event. Measured (2026-09-05,
+// Voice of the Emperor through a one-word wrapper): request to fire 0.3 s
+// and 1.5 s, the shout animation itself 0.3 s. Three seconds is the never-
+// started case, as 2.5 s is for a hand cast; a bit longer because the AI
+// had a second's hesitation on one of the two.
+constexpr double kVoiceArmWindowSeconds = 3.0;
 
 // The rank that means "no request". Every slot condition is an equality
-// against 0..7, so any other value fails them all.
+// against 0..15, so any other value fails them all.
 constexpr std::int8_t kRankNone = -1;
 
 void SetRank(RE::Actor *actor, std::int8_t rank, const char *why);
@@ -100,6 +107,18 @@ class RankLease
 struct Slot
 {
     std::uint32_t spell = kCanarySpellID; // what the record holds right now
+    // A shout slot's wrapper: the one-word shout its package ships pointing
+    // at, whose word's spell is repointed per power lease. Null for a spell
+    // slot. `shouting` is what the package's Shout input holds right now --
+    // the wrapper for a power, the shout itself for a shout -- and what the
+    // sink matches the voice's fire event against.
+    RE::TESShout *wrapper = nullptr;
+    RE::TESShout *shouting = nullptr;
+    // The power a shout slot is casting, and the spell type it had before
+    // the lease made it a Voice spell (see RequestShout). Restored on
+    // release; null when nothing is leased, and for a shout.
+    RE::SpellItem *power = nullptr;
+    RE::MagicSystem::SpellType powerType = RE::MagicSystem::SpellType::kSpell;
     std::optional<RankLease> lease;
     double armedAt = 0.0;
     double until = 0.0;
@@ -114,9 +133,13 @@ struct Slot
 
     // Set from the animation thread; read and cleared by the tick. The ONLY
     // things the sink writes. `fired`: our spell left her hand. `stopped`: a
-    // CastStop arrived after that -- for a stream, its end.
+    // CastStop arrived after that -- for a stream, its end. `begun`: a
+    // BeginCast event (voice or either hand), so the deadline can step back
+    // and let a cast that has started finish, whatever it takes.
     std::atomic<bool> fired{false};
     std::atomic<bool> stopped{false};
+    std::atomic<bool> begun{false};
+    bool extended = false;
 
     [[nodiscard]] bool Busy() const noexcept
     {
@@ -148,6 +171,9 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
         const char *tag = ev->tag.c_str();
         const bool right = _stricmp(tag, "MRh_SpellFire_Event") == 0;
         const bool left = _stricmp(tag, "MLh_SpellFire_Event") == 0;
+        const bool voice = _stricmp(tag, "Voice_SpellFire_Event") == 0;
+        const bool begin = _stricmp(tag, "BeginCastVoice") == 0 || _stricmp(tag, "BeginCastRight") == 0 ||
+                           _stricmp(tag, "BeginCastLeft") == 0;
         const bool stop = _stricmp(tag, "CastStop") == 0;
 
         for (auto &slot : g_pool)
@@ -156,12 +182,43 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
                 continue;
             // Every cast-related tag while a record is held, so the graph's
             // vocabulary is on record and a missing fire event is diagnosable.
-            if (right || left || strstr(tag, "Cast") || strstr(tag, "Spell"))
+            // Shout and Voice too, for the shout slots: which tags a power
+            // emits on its way out is being learned from this line.
+            if (right || left || strstr(tag, "Cast") || strstr(tag, "Spell") || strstr(tag, "Shout") ||
+                strstr(tag, "Voice"))
                 logger::info("  anim {:08X}: {}", who, tag);
             // A stream that has fired and now stops has ended, whether the
             // CastTime ran out or something interrupted it.
             if (stop && slot.fired.load(std::memory_order_relaxed))
                 slot.stopped.store(true, std::memory_order_relaxed);
+
+            if (begin)
+                slot.begun.store(true, std::memory_order_relaxed);
+            // A shout slot fires from the voice. Measured 2026-09-04: a
+            // power through the wrapper emits BeginCastVoice and, 0.1 s
+            // later, Voice_SpellFire_Event. Which of the wrapper's words the
+            // engine chose, and what the voice caster holds, go in the log
+            // so a shout that lands nothing can be read.
+            if (voice && slot.shouting)
+            {
+                auto *actor = const_cast<RE::TESObjectREFR *>(ev->holder)->As<RE::Actor>();
+                const auto *process = actor ? actor->GetActorRuntimeData().currentProcess : nullptr;
+                const auto *high = process ? process->high : nullptr;
+                const auto *voiceItem =
+                    actor ? actor->GetActorRuntimeData().selectedSpells[RE::Actor::SlotTypes::kPowerOrShout] : nullptr;
+                const auto *caster =
+                    actor ? actor->GetActorRuntimeData().magicCasters[RE::Actor::SlotTypes::kPowerOrShout] : nullptr;
+                logger::info("  anim {:08X}: voice fired: shout {:08X} variation {} level {}, voice slot holds {:08X}, "
+                             "caster spell {:08X} -- {}",
+                             who, high && high->currentShout ? high->currentShout->GetFormID() : 0,
+                             high ? static_cast<std::int32_t>(high->currentShoutVariation) : -99,
+                             actor ? actor->GetCurrentShoutLevel() : -99, voiceItem ? voiceItem->GetFormID() : 0,
+                             caster && caster->currentSpell ? caster->currentSpell->GetFormID() : 0,
+                             high && high->currentShout == slot.shouting ? "OURS" : "not ours");
+                if (high && high->currentShout == slot.shouting)
+                    slot.fired.store(true, std::memory_order_relaxed);
+                continue;
+            }
             if (!right && !left)
                 continue;
 
@@ -315,9 +372,12 @@ RE::IPackageData *InputByUID(RE::TESCustomPackageData *data, std::int8_t uid)
     return nullptr;
 }
 
-bool SetPackageSpell(RE::TESPackage *pkg, RE::TESForm *spell)
+// Point a named TargetSelector input -- the UseMagic template's "Spell", the
+// Shout template's "Shout" -- at a form. Both are the same kind of input, so
+// the offsets the canary found on "Spell" serve both.
+bool SetPackageInput(RE::TESPackage *pkg, const char *inputName, RE::TESForm *form)
 {
-    if (g_spellOuter == kNotCalibrated || !pkg || !spell)
+    if (g_spellOuter == kNotCalibrated || !pkg || !form)
         return false;
 
     auto *custom = skyrim_cast<RE::TESCustomPackageData *>(pkg->data);
@@ -325,7 +385,7 @@ bool SetPackageSpell(RE::TESPackage *pkg, RE::TESForm *spell)
         return false;
 
     std::int8_t uid = 0;
-    if (!FindInputUID(custom, "Spell", uid))
+    if (!FindInputUID(custom, inputName, uid))
         return false;
 
     auto *input = InputByUID(custom, uid);
@@ -337,8 +397,13 @@ bool SetPackageSpell(RE::TESPackage *pkg, RE::TESForm *spell)
     if (!LooksLikePointer(target))
         return false;
 
-    *reinterpret_cast<RE::TESForm **>(target + g_spellInner) = spell;
+    *reinterpret_cast<RE::TESForm **>(target + g_spellInner) = form;
     return true;
+}
+
+bool SetPackageSpell(RE::TESPackage *pkg, RE::TESForm *spell)
+{
+    return SetPackageInput(pkg, "Spell", spell);
 }
 
 // Is this actor the one the vanilla follower alias holds? The combat override
@@ -500,6 +565,50 @@ bool SetPackageTarget(RE::TESPackage *pkg, RE::Actor *target)
     return true;
 }
 
+// The Shout procedure fires only a shout the actor HAS (CK wiki), and an
+// NPC's shouts live on the base record's spell list, where the Greybeards'
+// are. So a wrapper goes into that list for the lease and comes out after.
+// The base is shared by every actor spawned from it; a wrapper left behind
+// there would be listed under Shouts for all of them, which is why the
+// sweep in the tick removes any wrapper from a follower holding no slot.
+RE::TESSpellList::SpellData *ShoutListOf(RE::Actor *actor)
+{
+    auto *npc = actor ? actor->GetActorBase() : nullptr;
+    if (!npc)
+        return nullptr;
+    if (!npc->actorEffects)
+        npc->actorEffects = new RE::TESSpellList::SpellData();
+    return npc->actorEffects;
+}
+
+void GiveWrapper(RE::Actor *actor, RE::TESShout *wrapper)
+{
+    auto *list = ShoutListOf(actor);
+    if (!list || !wrapper)
+        return;
+    if (list->GetIndex(wrapper).has_value())
+        return;
+    logger::info("  wrapper {:08X} {} to {:08X}'s shout list", wrapper->GetFormID(),
+                 list->AddShout(wrapper) ? "added" : "NOT added", actor->GetFormID());
+}
+
+void TakeWrapper(RE::Actor *actor, RE::TESShout *wrapper)
+{
+    auto *list = actor ? (actor->GetActorBase() ? actor->GetActorBase()->actorEffects : nullptr) : nullptr;
+    if (!list || !wrapper || !list->GetIndex(wrapper).has_value())
+        return;
+    logger::info("  wrapper {:08X} {} from {:08X}'s shout list", wrapper->GetFormID(),
+                 list->RemoveShout(wrapper) ? "removed" : "NOT removed", actor->GetFormID());
+}
+
+bool IsWrapperForm(std::uint32_t formID)
+{
+    for (const auto &slot : g_pool)
+        if (slot.wrapper && slot.wrapper->GetFormID() == formID)
+            return true;
+    return false;
+}
+
 // Is this actor already casting through some slot? A second request from the
 // same follower before the first resolves would put two ranks on her.
 bool AlreadyCasting(const RE::Actor *actor)
@@ -514,11 +623,26 @@ bool AlreadyCasting(const RE::Actor *actor)
 // re-evaluates; nothing else here touches the rank on the way out.
 void Release(std::size_t i)
 {
+    // The wrapper comes off before the lease goes: the lease is what still
+    // knows whose list it is in.
+    if (g_pool[i].wrapper && g_pool[i].lease)
+    {
+        if (auto actor = g_pool[i].lease->Actor())
+            TakeWrapper(actor.get(), g_pool[i].wrapper);
+    }
+    if (g_pool[i].power)
+    {
+        g_pool[i].power->data.spellType = g_pool[i].powerType;
+        g_pool[i].power = nullptr;
+    }
+    g_pool[i].shouting = nullptr;
     g_pool[i].lease.reset();
     g_pool[i].target = {};
     SetPackageTarget(g_slots[i], nullptr); // no target handle outlives its lease
     g_pool[i].fired.store(false, std::memory_order_relaxed);
     g_pool[i].stopped.store(false, std::memory_order_relaxed);
+    g_pool[i].begun.store(false, std::memory_order_relaxed);
+    g_pool[i].extended = false;
     g_pool[i].seenRunning = false;
     g_pool[i].streaming = false;
 }
@@ -604,11 +728,88 @@ bool HasFreeSlot()
 {
     if (!g_available)
         return false;
-    for (const auto &slot : g_pool)
-        if (!slot.Busy())
+    for (std::size_t i = 0; i < kSpellSlots; ++i)
+        if (!g_pool[i].Busy())
             return true;
     return false;
 }
+
+bool HasFreeVoiceSlot()
+{
+    if (!g_available)
+        return false;
+    for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
+        if (!g_pool[i].Busy())
+            return true;
+    return false;
+}
+
+bool IsWrapperShout(std::uint32_t formID)
+{
+    return g_available && IsWrapperForm(formID);
+}
+
+bool IsLeasedPower(std::uint32_t formID)
+{
+    for (const auto &slot : g_pool)
+        if (slot.power && slot.power->GetFormID() == formID)
+            return true;
+    return false;
+}
+
+namespace
+{
+// The first free record in [from, to), or kPackageSlots for none.
+std::size_t FreeSlot(std::size_t from, std::size_t to)
+{
+    for (std::size_t i = from; i < to; ++i)
+        if (!g_pool[i].Busy())
+            return i;
+    return kPackageSlots;
+}
+
+// The shared end of a request: the slot is pointed where it should be, and
+// this makes the follower's rank pass its condition and asks the AI to look.
+CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double window)
+{
+    auto &slot = g_pool[chosen];
+    // The diagnostic that decides what a silence means. Not in the alias: our
+    // list was never consulted and no amount of package tuning will help.
+    logger::info("  {} in the DialogueFollower alias: {}", actor->GetName() ? actor->GetName() : "?",
+                 InFollowerAlias(actor) ? "yes" : "NO -- recruit through dialogue, not the console");
+
+    slot.armedAt = TacticsSeconds();
+    // The window covers the AI's start-up latency. For a stream it is
+    // extended when the stream actually starts (see the tick), so a stream
+    // that never starts does not hold her for the sustain on top.
+    slot.until = slot.armedAt + window;
+    slot.sustain = sustain;
+    slot.seenRunning = false;
+    slot.fired.store(false, std::memory_order_relaxed);
+    slot.stopped.store(false, std::memory_order_relaxed);
+    slot.begun.store(false, std::memory_order_relaxed);
+    slot.extended = false;
+
+    if (g_sinked.insert(actor->GetFormID()).second)
+        logger::info("  animation sink {} on {:08X}",
+                     actor->AddAnimationGraphEventSink(&g_fireSink) ? "added" : "REFUSED", actor->GetFormID());
+
+    // The lease sets the rank in its constructor. From here on the record is
+    // hers until the lease is destroyed, and only that clears the rank.
+    slot.lease.emplace(actor, static_cast<std::int8_t>(chosen));
+
+    // Immediate, or she finishes whatever she is doing first and the rule's
+    // timing -- the entire point of this route -- is lost.
+    actor->EvaluatePackage(/*immediate*/ true, /*resetAI*/ false);
+
+    const auto *current = actor->GetCurrentPackage();
+    logger::info("  current package after evaluate: {:08X} ({})", current ? current->GetFormID() : 0,
+                 current == g_slots[chosen] ? "OURS" : "not ours yet -- watching");
+    slot.seenRunning = current == g_slots[chosen];
+
+    return CastRequest::Armed;
+}
+} // namespace
 
 CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId, float sustainSeconds)
 {
@@ -636,19 +837,16 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
     if (AlreadyCasting(actor))
         return CastRequest::AlreadyCasting;
 
-    // Take any free record. Never one in use, even for the same spell: the
-    // record is hers for the duration, so the pool cannot be caught out by an
-    // input it did not think to compare.
-    std::size_t chosen = kPackageSlots;
-    for (std::size_t i = 0; i < kPackageSlots && chosen == kPackageSlots; ++i)
-        if (!g_pool[i].Busy())
-            chosen = i;
+    // Take any free spell record. Never one in use, even for the same
+    // spell: the record is hers for the duration, so the pool cannot be
+    // caught out by an input it did not think to compare.
+    const std::size_t chosen = FreeSlot(0, kSpellSlots);
     if (chosen == kPackageSlots)
     {
         // Should be unreachable: the evaluator saw HasFreeSlot() false and
         // reported Busy instead of firing. Reaching it means two casts fired
         // in one tick against one free record, which is worth a line.
-        logger::warn("  pool exhausted at dispatch: all {} records held", kPackageSlots);
+        logger::warn("  pool exhausted at dispatch: all {} spell records held", kSpellSlots);
         return CastRequest::PoolBusy;
     }
 
@@ -691,45 +889,129 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
                  target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), target->GetName() ? target->GetName() : "?")
                         : std::string("self"));
 
-    // The diagnostic that decides what a silence means. Not in the alias: our
-    // list was never consulted and no amount of package tuning will help.
-    logger::info("  {} in the DialogueFollower alias: {}", actor->GetName() ? actor->GetName() : "?",
-                 InFollowerAlias(actor) ? "yes" : "NO -- recruit through dialogue, not the console");
+    return Arm(chosen, actor, sustain, kArmWindowSeconds);
+}
 
-    slot.armedAt = TacticsSeconds();
-    // The window covers the AI's start-up latency. For a stream it is
-    // extended when the stream actually starts (see the tick), so a stream
-    // that never starts does not hold her for the sustain on top.
-    slot.until = slot.armedAt + kArmWindowSeconds;
-    slot.sustain = sustain;
-    slot.seenRunning = false;
-    slot.fired.store(false, std::memory_order_relaxed);
-    slot.stopped.store(false, std::memory_order_relaxed);
+CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId)
+{
+    if (!g_available || !actor)
+        return CastRequest::NoPackages;
 
-    if (g_sinked.insert(actor->GetFormID()).second)
-        logger::info("  animation sink {} on {:08X}",
-                     actor->AddAnimationGraphEventSink(&g_fireSink) ? "added" : "REFUSED", actor->GetFormID());
+    RE::Actor *target = nullptr;
+    if (targetId != 0 && targetId != actor->GetFormID())
+    {
+        target = RE::TESForm::LookupByID<RE::Actor>(targetId);
+        if (!target || !target->Is3DLoaded())
+        {
+            logger::info("  target {:08X} is not a loaded actor", targetId);
+            return CastRequest::TargetGone;
+        }
+        if (!g_targetCalibrated)
+        {
+            logger::info("  target input not calibrated; only self-casts are possible");
+            return CastRequest::TargetGone;
+        }
+    }
 
-    // The lease sets the rank in its constructor. From here on the record is
-    // hers until the lease is destroyed, and only that clears the rank.
-    slot.lease.emplace(actor, static_cast<std::int8_t>(chosen));
+    if (AlreadyCasting(actor))
+        return CastRequest::AlreadyCasting;
 
-    // Immediate, or she finishes whatever she is doing first and the rule's
-    // timing -- the entire point of this route -- is lost.
-    actor->EvaluatePackage(/*immediate*/ true, /*resetAI*/ false);
+    const std::size_t chosen = FreeSlot(kSpellSlots, kPackageSlots);
+    if (chosen == kPackageSlots)
+    {
+        logger::warn("  pool exhausted at dispatch: all {} shout records held", kVoiceSlots);
+        return CastRequest::PoolBusy;
+    }
+    auto &slot = g_pool[chosen];
+    auto *form = RE::TESForm::LookupByID(formID);
+    auto *shout = form ? form->As<RE::TESShout>() : nullptr;
+    auto *power = form ? form->As<RE::SpellItem>() : nullptr;
+    if ((!shout && !power) || !slot.wrapper)
+    {
+        logger::info("  slot {} has nothing to shout for {:08X}", chosen, formID);
+        return CastRequest::SpellNotInSlot;
+    }
 
-    const auto *current = actor->GetCurrentPackage();
-    logger::info("  current package after evaluate: {:08X} ({})", current ? current->GetFormID() : 0,
-                 current == g_slots[chosen] ? "OURS" : "not ours yet -- watching");
-    slot.seenRunning = current == g_slots[chosen];
+    if (power)
+    {
+        // The power goes into the wrapper's first word alone. Measured
+        // 2026-09-05: an NPC shouts the highest FILLED word, so one word
+        // gives variation 0 and the short shout (0.3 s); with all three
+        // filled the engine shouted variation 2, the three-word animation,
+        // a second long. TESShout::variations is a plain array on the
+        // record, so this is a pointer write, no canary needed.
+        slot.wrapper->variations[0].spell = power;
+        for (std::size_t w = 1; w < RE::TESShout::VariationIDs::kTotal; ++w)
+        {
+            slot.wrapper->variations[w].spell = nullptr;
+            slot.wrapper->variations[w].word = nullptr;
+        }
+        // And for the lease the power IS a Voice spell, on the shared record,
+        // in memory, back on release. Measured 2026-09-04/05: a Power-typed
+        // spell in a shout's word shouts the animation and casts nothing;
+        // every vanilla word spell is type Voice, and with the type flipped
+        // the effect lands. The alternative -- our own Voice spells in the
+        // ESP carrying the power's effects -- needs the active-effect check
+        // taught which spell stood for which power; this needs nothing, and
+        // the window is the two seconds of the lease, during which the Magic
+        // tab and the menus ask IsLeasedPower so the power stays listed.
+        slot.power = power;
+        slot.powerType = power->data.spellType;
+        power->data.spellType = RE::MagicSystem::SpellType::kVoicePower;
+        slot.shouting = slot.wrapper;
+        logger::info("  slot {} wrapper {:08X} word one now casts {:08X} \"{}\" (type {} -> Voice for the lease)",
+                     chosen, slot.wrapper->GetFormID(), formID, power->GetName() ? power->GetName() : "?",
+                     static_cast<int>(slot.powerType));
+    }
+    else
+    {
+        slot.shouting = shout;
+        logger::info("  slot {} shouts {:08X} \"{}\" itself", chosen, formID,
+                     shout->GetName() ? shout->GetName() : "?");
+    }
 
-    return CastRequest::Armed;
+    // The package's Shout input: the wrapper for a power, the shout itself
+    // for a shout. Written only when it changes, as the Spell input is.
+    if (slot.spell != formID)
+    {
+        if (!SetPackageInput(g_slots[chosen], "Shout", slot.shouting))
+        {
+            logger::info("  slot {} could not point its Shout input at {:08X}", chosen, slot.shouting->GetFormID());
+            if (slot.power)
+            {
+                slot.power->data.spellType = slot.powerType;
+                slot.power = nullptr;
+            }
+            slot.shouting = nullptr;
+            return CastRequest::SpellNotInSlot;
+        }
+        slot.spell = formID;
+    }
+
+    SetPackageTarget(g_slots[chosen], target);
+    slot.target = target ? target->GetHandle() : RE::ActorHandle{};
+    slot.sustained = false;
+    logger::info("  slot {} aims at {}", chosen,
+                 target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), target->GetName() ? target->GetName() : "?")
+                        : std::string("self"));
+
+    // The procedure fires only a shout the actor has: the wrapper is given
+    // for the lease; a shout of their own they have already.
+    if (power)
+        GiveWrapper(actor, slot.wrapper);
+
+    return Arm(chosen, actor, 0.0f, kVoiceArmWindowSeconds);
 }
 
 void ResetPackages()
 {
     for (auto &slot : g_pool)
     {
+        if (slot.power)
+        {
+            slot.power->data.spellType = slot.powerType;
+            slot.power = nullptr;
+        }
         if (slot.lease)
             slot.lease->Abandon();
         slot.lease.reset();
@@ -761,6 +1043,10 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
                          follower->GetName() ? follower->GetName() : "?", rank);
             SetRank(follower, kRankNone, "stale");
         }
+        // And a wrapper shout left in the base's list, by a lease a game
+        // load abandoned: the base object outlives the load.
+        for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
+            TakeWrapper(follower, g_pool[i].wrapper);
     }
 
     for (std::size_t i = 0; i < kPackageSlots; ++i)
@@ -800,10 +1086,22 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
             slot.until = now + slot.sustain + 1.0;
             logger::info("packages: {} stream started on slot {} -- {:.1f} s to run", name, i, slot.sustain);
         }
+        // A cast or shout that has begun is not taken away: the deadline
+        // steps back once so the animation, however long this one's is, gets
+        // to its fire event. The fire event is what releases; this only keeps
+        // the deadline from landing in the middle of it. The graph's own
+        // BeginCast events say when, so no animation's length is assumed.
+        if (!slot.extended && slot.begun.load(std::memory_order_relaxed))
+        {
+            slot.extended = true;
+            slot.until = (std::max)(slot.until, now + 3.0);
+            logger::info("packages: {} began the {} on slot {} -- deadline stepped back", name,
+                         slot.shouting ? "shout" : "cast", i);
+        }
 
         const char *why = nullptr;
         if (!slot.sustained && slot.fired.load(std::memory_order_relaxed))
-            why = "spell fired";
+            why = slot.power ? "power fired" : slot.wrapper ? "shout fired" : "spell fired";
         else if (slot.sustained && slot.stopped.load(std::memory_order_relaxed))
             why = "stream ended";
         else if (slot.sustained && slot.target && slot.target.get() && slot.target.get()->IsDead())
@@ -811,7 +1109,9 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         else if (slot.seenRunning && !running)
             why = "package ended";
         else if (now >= slot.until)
-            why = slot.seenRunning ? (slot.streaming ? "deadline, stream still running" : "deadline, never cast")
+            why = slot.seenRunning ? (slot.streaming ? "deadline, stream still running"
+                                      : slot.wrapper ? "deadline, shout never ended"
+                                                     : "deadline, never cast")
                                    : "deadline, AI never picked it up";
 
         if (why)
@@ -832,28 +1132,40 @@ void InitPackages()
     }
 
     std::size_t found = 0;
-    for (std::size_t i = 0; i < kPackageSlots; ++i)
+    std::size_t wrappers = 0;
+    for (std::size_t i = 0; i < kSpellSlots; ++i)
     {
         g_slots[i] =
             handler->LookupForm<RE::TESPackage>(static_cast<RE::FormID>(kFirstPackageLocalID + i), kPluginName);
         if (g_slots[i])
             ++found;
     }
+    for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
+    {
+        const auto k = static_cast<RE::FormID>(i - kSpellSlots);
+        g_slots[i] = handler->LookupForm<RE::TESPackage>(kFirstShoutPackageLocalID + k, kPluginName);
+        g_pool[i].wrapper = handler->LookupForm<RE::TESShout>(kFirstWrapperShoutLocalID + k, kPluginName);
+        if (g_slots[i])
+            ++found;
+        if (g_pool[i].wrapper)
+            ++wrappers;
+    }
     g_faction = handler->LookupForm<RE::TESFaction>(static_cast<RE::FormID>(kCastFactionLocalID), kPluginName);
 
-    g_available = (found == kPackageSlots) && g_faction;
+    g_available = (found == kPackageSlots) && (wrappers == kVoiceSlots) && g_faction;
 
     if (!g_available)
     {
         // Optional content: a player who has not enabled the ESL simply does
         // not get cast rules. Saying WHICH is missing matters though.
-        logger::info("packages: {}/{} packages, faction {} in {} -- cast rules unavailable (is the ESL "
-                     "enabled, and is it the version with FT_CastNow?)",
-                     found, kPackageSlots, g_faction ? "found" : "MISSING", kPluginName);
+        logger::info("packages: {}/{} packages, {}/{} wrapper shouts, faction {} in {} -- cast and power rules "
+                     "unavailable (is the ESL enabled, and is it the version with FT_ShoutSlot1..8?)",
+                     found, kPackageSlots, wrappers, kVoiceSlots, g_faction ? "found" : "MISSING", kPluginName);
         return;
     }
 
-    logger::info("packages: {} UseMagic slots and FT_CastNow resolved from {}", found, kPluginName);
+    logger::info("packages: {} UseMagic slots, {} Shout slots with wrappers, and FT_CastNow resolved from {}",
+                 kSpellSlots, kVoiceSlots, kPluginName);
     g_available = SpliceIntoOverrideLists() > 0;
 }
 
@@ -942,7 +1254,8 @@ void CalibrateInputs()
     logger::info("probe: calibrated (+{:02X} -> +{:02X}); cast rules can name any spell", g_spellOuter, g_spellInner);
 
     // The Target input, same outer offset, two canaries. Ours all ship as
-    // Self: their type byte is the Self value, and all eight must agree.
+    // Self: their type byte is the Self value, and all sixteen must agree --
+    // the shout slots too, whose Target input is the same kind of input.
     std::int8_t self = -1;
     for (std::size_t i = 0; i < kPackageSlots; ++i)
     {
@@ -991,7 +1304,7 @@ void CalibrateInputs()
         logger::info("probe: CastTime floats not found in slot 0; concentration spells will run the authored time");
         return;
     }
-    for (std::size_t i = 0; i < kPackageSlots; ++i)
+    for (std::size_t i = 0; i < kSpellSlots; ++i)
     {
         const float *lo = FloatOfInput(g_slots[i], "CastTimeMin");
         const float *hi = FloatOfInput(g_slots[i], "CastTimeMax");
@@ -1006,9 +1319,9 @@ void CalibrateInputs()
         }
     }
     g_castTimeCalibrated = true;
-    logger::info("probe: CastTime floats at +{:02X} on all {} slots; a concentration spell can be sustained for a "
-                 "chosen time",
-                 g_castTimeOffset, kPackageSlots);
+    logger::info("probe: CastTime floats at +{:02X} on all {} spell slots; a concentration spell can be sustained "
+                 "for a chosen time",
+                 g_castTimeOffset, kSpellSlots);
     logger::info("probe: Target input calibrated: Self = {}, specific reference = {} (from Mercer's package); cast "
                  "rules can name any loaded actor",
                  g_typeSelf, g_typeSpecificReference);

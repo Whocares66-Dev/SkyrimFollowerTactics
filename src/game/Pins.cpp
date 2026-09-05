@@ -108,6 +108,9 @@ const char *HandTag(Hand hand)
 
 } // namespace
 
+// The Voice equip slot record, Skyrim.esm (beside the hand slots below).
+constexpr std::uint32_t kVoiceSlotID = 0x00025BEE;
+
 // The rules themselves are in core/Loadout.cpp, where they are tested.
 Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
 {
@@ -122,8 +125,15 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
     }
     else if (auto *spell = form->As<RE::SpellItem>())
     {
-        if (spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell)
-            return thing; // a power, an ability: no hand
+        const auto type = spell->GetSpellType();
+        if (type == RE::MagicSystem::SpellType::kPower || type == RE::MagicSystem::SpellType::kLesserPower ||
+            IsLeasedPower(spell->GetFormID()))
+        {
+            thing.kind = Kind::Voice; // readied in the voice slot, no hand
+            return thing;
+        }
+        if (type != RE::MagicSystem::SpellType::kSpell)
+            return thing; // an ability, a disease: nothing to hold
         thing.kind = Kind::Spell;
         // The slot records, by FormID from Skyrim.esm: RightHand 013F42,
         // LeftHand 013F43, EitherHand 013F44, BothHands 013F45. The default
@@ -158,7 +168,18 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
     {
         thing.kind = Kind::Ammo;
     }
+    else if (form->Is(RE::FormType::Shout))
+    {
+        thing.kind = Kind::Voice;
+    }
     return thing;
+}
+
+// Is this form readied in the voice slot: a power or a shout the actor has
+// selected? Voice things have no hand; this is their "equipped".
+bool InVoice(RE::Actor *actor, RE::TESForm *form)
+{
+    return actor && actor->GetActorRuntimeData().selectedPower == form;
 }
 
 std::vector<Pin> PinsOf(ft::ActorId id)
@@ -174,6 +195,8 @@ namespace
 // Is the form in those hands right now?
 bool EquippedIn(RE::Actor *actor, RE::TESForm *form, Hand hands)
 {
+    if (DescribeHoldable(actor, form).IsVoice())
+        return InVoice(actor, form);
     if (auto *spell = form->As<RE::SpellItem>())
     {
         const auto &data = actor->GetActorRuntimeData();
@@ -213,8 +236,10 @@ std::string CasterState(RE::Actor *actor)
     const auto name = [](const RE::MagicItem *spell) { return spell && spell->GetName() ? spell->GetName() : "-"; };
     const auto *left = actor->GetMagicCaster(RE::MagicSystem::CastingSource::kLeftHand);
     const auto *right = actor->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
+    const auto *voice = data.selectedPower;
     return std::string("selected L=") + name(data.selectedSpells[RE::Actor::SlotTypes::kLeftHand]) +
            " R=" + name(data.selectedSpells[RE::Actor::SlotTypes::kRightHand]) +
+           " voice=" + (voice && voice->GetName() ? voice->GetName() : "-") +
            " -- caster L=" + name(left ? left->currentSpell : nullptr) +
            " R=" + name(right ? right->currentSpell : nullptr);
 }
@@ -224,6 +249,21 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
     auto *manager = RE::ActorEquipManager::GetSingleton();
     if (!manager)
         return;
+    // The voice slot: a shout by the manager's own call, a power by the
+    // spell equip with the Voice slot record (025BEE). Both a no-op when
+    // already readied, as the hand equip is.
+    if (auto *shout = form->As<RE::TESShout>())
+    {
+        if (!InVoice(actor, shout))
+            manager->EquipShout(actor, shout);
+        return;
+    }
+    if (auto *spell = form->As<RE::SpellItem>(); spell && DescribeHoldable(actor, spell).IsVoice())
+    {
+        if (!InVoice(actor, spell))
+            manager->EquipSpell(actor, spell, RE::TESForm::LookupByID<RE::BGSEquipSlot>(kVoiceSlotID));
+        return;
+    }
     if (auto *spell = form->As<RE::SpellItem>())
     {
         for (const Hand hand : {Hand::Left, Hand::Right})
@@ -272,6 +312,27 @@ bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
 // republish, and neither is owed for a hand that was already empty.
 void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
 {
+    // The voice: Papyrus's UnequipShout for a shout, UnequipSpell with the
+    // voice source (2) for a power. Neither has a native in CommonLibSSE
+    // 3.7.0, as a hand spell's unequip has not.
+    if (DescribeHoldable(actor, form).IsVoice())
+    {
+        if (!InVoice(actor, form))
+            return;
+        auto *vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        auto *policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
+        if (!policy)
+            return;
+        const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
+        RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
+        if (auto *shout = form->As<RE::TESShout>())
+            vm->DispatchMethodCall2(handle, "Actor", "UnequipShout", RE::MakeFunctionArguments(std::move(shout)),
+                                    result);
+        else if (auto *power = form->As<RE::SpellItem>())
+            vm->DispatchMethodCall2(handle, "Actor", "UnequipSpell",
+                                    RE::MakeFunctionArguments(std::move(power), static_cast<std::int32_t>(2)), result);
+        return;
+    }
     if (auto *spell = form->As<RE::SpellItem>())
     {
         auto *vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
@@ -361,24 +422,28 @@ constexpr bool kDualWieldOnLeftPin = false;
                  style->GetFormID(), ours->GetFormID());
 }
 
-// Before something new goes on, whatever it displaces is unpinned and
-// taken off by us, so the book and the body agree: the engine's own
-// displacement would leave the old pin in the book, and the watchdog would
-// put it straight back over the new thing. (While pins carried the
-// prevent-removal flag this was the only way at all -- the locked item
-// made the engine's equip silently do nothing, iron armour pinned and
-// robes clicked.)
-// What the planner says must give way for a new pin, taken off.
+// Before something new goes on, whatever it displaces is unpinned, so the
+// book and the body agree: the engine's own displacement would leave the
+// old pin in the book, and the watchdog would put it straight back over the
+// new thing. Taking it off is the engine's, in the equip that follows.
 void ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Holdable &incoming, Hand hands)
 {
+    // Only the book changes here. What gave way is NOT taken off: the
+    // engine's equip displaces it -- a weapon or spell from the hand it
+    // takes, armour from shared body slots, arrows from the quiver, a power
+    // or shout from the voice -- so the explicit unequip that used to follow
+    // did nothing for items and spells and undid the new equip for the
+    // voice (its spell unequip is a deferred Papyrus call, which landed a
+    // frame after the new power was in and emptied the slot, 2026-09-05).
+    // The unequip was needed while pinned items carried the engine's
+    // prevent-removal flag, which refused the engine's own swap; the flag
+    // went on 2026-09-04, and this went with it. The one unequip that stays
+    // is the move of a follower's only weapon to the other hand, in Wear.
     for (const Displaced &gone : MakeRoom(pins, incoming, hands))
     {
         auto *held = RE::TESForm::LookupByID(gone.form);
-        if (!held)
-            continue;
-        logger::info("{} unpinning {}{} to make room", Describe(actor), held->GetName() ? held->GetName() : "?",
+        logger::info("{} unpinning {}{} to make room", Describe(actor), held && held->GetName() ? held->GetName() : "?",
                      HandTag(gone.hands));
-        UnequipForm(actor, held, gone.hands, true);
     }
 }
 
@@ -526,7 +591,18 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             // for items as for spells; if this line repeats, the detour has
             // missed a path, and the hand state beside it says which.
             const bool casting = IsMidCast(actor);
-            if (form->Is(RE::FormType::Spell))
+            if (pin->thing.IsVoice())
+            {
+                // A shout is no bound object and a power is no hand spell:
+                // readied or not is the voice slot, and back it goes.
+                if (PutBackNow(*pin, InVoice(actor, form), fighting, casting))
+                {
+                    logger::info("{} put away pinned {} -- readying it in the voice again", Describe(actor),
+                                 form->GetName() ? form->GetName() : "?");
+                    EquipPinned(actor, form, hands, false);
+                }
+            }
+            else if (form->Is(RE::FormType::Spell))
             {
                 if (PutBackNow(*pin, EquippedIn(actor, form, hands), fighting, casting))
                 {
@@ -750,15 +826,25 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
         return lines;
     };
 
+    // The detail page's Equipped row is built by the scan, before the pins
+    // are known; the pin glyph goes on it here.
+    const auto pinGlyph = [](std::vector<SheetSection> &detail) {
+        for (auto &section : detail)
+            for (auto &row : section.rows)
+                if (row.label == "Equipped" && row.icon == kGlyphTick)
+                    row.icon2 = kGlyphPin;
+    };
+
     std::unordered_set<std::uint32_t> present;
-    const auto mark = [&](std::uint32_t form, bool &left, bool &right, bool &aside, std::string &asideBy, bool *whole) {
+    const auto mark = [&](std::uint32_t form, bool &left, bool &right, bool &aside, std::string &asideBy, bool &whole,
+                          std::vector<SheetSection> &detail) {
         present.insert(form);
         if (const Pin *pin = FindPin(pins, form))
         {
             left = Overlap(pin->hands, Hand::Left);
             right = Overlap(pin->hands, Hand::Right);
-            if (whole)
-                *whole = pin->hands == Hand::None;
+            whole = pin->hands == Hand::None;
+            pinGlyph(detail);
             return;
         }
         auto *thing = RE::TESForm::LookupByID(form);
@@ -770,9 +856,10 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
             asideBy = why(Shadowing(asPlanned, described));
     };
     for (auto &item : items)
-        mark(item.form, item.pinnedLeft, item.pinnedRight, item.setAside, item.asideBy, &item.pinned);
+        mark(item.form, item.pinnedLeft, item.pinnedRight, item.setAside, item.asideBy, item.pinned, item.detail);
     for (auto &entry : magic)
-        mark(entry.form, entry.pinnedLeft, entry.pinnedRight, entry.setAside, entry.asideBy, nullptr);
+        mark(entry.form, entry.pinnedLeft, entry.pinnedRight, entry.setAside, entry.asideBy, entry.pinned,
+             entry.detail);
     std::erase_if(pins, [&](const Pin &pin) { return !present.contains(pin.thing.form); });
 }
 
@@ -958,6 +1045,11 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             // Look again once time runs, to see what the engine finishes.
             g_republish.insert(id);
         }
+        if (thing->Is(RE::FormType::Shout))
+        {
+            logger::info("{} shout {} -- {}", Describe(actor), name, CasterState(actor));
+            g_republish.insert(id);
+        }
         break;
     case WearRequest::Unpin:
         // Forgetting the pin is the whole of it, for an item as for a
@@ -970,7 +1062,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     case WearRequest::TakeOff:
         logger::info("{} told to put away {}{}", Describe(actor), name, HandTag(hands));
         UnequipForm(actor, thing, hands, true);
-        if (thing->Is(RE::FormType::Spell))
+        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
             g_republish.insert(id);
         break;
     }
@@ -1041,7 +1133,7 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
         const char *name = thing->GetName() ? thing->GetName() : "?";
         const Holdable described = DescribeHoldable(actor, thing);
         auto *object = thing->As<RE::TESBoundObject>();
-        const bool on = object && Worn(actor, object, entry.hands);
+        const bool on = described.IsVoice() ? InVoice(actor, thing) : object && Worn(actor, object, entry.hands);
         if (!on || !Pinnable(described))
         {
             logger::info("{} saved pin on {}{} does not hold -- {} -- forgotten", Describe(actor), name,

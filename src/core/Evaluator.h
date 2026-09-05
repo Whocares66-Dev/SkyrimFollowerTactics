@@ -32,6 +32,7 @@ enum class Verdict : std::uint8_t
     Unsupported,      // the action cannot be performed on this runtime
     Busy,             // it can, but not this evaluation: its resource pool is exhausted
     Casting,          // a cast rule, while the follower is mid-cast on a spell of their own: it waits
+    Recovering,       // a shout rule, while the voice is still recovering from the last shout: it waits
     InvalidCondition, // this subject/predicate pair is not answerable at all
     NotReached,       // an earlier rule already fired
 };

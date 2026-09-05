@@ -88,16 +88,21 @@ enum class Grip : std::uint8_t
     }
 }
 
-// What a thing is to a rule: the four kinds an equip rule names. A shield
-// or a torch is a Weapon here, as the panel lists it, because it is chosen
-// with the sword and takes a hand; Armor is what is worn.
+// What a thing is to a rule: the four kinds an equip rule names, and Voice.
+// A shield or a torch is a Weapon here, as the panel lists it, because it is
+// chosen with the sword and takes a hand; Armor is what is worn. Voice is a
+// power or a shout: readied in the one voice slot, no hand, so one voice pin
+// displaces another as one quiver displaces another. The panel pins these;
+// no rule names them (an Equip power action would promise what the vanilla
+// AI never reaches for).
 enum class Kind : std::uint8_t
 {
     Other,
     Weapon,
     Spell,
     Armor,
-    Ammo
+    Ammo,
+    Voice
 };
 
 // One thing she has, as the planner sees it.
@@ -117,6 +122,10 @@ struct Holdable
     [[nodiscard]] constexpr bool IsAmmo() const noexcept
     {
         return kind == Kind::Ammo;
+    }
+    [[nodiscard]] constexpr bool IsVoice() const noexcept
+    {
+        return kind == Kind::Voice;
     }
 };
 
@@ -152,7 +161,8 @@ struct Pin
 
 // Does pinning `incoming` to `hands` mean releasing `held`, pinned to
 // `heldHands`? Hands that overlap; armour on shared body slots; ammunition
-// against ammunition. Anything else lives alongside.
+// against ammunition; a voice pin against a voice pin. Anything else lives
+// alongside.
 [[nodiscard]] bool Conflicts(const Holdable &incoming, Hand hands, const Holdable &held, Hand heldHands) noexcept;
 
 // Would a thing with this grip take a hand the pins hold, when the hand it

@@ -64,6 +64,37 @@
 ;  before concluding the rule engine is at fault -- a caster who
 ;  cannot pay looks exactly like a rule that never fired.
 ;
+;  POWERS, for the Use power action (docs/ACTIONS.md 7). Marcurio
+;  already has one from his race -- Voice of the Emperor 000E40CA,
+;  an Imperial's -- which is why the Magic tab's Powers chip is not
+;  empty before this runs. Added here:
+;    00088821   Embrace of Shadows  vampire power, Self: invisible
+;               and night eye for 180 s. Chosen because its effect
+;               is visible at a glance and lasts long enough to be
+;               read off the Effects tab. Performed through a Shout
+;               package wrapping the power: UseMagic never fired one.
+;
+;  A SHOUT, for the Shout action: the same shout slots a power goes
+;  through, with the shout itself in the package's input.
+;    00013E07   Unrelenting Force  Fus Ro Dah, all three words. An NPC
+;               shouts the highest filled word (measured 2026-09-05),
+;               so this is the full three-word shout and its long
+;               animation -- the case a power deliberately avoids. It
+;               is aimed, so the rule goes under Enemy or Target:
+;               IF target: any THEN target: Shout -> Unrelenting Force.
+;               addshout puts it on the base record's shout list, where
+;               the Greybeards' are, and the Magic tab's Shouts chip.
+;
+;  FOOD and INGREDIENTS, for the Consume menu's other two lists.
+;  Both go through the same equip call as a potion; whether an
+;  NPC gets the effect is unverified (the player eating an
+;  ingredient learns its first effect; an NPC has nothing to learn).
+;    00064B33   Goat Cheese Wheel   food, restore health
+;    0004B0BA   Wheat               ingredient, restore health first
+;    000727DE   Blue Butterfly Wing ingredient, damage stamina first --
+;               here so the list has one that would be a MISTAKE to
+;               eat, as a real bag does.
+;
 ;  GEAR, for the Inventory tab's hands and pins. Iron, so it is
 ;  plainly WORSE than what Marcurio wears and so nothing goes on
 ;  by itself: the equip-best logic only swaps upward. Putting it
@@ -89,6 +120,12 @@ additem 0003EAE5 10
 additem 00039BE8 5
 
 addspell 00012FCD
+addspell 00088821
+addshout 00013E07
+
+additem 00064B33 3
+additem 0004B0BA 5
+additem 000727DE 2
 
 additem 00012E49 1
 additem 00012EB6 1

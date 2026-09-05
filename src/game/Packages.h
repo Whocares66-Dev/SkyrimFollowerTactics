@@ -73,9 +73,21 @@ class Actor;
 namespace ft::game
 {
 
-inline constexpr std::uint32_t kFirstPackageLocalID = 0x000800;
-inline constexpr std::uint32_t kCastFactionLocalID = 0x000808;
-inline constexpr std::size_t kPackageSlots = 8;
+// The pool is sixteen package records in one faction's ranks: slot i passes
+// when the follower's rank in FT_CastNow is i. Slots 0..7 are UseMagic
+// (FT_CastSlot1..8) and cast a spell from a hand; slots 8..15 are Shout
+// (FT_ShoutSlot1..8) and cast from the voice, which is how a POWER is
+// performed -- the UseMagic procedure never fires one (docs/ACTIONS.md 7).
+// Each Shout slot's record points at its own wrapper shout
+// (FT_PowerShout1..8), a one-word shout whose word's spell is repointed at
+// the rule's power for the lease.
+inline constexpr std::uint32_t kFirstPackageLocalID = 0x000800;      // FT_CastSlot1..8
+inline constexpr std::uint32_t kCastFactionLocalID = 0x000808;       // FT_CastNow
+inline constexpr std::uint32_t kFirstWrapperShoutLocalID = 0x000811; // FT_PowerShout1..8
+inline constexpr std::uint32_t kFirstShoutPackageLocalID = 0x000819; // FT_ShoutSlot1..8
+inline constexpr std::size_t kSpellSlots = 8;
+inline constexpr std::size_t kVoiceSlots = 8;
+inline constexpr std::size_t kPackageSlots = kSpellSlots + kVoiceSlots;
 inline constexpr const char *kPluginName = "FollowerTactics.esp";
 
 // The quest that owns the vanilla follower alias.
@@ -106,10 +118,21 @@ void InitPackages();
 
 [[nodiscard]] bool PackagesAvailable();
 
-// Could a cast be started right now? False while every slot is mid-cast, so
-// the rule engine can skip cast rules for this evaluation instead of firing
-// one that cannot be honoured.
+// Could a cast be started right now? False while every spell slot is
+// mid-cast, so the rule engine can skip cast rules for this evaluation
+// instead of firing one that cannot be honoured. HasFreeVoiceSlot is the
+// same for the shout slots a power goes through.
 [[nodiscard]] bool HasFreeSlot();
+[[nodiscard]] bool HasFreeVoiceSlot();
+
+// Is this form one of our wrapper shouts? They sit in a follower's shout
+// list only for the length of a lease, and the Magic tab leaves them out.
+[[nodiscard]] bool IsWrapperShout(std::uint32_t formID);
+
+// Is this power leased to a shout slot right now? For the lease its record
+// reads as a Voice spell (RequestShout), and the menus that sort spells by
+// type ask this so the power does not vanish from them meanwhile.
+[[nodiscard]] bool IsLeasedPower(std::uint32_t formID);
 
 // Is this follower holding a record right now? The rule engine treats her
 // cast rules as busy while she is, so a second request during a cast is
@@ -141,6 +164,16 @@ enum class CastRequest : std::uint8_t
 // fire-and-forget spell.
 [[nodiscard]] CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId,
                                       float sustainSeconds);
+
+// Ask a follower to use a power or a shout. A power (a spell record of type
+// Power or Lesser Power): takes a free Shout slot, points its wrapper
+// shout's first word at the power, makes the power a Voice spell for the
+// lease, gives the follower the wrapper (the Shout procedure only fires a
+// shout the actor has), and arms the slot as RequestCast does. A shout (a
+// TESShout the follower has): the same slot with the shout itself in the
+// package's Shout input. targetId as for RequestCast. The lease ends on the
+// voice's fire event for our shout, or at the deadline.
+[[nodiscard]] CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId);
 
 // Called every tick from the game thread. Watches held slots: reports when
 // the AI picks our package up, and releases the record -- rank back to -1 --

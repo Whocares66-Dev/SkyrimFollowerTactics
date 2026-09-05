@@ -1,5 +1,7 @@
 #include "game/Magic.h"
 
+#include "game/Packages.h"
+
 #include "game/Pins.h"
 
 #include "game/Inventory.h"
@@ -33,26 +35,16 @@ std::string NameOf(const RE::TESForm *form)
     return form && form->GetName() ? form->GetName() : "";
 }
 
-// Walk every spell an actor has, from both places the game keeps them: what
-// the character was authored with, and everything granted at runtime.
-template <typename Fn> void ForEachSpell(RE::Actor *actor, Fn &&fn)
+// The Equipped row: a tick, and a pin beside it when a pin holds the thing.
+// Only on a page of something equipped; a bare "no" says nothing.
+SheetRow EquippedRow(bool pinned)
 {
-    if (auto *npc = actor->GetActorBase())
-    {
-        if (auto *list = npc->GetSpellList())
-        {
-            for (std::uint32_t i = 0; i < list->numSpells; ++i)
-            {
-                if (list->spells[i])
-                    fn(list->spells[i]);
-            }
-        }
-    }
-    for (auto *spell : actor->GetActorRuntimeData().addedSpells)
-    {
-        if (spell)
-            fn(spell);
-    }
+    SheetRow row;
+    row.label = "Equipped";
+    row.icon = kGlyphTick;
+    if (pinned)
+        row.icon2 = kGlyphPin;
+    return row;
 }
 
 // The equip slot records, read off Skyrim.esm (not from memory, which had
@@ -60,6 +52,52 @@ template <typename Fn> void ForEachSpell(RE::Actor *actor, Fn &&fn)
 // BothHands 013F45, Voice 025BEE.
 constexpr std::uint32_t kRightHandSlot = 0x00013F42;
 constexpr std::uint32_t kLeftHandSlot = 0x00013F43;
+
+// The seconds left on the longest effect one of `sources` is running on
+// `who`, or 0 for none. A power's source is itself; a shout's are its words'
+// spells. Marked for Death runs on the enemy, Embrace of Shadows on the
+// follower, so the caller asks about both.
+float RemainingOn(RE::Actor *who, const std::vector<const RE::MagicItem *> &sources)
+{
+    auto *target = who ? who->AsMagicTarget() : nullptr;
+    auto *effects = target ? target->GetActiveEffectList() : nullptr;
+    if (!effects)
+        return 0.0f;
+    float best = 0.0f;
+    for (const auto *ae : *effects)
+    {
+        if (!ae || !ae->spell || ae->duration <= 0.0f)
+            continue;
+        if (std::find(sources.begin(), sources.end(), ae->spell) == sources.end())
+            continue;
+        best = (std::max)(best, ae->duration - ae->elapsedSeconds);
+    }
+    return best;
+}
+
+// The Time section of a power's or shout's page: Cooldown, the voice's
+// recovery from the last shout (one timer per actor, shared by every shout
+// and power), and Remaining, the time left on an effect this one is running
+// on the follower or on whom they are fighting. Each row only when it has a
+// number; no section when neither does.
+void AddTimeSection(RE::Actor *actor, const std::vector<const RE::MagicItem *> &sources, MagicEntry &entry)
+{
+    SheetSection time{"Time", {}, {}};
+    if (!actor)
+        return;
+    const float recovery = actor->GetVoiceRecoveryTime();
+    if (recovery > 0.0f && recovery < 3600.0f)
+        time.rows.push_back(Row("Cooldown", Fmt("%.0f", recovery) + " s"));
+
+    float remaining = RemainingOn(actor, sources);
+    if (auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get())
+        remaining = (std::max)(remaining, RemainingOn(enemy.get(), sources));
+    if (remaining > 0.0f)
+        time.rows.push_back(Row("Remaining", Fmt("%.0f", remaining) + " s"));
+
+    if (!time.rows.empty())
+        entry.detail.push_back(std::move(time));
+}
 
 // The magic menu's level word for an effect's minimum skill.
 const char *LevelWord(int minimumSkill)
@@ -122,7 +160,9 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
 {
     using Type = RE::MagicSystem::SpellType;
     const Type type = spell->GetSpellType();
-    const bool power = type == Type::kPower || type == Type::kLesserPower;
+    // A power a shout slot is leasing reads as Voice for the lease
+    // (Packages.cpp); it is still a power to the tab.
+    const bool power = type == Type::kPower || type == Type::kLesserPower || IsLeasedPower(spell->GetFormID());
     if (type != Type::kSpell && !power)
         return false;
 
@@ -195,7 +235,8 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         std::snprintf(id, sizeof(id), "%08X", spell->GetFormID());
         stats.rows.push_back(Row("Base ID", id));
     }
-    stats.rows.push_back(Row("School", entry.school));
+    if (!power)
+        stats.rows.push_back(Row("School", entry.school));
     stats.rows.push_back(Row("Hand", entry.hand));
     if (!entry.level.empty())
     {
@@ -217,8 +258,10 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     // The list's word, so the page and the list agree.
     stats.rows.push_back(Row("Cast", entry.cast));
     if (entry.equipped)
-        stats.rows.push_back(Row("Equipped", "yes"));
+        stats.rows.push_back(EquippedRow(false)); // the pin glyph is added by MarkPins, which knows
     entry.detail.push_back(std::move(stats));
+    if (power)
+        AddTimeSection(actor, {spell}, entry);
 
     entry.effects = EffectLines(spell);
     RE::BSString text;
@@ -236,8 +279,11 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
         return false;
     entry.category = MagicCategory::Shouts;
     entry.school = "Shout";
-    entry.cast = "Shout";
-    entry.castValue = 99;
+    // How it is cast, from the first word's spell, as a spell's is from its
+    // record: Unrelenting Force is a Projectile, Dragon Aspect is Self.
+    const auto *first = shout->variations[0].spell;
+    entry.cast = first ? CastWord(first->GetDelivery(), first->GetCastingType()) : "Shout";
+    entry.castValue = first ? static_cast<int>(first->GetDelivery()) : 99;
     entry.hand = "Voice";
     entry.equipped = actor->GetActorRuntimeData().selectedPower == shout;
 
@@ -254,8 +300,15 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
             Row("Word " + std::to_string(i + 1), word + "  (" + Fmt("%.0f", variation.recoveryTime) + " s)"));
     }
     if (entry.equipped)
-        stats.rows.push_back(Row("Equipped", "yes"));
+        stats.rows.push_back(EquippedRow(false));
     entry.detail.push_back(std::move(stats));
+    {
+        std::vector<const RE::MagicItem *> words;
+        for (const auto &variation : shout->variations)
+            if (variation.spell)
+                words.push_back(variation.spell);
+        AddTimeSection(actor, words, entry);
+    }
 
     if (shout->variations[0].spell)
         entry.effects = EffectLines(shout->variations[0].spell);
@@ -311,8 +364,12 @@ std::vector<MagicEntry> ScanMagic(RE::Actor *actor)
         {
             for (std::uint32_t i = 0; i < list->numShouts; ++i)
             {
+                // Not our wrapper shouts, which sit in the list for the
+                // length of a power lease and are nobody's to see.
+                if (!list->shouts[i] || IsWrapperShout(list->shouts[i]->GetFormID()))
+                    continue;
                 MagicEntry entry;
-                if (list->shouts[i] && DescribeShout(actor, list->shouts[i], entry))
+                if (DescribeShout(actor, list->shouts[i], entry))
                     out.push_back(std::move(entry));
             }
         }

@@ -8,7 +8,10 @@ namespace ft::game
 namespace
 {
 
-// Making an NPC actually consume a potion.
+// Making an NPC actually consume a potion -- or a food, or an ingredient:
+// all three are eaten by the same equip call, and the game consumes the
+// item through its normal path. (Food and ingredients: built 2026-09-04,
+// their effects on an NPC unverified in play; docs/ACTIONS.md 7.)
 //
 // These parameter values are NOT guesses. They are copied from NPCsUsePotions
 // (github.com/muenchk/NPCsUsePotions), which has solved this problem in
@@ -25,16 +28,16 @@ namespace
 // Library and calls Skyrim's own equip routine. That is precisely why this
 // works where the Papyrus EquipItem-on-a-potion trick does not -- the game
 // consumes the item through its normal path rather than us simulating it.
-ActionResult DrinkPotion(RE::Actor *actor, RE::AlchemyItem *potion)
+ActionResult Consume(RE::Actor *actor, RE::TESBoundObject *item)
 {
-    if (!potion)
+    if (!item)
         return ActionResult::MissingItem;
 
     auto *equipManager = RE::ActorEquipManager::GetSingleton();
     if (!equipManager)
         return ActionResult::NoEquipManager;
 
-    equipManager->EquipObject(actor, potion,
+    equipManager->EquipObject(actor, item,
                               /*extraData*/ nullptr,
                               /*count*/ 1,
                               /*slot*/ nullptr,
@@ -101,16 +104,65 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     switch (action.kind)
     {
     case ft::ActionKind::DrinkHealthPotion:
-        return DrinkPotion(actor, choice.health);
+        return Consume(actor, choice.health);
     case ft::ActionKind::DrinkMagickaPotion:
-        return DrinkPotion(actor, choice.magicka);
+        return Consume(actor, choice.magicka);
     case ft::ActionKind::DrinkStaminaPotion:
-        return DrinkPotion(actor, choice.stamina);
+        return Consume(actor, choice.stamina);
     case ft::ActionKind::DrinkPotion:
-        // One named potion. The evaluator only fires this when the snapshot
-        // says she carries it, so a null here is a form that stopped being a
-        // potion between snapshot and dispatch.
-        return DrinkPotion(actor, RE::TESForm::LookupByID<RE::AlchemyItem>(action.form));
+    case ft::ActionKind::EatFood:
+        // One named potion or food. The evaluator only fires this when the
+        // snapshot says she carries it, so a null here is a form that
+        // stopped being one between snapshot and dispatch.
+        return Consume(actor, RE::TESForm::LookupByID<RE::AlchemyItem>(action.form));
+    case ft::ActionKind::EatIngredient:
+        return Consume(actor, RE::TESForm::LookupByID<RE::IngredientItem>(action.form));
+
+    case ft::ActionKind::UsePower:
+    case ft::ActionKind::Shout: {
+        // A power is performed through a Shout slot: a one-word wrapper shout
+        // whose word casts the power, fired by the Shout procedure from the
+        // voice, which is where a power lives. The UseMagic route was
+        // measured first (2026-09-04, Voice of the Emperor): the package was
+        // selected on every request and the AI never cast, because that
+        // procedure casts from a hand. The instant caster would apply the
+        // effect with no animation; a performance was wanted, so the shout
+        // pool it is (docs/ACTIONS.md 7). A shout goes through the same slot
+        // with the shout itself in the package's input, no wrapper. Aimed as
+        // a cast is: a Self power or shout on the follower, anything else at
+        // whom the rule aimed it.
+        const bool shout = action.kind == ft::ActionKind::Shout;
+        auto *form = RE::TESForm::LookupByID(action.form);
+        const RE::SpellItem *delivery = nullptr;
+        if (auto *asShout = form ? form->As<RE::TESShout>() : nullptr)
+            delivery = asShout->variations[0].spell;
+        else if (auto *asSpell = form ? form->As<RE::SpellItem>() : nullptr)
+            delivery = asSpell;
+        if (!form || (shout && !form->As<RE::TESShout>()) || (!shout && !form->As<RE::SpellItem>()))
+            return ActionResult::MissingItem;
+        std::uint32_t targetId = actor->GetFormID();
+        if (delivery && delivery->GetDelivery() != RE::MagicSystem::Delivery::kSelf && target != 0 &&
+            target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
+            targetId = target;
+        const char *what = shout ? "shout" : "power";
+        logger::info("  {}: {} through a shout slot", what, form->GetName() ? form->GetName() : "?");
+        const auto request = RequestShout(actor, action.form, targetId);
+        logger::info("  {}: {}", what, ToString(request));
+        switch (request)
+        {
+        case CastRequest::Armed:
+            return ActionResult::Performed;
+        case CastRequest::SpellNotInSlot:
+        case CastRequest::TargetGone:
+            return ActionResult::MissingItem;
+        case CastRequest::PoolBusy:
+        case CastRequest::AlreadyCasting:
+            return ActionResult::Busy;
+        case CastRequest::NoPackages:
+            return ActionResult::NoSuchAction;
+        }
+        return ActionResult::NoSuchAction;
+    }
 
     case ft::ActionKind::CastSpell: {
         // The package route, on its own. The combat-AI hook is off by default

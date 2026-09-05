@@ -231,10 +231,10 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.damage = WeaponDamage(actor, weapon, entry);
         stats.rows.push_back(Row("Damage", Fmt("%.0f", item.damage)));
         stats.rows.push_back(Row("Base Damage", Fmt("%.0f", weapon->GetAttackDamage())));
+        stats.rows.push_back(Row("Critical Damage", std::to_string(weapon->GetCritDamage())));
         stats.rows.push_back(Row("Speed", Fmt("%.2f", weapon->GetSpeed())));
         stats.rows.push_back(Row("Reach", Fmt("%.2f", weapon->GetReach())));
         stats.rows.push_back(Row("Stagger", Fmt("%.2f", weapon->GetStagger())));
-        stats.rows.push_back(Row("Critical Damage", std::to_string(weapon->GetCritDamage())));
         item.description = DescriptionOf(weapon);
         return;
     }
@@ -469,7 +469,14 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
             stats.rows.push_back(Row("Value", std::to_string(item.value)));
         }
         if (item.worn)
-            stats.rows.push_back(Row("Equipped", "yes"));
+        {
+            // The pin glyph beside the tick is added by MarkPins, which runs
+            // after this scan and is the one that knows the pins.
+            SheetRow equipped;
+            equipped.label = "Equipped";
+            equipped.icon = kGlyphTick;
+            stats.rows.push_back(std::move(equipped));
+        }
         item.detail.push_back(std::move(stats));
 
         // An enchantment, whether the record's or one put on at an arcane

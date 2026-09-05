@@ -39,6 +39,9 @@ struct FollowerView
     // The player's, for the condition menu: "Player" is a kind, and the
     // menu says who.
     std::string playerName;
+    // Seconds of voice recovery left, for the status tooltip of a shout or
+    // power rule waiting on it: "Shout on cooldown (12 s)".
+    float voiceRecovery{0.0f};
     // The other followers under tactics, by name, for the condition menu's
     // named subjects.
     struct Peer
@@ -76,8 +79,9 @@ struct FollowerView
     // Lives on the view rather than in Snapshot because it is menu content, not
     // a rule input -- the evaluator only ever compares FormIDs.
     std::vector<SpellOption> spells;
-    // The potions she carries, for the drink menu. Same reasoning.
-    std::vector<PotionOption> potions;
+    // The potions, food and ingredients she carries, for the Consume menu.
+    // Same reasoning.
+    std::vector<ConsumableOption> consumables;
 
     std::uint16_t level{0};
     float carriedWeight{0.0f};

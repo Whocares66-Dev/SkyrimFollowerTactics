@@ -39,6 +39,9 @@ Records say *what* she does; the C++ says *when*. No Papyrus.
 |---|---|---|
 | `FT_CastSlot1..8` | 0x800..0x807 | UseMagic template. Spell = Fast Healing and Target = Self (both canaries, both repointed at runtime), Location = NearSelf r10000, CastTime 0.5..1, Cooldown 1..1, NumToCast 1..1, DualCast off, flags **IgnoreCombat**. One condition: `GetFactionRank(FT_CastNow) == slot` |
 | `FT_CastNow` | 0x808 | a faction with ranks 0..15, used for nothing but that condition |
+| `FT_PowerWord1..8` | 0x809..0x810 | words of power for the wrappers below; labels, no behaviour |
+| `FT_PowerShout1..8` | 0x811..0x818 | one-word wrapper shouts: word one's spell = Fast Healing (canary, repointed at the rule's power), recovery 1 |
+| `FT_ShoutSlot1..8` | 0x819..0x820 | Shout template, Location NearSelf, Shout = its wrapper, Target = Self, HoldWhenBlocked off, flag IgnoreCombat. One condition: `GetFactionRank(FT_CastNow) == 8 + slot`. How a POWER is performed (`docs/ACTIONS.md` 7) |
 
 Edit them with houseCARL (`housecarl_bulk_apply`, `target=FollowerTactics.esp`,
 `in_place=true`), then copy the file into `esp/`. The xEdit script in

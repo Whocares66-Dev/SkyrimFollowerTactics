@@ -613,3 +613,47 @@ TEST_CASE("a dagger in each hand survives a Lightning Bolt cast, and comes back 
     w.Watchdog();
     CHECK(w.hands.left == kSteelDagger);
 }
+
+TEST_CASE("a voice pin: one power or shout readied, the rest set aside", "[pins]")
+{
+    // A power and a shout are Voice things: no hand, one slot between them,
+    // like two quivers. Pinning one displaces the other and keeps every
+    // other voice entry from the AI; a spell in a hand is untouched.
+    Holdable battleCry;
+    battleCry.form = 0x000E40C3;
+    battleCry.kind = Kind::Voice;
+    Holdable unrelentingForce;
+    unrelentingForce.form = 0x00013E07;
+    unrelentingForce.kind = Kind::Voice;
+    Holdable firebolt;
+    firebolt.form = 0x00012FCD;
+    firebolt.kind = Kind::Spell;
+    firebolt.grip = Grip::Either;
+
+    std::vector<Pin> pins;
+    REQUIRE(Pinnable(battleCry));
+    REQUIRE(HandsFor(battleCry.grip, Hand::Right) == Hand::None);
+    AddPin(pins, battleCry, Hand::None, false);
+    REQUIRE(pins.size() == 1);
+
+    REQUIRE(Conflicts(unrelentingForce, Hand::None, battleCry, Hand::None));
+    REQUIRE_FALSE(Conflicts(firebolt, Hand::Right, battleCry, Hand::None));
+    REQUIRE(SetAside(pins, unrelentingForce));
+    REQUIRE_FALSE(SetAside(pins, battleCry));
+    REQUIRE_FALSE(SetAside(pins, firebolt));
+    REQUIRE(KeptFromAI(pins, unrelentingForce, Hand::None));
+    REQUIRE_FALSE(KeptFromAI(pins, battleCry, Hand::None));
+    REQUIRE_FALSE(KeptFromAI(pins, firebolt, Hand::Left));
+
+    const auto why = Shadowing(pins, unrelentingForce);
+    REQUIRE(why.size() == 1);
+    REQUIRE(why[0].thing.form == battleCry.form);
+
+    // Pinning the shout makes room: the power's pin goes, whole.
+    const auto displaced = MakeRoom(pins, unrelentingForce, Hand::None);
+    REQUIRE(displaced.size() == 1);
+    REQUIRE(displaced[0].form == battleCry.form);
+    AddPin(pins, unrelentingForce, Hand::None, false);
+    REQUIRE(pins.size() == 1);
+    REQUIRE(pins[0].thing.form == unrelentingForce.form);
+}

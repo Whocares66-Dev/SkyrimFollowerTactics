@@ -105,23 +105,27 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Follower, "follower", "Follower"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 11> kActions{{
+constexpr std::array<Entry<ActionKind>, 15> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. It also
     // leaves room: "drink-health-potion-weakest" -- don't burn a strong potion
     // on a scratch -- becomes a new value rather than a breaking change to an
     // existing one.
     {ActionKind::None, "none", "None"},
-    {ActionKind::DrinkHealthPotion, "drink-strongest-health-potion", "Drink strongest health potion"},
-    {ActionKind::DrinkMagickaPotion, "drink-strongest-magicka-potion", "Drink strongest magicka potion"},
-    {ActionKind::DrinkStaminaPotion, "drink-strongest-stamina-potion", "Drink strongest stamina potion"},
-    {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
-    {ActionKind::CastSpell, "cast-spell", "Cast spell"},
+    {ActionKind::Target, "target", "Target"},
     {ActionKind::EquipWeapon, "equip-weapon", "Equip weapon"},
     {ActionKind::EquipArrows, "equip-arrows", "Equip arrows"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
     {ActionKind::EquipArmor, "equip-armor", "Equip armor"},
-    {ActionKind::Target, "target", "Target"},
+    {ActionKind::DrinkHealthPotion, "drink-strongest-health-potion", "Drink strongest health potion"},
+    {ActionKind::DrinkMagickaPotion, "drink-strongest-magicka-potion", "Drink strongest magicka potion"},
+    {ActionKind::DrinkStaminaPotion, "drink-strongest-stamina-potion", "Drink strongest stamina potion"},
+    {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
+    {ActionKind::EatFood, "eat-food", "Eat food"},
+    {ActionKind::EatIngredient, "eat-ingredient", "Eat ingredient"},
+    {ActionKind::CastSpell, "cast-spell", "Cast spell"},
+    {ActionKind::UsePower, "use-power", "Use power"},
+    {ActionKind::Shout, "shout", "Shout"},
 }};
 
 // The hand an equip rule names. Both is one value, not two flags, on the
@@ -399,8 +403,16 @@ std::string_view Describe(ActionKind v) noexcept
         return "Drink the strongest stamina potion carried.";
     case ActionKind::DrinkPotion:
         return "Drink this potion.";
+    case ActionKind::EatFood:
+        return "Eat this food.";
+    case ActionKind::EatIngredient:
+        return "Eat this ingredient.";
     case ActionKind::CastSpell:
         return "Cast this spell now.";
+    case ActionKind::UsePower:
+        return "Use this power now.";
+    case ActionKind::Shout:
+        return "Shout this now.";
     case ActionKind::EquipWeapon:
         return "Hold this in that hand until another rule or the Inventory tab lets go.";
     case ActionKind::EquipSpell:

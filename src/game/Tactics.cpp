@@ -211,6 +211,8 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkMagickaPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkStaminaPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkPotion)] = true;
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::EatFood)] = true;
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::EatIngredient)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipWeapon)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipSpell)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipArrows)] = true;
@@ -221,11 +223,16 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     // panel greys it out, which is a truthful "not available here" rather than
     // a rule that silently never fires.
     caps.supported[static_cast<std::size_t>(ft::ActionKind::CastSpell)] = PackagesAvailable();
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::UsePower)] = PackagesAvailable();
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::Shout)] = PackagesAvailable();
 
     // Transient, unlike the line above: every slot mid-cast means a cast rule
     // is skipped for THIS evaluation only, with no cooldown spent, and the
     // next rule down gets its turn.
     caps.busy[static_cast<std::size_t>(ft::ActionKind::CastSpell)] = PackagesAvailable() && !HasFreeSlot();
+    caps.busy[static_cast<std::size_t>(ft::ActionKind::UsePower)] = PackagesAvailable() && !HasFreeVoiceSlot();
+    caps.busy[static_cast<std::size_t>(ft::ActionKind::Shout)] =
+        caps.busy[static_cast<std::size_t>(ft::ActionKind::UsePower)];
 
     // A cast of OURS still in the air -- the lease is held from the request
     // until the follower's own spell-fire event names the spell -- makes
@@ -342,7 +349,9 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     // set this test up is exactly such a change), so it is re-read rather than
     // cached until something invalidates it.
     v.spells = ScanCastableSpells(actor);
-    v.potions = ScanCarriedPotions(actor);
+    v.consumables = ScanCarriedConsumables(actor);
+    if (const float recovery = actor->GetVoiceRecoveryTime(); recovery > 0.0f && recovery < 3600.0f)
+        v.voiceRecovery = recovery;
     if (auto *player = RE::PlayerCharacter::GetSingleton())
         v.playerName = DisplayNameOf(player);
     for (auto *other : CollectManagedFollowers())

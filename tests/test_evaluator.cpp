@@ -1360,7 +1360,7 @@ TEST_CASE("a named potion is drunk only while carried, and cools down per potion
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::NoResource);
     REQUIRE(trace.at(1) == Verdict::NoResource);
-    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkPotion)) == "does not carry that potion");
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkPotion)) == "none in inventory");
 
     // Carries both: the first fires, and its cooldown is its own -- the
     // second potion fires on the next turn.
@@ -1372,6 +1372,130 @@ TEST_CASE("a named potion is drunk only while carried, and cools down per potion
     REQUIRE(trace.at(0) == Verdict::ActionCooldown);
 }
 
+TEST_CASE("food and an ingredient are eaten only while carried, and by their own kind", "[potions]")
+{
+    constexpr std::uint32_t kBeef = 0x00064B33;
+    constexpr std::uint32_t kFlower = 0x000727DE;
+
+    auto eat = [](ActionKind kind, std::uint32_t form) {
+        Rule r;
+        r.subject = SubjectKind::Self;
+        r.predicate = PredicateKind::Any;
+        r.actionTarget = ActionTargetKind::Self;
+        r.FirstAction().kind = kind;
+        r.FirstAction().form = form;
+        return r;
+    };
+
+    RuleSet rs;
+    rs.rules.push_back(eat(ActionKind::EatFood, kBeef));
+    rs.rules.push_back(eat(ActionKind::EatIngredient, kFlower));
+
+    Snapshot s = Healthy();
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+    REQUIRE(trace.at(1) == Verdict::NoResource);
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EatFood)) == "none in inventory");
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EatIngredient)) == "none in inventory");
+
+    // The form under the wrong kind is not carried: a hand-edited profile
+    // that puts the beef under eat-ingredient names nothing.
+    s.potions.carried.push_back({kBeef, 2, ConsumableKind::Ingredient});
+    s.potions.carried.push_back({kFlower, 3, ConsumableKind::Food});
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+    REQUIRE(trace.at(1) == Verdict::NoResource);
+
+    // Under their own kinds: the first fires, and the second on the next turn.
+    s.potions.carried.clear();
+    s.potions.carried.push_back({kBeef, 2, ConsumableKind::Food});
+    s.potions.carried.push_back({kFlower, 3, ConsumableKind::Ingredient});
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+    s.now += 0.5;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+
+    // Only Self eats.
+    REQUIRE(IsActionValidFor(ActionTargetKind::Self, ActionKind::EatFood));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Player, ActionKind::EatFood));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Enemy, ActionKind::EatIngredient));
+}
+
+TEST_CASE("a power is used like a cast: known, not running, not mid-cast, free of magicka", "[spell]")
+{
+    constexpr std::uint32_t kEmbraceOfShadows = 0x00088821;
+
+    RuleSet rs;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Any;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction().kind = ActionKind::UsePower;
+    r.FirstAction().form = kEmbraceOfShadows;
+    rs.rules.push_back(r);
+
+    Snapshot s = Healthy();
+    s.magicka.current = 0.0f; // a power costs nothing, so this must not matter
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::UsePower)) == "does not know that power");
+
+    s.spells.known.push_back(kEmbraceOfShadows);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+
+    // Running -- the follower is invisible for three minutes -- it is not
+    // used again, whatever the cooldown says.
+    s.now += 10.0;
+    s.spells.active.push_back(kEmbraceOfShadows);
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::UsePower)) == "that power is still running");
+
+    // A follower mid-cast on their own spell is left to finish, as for a
+    // cast: the power's package would interrupt it the same way.
+    s.spells.active.clear();
+    s.now += 10.0;
+    s.traits.status |= Bit(StatusKind::Casting);
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::Casting);
+
+    // Aimed anywhere, like a cast: the menu sorts powers by delivery.
+    REQUIRE(IsActionValidFor(ActionTargetKind::Enemy, ActionKind::UsePower));
+    REQUIRE(IsCast(ActionKind::UsePower));
+
+    // A shout is the same shape: known or not, through the pool.
+    REQUIRE(IsCast(ActionKind::Shout));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Enemy, ActionKind::Shout));
+    rs.rules[0].FirstAction().kind = ActionKind::Shout;
+    rs.rules[0].FirstAction().form = 0x00013E07;
+    s.traits.status = 0;
+    s.now += 10.0;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::Shout)) == "does not know that shout");
+    s.spells.known.push_back(0x00013E07);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+
+    // Inside the voice's recovery from the last shout it waits, spending no
+    // cooldown; when the recovery is over it fires.
+    s.now += 10.0;
+    s.voiceRecovery = 12.5f;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::Recovering);
+    s.voiceRecovery = 0.0f;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+    REQUIRE_FALSE(IsConsume(ActionKind::UsePower));
+    REQUIRE(ConsumableOf(ActionKind::DrinkHealthPotion) == ConsumableKind::Potion);
+}
+
 TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
 {
     // The log said "previous dose still active" about an EQUIP rule, which is
@@ -1381,7 +1505,7 @@ TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
     REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::EquipSpell)) ==
             "already pinned, or nothing of that kind pinned to let go");
 
-    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkHealthPotion)) == "no potion");
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkHealthPotion)) == "none in inventory");
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EquipSpell)) == "does not know that spell");
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EquipWeapon)) == "does not carry that weapon");
 
