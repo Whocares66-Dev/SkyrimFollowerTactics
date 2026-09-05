@@ -888,8 +888,13 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         std::string name = spell->GetName() ? spell->GetName() : "";
         if (name.empty())
             return; // nameless entries are internal; nothing to show a player
+        bool reanimate = false;
+        for (const auto *effect : spell->effects)
+            reanimate =
+                reanimate || (effect && effect->baseEffect &&
+                              effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate);
         out.push_back(SpellOption{id, std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
-                                  spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation,
+                                  spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
                                   power ? SpellOption::Kind::Power : SpellOption::Kind::Spell});
     });
 
@@ -906,7 +911,8 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
                     continue;
                 const auto *word = shout->variations[0].spell;
                 const bool self = word && word->GetDelivery() == RE::MagicSystem::Delivery::kSelf;
-                out.push_back(SpellOption{shout->GetFormID(), shout->GetName(), self, false, SpellOption::Kind::Shout});
+                out.push_back(
+                    SpellOption{shout->GetFormID(), shout->GetName(), self, false, false, SpellOption::Kind::Shout});
             }
         }
     }

@@ -2607,14 +2607,23 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     REQUIRE(decision.ruleIndex == 0);
     REQUIRE(decision.steps.at(0).target == kRat);
 
-    // A rule with no cap on its spell sees the giant.
+    // A rule with no cap on its spell sees the giant: with only the giant
+    // about, a conjuration on Self fires where a capped Reanimate would not.
     s.now += 10.0;
+    s.corpses.clear();
+    s.corpses.push_back({kGiant, 32, 200.0f});
     rs.rules[0].predicate = PredicateKind::LevelHighest;
+    rs.rules[0].actionTarget = ActionTargetKind::Self;
     rs.rules[0].FirstAction().form = 0x000204C3;
     s.spells.known.push_back(0x000204C3);
     decision = Evaluate(rs, s, ctx);
     REQUIRE(decision.ruleIndex == 0);
-    REQUIRE(decision.steps.at(0).target == kGiant);
+    REQUIRE(decision.steps.at(0).target == s.self);
+    s.now += 10.0;
+    rs.rules[0].FirstAction().form = kReanimate;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx).Fired());
+    s.corpses.push_back({kRat, 1, 100.0f});
+    s.corpses.push_back({kBandit, 9, 300.0f});
 
     // None: only when nothing raisable is about. With only the giant and a
     // capped spell, none holds and the action goes on the follower.
@@ -2627,6 +2636,17 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     decision = Evaluate(rs, s, ctx);
     REQUIRE(decision.ruleIndex == 0);
     REQUIRE(decision.steps.at(0).target == s.self);
+
+    // Only a Reanimate -- a spell with a cap -- goes at a corpse: Firebolt
+    // aimed at one is unsupported, as the menu never offers it.
+    s.now += 10.0;
+    s.corpses.push_back({kBandit, 9, 300.0f});
+    rs.rules[0].predicate = PredicateKind::LevelHighest;
+    rs.rules[0].actionTarget = ActionTargetKind::Corpse;
+    rs.rules[0].FirstAction().form = 0x00012FCD;
+    s.spells.known.push_back(0x00012FCD);
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::Unsupported);
 
     // The corpse's questions are its own, and only a spell goes at one.
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Corpse, PredicateKind::HealthPctBelow));

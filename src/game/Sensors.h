@@ -50,6 +50,10 @@ struct SpellOption
     // rule names, the follower's included, and is offered under everyone.
     bool selfOnly{false};
     bool location{false};
+    // Carries a Reanimate-archetype effect: the only kind aimed at a corpse.
+    // The archetype is the record property the engine raises a corpse by,
+    // so a mod's reanimate spell is found by it whatever it is called.
+    bool reanimate{false};
     // Which menu lists it: Cast spell, Use power, or Shout. One list
     // because all three are found by the same walk of what she knows.
     enum class Kind : std::uint8_t

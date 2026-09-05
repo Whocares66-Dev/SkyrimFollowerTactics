@@ -142,11 +142,13 @@ form, listed by name in the menu after the player.
 
 **The rat problem.** Reanimate spells raise corpses up to a level: the effect's magnitude, 6 for Raise Zombie, 13 for Reanimate Corpse, 21 for Revenant, 30 for Dread Zombie, read off each known spell into the snapshot as a cap. The Corpse subject measures the dead against the cap of the rule's own cast spell, so Highest level is the highest the spell can actually raise, and a rule whose spell has no cap (a conjuration) sees every corpse. Serana raises the rat because vanilla picks whatever is nearest; this picks the strongest the spell will take.
 
+**Only a Reanimate goes at a corpse.** Reanimation is a property of the magic effect, not a name: the effect record's Archetype is `Reanimate` (22), the value the engine raises a corpse by, so a mod's reanimate spell has it whatever it is called. The Cast menu under the Corpse target lists only spells with such an effect, and the evaluator refuses any other cast aimed at a corpse as unsupported. The cap is read off the same effect.
+
 **A Location spell** -- a conjuration -- is offered under every target and, aimed at Self, goes at the follower's own feet rather than the enemy's; every other aimed spell aimed at no one still goes at the enemy.
 
 **Not yet seen in play:** the UseMagic package aiming at a dead actor (every target so far has been alive), the engine's own level check agreeing with ours, and a raised corpse counting in `commandedActors` for the follower rather than for nobody.
 
-**The Summons tab**, after Magic, shows what the follower commands: health, stamina and magicka bars, level, whether summoned or raised, seconds remaining on the commanding effect, the reference and base FormIDs, and the same sheet the Character tab builds for the follower. With more than one, a chip per summon.
+**The Summons tab**, after Magic, shows what the follower commands: a chip per summon carrying its name, then health, stamina and magicka bars, level, whether summoned or raised, seconds remaining on the commanding effect, the reference and base FormIDs, and the same sheet the Character tab builds for the follower.
 
 ## 7. What was built, where
 

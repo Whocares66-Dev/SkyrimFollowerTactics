@@ -675,6 +675,12 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
     // is as unfireable as an action this runtime cannot do.
     if (a.kind == ActionKind::None || !ctx.caps.Supports(a.kind) || !IsActionValidFor(aimedAt, a.kind))
         return Verdict::Unsupported;
+    // Only a Reanimate goes at a corpse: the spells with a level cap are
+    // exactly those with the Reanimate archetype, which is the record
+    // property the engine raises by. The menu offers nothing else there; a
+    // hand-edited profile that aims Firebolt at a corpse is as unfireable.
+    if (aimedAt == ActionTargetKind::Corpse && a.kind == ActionKind::CastSpell && snap.spells.CapOf(a.form) == 0)
+        return Verdict::Unsupported;
     if (ctx.caps.Busy(a.kind))
         return Verdict::Busy;
     if (!HasResource(a, snap))

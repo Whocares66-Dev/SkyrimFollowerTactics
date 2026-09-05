@@ -1330,8 +1330,13 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                                                              : SpellOption::Kind::Spell;
         std::vector<const SpellOption *> suited;
         for (const auto &option : view.spells)
+        {
+            // A corpse takes a Reanimate and nothing else.
+            if (target == ft::ActionTargetKind::Corpse && !option.reanimate)
+                continue;
             if (option.kind == kind && (option.location || option.selfOnly == (target == ft::ActionTargetKind::Self)))
                 suited.push_back(&option);
+        }
         if (suited.empty())
             continue;
 
@@ -3627,8 +3632,9 @@ void DrawSummon(const SummonView &summon)
     }
 }
 
-// The Summons tab: what she commands right now. One page; with more than
-// one, a chip per summon above it, as the Inventory tab has categories.
+// The Summons tab: what she commands right now. A chip per summon above the
+// page, as the Inventory tab has categories -- always, one summon included,
+// since the chip is where its name is.
 std::unordered_map<ft::ActorId, int> g_summonTabs;
 
 void DrawSummons(const FollowerView &view)
@@ -3642,7 +3648,6 @@ void DrawSummons(const FollowerView &view)
     int &chosen = g_summonTabs[view.id];
     if (chosen < 0 || chosen >= static_cast<int>(view.summons.size()))
         chosen = 0;
-    if (view.summons.size() > 1)
     {
         Im::Spacing();
         std::vector<Chip> chips;
