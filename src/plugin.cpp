@@ -224,7 +224,10 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
         // the new session. Drop the pool; the first tick sweeps the ranks.
         if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
             message->type == SKSE::MessagingInterface::kNewGame)
+        {
             ft::game::ResetPackages();
+            ft::game::ReloadProfiles();
+        }
     });
 
     return true;

@@ -6,10 +6,10 @@
 //   if a follower's health drops below 50%, drink the best health potion,
 //   at most once every 10 seconds.
 //
-// No UI, no JSON, no per-follower profiles. This exists to retire one risk --
-// whether an NPC can be made to reliably consume a potion -- because if that
-// cannot be done, the marquee rule does not work and the concept needs
-// rethinking.
+// It began as the Phase 1 spike, to retire one risk -- whether an NPC can be
+// made to reliably consume a potion -- and now carries the per-follower
+// rules, their switches, and the reading and writing of both to disk
+// (game/Profiles.h).
 
 #include "core/Evaluator.h"
 #include "game/Inventory.h"
@@ -121,6 +121,25 @@ void SetRules(ft::ActorId id, ft::RuleSet rules);
 // The rules a follower starts with, before anyone edits them: none. A fresh
 // install changes nothing until a rule is written.
 [[nodiscard]] const ft::RuleSet &DefaultRuleSet();
+
+// The rules and the switch live on disk, one file per follower
+// (game/Profiles.h), and nothing is kept in the save. A follower's file is
+// read the first time the tick sees them -- the first tick after a load,
+// or on recruitment -- and edits are written by SaveEdits, which the panel
+// calls as it closes: every follower with an unsaved edit, in one pass.
+// Game thread, both.
+void SaveEdits();
+
+// An edit made outside SetRules and SetFollowerEnabled -- a pin from the
+// panel -- that the follower's file must see at the next SaveEdits. Any
+// thread.
+void NoteEdit(ft::ActorId id);
+
+// A different save is a different set of followers with, possibly, the
+// same reference ids: forget what was read, so the next tick reads each
+// follower's file afresh. Unsaved edits are written first. Game thread, on
+// load game and new game.
+void ReloadProfiles();
 
 // Rebuild and publish one follower's view now, out of turn: for a request
 // that has just changed her, so the panel answers before the next tick --

@@ -62,12 +62,30 @@ include(ClangTools)
 add_library(ft_core STATIC
     src/core/Evaluator.cpp
     src/core/Loadout.cpp
+    src/core/Profile.cpp
     src/core/Rule.cpp
     src/core/Vocabulary.cpp
 )
 target_include_directories(ft_core PUBLIC src)
 target_compile_features(ft_core PUBLIC cxx_std_23)
 ft_apply_warnings(ft_core)
+
+# nlohmann/json, for the profile files (src/core/Profile.cpp). The plugin
+# presets get it from vcpkg (it is in the manifest); the core presets run
+# with no vcpkg at all, so fall back to fetching it -- the same arrangement
+# tests/CMakeLists.txt makes for Catch2. Header-only, so PRIVATE: nothing
+# that links ft_core needs to see it.
+find_package(nlohmann_json 3 CONFIG QUIET)
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "nlohmann_json not found via find_package; fetching it.")
+    include(FetchContent)
+    FetchContent_Declare(nlohmann_json
+        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+        URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+target_link_libraries(ft_core PRIVATE nlohmann_json::nlohmann_json)
 
 # ---------------------------------------------------------------------------
 # The SKSE plugin.
@@ -103,7 +121,8 @@ if(FT_BUILD_PLUGIN)
         src/game/Tactics.cpp
         src/game/Util.cpp
         src/game/UI.cpp
-        src/game/Packages.cpp)
+        src/game/Packages.cpp
+        src/game/Profiles.cpp)
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
     # These are Skyrim/Windows-API concerns and belong to THIS target only.

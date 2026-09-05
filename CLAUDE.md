@@ -5,6 +5,7 @@ A Dragon Age: Origins-style tactics system for Skyrim SE/AE followers: an ordere
 
 Read `docs/PLAN.md` first. `docs/RESEARCH.md` has the sourced findings behind it, with
 explicit uncertainty flags. `docs/MAGIC.md` is how casting works and what does not;
+`docs/PROFILES.md` is the tactics file on disk (format, location, versioning);
 `docs/TODO.md` is what is still to do.
 
 ## The one architectural rule
@@ -59,7 +60,7 @@ run copies as usual.
 `MO2\mods\FollowerTactics\SKSE\Plugins\`. New mods appear **unticked** in MO2 -- tick it
 or the DLL never loads.
 
-Last verified: 88 cases green under MSVC 19.42 (`core` and `core-asan` presets), 2026-09-04.
+Last verified: 100 cases green under MSVC 19.42 (`core` and `core-asan` presets), 2026-09-04.
 
 ## After every edit
 
@@ -242,9 +243,11 @@ SetFollower`), never `setplayerteammate`. Cooldowns and leases run on game time.
 actions per rule done one per tick, equip actions that pin, and conditions for status,
 armour, resistance, attacked-by, the party's extremes and the player's fight
 (`docs/CONDITIONS.md`); `Snapshot::allies` / `enemies` are populated by definition
-(the party, and whoever the compass paints red). Still missing: JSON load/save (the
-shareable profile format) and per-follower profiles. Actions to come are in
-`docs/ACTIONS.md`.
+(the party, and whoever the compass paints red). Rules persist: one JSON file per
+follower with the rules, the switch and the player's pins, read when the tick first
+sees them and written when the panel closes (`docs/PROFILES.md`; built 2026-09-04, not
+yet verified in play). Still missing:
+shareable named profiles. Actions to come are in `docs/ACTIONS.md`.
 
 **Defaults (2026-09-04):** a follower starts with NO rules; both switches start on,
 which is safe because an empty list does nothing. A fresh install changes nothing

@@ -1026,8 +1026,60 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         if (!actor || !thing)
             return;
         Wear(actor, thing, request, hand, true);
+        NoteEdit(id);
         PublishFollower(actor);
     });
+}
+
+std::vector<ft::PinEntry> PlayerPinsOf(ft::ActorId id)
+{
+    std::scoped_lock lock(g_pinMutex);
+    const auto &book = g_fighting.contains(id) ? g_pinsBeforeFight : g_pins;
+    std::vector<ft::PinEntry> entries;
+    if (const auto it = book.find(id); it != book.end())
+    {
+        for (const Pin &pin : it->second)
+            entries.push_back({pin.thing.form, pin.hands});
+    }
+    return entries;
+}
+
+void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
+{
+    if (!actor || pins.empty())
+        return;
+    std::scoped_lock lock(g_pinMutex);
+    auto &book = g_pins[actor->GetFormID()];
+    for (const ft::PinEntry &entry : pins)
+    {
+        auto *thing = RE::TESForm::LookupByID(entry.form);
+        if (!thing)
+        {
+            logger::info("{} saved pin {:08X} names nothing in this game -- forgotten", Describe(actor), entry.form);
+            continue;
+        }
+        const char *name = thing->GetName() ? thing->GetName() : "?";
+        const Holdable described = DescribeHoldable(actor, thing);
+        auto *object = thing->As<RE::TESBoundObject>();
+        const bool on = object && Worn(actor, object, entry.hands);
+        if (!on || !Pinnable(described))
+        {
+            logger::info("{} saved pin on {}{} does not hold -- {} -- forgotten", Describe(actor), name,
+                         HandTag(entry.hands), !on ? "not worn now" : "cannot be pinned");
+            continue;
+        }
+        AddPin(book, described, entry.hands, false);
+        logger::info("{} saved pin on {}{} taken back", Describe(actor), name, HandTag(entry.hands));
+    }
+}
+
+void ForgetPins()
+{
+    std::scoped_lock lock(g_pinMutex);
+    g_pins.clear();
+    g_pinsBeforeFight.clear();
+    g_fighting.clear();
+    g_refusedLogged.clear();
 }
 
 bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand)

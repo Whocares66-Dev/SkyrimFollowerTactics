@@ -5,6 +5,7 @@
 #include "game/Actions.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
+#include "game/Profiles.h"
 #include "game/Sensors.h"
 #include "game/UI.h"
 #include "game/Util.h"
@@ -96,6 +97,84 @@ std::unordered_set<ft::ActorId> g_bleedingOut;
 // actually changes something.
 std::mutex g_rulesMutex;
 std::unordered_map<ft::ActorId, ft::RuleSet> g_ruleSets;
+
+// The followers whose edits are not yet on disk. An edit marks its follower
+// dirty from the render thread; the files are written when the panel
+// closes (SaveEdits), once per editing session, not per edit and not by
+// the tick.
+std::mutex g_dirtyMutex;
+std::unordered_set<ft::ActorId> g_dirty;
+
+// How each follower is filed, learned the first time the tick sees them and
+// kept for the session: a dismissed follower's last edit still has a file
+// to go to. Game thread only.
+std::unordered_map<ft::ActorId, Identity> g_identities;
+
+void MarkDirty(ft::ActorId id)
+{
+    std::scoped_lock lock(g_dirtyMutex);
+    g_dirty.insert(id);
+}
+
+// First sight of a follower: read their file, if there is one. Before any
+// view of them is published, so what the panel shows is what was saved.
+void LoadIfNew(RE::Actor *follower)
+{
+    const ft::ActorId id = follower->GetFormID();
+    if (g_identities.contains(id))
+        return;
+    const Identity &who = g_identities.emplace(id, IdentifyFollower(follower)).first->second;
+    auto profile = LoadProfile(who);
+    if (!profile)
+        return;
+    {
+        std::scoped_lock lock(g_rulesMutex);
+        g_ruleSets[id] = std::move(profile->rules);
+    }
+    {
+        std::scoped_lock lock(g_disabledMutex);
+        if (profile->enabled)
+            g_disabledFollowers.erase(id);
+        else
+            g_disabledFollowers.insert(id);
+    }
+    AdoptPins(follower, profile->pins);
+}
+
+} // namespace
+
+void NoteEdit(ft::ActorId id)
+{
+    MarkDirty(id);
+}
+
+void SaveEdits()
+{
+    std::unordered_set<ft::ActorId> dirty;
+    {
+        std::scoped_lock lock(g_dirtyMutex);
+        dirty.swap(g_dirty);
+    }
+    for (const ft::ActorId id : dirty)
+    {
+        const auto it = g_identities.find(id);
+        if (it == g_identities.end())
+        {
+            logger::warn("tactics: an edit to {:08X} has no file to go to -- not yet seen by the tick", id);
+            continue;
+        }
+        ft::Profile profile;
+        profile.followerName = it->second.name;
+        profile.followerForm = it->second.form;
+        profile.enabled = IsFollowerEnabled(id);
+        profile.rules = GetRules(id);
+        profile.pins = PlayerPinsOf(id);
+        SaveProfile(it->second, profile);
+    }
+}
+
+namespace
+{
 
 std::mutex g_viewMutex;
 std::vector<FollowerView> g_view;
@@ -549,6 +628,13 @@ void Tick()
     // book when a fight begins, and a rule may pin on the very first tick
     // of one. Run after the rules, it remembered the rule's pin as the
     // player's, and restored it when the fight ended.
+    // Anyone new reads their file first -- BEFORE the pin pass, which on a
+    // follower's first fighting tick remembers the book for after the
+    // fight: pins adopted after that would be let go when it ended, as if
+    // the fight had made them.
+    for (auto *follower : followers)
+        LoadIfNew(follower);
+
     KeepPins(followers);
 
     // Out of combat there is nothing to decide, so the expensive work -- the
@@ -670,8 +756,26 @@ void PublishFollower(RE::Actor *actor)
 
 void SetRules(ft::ActorId id, ft::RuleSet rules)
 {
-    std::scoped_lock lock(g_rulesMutex);
-    g_ruleSets[id] = std::move(rules);
+    {
+        std::scoped_lock lock(g_rulesMutex);
+        g_ruleSets[id] = std::move(rules);
+    }
+    MarkDirty(id);
+}
+
+void ReloadProfiles()
+{
+    SaveEdits();
+    g_identities.clear();
+    ForgetPins();
+    {
+        std::scoped_lock lock(g_rulesMutex);
+        g_ruleSets.clear();
+    }
+    {
+        std::scoped_lock lock(g_disabledMutex);
+        g_disabledFollowers.clear();
+    }
 }
 
 const ft::RuleSet &DefaultRuleSet()
@@ -702,7 +806,8 @@ void Install()
 
     logger::info("tactics: tick {:.0f} ms, combat only, max {} followers", kTickInterval * 1000.0,
                  kMaxManagedFollowers);
-    logger::info("tactics: default rule set -- self health below 50% -> drink the best health potion");
+    logger::info("tactics: a follower starts with no rules; edits are written to "
+                 "Data/SKSE/Plugins/FollowerTactics/followers/");
 
     // Detached on purpose: Skyrim never unloads SKSE plugins, and joining a
     // sleeping thread during process teardown is a good way to hang on exit.
@@ -718,11 +823,14 @@ void Install()
 
 void SetFollowerEnabled(ft::ActorId id, bool enabled)
 {
-    std::scoped_lock lock(g_disabledMutex);
-    if (enabled)
-        g_disabledFollowers.erase(id);
-    else
-        g_disabledFollowers.insert(id);
+    {
+        std::scoped_lock lock(g_disabledMutex);
+        if (enabled)
+            g_disabledFollowers.erase(id);
+        else
+            g_disabledFollowers.insert(id);
+    }
+    MarkDirty(id);
 }
 
 bool IsFollowerEnabled(ft::ActorId id)

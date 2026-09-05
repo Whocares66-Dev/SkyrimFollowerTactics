@@ -100,9 +100,21 @@ in `docs/PLAN.md`.
   whoever is in combat and hostile to the player. Verify against the log's
   once-per-fight "allies / enemies" line that a dead enemy drops out and a
   distant hostile is not counted before the player is in its fight.
-- **Rules do not survive a restart.** Rule sets live in memory. Phase 2's
-  JSON load/save (the shareable profile format) and per-follower profiles
-  are the fix; wire names are already stable for it.
+- **Tactics files, in play.** Written on panel close and read at first
+  sight (`docs/PROFILES.md`), built 2026-09-04 and not yet run in game.
+  Verify: a rule survives a restart; the file lands in MO2's overwrite;
+  the panel's close event fires from the framework (the log says
+  "wrote N rule(s)"); a hand-edited file with an unknown predicate loses
+  that rule and keeps the rest, with the warning in the log; a pin
+  survives a restart, and a pin on a thing sold before the restart is
+  forgotten ("does not hold -- not worn now" in the log).
+- **Uninstall, in play.** Pin an item, save, remove the DLL, load: does
+  the engine's prevent-removal flag keep the item on for good, or lift on
+  the next outfit refresh? If it holds, the mod's uninstall note has to
+  say "unpin before removing", or the take-off must clear it.
+- **Shareable named profiles.** One file per follower is the whole of
+  it today; copying a list between followers, or a profile a forum can
+  hand round, is a second kind of file over the same format.
 - **Named-potion effect check.** `DrinkPotion` has no "already in effect"
   test; only its per-potion cooldown spaces it. The strongest-of-a-kind
   actions do check the restore effect.

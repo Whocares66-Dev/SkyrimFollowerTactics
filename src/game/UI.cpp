@@ -3849,6 +3849,17 @@ void SyncFollowers()
     }
 }
 
+// The framework's menu opening and closing. On close, every unsaved edit
+// goes to disk -- once, on the game thread, where the forms a rule names
+// can be read to write them by plugin; this callback's thread is not that.
+void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
+{
+    if (type != SKSEMenuFramework::Model::kCloseMenu)
+        return;
+    if (auto *task = SKSE::GetTaskInterface())
+        task->AddTask([] { SaveEdits(); });
+}
+
 void Install()
 {
     // Soft dependency, and the reason this whole file is safe to ship: without
@@ -3863,6 +3874,18 @@ void Install()
 
     SKSEMenuFramework::SetSection("Follower Tactics");
     SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
+
+    // Edits are written when the panel closes. Registered by hand rather
+    // than through the SDK's Event wrapper, which cannot say whether the
+    // registration took; a framework without the export would leave every
+    // edit unsaved with nothing in the log. Never unregistered: SKSE
+    // plugins are never unloaded.
+    using namespace SKSEMenuFramework::Model;
+    if (auto *registerEvent = Internal::GetFunction<RegisterEventFuction>("RegisterEventPriority"))
+        registerEvent(OnMenuEvent, 0.0f);
+    else
+        logger::error("ui: the framework has no RegisterEventPriority -- tactics edits will not be saved "
+                      "when the panel closes, only when a game is loaded");
 
     logger::info("ui: registered with SKSE Menu Framework (F1). "
                  "Follower entries appear as followers do.");
