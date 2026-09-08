@@ -15,28 +15,36 @@
 // alias already has (PlayerFollowerCombatOverridePackageList, 0005C852). The
 // game's own worked example is Mercer Frey, whose "cast Nightingale Strife at
 // the player" UseMagic package sits in exactly such a list, gated by a
-// condition on quest stage. Ours are gated by a faction rank instead, because a
-// faction rank is something this plugin can set in one call.
+// condition on quest stage. Ours are gated by `GetIsReference(<holder>)`: a
+// condition whose parameter is a pointer this plugin writes.
 //
 // So the bridge from a rule to a cast is:
 //
-//     load        our eight packages are inserted at the FRONT of the vanilla
-//                 follower combat-override list
-//     rule fires  repoint the slot's Spell input, set the follower's rank in
-//                 FT_CastNow to her slot number, ask the AI to re-evaluate
+//     load        sixteen packages are MADE IN MEMORY (game/Forms.h), each
+//                 a copy of a vanilla instance with its own condition
+//     rule fires  repoint the slot's Spell input, put the record at the
+//                 FRONT of the vanilla follower combat-override list, point
+//                 the slot's condition at the follower, ask the AI to
+//                 re-evaluate
 //     the AI      finds the first list entry whose condition passes -- ours --
 //                 and runs the UseMagic procedure: animation, cost, interrupts
-//     afterwards  the tick clears the rank, so the condition fails again and
-//                 the list falls through to the vanilla entries exactly as
-//                 before
+//     afterwards  the tick takes the record out of the list and clears the
+//                 condition, so the list is exactly vanilla again
 //
-// WHAT THE PLUGIN HOLDS
-// Eight UseMagic packages FT_CastSlot1..8 (0x800..0x807) and the faction
-// FT_CastNow (0x808) with ranks 0..15. Slot k's condition is
-// GetFactionRank(FT_CastNow) == k.
+// NO PLUGIN FILE, NOTHING IN THE SAVE
+// Every record this needs is created at load and forgotten at exit. The load
+// order does not change, the save never references a form of ours (every
+// lease is released on the save message, before the engine writes), and
+// removing the DLL removes the mod. docs/MAGIC.md "Forms at runtime" has what
+// was read from the executable to establish that.
+//
+// WHAT IS MADE
+// Eight UseMagic packages (copies of Mercer's cast-at-player record), eight
+// Shout packages (copies of Tsun's Clear Skies record), eight one-word wrapper
+// shouts and their words. Slot k's condition is GetIsReference(holder of k).
 //
 // THE POOL
-// The eight records are a resource pool. A follower takes a free record when
+// The sixteen records are a resource pool. A follower takes a free record when
 // a cast rule fires, the record is HERS ALONE until the cast has run (or the
 // window has passed), and then it goes back. Never shared, even for the same
 // spell: every input in the record -- spell, target, cast time -- belongs to
@@ -50,9 +58,11 @@
 // specific reference for anyone else), and for a concentration spell the two
 // CastTime floats that say how long the stream runs. The container that holds
 // a package's inputs is not mapped by CommonLibSSE, so none of these offsets
-// is hard-coded: CalibrateInputs finds each one at load by looking for the
-// value the record was authored with (Fast Healing, Self, 0.5 / 1.0), and
-// nothing is written through a layout that did not read back as expected.
+// is hard-coded: the layout is found at load by looking for values vanilla
+// records were authored with (Mercer's spell, the player as his target, his
+// 0.5 / 1.0 cast time; Colette's Target = Self), and nothing is written
+// through a layout that did not read back as expected. The copies are then
+// checked the same way: Fast Healing is written into each and read back.
 //
 // LIMITS, STATED
 // - Only a follower the vanilla DialogueFollower alias holds is covered: the
@@ -73,28 +83,29 @@ class Actor;
 namespace ft::game
 {
 
-// The pool is sixteen package records in one faction's ranks: slot i passes
-// when the follower's rank in FT_CastNow is i. Slots 0..7 are UseMagic
+// The pool is sixteen package records. Slots 0..7 are UseMagic
 // (FT_CastSlot1..8) and cast a spell from a hand; slots 8..15 are Shout
 // (FT_ShoutSlot1..8) and cast from the voice, which is how a POWER is
 // performed -- the UseMagic procedure never fires one (docs/ACTIONS.md 7).
 // Each Shout slot's record points at its own wrapper shout
 // (FT_PowerShout1..8), a one-word shout whose word's spell is repointed at
-// the rule's power for the lease.
+// the rule's power for the lease. The local IDs are the low bits of the
+// forms' runtime IDs (game/Forms.h), kept from the plugin-file era so the
+// log reads the same.
 inline constexpr std::uint32_t kFirstPackageLocalID = 0x000800;      // FT_CastSlot1..8
-inline constexpr std::uint32_t kCastFactionLocalID = 0x000808;       // FT_CastNow
+inline constexpr std::uint32_t kFirstWordLocalID = 0x000809;         // FT_PowerWord1..8
 inline constexpr std::uint32_t kFirstWrapperShoutLocalID = 0x000811; // FT_PowerShout1..8
 inline constexpr std::uint32_t kFirstShoutPackageLocalID = 0x000819; // FT_ShoutSlot1..8
 inline constexpr std::size_t kSpellSlots = 8;
 inline constexpr std::size_t kVoiceSlots = 8;
 inline constexpr std::size_t kPackageSlots = kSpellSlots + kVoiceSlots;
-inline constexpr const char *kPluginName = "FollowerTactics.esp";
 
 // The quest that owns the vanilla follower alias.
 inline constexpr std::uint32_t kDialogueFollowerQuestID = 0x000750BA;
 
-// The combat-override lists our packages are spliced into, front of each. A
-// plugin that is not loaded is skipped. Only the vanilla follower list today;
+// The combat-override lists a leased record is put at the front of, for the
+// length of the lease; between casts they are exactly vanilla. A plugin that
+// is not loaded is skipped. Only the vanilla follower list today;
 // docs/MAGIC.md "Follower frameworks" records what SFF and NFF use (SFF the
 // same vanilla list, NFF its own nwsFollowerCombatPkList 007429), for when
 // integrating with them is on the table.
@@ -107,13 +118,13 @@ inline constexpr OverrideList kOverrideLists[] = {
     {"Skyrim.esm", 0x0005C852}, // PlayerFollowerCombatOverridePackageList
 };
 
-// The spell every slot ships with, so the memory probe has a known value to
-// find. Fast Healing.
+// The spell every slot is pointed at once made, and the check that the
+// layout found on vanilla records holds on the copies. Fast Healing.
 inline constexpr std::uint32_t kCanarySpellID = 0x0002F3B8;
 
-// Resolve the pool and splice it into the follower combat-override list. Safe
-// when the plugin is absent: everything reports unavailable and cast rules stay
-// unsupported, which is the right behaviour for a mod whose ESL is unticked.
+// Find the input layout on vanilla records, make the pool, splice it into
+// the follower combat-override list. If any step fails everything reports
+// unavailable and cast rules stay unsupported; the log says which step.
 void InitPackages();
 
 [[nodiscard]] bool PackagesAvailable();
@@ -139,14 +150,10 @@ void InitPackages();
 // skipped for that turn without spending a cooldown.
 [[nodiscard]] bool IsMidCast(const RE::Actor *actor);
 
-// Locate the Spell, Target and CastTime inputs in memory by their canaries.
-// Writes nothing; what it fails to find, RequestCast refuses to write.
-void CalibrateInputs();
-
 enum class CastRequest : std::uint8_t
 {
     Armed,          // her slot's condition now passes; the AI decides the rest
-    NoPackages,     // the ESL is not enabled
+    NoPackages,     // the pool could not be made at load (see the log)
     PoolBusy,       // every record is held by a follower mid-cast
     AlreadyCasting, // this follower already holds a record; one cast at a time
     SpellNotInSlot, // the Spell input could not be repointed at that spell
@@ -176,21 +183,25 @@ enum class CastRequest : std::uint8_t
 [[nodiscard]] CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId);
 
 // Called every tick from the game thread. Watches held slots: reports when
-// the AI picks our package up, and releases the record -- rank back to -1 --
-// once the cast has run or the window has passed. A record is never held
-// longer than the window while the tick runs; that is the backstop that keeps
-// the pool from draining.
+// the AI picks our package up, and releases the record once the cast has
+// run or the window has passed. A record is never held longer than the
+// window while the tick runs; that is the backstop that keeps the pool from
+// draining.
 //
-// `followers` is everyone under management. Any of them carrying a rank while
-// holding no record has a STALE rank -- typically loaded from a save made
-// mid-cast -- and would otherwise pass her slot's condition forever. It is
-// cleared here, so the faction can never wedge a follower into casting on
-// every evaluation.
+// `followers` is everyone under management. Any of them carrying a wrapper
+// shout while holding no record has one left by a lease that never ended
+// (a crash mid-cast); it is taken back here.
 void TickPackages(double now, const std::vector<RE::Actor *> &followers);
 
+// Release every held record now. For the save message: a follower running
+// one of our packages, carrying a wrapper, or shouting a re-typed power at
+// the instant the engine writes would put that into the save, and nothing
+// of ours belongs there. The cast in progress, if any, is abandoned.
+void ReleaseAllLeases(const char *why);
+
 // Forget every held record. For a game load: the handles are meaningless in
-// the new session and the ranks, if any survived in the save, are swept by the
-// first tick.
+// the new session, and the conditions are cleared so no slot passes for an
+// actor object that no longer exists.
 void ResetPackages();
 
 } // namespace ft::game

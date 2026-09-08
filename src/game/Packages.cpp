@@ -1,5 +1,6 @@
 #include "game/Packages.h"
 
+#include "game/Forms.h"
 #include "game/Util.h"
 
 #include <algorithm>
@@ -17,7 +18,6 @@ namespace
 {
 
 std::array<RE::TESPackage *, kPackageSlots> g_slots{};
-RE::TESFaction *g_faction = nullptr;
 bool g_available = false;
 
 // How long the AI gets to START the cast before the record is taken back.
@@ -33,43 +33,52 @@ constexpr double kArmWindowSeconds = 2.5;
 // had a second's hesitation on one of the two.
 constexpr double kVoiceArmWindowSeconds = 3.0;
 
-// The rank that means "no request". Every slot condition is an equality
-// against 0..15, so any other value fails them all.
-constexpr std::int8_t kRankNone = -1;
+void TakeOutOfLists(RE::TESPackage *pkg);
 
-void SetRank(RE::Actor *actor, std::int8_t rank, const char *why);
-
-// The rank, as an owned resource.
+// The condition, as an owned resource.
 //
-// Setting a follower's rank is what makes her package's condition pass, and
-// forgetting to unset it is the one mistake this file must not be able to
-// make: she would pass that condition on every evaluation for the rest of the
-// session. So the rank is held by an object, and the ONLY way to give a record
-// back is to destroy that object. The destructor clears the rank and asks the
-// AI to re-evaluate, so there is no release path that can skip either.
+// Pointing a slot's condition at a follower is what makes her package's
+// condition pass, and forgetting to clear it is the one mistake this file
+// must not be able to make: she would pass that condition on every
+// evaluation for the rest of the session. So the pointer is held by an
+// object, and the ONLY way to give a record back is to destroy that object.
+// The destructor clears the parameter and asks the AI to re-evaluate, so
+// there is no release path that can skip either.
 //
 // What this does NOT guarantee is timing. Nothing in C++ ends the lease on its
 // own; the tick does, on a signal or at the deadline. RAII makes the cleanup
 // unskippable, the deadline makes it prompt.
-class RankLease
+//
+// The condition is GetIsReference(param) == 1 on the subject: the engine
+// compares the evaluating actor's pointer with the parameter's, null-safe
+// (read from the executable, docs/MAGIC.md "Forms at runtime"). Nothing is
+// written to the actor, so nothing about a lease can reach a save through
+// her.
+class SlotLease
 {
   public:
-    explicit RankLease(RE::Actor *actor, std::int8_t rank) : actor_(actor->GetHandle()), id_(actor->GetFormID())
+    SlotLease(RE::Actor *actor, RE::TESConditionItem *condition)
+        : actor_(actor->GetHandle()), id_(actor->GetFormID()), condition_(condition)
     {
-        SetRank(actor, rank, "leased");
+        condition_->data.functionData.params[0] = actor;
+        logger::info("  {:08X} holds the condition (leased)", id_);
     }
 
-    RankLease(const RankLease &) = delete;
-    RankLease &operator=(const RankLease &) = delete;
+    SlotLease(const SlotLease &) = delete;
+    SlotLease &operator=(const SlotLease &) = delete;
 
-    ~RankLease()
+    ~SlotLease()
     {
+        // The parameter is cleared whatever became of the actor: a pointer
+        // to an actor object that may be gone must not stay in a condition
+        // the AI evaluates.
+        condition_->data.functionData.params[0] = nullptr;
         if (!live_)
             return;
         auto actor = actor_.get();
         if (!actor)
-            return; // gone; the stale-rank sweep covers her if she returns
-        SetRank(actor.get(), kRankNone, "lease ended");
+            return;
+        logger::info("  {:08X} releases the condition (lease ended)", id_);
 
         // Without this she stays in the package until the AI's own next
         // evaluation, which after a completed cast can be a long time: that
@@ -77,8 +86,8 @@ class RankLease
         actor->EvaluatePackage(/*immediate*/ true, /*resetAI*/ false);
     }
 
-    // After a game load the handle may resolve to an unrelated actor. Abandon
-    // rather than release: the ranks, if any survived in the save, are swept.
+    // After a game load the handle may resolve to an unrelated actor. Do not
+    // re-evaluate anyone; the parameter is still cleared.
     void Abandon() noexcept
     {
         live_ = false;
@@ -96,6 +105,7 @@ class RankLease
   private:
     RE::ActorHandle actor_;
     std::uint32_t id_;
+    RE::TESConditionItem *condition_;
     bool live_ = true;
 };
 
@@ -119,7 +129,10 @@ struct Slot
     // release; null when nothing is leased, and for a shout.
     RE::SpellItem *power = nullptr;
     RE::MagicSystem::SpellType powerType = RE::MagicSystem::SpellType::kSpell;
-    std::optional<RankLease> lease;
+    // The record's one condition; the lease points its parameter at the
+    // holder.
+    RE::TESConditionItem *condition = nullptr;
+    std::optional<SlotLease> lease;
     double armedAt = 0.0;
     double until = 0.0;
     bool seenRunning = false;
@@ -254,22 +267,28 @@ constexpr std::size_t kNotCalibrated = static_cast<std::size_t>(-1);
 std::size_t g_spellOuter = kNotCalibrated;
 std::size_t g_spellInner = kNotCalibrated;
 
-// PackageTarget::targType values, from the PTDA type field. The record ships
-// every slot's Target as Self, which is the canary for this input: the
-// pointer at the same outer offset as the Spell input must lead to a
-// PackageTarget whose type reads kSelf before anything is written through it.
-// LEARNED from game data rather than assumed: the first version took Self =
-// 5 from the record library's arm order and the engine read 6. Two authored
-// records are the canaries: every one of our slots ships with Target = Self,
-// so its type byte IS the Self value; Mercer's
-// TG08BMercerCombatOverrideCastAtPlayer ships with Target = PlayerRef, so its
+// The vanilla records the layout is read from. Mercer's cast-at-player
+// package (TG08BMercerCombatOverrideCastAtPlayer) is authored with Spell =
+// Nightingale Strife, Target = the player, CastTime 0.5 / 1.0 -- and is the
+// record our spell slots are copied from. Colette's practice heal
+// (WCollegeColettePracticeHeal13x2) is authored with Target = Self. Tsun's
+// Clear Skies package (MQ305TsunReturnShout) is the Shout-template instance
+// the voice slots are copied from.
+constexpr std::uint32_t kMercerCastAtPlayerID = 0x000FDBC3;
+constexpr std::uint32_t kMercerSpellID = 0x000FDBC7; // Nightingale Strife
+constexpr std::uint32_t kColetteHealID = 0x00098BAD;
+constexpr std::uint32_t kTsunShoutID = 0x000EC3A5;
+
+// PackageTarget::targType values, from the PTDA type field. LEARNED from
+// game data rather than assumed: the first version took Self = 5 from the
+// record library's arm order and the engine read 6. Colette's Target is
+// Self, so its type byte IS the Self value; Mercer's is the player, so its
 // type byte is the specific-reference value -- confirmed by its handle
 // matching the player's. Nothing is written until both read consistently.
-constexpr std::uint32_t kMercerCastAtPlayerID = 0x000FDBC3;
 
 // The CastTime inputs: how long the UseMagic procedure holds a CONCENTRATION
-// stream. Two floats, authored 0.5 and 1.0 in every slot -- the canary for
-// their layout, which is the named package data's 8-byte slot at +08 (the
+// stream. Two floats, authored 0.5 and 1.0 in Mercer's record -- the canary
+// for their layout, which is the named package data's 8-byte slot at +08 (the
 // Spell input's hex dump showed the same slot empty and its pointer at +10).
 constexpr float kAuthoredCastTimeMin = 0.5f;
 constexpr float kAuthoredCastTimeMax = 1.0f;
@@ -443,25 +462,6 @@ bool InFollowerAlias(RE::Actor *actor)
     return found;
 }
 
-void SetRank(RE::Actor *actor, std::int8_t rank, const char *why)
-{
-    actor->AddToFaction(g_faction, rank);
-
-    // Read it back. Whether AddToFaction updates an existing membership's rank
-    // or only inserts is not something the header says, and the condition on
-    // every package reads exactly this value.
-    //
-    // Measured: setting -1 REMOVES her from the faction, and GetFactionRank
-    // then reports -2 ("not in faction"). Either negative answer means no
-    // slot condition can pass, which is all "cleared" has to mean.
-    const auto readBack = actor->GetFactionRank(g_faction, false);
-    const bool ok = (readBack == rank) || (rank < 0 && readBack < 0);
-    if (!ok)
-        logger::warn("  {:08X} rank {} ({}) -- read back {} INSTEAD", actor->GetFormID(), rank, why, readBack);
-    else
-        logger::info("  {:08X} rank {} ({}, read back {})", actor->GetFormID(), rank, why, readBack);
-}
-
 // The PackageTarget behind a named input, or null if the layout has not been
 // established. Same shape as the Spell input: IPackageData + outer -> a
 // PackageTarget, which CommonLibSSE maps (targType at 00, target union at 08).
@@ -609,6 +609,32 @@ bool IsWrapperForm(std::uint32_t formID)
     return false;
 }
 
+// Where her weapons are, for the timing lines: the Shout procedure has been
+// measured taking 0.3 to 1.5 s to begin, and a sheathe-and-draw around the
+// shout is one candidate explanation.
+const char *WeaponStateName(const RE::Actor *actor)
+{
+    const auto *state = actor ? actor->AsActorState() : nullptr;
+    if (!state)
+        return "?";
+    switch (state->GetWeaponState())
+    {
+    case RE::WEAPON_STATE::kSheathed:
+        return "sheathed";
+    case RE::WEAPON_STATE::kWantToDraw:
+        return "wants to draw";
+    case RE::WEAPON_STATE::kDrawing:
+        return "drawing";
+    case RE::WEAPON_STATE::kDrawn:
+        return "drawn";
+    case RE::WEAPON_STATE::kWantToSheathe:
+        return "wants to sheathe";
+    case RE::WEAPON_STATE::kSheathing:
+        return "sheathing";
+    }
+    return "?";
+}
+
 // Is this actor already casting through some slot? A second request from the
 // same follower before the first resolves would put two ranks on her.
 bool AlreadyCasting(const RE::Actor *actor)
@@ -619,8 +645,8 @@ bool AlreadyCasting(const RE::Actor *actor)
     return false;
 }
 
-// The one way a record comes back. Destroying the lease clears the rank and
-// re-evaluates; nothing else here touches the rank on the way out.
+// The one way a record comes back. Destroying the lease clears the condition
+// and re-evaluates; nothing else here touches the condition on the way out.
 void Release(std::size_t i)
 {
     // The wrapper comes off before the lease goes: the lease is what still
@@ -636,6 +662,9 @@ void Release(std::size_t i)
         g_pool[i].power = nullptr;
     }
     g_pool[i].shouting = nullptr;
+    // Out of the lists before the lease goes: the lease's destructor asks the
+    // AI to re-evaluate, and the record must not be there to be found.
+    TakeOutOfLists(g_slots[i]);
     g_pool[i].lease.reset();
     g_pool[i].target = {};
     SetPackageTarget(g_slots[i], nullptr); // no target handle outlives its lease
@@ -647,54 +676,77 @@ void Release(std::size_t i)
     g_pool[i].streaming = false;
 }
 
-// Put our slots at the FRONT of every follower combat-override list we know
-// of. Order matters: the vanilla list's last entry has no conditions, so
-// anything appended after it is never reached. Returns how many lists were
-// spliced; zero means casting cannot work in this load order.
-std::size_t SpliceIntoOverrideLists()
+// The follower combat-override lists, resolved once. Empty means casting
+// cannot work in this load order.
+std::vector<RE::BGSListForm *> g_lists;
+
+std::string ListContents(const RE::BGSListForm *list)
+{
+    // FormIDs, not editor ids: packages carry no editor id at runtime, and
+    // the first version of this line printed "[]" for a ten-entry list.
+    std::string ids;
+    for (auto *form : list->forms)
+    {
+        if (!ids.empty())
+            ids += ", ";
+        ids += fmt::format("{:08X}", form ? form->GetFormID() : 0);
+    }
+    return ids;
+}
+
+std::size_t ResolveOverrideLists()
 {
     auto *handler = RE::TESDataHandler::GetSingleton();
-    std::size_t spliced = 0;
-
+    g_lists.clear();
     for (const auto &entry : kOverrideLists)
     {
         auto *list = handler ? handler->LookupForm<RE::BGSListForm>(entry.localID, entry.plugin) : nullptr;
         if (!list)
         {
-            logger::info("packages: {} not loaded -- its follower list is not spliced", entry.plugin);
+            logger::info("packages: {} not loaded -- its follower list is not used", entry.plugin);
             continue;
         }
+        logger::info("packages: {} list {:08X} is [{}] ({} entries); a record is put at its front for each cast",
+                     entry.plugin, list->GetFormID(), ListContents(list), list->forms.size());
+        g_lists.push_back(list);
+    }
+    return g_lists.size();
+}
 
+// A record is in the lists only while it is leased. At the FRONT: the
+// vanilla list's last entry has no conditions, so anything appended after it
+// is never reached. Between casts the lists are exactly vanilla. Game-thread
+// only, as everything here is: the AI reads these lists on the same thread
+// the tick's task runs on, so nothing walks a list while it is rebuilt.
+void PutInLists(RE::TESPackage *pkg)
+{
+    for (auto *list : g_lists)
+    {
+        std::vector<RE::TESForm *> keep(list->forms.begin(), list->forms.end());
+        list->forms.clear();
+        list->forms.push_back(pkg);
+        for (auto *form : keep)
+            if (form != pkg)
+                list->forms.push_back(form);
+        logger::info("  list {:08X} is now [{}]", list->GetFormID(), ListContents(list));
+    }
+}
+
+void TakeOutOfLists(RE::TESPackage *pkg)
+{
+    for (auto *list : g_lists)
+    {
         std::vector<RE::TESForm *> keep;
         for (auto *form : list->forms)
-        {
-            bool ours = false;
-            for (auto *slot : g_slots)
-                ours = ours || (form == slot);
-            if (!ours)
+            if (form != pkg)
                 keep.push_back(form);
-        }
-
+        if (keep.size() == list->forms.size())
+            continue;
         list->forms.clear();
-        for (auto *slot : g_slots)
-            list->forms.push_back(slot);
         for (auto *form : keep)
             list->forms.push_back(form);
-
-        // FormIDs, not editor ids: packages carry no editor id at runtime, and
-        // the first version of this line printed "[]" for a ten-entry list.
-        std::string ids;
-        for (auto *form : list->forms)
-        {
-            if (!ids.empty())
-                ids += ", ";
-            ids += fmt::format("{:08X}", form ? form->GetFormID() : 0);
-        }
-        logger::info("packages: {} list {:08X} is now [{}] ({} entries, ours first: {})", entry.plugin,
-                     list->GetFormID(), ids, list->forms.size(), !list->forms.empty() && list->forms[0] == g_slots[0]);
-        ++spliced;
+        logger::info("  list {:08X} is back to [{}]", list->GetFormID(), ListContents(list));
     }
-    return spliced;
 }
 
 } // namespace
@@ -706,7 +758,7 @@ const char *ToString(CastRequest r) noexcept
     case CastRequest::Armed:
         return "cast requested";
     case CastRequest::NoPackages:
-        return "FollowerTactics.esp not loaded";
+        return "the cast packages could not be made at load (see FollowerTactics.log)";
     case CastRequest::PoolBusy:
         return "every package slot is mid-cast; skipped this turn";
     case CastRequest::AlreadyCasting:
@@ -769,7 +821,7 @@ std::size_t FreeSlot(std::size_t from, std::size_t to)
 }
 
 // The shared end of a request: the slot is pointed where it should be, and
-// this makes the follower's rank pass its condition and asks the AI to look.
+// this points the slot's condition at the follower and asks the AI to look.
 CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double window)
 {
     auto &slot = g_pool[chosen];
@@ -794,17 +846,19 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
         logger::info("  animation sink {} on {:08X}",
                      actor->AddAnimationGraphEventSink(&g_fireSink) ? "added" : "REFUSED", actor->GetFormID());
 
-    // The lease sets the rank in its constructor. From here on the record is
-    // hers until the lease is destroyed, and only that clears the rank.
-    slot.lease.emplace(actor, static_cast<std::int8_t>(chosen));
+    // Into the lists, then the lease points the condition at her in its
+    // constructor. From here on the record is hers until the lease is
+    // destroyed, and only that clears the condition.
+    PutInLists(g_slots[chosen]);
+    slot.lease.emplace(actor, slot.condition);
 
     // Immediate, or she finishes whatever she is doing first and the rule's
     // timing -- the entire point of this route -- is lost.
     actor->EvaluatePackage(/*immediate*/ true, /*resetAI*/ false);
 
     const auto *current = actor->GetCurrentPackage();
-    logger::info("  current package after evaluate: {:08X} ({})", current ? current->GetFormID() : 0,
-                 current == g_slots[chosen] ? "OURS" : "not ours yet -- watching");
+    logger::info("  current package after evaluate: {:08X} ({}); weapons {}", current ? current->GetFormID() : 0,
+                 current == g_slots[chosen] ? "OURS" : "not ours yet -- watching", WeaponStateName(actor));
     slot.seenRunning = current == g_slots[chosen];
 
     return CastRequest::Armed;
@@ -1005,6 +1059,11 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
 
 void ResetPackages()
 {
+    // The lists live in memory across a load; an entry a lease left there
+    // (abandoned below) would otherwise stay.
+    for (auto *pkg : g_slots)
+        if (pkg)
+            TakeOutOfLists(pkg);
     for (auto &slot : g_pool)
     {
         if (slot.power)
@@ -1023,28 +1082,32 @@ void ResetPackages()
     g_sinked.clear();
 }
 
+void ReleaseAllLeases(const char *why)
+{
+    if (!g_available)
+        return;
+    for (std::size_t i = 0; i < kPackageSlots; ++i)
+    {
+        if (!g_pool[i].Busy())
+            continue;
+        logger::info("packages: slot {} released after {:.1f} s: {}", i, TacticsSeconds() - g_pool[i].armedAt, why);
+        Release(i);
+    }
+}
+
 void TickPackages(double now, const std::vector<RE::Actor *> &followers)
 {
     if (!g_available)
         return;
 
-    // Stale ranks first. A follower who holds no record has no business in
-    // the faction at a slot rank; the usual cause is a save made while she
-    // was armed. Cleared, or her slot's condition passes on every evaluation
-    // for the rest of the session.
+    // A wrapper shout left in a base's spell list by a lease that never
+    // ended -- a crash mid-cast, since a save releases every lease first --
+    // would list under Shouts for every actor of that base. Taken back from
+    // any follower holding no record.
     for (auto *follower : followers)
     {
         if (!follower || AlreadyCasting(follower))
             continue;
-        const auto rank = follower->GetFactionRank(g_faction, false);
-        if (rank >= 0)
-        {
-            logger::warn("packages: {} carried rank {} with no record held -- clearing",
-                         follower->GetName() ? follower->GetName() : "?", rank);
-            SetRank(follower, kRankNone, "stale");
-        }
-        // And a wrapper shout left in the base's list, by a lease a game
-        // load abandoned: the base object outlives the load.
         for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
             TakeWrapper(follower, g_pool[i].wrapper);
     }
@@ -1070,7 +1133,8 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         if (running && !slot.seenRunning)
         {
             slot.seenRunning = true;
-            logger::info("packages: {} is RUNNING slot {} (spell {:08X})", name, i, slot.spell);
+            logger::info("packages: {} is RUNNING slot {} (spell {:08X}) after {:.1f} s; weapons {}", name, i,
+                         slot.spell, now - slot.armedAt, WeaponStateName(actor.get()));
         }
 
         // ONE release, with a reason. The deadline is the guarantee: a record
@@ -1095,8 +1159,8 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         {
             slot.extended = true;
             slot.until = (std::max)(slot.until, now + 3.0);
-            logger::info("packages: {} began the {} on slot {} -- deadline stepped back", name,
-                         slot.shouting ? "shout" : "cast", i);
+            logger::info("packages: {} began the {} on slot {} after {:.1f} s -- deadline stepped back; weapons {}",
+                         name, slot.shouting ? "shout" : "cast", i, now - slot.armedAt, WeaponStateName(actor.get()));
         }
 
         const char *why = nullptr;
@@ -1122,94 +1186,49 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
     }
 }
 
-void InitPackages()
+namespace
 {
-    auto *handler = RE::TESDataHandler::GetSingleton();
-    if (!handler)
-    {
-        logger::info("packages: no data handler");
-        return;
-    }
-
-    std::size_t found = 0;
-    std::size_t wrappers = 0;
-    for (std::size_t i = 0; i < kSpellSlots; ++i)
-    {
-        g_slots[i] =
-            handler->LookupForm<RE::TESPackage>(static_cast<RE::FormID>(kFirstPackageLocalID + i), kPluginName);
-        if (g_slots[i])
-            ++found;
-    }
-    for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
-    {
-        const auto k = static_cast<RE::FormID>(i - kSpellSlots);
-        g_slots[i] = handler->LookupForm<RE::TESPackage>(kFirstShoutPackageLocalID + k, kPluginName);
-        g_pool[i].wrapper = handler->LookupForm<RE::TESShout>(kFirstWrapperShoutLocalID + k, kPluginName);
-        if (g_slots[i])
-            ++found;
-        if (g_pool[i].wrapper)
-            ++wrappers;
-    }
-    g_faction = handler->LookupForm<RE::TESFaction>(static_cast<RE::FormID>(kCastFactionLocalID), kPluginName);
-
-    g_available = (found == kPackageSlots) && (wrappers == kVoiceSlots) && g_faction;
-
-    if (!g_available)
-    {
-        // Optional content: a player who has not enabled the ESL simply does
-        // not get cast rules. Saying WHICH is missing matters though.
-        logger::info("packages: {}/{} packages, {}/{} wrapper shouts, faction {} in {} -- cast and power rules "
-                     "unavailable (is the ESL enabled, and is it the version with FT_ShoutSlot1..8?)",
-                     found, kPackageSlots, wrappers, kVoiceSlots, g_faction ? "found" : "MISSING", kPluginName);
-        return;
-    }
-
-    logger::info("packages: {} UseMagic slots, {} Shout slots with wrappers, and FT_CastNow resolved from {}",
-                 kSpellSlots, kVoiceSlots, kPluginName);
-    g_available = SpliceIntoOverrideLists() > 0;
-}
-
-bool PackagesAvailable()
+// Find the Spell, Target and CastTime input layout on the vanilla records.
+// Writes nothing; what it fails to find, RequestCast refuses to write. False
+// means the pool cannot be made: a package whose inputs cannot be checked
+// is a package that might cast the wrong thing at the wrong person.
+bool Calibrate()
 {
-    return g_available;
-}
+    auto *mercer = RE::TESForm::LookupByID<RE::TESPackage>(kMercerCastAtPlayerID);
+    auto *colette = RE::TESForm::LookupByID<RE::TESPackage>(kColetteHealID);
+    if (!mercer || !colette)
+    {
+        logger::info("probe: vanilla records missing (Mercer {}, Colette {}) -- cast rules stay off",
+                     static_cast<const void *>(mercer), static_cast<const void *>(colette));
+        return false;
+    }
 
-void CalibrateInputs()
-{
-    if (!g_available || !g_slots[0])
-        return;
-
-    auto *pkg = g_slots[0];
-    logger::info("probe: {} procedure={}", pkg->GetFormEditorID() ? pkg->GetFormEditorID() : "?",
-                 static_cast<std::uint32_t>(pkg->procedureType.get()));
-
-    auto *custom = skyrim_cast<RE::TESCustomPackageData *>(pkg->data);
+    auto *custom = skyrim_cast<RE::TESCustomPackageData *>(mercer->data);
     if (!custom)
     {
-        logger::info("probe: package data is not TESCustomPackageData -- template inputs unreachable");
-        return;
+        logger::info("probe: Mercer's package data is not TESCustomPackageData -- template inputs unreachable");
+        return false;
     }
-    logger::info("probe: {} inputs", custom->data.dataSize);
-
+    logger::info("probe: Mercer's package has {} inputs", custom->data.dataSize);
     LogNameMap(custom, "package");
 
     std::int8_t uid = 0;
     if (!FindInputUID(custom, "Spell", uid))
     {
         logger::info("probe: no 'Spell' input in the name map -- cast rules stay off");
-        return;
+        return false;
     }
 
     auto *input = InputByUID(custom, uid);
     logger::info("probe: 'Spell' is uid {} -> IPackageData {}", static_cast<int>(uid),
                  static_cast<const void *>(input));
     if (!input)
-        return;
+        return false;
 
-    auto *canary = RE::TESForm::LookupByID(kCanarySpellID);
+    auto *canary = RE::TESForm::LookupByID(kMercerSpellID);
     logger::info("probe: canary {} lives at {}", canary ? "found" : "MISSING", static_cast<const void *>(canary));
     if (!canary)
-        return;
+        return false;
 
     const auto canaryAddr = reinterpret_cast<std::uintptr_t>(canary);
 
@@ -1247,84 +1266,147 @@ void CalibrateInputs()
 
     if (g_spellOuter == kNotCalibrated)
     {
-        logger::info("probe: layout NOT identified -- cast rules will refuse anything but the "
-                     "spell each slot was authored with. Nothing will be written.");
-        return;
+        logger::info("probe: layout NOT identified -- cast rules stay off. Nothing will be written.");
+        return false;
     }
     logger::info("probe: calibrated (+{:02X} -> +{:02X}); cast rules can name any spell", g_spellOuter, g_spellInner);
 
-    // The Target input, same outer offset, two canaries. Ours all ship as
-    // Self: their type byte is the Self value, and all sixteen must agree --
-    // the shout slots too, whose Target input is the same kind of input.
-    std::int8_t self = -1;
-    for (std::size_t i = 0; i < kPackageSlots; ++i)
-    {
-        auto *pt = TargetOfInput(g_slots[i], "Target");
-        if (!pt || (i > 0 && pt->targType != self))
-        {
-            logger::info("probe: Target input of slot {} {} -- targets other than self stay off", i,
-                         pt ? fmt::format("reads type {} where slot 0 read {}", pt->targType, self) : "unreachable");
-            return;
-        }
-        self = pt->targType;
-    }
-
-    // Mercer's cast-at-player package is authored with a specific reference,
-    // the player. Its type byte is the specific-reference value, and its
-    // handle must be the player's or the union is not where we think.
-    auto *mercer = RE::TESForm::LookupByID<RE::TESPackage>(kMercerCastAtPlayerID);
+    // The Target input, same outer offset, two canaries. Colette's is Self:
+    // its type byte is the Self value. Mercer's is the player: its type byte
+    // is the specific-reference value, and its handle must be the player's
+    // or the union is not where we think.
+    auto *cpt = TargetOfInput(colette, "Target");
     auto *mpt = TargetOfInput(mercer, "Target");
     auto *player = RE::PlayerCharacter::GetSingleton();
-    if (!mpt || !player || mpt->target.handle.native_handle() != player->GetHandle().native_handle())
+    if (!cpt || !mpt || !player || mpt->target.handle.native_handle() != player->GetHandle().native_handle())
     {
-        logger::info("probe: Mercer's Target input {} -- targets other than self stay off",
-                     mpt ? fmt::format("type {} handle {:08X}, player handle {:08X}", mpt->targType,
+        logger::info("probe: Target inputs {} -- cast rules stay off",
+                     mpt ? fmt::format("Mercer's type {} handle {:08X}, player handle {:08X}", mpt->targType,
                                        mpt->target.handle.native_handle(),
                                        player ? player->GetHandle().native_handle() : 0)
                          : "unreachable");
-        return;
+        return false;
     }
-    if (mpt->targType == self)
+    if (mpt->targType == cpt->targType)
     {
-        logger::info("probe: Self and specific-reference read the same type {} -- targets other than self stay off",
-                     self);
-        return;
+        logger::info("probe: Self and specific-reference read the same type {} -- cast rules stay off", cpt->targType);
+        return false;
     }
-
-    g_typeSelf = self;
+    g_typeSelf = cpt->targType;
     g_typeSpecificReference = mpt->targType;
     g_targetCalibrated = true;
-
-    // The CastTime floats: every slot ships 0.5 and 1.0. Find where they sit
-    // in slot 0, then read both back at that offset on every slot before any
-    // stream length is written.
-    g_castTimeOffset = FindCastTimeOffset(g_slots[0]);
-    if (g_castTimeOffset == kNotCalibrated)
-    {
-        logger::info("probe: CastTime floats not found in slot 0; concentration spells will run the authored time");
-        return;
-    }
-    for (std::size_t i = 0; i < kSpellSlots; ++i)
-    {
-        const float *lo = FloatOfInput(g_slots[i], "CastTimeMin");
-        const float *hi = FloatOfInput(g_slots[i], "CastTimeMax");
-        if (!lo || !hi || *lo != kAuthoredCastTimeMin || *hi != kAuthoredCastTimeMax)
-        {
-            logger::info("probe: CastTime of slot {} reads {} / {} at +{:02X} -- expected {} / {}; concentration "
-                         "spells will run the authored time",
-                         i, lo ? *lo : -1.0f, hi ? *hi : -1.0f, g_castTimeOffset, kAuthoredCastTimeMin,
-                         kAuthoredCastTimeMax);
-            g_castTimeOffset = kNotCalibrated;
-            return;
-        }
-    }
-    g_castTimeCalibrated = true;
-    logger::info("probe: CastTime floats at +{:02X} on all {} spell slots; a concentration spell can be sustained "
-                 "for a chosen time",
-                 g_castTimeOffset, kSpellSlots);
-    logger::info("probe: Target input calibrated: Self = {}, specific reference = {} (from Mercer's package); cast "
+    logger::info("probe: Target input calibrated: Self = {} (Colette), specific reference = {} (Mercer); cast "
                  "rules can name any loaded actor",
                  g_typeSelf, g_typeSpecificReference);
+
+    // The CastTime floats: Mercer's record has 0.5 and 1.0.
+    g_castTimeOffset = FindCastTimeOffset(mercer);
+    if (g_castTimeOffset == kNotCalibrated)
+    {
+        logger::info("probe: CastTime floats not found; concentration spells will run the copied time");
+        return true; // a stream at a fixed length is a loss, not a hazard
+    }
+    g_castTimeCalibrated = true;
+    logger::info("probe: CastTime floats at +{:02X}; a concentration spell can be sustained for a chosen time",
+                 g_castTimeOffset);
+    return true;
+}
+
+// Point a fresh copy at the canary spell through the calibrated layout and
+// read it back: the proof that the layout found on Mercer's record holds on
+// a record the engine copied from it.
+bool ProveCopy(RE::TESPackage *pkg, const char *inputName, RE::TESForm *canary, std::size_t slot)
+{
+    if (!SetPackageInput(pkg, inputName, canary))
+    {
+        logger::error("packages: slot {}: could not write its {} input", slot, inputName);
+        return false;
+    }
+    auto *pt = TargetOfInput(pkg, inputName);
+    if (!pt || pt->target.object != canary)
+    {
+        logger::error("packages: slot {}: {} input read back {} after writing {:08X}", slot, inputName,
+                      pt ? fmt::format("{:08X}", pt->target.object ? pt->target.object->GetFormID() : 0)
+                         : std::string("nothing"),
+                      canary->GetFormID());
+        return false;
+    }
+    return true;
+}
+} // namespace
+
+void InitPackages()
+{
+    g_available = false;
+    if (!Calibrate())
+        return;
+
+    auto *mercer = RE::TESForm::LookupByID<RE::TESPackage>(kMercerCastAtPlayerID);
+    auto *tsun = RE::TESForm::LookupByID<RE::TESPackage>(kTsunShoutID);
+    auto *fastHealing = RE::TESForm::LookupByID(kCanarySpellID);
+    if (!tsun || !fastHealing)
+    {
+        logger::info("packages: vanilla records missing (Tsun's shout package {}, Fast Healing {}) -- cast rules "
+                     "stay off",
+                     static_cast<const void *>(tsun), static_cast<const void *>(fastHealing));
+        return;
+    }
+
+    // The spell slots: Mercer's record, Target back to Self, Spell to the
+    // canary and read back.
+    for (std::size_t i = 0; i < kSpellSlots; ++i)
+    {
+        auto *pkg = ClonePackage(mercer, kFirstPackageLocalID + static_cast<std::uint32_t>(i));
+        auto *condition = AddIsReferenceCondition(pkg);
+        if (!pkg || !condition || !ProveCopy(pkg, "Spell", fastHealing, i) || !SetPackageTarget(pkg, nullptr))
+        {
+            logger::error("packages: spell slot {} could not be made -- cast rules stay off", i);
+            return;
+        }
+        SetPackageCastTime(pkg, kAuthoredCastTimeMax);
+        g_slots[i] = pkg;
+        g_pool[i].condition = condition;
+        g_pool[i].spell = kCanarySpellID;
+    }
+
+    // The voice slots: a word, a wrapper shout on it, and Tsun's record with
+    // its Shout input on the wrapper and Target back to Self.
+    for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
+    {
+        const auto k = static_cast<std::uint32_t>(i - kSpellSlots);
+        auto *word = CreateWord(kFirstWordLocalID + k, "Power");
+        auto *wrapper =
+            word ? CreateShout(kFirstWrapperShoutLocalID + k, word, fastHealing, "FollowerTactics power") : nullptr;
+        auto *pkg = wrapper ? ClonePackage(tsun, kFirstShoutPackageLocalID + k) : nullptr;
+        auto *condition = AddIsReferenceCondition(pkg);
+        if (!pkg || !condition || !ProveCopy(pkg, "Shout", wrapper, i) || !SetPackageTarget(pkg, nullptr))
+        {
+            logger::error("packages: voice slot {} could not be made -- cast and power rules stay off", i);
+            return;
+        }
+        // Weapon Drawn, which the ESP-era records did not have. Tried for
+        // the 0.3 to 1.5 s between arming and BeginCastVoice, on the guess
+        // that the AI was sheathing first. It was not: measured 2026-09-08
+        // with the weapon state logged, "drawn" at arming, at pick-up and at
+        // begin, and the delay unchanged (0.5 to 1.0 s, once 2.9 s, the same
+        // as a hand cast). The delay is the AI's own start-up. The flag is
+        // kept because this is the configuration that was verified, and a
+        // procedure that needs no hands has no use for putting them away.
+        pkg->packData.packFlags.set(RE::PACKAGE_DATA::GeneralFlag::kWeaponDrawn);
+        g_slots[i] = pkg;
+        g_pool[i].condition = condition;
+        g_pool[i].wrapper = wrapper;
+        g_pool[i].spell = wrapper->GetFormID();
+    }
+
+    logger::info("packages: {} UseMagic slots and {} Shout slots with wrappers made in memory", kSpellSlots,
+                 kVoiceSlots);
+    g_available = ResolveOverrideLists() > 0;
+}
+
+bool PackagesAvailable()
+{
+    return g_available;
 }
 
 } // namespace ft::game

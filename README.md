@@ -26,7 +26,6 @@ src/plugin.cpp SKSE entry point
 tests/        Catch2. Runs with no Skyrim, no SKSE, no CommonLibSSE.
 test/         console batch files for the in-game scenario
 profiles/     JSON rule sets
-esp/          the ESL-flagged plugin (Phase 4)
 papyrus/      .psc sources (thin)
 ```
 

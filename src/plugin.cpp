@@ -187,11 +187,10 @@ void OnDataLoaded()
 
     // Phase 1: start the real thing. The self-check above proves the engine
     // computes correct decisions; this is what connects it to actual followers.
-    // The UseMagic package pool, from FollowerTactics.esp. Optional content:
-    // if the ESL is not enabled this reports unavailable and cast rules stay
-    // off, rather than failing the whole plugin.
+    // The package pool, made in memory (game/Forms.h): if any step of that
+    // fails it reports unavailable and cast rules stay off, rather than
+    // failing the whole plugin.
     ft::game::InitPackages();
-    ft::game::CalibrateInputs();
 
     ft::game::Install();
     ft::game::ui::Install();
@@ -225,13 +224,21 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
             OnDataLoaded();
 
         // A load or a new game invalidates every handle the package pool
-        // holds, and a save made mid-cast can carry a follower's rank into
-        // the new session. Drop the pool; the first tick sweeps the ranks.
-        // (The rules, switches and pins are reset by the serialization
-        // revert callback, which runs before the save's records load.)
+        // holds. Drop the pool. (The rules, switches and pins are reset by
+        // the serialization revert callback, which runs before the save's
+        // records load.)
         if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
             message->type == SKSE::MessagingInterface::kNewGame)
             ft::game::ResetPackages();
+
+        // Sent before the engine writes the save (SKSE's SaveGame hook
+        // dispatches it, then calls the original). A follower mid-cast is
+        // running a package of ours, may carry a wrapper shout, may be
+        // shouting a re-typed power: all of it would go into the file, and
+        // the packages are runtime forms that the save cannot bring back
+        // whole. Every lease ends here, so the save holds nothing of ours.
+        if (message->type == SKSE::MessagingInterface::kSaveGame)
+            ft::game::ReleaseAllLeases("saving");
     });
 
     return true;

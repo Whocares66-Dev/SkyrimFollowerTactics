@@ -186,6 +186,3 @@ in `docs/PLAN.md`.
 
 - **CommonLibSSE-NG migration** to alandtse `ng` (`docs/COMMONLIB.md`): brings
   `ForceRefTo`, and re-check the `Skyrim.INI` log-directory quirk.
-- **The live ESP is the MO2 copy.** houseCARL writes
-  `MO2/mods/FollowerTactics/FollowerTactics.esp`; `esp/FollowerTactics.esp`
-  is the versioned copy and has to be copied by hand after every edit.

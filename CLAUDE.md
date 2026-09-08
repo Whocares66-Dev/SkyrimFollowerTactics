@@ -236,11 +236,14 @@ if this number moves. It is logged every 5 s of combat, so drift is visible.
 
 **Casting — WORKS end to end (2026-09-02 13:15).** `docs/MAGIC.md` "The eighth attempt":
 UseMagic packages spliced into the follower alias's combat-override list, gated by a
-faction rank held by a lease, released when the follower's own spell-fire animation event
+condition held by a lease (a faction rank until 2026-09-08), released when the follower's own spell-fire animation event
 names our spell. Measured over two cycles: rule fires at 43% health, package selected on
 the same tick, `Fast Healing -- OURS` 1.4 s later, health 75 -> 175, released next tick,
-follower back to fighting. The ESL is versioned at `esp/FollowerTactics.esp` (edit with
-houseCARL, not the xEdit script). Recruit through dialogue (or `cqf DialogueFollower
+follower back to fighting. Since 2026-09-08 the records are **made in memory at
+load** (`src/game/Forms.cpp`, `docs/MAGIC.md` "Forms at runtime"): no plugin
+file, nothing of ours in the save, the DLL is the whole mod. Verified in play
+the same day; the ESP is gone (git history before 2026-09-08 has it).
+Recruit through dialogue (or `cqf DialogueFollower
 SetFollower`), never `setplayerteammate`. Cooldowns and leases run on game time.
 
 **Phase 2 — in progress.** The rule engine has the subject/predicate model, a list of
@@ -283,6 +286,15 @@ Two independent surprises stack up in that path, both verified on this machine:
 
    Harmless (logging works), but it is a real data point for the fork migration in
    `docs/COMMONLIB.md`: worth re-checking against alandtse/CommonLibSSE-NG v7.0.0.
+
+## Reading the executable
+
+`tools/disasm.py <address-library-id>` disassembles a function from
+SkyrimSE.exe; `--vtable <id>` dumps a vtable, `--lookup <rva>` names the
+function an address falls in. The installed exe is SteamStub-encrypted and
+reads as noise: point `SKYRIM_EXE` at a copy unpacked with Steamless (never
+the installed file). `docs/MAGIC.md` "Forms at runtime" is what has been
+read with it so far.
 
 ## Fetching UESP / Nexus pages
 

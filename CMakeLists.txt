@@ -122,6 +122,7 @@ if(FT_BUILD_PLUGIN)
         src/game/Util.cpp
         src/game/UI.cpp
         src/game/Packages.cpp
+        src/game/Forms.cpp
         src/game/Profiles.cpp)
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 

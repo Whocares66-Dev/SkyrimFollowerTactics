@@ -110,8 +110,8 @@ found" rather than proof of absence.
                     └──────────────┬──────────────────────┘
                                    │
                     ┌──────────────▼──────────────────────┐
-                    │  ESL-flagged ESP: abilities, AI      │
-                    │  packages, keywords, combat styles   │
+                    │  forms made in memory at load: AI    │
+                    │  packages, wrapper shouts (no ESP)   │
                     └─────────────────────────────────────┘
 ```
 
@@ -503,7 +503,7 @@ can be watched live during a fight.
 
 ### 3.8 ESP
 
-ESL-flagged. Record budget is nowhere near the 2048 limit. Contents:
+**Superseded 2026-09-08: there is no plugin file.** The records are made in memory at load (`docs/MAGIC.md` "Forms at runtime"), so the load order does not change and the save holds nothing of ours. The list below is what the plan expected to need; the packages exist as runtime copies of vanilla records, the rest has not been needed. Original plan:
 
 - 5–8 `CSTY` combat styles (the `SetCombatStyle` action's palette)
 - ~10 `SPEL`/`MGEF` hidden abilities (the `ApplyAbility` palette)
@@ -647,7 +647,6 @@ SkyrimFollowerTactics/
 │   └── game/        registry, scheduler, sensors, actions — all RE:: here
 ├── tests/           Catch2, runs without Skyrim
 ├── papyrus/         .psc sources (thin)
-├── esp/             the ESL-flagged plugin + CK notes
 ├── profiles/        shipped default JSON rule sets
 └── cmake/, vcpkg.json, CMakeLists.txt
 ```

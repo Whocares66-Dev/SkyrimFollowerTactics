@@ -46,11 +46,10 @@
 ;  the cast rule names a spell the package does not hold, which
 ;  reads as a broken rule rather than a mismatched pick.
 ;
-;  It matters which exact form he knows: FollowerTactics.esp
-;  authors its UseMagic packages to cast 0002F3B8 specifically,
-;  so if his native heal is a DIFFERENT form the package has to
-;  be re-authored to match it. `bat ftstatus` reports hasspell
-;  for that exact id.
+;  It matters which exact form he knows: a cast rule names a
+;  form, and two spells can share a display name (Marcurio's own
+;  heal is 0007231C, the vanilla one 0002F3B8). `bat ftstatus`
+;  reports hasspell for that exact id.
 ;
 ;  Flames 00012FCD -- Novice Destruction, CONCENTRATION: the
 ;  stream lasts as long as the hand is held. This is the sustained
