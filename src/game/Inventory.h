@@ -79,6 +79,9 @@ struct InventoryItem
     bool equipable{false};
     // Kept on by us: the tick puts it back whenever the game takes it off.
     bool pinned{false};
+    // Never to be used: the combat AI scores it zero, the engine's equips of
+    // it are refused, and it comes off if found on. Off, and kept off.
+    bool banned{false};
     // Kept from the combat AI while a pinned spell holds a hand this would
     // take: it scores zero whenever the combat AI asks. Still carried.
     bool setAside{false};

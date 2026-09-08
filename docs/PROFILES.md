@@ -1,6 +1,6 @@
 # Tactics in the save
 
-A follower's rules, their switch and their pins are part of the save: one record per follower in the SKSE co-save, the `.skse` written beside every `.ess`. There is no save button and no file to manage. Loading an earlier save rolls the tactics back to what they were then, deleting a save deletes its tactics, and a save played without the mod loses nothing but them. This is the format, and when it is read and written. The code is `src/core/Profile.*` (the format, pure and tested in `tests/test_profile.cpp`) and `src/game/Profiles.*` (the records, the form names, the SKSE callbacks).
+A follower's rules, their switch, their pins and their bans are part of the save: one record per follower in the SKSE co-save, the `.skse` written beside every `.ess`. There is no save button and no file to manage. Loading an earlier save rolls the tactics back to what they were then, deleting a save deletes its tactics, and a save played without the mod loses nothing but them. This is the format, and when it is read and written. The code is `src/core/Profile.*` (the format, pure and tested in `tests/test_profile.cpp`) and `src/game/Profiles.*` (the records, the form names, the SKSE callbacks).
 
 ## Where
 
@@ -42,7 +42,8 @@ Nothing is written on a panel close or by the tick. Close the game without savin
   "pins": [
     { "form": "0x13989~Skyrim.esm", "hand": "both" },
     { "form": "0x12E49~Skyrim.esm" }
-  ]
+  ],
+  "bans": [ "0x12EB7~Skyrim.esm" ]
 }
 ```
 
@@ -68,6 +69,7 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 | `pins[]` | the player's pins, as the panel left them: in a fight, the book remembered for after it, not the rules' fight-time pins |
 | `pins[].form` | the thing pinned |
 | `pins[].hand` | `left`, `right`, `both`; absent for armour and ammunition, which have no hand |
+| `bans[]` | the player's bans: forms the follower must never use. A ban is off and kept off, whichever hand |
 
 The record carries only the fields a rule reads, so a status is written only under the `status` predicate and a hand only under the equips that take one. Absent fields read as the defaults.
 
@@ -77,9 +79,11 @@ The record carries only the fields a rule reads, so a status is written only und
 
 **Forms** are written as `0x<local id>~<plugin>`, the plugin's own id and the plugin that defines the record, the form SPID and KID users already know. Reading resolves the plugin through the data handler, so a record is good after a load-order change without SKSE's `ResolveFormID`. A form with no plugin (made at runtime) is written as its bare id, `0xFF000DE0`, which is only good in the save it came from, which is the only place it is.
 
-## Pins, and why the mod is safe to remove
+## Pins and bans, and why the mod is safe to remove
 
 A pin is a promise about what is worn, and a load re-dresses nobody. So a saved pin is taken back only if, when the follower is first seen, they still have the thing **on**, in those hands (worn, for armour and ammunition), and it is still pinnable. Otherwise it is forgotten with an `info` line: the thing is gone, or the save was played on without the mod and the game re-dressed them in the meantime. Nothing is equipped on load.
+
+A ban is a promise about what is **not** worn, which a load can keep for anything that still exists: a saved ban is taken back whole, and the watchdog's first pass takes the thing off if the follower has it on. A ban whose form is not in this load order is forgotten the same way.
 
 Removing the mod: SKSE drops our co-save block on the next save, the follower keeps whatever they had on, and a later reinstall starts with no tactics. Nothing is written onto a pinned item either. The engine's prevent-removal flag was set on pins until 2026-09-04, and it outlived the mod: it does not lift on its own, and it left the engine's equip-best swap half done, with the old and the new weapon both marked equipped. Pins are now kept entirely by the mod's own equip detour, score hook and watchdog, which go away with the DLL. A save made with a build older than that still carries the flag on whatever was pinned then; unpin those in the panel once, or take the item off, and it is gone.
 
@@ -93,6 +97,7 @@ Reading is lenient by design, so a record from another version of the mod, older
 - A rule naming an unknown **subject, predicate, target, status, damage kind or hand** is dropped, with a warning naming it.
 - An action of unknown **kind**, or naming a **form whose plugin is not loaded**, is dropped alone and its rule kept.
 - A pin naming a **form whose plugin is not loaded**, or an unknown hand, is dropped alone. A record with no `pins` key has none.
+- A ban that is not a form string, or names a form whose plugin is not loaded, is dropped alone. A record with no `bans` key has none.
 - A field of the wrong shape (`"arg": "half"`) reads as absent.
 - A record that is not JSON, or not an object, reads as no record, and the log says so.
 - A `schema` newer than this build's is read anyway, with a warning. So is a co-save record of a type this build does not know: skipped, with a warning.

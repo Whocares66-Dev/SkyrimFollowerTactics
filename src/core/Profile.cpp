@@ -340,6 +340,10 @@ std::string WriteProfile(const Profile &profile, const FormCodec &codec)
         pins.push_back(std::move(p));
     }
     j["pins"] = std::move(pins);
+    json bans = json::array();
+    for (const std::uint32_t form : profile.bans)
+        bans.push_back(codec.encode(form));
+    j["bans"] = std::move(bans);
     return j.dump(2) + "\n";
 }
 
@@ -437,6 +441,30 @@ ReadResult ReadProfile(std::string_view text, const FormCodec &codec)
                 pin.hands = *h;
             }
             p.pins.push_back(pin);
+        }
+    }
+
+    // Bans: absent is none. A form each; one this load order cannot name
+    // is dropped alone.
+    if (const auto bans = j.find("bans"); bans != j.end() && bans->is_array())
+    {
+        std::size_t index = 0;
+        for (const json &entry : *bans)
+        {
+            const std::string where = "ban " + std::to_string(index++);
+            if (!entry.is_string())
+            {
+                result.warnings.push_back(where + ": not a form -- ban dropped");
+                continue;
+            }
+            const auto form = codec.decode(entry.get<std::string>());
+            if (!form)
+            {
+                result.warnings.push_back(where + ": form \"" + entry.get<std::string>() +
+                                          "\" is not in this load order -- ban dropped");
+                continue;
+            }
+            p.bans.push_back(*form);
         }
     }
 

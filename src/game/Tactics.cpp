@@ -127,6 +127,7 @@ void LoadIfNew(RE::Actor *follower)
             g_disabledFollowers.insert(id);
     }
     AdoptPins(follower, profile->pins);
+    AdoptBans(follower, profile->bans);
 }
 
 } // namespace
@@ -143,6 +144,7 @@ std::vector<Filed> ProfilesToSave()
         f.profile.enabled = IsFollowerEnabled(id);
         f.profile.rules = GetRules(id);
         f.profile.pins = PlayerPinsOf(id);
+        f.profile.bans = BansOf(id);
         filed.push_back(std::move(f));
     }
     return filed;

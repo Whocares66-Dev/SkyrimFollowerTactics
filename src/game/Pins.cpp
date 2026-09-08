@@ -37,6 +37,14 @@ std::recursive_mutex g_pinMutex;
 // read by the tick; both on the game thread, but the lock costs nothing and
 // keeps the next writer honest.
 std::unordered_map<ft::ActorId, std::vector<Pin>> g_pins;
+// What the panel has banned on each follower. Same lock, same thread.
+std::unordered_map<ft::ActorId, Bans> g_bans;
+
+bool BannedHere(ft::ActorId id, std::uint32_t form)
+{
+    const auto it = g_bans.find(id);
+    return it != g_bans.end() && IsBanned(it->second, form);
+}
 
 // Above zero while an equip is OURS. The engine's equips and ours reach the
 // same hook (RefuseEquipsAgainstPins), and only the engine's are ever
@@ -189,6 +197,13 @@ std::vector<Pin> PinsOf(ft::ActorId id)
     return it == g_pins.end() ? std::vector<Pin>{} : it->second;
 }
 
+Bans BansOf(ft::ActorId id)
+{
+    std::scoped_lock lock(g_pinMutex);
+    const auto it = g_bans.find(id);
+    return it == g_bans.end() ? Bans{} : it->second;
+}
+
 namespace
 {
 
@@ -297,6 +312,14 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
 // engine's is the Papyrus native Actor.UnequipSpell(spell, source), 0 for
 // the left hand and 1 for the right, so it is dispatched to the script VM,
 // which runs it on the game thread a frame later.
+// Is the thing on anywhere it could be, and off from everywhere it is. An
+// either-hand thing is asked about, and taken from, each hand in turn: the
+// item code reads "both hands" as a two-hander's, which lives in the right,
+// and a ban on a dagger in the left hand found nothing to take off (16:27,
+// Marcurio's iron dagger).
+bool OnAnywhere(RE::Actor *actor, RE::TESForm *form, const Holdable &described);
+void TakeOffEverywhere(RE::Actor *actor, RE::TESForm *form, const Holdable &described, bool now);
+
 // Is the item on, in a hand or worn? The no-op check before an unequip.
 bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
 {
@@ -364,6 +387,31 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
         if (auto *manager = RE::ActorEquipManager::GetSingleton())
             manager->UnequipObject(actor, object, nullptr, 1, slot, !now, false, false, false, nullptr);
     }
+}
+
+bool OnAnywhere(RE::Actor *actor, RE::TESForm *form, const Holdable &described)
+{
+    if (described.IsVoice())
+        return InVoice(actor, form);
+    if (described.grip == Grip::Either)
+        return EquippedIn(actor, form, Hand::Left) || EquippedIn(actor, form, Hand::Right);
+    if (described.grip == Grip::None)
+    {
+        auto *object = form->As<RE::TESBoundObject>();
+        return object && Worn(actor, object, Hand::None);
+    }
+    return EquippedIn(actor, form, Reach(described.grip));
+}
+
+void TakeOffEverywhere(RE::Actor *actor, RE::TESForm *form, const Holdable &described, bool now)
+{
+    if (described.grip == Grip::Either)
+    {
+        UnequipForm(actor, form, Hand::Left, now);
+        UnequipForm(actor, form, Hand::Right, now);
+        return;
+    }
+    UnequipForm(actor, form, described.grip == Grip::None ? Hand::None : Reach(described.grip), now);
 }
 
 // Whether a left-hand weapon pin also gives her a combat style that allows
@@ -638,6 +686,35 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
     }
 
     std::erase_if(g_pins, [](const auto &entry) { return entry.second.empty(); });
+
+    // A banned thing found on comes off -- unless a pin holds it (a rule's
+    // instruction, the player's own, wins for as long as it lasts) or one
+    // of our casts has the hand. The score hook and the equip detour keep
+    // this from happening; this is what answers it when it has.
+    for (auto *actor : followers)
+    {
+        const auto it = g_bans.find(actor->GetFormID());
+        if (it == g_bans.end() || it->second.empty())
+            continue;
+        const auto pinsIt = g_pins.find(actor->GetFormID());
+        const std::vector<Pin> *pins = pinsIt == g_pins.end() ? nullptr : &pinsIt->second;
+        if (IsMidCast(actor))
+            continue;
+        for (const std::uint32_t form : it->second)
+        {
+            if (pins && FindPin(*pins, form))
+                continue;
+            auto *thing = RE::TESForm::LookupByID(form);
+            if (!thing)
+                continue;
+            const Holdable described = DescribeHoldable(actor, thing);
+            if (!OnAnywhere(actor, thing, described))
+                continue;
+            logger::info("{} has banned {} on -- taking it off", Describe(actor),
+                         thing->GetName() ? thing->GetName() : "?");
+            TakeOffEverywhere(actor, thing, described, false);
+        }
+    }
 }
 
 // --- keeping the AI to the pins ------------------------------------------
@@ -690,13 +767,24 @@ RE::NiPointer<RE::Actor> AttackerOf(RE::CombatController *controller)
     return controller->attackerHandle.get();
 }
 
-bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor)
+// Kept from the AI: banned, or pinned against. A ban is looked up by form
+// alone, whatever hand the entry is for.
+bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor, const char *&why)
 {
     if (!entry || !entry->item || !actor)
         return false;
+    {
+        std::scoped_lock lock(g_pinMutex);
+        if (BannedHere(actor->GetFormID(), entry->item->GetFormID()))
+        {
+            why = "banned";
+            return true;
+        }
+    }
     const std::vector<Pin> pins = PinsOf(actor->GetFormID());
     if (pins.empty())
         return false;
+    why = "pinned against";
     return KeptFromAI(pins, DescribeHoldable(actor, entry->item), SlotHand(entry->itemSlot.equipSlot));
 }
 
@@ -706,13 +794,14 @@ float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
     const auto original = g_scoreOriginals.find(vtable);
     const float score = original != g_scoreOriginals.end() ? original->second(self, controller) : 0.0f;
     const RE::NiPointer<RE::Actor> actor = AttackerOf(controller);
-    if (!ShadowedEntry(self, actor.get()))
+    const char *why = "";
+    if (!ShadowedEntry(self, actor.get(), why))
         return score;
     if (g_zeroedOnce.insert(self).second)
     {
-        logger::info("{} AI asked the score of {}{}: {:.2f}, answered 0 (pinned against)", Describe(actor.get()),
+        logger::info("{} AI asked the score of {}{}: {:.2f}, answered 0 ({})", Describe(actor.get()),
                      self->item->GetName() ? self->item->GetName() : "?", HandTag(SlotHand(self->itemSlot.equipSlot)),
-                     score);
+                     score, why);
     }
     return 0.0f;
 }
@@ -807,6 +896,13 @@ std::unordered_set<ft::ActorId> g_republish;
 void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<MagicEntry> &magic)
 {
     std::scoped_lock lock(g_pinMutex);
+    if (const auto bans = g_bans.find(actor->GetFormID()); bans != g_bans.end())
+    {
+        for (auto &item : items)
+            item.banned = IsBanned(bans->second, item.form);
+        for (auto &entry : magic)
+            entry.banned = IsBanned(bans->second, entry.form);
+    }
     const auto it = g_pins.find(actor->GetFormID());
     if (it == g_pins.end() || it->second.empty())
         return;
@@ -966,7 +1062,8 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     // equip, finding none free, conjures a second (02:05, the doubled
     // dagger). Two in the bag may go one per hand.
     bool moving = false;
-    if (request == WearRequest::Pin && thing->Is(RE::FormType::Weapon) && (hands == Hand::Left || hands == Hand::Right))
+    if ((request == WearRequest::Pin || request == WearRequest::Equip) && thing->Is(RE::FormType::Weapon) &&
+        (hands == Hand::Left || hands == Hand::Right))
     {
         const Hand other = hands == Hand::Left ? Hand::Right : Hand::Left;
         if (EquippedIn(actor, thing, other))
@@ -978,17 +1075,42 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         }
     }
 
+    // A ban takes the whole thing off, whichever hands it is in.
+    const Hand reach = described.grip == Grip::None ? Hand::None : Reach(described.grip);
+    if (request == WearRequest::Ban || request == WearRequest::Unban)
+        hands = reach;
+
     {
         std::scoped_lock lock(g_pinMutex);
         auto &pins = g_pins[id];
-        if (request == WearRequest::Pin)
+        switch (request)
         {
+        case WearRequest::Pin:
             ReleaseConflictingPins(actor, pins, described, hands);
             AddPin(pins, described, hands, moving);
+            break;
+        case WearRequest::Equip:
+            // The AI's to change afterwards; but a pin in the way would put
+            // its thing straight back, so the click lets that pin go. Her
+            // only copy of a weapon changing hands takes its own pin with
+            // it: a pin on the hand it is leaving would stand over an empty
+            // hand (16:28, the steel dagger pinned left and held right).
+            ReleaseConflictingPins(actor, pins, described, hands);
+            if (moving) [[maybe_unused]]
+                const Hand left = LetGo(pins, described, hands == Hand::Left ? Hand::Right : Hand::Left);
+            break;
+        case WearRequest::Ban: {
+            [[maybe_unused]] const Hand let = LetGo(pins, described, Hand::None);
+            Ban(g_bans[id], described.form);
+            break;
         }
-        else
-        {
+        case WearRequest::Unban:
+            Unban(g_bans[id], described.form);
+            break;
+        case WearRequest::Unpin:
+        case WearRequest::TakeOff:
             hands = LetGo(pins, described, hands);
+            break;
         }
         // The panel's word mid-fight is the new normal: the same change goes
         // into the book remembered for after the fight, so the player's pin
@@ -1002,9 +1124,16 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
                 [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands);
                 AddPin(before, described, hands, moving);
             }
-            else
+            else if (request == WearRequest::Equip)
             {
-                [[maybe_unused]] const Hand gone = LetGo(before, described, HandsFor(described.grip, hand));
+                [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands);
+                if (moving) [[maybe_unused]]
+                    const Hand left = LetGo(before, described, hands == Hand::Left ? Hand::Right : Hand::Left);
+            }
+            else if (request != WearRequest::Unban)
+            {
+                [[maybe_unused]] const Hand gone =
+                    LetGo(before, described, request == WearRequest::Ban ? Hand::None : HandsFor(described.grip, hand));
             }
         }
         g_refusedLogged.clear();
@@ -1013,6 +1142,23 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     const char *name = thing->GetName() ? thing->GetName() : "?";
     switch (request)
     {
+    case WearRequest::Equip:
+        logger::info("{} told to ready {}{} (not pinned)", Describe(actor), name, HandTag(hands));
+        if (moving)
+            UnequipForm(actor, thing, hands == Hand::Left ? Hand::Right : Hand::Left, true);
+        EquipPinned(actor, thing, hands, true);
+        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
+            g_republish.insert(id);
+        break;
+    case WearRequest::Ban:
+        logger::info("{} told never to use {} (banned)", Describe(actor), name);
+        TakeOffEverywhere(actor, thing, described, true);
+        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
+            g_republish.insert(id);
+        break;
+    case WearRequest::Unban:
+        logger::info("{} may use {} again (ban lifted)", Describe(actor), name);
+        break;
     case WearRequest::Pin:
         logger::info("{} told to ready {} (pinned)", Describe(actor), name);
         // Off for now, to see what her own style does with a left-hand
@@ -1145,10 +1291,30 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
     }
 }
 
+void AdoptBans(RE::Actor *actor, const Bans &bans)
+{
+    if (!actor || bans.empty())
+        return;
+    std::scoped_lock lock(g_pinMutex);
+    auto &book = g_bans[actor->GetFormID()];
+    for (const std::uint32_t form : bans)
+    {
+        const auto *thing = RE::TESForm::LookupByID(form);
+        if (!thing)
+        {
+            logger::info("{} saved ban {:08X} names nothing in this game -- forgotten", Describe(actor), form);
+            continue;
+        }
+        if (Ban(book, form))
+            logger::info("{} saved ban on {} taken back", Describe(actor), thing->GetName() ? thing->GetName() : "?");
+    }
+}
+
 void ForgetPins()
 {
     std::scoped_lock lock(g_pinMutex);
     g_pins.clear();
+    g_bans.clear();
     g_pinsBeforeFight.clear();
     g_fighting.clear();
     g_refusedLogged.clear();
@@ -1237,11 +1403,20 @@ bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlo
 {
     std::scoped_lock lock(g_pinMutex);
     const auto it = g_pins.find(actor->GetFormID());
-    if (it == g_pins.end() || it->second.empty())
+    const bool anyPins = it != g_pins.end() && !it->second.empty();
+    if (anyPins && FindPin(it->second, object->GetFormID()))
+        return false;
+    if (BannedHere(actor->GetFormID(), object->GetFormID()))
+    {
+        if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
+            logger::info("{} the engine would equip banned {} -- refused ({})", Describe(actor),
+                         object->GetName() ? object->GetName() : "?",
+                         actor->IsInCombat() ? "in combat" : "out of combat");
+        return true;
+    }
+    if (!anyPins)
         return false;
     const std::vector<Pin> &pins = it->second;
-    if (FindPin(pins, object->GetFormID()))
-        return false;
 
     const Holdable thing = DescribeHoldable(actor, object);
     if (thing.kind == Kind::Other)

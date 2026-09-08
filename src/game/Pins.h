@@ -42,9 +42,15 @@ namespace ft::game
 // cast borrows the hand; the pin is what the follower fights with
 // otherwise. Armour and ammunition hold throughout.
 //
-// Unpin leaves it worn but hers to change again. TakeOff takes it off and
-// forgets it; the game may put it back, and what it wears by default is
-// its business.
+// Equip puts it on with no promise: the AI's to change. Unpin leaves it
+// worn but hers to change again. TakeOff takes it off and forgets it; the
+// game may put it back, and what it wears by default is its business.
+//
+// Ban takes it off and keeps it off: the combat AI scores it zero, the
+// engine's own equips of it are refused, and the watchdog takes it off if
+// it is found on. A ban lets go of any pin on the thing. Unban forgets
+// the ban; the thing stays off until something puts it on. Bans are not
+// a fight's business: the book of bans is one, before, during and after.
 //
 // A fight does not rewrite the book. What is pinned when a follower enters
 // combat is remembered and put back when combat ends: the rules' pins for
@@ -61,9 +67,12 @@ namespace ft::game
 // pins go into the save with the rules (game/Profiles.h).
 enum class WearRequest
 {
+    Equip,
     Pin,
     Unpin,
-    TakeOff
+    TakeOff,
+    Ban,
+    Unban
 };
 
 void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None);
@@ -85,6 +94,15 @@ void ReleaseKind(RE::Actor *actor, Kind kind);
 // are using. Game thread.
 [[nodiscard]] std::vector<ft::PinEntry> PlayerPinsOf(ft::ActorId id);
 
+// This follower's bans, as the hooks and the save take them.
+[[nodiscard]] Bans BansOf(ft::ActorId id);
+
+// The bans from the follower's saved record, taken back whole: a ban
+// promises what is NOT worn, and that holds for anything that still
+// exists. Game thread, at first sight; the watchdog's first pass takes
+// off whatever a banned thing is found on.
+void AdoptBans(RE::Actor *actor, const Bans &bans);
+
 // The pins from the follower's saved record, taken back into the book --
 // each only if the follower still has the thing on, in those hands; a pin
 // is a promise about what is worn, and a load re-dresses nobody. One that
@@ -93,7 +111,7 @@ void ReleaseKind(RE::Actor *actor, Kind kind);
 // watchdog's first pass.
 void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins);
 
-// Forget every book: before a save loads, and on a new game.
+// Forget every book, pins and bans: before a save loads, and on a new game.
 void ForgetPins();
 
 // The planner's description of a form: what it is, which hands its record
@@ -108,8 +126,9 @@ void ForgetPins();
 // for one pin. Returns whether anything was done.
 bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand);
 
-// The tick's part. Mark the scanned items and spells that are pinned, and
-// those the AI is kept from, for the panel; drop pins for things gone.
+// The tick's part. Mark the scanned items and spells that are pinned or
+// banned, and those the AI is kept from, for the panel; drop pins for
+// things gone.
 void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<MagicEntry> &magic);
 
 // Keep the promise on the tick: put back what the game took off, in a

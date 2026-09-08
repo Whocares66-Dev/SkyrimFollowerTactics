@@ -657,3 +657,17 @@ TEST_CASE("a voice pin: one power or shout readied, the rest set aside", "[pins]
     REQUIRE(pins.size() == 1);
     REQUIRE(pins[0].thing.form == unrelentingForce.form);
 }
+
+TEST_CASE("a ban is a set of forms, once each", "[loadout]")
+{
+    Bans bans;
+    REQUIRE_FALSE(IsBanned(bans, 0x13989));
+    REQUIRE(Ban(bans, 0x13989));
+    REQUIRE_FALSE(Ban(bans, 0x13989)); // already
+    REQUIRE_FALSE(Ban(bans, 0));       // nothing is not a thing
+    REQUIRE(IsBanned(bans, 0x13989));
+    REQUIRE(bans.size() == 1);
+    REQUIRE(Unban(bans, 0x13989));
+    REQUIRE_FALSE(Unban(bans, 0x13989));
+    REQUIRE(bans.empty());
+}

@@ -223,6 +223,24 @@ void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool movi
 // aside.
 [[nodiscard]] std::vector<Pin> Shadowing(const std::vector<Pin> &pins, const Holdable &thing);
 
+// ---- Bans: what the AI must never use.
+//
+// A ban is the pin's opposite: not "this stays on" but "this never goes on".
+// The same three means keep it -- the score hook answers zero for a banned
+// entry, the equip detour refuses the engine's equip of a banned thing, and
+// the watchdog takes off a banned thing found on -- and, as with a pin,
+// nothing is written to the thing or the follower, so a save played without
+// the mod carries no ban. A ban and a pin on one thing cannot both hold:
+// the panel's ban lets the pin go. A rule's pin on a banned thing is the
+// player's own instruction and wins for as long as it lasts; the watchdog
+// leaves a pinned thing alone whatever the bans say.
+using Bans = std::vector<std::uint32_t>;
+
+[[nodiscard]] bool IsBanned(const Bans &bans, std::uint32_t form) noexcept;
+// Each returns whether the book changed.
+bool Ban(Bans &bans, std::uint32_t form);
+bool Unban(Bans &bans, std::uint32_t form);
+
 // ---- The watchdog's decision, each tick, for one pin.
 //
 // A pin the game has taken off goes back on -- except a HAND pin while one

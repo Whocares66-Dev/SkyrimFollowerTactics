@@ -28,6 +28,26 @@ bool Pinnable(const Holdable &thing) noexcept
     return !thing.unusable;
 }
 
+bool IsBanned(const Bans &bans, std::uint32_t form) noexcept
+{
+    return std::find(bans.begin(), bans.end(), form) != bans.end();
+}
+
+bool Ban(Bans &bans, std::uint32_t form)
+{
+    if (form == 0 || IsBanned(bans, form))
+        return false;
+    bans.push_back(form);
+    return true;
+}
+
+bool Unban(Bans &bans, std::uint32_t form)
+{
+    const auto before = bans.size();
+    std::erase(bans, form);
+    return bans.size() != before;
+}
+
 bool Conflicts(const Holdable &incoming, Hand hands, const Holdable &held, Hand heldHands) noexcept
 {
     if (hands != Hand::None && heldHands != Hand::None)

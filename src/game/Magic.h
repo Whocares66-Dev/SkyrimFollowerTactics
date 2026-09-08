@@ -64,6 +64,9 @@ struct MagicEntry
     bool pinnedLeft{false};
     bool pinnedRight{false};
     bool pinned{false}; // a voice pin: a power or shout held in the voice slot
+    // Never to be used: the combat AI scores it zero, the engine's equips of
+    // it are refused, and it comes off if found on. Off, and kept off.
+    bool banned{false};
     // Which hands the record allows. Most spells take either; the NPC-only
     // variants take one, and a master spell takes both at once.
     bool leftAllowed{true};

@@ -59,7 +59,10 @@ list, in memory only, and takes it out again when the lease ends. Between
 casts the list is exactly vanilla. Nothing is overridden on disk and nothing
 is saved. The engine reads the list live on each evaluation (verified
 2026-09-08: a record put in mid-fight is the current package on the same
-tick); until then all sixteen were spliced in at load and left there.
+tick); until then all sixteen were spliced in at load and left there. Going
+in at cast time also puts ours ahead of anything another mod spliced in at
+its own data-load, whatever order the DLLs loaded in; only a mod that also
+inserts at cast time can get ahead, and only by inserting later.
 
 The game's own example of this is Mercer Frey in *Blindsighted*: a UseMagic
 package in his alias's override list, gated on quest stage, makes him cast

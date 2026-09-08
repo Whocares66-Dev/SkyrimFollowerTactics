@@ -79,6 +79,11 @@ struct Profile
     // remove: nothing in the save, and nothing on disk that the game
     // cannot decline.
     std::vector<PinEntry> pins;
+    // The player's bans: what the follower must never use. A form each;
+    // one naming a plugin not installed is dropped alone, like a pin. A
+    // ban is taken back without conditions -- it promises what is NOT
+    // worn, and a load can keep that promise for anything that exists.
+    std::vector<std::uint32_t> bans;
 };
 
 [[nodiscard]] std::string WriteProfile(const Profile &profile, const FormCodec &codec);

@@ -238,7 +238,34 @@ TEST_CASE("a pin this build cannot place is dropped alone", "[profile]")
     // A file from before there were pins has none, and nothing to say.
     const auto older = ReadProfile(OneRuleFile(kHealRule), kHex);
     REQUIRE(older.profile->pins.empty());
+    REQUIRE(older.profile->bans.empty());
     REQUIRE(older.warnings.empty());
+}
+
+TEST_CASE("bans are forms, written and read back, a stranger dropped alone", "[profile]")
+{
+    Profile profile;
+    profile.bans = {0x13989, 0x2F3B8};
+    const auto j = nlohmann::json::parse(WriteProfile(profile, kHex));
+    REQUIRE(j["bans"].size() == 2);
+    REQUIRE(j["bans"][0] == "0x13989");
+    REQUIRE(j["bans"][1] == "0x2F3B8");
+
+    FormCodec installed = kHex;
+    installed.decode = [](std::string_view s) -> std::optional<std::uint32_t> {
+        if (s == "0x13989~Skyrim.esm")
+            return 0x13989;
+        return std::nullopt;
+    };
+    const std::string file = R"({ "schema": 1, "rules": [], "bans": [
+        "0x13989~Skyrim.esm", "0x7~Gone.esp", 7, { "form": "0x13989~Skyrim.esm" }
+    ] })";
+    const auto read = ReadProfile(file, installed);
+    REQUIRE(read.profile->bans.size() == 1);
+    REQUIRE(read.profile->bans[0] == 0x13989);
+    REQUIRE(read.warnings.size() == 3);
+    REQUIRE(read.warnings[0].find("ban 1") != std::string::npos);
+    REQUIRE(read.warnings[0].find("0x7~Gone.esp") != std::string::npos);
 }
 
 TEST_CASE("the file carries only the fields a rule reads", "[profile]")
