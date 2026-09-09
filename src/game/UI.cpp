@@ -48,6 +48,30 @@ namespace Im = ImGuiMCP;
 
 bool TakesSpell(ft::ActionKind action);
 
+// The one grey for everything set aside: a shadowed row, a banned row, an
+// off rule. The theme's disabled text colour, so it follows the theme.
+Im::ImU32 DimColor()
+{
+    return Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f);
+}
+
+// A region that is off: greyed in the same grey as a shadowed row, and
+// taking no input. ImGui's own disabled look only fades the text, which
+// reads brighter than the rows'; this paints it the rows' grey.
+void BeginDimmed(bool dim)
+{
+    Im::PushStyleVar(Im::ImGuiStyleVar_DisabledAlpha, 1.0f);
+    Im::PushStyleColor(Im::ImGuiCol_Text, dim ? DimColor() : Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
+    Im::BeginDisabled(dim);
+}
+
+void EndDimmed()
+{
+    Im::EndDisabled();
+    Im::PopStyleColor(1);
+    Im::PopStyleVar(1);
+}
+
 // One short word for the Status column, and the colour to say it in.
 //
 // Deliberately terse. This column sits beside two editable cells in a narrow
@@ -1957,7 +1981,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // it cannot be edited without turning it on. The switch itself and
         // the order and delete controls stay live: an off rule is still in
         // the list and can still be moved or removed.
-        Im::BeginDisabled(!rule.enabled);
+        BeginDimmed(!rule.enabled);
 
         Im::TableSetColumnIndex(1);
         Im::AlignTextToFramePadding();
@@ -2041,7 +2065,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 Im::SetTooltip("%s", VerdictTooltip(verdict, firstKind, view).c_str());
         }
 
-        Im::EndDisabled();
+        EndDimmed();
 
         // Order is semantics, not decoration: rules are first-match-wins, so
         // moving a row changes which rule shadows which.
@@ -2086,10 +2110,10 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         // The drawer: close this piece, draw beneath, reopen for the rest.
         endPiece();
-        Im::BeginDisabled(!rule.enabled);
+        BeginDimmed(!rule.enabled);
         if (DrawActionsDrawer(rule, i, view, thenLeft, right, spacing))
             changed = true;
-        Im::EndDisabled();
+        EndDimmed();
         drawerOpen = true;
     }
 
@@ -3092,7 +3116,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         // have no cell to explain it.
         const bool dim = (item->setAside || item->banned) && state.category >= 0;
         if (dim)
-            Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
+            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
         Im::TableSetColumnIndex(0);
 
         // The NAME is the click target for the detail page, not the row: the
@@ -3519,7 +3543,7 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         // text colour.
         const bool dim = (entry->setAside || entry->aboveSkill || entry->banned) && !allList;
         if (dim)
-            Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
+            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
         Im::TableSetColumnIndex(0);
         Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
@@ -3804,7 +3828,7 @@ void DrawEffects(const FollowerView &view)
         // Running but changing nothing for this follower: the row is drawn
         // in the disabled colour, and its name hovers as "Not applied".
         if (!row->applied)
-            Im::PushStyleColor(Im::ImGuiCol_Text, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f));
+            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
         Im::TableSetColumnIndex(0);
         const Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
@@ -4088,13 +4112,13 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // over the rules, not an edit to them: each rule keeps its own `enabled`
     // exactly as the player left it, so switching back restores the list rather
     // than handing back a set of boxes they have to re-tick.
-    Im::BeginDisabled(!followerEnabled);
+    BeginDimmed(!followerEnabled);
     // Edit a copy, then hand the whole set back. Nothing partial is ever
     // visible to the tick.
     ft::RuleSet editable = rules;
     if (DrawRuleTable(editable, view))
         SetRules(view.id, std::move(editable));
-    Im::EndDisabled();
+    EndDimmed();
 }
 
 // Whether any follower's page has been drawn yet. The first page to open
