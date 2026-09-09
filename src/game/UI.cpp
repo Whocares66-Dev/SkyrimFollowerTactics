@@ -4031,21 +4031,23 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     Im::EndDisabled();
 }
 
-// Followers whose page has been drawn at least once. The first time a page
-// opens it lands on Tactics, which is what the mod is for; from then on the
-// tab bar keeps whatever was last chosen, as tab bars do. Render thread only.
-std::unordered_set<ft::ActorId> g_pagesOpened;
+// Whether any follower's page has been drawn yet. The first page to open
+// lands on Tactics, which is what the mod is for; from then on the tab bar
+// keeps whatever was last chosen, as tab bars do. Render thread only.
+bool g_pageOpened = false;
 
-// One page per follower, six tabs, reading left to right as who she is,
-// what she can do, what she carries, what she can cast, how her combat AI
-// is tuned, and what she has been told to do. The tab bar is keyed by
-// follower so each page remembers its own tab.
+// One page per follower, six tabs, reading left to right as who they are,
+// what they can do, what they carry, what they can cast, how their combat
+// AI is tuned, and what they have been told to do. ONE tab bar id for
+// every follower, so the chosen tab carries across pages: the Skills of
+// one, then of the next, without choosing Skills again each time.
 void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 {
-    if (!Im::BeginTabBar(("follower##" + std::to_string(view.id)).c_str()))
+    if (!Im::BeginTabBar("follower##tabs"))
         return;
 
-    const bool firstOpen = g_pagesOpened.insert(view.id).second;
+    const bool firstOpen = !g_pageOpened;
+    g_pageOpened = true;
     const Im::ImGuiTabItemFlags tacticsFlags = firstOpen ? Im::ImGuiTabItemFlags_SetSelected : 0;
 
     // A pending switch, from a link on the sheet or the back arrow on an
