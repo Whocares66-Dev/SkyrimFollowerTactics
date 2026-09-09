@@ -31,12 +31,16 @@ RE::TESPackage *ClonePackage(RE::TESPackage *source, std::uint32_t localID)
     if (!source || !source->data)
         return nullptr;
 
-    // kPackage is the type of an instance made from a template, and is what
-    // the constructor sets anyway; the call is for the allocation.
-    // TESPackage::CreatePackage(type): allocate a package and give it the
-    // data object its type needs. Its AE ID was checked against 1.6.1170 by
-    // reading the function (docs/MAGIC.md "Forms at runtime").
-    auto *pkg = RE::TESPackage::CreatePackage(RE::PACKAGE_PROCEDURE_TYPE::kPackage);
+    // TESPackage::CreatePackage(type) allocates a package and gives it the
+    // data object its type needs; its AE ID was checked against 1.6.1170 by
+    // reading the function (docs/MAGIC.md "Forms at runtime"). The type it
+    // takes is the record's PKDT type -- PACKAGE_TYPE::kPackage, 18, an
+    // instance made from a template, what the constructor sets anyway --
+    // but the library declares the parameter as PACKAGE_PROCEDURE_TYPE,
+    // whose kPackage is 46, and given 46 the engine returns a package with
+    // no data at all (found 2026-09-09: every cast rule "unsupported"). So
+    // the right value goes in through the declared type.
+    auto *pkg = RE::TESPackage::CreatePackage(static_cast<RE::PACKAGE_PROCEDURE_TYPE>(RE::PACKAGE_TYPE::kPackage));
     if (!pkg)
     {
         logger::error("forms: CreatePackage returned nothing");
