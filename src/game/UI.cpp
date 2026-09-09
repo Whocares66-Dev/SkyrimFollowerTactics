@@ -14,6 +14,7 @@
 
 #include "game/UI.h"
 
+#include "core/Effects.h"
 #include "core/Vocabulary.h"
 #include "game/Pins.h"
 #include "game/Tactics.h"
@@ -1141,6 +1142,17 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
 {
     const std::string base(ft::DisplayName(act.kind));
 
+    // A policy names its effect: "Strongest Health potion", "Weakest Resist
+    // Fire potion", "Strongest Fear poison".
+    if (ft::IsPolicy(act.kind))
+    {
+        if (act.effect.empty())
+            return base + "...";
+        const bool strongest = act.kind == ft::ActionKind::DrinkStrongest || act.kind == ft::ActionKind::ApplyStrongest;
+        return std::string(strongest ? "Strongest " : "Weakest ") + std::string(ft::EffectLabel(act.effect)) +
+               (ft::IsApply(act.kind) ? " poison" : " potion");
+    }
+
     if (NamesConsumable(act.kind))
     {
         if (act.form == 0)
@@ -1391,26 +1403,55 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
     }
 
-    // What is taken. Potion holds the strongest of each kind, the weakest
-    // of each, then every potion carried by name; Food and Ingredient what
-    // is carried of each, and are not drawn with nothing under them.
-    if (valid(ft::ActionKind::DrinkHealthPotion))
+    // Strongest and Weakest for a kind of bottle, each a submenu of the
+    // effects the carried ones have -- the known effects in their groups,
+    // a divider between, the rest by name at the end -- so a follower with
+    // no potion of an effect is not offered it. Then, after a divider,
+    // every bottle of the kind by name. Under a menu already open.
+    const auto byEffect = [&](ft::ConsumableKind ckind, ft::ActionKind strongestKind, ft::ActionKind weakestKind,
+                              ft::ActionKind namedKind) {
+        std::vector<std::string> names;
+        for (const auto &option : view.consumables)
+            if (option.kind == ckind)
+                names.insert(names.end(), option.effects.begin(), option.effects.end());
+        const auto arranged = ft::ArrangeEffects(ckind, std::move(names));
+        for (const auto [label, kind] : {std::pair{"Strongest", strongestKind}, std::pair{"Weakest", weakestKind}})
+        {
+            if (arranged.empty() || !BeginCascade(label))
+                continue;
+            int last = -1;
+            for (const auto &entry : arranged)
+            {
+                if (last >= 0 && entry.group != last)
+                    Im::Separator();
+                last = entry.group;
+                const bool selected = here && act.kind == kind && act.effect == entry.name;
+                if (CascadeItem(std::string(ft::EffectLabel(entry.name)).c_str(), selected))
+                {
+                    act.kind = kind;
+                    act.form = 0;
+                    act.effect = entry.name;
+                    choose();
+                }
+                if (Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+            }
+            Im::EndMenu();
+        }
+        if (!arranged.empty())
+            Im::Separator();
+        named(namedKind);
+    };
+
+    // What is taken. Potion, Food and Ingredient list what is carried of
+    // each, and are not drawn with nothing under them.
+    if (valid(ft::ActionKind::DrinkStrongest))
     {
         group(1);
-        if (BeginCascade("Potion"))
+        if (carried(ft::ConsumableKind::Potion) && BeginCascade("Potion"))
         {
-            for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
-                              ft::ActionKind::DrinkMagickaPotion})
-                policy(kind);
-            Im::Separator();
-            for (auto kind : {ft::ActionKind::DrinkWeakestHealthPotion, ft::ActionKind::DrinkWeakestStaminaPotion,
-                              ft::ActionKind::DrinkWeakestMagickaPotion})
-                policy(kind);
-            if (carried(ft::ConsumableKind::Potion))
-            {
-                Im::Separator();
-                named(ft::ActionKind::DrinkPotion);
-            }
+            byEffect(ft::ConsumableKind::Potion, ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest,
+                     ft::ActionKind::DrinkPotion);
             Im::EndMenu();
         }
         for (const auto [label, kind] :
@@ -1466,8 +1507,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
 
     // What is done to the weapon in hand: Charge (the strongest gem that
     // fits, the weakest, then every spendable gem by name) and Poison (the
-    // strongest of each, the weakest of each, then every poison carried by
-    // name).
+    // strongest and the weakest by effect, then every poison carried by
+    // name; not drawn with none carried).
     if (valid(ft::ActionKind::ChargeStrongestSoulGem))
     {
         group(3);
@@ -1485,16 +1526,10 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             namedAfterDivider(ft::ActionKind::ChargeSoulGem);
             Im::EndMenu();
         }
-        if (BeginCascade("Poison"))
+        if (carried(ft::ConsumableKind::Poison) && BeginCascade("Poison"))
         {
-            for (auto kind : {ft::ActionKind::ApplyStrongestHealthPoison, ft::ActionKind::ApplyStrongestStaminaPoison,
-                              ft::ActionKind::ApplyStrongestMagickaPoison})
-                policy(kind);
-            Im::Separator();
-            for (auto kind : {ft::ActionKind::ApplyWeakestHealthPoison, ft::ActionKind::ApplyWeakestStaminaPoison,
-                              ft::ActionKind::ApplyWeakestMagickaPoison})
-                policy(kind);
-            namedAfterDivider(ft::ActionKind::ApplyPoison);
+            byEffect(ft::ConsumableKind::Poison, ft::ActionKind::ApplyStrongest, ft::ActionKind::ApplyWeakest,
+                     ft::ActionKind::ApplyPoison);
             Im::EndMenu();
         }
     }

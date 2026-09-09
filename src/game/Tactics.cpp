@@ -209,17 +209,10 @@ const ft::RuleSet &DefaultRuleSetImpl()
 ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
 {
     ft::Capabilities caps; // all false
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkHealthPotion)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkMagickaPotion)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkStaminaPotion)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkWeakestHealthPotion)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkWeakestMagickaPotion)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkWeakestStaminaPotion)] = true;
-    for (const auto kind : {ft::ActionKind::ApplyWeakestHealthPoison, ft::ActionKind::ApplyWeakestMagickaPoison,
-                            ft::ActionKind::ApplyWeakestStaminaPoison, ft::ActionKind::ApplyStrongestHealthPoison,
-                            ft::ActionKind::ApplyStrongestMagickaPoison, ft::ActionKind::ApplyStrongestStaminaPoison,
-                            ft::ActionKind::ApplyPoison, ft::ActionKind::ChargeStrongestSoulGem,
-                            ft::ActionKind::ChargeWeakestSoulGem, ft::ActionKind::ChargeSoulGem})
+    for (const auto kind :
+         {ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest, ft::ActionKind::ApplyStrongest,
+          ft::ActionKind::ApplyWeakest, ft::ActionKind::ApplyPoison, ft::ActionKind::ChargeStrongestSoulGem,
+          ft::ActionKind::ChargeWeakestSoulGem, ft::ActionKind::ChargeSoulGem})
         caps.supported[static_cast<std::size_t>(kind)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EatFood)] = true;
@@ -325,8 +318,8 @@ ft::ActionKind FirstKind(const ft::Rule &rule)
 
 void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet &rules, const ft::Trace &trace)
 {
-    logger::info("{} health {:.0f}/{:.0f} ({:.0f}%) combat={} potions={}", Describe(actor), snap.health.current,
-                 snap.health.max, snap.health.Pct() * 100.0, snap.inCombat, snap.potions.healthCount);
+    logger::info("{} health {:.0f}/{:.0f} ({:.0f}%) combat={} consumables={}", Describe(actor), snap.health.current,
+                 snap.health.max, snap.health.Pct() * 100.0, snap.inCombat, snap.potions.carried.size());
 
     for (std::size_t i = 0; i < trace.size(); ++i)
     {
@@ -438,8 +431,7 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 
     const auto started = std::chrono::steady_clock::now();
 
-    PotionChoice choice;
-    ft::Snapshot snapshot = BuildSnapshot(actor, now, choice);
+    ft::Snapshot snapshot = BuildSnapshot(actor, now);
 
     // Who is who, once per fight, so the Ally and Enemy subjects can be
     // read against the log.
@@ -477,7 +469,7 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
         const std::string label = index < rules.rules.size() ? rules.rules[index].label : "";
         for (const auto &step : decision.steps)
         {
-            const auto result = Execute(step.action, step.target, actor, choice);
+            const auto result = Execute(step.action, step.target, actor);
 
             logger::info("{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
                          decision.ruleIndex, label, ft::WireName(step.action.kind), ToString(result),

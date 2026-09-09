@@ -210,27 +210,22 @@ enum class ActionKind : std::uint8_t
     // what the poison damages, then one named poison. Needs a weapon that
     // takes a poison in hand (anything but a staff) and not already
     // poisoned; the evaluator reports each.
-    ApplyWeakestHealthPoison,
-    ApplyWeakestMagickaPoison,
-    ApplyWeakestStaminaPoison,
-    ApplyStrongestHealthPoison,
-    ApplyStrongestMagickaPoison,
-    ApplyStrongestStaminaPoison,
-    ApplyPoison, // one specific poison, named by actionForm
-    // Consume: the three "strongest carried" potion policies, the three
-    // "weakest carried" ones -- the cheap potions first, the strong ones
-    // kept for when they matter -- then one named thing of each consumable
-    // kind. All go through the game's own equip routine, which is what
-    // consumes an item.
-    DrinkHealthPotion,         // the strongest carried
-    DrinkMagickaPotion,        // the strongest carried
-    DrinkStaminaPotion,        // the strongest carried
-    DrinkWeakestHealthPotion,  // the weakest carried
-    DrinkWeakestMagickaPotion, // the weakest carried
-    DrinkWeakestStaminaPotion, // the weakest carried
-    DrinkPotion,               // one specific potion, named by actionForm
-    EatFood,                   // one specific food, named by actionForm
-    EatIngredient,             // one specific ingredient, named by actionForm
+    // The strongest poison carried with Action::effect, or the weakest --
+    // the cheap ones first, the strong ones kept for when they matter --
+    // or one named by actionForm. (Until 2026-09-08 there were six fixed
+    // policies here, health, magicka and stamina by two; the effect is the
+    // bottle's own now, whatever it is.)
+    ApplyStrongest,
+    ApplyWeakest,
+    ApplyPoison,
+    // Consume: the strongest potion carried with Action::effect, the
+    // weakest, then one named thing of each consumable kind. All go
+    // through the game's own equip routine, which is what consumes an item.
+    DrinkStrongest,
+    DrinkWeakest,
+    DrinkPotion,   // one specific potion, named by actionForm
+    EatFood,       // one specific food, named by actionForm
+    EatIngredient, // one specific ingredient, named by actionForm
     CastSpell,
     // A power (Embrace of Shadows, Battle Cry): a spell record cast from
     // the voice rather than a hand, no magicka. Performed through a Shout
@@ -250,8 +245,11 @@ enum class ActionKind : std::uint8_t
 };
 
 // The consume actions, named or by policy; and the kind a named one names
-// (Potion for the three policies, which are potions too).
+// (Potion for the drink policies, which are potions too).
 [[nodiscard]] bool IsConsume(ActionKind action) noexcept;
+// The four that choose a bottle by its effect: the strongest or weakest
+// potion or poison carried with Action::effect.
+[[nodiscard]] bool IsPolicy(ActionKind action) noexcept;
 // The apply-a-poison actions and the charge-with-a-soul-gem actions, which
 // the Then cascade groups under Weapon.
 [[nodiscard]] bool IsApply(ActionKind action) noexcept;
@@ -286,6 +284,13 @@ struct Action
     // A number the action takes, when it does: the sustain time of a
     // concentration spell, for CastSpell.
     float arg{0.0f};
+
+    // Which effect, for the four policies: the magic effect's name as the
+    // game shows it -- "Restore Health", "Resist Fire", "Damage Stamina" --
+    // read off the bottles the follower carries. A name rather than a form
+    // so that the same rule reads any mod's potion of the effect, and so a
+    // profile shares across load orders. Ignored by every other action.
+    std::string effect;
 };
 
 struct Rule

@@ -552,6 +552,23 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
     }
 }
 
+std::uint32_t ChosenForm(const Action &a, const PotionStock &stock)
+{
+    switch (a.kind)
+    {
+    case ActionKind::DrinkStrongest:
+        return stock.Choose(ConsumableKind::Potion, a.effect, true);
+    case ActionKind::DrinkWeakest:
+        return stock.Choose(ConsumableKind::Potion, a.effect, false);
+    case ActionKind::ApplyStrongest:
+        return stock.Choose(ConsumableKind::Poison, a.effect, true);
+    case ActionKind::ApplyWeakest:
+        return stock.Choose(ConsumableKind::Poison, a.effect, false);
+    default:
+        return a.form;
+    }
+}
+
 // Takes the whole action, not just its kind: a spell action is only
 // answerable with the spell in hand, and splitting that across two lookups is
 // how the two drift apart.
@@ -559,29 +576,16 @@ bool HasResource(const Action &a, const Snapshot &s)
 {
     switch (a.kind)
     {
-    case ActionKind::DrinkHealthPotion:
-    case ActionKind::DrinkWeakestHealthPotion:
-        return s.potions.healthCount > 0;
-    case ActionKind::DrinkMagickaPotion:
-    case ActionKind::DrinkWeakestMagickaPotion:
-        return s.potions.magickaCount > 0;
-    case ActionKind::DrinkStaminaPotion:
-    case ActionKind::DrinkWeakestStaminaPotion:
-        return s.potions.staminaCount > 0;
+    case ActionKind::DrinkStrongest:
+    case ActionKind::DrinkWeakest:
+    case ActionKind::ApplyStrongest:
+    case ActionKind::ApplyWeakest:
+        return ChosenForm(a, s.potions) != 0;
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
     case ActionKind::EatIngredient:
     case ActionKind::ApplyPoison:
         return a.form != 0 && s.potions.CountOf(a.form, ConsumableOf(a.kind)) > 0;
-    case ActionKind::ApplyWeakestHealthPoison:
-    case ActionKind::ApplyStrongestHealthPoison:
-        return s.potions.poisonHealthCount > 0;
-    case ActionKind::ApplyWeakestMagickaPoison:
-    case ActionKind::ApplyStrongestMagickaPoison:
-        return s.potions.poisonMagickaCount > 0;
-    case ActionKind::ApplyWeakestStaminaPoison:
-    case ActionKind::ApplyStrongestStaminaPoison:
-        return s.potions.poisonStaminaCount > 0;
     case ActionKind::ChargeStrongestSoulGem:
     case ActionKind::ChargeWeakestSoulGem:
         return !s.soulGems.empty();
@@ -624,15 +628,9 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s)
     // follower has plenty, she is simply still absorbing the last one.
     switch (a.kind)
     {
-    case ActionKind::DrinkHealthPotion:
-    case ActionKind::DrinkWeakestHealthPotion:
-        return s.potions.healthEffectActive;
-    case ActionKind::DrinkMagickaPotion:
-    case ActionKind::DrinkWeakestMagickaPotion:
-        return s.potions.magickaEffectActive;
-    case ActionKind::DrinkStaminaPotion:
-    case ActionKind::DrinkWeakestStaminaPotion:
-        return s.potions.staminaEffectActive;
+    case ActionKind::DrinkStrongest:
+    case ActionKind::DrinkWeakest:
+        return s.potions.IsRunning(a.effect);
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
     case ActionKind::EatIngredient:
@@ -682,8 +680,8 @@ namespace
 EvalContext::ActionKey CooldownKey(const Action &a, ActorId target)
 {
     if (a.kind == ActionKind::Target)
-        return {a.kind, 0, 0};
-    return {a.kind, a.form, target};
+        return {a.kind, 0, 0, {}};
+    return {a.kind, a.form, target, a.effect};
 }
 
 // Can this action be done now? Fired if so; otherwise why not. The equip
@@ -838,7 +836,11 @@ bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, Ac
         if (v == Verdict::Fired)
         {
             decision.ruleIndex = ruleIndex;
-            decision.steps.push_back({a, target});
+            // The step carries the bottle a policy chose, so the game side
+            // has only to consume it.
+            Action resolved = a;
+            resolved.form = ChosenForm(a, snap.potions);
+            decision.steps.push_back({resolved, target});
             // The one cooldown there is: the ACTION goes on cooldown for as
             // long as its effect takes to show, and every rule that uses it
             // reports it. Nothing is keyed by rule or by condition.

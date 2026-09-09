@@ -55,7 +55,7 @@ ft::Snapshot BaseSnapshot()
     s.stamina = {100.0f, 100.0f};
     s.inCombat = true;
     s.playerHealth = {100.0f, 100.0f};
-    s.potions.healthCount = 5;
+    s.potions.Add(0x3EADE, 5, ft::ConsumableKind::Potion, {"Restore Health", 50.0f, 0.0f});
     return s;
 }
 
@@ -66,7 +66,8 @@ ft::Rule HealBelow(float pct)
     r.predicate = ft::PredicateKind::HealthPctBelow;
     r.conditionArg = pct;
     r.actionTarget = ft::ActionTargetKind::Self;
-    r.FirstAction().kind = ft::ActionKind::DrinkHealthPotion;
+    r.FirstAction().kind = ft::ActionKind::DrinkStrongest;
+    r.FirstAction().effect = "Restore Health";
     r.label = "heal";
     return r;
 }
@@ -86,7 +87,7 @@ std::vector<Check> RunSelfCheck()
         const auto d = ft::Evaluate(rs, s, ctx);
 
         checks.push_back({"health 40% < 50% -> drink potion",
-                          d.Fired() && d.action() == ft::ActionKind::DrinkHealthPotion && d.targetId() == s.self,
+                          d.Fired() && d.action() == ft::ActionKind::DrinkStrongest && d.targetId() == s.self,
                           fmt::format("fired={} target={:08X}", d.Fired(), d.targetId())});
     }
 
@@ -156,7 +157,8 @@ std::vector<Check> RunSelfCheck()
         r.subject = ft::SubjectKind::Self;
         r.predicate = ft::PredicateKind::Targeting; // nonsense: oneself, going for a party member
         r.subjectForm = 0;
-        r.FirstAction().kind = ft::ActionKind::DrinkHealthPotion;
+        r.FirstAction().kind = ft::ActionKind::DrinkStrongest;
+        r.FirstAction().effect = "Restore Health";
         rs.rules.push_back(r);
 
         ft::EvalContext ctx;

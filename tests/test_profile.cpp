@@ -23,7 +23,8 @@ Rule HealBelow(float pct)
     r.predicate = PredicateKind::HealthPctBelow;
     r.conditionArg = pct;
     r.actionTarget = ActionTargetKind::Self;
-    r.FirstAction().kind = ActionKind::DrinkHealthPotion;
+    r.FirstAction().kind = ActionKind::DrinkStrongest;
+    r.FirstAction().effect = "Restore Health";
     r.label = "emergency heal";
     return r;
 }
@@ -192,7 +193,8 @@ TEST_CASE("the file is the schema number, the follower, the switch and the rules
     const auto &heal = j["rules"][0];
     REQUIRE(heal["if"]["subject"] == "self");
     REQUIRE(heal["if"]["predicate"] == "health-pct-below");
-    REQUIRE(heal["then"]["do"][0]["action"] == "drink-strongest-health-potion");
+    REQUIRE(heal["then"]["do"][0]["action"] == "drink-strongest");
+    REQUIRE(heal["then"]["do"][0]["effect"] == "Restore Health");
     REQUIRE(heal["label"] == "emergency heal");
 
     // A form is whatever the codec says, and a hand is a word.
@@ -364,7 +366,8 @@ TEST_CASE("an unknown action is dropped alone and its rule kept", "[profile]")
     REQUIRE(read.profile->rules.rules.size() == 1);
     const Rule &r = read.profile->rules.rules[0];
     REQUIRE(r.actions.size() == 1);
-    REQUIRE(r.actions[0].kind == ActionKind::DrinkHealthPotion);
+    REQUIRE(r.actions[0].kind == ActionKind::DrinkStrongest);
+    REQUIRE(r.actions[0].effect == "Restore Health");
     REQUIRE(read.warnings.size() == 2);
     REQUIRE(read.warnings[0].find("sing") != std::string::npos);
     REQUIRE(read.warnings[1].find("tail") != std::string::npos);
@@ -468,4 +471,34 @@ TEST_CASE("the hex codec passes ids through unchanged", "[profile]")
     REQUIRE_FALSE(kHex.decode("0x").has_value());
     REQUIRE_FALSE(kHex.decode("Lydia").has_value());
     REQUIRE_FALSE(kHex.decode("0xA2C94~Skyrim.esm").has_value());
+}
+
+TEST_CASE("a policy names its effect on the wire, and the old fixed names still read", "[profile]")
+{
+    // The twelve policies of before 2026-09-08 read as today's four with
+    // the vanilla effect's name; today's names carry the effect beside them,
+    // and one without an effect is dropped alone.
+    const std::string rule = R"({
+        "if": { "subject": "self", "predicate": "any" },
+        "then": { "target": "self", "do": [
+            { "action": "apply-weakest-stamina-poison" },
+            { "action": "drink-weakest", "effect": "Resist Fire" },
+            { "action": "drink-strongest" }
+        ] }
+    })";
+    const auto read = ReadProfile(OneRuleFile(rule), kHex);
+    REQUIRE(read.profile->rules.rules.size() == 1);
+    const Rule &r = read.profile->rules.rules[0];
+    REQUIRE(r.actions.size() == 2);
+    REQUIRE(r.actions[0].kind == ActionKind::ApplyWeakest);
+    REQUIRE(r.actions[0].effect == "Damage Stamina");
+    REQUIRE(r.actions[1].kind == ActionKind::DrinkWeakest);
+    REQUIRE(r.actions[1].effect == "Resist Fire");
+    REQUIRE(read.warnings.size() == 1);
+
+    // And back out: the effect is written beside the action.
+    const auto again = WriteProfile(*read.profile, kHex);
+    const auto j = nlohmann::json::parse(again);
+    REQUIRE(j["rules"][0]["then"]["do"][1]["action"] == "drink-weakest");
+    REQUIRE(j["rules"][0]["then"]["do"][1]["effect"] == "Resist Fire");
 }

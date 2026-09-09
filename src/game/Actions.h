@@ -34,6 +34,9 @@ enum class ActionResult : std::uint8_t
 
 // One action of a decision. A decision's steps are executed in order, each
 // through here. `target` is the step's: whom the rule aimed the action at.
-ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor, const PotionChoice &choice);
+// The action's form is the thing to use: a policy's has been resolved to
+// the bottle it chose by the evaluator (ChosenForm), so a Strongest and a
+// named potion arrive the same way.
+ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor);
 
 } // namespace ft::game

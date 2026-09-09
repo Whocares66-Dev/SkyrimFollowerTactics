@@ -24,28 +24,6 @@ class TESObjectWEAP;
 namespace ft::game
 {
 
-// The RE:: pointers an action may need, carried alongside the Snapshot rather
-// than inside it -- ft::Snapshot must never see an RE:: type, and an action
-// still has to be handed the actual potion to equip.
-struct PotionChoice
-{
-    // The strongest carried of each, and the weakest: what the "drink
-    // strongest" and "drink weakest" policies hand to the equip.
-    RE::AlchemyItem *health{nullptr};
-    RE::AlchemyItem *magicka{nullptr};
-    RE::AlchemyItem *stamina{nullptr};
-    RE::AlchemyItem *weakestHealth{nullptr};
-    RE::AlchemyItem *weakestMagicka{nullptr};
-    RE::AlchemyItem *weakestStamina{nullptr};
-    // And the poisons, by what they damage.
-    RE::AlchemyItem *poisonHealth{nullptr};
-    RE::AlchemyItem *poisonMagicka{nullptr};
-    RE::AlchemyItem *poisonStamina{nullptr};
-    RE::AlchemyItem *weakestPoisonHealth{nullptr};
-    RE::AlchemyItem *weakestPoisonMagicka{nullptr};
-    RE::AlchemyItem *weakestPoisonStamina{nullptr};
-};
-
 // The weapon in a hand, if it takes a poison (anything but a staff). Null
 // for no weapon there, or a staff.
 [[nodiscard]] RE::TESObjectWEAP *PoisonableWeaponIn(RE::Actor *actor, bool left);
@@ -121,6 +99,9 @@ struct ConsumableOption
     std::string name;
     int count{0};
     ft::ConsumableKind kind{ft::ConsumableKind::Potion};
+    // The effects a policy could choose this by: a potion's boons, a
+    // poison's banes, by name. What the Strongest and Weakest menus list.
+    std::vector<std::string> effects;
 };
 
 // Every consumable she carries, sorted by name. Menu content only. Poisons
@@ -318,6 +299,6 @@ void LogActiveEffects(RE::Actor *actor, const char *when);
 // potions and the loadout, and the party and the enemies by definition:
 // allies are the player and the other teammates, enemies whoever is in
 // combat and hostile to the player (docs/CONDITIONS.md 6).
-ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice);
+ft::Snapshot BuildSnapshot(RE::Actor *actor, double now);
 
 } // namespace ft::game

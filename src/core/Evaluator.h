@@ -62,6 +62,12 @@ struct Binding
     }
 };
 
+// The bottle an action takes: a named one's own form, or for a Strongest /
+// Weakest policy the one chosen from the stock by its effect -- 0 for none.
+// The Decision's steps carry the resolved form, so the game side has only
+// to consume it.
+[[nodiscard]] std::uint32_t ChosenForm(const Action &a, const PotionStock &stock);
+
 struct EvalContext
 {
     // Both of these hold a time UNTIL WHICH something is blocked, not the time
@@ -83,10 +89,13 @@ struct EvalContext
         ActionKind action{ActionKind::None};
         std::uint32_t form{0};
         ActorId target{0};
+        // The policy's effect: "drink the strongest Restore Health" and
+        // "... Resist Fire" are two actions, each on its own cooldown.
+        std::string effect;
 
         [[nodiscard]] bool operator==(const ActionKey &o) const noexcept
         {
-            return action == o.action && form == o.form && target == o.target;
+            return action == o.action && form == o.form && target == o.target && effect == o.effect;
         }
     };
 

@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace ft
@@ -146,50 +148,59 @@ struct CorpseView
     float distance{0.0f};
 };
 
-// Counts and best-available magnitude per potion kind. Populated by an
-// inventory scan in src/game/, which is expensive -- see the sensor gating
-// note in docs/PLAN.md section 3.3.
+// What the follower carries to drink, eat or apply, with what each bottle
+// does. Populated by an inventory scan in src/game/, which is expensive --
+// see the sensor gating note in docs/PLAN.md section 3.3.
 struct PotionStock
 {
-    int healthCount{0};
-    float bestHealthMagnitude{0.0f};
-    int magickaCount{0};
-    float bestMagickaMagnitude{0.0f};
-    int staminaCount{0};
-    float bestStaminaMagnitude{0.0f};
+    // One effect of a bottle, by the name the game shows for it, with what
+    // the bottle has of it. A potion's boons and a poison's banes: what a
+    // Strongest or Weakest policy chooses by. Strength is the magnitude,
+    // and among equal magnitudes the duration -- a lingering poison's
+    // "1 point for 15 s" over its "1 point for 10 s" -- and for an effect
+    // with no magnitude at all (Invisibility, Paralysis) the duration.
+    struct Effect
+    {
+        std::string name;
+        float magnitude{0.0f};
+        float duration{0.0f};
 
-    // Poisons carried, by what they damage. The strongest and weakest of
-    // each are chosen on the game side the way the potions are.
-    int poisonHealthCount{0};
-    int poisonMagickaCount{0};
-    int poisonStaminaCount{0};
+        [[nodiscard]] bool StrongerThan(const Effect &o) const noexcept
+        {
+            return magnitude != o.magnitude ? magnitude > o.magnitude : duration > o.duration;
+        }
+    };
 
-    // True while a restore effect is still running on the follower.
-    //
-    // Vanilla alchemy Restore Health is INSTANT -- duration 0, nothing lingers --
-    // so on an unmodded game these stay false and the settle time in
-    // MinimumCooldown does the spacing. But potion overhauls commonly convert
-    // restores to over-time effects (Potions Restore Over Time, Apothecary, and
-    // others), and there a fixed settle is guesswork: the dose might run for ten
-    // seconds. Asking the game whether the previous dose is still working is
-    // exact, and it costs one walk of the active-effect list we already have.
-    bool healthEffectActive{false};
-    bool magickaEffectActive{false};
-    bool staminaEffectActive{false};
-
-    // Every consumable she carries -- potion, food, ingredient -- by form,
-    // with its count and kind: what a named consume rule checks against.
-    // Names are display and live on the game side. The kind is checked as
-    // well as the form so a hand-edited profile cannot put food under
-    // drink-potion: that is a rule that could never work, and the evaluator
-    // says so instead of drinking it.
+    // Every consumable carried -- potion, food, ingredient, poison -- by
+    // form, with its count, kind and effects: what a named consume rule
+    // checks against, and what a policy chooses from. Names are display
+    // and live on the game side. The kind is checked as well as the form
+    // so a hand-edited profile cannot put food under drink-potion: that is
+    // a rule that could never work, and the evaluator says so instead of
+    // drinking it.
     struct Carried
     {
         std::uint32_t form{0};
         int count{0};
         ConsumableKind kind{ConsumableKind::Potion};
+        std::vector<Effect> effects;
     };
     std::vector<Carried> carried;
+
+    // The effects running on the follower right now, by name: a potion
+    // whose effect is still up is not drunk again, as a buff is not
+    // re-cast.
+    //
+    // Vanilla alchemy Restore Health is INSTANT -- duration 0, nothing
+    // lingers -- so on an unmodded game it is never here and the settle
+    // time in MinimumCooldown does the spacing. Potion overhauls commonly
+    // convert restores to over-time effects (Potions Restore Over Time,
+    // Apothecary, and others), and there a fixed settle is guesswork: the
+    // dose might run for ten seconds. Asking the game whether the previous
+    // dose is still working is exact, and it costs one walk of the
+    // active-effect list we already have. A Fortify or a Resist runs for
+    // a minute and is here throughout.
+    std::vector<std::string> running;
 
     [[nodiscard]] int CountOf(std::uint32_t form, ConsumableKind kind) const
     {
@@ -197,6 +208,49 @@ struct PotionStock
             if (c.form == form && c.kind == kind)
                 return c.count;
         return 0;
+    }
+
+    [[nodiscard]] bool IsRunning(std::string_view effect) const
+    {
+        return std::any_of(running.begin(), running.end(), [&](const std::string &r) { return r == effect; });
+    }
+
+    // The bottle a policy chooses: of that kind, with that effect, the
+    // strongest or the weakest by it. 0 for none carried.
+    [[nodiscard]] std::uint32_t Choose(ConsumableKind kind, std::string_view effect, bool strongest) const
+    {
+        const Carried *best = nullptr;
+        const Effect *bestEffect = nullptr;
+        for (const auto &c : carried)
+        {
+            if (c.kind != kind || c.count <= 0)
+                continue;
+            for (const auto &e : c.effects)
+            {
+                if (e.name != effect)
+                    continue;
+                if (!bestEffect || (strongest ? e.StrongerThan(*bestEffect) : bestEffect->StrongerThan(e)))
+                {
+                    best = &c;
+                    bestEffect = &e;
+                }
+            }
+        }
+        return best ? best->form : 0;
+    }
+
+    // Add a bottle, or one effect to a bottle already listed.
+    void Add(std::uint32_t form, int count, ConsumableKind kind, const Effect &effect)
+    {
+        for (auto &c : carried)
+        {
+            if (c.form == form && c.kind == kind)
+            {
+                c.effects.push_back(effect);
+                return;
+            }
+        }
+        carried.push_back({form, count, kind, {effect}});
     }
 };
 

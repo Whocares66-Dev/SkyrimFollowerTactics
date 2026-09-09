@@ -26,84 +26,32 @@ namespace
 // condition refuses.
 constexpr std::uint32_t kMagicNoReanimateKeyword = 0x0006F6FB;
 
-// Highest magnitude this potion or poison has on the given actor value, or
-// 0 if it has none. The caller says which side of the bottle it is looking
-// at: a potion's effect on Health restores it, a poison's damages it.
-float RestoreMagnitude(RE::AlchemyItem *alch, RE::ActorValue av)
+// The effects of a bottle a policy could choose it by: a potion's boons
+// and a poison's banes, by the name the game shows, with the bottle's
+// magnitude and duration of each. A potion's harmful side (the Slow in
+// Sleeping Tree Sap, the regen loss in an ale) is not a reason to drink
+// it, and a poison is chosen for what it does to the enemy.
+std::vector<ft::PotionStock::Effect> EffectsOf(RE::AlchemyItem *alch, ft::ConsumableKind kind)
 {
-    float best = 0.0f;
+    std::vector<ft::PotionStock::Effect> out;
+    if (!alch)
+        return out;
+    const bool poison = kind == ft::ConsumableKind::Poison;
     for (auto *effect : alch->effects)
     {
         if (!effect || !effect->baseEffect)
             continue;
-        if (effect->baseEffect->data.primaryAV != av)
+        const auto *base = effect->baseEffect;
+        const bool harmful =
+            base->IsDetrimental() || base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHostile);
+        if (harmful != poison)
             continue;
-        best = std::max(best, effect->effectItem.magnitude);
+        const char *name = base->GetFullName();
+        if (!name || !*name)
+            continue;
+        out.push_back({name, effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration)});
     }
-    return best;
-}
-
-void RecordPotion(RE::AlchemyItem *alch, std::int32_t count, ft::PotionStock &stock, PotionChoice &choice,
-                  std::array<float, 3> &weakest)
-{
-    const auto consider = [&](RE::ActorValue av, int &countOut, float &bestOut, RE::AlchemyItem *&chosen,
-                              float &weakestOut, RE::AlchemyItem *&cheapest) {
-        const float mag = RestoreMagnitude(alch, av);
-        if (mag <= 0.0f)
-            return;
-        countOut += count;
-        // "Best" is the largest restore. A rule that fires at 30% health wants
-        // the strongest thing in the bag, not whichever came first. The
-        // weakest is the other policy: the cheap potion first, the strong
-        // one kept for when it matters.
-        if (mag > bestOut)
-        {
-            bestOut = mag;
-            chosen = alch;
-        }
-        if (!cheapest || mag < weakestOut)
-        {
-            weakestOut = mag;
-            cheapest = alch;
-        }
-    };
-
-    consider(RE::ActorValue::kHealth, stock.healthCount, stock.bestHealthMagnitude, choice.health, weakest[0],
-             choice.weakestHealth);
-    consider(RE::ActorValue::kMagicka, stock.magickaCount, stock.bestMagickaMagnitude, choice.magicka, weakest[1],
-             choice.weakestMagicka);
-    consider(RE::ActorValue::kStamina, stock.staminaCount, stock.bestStaminaMagnitude, choice.stamina, weakest[2],
-             choice.weakestStamina);
-}
-
-// The poisons, the same way: the strongest and weakest carried by what
-// they damage.
-void RecordPoison(RE::AlchemyItem *alch, std::int32_t count, ft::PotionStock &stock, PotionChoice &choice,
-                  std::array<float, 3> &strongest, std::array<float, 3> &weakest)
-{
-    const auto consider = [&](RE::ActorValue av, int &countOut, float &bestOut, RE::AlchemyItem *&chosen,
-                              float &weakestOut, RE::AlchemyItem *&cheapest) {
-        const float mag = RestoreMagnitude(alch, av);
-        if (mag <= 0.0f)
-            return;
-        countOut += count;
-        if (!chosen || mag > bestOut)
-        {
-            bestOut = mag;
-            chosen = alch;
-        }
-        if (!cheapest || mag < weakestOut)
-        {
-            weakestOut = mag;
-            cheapest = alch;
-        }
-    };
-    consider(RE::ActorValue::kHealth, stock.poisonHealthCount, strongest[0], choice.poisonHealth, weakest[0],
-             choice.weakestPoisonHealth);
-    consider(RE::ActorValue::kMagicka, stock.poisonMagickaCount, strongest[1], choice.poisonMagicka, weakest[1],
-             choice.weakestPoisonMagicka);
-    consider(RE::ActorValue::kStamina, stock.poisonStaminaCount, strongest[2], choice.poisonStamina, weakest[2],
-             choice.weakestPoisonStamina);
+    return out;
 }
 
 // Which consumable kind an inventory object is, or nothing for what is
@@ -121,7 +69,7 @@ std::optional<ft::ConsumableKind> ConsumableKindOf(RE::TESBoundObject *object)
     return std::nullopt;
 }
 
-void ScanPotions(RE::Actor *actor, ft::PotionStock &stock, PotionChoice &choice)
+void ScanPotions(RE::Actor *actor, ft::PotionStock &stock)
 {
     // Filtered at the source: asking GetInventory for only the consumable
     // types is markedly cheaper than pulling the whole inventory and sorting
@@ -129,9 +77,6 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock, PotionChoice &choice)
     auto inventory = actor->GetInventory(
         [](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::AlchemyItem) || obj.Is(RE::FormType::Ingredient); });
 
-    std::array<float, 3> weakest{};
-    std::array<float, 3> poisonStrongest{};
-    std::array<float, 3> poisonWeakest{};
     for (auto &[object, entry] : inventory)
     {
         const auto count = entry.first;
@@ -140,49 +85,50 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock, PotionChoice &choice)
         const auto kind = ConsumableKindOf(object);
         if (!kind)
             continue;
-
-        stock.carried.push_back({object->GetFormID(), static_cast<int>(count), *kind});
-        // Only a potion is a candidate for the three "strongest" policies:
-        // food restores too, but slowly, and is its own action.
-        if (*kind == ft::ConsumableKind::Potion)
-            RecordPotion(object->As<RE::AlchemyItem>(), count, stock, choice, weakest);
-        else if (*kind == ft::ConsumableKind::Poison)
-            RecordPoison(object->As<RE::AlchemyItem>(), count, stock, choice, poisonStrongest, poisonWeakest);
+        // A potion's and a poison's effects, for the policies; food restores
+        // too, but slowly, and is its own action, named.
+        std::vector<ft::PotionStock::Effect> effects;
+        if (*kind == ft::ConsumableKind::Potion || *kind == ft::ConsumableKind::Poison)
+            effects = EffectsOf(object->As<RE::AlchemyItem>(), *kind);
+        stock.carried.push_back({object->GetFormID(), static_cast<int>(count), *kind, std::move(effects)});
     }
 }
 
-// Is a restore effect for this actor value still running?
+// The effects still running on the actor, by name.
 //
-// An INSTANT effect has duration 0 and never lingers here, so on a vanilla game
-// this always answers false and the settle time in MinimumCooldown does the
-// spacing. Potion overhauls convert restores to over-time effects, and there
-// this is the exact answer where a fixed settle would be a guess.
+// An INSTANT effect has duration 0 and never lingers here, so on a vanilla
+// game a Restore is never listed and the settle time in MinimumCooldown
+// does the spacing. Potion overhauls convert restores to over-time effects,
+// and there this is the exact answer where a fixed settle would be a guess.
+// A Fortify, a Resist, an Invisibility runs for a minute and is listed
+// throughout, so the rule that drank it waits as a buff rule waits.
 //
-// Deliberately not restricted to effects whose source is a potion: a healing
-// spell or a regeneration enchantment ticking away is just as good a reason not
-// to drink, and asking "is this stat already being restored" says that in one
-// question.
-bool RestoreEffectRunning(RE::Actor *actor, RE::ActorValue av)
+// Deliberately not restricted to effects whose source is a potion: a spell
+// or an enchantment of the same effect ticking away is just as good a
+// reason not to drink.
+std::vector<std::string> RunningEffects(RE::Actor *actor)
 {
+    std::vector<std::string> out;
     auto *target = actor->AsMagicTarget();
     if (!target)
-        return false;
-
+        return out;
     auto *effects = target->GetActiveEffectList();
     if (!effects)
-        return false;
-
+        return out;
     for (auto *ae : *effects)
     {
         if (!ae || !ae->effect || !ae->effect->baseEffect)
             continue;
-        if (ae->effect->baseEffect->data.primaryAV != av)
+        if (ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled))
             continue;
         // duration 0 is an instant effect that has already happened.
-        if (ae->duration > 0.0f && ae->elapsedSeconds < ae->duration)
-            return true;
+        if (!(ae->duration > 0.0f && ae->elapsedSeconds < ae->duration))
+            continue;
+        const char *name = ae->effect->baseEffect->GetFullName();
+        if (name && *name)
+            out.emplace_back(name);
     }
-    return false;
+    return out;
 }
 
 ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
@@ -721,10 +667,9 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     return traits;
 }
 
-ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
+ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
 {
     ft::Snapshot s;
-    choice = {};
 
     if (!actor)
         return s;
@@ -846,7 +791,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
             s.enemies.push_back(enemyOf(target));
     }
 
-    ScanPotions(actor, s.potions, choice);
+    ScanPotions(actor, s.potions);
     for (const bool left : {false, true})
     {
         auto &hand = left ? s.leftWeapon : s.rightWeapon;
@@ -866,9 +811,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     }
     s.soulGems = ScanSoulGems(actor);
 
-    s.potions.healthEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kHealth);
-    s.potions.magickaEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kMagicka);
-    s.potions.staminaEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kStamina);
+    s.potions.running = RunningEffects(actor);
 
     // Spells: what she knows, what is running, what is in hand. All three are
     // ids only -- Snapshot never sees an RE:: type -- and all three are needed
@@ -1020,8 +963,11 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
         const auto kind = ConsumableKindOf(object);
         if (!kind)
             continue;
-        out.push_back(
-            {object->GetFormID(), object->GetName() ? object->GetName() : "?", static_cast<int>(count), *kind});
+        std::vector<std::string> effects;
+        for (const auto &effect : EffectsOf(object->As<RE::AlchemyItem>(), *kind))
+            effects.push_back(effect.name);
+        out.push_back({object->GetFormID(), object->GetName() ? object->GetName() : "?", static_cast<int>(count), *kind,
+                       std::move(effects)});
     }
     std::sort(out.begin(), out.end(),
               [](const ConsumableOption &a, const ConsumableOption &b) { return a.name < b.name; });

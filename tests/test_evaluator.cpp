@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "core/Effects.h"
 #include "core/Evaluator.h"
 #include "core/Vocabulary.h"
 
@@ -12,6 +13,10 @@ using namespace ft;
 
 namespace
 {
+
+constexpr std::uint32_t kHealthPotion = 0x3EADE;
+constexpr std::uint32_t kMagickaPotion = 0x3EAE1;
+constexpr std::uint32_t kStaminaPotion = 0x39BE8;
 
 Snapshot Healthy()
 {
@@ -23,12 +28,48 @@ Snapshot Healthy()
     s.stamina = {100.0f, 100.0f};
     s.inCombat = true;
     s.playerHealth = {100.0f, 100.0f};
-    s.potions.healthCount = 5;
-    // The other two kinds too: the tests use them as spare, resource-free
-    // actions to tell one rule's firing from another's.
-    s.potions.magickaCount = 5;
-    s.potions.staminaCount = 5;
+    // Five health potions; and the other two kinds too: the tests use them
+    // as spare, resource-free actions to tell one rule's firing from
+    // another's.
+    s.potions.Add(kHealthPotion, 5, ConsumableKind::Potion, {"Restore Health", 50.0f, 0.0f});
+    s.potions.Add(kMagickaPotion, 5, ConsumableKind::Potion, {"Restore Magicka", 50.0f, 0.0f});
+    s.potions.Add(kStaminaPotion, 5, ConsumableKind::Potion, {"Restore Stamina", 50.0f, 0.0f});
     return s;
+}
+
+// Take the health potions out of the bag.
+void EmptyBag(Snapshot &s, std::uint32_t form = kHealthPotion)
+{
+    std::erase_if(s.potions.carried, [&](const PotionStock::Carried &c) { return c.form == form; });
+}
+
+// The policy actions, by the effect: the strongest potion or poison carried
+// with it.
+Action Drink(const char *effect, bool strongest = true)
+{
+    Action a;
+    a.kind = strongest ? ActionKind::DrinkStrongest : ActionKind::DrinkWeakest;
+    a.effect = effect;
+    return a;
+}
+Action DrinkHealth()
+{
+    return Drink("Restore Health");
+}
+Action DrinkMagicka()
+{
+    return Drink("Restore Magicka");
+}
+Action DrinkStamina()
+{
+    return Drink("Restore Stamina");
+}
+Action Apply(const char *effect, bool strongest = true)
+{
+    Action a;
+    a.kind = strongest ? ActionKind::ApplyStrongest : ActionKind::ApplyWeakest;
+    a.effect = effect;
+    return a;
 }
 
 // The marquee rule: IF self health below <pct> THEN drink a health potion.
@@ -39,7 +80,7 @@ Rule HealBelow(float pct)
     r.predicate = PredicateKind::HealthPctBelow;
     r.conditionArg = pct;
     r.actionTarget = ActionTargetKind::Self;
-    r.FirstAction().kind = ActionKind::DrinkHealthPotion;
+    r.FirstAction() = DrinkHealth();
     r.label = "heal";
     return r;
 }
@@ -76,7 +117,7 @@ TEST_CASE("the marquee rule: health below 50% drinks a potion", "[evaluator]")
         Trace trace;
         const auto d = Evaluate(rs, s, ctx, &trace);
         REQUIRE(d.Fired());
-        REQUIRE(d.action() == ActionKind::DrinkHealthPotion);
+        REQUIRE(d.action() == ActionKind::DrinkStrongest);
         REQUIRE(d.targetId() == s.self);
         REQUIRE(trace.at(0) == Verdict::Fired);
     }
@@ -85,7 +126,7 @@ TEST_CASE("the marquee rule: health below 50% drinks a potion", "[evaluator]")
     {
         Snapshot s = Healthy();
         s.health = {40.0f, 100.0f};
-        s.potions.healthCount = 0;
+        EmptyBag(s);
 
         Trace trace;
         const auto d = Evaluate(rs, s, ctx, &trace);
@@ -169,7 +210,7 @@ TEST_CASE("a cooldown belongs to the action, not to the rule's position", "[eval
     REQUIRE(trace.at(1) == Verdict::NotReached);
 
     // And the potion's cooldown is on the ACTION, wherever its rule now sits.
-    REQUIRE(ctx.BlockedUntil({ActionKind::DrinkHealthPotion, 0, s.self}) > s.now);
+    REQUIRE(ctx.BlockedUntil({ActionKind::DrinkStrongest, 0, s.self, "Restore Health"}) > s.now);
     REQUIRE(ctx.BlockedUntil({ActionKind::CastSpell, kHeal, s.self}) > s.now);
 }
 
@@ -338,9 +379,9 @@ TEST_CASE("the action target is its own choice, within what makes sense", "[bind
     auto d = Evaluate(rs, s, ctx, &trace);
     REQUIRE_FALSE(d.Fired());
     REQUIRE(trace.at(0) == Verdict::Unsupported);
-    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Player, ActionKind::DrinkHealthPotion));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Player, ActionKind::DrinkStrongest));
     REQUIRE(IsActionValidFor(ActionTargetKind::Player, ActionKind::CastSpell));
-    REQUIRE(IsActionValidFor(ActionTargetKind::Self, ActionKind::DrinkHealthPotion));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Self, ActionKind::DrinkStrongest));
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Self, ActionKind::Target));
     REQUIRE(IsActionValidFor(ActionTargetKind::Attacker, ActionKind::Target));
 
@@ -484,15 +525,15 @@ TEST_CASE("the edges of a fight hold for one evaluation each", "[evaluator]")
     onBegin.subject = SubjectKind::Self;
     onBegin.predicate = PredicateKind::CombatBegins;
     onBegin.actionTarget = ActionTargetKind::Self;
-    onBegin.FirstAction().kind = ActionKind::DrinkStaminaPotion;
+    onBegin.FirstAction() = DrinkStamina();
 
     Rule always = onBegin;
     always.predicate = PredicateKind::Any;
-    always.FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    always.FirstAction() = DrinkMagicka();
 
     Rule onEnd = onBegin;
     onEnd.predicate = PredicateKind::CombatEnds;
-    onEnd.FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    onEnd.FirstAction() = DrinkMagicka();
 
     RuleSet rs;
     rs.rules = {onBegin, always, onEnd};
@@ -534,10 +575,10 @@ TEST_CASE("a rule does its actions one per tick, in order, and waits rather than
     // else is decided.
     Rule r = HealBelow(0.5f);
     r.actions.push_back({ActionKind::CastSpell, kHeal});
-    r.actions.push_back({ActionKind::DrinkStaminaPotion});
+    r.actions.push_back(DrinkStamina());
     Rule other = HealBelow(0.5f);
     other.actionTarget = ActionTargetKind::Self;
-    other.FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    other.FirstAction() = DrinkMagicka();
 
     RuleSet rs;
     rs.rules = {r, other};
@@ -553,7 +594,7 @@ TEST_CASE("a rule does its actions one per tick, in order, and waits rather than
     // Tick one: the potion, and only the potion; the rest waits.
     REQUIRE(d.ruleIndex == 0);
     REQUIRE(d.steps.size() == 1);
-    REQUIRE(d.action() == ActionKind::DrinkHealthPotion);
+    REQUIRE(d.action() == ActionKind::DrinkStrongest);
     REQUIRE(trace.at(0) == Verdict::Fired);
     REQUIRE(actions.at(0) == std::vector<Verdict>{Verdict::Fired, Verdict::NotReached, Verdict::NotReached});
     REQUIRE(trace.at(1) == Verdict::NotReached);
@@ -581,7 +622,7 @@ TEST_CASE("a rule does its actions one per tick, in order, and waits rather than
     s.now += 0.5;
     d = Evaluate(rs, s, ctx, &trace, &actions);
     REQUIRE(d.steps.size() == 1);
-    REQUIRE(d.action() == ActionKind::DrinkStaminaPotion);
+    REQUIRE(d.action() == ActionKind::DrinkStrongest);
     REQUIRE(actions.at(0) == std::vector<Verdict>{Verdict::NotReached, Verdict::NotReached, Verdict::Fired});
     REQUIRE_FALSE(ctx.pending.Active());
 
@@ -605,7 +646,7 @@ TEST_CASE("a list whose remainder cannot be done is through, and the tick goes o
     r.actions.push_back({ActionKind::CastSpell, kHeal});
     Rule other = HealBelow(0.5f);
     other.actionTarget = ActionTargetKind::Self;
-    other.FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    other.FirstAction() = DrinkMagicka();
     RuleSet rs;
     rs.rules = {r, other};
 
@@ -619,13 +660,13 @@ TEST_CASE("a list whose remainder cannot be done is through, and the tick goes o
     Trace trace;
     ActionTrace actions;
     Decision d = Evaluate(rs, s, ctx, &trace, &actions);
-    REQUIRE(d.action() == ActionKind::DrinkHealthPotion);
+    REQUIRE(d.action() == ActionKind::DrinkStrongest);
     REQUIRE(ctx.pending.Active());
 
     s.now += 0.5;
     d = Evaluate(rs, s, ctx, &trace, &actions);
     REQUIRE(d.ruleIndex == 1);
-    REQUIRE(d.action() == ActionKind::DrinkMagickaPotion);
+    REQUIRE(d.action() == ActionKind::DrinkStrongest);
     REQUIRE_FALSE(ctx.pending.Active());
     // The first rule was re-read from the top on the same tick: the potion
     // is inside its settle.
@@ -635,7 +676,7 @@ TEST_CASE("a list whose remainder cannot be done is through, and the tick goes o
 TEST_CASE("a list in progress is dropped when the fight ends", "[sequence]")
 {
     Rule r = HealBelow(0.5f);
-    r.actions.push_back({ActionKind::DrinkStaminaPotion});
+    r.actions.push_back(DrinkStamina());
     RuleSet rs;
     rs.rules = {r};
 
@@ -1008,7 +1049,7 @@ TEST_CASE("an unanswerable pair reports InvalidCondition, not ConditionFalse", "
     r.subject = SubjectKind::Self;
     r.predicate = PredicateKind::Targeting; // nonsense: oneself, going for a party member
     r.subjectForm = 0;
-    r.FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    r.FirstAction() = DrinkMagicka();
     rs.rules.push_back(r);
 
     EvalContext ctx;
@@ -1031,10 +1072,10 @@ namespace
 
 // A rule sharing the "self health below pct" condition but applying a different
 // remedy -- the shape of "drink a potion / cast a heal / eat food".
-Rule HurtBut(float pct, ActionKind action, const char *label)
+Rule HurtBut(float pct, const Action &action, const char *label)
 {
     Rule r = HealBelow(pct);
-    r.FirstAction().kind = action;
+    r.FirstAction() = action;
     r.label = label;
     return r;
 }
@@ -1047,13 +1088,13 @@ TEST_CASE("one situation draws its remedies in list order, one per turn", "[cool
     // first, and if the next turn still finds her hurt, the next remedy. Each
     // action carries its own cooldown; nothing is keyed by the condition.
     RuleSet rs;
-    rs.rules.push_back(HurtBut(0.25f, ActionKind::DrinkHealthPotion, "potion"));
-    rs.rules.push_back(HurtBut(0.25f, ActionKind::DrinkMagickaPotion, "heal spell"));
-    rs.rules.push_back(HurtBut(0.25f, ActionKind::DrinkStaminaPotion, "back off"));
+    rs.rules.push_back(HurtBut(0.25f, DrinkHealth(), "potion"));
+    rs.rules.push_back(HurtBut(0.25f, DrinkMagicka(), "heal spell"));
+    rs.rules.push_back(HurtBut(0.25f, DrinkStamina(), "back off"));
 
     Snapshot s = Healthy();
     s.health = {20.0f, 100.0f};
-    s.potions.magickaCount = 5;
+    // (magicka potions are in the bag already)
 
     EvalContext ctx;
 
@@ -1073,7 +1114,7 @@ TEST_CASE("one situation draws its remedies in list order, one per turn", "[cool
     REQUIRE(trace.at(1) == Verdict::ActionCooldown);
 
     // Once the potion has had time to work, it is available again.
-    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion);
+    s.now += MinimumCooldown(ActionKind::DrinkStrongest);
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
 }
 
@@ -1084,12 +1125,12 @@ TEST_CASE("an unavailable action falls through immediately, in the same tick", "
     // remedy for the same problem should be tried at once rather than after a
     // wait. This is the distinction the condition cooldown must not blur.
     RuleSet rs;
-    rs.rules.push_back(HurtBut(0.5f, ActionKind::DrinkHealthPotion, "potion"));
-    rs.rules.push_back(HurtBut(0.5f, ActionKind::DrinkMagickaPotion, "back off"));
+    rs.rules.push_back(HurtBut(0.5f, DrinkHealth(), "potion"));
+    rs.rules.push_back(HurtBut(0.5f, DrinkMagicka(), "back off"));
 
     Snapshot s = Healthy();
     s.health = {40.0f, 100.0f};
-    s.potions.healthCount = 0; // the bag is empty
+    EmptyBag(s);
 
     EvalContext ctx;
     Trace trace;
@@ -1111,7 +1152,7 @@ TEST_CASE("two rules sharing an action cannot repeat it back to back", "[cooldow
     Rule spare;
     spare.subject = SubjectKind::Self;
     spare.predicate = PredicateKind::Any;
-    spare.FirstAction().kind = ActionKind::DrinkHealthPotion;
+    spare.FirstAction() = DrinkHealth();
     spare.label = "top up while fighting";
     rs.rules.push_back(spare);
 
@@ -1127,7 +1168,7 @@ TEST_CASE("two rules sharing an action cannot repeat it back to back", "[cooldow
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(1) == Verdict::ActionCooldown);
 
-    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion);
+    s.now += MinimumCooldown(ActionKind::DrinkStrongest);
     REQUIRE(Evaluate(rs, s, ctx).Fired());
 }
 
@@ -1141,7 +1182,7 @@ TEST_CASE("a different situation is still free to draw a response", "[cooldown]"
     swarmed.subject = SubjectKind::Enemy;
     swarmed.predicate = PredicateKind::Any;
     swarmed.actionTarget = ActionTargetKind::Self;
-    swarmed.FirstAction().kind = ActionKind::DrinkStaminaPotion;
+    swarmed.FirstAction() = DrinkStamina();
     swarmed.label = "back off when an enemy is near";
     rs.rules.push_back(swarmed);
 
@@ -1177,12 +1218,13 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
     hold.subject = SubjectKind::Enemy;
     hold.predicate = PredicateKind::Any;
     hold.actionTarget = ActionTargetKind::Self;
-    hold.FirstAction().kind = ActionKind::DrinkStaminaPotion;
+    hold.FirstAction() = DrinkStamina();
     hold.label = "brace: hold position";
     rs.rules.push_back(hold);
 
     Rule disengage = hold;
-    disengage.FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    disengage.FirstAction().kind = ActionKind::DrinkPotion; // a different action from rule 0's
+    disengage.FirstAction().form = kMagickaPotion;
     disengage.label = "brace: break off";
     rs.rules.push_back(disengage);
 
@@ -1193,15 +1235,15 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
 
     // Rule 0 wins now, and keeps winning every time it comes off cooldown.
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
-    s.now += MinimumCooldown(ActionKind::DrinkStaminaPotion) + 0.01;
+    s.now += MinimumCooldown(ActionKind::DrinkStrongest) + 0.01;
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
 
     // Make rule 0's action unavailable -- which is what an "already in effect"
     // check will do -- and rule 1 gets its turn. Note the wait: rule 0's fire
     // also blocked the condition they share, so the settle has to elapse first.
     // Availability decides WHO acts; the cooldown decides WHEN.
-    ctx.caps.supported[static_cast<std::size_t>(ActionKind::DrinkStaminaPotion)] = false;
-    s.now += MinimumCooldown(ActionKind::DrinkStaminaPotion) + 0.01;
+    ctx.caps.supported[static_cast<std::size_t>(ActionKind::DrinkStrongest)] = false;
+    s.now += MinimumCooldown(ActionKind::DrinkStrongest) + 0.01;
 
     Trace trace;
     const auto d = Evaluate(rs, s, ctx, &trace);
@@ -1228,7 +1270,7 @@ TEST_CASE("a busy action is skipped without spending a cooldown", "[capabilities
     rs.rules.push_back(cast);
 
     Rule potion = cast;
-    potion.FirstAction().kind = ActionKind::DrinkHealthPotion;
+    potion.FirstAction() = DrinkHealth();
     potion.FirstAction().form = 0;
     rs.rules.push_back(potion);
 
@@ -1249,7 +1291,7 @@ TEST_CASE("a busy action is skipped without spending a cooldown", "[capabilities
     // share, so that settle has to elapse -- but the cast rule itself must
     // carry NO cooldown from having been skipped.
     ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = false;
-    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion) + 0.01;
+    s.now += MinimumCooldown(ActionKind::DrinkStrongest) + 0.01;
     const auto fired = Evaluate(rs, s, ctx, &trace);
     REQUIRE(fired.ruleIndex == 0);
     REQUIRE(trace.at(0) == Verdict::Fired);
@@ -1270,7 +1312,7 @@ TEST_CASE("a cast she cannot afford is reported and spends no cooldown", "[resou
     rs.rules.push_back(cast);
 
     Rule potion = cast;
-    potion.FirstAction().kind = ActionKind::DrinkHealthPotion;
+    potion.FirstAction() = DrinkHealth();
     potion.FirstAction().form = 0;
     rs.rules.push_back(potion);
 
@@ -1293,7 +1335,7 @@ TEST_CASE("a cast she cannot afford is reported and spends no cooldown", "[resou
     // Magicka back, potion settle elapsed: the cast rule fires at once. It
     // must carry no cooldown from having been unaffordable.
     s.magicka = {100.0f, 100.0f};
-    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion) + 0.01;
+    s.now += MinimumCooldown(ActionKind::DrinkStrongest) + 0.01;
     const auto d2 = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d2.ruleIndex == 0);
     REQUIRE(trace.at(0) == Verdict::Fired);
@@ -1310,7 +1352,7 @@ TEST_CASE("a cast she cannot afford is reported and spends no cooldown", "[resou
 
 TEST_CASE("a named potion is drunk only while carried, and cools down per potion", "[potions]")
 {
-    constexpr std::uint32_t kStamina = 0x00039BE8;
+    constexpr std::uint32_t kStamina = 0x0003EAE7; // not the one Healthy() carries
     constexpr std::uint32_t kResistFire = 0x0003EB3E;
 
     auto drink = [](std::uint32_t form) {
@@ -1469,7 +1511,7 @@ TEST_CASE("a power is used like a cast: known, not running, not mid-cast, free o
     s.voiceRecovery = 0.0f;
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
     REQUIRE_FALSE(IsConsume(ActionKind::UsePower));
-    REQUIRE(ConsumableOf(ActionKind::DrinkHealthPotion) == ConsumableKind::Potion);
+    REQUIRE(ConsumableOf(ActionKind::DrinkStrongest) == ConsumableKind::Potion);
 }
 
 TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
@@ -1477,11 +1519,11 @@ TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
     // The log said "previous dose still active" about an EQUIP rule, which is
     // true of nothing and sent a reader looking for a potion that was never in
     // the rule. Same verdict, different action, different sentence.
-    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkHealthPotion)) == "previous dose still active");
+    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkStrongest)) == "previous dose still active");
     REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::EquipSpell)) ==
             "already pinned, or nothing of that kind pinned to let go");
 
-    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkHealthPotion)) == "none in inventory");
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkStrongest)) == "none in inventory");
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EquipSpell)) == "does not know that spell");
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EquipWeapon)) == "does not carry that weapon");
 
@@ -1856,13 +1898,13 @@ TEST_CASE("what cannot be done is passed over, and the rest of the list keeps it
     constexpr std::uint32_t kOakflesh = 0x0005AD5C;
     Rule r = Equip(ActionKind::EquipWeapon, kSword, Hand::Right);
     r.actions.push_back({ActionKind::EquipArmor, kHelmet});
-    r.actions.push_back({ActionKind::DrinkHealthPotion});
+    r.actions.push_back(DrinkHealth());
     r.actions.push_back({ActionKind::CastSpell, kOakflesh});
     RuleSet rs;
     rs.rules = {r};
 
     Snapshot s = Armed();
-    s.potions.healthCount = 0;
+    EmptyBag(s);
     s.spells.known.push_back(kOakflesh);
     AddPin(s.pins, *FindHoldable(s.loadout, kSword), Hand::Right, false);
     EvalContext ctx;
@@ -1986,7 +2028,7 @@ TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
     // else entirely: the list in progress is unmoved by either.
     s.enemies[0].health = {90.0f, 100.0f};
     s.enemies[1].health = {10.0f, 100.0f};
-    rs.rules[0].actions = {{ActionKind::DrinkStaminaPotion}};
+    rs.rules[0].actions = {DrinkStamina()};
     d = Tick(rs, s, ctx, trace, actions);
     REQUIRE(d.actionForm() == kB);
     REQUIRE(d.targetId() == 0x101);
@@ -2013,7 +2055,7 @@ TEST_CASE("a list goes on after its condition has lapsed", "[sequence]")
     Trace trace;
     ActionTrace actions;
 
-    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkHealthPotion);
+    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkStrongest);
     s.health = {90.0f, 100.0f};
     REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::CastSpell);
 }
@@ -2024,7 +2066,7 @@ TEST_CASE("the cooldowns a list spends are the actions' own", "[sequence]")
     // a single-action rule's would, wherever it sits: the settle belongs to
     // the action, and a list does not get a second potion inside it.
     Rule r = HealBelow(0.5f);
-    r.actions.push_back({ActionKind::DrinkStaminaPotion});
+    r.actions.push_back(DrinkStamina());
     RuleSet rs;
     rs.rules = {r, HealBelow(0.5f)};
 
@@ -2034,8 +2076,8 @@ TEST_CASE("the cooldowns a list spends are the actions' own", "[sequence]")
     Trace trace;
     ActionTrace actions;
 
-    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkHealthPotion);
-    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkStaminaPotion);
+    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkStrongest);
+    REQUIRE(Tick(rs, s, ctx, trace, actions).action() == ActionKind::DrinkStrongest);
 
     // One second in: both potion rules are inside the settle.
     Decision d = Tick(rs, s, ctx, trace, actions);
@@ -2044,10 +2086,10 @@ TEST_CASE("the cooldowns a list spends are the actions' own", "[sequence]")
     REQUIRE(trace.at(1) == Verdict::ActionCooldown);
 
     // Past it, the list begins again from its first action.
-    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion);
+    s.now += MinimumCooldown(ActionKind::DrinkStrongest);
     d = Tick(rs, s, ctx, trace, actions);
     REQUIRE(d.ruleIndex == 0);
-    REQUIRE(d.action() == ActionKind::DrinkHealthPotion);
+    REQUIRE(d.action() == ActionKind::DrinkStrongest);
 }
 
 TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
@@ -2069,8 +2111,8 @@ TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
     REQUIRE(Evaluate(rs, s, ctx).Fired());
 
     // Well past the settle time, but the dose is still working.
-    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion) + 5.0;
-    s.potions.healthEffectActive = true;
+    s.now += MinimumCooldown(ActionKind::DrinkStrongest) + 5.0;
+    s.potions.running = {"Restore Health"};
 
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
@@ -2079,7 +2121,7 @@ TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
     REQUIRE(trace.at(0) == Verdict::EffectActive);
 
     // Dose finished, still hurt: free to drink again.
-    s.potions.healthEffectActive = false;
+    s.potions.running.clear();
     REQUIRE(Evaluate(rs, s, ctx).Fired());
 }
 
@@ -2093,7 +2135,7 @@ TEST_CASE("an instant effect leaves the settle time in charge", "[cooldown]")
 
     Snapshot s = Healthy();
     s.health = {40.0f, 100.0f};
-    REQUIRE_FALSE(s.potions.healthEffectActive);
+    REQUIRE(s.potions.running.empty());
 
     EvalContext ctx;
 
@@ -2104,7 +2146,7 @@ TEST_CASE("an instant effect leaves the settle time in charge", "[cooldown]")
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::ActionCooldown);
 
-    s.now += MinimumCooldown(ActionKind::DrinkHealthPotion);
+    s.now += MinimumCooldown(ActionKind::DrinkStrongest);
     REQUIRE(Evaluate(rs, s, ctx).Fired());
 }
 
@@ -2117,7 +2159,7 @@ TEST_CASE("having no potion and having one still working are different", "[coold
 
     SECTION("empty bag")
     {
-        s.potions.healthCount = 0;
+        EmptyBag(s);
         EvalContext ctx;
         Trace trace;
         Evaluate(rs, s, ctx, &trace);
@@ -2126,7 +2168,7 @@ TEST_CASE("having no potion and having one still working are different", "[coold
 
     SECTION("full bag, dose still running")
     {
-        s.potions.healthEffectActive = true;
+        s.potions.running = {"Restore Health"};
         EvalContext ctx;
         Trace trace;
         Evaluate(rs, s, ctx, &trace);
@@ -2445,7 +2487,7 @@ TEST_CASE("the slug format rejects anything a translator would produce", "[vocab
     REQUIRE_FALSE(IsWireName("Drink Strongest Healing Potion")); // display text
     REQUIRE_FALSE(IsWireName("SanteEnDessousDe"));               // a translation
     REQUIRE_FALSE(IsWireName("sante-en-dessous-de-Ã©"));         // non-ASCII
-    REQUIRE_FALSE(IsWireName("DrinkHealthPotion"));              // capitals
+    REQUIRE_FALSE(IsWireName("DrinkStrongest"));                 // capitals
     REQUIRE_FALSE(IsWireName("-leading"));
     REQUIRE_FALSE(IsWireName("trailing-"));
     REQUIRE_FALSE(IsWireName("double--hyphen"));
@@ -2463,7 +2505,7 @@ TEST_CASE("an unknown wire name is rejected, not guessed at", "[vocabulary]")
 
     // And display text is not a key. This is the property that keeps the file
     // format independent of the player's language.
-    REQUIRE_FALSE(ActionFromWireName(DisplayName(ActionKind::DrinkHealthPotion)).has_value());
+    REQUIRE_FALSE(ActionFromWireName(DisplayName(ActionKind::DrinkStrongest)).has_value());
 }
 
 TEST_CASE("the argument shape tells the UI which widget to draw", "[vocabulary]")
@@ -2638,12 +2680,12 @@ TEST_CASE("an apply rule needs a weapon that takes a poison, and waits on one al
     r.predicate = PredicateKind::HealthPctBelow;
     r.conditionArg = 2.0f; // always
     r.actionTarget = ActionTargetKind::Self;
-    r.FirstAction().kind = ActionKind::ApplyStrongestHealthPoison;
+    r.FirstAction() = Apply("Damage Health");
     rs.rules.push_back(r);
     EvalContext ctx;
 
     Snapshot s = Healthy();
-    s.potions.poisonHealthCount = 3;
+    s.potions.Add(0x3A5A4, 3, ConsumableKind::Poison, {"Damage Health", 15.0f, 0.0f});
 
     SECTION("no weapon in hand: not met, with its own verdict")
     {
@@ -2669,7 +2711,7 @@ TEST_CASE("an apply rule needs a weapon that takes a poison, and waits on one al
         Trace trace;
         const auto d = Evaluate(rs, s, ctx, &trace);
         REQUIRE(d.Fired());
-        REQUIRE(d.action() == ActionKind::ApplyStrongestHealthPoison);
+        REQUIRE(d.action() == ActionKind::ApplyStrongest);
     }
 
     SECTION("a poisoned sword right and a clean dagger left: fires, for the dagger")
@@ -2684,7 +2726,7 @@ TEST_CASE("an apply rule needs a weapon that takes a poison, and waits on one al
     SECTION("no poison carried: none in inventory, before the weapon is asked about")
     {
         s.rightWeapon = {true, false};
-        s.potions.poisonHealthCount = 0;
+        EmptyBag(s, 0x3A5A4);
         Trace trace;
         const auto d = Evaluate(rs, s, ctx, &trace);
         REQUIRE_FALSE(d.Fired());
@@ -2698,7 +2740,7 @@ TEST_CASE("weapon poisoned and unpoisoned read each hand", "[evaluator]")
     Rule r;
     r.subject = SubjectKind::Self;
     r.actionTarget = ActionTargetKind::Self;
-    r.FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    r.FirstAction() = DrinkMagicka();
     RuleSet rs;
     rs.rules.push_back(r);
     // A fresh context each time: a firing sets the action's cooldown, which
@@ -2791,7 +2833,7 @@ TEST_CASE("a charge rule needs an enchanted weapon, and waits when none needs a 
     // The condition itself, hand by hand.
     s.soulGems = {{0xA, 1, 250.0f}};
     rs.rules[0].predicate = PredicateKind::WeaponChargeNeeded;
-    rs.rules[0].FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    rs.rules[0].FirstAction() = DrinkMagicka();
     s.rightWeapon = {true, false, true, 80.0f, 100.0f, 20.0f};
     s.leftWeapon = {true, false, true, 5.0f, 100.0f, 20.0f};
     REQUIRE(verdict() == Verdict::Fired);
@@ -2875,4 +2917,130 @@ TEST_CASE("Using asks what is in hand, of anyone", "[binding]")
     r.subject = SubjectKind::Player;
     r.damageKind = DamageKind::Any;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+}
+
+TEST_CASE("a policy chooses the bottle by its effect, strongest or weakest", "[evaluator]")
+{
+    Snapshot s = Healthy();
+    // Three health potions of three strengths, one of them also a magicka
+    // potion (a Well-being), and a resist-fire that no health rule sees.
+    s.potions.carried.clear();
+    s.potions.Add(0x101, 1, ConsumableKind::Potion, {"Restore Health", 25.0f, 0.0f});
+    s.potions.Add(0x102, 1, ConsumableKind::Potion, {"Restore Health", 75.0f, 0.0f});
+    s.potions.Add(0x103, 1, ConsumableKind::Potion, {"Restore Health", 50.0f, 0.0f});
+    s.potions.Add(0x103, 1, ConsumableKind::Potion, {"Restore Magicka", 50.0f, 0.0f});
+    s.potions.Add(0x104, 1, ConsumableKind::Potion, {"Resist Fire", 30.0f, 60.0f});
+
+    REQUIRE(ChosenForm(Drink("Restore Health"), s.potions) == 0x102);
+    REQUIRE(ChosenForm(Drink("Restore Health", false), s.potions) == 0x101);
+    REQUIRE(ChosenForm(Drink("Restore Magicka"), s.potions) == 0x103);
+    REQUIRE(ChosenForm(Drink("Resist Fire"), s.potions) == 0x104);
+    REQUIRE(ChosenForm(Drink("Restore Stamina"), s.potions) == 0);
+    // A poison is not a potion, whatever its effect says.
+    s.potions.Add(0x105, 1, ConsumableKind::Poison, {"Restore Health", 999.0f, 0.0f});
+    REQUIRE(ChosenForm(Drink("Restore Health"), s.potions) == 0x102);
+    REQUIRE(ChosenForm(Apply("Restore Health"), s.potions) == 0x105);
+    // A named bottle is its own form.
+    Action named;
+    named.kind = ActionKind::DrinkPotion;
+    named.form = 0x104;
+    REQUIRE(ChosenForm(named, s.potions) == 0x104);
+
+    // Equal magnitudes: the longer one is the stronger. No magnitude at
+    // all: the duration is the strength.
+    s.potions.carried.clear();
+    s.potions.Add(0x201, 1, ConsumableKind::Poison, {"Lingering Damage Health", 1.0f, 10.0f});
+    s.potions.Add(0x202, 1, ConsumableKind::Poison, {"Lingering Damage Health", 1.0f, 15.0f});
+    s.potions.Add(0x203, 1, ConsumableKind::Poison, {"Paralysis", 0.0f, 3.0f});
+    s.potions.Add(0x204, 1, ConsumableKind::Poison, {"Paralysis", 0.0f, 7.0f});
+    REQUIRE(ChosenForm(Apply("Lingering Damage Health"), s.potions) == 0x202);
+    REQUIRE(ChosenForm(Apply("Lingering Damage Health", false), s.potions) == 0x201);
+    REQUIRE(ChosenForm(Apply("Paralysis"), s.potions) == 0x204);
+
+    // The decision carries the chosen bottle, so the game side has only
+    // to use it; and a rule for an effect not carried has no resource.
+    RuleSet rs;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction() = Apply("Paralysis");
+    rs.rules.push_back(r);
+    s.rightWeapon = {true, false};
+    EvalContext ctx;
+    const auto d = Evaluate(rs, s, ctx);
+    REQUIRE(d.Fired());
+    REQUIRE(d.steps[0].action.form == 0x204);
+    rs.rules[0].FirstAction() = Apply("Fear");
+    EvalContext ctx2;
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx2, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+}
+
+TEST_CASE("a potion whose effect is still running is not drunk again", "[cooldown]")
+{
+    Snapshot s = Healthy();
+    s.potions.Add(0x301, 2, ConsumableKind::Potion, {"Resist Fire", 30.0f, 60.0f});
+    RuleSet rs;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction() = Drink("Resist Fire");
+    rs.rules.push_back(r);
+    EvalContext ctx;
+    REQUIRE(Evaluate(rs, s, ctx).Fired());
+    s.now += 10.0;
+    s.potions.running = {"Resist Fire"};
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    // Another effect running is no reason to wait.
+    s.potions.running = {"Fortify Health"};
+    REQUIRE(Evaluate(rs, s, ctx).Fired());
+}
+
+TEST_CASE("two policies for two effects are two actions, each on its own cooldown", "[cooldown]")
+{
+    Snapshot s = Healthy();
+    s.potions.Add(0x301, 2, ConsumableKind::Potion, {"Resist Fire", 30.0f, 60.0f});
+    RuleSet rs;
+    Rule fire;
+    fire.subject = SubjectKind::Self;
+    fire.actionTarget = ActionTargetKind::Self;
+    fire.FirstAction() = Drink("Resist Fire");
+    rs.rules.push_back(fire);
+    rs.rules.push_back(HealBelow(0.5f));
+    s.health = {40.0f, 100.0f};
+    EvalContext ctx;
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+    s.now += 0.5;
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 1); // the heal is not behind the resist's cooldown
+}
+
+TEST_CASE("the carried effects arrange themselves for the menu", "[vocabulary]")
+{
+    const auto potions =
+        ArrangeEffects(ConsumableKind::Potion, {"Zesty Zap", "Resist Fire", "Restore Magicka", "Fortify Conjuration",
+                                                "Restore Health", "Aetherial Boon", "Restore Health"});
+    std::vector<std::string> order;
+    for (const auto &e : potions)
+        order.push_back(e.name);
+    REQUIRE(order == std::vector<std::string>{"Restore Health", "Restore Magicka", "Resist Fire", "Fortify Conjuration",
+                                              "Aetherial Boon", "Zesty Zap"});
+    // The restores share a group; the unknown pair share the last one, past
+    // every known group.
+    REQUIRE(potions[0].group == potions[1].group);
+    REQUIRE(potions[1].group != potions[2].group);
+    REQUIRE(potions[4].group == potions[5].group);
+    REQUIRE(potions[4].group > potions[3].group);
+
+    const auto poisons = ArrangeEffects(ConsumableKind::Poison, {"Paralysis", "Damage Health", "Weakness to Fire"});
+    REQUIRE(poisons[0].name == "Damage Health");
+    REQUIRE(poisons[1].name == "Weakness to Fire");
+    REQUIRE(poisons[2].name == "Paralysis");
+
+    REQUIRE(std::string(EffectLabel("Restore Health")) == "Health");
+    REQUIRE(std::string(EffectLabel("Damage Stamina")) == "Stamina");
+    REQUIRE(std::string(EffectLabel("Resist Fire")) == "Resist Fire");
+    REQUIRE(std::string(EffectLabel("Restore Healthiness")) == "Restore Healthiness");
 }

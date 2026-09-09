@@ -7,21 +7,13 @@ double MinimumCooldown(ActionKind action) noexcept
 {
     switch (action)
     {
-    case ActionKind::DrinkHealthPotion:
-    case ActionKind::DrinkMagickaPotion:
-    case ActionKind::DrinkStaminaPotion:
-    case ActionKind::DrinkWeakestHealthPotion:
-    case ActionKind::DrinkWeakestMagickaPotion:
-    case ActionKind::DrinkWeakestStaminaPotion:
+    case ActionKind::DrinkStrongest:
+    case ActionKind::DrinkWeakest:
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
     case ActionKind::EatIngredient:
-    case ActionKind::ApplyWeakestHealthPoison:
-    case ActionKind::ApplyWeakestMagickaPoison:
-    case ActionKind::ApplyWeakestStaminaPoison:
-    case ActionKind::ApplyStrongestHealthPoison:
-    case ActionKind::ApplyStrongestMagickaPoison:
-    case ActionKind::ApplyStrongestStaminaPoison:
+    case ActionKind::ApplyStrongest:
+    case ActionKind::ApplyWeakest:
     case ActionKind::ApplyPoison:
     case ActionKind::ChargeStrongestSoulGem:
     case ActionKind::ChargeWeakestSoulGem:
@@ -75,12 +67,8 @@ bool IsConsume(ActionKind action) noexcept
 {
     switch (action)
     {
-    case ActionKind::DrinkHealthPotion:
-    case ActionKind::DrinkMagickaPotion:
-    case ActionKind::DrinkStaminaPotion:
-    case ActionKind::DrinkWeakestHealthPotion:
-    case ActionKind::DrinkWeakestMagickaPotion:
-    case ActionKind::DrinkWeakestStaminaPotion:
+    case ActionKind::DrinkStrongest:
+    case ActionKind::DrinkWeakest:
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
     case ActionKind::EatIngredient:
@@ -90,21 +78,16 @@ bool IsConsume(ActionKind action) noexcept
     }
 }
 
+bool IsPolicy(ActionKind action) noexcept
+{
+    return action == ActionKind::DrinkStrongest || action == ActionKind::DrinkWeakest ||
+           action == ActionKind::ApplyStrongest || action == ActionKind::ApplyWeakest;
+}
+
 bool IsApply(ActionKind action) noexcept
 {
-    switch (action)
-    {
-    case ActionKind::ApplyWeakestHealthPoison:
-    case ActionKind::ApplyWeakestMagickaPoison:
-    case ActionKind::ApplyWeakestStaminaPoison:
-    case ActionKind::ApplyStrongestHealthPoison:
-    case ActionKind::ApplyStrongestMagickaPoison:
-    case ActionKind::ApplyStrongestStaminaPoison:
-    case ActionKind::ApplyPoison:
-        return true;
-    default:
-        return false;
-    }
+    return action == ActionKind::ApplyStrongest || action == ActionKind::ApplyWeakest ||
+           action == ActionKind::ApplyPoison;
 }
 
 bool IsCharge(ActionKind action) noexcept

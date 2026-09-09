@@ -60,6 +60,7 @@ include(ClangTools)
 # the code you are writing belongs in src/game/ instead.
 # ---------------------------------------------------------------------------
 add_library(ft_core STATIC
+    src/core/Effects.cpp
     src/core/Evaluator.cpp
     src/core/Loadout.cpp
     src/core/Profile.cpp

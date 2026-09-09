@@ -28,7 +28,7 @@ Nothing is written on a panel close or by the tick. Close the game without savin
       "enabled": true,
       "label": "emergency heal",
       "if": { "subject": "self", "predicate": "health-pct-below", "arg": 0.5 },
-      "then": { "target": "self", "do": [ { "action": "drink-strongest-health-potion" } ] }
+      "then": { "target": "self", "do": [ { "action": "drink-strongest", "effect": "Restore Health" } ] }
     },
     {
       "enabled": true,
@@ -56,6 +56,7 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 | `rules[].enabled`, `rules[].label` | the row's tick and its free text. `label` is omitted when empty |
 | `if.subject`, `if.predicate` | the condition's two halves, by wire name |
 | `if.arg` | the threshold, present only for predicates that take one: a 0..1 fraction for the percent ones |
+| `then.do[].effect` | for the strongest / weakest policies, the effect's name as the game shows it (`"Restore Health"`, `"Resist Fire"`); the bottle is chosen by it at run time |
 | `if.status` | only under `status`: which status |
 | `if.damage` | only under the resistance predicates and `attacked-by`: which kind of damage |
 | `if.follower` | only when the subject is `follower`: which one, as a form |

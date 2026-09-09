@@ -113,7 +113,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 28> kActions{{
+constexpr std::array<Entry<ActionKind>, 20> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. That is
     // how "drink-weakest-health-potion" -- don't burn a strong potion on a
@@ -128,19 +128,11 @@ constexpr std::array<Entry<ActionKind>, 28> kActions{{
     {ActionKind::ChargeStrongestSoulGem, "charge-strongest-soul-gem", "Charge with strongest soul gem"},
     {ActionKind::ChargeWeakestSoulGem, "charge-weakest-soul-gem", "Charge with weakest soul gem"},
     {ActionKind::ChargeSoulGem, "charge-soul-gem", "Charge with soul gem"},
-    {ActionKind::ApplyWeakestHealthPoison, "apply-weakest-health-poison", "Apply weakest health poison"},
-    {ActionKind::ApplyWeakestMagickaPoison, "apply-weakest-magicka-poison", "Apply weakest magicka poison"},
-    {ActionKind::ApplyWeakestStaminaPoison, "apply-weakest-stamina-poison", "Apply weakest stamina poison"},
-    {ActionKind::ApplyStrongestHealthPoison, "apply-strongest-health-poison", "Apply strongest health poison"},
-    {ActionKind::ApplyStrongestMagickaPoison, "apply-strongest-magicka-poison", "Apply strongest magicka poison"},
-    {ActionKind::ApplyStrongestStaminaPoison, "apply-strongest-stamina-poison", "Apply strongest stamina poison"},
+    {ActionKind::ApplyStrongest, "apply-strongest", "Apply strongest poison"},
+    {ActionKind::ApplyWeakest, "apply-weakest", "Apply weakest poison"},
     {ActionKind::ApplyPoison, "apply-poison", "Apply poison"},
-    {ActionKind::DrinkHealthPotion, "drink-strongest-health-potion", "Drink strongest health potion"},
-    {ActionKind::DrinkMagickaPotion, "drink-strongest-magicka-potion", "Drink strongest magicka potion"},
-    {ActionKind::DrinkStaminaPotion, "drink-strongest-stamina-potion", "Drink strongest stamina potion"},
-    {ActionKind::DrinkWeakestHealthPotion, "drink-weakest-health-potion", "Drink weakest health potion"},
-    {ActionKind::DrinkWeakestMagickaPotion, "drink-weakest-magicka-potion", "Drink weakest magicka potion"},
-    {ActionKind::DrinkWeakestStaminaPotion, "drink-weakest-stamina-potion", "Drink weakest stamina potion"},
+    {ActionKind::DrinkStrongest, "drink-strongest", "Drink strongest potion"},
+    {ActionKind::DrinkWeakest, "drink-weakest", "Drink weakest potion"},
     {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
     {ActionKind::EatFood, "eat-food", "Eat food"},
     {ActionKind::EatIngredient, "eat-ingredient", "Eat ingredient"},
@@ -429,36 +421,20 @@ std::string_view Describe(ActionKind v) noexcept
     {
     case ActionKind::None:
         return "Nothing.";
-    case ActionKind::DrinkHealthPotion:
-        return "Drink the strongest healing potion carried.";
-    case ActionKind::DrinkMagickaPotion:
-        return "Drink the strongest magicka potion carried.";
-    case ActionKind::DrinkStaminaPotion:
-        return "Drink the strongest stamina potion carried.";
-    case ActionKind::DrinkWeakestHealthPotion:
-        return "Drink the weakest healing potion carried: the cheap ones first, the strong ones kept.";
-    case ActionKind::DrinkWeakestMagickaPotion:
-        return "Drink the weakest magicka potion carried: the cheap ones first, the strong ones kept.";
-    case ActionKind::DrinkWeakestStaminaPotion:
-        return "Drink the weakest stamina potion carried: the cheap ones first, the strong ones kept.";
+    case ActionKind::DrinkStrongest:
+        return "Drink the strongest potion carried with this effect.";
+    case ActionKind::DrinkWeakest:
+        return "Drink the weakest potion carried with this effect: the cheap ones first, the strong ones kept.";
     case ActionKind::ChargeStrongestSoulGem:
         return "Recharge the weapon in hand that needs it with the largest soul gem that would not overfill it.";
     case ActionKind::ChargeWeakestSoulGem:
         return "Recharge the weapon in hand that needs it with the smallest soul gem carried.";
     case ActionKind::ChargeSoulGem:
         return "Recharge the weapon in hand that needs it with this soul gem.";
-    case ActionKind::ApplyWeakestHealthPoison:
-        return "Put the weakest health poison carried on the weapon in hand.";
-    case ActionKind::ApplyWeakestMagickaPoison:
-        return "Put the weakest magicka poison carried on the weapon in hand.";
-    case ActionKind::ApplyWeakestStaminaPoison:
-        return "Put the weakest stamina poison carried on the weapon in hand.";
-    case ActionKind::ApplyStrongestHealthPoison:
-        return "Put the strongest health poison carried on the weapon in hand.";
-    case ActionKind::ApplyStrongestMagickaPoison:
-        return "Put the strongest magicka poison carried on the weapon in hand.";
-    case ActionKind::ApplyStrongestStaminaPoison:
-        return "Put the strongest stamina poison carried on the weapon in hand.";
+    case ActionKind::ApplyStrongest:
+        return "Put the strongest poison carried with this effect on the weapon in hand.";
+    case ActionKind::ApplyWeakest:
+        return "Put the weakest poison carried with this effect on the weapon in hand: the cheap ones first.";
     case ActionKind::ApplyPoison:
         return "Put this poison on the weapon in hand.";
     case ActionKind::DrinkPotion:

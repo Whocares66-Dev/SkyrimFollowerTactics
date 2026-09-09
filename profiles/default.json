@@ -9,7 +9,8 @@
       "predicate": "health-pct-below",
       "conditionArg": 0.3,
       "actionTarget": "condition-subject",
-      "action": "drink-health-potion-strongest",
+      "action": "drink-strongest",
+      "effect": "Restore Health",
       "cooldown": 5.0
     },
     {
@@ -19,7 +20,8 @@
       "predicate": "health-pct-below",
       "conditionArg": 0.6,
       "actionTarget": "condition-subject",
-      "action": "drink-health-potion-strongest",
+      "action": "drink-strongest",
+      "effect": "Restore Health",
       "cooldown": 15.0
     },
     {

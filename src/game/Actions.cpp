@@ -249,47 +249,27 @@ const char *ToString(ActionResult r) noexcept
     return "?";
 }
 
-ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor, const PotionChoice &choice)
+ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor)
 {
     if (!actor)
         return ActionResult::MissingItem;
 
     switch (action.kind)
     {
-    case ft::ActionKind::DrinkHealthPotion:
-        return Consume(actor, choice.health);
-    case ft::ActionKind::DrinkMagickaPotion:
-        return Consume(actor, choice.magicka);
-    case ft::ActionKind::DrinkStaminaPotion:
-        return Consume(actor, choice.stamina);
-    case ft::ActionKind::DrinkWeakestHealthPotion:
-        return Consume(actor, choice.weakestHealth);
-    case ft::ActionKind::DrinkWeakestMagickaPotion:
-        return Consume(actor, choice.weakestMagicka);
-    case ft::ActionKind::DrinkWeakestStaminaPotion:
-        return Consume(actor, choice.weakestStamina);
-    case ft::ActionKind::ApplyWeakestHealthPoison:
-        return ApplyPoison(actor, choice.weakestPoisonHealth);
-    case ft::ActionKind::ApplyWeakestMagickaPoison:
-        return ApplyPoison(actor, choice.weakestPoisonMagicka);
-    case ft::ActionKind::ApplyWeakestStaminaPoison:
-        return ApplyPoison(actor, choice.weakestPoisonStamina);
-    case ft::ActionKind::ApplyStrongestHealthPoison:
-        return ApplyPoison(actor, choice.poisonHealth);
-    case ft::ActionKind::ApplyStrongestMagickaPoison:
-        return ApplyPoison(actor, choice.poisonMagicka);
-    case ft::ActionKind::ApplyStrongestStaminaPoison:
-        return ApplyPoison(actor, choice.poisonStamina);
     case ft::ActionKind::ChargeStrongestSoulGem:
         return ChargeWeapon(actor, 0, true);
     case ft::ActionKind::ChargeWeakestSoulGem:
         return ChargeWeapon(actor, 0, false);
     case ft::ActionKind::ChargeSoulGem:
         return ChargeWeapon(actor, action.form, true);
+    case ft::ActionKind::ApplyStrongest:
+    case ft::ActionKind::ApplyWeakest:
     case ft::ActionKind::ApplyPoison: {
         auto *poison = RE::TESForm::LookupByID<RE::AlchemyItem>(action.form);
         return ApplyPoison(actor, poison && poison->IsPoison() ? poison : nullptr);
     }
+    case ft::ActionKind::DrinkStrongest:
+    case ft::ActionKind::DrinkWeakest:
     case ft::ActionKind::DrinkPotion:
     case ft::ActionKind::EatFood:
         // One named potion or food. The evaluator only fires this when the
