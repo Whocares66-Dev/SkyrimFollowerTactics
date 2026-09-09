@@ -174,9 +174,8 @@ enum class ActionTargetKind : std::uint8_t
 enum class ActionKind : std::uint8_t
 {
     None,
-    // The order of the enum is the order of the menu: Target first, which
-    // is only offered under Enemy and Attacker; then, under Self, Equip,
-    // Consume, Cast spell, Use power.
+    // (The menu draws these in its own order, the more active thing first
+    // -- see ActionItems in game/UI.cpp; the enum's order is nothing.)
     //
     // Fight the one the rule aims at: make them the follower's combat
     // target, and leave HOW to the AI -- a warrior swings, an archer shoots,

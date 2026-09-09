@@ -1306,18 +1306,16 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
     return changed;
 }
 
-// The action side of the cascade.
-//
-// Flat for everything that takes no argument; a submenu of the follower's own
-// spells for the one that casts, and the equip cascades for the four that
-// pin. Every list is hers, so a rule cannot name a thing she does not have --
+// The action side of the cascade: the actions offered under one target
+// heading of the Then cascade, those that make sense on that target
+// (IsActionValidFor), in a fixed order with the more active thing first --
+// Target; Potion, Food, Ingredient; Cast, Shout, Power; Charge, Poison;
+// Weapon, Armor, Arrows, Spell -- a divider between the groups. Every list
+// is the follower's own, so a rule cannot name a thing they do not have:
 // the same guarantee the condition side gets from the validity matrix, and
-// for the same reason: an unfireable rule should be unauthorable, not merely
-// discouraged.
-// The actions offered under one target heading of the Then cascade: those
-// that make sense on that target (IsActionValidFor), with the drink, equip
-// and cast submenus as before. Choosing one sets the rule's target and the
-// action together, as choosing a condition sets subject and predicate.
+// for the same reason -- an unfireable rule should be unauthorable, not
+// merely discouraged. Choosing one sets the rule's target and the action
+// together, as choosing a condition sets subject and predicate.
 bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, std::uint32_t form,
                  const FollowerView &view)
 {
@@ -1331,205 +1329,111 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         changed = true;
     };
 
-    for (std::size_t i = 0; i < static_cast<std::size_t>(ft::ActionKind::COUNT); ++i)
-    {
-        const auto action = static_cast<ft::ActionKind>(i);
-        if (action == ft::ActionKind::None || !ft::IsActionValidFor(target, action))
-            continue;
-        const std::string name(ft::DisplayName(action));
+    // The groups, the more active thing first: what is taken; what is
+    // cast; what is done to the weapon in hand; what is put on. A divider
+    // between the groups that draw anything -- a heading with nothing
+    // under it (no food carried, no spell that suits) is not drawn, so the
+    // divider is placed as the items come, never before an empty group.
+    int lastGroup = -1;
+    const auto group = [&](int g) {
+        if (lastGroup >= 0 && g != lastGroup)
+            Im::Separator();
+        lastGroup = g;
+    };
+    const auto valid = [&](ft::ActionKind action) { return ft::IsActionValidFor(target, action); };
 
-        // The consume actions collapse into one "Consume" submenu, drawn
-        // where the first of them falls in the list; the others are skipped.
-        // Potion holds the three "strongest of a kind" policies, then every
-        // potion she carries by name; Food and Ingredient, what she carries
-        // of each. Every list is hers.
-        if (ft::IsConsume(action))
+    // One leaf that picks a policy: the strongest of a kind, the weakest.
+    const auto policy = [&](ft::ActionKind kind) {
+        const bool selected = here && act.kind == kind;
+        if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
         {
-            if (action != ft::ActionKind::DrinkHealthPotion)
-                continue;
-            if (!BeginCascade("Consume"))
-                continue;
-
-            const auto carried = [&](ft::ConsumableKind kind) {
-                bool any = false;
-                for (const auto &option : view.consumables)
-                    any = any || option.kind == kind;
-                return any;
-            };
-            // The named entries of one kind, under a menu already open.
-            const auto named = [&](ft::ActionKind kind) {
-                for (const auto &option : view.consumables)
-                {
-                    if (option.kind != ft::ConsumableOf(kind))
-                        continue;
-                    const std::string label = option.name + " (" + std::to_string(option.count) + ")";
-                    const bool selected = here && act.kind == kind && act.form == option.form;
-                    if (CascadeItem(label.c_str(), selected))
-                    {
-                        act.kind = kind;
-                        act.form = option.form;
-                        choose();
-                    }
-                }
-            };
-
-            if (BeginCascade("Potion"))
-            {
-                // The strongest of each, then the weakest.
-                const auto policy = [&](ft::ActionKind kind) {
-                    const bool selected = here && act.kind == kind;
-                    if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
-                    {
-                        act.kind = kind;
-                        act.form = 0;
-                        choose();
-                    }
-                    if (Im::IsItemHovered(0))
-                        Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
-                };
-                for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
-                                  ft::ActionKind::DrinkMagickaPotion})
-                    policy(kind);
-                Im::Separator();
-                for (auto kind : {ft::ActionKind::DrinkWeakestHealthPotion, ft::ActionKind::DrinkWeakestStaminaPotion,
-                                  ft::ActionKind::DrinkWeakestMagickaPotion})
-                    policy(kind);
-                if (carried(ft::ConsumableKind::Potion))
-                {
-                    Im::Separator();
-                    named(ft::ActionKind::DrinkPotion);
-                }
-                Im::EndMenu();
-            }
-            for (const auto [label, kind] :
-                 {std::pair{"Food", ft::ActionKind::EatFood}, std::pair{"Ingredient", ft::ActionKind::EatIngredient}})
-            {
-                if (!carried(ft::ConsumableOf(kind)) || !BeginCascade(label))
-                    continue;
-                named(kind);
-                Im::EndMenu();
-            }
-            Im::EndMenu();
-            continue;
+            act.kind = kind;
+            act.form = 0;
+            choose();
         }
-
-        // What is done to the weapon in hand, under one "Weapon" heading
-        // drawn where the first of them falls, just after Equip: a Charge
-        // submenu (the strongest gem that fits, the weakest, then every
-        // spendable gem by name) and a Poison submenu (the strongest of
-        // each, the weakest of each, then every poison carried by name).
-        if (ft::IsCharge(action) || ft::IsApply(action))
+        if (Im::IsItemHovered(0))
+            Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+    };
+    const auto carried = [&](ft::ConsumableKind kind) {
+        bool any = false;
+        for (const auto &option : view.consumables)
+            any = any || option.kind == kind;
+        return any;
+    };
+    // The named things of one kind, under a menu already open.
+    const auto named = [&](ft::ActionKind kind) {
+        for (const auto &option : view.consumables)
         {
-            if (action != ft::ActionKind::ChargeStrongestSoulGem)
+            if (option.kind != ft::ConsumableOf(kind))
                 continue;
-            if (!BeginCascade("Weapon"))
-                continue;
-            const auto policy = [&](ft::ActionKind kind) {
-                const bool selected = here && act.kind == kind;
-                if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
-                {
-                    act.kind = kind;
-                    act.form = 0;
-                    choose();
-                }
-                if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
-            };
-            // The named things of one kind, after a divider when there are any.
-            const auto named = [&](ft::ConsumableKind kind, ft::ActionKind action) {
-                bool any = false;
-                for (const auto &option : view.consumables)
-                    any = any || option.kind == kind;
-                if (!any)
-                    return;
-                Im::Separator();
-                for (const auto &option : view.consumables)
-                {
-                    if (option.kind != kind)
-                        continue;
-                    const std::string label = option.name + " (" + std::to_string(option.count) + ")";
-                    const bool selected = here && act.kind == action && act.form == option.form;
-                    if (CascadeItem(label.c_str(), selected))
-                    {
-                        act.kind = action;
-                        act.form = option.form;
-                        choose();
-                    }
-                }
-            };
-            if (BeginCascade("Charge"))
+            const std::string label = option.name + " (" + std::to_string(option.count) + ")";
+            const bool selected = here && act.kind == kind && act.form == option.form;
+            if (CascadeItem(label.c_str(), selected))
             {
-                policy(ft::ActionKind::ChargeStrongestSoulGem);
-                policy(ft::ActionKind::ChargeWeakestSoulGem);
-                named(ft::ConsumableKind::SoulGem, ft::ActionKind::ChargeSoulGem);
-                Im::EndMenu();
-            }
-            if (BeginCascade("Poison"))
-            {
-                for (auto kind :
-                     {ft::ActionKind::ApplyStrongestHealthPoison, ft::ActionKind::ApplyStrongestStaminaPoison,
-                      ft::ActionKind::ApplyStrongestMagickaPoison})
-                    policy(kind);
-                Im::Separator();
-                for (auto kind : {ft::ActionKind::ApplyWeakestHealthPoison, ft::ActionKind::ApplyWeakestStaminaPoison,
-                                  ft::ActionKind::ApplyWeakestMagickaPoison})
-                    policy(kind);
-                named(ft::ConsumableKind::Poison, ft::ActionKind::ApplyPoison);
-                Im::EndMenu();
-            }
-            Im::EndMenu();
-            continue;
-        }
-
-        // The four equips under one "Equip" heading, drawn where the first
-        // of them falls: Weapon, Arrows, Spell, Armor, each its own menu.
-        if (ft::IsEquip(action))
-        {
-            if (action != ft::ActionKind::EquipWeapon)
-                continue;
-            if (!BeginCascade("Equip"))
-                continue;
-            for (const auto kind : {ft::ActionKind::EquipWeapon, ft::ActionKind::EquipArrows,
-                                    ft::ActionKind::EquipSpell, ft::ActionKind::EquipArmor})
-            {
-                std::string noun = EquipNoun(kind);
-                if (!noun.empty())
-                    noun[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(noun[0])));
-                const bool open = BeginCascade(noun.c_str());
-                if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
-                if (!open)
-                    continue;
-                if (EquipMenu(act, kind, view))
-                    choose();
-                Im::EndMenu();
-            }
-            Im::EndMenu();
-            continue;
-        }
-
-        if (!TakesSpell(action))
-        {
-            const bool selected = here && act.kind == action;
-            if (CascadeItem(name.c_str(), selected))
-            {
-                act.kind = action;
-                act.form = 0;
-                act.hand = Hand::None;
+                act.kind = kind;
+                act.form = option.form;
                 choose();
             }
-            // Target says what it does in its name; no tooltip.
-            if (action != ft::ActionKind::Target && Im::IsItemHovered(0))
-                Im::SetTooltip("%s", std::string(ft::Describe(action)).c_str());
-            continue;
         }
+    };
 
-        // The spells that suit this target: a Self-delivery spell (Fast
-        // Healing, Oakflesh) is cast on oneself and on no one else; an aimed
-        // one (Heal Other, Firebolt) goes at someone else. A follower with
-        // none that fit is offered nothing rather than an empty submenu that
-        // looks broken, nor a greyed line. Cast spell lists the spells, Use
-        // power the powers, Shout the shouts.
+    // Fight this one. Says what it does in its name; no tooltip.
+    if (valid(ft::ActionKind::Target))
+    {
+        group(0);
+        const bool selected = here && act.kind == ft::ActionKind::Target;
+        if (CascadeItem(std::string(ft::DisplayName(ft::ActionKind::Target)).c_str(), selected))
+        {
+            act.kind = ft::ActionKind::Target;
+            act.form = 0;
+            act.hand = Hand::None;
+            choose();
+        }
+    }
+
+    // What is taken. Potion holds the strongest of each kind, the weakest
+    // of each, then every potion carried by name; Food and Ingredient what
+    // is carried of each, and are not drawn with nothing under them.
+    if (valid(ft::ActionKind::DrinkHealthPotion))
+    {
+        group(1);
+        if (BeginCascade("Potion"))
+        {
+            for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
+                              ft::ActionKind::DrinkMagickaPotion})
+                policy(kind);
+            Im::Separator();
+            for (auto kind : {ft::ActionKind::DrinkWeakestHealthPotion, ft::ActionKind::DrinkWeakestStaminaPotion,
+                              ft::ActionKind::DrinkWeakestMagickaPotion})
+                policy(kind);
+            if (carried(ft::ConsumableKind::Potion))
+            {
+                Im::Separator();
+                named(ft::ActionKind::DrinkPotion);
+            }
+            Im::EndMenu();
+        }
+        for (const auto [label, kind] :
+             {std::pair{"Food", ft::ActionKind::EatFood}, std::pair{"Ingredient", ft::ActionKind::EatIngredient}})
+        {
+            if (!carried(ft::ConsumableOf(kind)) || !BeginCascade(label))
+                continue;
+            named(kind);
+            Im::EndMenu();
+        }
+    }
+
+    // What is cast: the spells that suit this target -- a Self-delivery
+    // spell (Fast Healing, Oakflesh) is cast on oneself and on no one
+    // else; an aimed one (Heal Other, Firebolt) goes at someone else --
+    // then the shouts, then the powers. A follower with none that fit is
+    // offered nothing rather than an empty submenu that looks broken.
+    for (const auto [label, action] :
+         {std::pair{"Cast", ft::ActionKind::CastSpell}, std::pair{"Shout", ft::ActionKind::Shout},
+          std::pair{"Power", ft::ActionKind::UsePower}})
+    {
+        if (!valid(action))
+            continue;
         const auto kind = action == ft::ActionKind::UsePower ? SpellOption::Kind::Power
                           : action == ft::ActionKind::Shout  ? SpellOption::Kind::Shout
                                                              : SpellOption::Kind::Spell;
@@ -1544,10 +1448,9 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
         if (suited.empty())
             continue;
-
-        if (!BeginCascade(name.c_str()))
+        group(2);
+        if (!BeginCascade(label))
             continue;
-
         for (const auto *option : suited)
         {
             const bool selected = here && act.kind == action && act.form == option->form;
@@ -1559,6 +1462,63 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             }
         }
         Im::EndMenu();
+    }
+
+    // What is done to the weapon in hand: Charge (the strongest gem that
+    // fits, the weakest, then every spendable gem by name) and Poison (the
+    // strongest of each, the weakest of each, then every poison carried by
+    // name).
+    if (valid(ft::ActionKind::ChargeStrongestSoulGem))
+    {
+        group(3);
+        // The named things of one kind, after a divider when there are any.
+        const auto namedAfterDivider = [&](ft::ActionKind kind) {
+            if (!carried(ft::ConsumableOf(kind)))
+                return;
+            Im::Separator();
+            named(kind);
+        };
+        if (BeginCascade("Charge"))
+        {
+            policy(ft::ActionKind::ChargeStrongestSoulGem);
+            policy(ft::ActionKind::ChargeWeakestSoulGem);
+            namedAfterDivider(ft::ActionKind::ChargeSoulGem);
+            Im::EndMenu();
+        }
+        if (BeginCascade("Poison"))
+        {
+            for (auto kind : {ft::ActionKind::ApplyStrongestHealthPoison, ft::ActionKind::ApplyStrongestStaminaPoison,
+                              ft::ActionKind::ApplyStrongestMagickaPoison})
+                policy(kind);
+            Im::Separator();
+            for (auto kind : {ft::ActionKind::ApplyWeakestHealthPoison, ft::ActionKind::ApplyWeakestStaminaPoison,
+                              ft::ActionKind::ApplyWeakestMagickaPoison})
+                policy(kind);
+            namedAfterDivider(ft::ActionKind::ApplyPoison);
+            Im::EndMenu();
+        }
+    }
+
+    // What is put on, and PINNED: Weapon, Armor, Arrows, Spell, each its
+    // own menu of what is carried or known.
+    if (valid(ft::ActionKind::EquipWeapon))
+    {
+        group(4);
+        for (const auto kind : {ft::ActionKind::EquipWeapon, ft::ActionKind::EquipArmor, ft::ActionKind::EquipArrows,
+                                ft::ActionKind::EquipSpell})
+        {
+            std::string noun = EquipNoun(kind);
+            if (!noun.empty())
+                noun[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(noun[0])));
+            const bool open = BeginCascade(noun.c_str());
+            if (Im::IsItemHovered(0))
+                Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+            if (!open)
+                continue;
+            if (EquipMenu(act, kind, view))
+                choose();
+            Im::EndMenu();
+        }
     }
     return changed;
 }
