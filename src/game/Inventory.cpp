@@ -499,6 +499,12 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
         RE::InventoryEntryData *entry = slot.second.get();
         if (!object || count <= 0)
             continue;
+        // A leveled list an NPC's record put in the bag (Marcurio's
+        // LItemWeaponDaggerBest): the engine resolved it to a real dagger
+        // when he loaded, and the list itself stays behind, nameless. Not a
+        // thing.
+        if (object->Is(RE::FormType::LeveledItem))
+            continue;
 
         InventoryItem item;
         item.form = object->GetFormID();
