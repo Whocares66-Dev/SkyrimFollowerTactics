@@ -2872,25 +2872,14 @@ void SlashCell()
 }
 
 // A click walks the cell round: unequipped, equipped, pinned, banned, and
-// back to unequipped. Each state is one request to the game thread. A
-// `blocked` reason greys the cell and takes the click away: the thing could
-// go there, but not now -- a second weapon for a style that holds one.
+// back to unequipped. Each state is one request to the game thread.
 void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, bool pinned, bool banned, Hand hand,
-            bool clickable, bool allowed = true, const char *blocked = nullptr)
+            bool clickable, bool allowed = true)
 {
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
     if (!allowed)
     {
         SlashCell();
-        return;
-    }
-    if (blocked)
-    {
-        // A hover target the size of the cell, no click.
-        Im::Dummy({Im::GetContentRegionAvail().x, Im::GetTextLineHeight()});
-        if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", blocked);
-        DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f), on, pinned, banned);
         return;
     }
     if (clickable)
@@ -3164,15 +3153,14 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             std::snprintf(buf, sizeof(buf), "##left%08X", item->form);
             Im::TableNextColumn();
             if (item->handItem && !item->rightOnly)
-                OnCell(buf, view.id, item->form, item->equippedLeft, item->pinnedLeft, item->banned, Hand::Left, true,
-                       true, item->noDualLeft ? "Cannot dual wield" : nullptr);
+                OnCell(buf, view.id, item->form, item->equippedLeft, item->pinnedLeft, item->banned, Hand::Left, true);
             else if (item->equipable)
                 SlashCell();
             std::snprintf(buf, sizeof(buf), "##right%08X", item->form);
             Im::TableNextColumn();
             if (item->handItem && !item->leftOnly)
                 OnCell(buf, view.id, item->form, item->equippedRight, item->pinnedRight, item->banned, Hand::Right,
-                       true, true, item->noDualRight ? "Cannot dual wield" : nullptr);
+                       true);
             else if (item->equipable)
                 SlashCell();
         }

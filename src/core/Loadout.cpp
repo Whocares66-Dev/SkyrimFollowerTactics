@@ -67,10 +67,19 @@ bool Unban(Bans &bans, std::uint32_t form)
     return bans.size() != before;
 }
 
-bool Conflicts(const Holdable &incoming, Hand hands, const Holdable &held, Hand heldHands) noexcept
+bool WouldDualWield(const Holdable &thing, const Holdable *inOtherHand) noexcept;
+
+bool Conflicts(const Holdable &incoming, Hand hands, const Holdable &held, Hand heldHands, bool dualWield) noexcept
 {
     if (hands != Hand::None && heldHands != Hand::None)
-        return Overlap(hands, heldHands);
+    {
+        if (Overlap(hands, heldHands))
+            return true;
+        // Where the style forbids two, a one-hander into one hand displaces
+        // a one-hander pinned in the other -- a different weapon, or a
+        // second copy of the same.
+        return !dualWield && incoming.form != held.form && WouldDualWield(incoming, &held);
+    }
     if (incoming.slots != 0 && held.slots != 0)
         return (incoming.slots & held.slots) != 0;
     return (incoming.IsAmmo() && held.IsAmmo()) || (incoming.IsVoice() && held.IsVoice());
@@ -111,12 +120,12 @@ const Pin *FindPin(const std::vector<Pin> &pins, std::uint32_t form) noexcept
     return it == pins.end() ? nullptr : &*it;
 }
 
-std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, Hand hands)
+std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool dualWield)
 {
     std::vector<Displaced> out;
     for (auto it = pins.begin(); it != pins.end();)
     {
-        if (it->thing.form == thing.form || !Conflicts(thing, hands, it->thing, it->hands))
+        if (it->thing.form == thing.form || !Conflicts(thing, hands, it->thing, it->hands, dualWield))
         {
             ++it;
             continue;

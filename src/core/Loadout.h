@@ -172,13 +172,21 @@ struct Pin
 // spell coming in. The only copy of the very weapon the other hand holds
 // is a MOVE across, not a second weapon. The caller asks only where the
 // style forbids it.
+//
+// What is EQUIPPED in the other hand is no bar on its own: the AI swaps
+// weapons as it likes, and a second one-hander offered beside an equipped
+// one is no different from one offered for the same hand. A PINNED
+// one-hander is the bar: the panel greys the other one-handers, and one
+// pinned or equipped into the other hand anyway takes the pinned one off
+// -- Conflicts and MakeRoom say so with `dualWield` false.
 [[nodiscard]] bool WouldDualWield(const Holdable &thing, const Holdable *inOtherHand) noexcept;
 
 // Does pinning `incoming` to `hands` mean releasing `held`, pinned to
 // `heldHands`? Hands that overlap; armour on shared body slots; ammunition
 // against ammunition; a voice pin against a voice pin. Anything else lives
 // alongside.
-[[nodiscard]] bool Conflicts(const Holdable &incoming, Hand hands, const Holdable &held, Hand heldHands) noexcept;
+[[nodiscard]] bool Conflicts(const Holdable &incoming, Hand hands, const Holdable &held, Hand heldHands,
+                             bool dualWield = true) noexcept;
 
 // Would a thing with this grip take a hand the pins hold, when the hand it
 // would go into is not known? A one-hand-only thing competes with a pin on
@@ -204,7 +212,8 @@ struct Displaced
     std::uint32_t form{0};
     Hand hands{Hand::None};
 };
-[[nodiscard]] std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, Hand hands);
+[[nodiscard]] std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, Hand hands,
+                                              bool dualWield = true);
 
 // Pin `thing` in `hands`. An either-hand thing already pinned in the other
 // hand is pinned in both, a spell once in each -- unless `moving`, her one

@@ -79,11 +79,6 @@ struct InventoryItem
     bool equippedRight{false};
     bool pinnedLeft{false};
     bool pinnedRight{false};
-    // Into this hand it would make a second one-handed weapon beside the one
-    // in the other, and the combat style forbids dual wielding: the cell is
-    // greyed and says so.
-    bool noDualLeft{false};
-    bool noDualRight{false};
     // Something she can put on: a weapon, a piece of armour, ammunition, a
     // torch. Only these take a click in the Worn column.
     bool equipable{false};

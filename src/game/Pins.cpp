@@ -498,7 +498,8 @@ constexpr bool kDualWieldOnLeftPin = false;
 // book and the body agree: the engine's own displacement would leave the
 // old pin in the book, and the watchdog would put it straight back over the
 // new thing. Taking it off is the engine's, in the equip that follows.
-void ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Holdable &incoming, Hand hands)
+std::vector<Displaced> ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Holdable &incoming,
+                                              Hand hands, bool dualWield)
 {
     // Only the book changes here. What gave way is NOT taken off: the
     // engine's equip displaces it -- a weapon or spell from the hand it
@@ -511,12 +512,14 @@ void ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Hold
     // prevent-removal flag, which refused the engine's own swap; the flag
     // went on 2026-09-04, and this went with it. The one unequip that stays
     // is the move of a follower's only weapon to the other hand, in Wear.
-    for (const Displaced &gone : MakeRoom(pins, incoming, hands))
+    std::vector<Displaced> displaced = MakeRoom(pins, incoming, hands, dualWield);
+    for (const Displaced &gone : displaced)
     {
         auto *held = RE::TESForm::LookupByID(gone.form);
         logger::info("{} unpinning {}{} to make room", Describe(actor), held && held->GetName() ? held->GetName() : "?",
                      HandTag(gone.hands));
     }
+    return displaced;
 }
 
 // The watchdog: put back any pinned form the game has taken off, and forget
@@ -947,6 +950,7 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
         return;
     auto &pins = it->second;
     const std::vector<Pin> asPlanned = pins;
+    const bool dualWield = DualWieldAllowed(actor);
 
     // The tooltip's reason: the pins in the way, one per line, "Firebolt
     // is pinned". Which hand or slot is plain from the table itself.
@@ -989,6 +993,23 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
         aside = SetAside(asPlanned, described);
         if (aside)
             asideBy = why(Shadowing(asPlanned, described));
+        // A one-hander beside a one-hander pinned in either hand, where the
+        // style forbids two: greyed, and the reason on the name. Its cells
+        // still take a click -- into the other hand, and the pinned one
+        // comes off (Wear).
+        if (!aside && !dualWield)
+        {
+            for (const Pin &pin : asPlanned)
+            {
+                if ((pin.hands == Hand::Left || pin.hands == Hand::Right) && pin.thing.form != form &&
+                    WouldDualWield(described, &pin.thing))
+                {
+                    aside = true;
+                    asideBy = "Cannot dual wield";
+                    break;
+                }
+            }
+        }
     };
     for (auto &item : items)
         mark(item.form, item.pinnedLeft, item.pinnedRight, item.setAside, item.asideBy, item.pinned, item.detail);
@@ -1105,22 +1126,6 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         (hands == Hand::Left || hands == Hand::Right))
     {
         const Hand other = hands == Hand::Left ? Hand::Right : Hand::Left;
-        // A weapon in each hand where the combat style forbids it: the
-        // panel greys the cell, and a rule's request is refused here, so
-        // no pin makes a stance the style cannot fight in.
-        if (!DualWieldAllowed(actor))
-        {
-            auto *held = actor->GetEquippedObject(other == Hand::Left);
-            const std::optional<Holdable> inOther =
-                held ? std::optional<Holdable>(DescribeHoldable(actor, held)) : std::nullopt;
-            if (WouldDualWield(described, inOther ? &*inOther : nullptr))
-            {
-                logger::info("{} {} into the {} hand would dual wield, which the combat style forbids -- refused",
-                             Describe(actor), thing->GetName() ? thing->GetName() : "?",
-                             hands == Hand::Left ? "left" : "right");
-                return;
-            }
-        }
         if (EquippedIn(actor, thing, other))
         {
             auto *object = thing->As<RE::TESBoundObject>();
@@ -1135,13 +1140,19 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     if (request == WearRequest::Ban || request == WearRequest::Unban)
         hands = reach;
 
+    // Where the combat style forbids dual wielding, a one-hander into one
+    // hand displaces a one-hander PINNED in the other (core/Loadout.h,
+    // Conflicts): its pin goes, and since the engine's equip of one hand
+    // leaves the other alone, the weapon is taken off below as well.
+    const bool dualWield = DualWieldAllowed(actor);
+    std::vector<Displaced> displacedAcross;
     {
         std::scoped_lock lock(g_pinMutex);
         auto &pins = g_pins[id];
         switch (request)
         {
         case WearRequest::Pin:
-            ReleaseConflictingPins(actor, pins, described, hands);
+            displacedAcross = ReleaseConflictingPins(actor, pins, described, hands, dualWield);
             AddPin(pins, described, hands, moving);
             break;
         case WearRequest::Equip:
@@ -1150,7 +1161,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             // only copy of a weapon changing hands takes its own pin with
             // it: a pin on the hand it is leaving would stand over an empty
             // hand (16:28, the steel dagger pinned left and held right).
-            ReleaseConflictingPins(actor, pins, described, hands);
+            displacedAcross = ReleaseConflictingPins(actor, pins, described, hands, dualWield);
             if (moving) [[maybe_unused]]
                 const Hand left = LetGo(pins, described, hands == Hand::Left ? Hand::Right : Hand::Left);
             break;
@@ -1176,12 +1187,12 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             auto &before = g_pinsBeforeFight[id];
             if (request == WearRequest::Pin)
             {
-                [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands);
+                [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands, dualWield);
                 AddPin(before, described, hands, moving);
             }
             else if (request == WearRequest::Equip)
             {
-                [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands);
+                [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands, dualWield);
                 if (moving) [[maybe_unused]]
                     const Hand left = LetGo(before, described, hands == Hand::Left ? Hand::Right : Hand::Left);
             }
@@ -1195,6 +1206,20 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     }
 
     const char *name = thing->GetName() ? thing->GetName() : "?";
+    // The pinned one-hander a one-hander into the other hand displaced,
+    // where the style forbids two: off, since the engine's equip of this
+    // hand leaves the other as it was.
+    for (const Displaced &gone : displacedAcross)
+    {
+        if (Overlap(gone.hands, hands) || (gone.hands != Hand::Left && gone.hands != Hand::Right))
+            continue;
+        if (auto *held = RE::TESForm::LookupByID(gone.form))
+        {
+            logger::info("{} {} comes off the {} hand: the combat style does not dual wield", Describe(actor),
+                         held->GetName() ? held->GetName() : "?", gone.hands == Hand::Left ? "left" : "right");
+            UnequipForm(actor, held, gone.hands, true);
+        }
+    }
     switch (request)
     {
     case WearRequest::Equip:
@@ -1496,9 +1521,10 @@ bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlo
     if (const auto *weapon = object->As<RE::TESObjectWEAP>(); weapon && weapon->IsBound())
         return false;
     const Hand hands = HandsFor(thing.grip, SlotHand(slot));
+    const bool dualWield = DualWieldAllowed(actor);
     for (const Pin &pin : pins)
     {
-        if (!Conflicts(thing, hands, pin.thing, pin.hands))
+        if (!Conflicts(thing, hands, pin.thing, pin.hands, dualWield))
             continue;
         if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
         {

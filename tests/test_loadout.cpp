@@ -89,6 +89,52 @@ TEST_CASE("dual wielding is one-handed weapon against one-handed weapon, and not
     CHECK(WouldDualWield(dagger, &dagger));
 }
 
+TEST_CASE("where the style forbids dual wielding, a pinned one-hander gives way to one in the other hand")
+{
+    Holdable dagger = Thing(kSteelDagger, Grip::Either);
+    dagger.kind = Kind::Weapon;
+    constexpr std::uint32_t kSword = 13; // an iron sword, Either
+    Holdable sword = Thing(kSword, Grip::Either);
+    sword.kind = Kind::Weapon;
+    Holdable shield = Thing(kIronShield, Grip::LeftOnly);
+    shield.kind = Kind::Weapon;
+
+    // With dual wielding allowed the two hands are two places, as ever.
+    CHECK_FALSE(Conflicts(dagger, Hand::Left, sword, Hand::Right));
+    // Without it, a one-hander pinned in the other hand is in the way; a
+    // shield there, or a shield coming in, is not.
+    CHECK(Conflicts(dagger, Hand::Left, sword, Hand::Right, false));
+    CHECK(Conflicts(dagger, Hand::Right, sword, Hand::Left, false));
+    CHECK_FALSE(Conflicts(dagger, Hand::Left, shield, Hand::Right, false));
+    CHECK_FALSE(Conflicts(shield, Hand::Left, sword, Hand::Right, false));
+    // The same hand conflicts as before, either way.
+    CHECK(Conflicts(dagger, Hand::Right, sword, Hand::Right, false));
+
+    // Pinning the dagger left releases the sword pinned right, whole, and
+    // says so -- the game side takes the sword off, since the engine's
+    // equip of the left hand leaves the right hand alone.
+    std::vector<Pin> pins;
+    AddPin(pins, sword, Hand::Right, false);
+    const auto displaced = MakeRoom(pins, dagger, Hand::Left, false);
+    REQUIRE(displaced.size() == 1);
+    CHECK(displaced[0].form == kSword);
+    CHECK(displaced[0].hands == Hand::Right);
+    CHECK(pins.empty());
+
+    // With dual wielding allowed the sword stays pinned beside the dagger.
+    AddPin(pins, sword, Hand::Right, false);
+    CHECK(MakeRoom(pins, dagger, Hand::Left, true).empty());
+    CHECK(pins.size() == 1);
+
+    // A shield pinned left is no bar to a sword right, and an equipped
+    // (unpinned) sword is no pin to release: the panel greys nothing for
+    // it, and the AI swaps as it likes.
+    pins.clear();
+    AddPin(pins, shield, Hand::Left, false);
+    CHECK(MakeRoom(pins, sword, Hand::Right, false).empty());
+    CHECK(pins.size() == 1);
+}
+
 TEST_CASE("a spell above her skill can be equipped but not pinned")
 {
     Holdable chain = Thing(kChainLightning, Grip::RightOnly);
