@@ -1928,9 +1928,19 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
     case Object::kCombatTarget:
         call += " on Combat Target";
         break;
-    case Object::kRef:
-        call += " on Reference";
+    case Object::kRef: {
+        // A particular reference, named in the condition: the player, as a
+        // rule, for a perk given to followers that turns on with one of
+        // the player's.
+        const auto ref = data.runOnRef.get();
+        if (ref && ref->IsPlayerRef())
+            call += " on Player";
+        else if (ref && ref->GetDisplayFullName() && *ref->GetDisplayFullName())
+            call += std::string(" on ") + ref->GetDisplayFullName();
+        else
+            call += ref ? " on " + HexId(ref->GetFormID()) : " on Reference";
         break;
+    }
     case Object::kLinkedRef:
         call += " on Linked Reference";
         break;
