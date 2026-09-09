@@ -4192,7 +4192,7 @@ void DrawSkills(const FollowerView &view)
     const SheetSection *other = nullptr;
     for (const auto &section : view.skills)
     {
-        if (section.title == "Other")
+        if (section.title == "Other Perks")
             other = &section;
         else
             skills.push_back(section);
@@ -4200,7 +4200,7 @@ void DrawSkills(const FollowerView &view)
     DrawSections(skills, true, open);
     if (other)
     {
-        CentredHeading("Other");
+        CentredHeading("Other Perks");
         Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 4.0f));
         DrawPerkTable("perks##other", other->rows, 0.0f, open);
         Im::PopStyleVar(1);

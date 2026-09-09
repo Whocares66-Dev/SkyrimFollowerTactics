@@ -2172,6 +2172,10 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         bySource(k.power, p);
 
         row.detail = OwnedPerks(actor, k.value);
+        // A skill at zero with no perk in it -- Vampire Lord on a mortal --
+        // says nothing; a section of those says nothing either.
+        if (av(k.value) == 0.0f && row.detail.empty() && row.modifiers.empty())
+            return;
         s.rows.push_back(std::move(row));
     };
 
@@ -2268,7 +2272,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         for (const Found &f : found)
             for (const TreePerk &entry : TreePerks(f.value))
                 inTrees.insert(entry.perk);
-        SheetSection s{"Other", {}, {}};
+        SheetSection s{"Other Perks", {}, {}};
         if (const auto *base = actor->GetActorBase(); base && base->perks)
         {
             for (std::uint32_t i = 0; i < base->perkCount; ++i)
