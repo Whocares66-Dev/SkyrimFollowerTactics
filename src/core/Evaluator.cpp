@@ -370,10 +370,13 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::AttackedBy:
         held = s.traits.AttackedBy(r.damageKind);
         break;
-    case PredicateKind::WeaponUnpoisoned:
+    case PredicateKind::WeaponChargeNeeded:
+        held = s.AnyWeaponChargeNeeded();
+        break;
+    case PredicateKind::WeaponPoisonNone:
         held = s.AnyWeaponClean();
         break;
-    case PredicateKind::WeaponPoisoned:
+    case PredicateKind::WeaponPoisonActive:
         held = s.AnyWeaponPoisoned();
         break;
     default:
@@ -588,6 +591,12 @@ bool HasResource(const Action &a, const Snapshot &s)
     case ActionKind::ApplyWeakestStaminaPoison:
     case ActionKind::ApplyStrongestStaminaPoison:
         return s.potions.poisonStaminaCount > 0;
+    case ActionKind::ChargeStrongestSoulGem:
+    case ActionKind::ChargeWeakestSoulGem:
+        return !s.soulGems.empty();
+    case ActionKind::ChargeSoulGem:
+        return a.form != 0 && std::any_of(s.soulGems.begin(), s.soulGems.end(),
+                                          [&](const Snapshot::SoulGemView &g) { return g.form == a.form; });
 
     case ActionKind::CastSpell:
     case ActionKind::UsePower:
@@ -715,6 +724,16 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         if (!snap.AnyWeaponTakesPoison())
             return Verdict::NothingToPoison;
         if (!snap.AnyWeaponClean())
+            return Verdict::EffectActive;
+    }
+    // A soul gem goes into an enchanted weapon in hand that cannot pay for
+    // its next hit: none enchanted in hand, and the rule is not met; none
+    // in need, and it waits.
+    if (IsCharge(a.kind))
+    {
+        if (!snap.AnyWeaponEnchanted())
+            return Verdict::NothingToCharge;
+        if (!snap.AnyWeaponChargeNeeded())
             return Verdict::EffectActive;
     }
 
@@ -1014,6 +1033,9 @@ const char *Explain(Verdict v, ActionKind action) noexcept
     case Verdict::NothingToPoison:
         return "no weapon in hand takes a poison";
 
+    case Verdict::NothingToCharge:
+        return "no enchanted weapon in hand";
+
     case Verdict::EffectActive:
         if (IsEquip(action))
             return "already pinned, or nothing of that kind pinned to let go";
@@ -1023,6 +1045,8 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "that power is still running";
         if (IsApply(action))
             return "every weapon in hand is already poisoned";
+        if (IsCharge(action))
+            return "no weapon in hand needs a charge";
         return action == ActionKind::CastSpell ? "that spell is still running" : "previous dose still active";
 
     default:
@@ -1048,6 +1072,8 @@ const char *ToString(Verdict v) noexcept
         return "none in inventory";
     case Verdict::NothingToPoison:
         return "no weapon to poison";
+    case Verdict::NothingToCharge:
+        return "no enchanted weapon";
     case Verdict::CannotAfford:
         return "not enough magicka";
     case Verdict::EffectActive:
@@ -1070,6 +1096,26 @@ const char *ToString(Verdict v) noexcept
         return "not reached";
     }
     return "?";
+}
+
+std::uint32_t ChooseSoulGem(const std::vector<Snapshot::SoulGemView> &gems, float missing, bool strongest) noexcept
+{
+    const Snapshot::SoulGemView *smallest = nullptr;
+    const Snapshot::SoulGemView *bestFit = nullptr;
+    for (const auto &gem : gems)
+    {
+        if (gem.count <= 0 || gem.charge <= 0.0f)
+            continue;
+        if (!smallest || gem.charge < smallest->charge)
+            smallest = &gem;
+        if (gem.charge <= missing && (!bestFit || gem.charge > bestFit->charge))
+            bestFit = &gem;
+    }
+    if (!smallest)
+        return 0;
+    if (!strongest)
+        return smallest->form;
+    return bestFit ? bestFit->form : smallest->form;
 }
 
 } // namespace ft

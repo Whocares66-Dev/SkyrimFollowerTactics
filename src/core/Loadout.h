@@ -118,6 +118,11 @@ struct Holdable
     // The body slots a piece of armour covers, for armour against armour;
     // 0 for everything else.
     std::uint32_t slots{0};
+    // How many she carries: an item's count, and "plenty" for a spell,
+    // which can be in both hands at once. A single item pinned in one hand
+    // has no second copy for the other, and the engine, asked for one,
+    // shows the same object in both hands (the doubled dagger).
+    int count{1};
 
     [[nodiscard]] constexpr bool IsAmmo() const noexcept
     {
@@ -206,8 +211,10 @@ void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool movi
 // holds a thing once per hand it could go into, an either-hand spell as a
 // left entry and a right entry, and each entry carries its hand. An entry
 // whose hand a pin holds goes, unless it is that pin itself: Flames pinned
-// left keeps Flames-in-left and loses Flames-in-right. An entry that
-// carries no hand falls back to the coarse rule.
+// left keeps Flames-in-left and loses Flames-in-right. A pinned thing's
+// entry for a hand its pin does not hold goes too when there is only one of
+// it: the staff pinned right has no second staff for the left. An entry
+// that carries no hand falls back to the coarse rule.
 [[nodiscard]] bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) noexcept;
 
 // Is a thing entirely unavailable to the AI: every hand it could take is

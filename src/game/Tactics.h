@@ -152,6 +152,11 @@ void ForgetSession();
 // which the frozen clock holds while the panel is open.
 void PublishFollower(RE::Actor *actor);
 
+// Every managed follower's view, fresh. For the panel's open: the tick
+// stops with the clock the moment it opens, so what the panel shows is
+// otherwise the last tick's view. Game thread.
+void PublishAllFollowers();
+
 // Why the world's clock is stopped, if it is.
 //
 // Rules are gated on time running, not on any menu being closed -- those are

@@ -65,7 +65,7 @@ constexpr std::array<Entry<SubjectKind>, 7> kSubjects{{
     {SubjectKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 35> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 36> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
@@ -99,8 +99,9 @@ constexpr std::array<Entry<PredicateKind>, 35> kPredicates{{
     {PredicateKind::CorpseNone, "corpse-none", "None"},
     {PredicateKind::LevelHighest, "level-highest", "Highest level"},
     {PredicateKind::LevelLowest, "level-lowest", "Lowest level"},
-    {PredicateKind::WeaponUnpoisoned, "weapon-unpoisoned", "Weapon unpoisoned"},
-    {PredicateKind::WeaponPoisoned, "weapon-poisoned", "Weapon poisoned"},
+    {PredicateKind::WeaponChargeNeeded, "weapon-charge-needed", "Weapon charge: needed"},
+    {PredicateKind::WeaponPoisonNone, "weapon-poison-none", "Weapon poison: none"},
+    {PredicateKind::WeaponPoisonActive, "weapon-poison-active", "Weapon poison: active"},
 }};
 
 constexpr std::array<Entry<ActionTargetKind>, 8> kActionTargets{{
@@ -114,7 +115,7 @@ constexpr std::array<Entry<ActionTargetKind>, 8> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 25> kActions{{
+constexpr std::array<Entry<ActionKind>, 28> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. That is
     // how "drink-weakest-health-potion" -- don't burn a strong potion on a
@@ -126,6 +127,9 @@ constexpr std::array<Entry<ActionKind>, 25> kActions{{
     {ActionKind::EquipArrows, "equip-arrows", "Equip arrows"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
     {ActionKind::EquipArmor, "equip-armor", "Equip armor"},
+    {ActionKind::ChargeStrongestSoulGem, "charge-strongest-soul-gem", "Charge with strongest soul gem"},
+    {ActionKind::ChargeWeakestSoulGem, "charge-weakest-soul-gem", "Charge with weakest soul gem"},
+    {ActionKind::ChargeSoulGem, "charge-soul-gem", "Charge with soul gem"},
     {ActionKind::ApplyWeakestHealthPoison, "apply-weakest-health-poison", "Apply weakest health poison"},
     {ActionKind::ApplyWeakestMagickaPoison, "apply-weakest-magicka-poison", "Apply weakest magicka poison"},
     {ActionKind::ApplyWeakestStaminaPoison, "apply-weakest-stamina-poison", "Apply weakest stamina poison"},
@@ -407,9 +411,11 @@ std::string_view Describe(PredicateKind v) noexcept
         return "Commands no summon or raised corpse right now.";
     case PredicateKind::SummonActive:
         return "Commands a summon or a raised corpse right now.";
-    case PredicateKind::WeaponUnpoisoned:
+    case PredicateKind::WeaponChargeNeeded:
+        return "An enchanted weapon in hand cannot pay for one more hit.";
+    case PredicateKind::WeaponPoisonNone:
         return "A weapon in hand takes a poison and has none on it.";
-    case PredicateKind::WeaponPoisoned:
+    case PredicateKind::WeaponPoisonActive:
         return "A weapon in hand has a poison on it.";
     case PredicateKind::CorpseNone:
         return "No corpse nearby that the rule's spell could raise.";
@@ -440,6 +446,12 @@ std::string_view Describe(ActionKind v) noexcept
         return "Drink the weakest magicka potion carried: the cheap ones first, the strong ones kept.";
     case ActionKind::DrinkWeakestStaminaPotion:
         return "Drink the weakest stamina potion carried: the cheap ones first, the strong ones kept.";
+    case ActionKind::ChargeStrongestSoulGem:
+        return "Recharge the weapon in hand that needs it with the largest soul gem that would not overfill it.";
+    case ActionKind::ChargeWeakestSoulGem:
+        return "Recharge the weapon in hand that needs it with the smallest soul gem carried.";
+    case ActionKind::ChargeSoulGem:
+        return "Recharge the weapon in hand that needs it with this soul gem.";
     case ActionKind::ApplyWeakestHealthPoison:
         return "Put the weakest health poison carried on the weapon in hand.";
     case ActionKind::ApplyWeakestMagickaPoison:

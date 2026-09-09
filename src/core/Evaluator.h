@@ -26,6 +26,7 @@ enum class Verdict : std::uint8_t
     NoTarget,
     NoResource,
     NothingToPoison,  // an Apply rule with no weapon in hand that takes a poison
+    NothingToCharge,  // a Charge rule with no enchanted weapon in hand
     CannotAfford,     // knows the spell, cannot pay for it right now
     EffectActive,     // a previous dose is still running; or the thing is already pinned
     AboveSkill,       // a spell above the follower's skill: neither cast nor pinned, so cast and equip agree
@@ -44,6 +45,12 @@ enum class Verdict : std::uint8_t
 // it is the specific ally or enemy that satisfied the predicate -- and that is
 // the point of returning it: the action then applies to whoever matched,
 // without the rule naming them twice.
+// The gem a charge policy spends into a weapon short by `missing`. Strongest
+// is the largest that would not overfill it, or the smallest carried when
+// every one would; weakest the smallest carried. Zero for no gems.
+[[nodiscard]] std::uint32_t ChooseSoulGem(const std::vector<Snapshot::SoulGemView> &gems, float missing,
+                                          bool strongest) noexcept;
+
 struct Binding
 {
     ActorId id{0};

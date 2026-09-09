@@ -58,6 +58,30 @@ struct PotionChoice
 // Does that weapon, as the actor carries it, already have a poison on it?
 [[nodiscard]] bool WeaponPoisoned(RE::Actor *actor, RE::TESObjectWEAP *weapon);
 
+// A weapon's enchantment charge as the actor carries it: what is left, the
+// full amount, and what one hit draws in the actor's hands. Not enchanted
+// reads as all zero.
+struct WeaponCharge
+{
+    bool enchanted{false};
+    float charge{0.0f};
+    float maxCharge{0.0f};
+    float costPerHit{0.0f};
+};
+[[nodiscard]] WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon);
+
+// The weapon in a hand, enchanted or not; null for no weapon there.
+[[nodiscard]] RE::TESObjectWEAP *WeaponIn(RE::Actor *actor, bool left);
+
+// What a soul of that level puts into a charge: the five iSoulLevelValue
+// game settings, which the engine's own recharge reads.
+[[nodiscard]] float SoulCharge(RE::SOUL_LEVEL level);
+
+// The filled soul gems carried, as the snapshot lists them. A reusable one
+// (Azura's Star, the ReusableSoulGem keyword) counts: spending it empties
+// it, as the engine's own recharge does, rather than removing it.
+[[nodiscard]] std::vector<ft::Snapshot::SoulGemView> ScanSoulGems(RE::Actor *actor);
+
 // One castable spell a follower knows, for the editor's menu.
 //
 // Name and id together because the menu shows one and stores the other: the

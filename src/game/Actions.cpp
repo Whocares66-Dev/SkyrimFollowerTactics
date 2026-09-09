@@ -5,6 +5,8 @@
 #include "game/Sensors.h"
 #include "game/Util.h"
 
+#include <algorithm>
+
 namespace ft::game
 {
 namespace
@@ -95,6 +97,110 @@ ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
     return ActionResult::Performed;
 }
 
+// Spend a soul gem into the weapon in hand whose charge is empty, the right
+// hand before the left. What the engine's own recharge routine does, read
+// from the executable: the gem's soul value through the Mod Soul Gem
+// Recharge perk entry point, added to what is left and capped at the full
+// charge, written to ExtraCharge on the worn copy; the weapon's ability
+// refreshed; the gem removed, or emptied if it is reusable (Azura's Star:
+// the routine sets the soul on its entry back to none); the recharge sound
+// played. `strongest` picks the gem when `gemForm` is 0.
+ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm, bool strongest)
+{
+    RE::TESObjectWEAP *weapon = nullptr;
+    bool left = false;
+    WeaponCharge state;
+    for (const bool hand : {false, true})
+    {
+        auto *candidate = WeaponIn(actor, hand);
+        const WeaponCharge c = ChargeOf(actor, candidate);
+        if (candidate && c.enchanted && c.charge < c.costPerHit)
+        {
+            weapon = candidate;
+            left = hand;
+            state = c;
+            break;
+        }
+    }
+    if (!weapon)
+        return ActionResult::MissingItem;
+
+    const auto gems = ScanSoulGems(actor);
+    if (gemForm == 0)
+        gemForm = ft::ChooseSoulGem(gems, state.maxCharge - state.charge, strongest);
+    const auto it = std::find_if(gems.begin(), gems.end(), [&](const auto &g) { return g.form == gemForm; });
+    auto *gem = RE::TESForm::LookupByID<RE::TESSoulGem>(gemForm);
+    if (it == gems.end() || !gem)
+        return ActionResult::MissingItem;
+
+    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
+    const auto found = inventory.find(weapon);
+    auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
+    if (!entry || !entry->extraLists)
+        return ActionResult::MissingItem;
+    RE::ExtraDataList *worn = nullptr;
+    for (auto *list : *entry->extraLists)
+    {
+        if (list && (list->HasType<RE::ExtraWorn>() || list->HasType<RE::ExtraWornLeft>()))
+        {
+            worn = list;
+            break;
+        }
+    }
+    if (!worn)
+        return ActionResult::MissingItem;
+
+    float value = it->charge;
+    RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModSoulGemRecharge, actor,
+                                        static_cast<RE::TESForm *>(weapon), &value);
+    const float charge = (std::min)(state.charge + (std::max)(value, 0.0f), state.maxCharge);
+    if (auto *xCharge = worn->GetByType<RE::ExtraCharge>())
+        xCharge->charge = charge;
+    else
+    {
+        auto *fresh = new RE::ExtraCharge();
+        fresh->charge = charge;
+        worn->Add(fresh);
+    }
+    // The refresh is what puts the record's charge into the hand's
+    // ItemCharge actor value, the live copy the engine draws from and the
+    // meter reads (read from the executable: it sets that value from the
+    // record, or the full charge with no record). The engine's own
+    // recharge writes nothing else, so neither does this.
+    actor->UpdateWeaponAbility(weapon, worn, left);
+    if (gem->HasKeywordString("ReusableSoulGem"))
+    {
+        // The soul a reusable gem holds is ExtraSoul on its entry; the
+        // record's own soul is none. Cleared, the Star is empty and stays.
+        auto gems = actor->GetInventory([gem](RE::TESBoundObject &c) { return &c == gem; });
+        const auto held = gems.find(gem);
+        auto *gemEntry = held != gems.end() ? held->second.second.get() : nullptr;
+        bool emptied = false;
+        if (gemEntry && gemEntry->extraLists)
+        {
+            for (auto *list : *gemEntry->extraLists)
+            {
+                if (list && list->GetSoulLevel() != RE::SOUL_LEVEL::kNone &&
+                    list->RemoveByType(RE::ExtraDataType::kSoul))
+                {
+                    emptied = true;
+                    break;
+                }
+            }
+        }
+        if (!emptied)
+            logger::warn("{} {} is reusable but its soul was not found on an extra list -- not emptied",
+                         Describe(actor), gem->GetName() ? gem->GetName() : "?");
+    }
+    else
+        actor->RemoveItem(gem, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+    RE::PlaySound("UIEnchantRecharge");
+    logger::info("{} spent {} ({:.0f}) into {}: charge {:.0f} -> {:.0f} of {:.0f}", Describe(actor),
+                 gem->GetName() ? gem->GetName() : "?", it->charge, weapon->GetName() ? weapon->GetName() : "?",
+                 state.charge, charge, state.maxCharge);
+    return ActionResult::Performed;
+}
+
 } // namespace
 
 const char *CannotCastText(std::uint32_t reason) noexcept
@@ -174,6 +280,12 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         return ApplyPoison(actor, choice.poisonMagicka);
     case ft::ActionKind::ApplyStrongestStaminaPoison:
         return ApplyPoison(actor, choice.poisonStamina);
+    case ft::ActionKind::ChargeStrongestSoulGem:
+        return ChargeWeapon(actor, 0, true);
+    case ft::ActionKind::ChargeWeakestSoulGem:
+        return ChargeWeapon(actor, 0, false);
+    case ft::ActionKind::ChargeSoulGem:
+        return ChargeWeapon(actor, action.form, true);
     case ft::ActionKind::ApplyPoison: {
         auto *poison = RE::TESForm::LookupByID<RE::AlchemyItem>(action.form);
         return ApplyPoison(actor, poison && poison->IsPoison() ? poison : nullptr);

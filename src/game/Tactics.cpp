@@ -218,7 +218,8 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     for (const auto kind : {ft::ActionKind::ApplyWeakestHealthPoison, ft::ActionKind::ApplyWeakestMagickaPoison,
                             ft::ActionKind::ApplyWeakestStaminaPoison, ft::ActionKind::ApplyStrongestHealthPoison,
                             ft::ActionKind::ApplyStrongestMagickaPoison, ft::ActionKind::ApplyStrongestStaminaPoison,
-                            ft::ActionKind::ApplyPoison})
+                            ft::ActionKind::ApplyPoison, ft::ActionKind::ChargeStrongestSoulGem,
+                            ft::ActionKind::ChargeWeakestSoulGem, ft::ActionKind::ChargeSoulGem})
         caps.supported[static_cast<std::size_t>(kind)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EatFood)] = true;
@@ -747,6 +748,14 @@ ft::RuleSet GetRules(ft::ActorId id)
 void PublishFollower(RE::Actor *actor)
 {
     PublishIdle(actor, TacticsSeconds(), actor->IsInCombat());
+}
+
+void PublishAllFollowers()
+{
+    const auto followers = CollectManagedFollowers();
+    for (auto *follower : followers)
+        PublishFollower(follower);
+    logger::info("tactics: panel opened -- {} follower view(s) refreshed", followers.size());
 }
 
 void SetRules(ft::ActorId id, ft::RuleSet rules)

@@ -23,6 +23,9 @@ double MinimumCooldown(ActionKind action) noexcept
     case ActionKind::ApplyStrongestMagickaPoison:
     case ActionKind::ApplyStrongestStaminaPoison:
     case ActionKind::ApplyPoison:
+    case ActionKind::ChargeStrongestSoulGem:
+    case ActionKind::ChargeWeakestSoulGem:
+    case ActionKind::ChargeSoulGem:
         // The measured queue-to-effect latency is about two seconds, plus a
         // margin so the next evaluation sees the result of this one.
         // Deliberately not longer: one potion is often not enough, and a
@@ -104,6 +107,12 @@ bool IsApply(ActionKind action) noexcept
     }
 }
 
+bool IsCharge(ActionKind action) noexcept
+{
+    return action == ActionKind::ChargeStrongestSoulGem || action == ActionKind::ChargeWeakestSoulGem ||
+           action == ActionKind::ChargeSoulGem;
+}
+
 ConsumableKind ConsumableOf(ActionKind action) noexcept
 {
     switch (action)
@@ -113,7 +122,9 @@ ConsumableKind ConsumableOf(ActionKind action) noexcept
     case ActionKind::EatIngredient:
         return ConsumableKind::Ingredient;
     default:
-        return IsApply(action) ? ConsumableKind::Poison : ConsumableKind::Potion;
+        return IsApply(action)    ? ConsumableKind::Poison
+               : IsCharge(action) ? ConsumableKind::SoulGem
+                                  : ConsumableKind::Potion;
     }
 }
 
@@ -311,8 +322,9 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::StaminaPctBelow:
         case PredicateKind::CombatBegins:
         case PredicateKind::CombatEnds:
-        case PredicateKind::WeaponUnpoisoned:
-        case PredicateKind::WeaponPoisoned:
+        case PredicateKind::WeaponChargeNeeded:
+        case PredicateKind::WeaponPoisonNone:
+        case PredicateKind::WeaponPoisonActive:
             return true;
         default:
             // CountAtLeast needs a group.

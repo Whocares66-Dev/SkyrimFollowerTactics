@@ -274,9 +274,24 @@ struct Snapshot
     {
         bool takesPoison{false};
         bool poisoned{false};
+        // Its enchantment's charge, when it has one: what is left, the
+        // full amount, and what one hit draws. Needed when a hit cannot be
+        // paid for, which is when the enchantment stops landing.
+        bool enchanted{false};
+        float charge{0.0f};
+        float maxCharge{0.0f};
+        float costPerHit{0.0f};
         [[nodiscard]] constexpr bool Clean() const noexcept
         {
             return takesPoison && !poisoned;
+        }
+        [[nodiscard]] constexpr bool ChargeNeeded() const noexcept
+        {
+            return enchanted && maxCharge > 0.0f && charge < costPerHit;
+        }
+        [[nodiscard]] constexpr float Missing() const noexcept
+        {
+            return enchanted ? maxCharge - charge : 0.0f;
         }
     };
     HandWeapon rightWeapon;
@@ -293,6 +308,24 @@ struct Snapshot
     {
         return rightWeapon.poisoned || leftWeapon.poisoned;
     }
+    [[nodiscard]] constexpr bool AnyWeaponEnchanted() const noexcept
+    {
+        return rightWeapon.enchanted || leftWeapon.enchanted;
+    }
+    [[nodiscard]] constexpr bool AnyWeaponChargeNeeded() const noexcept
+    {
+        return rightWeapon.ChargeNeeded() || leftWeapon.ChargeNeeded();
+    }
+
+    // The filled soul gems carried, each with what its soul puts into a
+    // charge. A reusable one is emptied when spent, not lost.
+    struct SoulGemView
+    {
+        std::uint32_t form{0};
+        int count{0};
+        float charge{0.0f};
+    };
+    std::vector<SoulGemView> soulGems;
     // Seconds until the voice can shout again, 0 when it can. The engine
     // keeps this per actor -- NPCs too -- as a shout's word recovery time
     // set when the shout fires, and a Shout rule inside it reports

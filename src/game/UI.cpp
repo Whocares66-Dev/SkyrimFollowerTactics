@@ -17,6 +17,7 @@
 #include "core/Vocabulary.h"
 #include "game/Pins.h"
 #include "game/Tactics.h"
+#include "game/Util.h"
 
 #include "SKSEMenuFramework.h"
 
@@ -90,6 +91,7 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
     // consumable the follower is out of reads as its count, the way the
     // Consume menu shows one.
     case ft::Verdict::NothingToPoison:
+    case ft::Verdict::NothingToCharge:
         return {"no weapon", held};
     case ft::Verdict::NoResource:
         return {action == ft::ActionKind::UsePower ? "no power"
@@ -99,7 +101,11 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
                                                    : "count: 0",
                 held};
     case ft::Verdict::EffectActive:
-        return {ft::IsEquip(action) ? "pinned" : ft::IsApply(action) ? "poisoned" : "active", held};
+        return {ft::IsEquip(action)    ? "pinned"
+                : ft::IsApply(action)  ? "poisoned"
+                : ft::IsCharge(action) ? "charged"
+                                       : "active",
+                held};
     case ft::Verdict::AboveSkill:
         return {"too high", held};
     case ft::Verdict::Outranked:
@@ -673,33 +679,49 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 continue;
             }
 
-            // The summons, under one "Summon" heading: None, Active. The
-            // weapons the same way, under "Weapon": Unpoisoned, Poisoned.
-            const bool summon =
-                predicate == ft::PredicateKind::SummonNone || predicate == ft::PredicateKind::SummonActive;
-            const bool weaponPoison =
-                predicate == ft::PredicateKind::WeaponUnpoisoned || predicate == ft::PredicateKind::WeaponPoisoned;
-            if (summon || weaponPoison)
-            {
-                if (predicate != ft::PredicateKind::SummonNone && predicate != ft::PredicateKind::WeaponUnpoisoned)
-                    continue;
-                if (!BeginCascade(summon ? "Summon" : "Weapon"))
-                    continue;
-                const auto none = summon ? ft::PredicateKind::SummonNone : ft::PredicateKind::WeaponUnpoisoned;
-                const auto active = summon ? ft::PredicateKind::SummonActive : ft::PredicateKind::WeaponPoisoned;
-                for (const auto [which, label] : {std::pair{none, summon ? "None" : "Unpoisoned"},
-                                                  std::pair{active, summon ? "Active" : "Poisoned"}})
+            // One item of the cascade for a predicate: pick it, and say
+            // what it asks.
+            const auto item = [&](ft::PredicateKind which, const char *label) {
+                const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which;
+                if (CascadeItem(label, selected))
                 {
-                    const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which;
-                    if (CascadeItem(label, selected))
-                    {
-                        rule.subject = subject;
-                        rule.subjectForm = form;
-                        rule.predicate = which;
-                        changed = true;
-                    }
-                    if (Im::IsItemHovered(0))
-                        Im::SetTooltip("%s", std::string(ft::Describe(which)).c_str());
+                    rule.subject = subject;
+                    rule.subjectForm = form;
+                    rule.predicate = which;
+                    changed = true;
+                }
+                if (Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", std::string(ft::Describe(which)).c_str());
+            };
+
+            // The summons, under one "Summon" heading: None, Active.
+            if (predicate == ft::PredicateKind::SummonNone || predicate == ft::PredicateKind::SummonActive)
+            {
+                if (predicate != ft::PredicateKind::SummonNone)
+                    continue;
+                if (!BeginCascade("Summon"))
+                    continue;
+                item(ft::PredicateKind::SummonNone, "None");
+                item(ft::PredicateKind::SummonActive, "Active");
+                Im::EndMenu();
+                continue;
+            }
+
+            // The weapons in hand, under one "Weapon" heading: Charge empty,
+            // then a Poison submenu with None and Active.
+            if (predicate == ft::PredicateKind::WeaponChargeNeeded ||
+                predicate == ft::PredicateKind::WeaponPoisonNone || predicate == ft::PredicateKind::WeaponPoisonActive)
+            {
+                if (predicate != ft::PredicateKind::WeaponChargeNeeded)
+                    continue;
+                if (!BeginCascade("Weapon"))
+                    continue;
+                item(ft::PredicateKind::WeaponChargeNeeded, "Charge needed");
+                if (BeginCascade("Poison"))
+                {
+                    item(ft::PredicateKind::WeaponPoisonNone, "None");
+                    item(ft::PredicateKind::WeaponPoisonActive, "Active");
+                    Im::EndMenu();
                 }
                 Im::EndMenu();
                 continue;
@@ -910,7 +932,8 @@ bool TakesSpell(ft::ActionKind action)
 bool NamesConsumable(ft::ActionKind action)
 {
     return action == ft::ActionKind::DrinkPotion || action == ft::ActionKind::EatFood ||
-           action == ft::ActionKind::EatIngredient || action == ft::ActionKind::ApplyPoison;
+           action == ft::ActionKind::EatIngredient || action == ft::ActionKind::ApplyPoison ||
+           action == ft::ActionKind::ChargeSoulGem;
 }
 
 // Could a thing with this grip be pinned in this hand, as the equip menu
@@ -990,7 +1013,7 @@ std::string VerdictTooltip(ft::Verdict verdict, ft::ActionKind action, const Fol
 std::string DrinkSubmenuLabel(ft::ActionKind action)
 {
     std::string name(ft::DisplayName(action));
-    for (const std::string_view prefix : {"Drink ", "Apply "})
+    for (const std::string_view prefix : {"Drink ", "Apply ", "Charge with "})
         if (name.rfind(prefix, 0) == 0)
             name.erase(0, prefix.size());
     if (!name.empty())
@@ -1030,9 +1053,10 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     {
         if (act.form == 0)
             return base + "...";
-        const char *verb = act.kind == ft::ActionKind::DrinkPotion   ? "Drink "
-                           : act.kind == ft::ActionKind::ApplyPoison ? "Apply "
-                                                                     : "Eat ";
+        const char *verb = act.kind == ft::ActionKind::DrinkPotion     ? "Drink "
+                           : act.kind == ft::ActionKind::ApplyPoison   ? "Apply "
+                           : act.kind == ft::ActionKind::ChargeSoulGem ? "Charge with "
+                                                                       : "Eat ";
         for (const auto &option : view.consumables)
             if (option.form == act.form && option.kind == ft::ConsumableOf(act.kind))
                 return verb + option.name;
@@ -1297,14 +1321,16 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             continue;
         }
 
-        // The poisons under one "Apply" heading, drawn where the first of
-        // them falls, which is just after Equip: the weakest of each, the
-        // strongest of each, then every poison carried by name.
-        if (ft::IsApply(action))
+        // What is done to the weapon in hand, under one "Weapon" heading
+        // drawn where the first of them falls, just after Equip: a Charge
+        // submenu (the strongest gem that fits, the weakest, then every
+        // spendable gem by name) and a Poison submenu (the strongest of
+        // each, the weakest of each, then every poison carried by name).
+        if (ft::IsCharge(action) || ft::IsApply(action))
         {
-            if (action != ft::ActionKind::ApplyWeakestHealthPoison)
+            if (action != ft::ActionKind::ChargeStrongestSoulGem)
                 continue;
-            if (!BeginCascade("Apply"))
+            if (!BeginCascade("Weapon"))
                 continue;
             const auto policy = [&](ft::ActionKind kind) {
                 const bool selected = here && act.kind == kind;
@@ -1317,32 +1343,47 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                 if (Im::IsItemHovered(0))
                     Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
             };
-            for (auto kind : {ft::ActionKind::ApplyStrongestHealthPoison, ft::ActionKind::ApplyStrongestStaminaPoison,
-                              ft::ActionKind::ApplyStrongestMagickaPoison})
-                policy(kind);
-            Im::Separator();
-            for (auto kind : {ft::ActionKind::ApplyWeakestHealthPoison, ft::ActionKind::ApplyWeakestStaminaPoison,
-                              ft::ActionKind::ApplyWeakestMagickaPoison})
-                policy(kind);
-            bool any = false;
-            for (const auto &option : view.consumables)
-                any = any || option.kind == ft::ConsumableKind::Poison;
-            if (any)
-            {
+            // The named things of one kind, after a divider when there are any.
+            const auto named = [&](ft::ConsumableKind kind, ft::ActionKind action) {
+                bool any = false;
+                for (const auto &option : view.consumables)
+                    any = any || option.kind == kind;
+                if (!any)
+                    return;
                 Im::Separator();
                 for (const auto &option : view.consumables)
                 {
-                    if (option.kind != ft::ConsumableKind::Poison)
+                    if (option.kind != kind)
                         continue;
                     const std::string label = option.name + " (" + std::to_string(option.count) + ")";
-                    const bool selected = here && act.kind == ft::ActionKind::ApplyPoison && act.form == option.form;
+                    const bool selected = here && act.kind == action && act.form == option.form;
                     if (CascadeItem(label.c_str(), selected))
                     {
-                        act.kind = ft::ActionKind::ApplyPoison;
+                        act.kind = action;
                         act.form = option.form;
                         choose();
                     }
                 }
+            };
+            if (BeginCascade("Charge"))
+            {
+                policy(ft::ActionKind::ChargeStrongestSoulGem);
+                policy(ft::ActionKind::ChargeWeakestSoulGem);
+                named(ft::ConsumableKind::SoulGem, ft::ActionKind::ChargeSoulGem);
+                Im::EndMenu();
+            }
+            if (BeginCascade("Poison"))
+            {
+                for (auto kind :
+                     {ft::ActionKind::ApplyStrongestHealthPoison, ft::ActionKind::ApplyStrongestStaminaPoison,
+                      ft::ActionKind::ApplyStrongestMagickaPoison})
+                    policy(kind);
+                Im::Separator();
+                for (auto kind : {ft::ActionKind::ApplyWeakestHealthPoison, ft::ActionKind::ApplyWeakestStaminaPoison,
+                                  ft::ActionKind::ApplyWeakestMagickaPoison})
+                    policy(kind);
+                named(ft::ConsumableKind::Poison, ft::ActionKind::ApplyPoison);
+                Im::EndMenu();
             }
             Im::EndMenu();
             continue;
@@ -4092,6 +4133,20 @@ void __stdcall RenderSettings()
     DrawSettings();
 }
 
+// The framework's own open event. The views behind every page are the
+// tick's, and the tick stops with the clock the moment the panel opens,
+// so what a page shows is otherwise whatever the last tick saw -- up to
+// half a second old, or older after a paused menu held the tick. One
+// fresh publish of every follower on the game thread, at the open, so the
+// charge a fight just drew down reads right away.
+void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
+{
+    if (type != SKSEMenuFramework::Model::EventType::kOpenMenu)
+        return;
+    if (auto *task = SKSE::GetTaskInterface())
+        task->AddTask([]() { PublishAllFollowers(); });
+}
+
 // One trampoline per slot. Tedious, and unavoidable with a render callback that
 // takes no argument.
 void __stdcall RenderSlot0()
@@ -4208,6 +4263,10 @@ void Install()
 
     SKSEMenuFramework::SetSection("Follower Tactics");
     SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
+    // Kept for the life of the process; the framework unregisters on
+    // destruction, which never comes.
+    static auto *const openEvent = SKSEMenuFramework::AddEvent(OnMenuEvent, 0.0f);
+    (void)openEvent;
 
     logger::info("ui: registered with SKSE Menu Framework (F1). "
                  "Follower entries appear as followers do.");

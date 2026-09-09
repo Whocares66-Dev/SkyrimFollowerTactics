@@ -797,7 +797,16 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
             hand.takesPoison = true;
             hand.poisoned = WeaponPoisoned(actor, weapon);
         }
+        if (auto *weapon = WeaponIn(actor, left))
+        {
+            const WeaponCharge c = ChargeOf(actor, weapon);
+            hand.enchanted = c.enchanted;
+            hand.charge = c.charge;
+            hand.maxCharge = c.maxCharge;
+            hand.costPerHit = c.costPerHit;
+        }
     }
+    s.soulGems = ScanSoulGems(actor);
 
     s.potions.healthEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kHealth);
     s.potions.magickaEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kMagicka);
@@ -898,19 +907,54 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     return s;
 }
 
+namespace
+{
+const char *SoulLevelName(RE::SOUL_LEVEL level)
+{
+    switch (level)
+    {
+    case RE::SOUL_LEVEL::kPetty:
+        return "Petty";
+    case RE::SOUL_LEVEL::kLesser:
+        return "Lesser";
+    case RE::SOUL_LEVEL::kCommon:
+        return "Common";
+    case RE::SOUL_LEVEL::kGreater:
+        return "Greater";
+    case RE::SOUL_LEVEL::kGrand:
+        return "Grand";
+    default:
+        return "Empty";
+    }
+}
+} // namespace
+
 std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
 {
     std::vector<ConsumableOption> out;
     if (!actor)
         return out;
 
-    auto inventory = actor->GetInventory(
-        [](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::AlchemyItem) || obj.Is(RE::FormType::Ingredient); });
+    auto inventory = actor->GetInventory([](RE::TESBoundObject &obj) {
+        return obj.Is(RE::FormType::AlchemyItem) || obj.Is(RE::FormType::Ingredient) || obj.Is(RE::FormType::SoulGem);
+    });
     for (auto &[object, entry] : inventory)
     {
         const auto count = entry.first;
         if (count <= 0 || !object)
             continue;
+        if (object->Is(RE::FormType::SoulGem))
+        {
+            // A filled, spendable gem, named with its soul as the game's
+            // own inventory names it: "Common Soul Gem (Lesser)".
+            const auto level = entry.second ? entry.second->GetSoulLevel() : RE::SOUL_LEVEL::kNone;
+            if (level == RE::SOUL_LEVEL::kNone)
+                continue;
+            std::string name = object->GetName() ? object->GetName() : "?";
+            name += std::string(" (") + SoulLevelName(level) + ")";
+            out.push_back({object->GetFormID(), name, static_cast<int>(count), ft::ConsumableKind::SoulGem});
+            continue;
+        }
         const auto kind = ConsumableKindOf(object);
         if (!kind)
             continue;
@@ -1876,6 +1920,121 @@ bool WeaponPoisoned(RE::Actor *actor, RE::TESObjectWEAP *weapon)
     // The poison sits on the worn copy's extra list, which is what the
     // engine's IsPoisoned reads across every list of the entry.
     return found->second.second->IsPoisoned();
+}
+
+RE::TESObjectWEAP *WeaponIn(RE::Actor *actor, bool left)
+{
+    if (!actor)
+        return nullptr;
+    auto *object = actor->GetEquippedObject(left);
+    auto *weapon = object ? object->As<RE::TESObjectWEAP>() : nullptr;
+    if (!weapon || weapon->GetWeaponType() == RE::WEAPON_TYPE::kHandToHandMelee)
+        return nullptr;
+    if (left && actor->GetEquippedObject(false) == weapon)
+        return nullptr; // the right hand's two-hander, seen from the left
+    return weapon;
+}
+
+WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon)
+{
+    WeaponCharge out;
+    if (!actor || !weapon)
+        return out;
+    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
+    const auto found = inventory.find(weapon);
+    auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
+
+    // The record's enchantment and full charge, or a player-made one's on
+    // the entry (ExtraEnchantment carries both). What is left is
+    // ExtraCharge, absent for a weapon never used. The same reading as
+    // the engine's recharge routine.
+    RE::EnchantmentItem *ench = weapon->formEnchanting;
+    float max = static_cast<float>(weapon->amountofEnchantment);
+    float charge = max;
+    if (entry && entry->extraLists)
+    {
+        for (auto *list : *entry->extraLists)
+        {
+            if (!list)
+                continue;
+            if (auto *xEnch = list->GetByType<RE::ExtraEnchantment>(); xEnch && xEnch->enchantment)
+            {
+                ench = xEnch->enchantment;
+                max = static_cast<float>(xEnch->charge);
+                charge = max;
+            }
+            if (auto *xCharge = list->GetByType<RE::ExtraCharge>())
+                charge = xCharge->charge;
+        }
+    }
+    if (!ench || max <= 0.0f)
+        return out;
+    // In hand, the live charge is an ACTOR VALUE -- RightItemCharge or
+    // LeftItemCharge, what the HUD's charge meter reads -- and the item's
+    // own record is only written back on unequip. Measured 2026-09-08: a
+    // staff cast down to 491 showed no charge record until it was swapped
+    // hands, and then 491 appeared. So the hand it is in says where to
+    // read; in the bag, the record.
+    if (auto *owner = actor->AsActorValueOwner())
+    {
+        if (actor->GetEquippedObject(false) == weapon)
+            charge = owner->GetActorValue(RE::ActorValue::kRightItemCharge);
+        else if (actor->GetEquippedObject(true) == weapon)
+            charge = owner->GetActorValue(RE::ActorValue::kLeftItemCharge);
+    }
+    out.enchanted = true;
+    out.charge = (std::min)((std::max)(charge, 0.0f), max);
+    out.maxCharge = max;
+    out.costPerHit = ench->CalculateMagickaCost(actor);
+
+    return out;
+}
+
+float SoulCharge(RE::SOUL_LEVEL level)
+{
+    const char *setting = nullptr;
+    switch (level)
+    {
+    case RE::SOUL_LEVEL::kPetty:
+        setting = "iSoulLevelValuePetty";
+        break;
+    case RE::SOUL_LEVEL::kLesser:
+        setting = "iSoulLevelValueLesser";
+        break;
+    case RE::SOUL_LEVEL::kCommon:
+        setting = "iSoulLevelValueCommon";
+        break;
+    case RE::SOUL_LEVEL::kGreater:
+        setting = "iSoulLevelValueGreater";
+        break;
+    case RE::SOUL_LEVEL::kGrand:
+        setting = "iSoulLevelValueGrand";
+        break;
+    default:
+        return 0.0f;
+    }
+    auto *settings = RE::GameSettingCollection::GetSingleton();
+    auto *value = settings ? settings->GetSetting(setting) : nullptr;
+    return value ? static_cast<float>(value->GetSInt()) : 0.0f;
+}
+
+std::vector<ft::Snapshot::SoulGemView> ScanSoulGems(RE::Actor *actor)
+{
+    std::vector<ft::Snapshot::SoulGemView> out;
+    if (!actor)
+        return out;
+    auto inventory = actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::SoulGem); });
+    for (auto &[object, entry] : inventory)
+    {
+        const auto count = entry.first;
+        if (count <= 0 || !object || !entry.second)
+            continue;
+        const float charge = SoulCharge(entry.second->GetSoulLevel());
+        if (charge <= 0.0f)
+            continue;
+        out.push_back({object->GetFormID(), static_cast<int>(count), charge});
+    }
+    return out;
 }
 
 } // namespace ft::game

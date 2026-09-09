@@ -1,5 +1,7 @@
 #include "game/Inventory.h"
 
+#include "game/Sensors.h"
+
 #include "game/Pins.h"
 
 #include <algorithm>
@@ -564,7 +566,22 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
             SheetSection section{"Enchantment", {}, {}};
             const std::string name = NameOf(ench);
             section.rows.push_back(Row("Name", name.empty() ? "(unnamed)" : name));
-            if (const auto charge = entry->GetEnchantmentCharge())
+            // What is left over the full amount, as numbers and as the
+            // share: "89 / 100 (89%)". A weapon never used has no
+            // ExtraCharge and is full.
+            if (auto *weapon = object->As<RE::TESObjectWEAP>())
+            {
+                const WeaponCharge c = ChargeOf(actor, weapon);
+                if (c.enchanted && c.maxCharge > 0.0f)
+                {
+                    char text[64];
+                    std::snprintf(text, sizeof(text), "%.0f / %.0f (%.0f%%)", static_cast<double>(c.charge),
+                                  static_cast<double>(c.maxCharge),
+                                  static_cast<double>(100.0f * c.charge / c.maxCharge));
+                    section.rows.push_back(Row("Charge", text));
+                }
+            }
+            else if (const auto charge = entry->GetEnchantmentCharge())
                 section.rows.push_back(Row("Charge", Fmt("%.0f%%", *charge)));
             item.detail.push_back(std::move(section));
             item.effects = EffectLines(ench);

@@ -119,6 +119,20 @@ const char *HandTag(Hand hand)
 // The Voice equip slot record, Skyrim.esm (beside the hand slots below).
 constexpr std::uint32_t kVoiceSlotID = 0x00025BEE;
 
+namespace
+{
+// How many of an item she carries, for the one-copy rule. A spell is not
+// an item and needs no count.
+int CarriedCount(RE::Actor *actor, RE::TESBoundObject *object)
+{
+    if (!actor || !object)
+        return 0;
+    auto inventory = actor->GetInventory([object](RE::TESBoundObject &c) { return &c == object; });
+    const auto found = inventory.find(object);
+    return found == inventory.end() ? 0 : found->second.first;
+}
+} // namespace
+
 // The rules themselves are in core/Loadout.cpp, where they are tested.
 Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
 {
@@ -130,6 +144,7 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
             weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow();
         thing.kind = Kind::Weapon;
         thing.grip = bothHands ? Grip::Both : Grip::Either;
+        thing.count = CarriedCount(actor, weapon);
     }
     else if (auto *spell = form->As<RE::SpellItem>())
     {
@@ -781,11 +796,26 @@ bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor, const char 
             return true;
         }
     }
+    const Holdable thing = DescribeHoldable(actor, entry->item);
+    const Hand slot = SlotHand(entry->itemSlot.equipSlot);
+    // One copy of a weapon, already in the other hand: the entry for this
+    // hand cannot be honoured, and the engine, asked anyway, shows the one
+    // object in both hands. A sword never reaches this -- the melee AI
+    // fills the left hand only under the dual-wield rules -- but a staff
+    // is a weapon the AI handles as magic, listed and equipped per hand as
+    // a spell is, with no count behind it (Jenassa's one Staff of Flames
+    // in both hands, 18:56).
+    if (thing.kind == Kind::Weapon && thing.count < 2 && (slot == Hand::Left || slot == Hand::Right) &&
+        actor->GetEquippedObject(slot != Hand::Left) == entry->item)
+    {
+        why = "her only one, in the other hand";
+        return true;
+    }
     const std::vector<Pin> pins = PinsOf(actor->GetFormID());
     if (pins.empty())
         return false;
     why = "pinned against";
-    return KeptFromAI(pins, DescribeHoldable(actor, entry->item), SlotHand(entry->itemSlot.equipSlot));
+    return KeptFromAI(pins, thing, slot);
 }
 
 float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
@@ -1404,8 +1434,21 @@ bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlo
     std::scoped_lock lock(g_pinMutex);
     const auto it = g_pins.find(actor->GetFormID());
     const bool anyPins = it != g_pins.end() && !it->second.empty();
-    if (anyPins && FindPin(it->second, object->GetFormID()))
-        return false;
+    if (const Pin *own = anyPins ? FindPin(it->second, object->GetFormID()) : nullptr)
+    {
+        // The pinned thing itself passes into its own hand, whichever the
+        // engine puts it in; into the OTHER hand only if she has a second
+        // copy, or the engine shows the one in both hands.
+        const Hand into = SlotHand(slot);
+        if (into == Hand::None || Overlap(into, own->hands) || own->hands == Hand::None ||
+            CarriedCount(actor, object) >= 2)
+            return false;
+        if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
+            logger::info("{} the engine would equip pinned {} into the {} hand as well, with one copy -- refused",
+                         Describe(actor), object->GetName() ? object->GetName() : "?",
+                         into == Hand::Left ? "left" : "right");
+        return true;
+    }
     if (BannedHere(actor->GetFormID(), object->GetFormID()))
     {
         if (g_refusedLogged.insert(ReadyKey(actor, object)).second)

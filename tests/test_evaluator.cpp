@@ -2738,26 +2738,93 @@ TEST_CASE("weapon poisoned and unpoisoned read each hand", "[evaluator]")
     };
 
     // Nothing in hand: neither.
-    REQUIRE_FALSE(holds(PredicateKind::WeaponUnpoisoned));
-    REQUIRE_FALSE(holds(PredicateKind::WeaponPoisoned));
+    REQUIRE_FALSE(holds(PredicateKind::WeaponPoisonNone));
+    REQUIRE_FALSE(holds(PredicateKind::WeaponPoisonActive));
     // A clean sword: unpoisoned only.
     s.rightWeapon = {true, false};
-    REQUIRE(holds(PredicateKind::WeaponUnpoisoned));
-    REQUIRE_FALSE(holds(PredicateKind::WeaponPoisoned));
+    REQUIRE(holds(PredicateKind::WeaponPoisonNone));
+    REQUIRE_FALSE(holds(PredicateKind::WeaponPoisonActive));
     // A poisoned sword right and a clean dagger left: both.
     s.rightWeapon = {true, true};
     s.leftWeapon = {true, false};
-    REQUIRE(holds(PredicateKind::WeaponUnpoisoned));
-    REQUIRE(holds(PredicateKind::WeaponPoisoned));
+    REQUIRE(holds(PredicateKind::WeaponPoisonNone));
+    REQUIRE(holds(PredicateKind::WeaponPoisonActive));
     // Both poisoned: poisoned only.
     s.leftWeapon = {true, true};
-    REQUIRE_FALSE(holds(PredicateKind::WeaponUnpoisoned));
-    REQUIRE(holds(PredicateKind::WeaponPoisoned));
+    REQUIRE_FALSE(holds(PredicateKind::WeaponPoisonNone));
+    REQUIRE(holds(PredicateKind::WeaponPoisonActive));
     // A staff: nothing to say.
     s.rightWeapon = {};
     s.leftWeapon = {};
-    REQUIRE_FALSE(holds(PredicateKind::WeaponUnpoisoned));
+    REQUIRE_FALSE(holds(PredicateKind::WeaponPoisonNone));
 
-    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::WeaponUnpoisoned));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::WeaponPoisoned));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::WeaponPoisonNone));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::WeaponPoisonActive));
+}
+
+TEST_CASE("the gem for a charge: the largest that fits, else the smallest carried", "[evaluator]")
+{
+    // Petty 250, lesser 500, common 1000, as the game's settings have them.
+    const std::vector<Snapshot::SoulGemView> gems{{0xA, 2, 250.0f}, {0xB, 1, 500.0f}, {0xC, 3, 1000.0f}};
+
+    // A weapon short by 600: strongest is the lesser (the common would
+    // overfill), weakest the petty.
+    REQUIRE(ChooseSoulGem(gems, 600.0f, true) == 0xB);
+    REQUIRE(ChooseSoulGem(gems, 600.0f, false) == 0xA);
+    // Short by 1500: the common fits.
+    REQUIRE(ChooseSoulGem(gems, 1500.0f, true) == 0xC);
+    // Short by 100: every gem would overfill; both policies take the
+    // smallest, which overfills least.
+    REQUIRE(ChooseSoulGem(gems, 100.0f, true) == 0xA);
+    REQUIRE(ChooseSoulGem(gems, 100.0f, false) == 0xA);
+    // A gem with none left does not count.
+    const std::vector<Snapshot::SoulGemView> out{{0xA, 0, 250.0f}, {0xC, 1, 1000.0f}};
+    REQUIRE(ChooseSoulGem(out, 100.0f, false) == 0xC);
+    REQUIRE(ChooseSoulGem({}, 100.0f, true) == 0);
+}
+
+TEST_CASE("a charge rule needs an enchanted weapon, and waits when none needs a charge", "[evaluator]")
+{
+    RuleSet rs;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::HealthPctBelow;
+    r.conditionArg = 2.0f;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction().kind = ActionKind::ChargeStrongestSoulGem;
+    rs.rules.push_back(r);
+
+    Snapshot s = Healthy();
+    s.soulGems = {{0xA, 1, 250.0f}};
+    const auto verdict = [&]() {
+        EvalContext ctx;
+        Trace trace;
+        Evaluate(rs, s, ctx, &trace);
+        return trace.at(0);
+    };
+
+    // A plain sword: nothing to charge.
+    s.rightWeapon = {true, false, false, 0.0f, 0.0f, 0.0f};
+    REQUIRE(verdict() == Verdict::NothingToCharge);
+    // An enchanted sword with charge for many hits: waits.
+    s.rightWeapon = {true, false, true, 80.0f, 100.0f, 20.0f};
+    REQUIRE(verdict() == Verdict::EffectActive);
+    // One that cannot pay for the next hit: fires.
+    s.rightWeapon = {true, false, true, 10.0f, 100.0f, 20.0f};
+    REQUIRE(verdict() == Verdict::Fired);
+    // No gem carried: none in inventory.
+    s.soulGems.clear();
+    REQUIRE(verdict() == Verdict::NoResource);
+
+    // The condition itself, hand by hand.
+    s.soulGems = {{0xA, 1, 250.0f}};
+    rs.rules[0].predicate = PredicateKind::WeaponChargeNeeded;
+    rs.rules[0].FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    s.rightWeapon = {true, false, true, 80.0f, 100.0f, 20.0f};
+    s.leftWeapon = {true, false, true, 5.0f, 100.0f, 20.0f};
+    REQUIRE(verdict() == Verdict::Fired);
+    s.leftWeapon = {};
+    REQUIRE(verdict() == Verdict::ConditionFalse);
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::WeaponChargeNeeded));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::WeaponChargeNeeded));
 }

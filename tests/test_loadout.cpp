@@ -113,6 +113,24 @@ TEST_CASE("the AI's list holds an either-hand spell once per hand, and a pin kee
     CHECK_FALSE(KeptFromAI(pins, Armour(kIronArmor, 0x4), Hand::None));
 }
 
+TEST_CASE("one copy of a pinned weapon has no second copy for the other hand")
+{
+    // A staff pinned right and the left hand free. The AI's staff-in-left
+    // entry would put the one staff in both hands, so it goes; a second
+    // staff in the bag could go left, and stays.
+    Holdable staff = Thing(kSteelDagger, Grip::Either);
+    const std::vector<Pin> pins{{staff, Hand::Right}};
+    CHECK_FALSE(KeptFromAI(pins, staff, Hand::Right));
+    CHECK(KeptFromAI(pins, staff, Hand::Left));
+    staff.count = 2;
+    CHECK_FALSE(KeptFromAI(pins, staff, Hand::Left));
+    // A spell is never short of copies.
+    Holdable flames = Thing(kFlames, Grip::Either);
+    flames.count = 2;
+    const std::vector<Pin> spellPin{{flames, Hand::Right}};
+    CHECK_FALSE(KeptFromAI(spellPin, flames, Hand::Left));
+}
+
 TEST_CASE("with only the right hand pinned, the left stays the AI's")
 {
     const std::vector<Pin> pins{{Thing(kFirebolt, Grip::RightOnly), Hand::Right}};

@@ -70,13 +70,17 @@ enum class PredicateKind : std::uint8_t
     // The subject is in the status Rule::statusKind names: poisoned,
     // burning, fleeing ... Any subject.
     Status,
-    // The follower's own weapons: is there one in hand that takes a poison
-    // and has none (Unpoisoned), or one that carries a poison (Poisoned)?
-    // Each hand is asked, so with a poisoned sword right and a clean dagger
-    // left both hold. Self only. Listed under one "Weapon"
-    // heading, above Armor, as the editor walks this enum.
-    WeaponUnpoisoned,
-    WeaponPoisoned,
+    // The follower's own weapons, each hand asked, Self only, under one
+    // "Weapon" heading above Armor as the editor walks this enum. Charge
+    // needed: an enchanted weapon in hand cannot pay for one more hit (one
+    // hit draws one fixed number, the enchantment's cost, whatever the
+    // attack; the game's own "Uses" is the charge over that number). The
+    // poison pair: a weapon in hand takes a poison and has none (None), or
+    // carries one (Active); with a poisoned sword right and a clean dagger
+    // left both hold.
+    WeaponChargeNeeded,
+    WeaponPoisonNone,
+    WeaponPoisonActive,
     // The share of a blow the subject's armour turns away, 0 to 0.8, under
     // conditionArg. Any subject.
     ArmorPctBelow,
@@ -178,6 +182,15 @@ enum class ActionKind : std::uint8_t
     EquipArrows,
     EquipSpell,
     EquipArmor,
+    // Charge: a soul gem into the weapon in hand that cannot pay for its
+    // next hit, the right before the left. Strongest is the largest gem that would not
+    // overfill it (the smallest carried when every one would); weakest the
+    // smallest carried; then one named gem. A reusable gem (Azura's Star)
+    // is emptied, not lost. Grouped with the poisons under Weapon in the Then
+    // cascade, Charge before Poison.
+    ChargeStrongestSoulGem,
+    ChargeWeakestSoulGem,
+    ChargeSoulGem, // one specific gem, named by actionForm
     // Apply: a poison on the weapon in hand, after the equips because that
     // is the order of the thing -- set the gear, then choose the poison.
     // Three "weakest carried" and three "strongest carried" policies by
@@ -226,8 +239,10 @@ enum class ActionKind : std::uint8_t
 // The consume actions, named or by policy; and the kind a named one names
 // (Potion for the three policies, which are potions too).
 [[nodiscard]] bool IsConsume(ActionKind action) noexcept;
-// The apply-a-poison actions, which the Then cascade groups under Apply.
+// The apply-a-poison actions and the charge-with-a-soul-gem actions, which
+// the Then cascade groups under Weapon.
 [[nodiscard]] bool IsApply(ActionKind action) noexcept;
+[[nodiscard]] bool IsCharge(ActionKind action) noexcept;
 [[nodiscard]] ConsumableKind ConsumableOf(ActionKind action) noexcept;
 
 // The three actions that fire through the package pool: a spell from a

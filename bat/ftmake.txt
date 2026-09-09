@@ -145,6 +145,17 @@ additem 00073F39 10
 additem 00065A66 10
 additem 00073F41 10
 
+; A staff, which takes no poison but has a charge, and filled soul gems
+; for the Charge rules: petty, lesser, common, ten each.
+;    0004DEE0   Staff of Flames
+;    0002E4E3   Petty Soul Gem (Petty)
+;    0002E4E5   Lesser Soul Gem (Lesser)
+;    0002E4F3   Common Soul Gem (Common)
+additem 0004DEE0 1
+additem 0002E4E3 10
+additem 0002E4E5 10
+additem 0002E4F3 10
+
 addspell 00012FCD
 addspell 00088821
 addshout 00013E07
