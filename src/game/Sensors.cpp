@@ -332,7 +332,12 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         std::string source = SourceName(actor, ae);
         if (source.empty())
             source = base->GetName() ? base->GetName() : "?";
-        out.push_back({std::move(source), base->IsDetrimental() ? -ae->magnitude : ae->magnitude});
+        // The active effect's magnitude already carries the engine's sign:
+        // a detrimental modifier (Weakness to Fire on a vampire) is -50
+        // here, not 50 with a flag to read. Negating it again showed the
+        // weakness as +50% beside a total that had subtracted it
+        // (2026-09-08).
+        out.push_back({std::move(source), ae->magnitude});
     }
     return out;
 }
