@@ -1,5 +1,6 @@
 #include "game/Magic.h"
 
+#include "game/Hits.h"
 #include "game/Packages.h"
 
 #include "game/Pins.h"
@@ -134,6 +135,121 @@ MagicCategory SchoolOf(RE::ActorValue skill)
     }
 }
 
+// The kind of spell, from its costliest effect: the element where it does
+// that kind of damage, else the archetype in the magic menu's words.
+std::string TypeWord(const RE::EffectSetting *base)
+{
+    if (!base)
+        return "";
+    switch (KindOfEffect(base))
+    {
+    case ft::DamageKind::Fire:
+        return "Fire";
+    case ft::DamageKind::Frost:
+        return "Frost";
+    case ft::DamageKind::Shock:
+        return "Shock";
+    case ft::DamageKind::Poison:
+        return "Poison";
+    default:
+        break;
+    }
+    using Archetype = RE::EffectArchetypes::ArchetypeID;
+    using AV = RE::ActorValue;
+    switch (base->GetArchetype())
+    {
+    case Archetype::kValueModifier:
+    case Archetype::kPeakValueModifier:
+    case Archetype::kDualValueModifier: {
+        const AV av = base->data.primaryAV;
+        const bool harmful = base->IsDetrimental();
+        if (av == AV::kHealth)
+            return harmful ? "Damage" : "Heal";
+        if (av == AV::kMagicka || av == AV::kStamina)
+            return harmful ? "Drain" : "Restore";
+        if (av == AV::kDamageResist)
+            return "Armor";
+        if (av == AV::kWardPower)
+            return "Ward";
+        if (av == AV::kSpeedMult)
+            return harmful ? "Slow" : "Speed";
+        return harmful ? "Weaken" : "Fortify";
+    }
+    case Archetype::kAbsorb:
+        return "Absorb";
+    case Archetype::kSummonCreature:
+        return "Summon";
+    case Archetype::kReanimate:
+        return "Reanimate";
+    case Archetype::kBoundWeapon:
+        return "Bound Weapon";
+    case Archetype::kCommandSummoned:
+        return "Command";
+    case Archetype::kBanish:
+        return "Banish";
+    case Archetype::kSoulTrap:
+        return "Soul Trap";
+    case Archetype::kCalm:
+        return "Calm";
+    case Archetype::kDemoralize:
+        return "Fear";
+    case Archetype::kFrenzy:
+        return "Frenzy";
+    case Archetype::kRally:
+        return "Courage";
+    case Archetype::kInvisibility:
+        return "Invisibility";
+    case Archetype::kLight:
+        return "Light";
+    case Archetype::kDarkness:
+        return "Darkness";
+    case Archetype::kNightEye:
+        return "Night Eye";
+    case Archetype::kDetectLife:
+        return "Detect";
+    case Archetype::kParalysis:
+        return "Paralysis";
+    case Archetype::kTelekinesis:
+        return "Telekinesis";
+    case Archetype::kTurnUndead:
+        return "Turn Undead";
+    case Archetype::kDispel:
+        return "Dispel";
+    case Archetype::kCureDisease:
+    case Archetype::kCurePoison:
+    case Archetype::kCureParalysis:
+    case Archetype::kCureAddiction:
+        return "Cure";
+    case Archetype::kDisarm:
+        return "Disarm";
+    case Archetype::kStagger:
+    case Archetype::kConcussion:
+        return "Stagger";
+    case Archetype::kCloak:
+        return "Cloak";
+    case Archetype::kSlowTime:
+        return "Slow Time";
+    case Archetype::kEtherealize:
+        return "Ethereal";
+    case Archetype::kEnhanceWeapon:
+        return "Enhance Weapon";
+    case Archetype::kSpawnHazard:
+        return "Hazard";
+    case Archetype::kLock:
+    case Archetype::kOpen:
+        return "Lock";
+    case Archetype::kGuide:
+        return "Guide";
+    case Archetype::kWerewolf:
+    case Archetype::kVampireLord:
+        return "Transform";
+    case Archetype::kScript:
+        return "Scripted";
+    default:
+        return "Magic";
+    }
+}
+
 // Delivery and casting type as one word: what the spell does when cast.
 const char *CastWord(RE::MagicSystem::Delivery delivery, RE::MagicSystem::CastingType casting)
 {
@@ -199,6 +315,7 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         const bool stream = spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
         entry.cost = Fmt("%.0f", entry.costValue) + (stream ? "/s" : "");
     }
+    entry.type = TypeWord(effect);
     entry.cast = CastWord(spell->GetDelivery(), spell->GetCastingType());
     entry.castValue = static_cast<int>(spell->GetDelivery());
     // Her numbers, not the record's: the perk entry points applied, as the
@@ -239,6 +356,8 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     }
     if (!power)
         stats.rows.push_back(Row("School", entry.school));
+    if (!entry.type.empty())
+        stats.rows.push_back(Row("Type", entry.type));
     stats.rows.push_back(Row("Hand", entry.hand));
     if (!entry.level.empty())
     {

@@ -3356,6 +3356,8 @@ std::vector<const MagicEntry *> VisibleMagic(const FollowerView &view, const Mag
         {
         case Column::School:
             return a.school.compare(b.school);
+        case Column::Type:
+            return a.type.compare(b.type);
         case Column::Level:
             return number(static_cast<float>(a.levelValue), static_cast<float>(b.levelValue));
         case Column::Cast:
@@ -3425,12 +3427,14 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     const auto *tableStyle = Im::GetStyle();
     const float arrow = std::floor(Im::GetFontSize() * 0.65f + (tableStyle ? tableStyle->FramePadding.x : 4.0f));
     float schoolWidth = TextWidth("School") + arrow;
+    float typeWidth = TextWidth("Type") + arrow;
     float levelWidth = TextWidth("Level") + arrow;
     float castWidth = TextWidth("Cast") + arrow;
     float costWidth = TextWidth("Cost") + arrow;
     for (const auto &entry : view.magic)
     {
         schoolWidth = (std::max)(schoolWidth, TextWidth(entry.school));
+        typeWidth = (std::max)(typeWidth, TextWidth(entry.type));
         levelWidth = (std::max)(levelWidth, TextWidth(entry.level));
         castWidth = (std::max)(castWidth, TextWidth(entry.cast));
         costWidth = (std::max)(costWidth, TextWidth(entry.cost));
@@ -3442,7 +3446,8 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     // No equip columns on All, as the Inventory tab has it: equipping is
     // done from the school lists.
     const bool allList = state.category < 0;
-    const int columnCount = 5 + (schoolList ? 0 : 1) + (allList ? 0 : voiceList ? 1 : 2);
+    // A school's list has a Type column in the School column's place.
+    const int columnCount = 6 + (allList ? 0 : voiceList ? 1 : 2);
 
     Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
     if (!Im::BeginTable("magic", columnCount, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
@@ -3455,6 +3460,9 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     if (!schoolList)
         Im::TableSetupColumn("School", Im::ImGuiTableColumnFlags_WidthFixed, schoolWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::School));
+    else
+        Im::TableSetupColumn("Type", Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
+                             static_cast<Im::ImGuiID>(Column::Type));
     Im::TableSetupColumn("Level", Im::ImGuiTableColumnFlags_WidthFixed, levelWidth + gutter,
                          static_cast<Im::ImGuiID>(Column::Level));
     Im::TableSetupColumn("Mag", Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
@@ -3532,11 +3540,15 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         // A power or a shout has no school, level or cost: those cells stay
         // empty rather than saying "Power" or "0".
         const bool voice = entry->category == MagicCategory::Shouts || entry->category == MagicCategory::Powers;
+        Im::TableNextColumn();
         if (!schoolList)
         {
-            Im::TableNextColumn();
             if (!voice)
                 Im::Text("%s", entry->school.c_str());
+        }
+        else
+        {
+            Im::Text("%s", entry->type.c_str());
         }
         Im::TableNextColumn();
         if (!voice)

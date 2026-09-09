@@ -42,6 +42,12 @@ struct MagicEntry
     // magic menu shows, the cost as it shows it ("13/s" for a stream).
     std::string school;
     std::string level;
+    // What kind of spell: the element where the costliest effect does that
+    // kind of damage (Fire, Frost, Shock, Poison), else the effect's kind by
+    // its archetype -- Summon, Reanimate, Bound Weapon, Calm, Fear, Frenzy,
+    // Heal, Ward, Armor, Invisibility, Paralysis and so on. Every school
+    // has one; the school lists show it beside the name.
+    std::string type;
     // How it is cast, delivery and casting type folded into one word: Self,
     // Touch, Spray (aimed and sustained -- Flames), Projectile (aimed and
     // fired -- Firebolt), Target, Location.
