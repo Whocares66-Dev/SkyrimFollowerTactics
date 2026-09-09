@@ -1,5 +1,6 @@
 #include "game/Sensors.h"
 
+#include "core/Blows.h"
 #include "core/Effects.h"
 
 #include "game/Hits.h"
@@ -643,25 +644,51 @@ RE::EnchantmentItem *EnchantmentOn(RE::Actor *actor, RE::TESObjectWEAP *weapon)
     return weapon->formEnchanting;
 }
 
-// A weapon that swings: a blade, an axe, a mace, a two-hander. Not a bow,
-// a crossbow or a staff, which bash instead.
-bool Swings(const RE::TESObjectWEAP *weapon)
+// What each hand holds, in core's words, for the blow rules. A
+// two-hander, a bow or a crossbow is the right hand's with the left
+// described as empty: the engine reports it from both hands.
+ft::Hands DescribeHands(RE::Actor *actor)
 {
-    if (!weapon)
-        return false;
-    switch (weapon->GetWeaponType())
-    {
-    case RE::WEAPON_TYPE::kHandToHandMelee:
-    case RE::WEAPON_TYPE::kOneHandSword:
-    case RE::WEAPON_TYPE::kOneHandDagger:
-    case RE::WEAPON_TYPE::kOneHandAxe:
-    case RE::WEAPON_TYPE::kOneHandMace:
-    case RE::WEAPON_TYPE::kTwoHandSword:
-    case RE::WEAPON_TYPE::kTwoHandAxe:
-        return true;
-    default:
-        return false;
-    }
+    const auto held = [](RE::TESForm *form) {
+        if (!form)
+            return ft::Held::Nothing;
+        if (auto *weapon = form->As<RE::TESObjectWEAP>())
+        {
+            switch (weapon->GetWeaponType())
+            {
+            case RE::WEAPON_TYPE::kOneHandSword:
+            case RE::WEAPON_TYPE::kOneHandDagger:
+            case RE::WEAPON_TYPE::kOneHandAxe:
+            case RE::WEAPON_TYPE::kOneHandMace:
+                return ft::Held::OneHander;
+            case RE::WEAPON_TYPE::kTwoHandSword:
+            case RE::WEAPON_TYPE::kTwoHandAxe:
+                return ft::Held::TwoHander;
+            case RE::WEAPON_TYPE::kBow:
+            case RE::WEAPON_TYPE::kCrossbow:
+                return ft::Held::Bow;
+            case RE::WEAPON_TYPE::kStaff:
+                return ft::Held::Staff;
+            default:
+                return ft::Held::Nothing; // the fists' record
+            }
+        }
+        if (auto *armor = form->As<RE::TESObjectARMO>())
+            return armor->IsShield() ? ft::Held::Shield : ft::Held::Nothing;
+        if (form->As<RE::TESObjectLIGH>())
+            return ft::Held::Torch;
+        if (form->As<RE::MagicItem>())
+            return ft::Held::Spell;
+        return ft::Held::Nothing;
+    };
+    ft::Hands hands;
+    RE::TESForm *rightHeld = actor->GetEquippedObject(false);
+    RE::TESForm *leftHeld = actor->GetEquippedObject(true);
+    hands.right = held(rightHeld);
+    hands.left = leftHeld == rightHeld && (hands.right == ft::Held::TwoHander || hands.right == ft::Held::Bow)
+                     ? ft::Held::Nothing
+                     : held(leftHeld);
+    return hands;
 }
 
 // The margin a blow's reach gets for the enemy's own body, since the
@@ -679,41 +706,35 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     RE::TESForm *leftHeld = actor->GetEquippedObject(true);
     auto *right = rightHeld ? rightHeld->As<RE::TESObjectWEAP>() : nullptr;
     auto *left = leftHeld ? leftHeld->As<RE::TESObjectWEAP>() : nullptr;
-    const bool rightSwings = Swings(right);
-    const bool leftSwings = Swings(left) && left->GetWeaponType() != RE::WEAPON_TYPE::kHandToHandMelee;
-    const bool fists = !rightHeld && !leftHeld;
 
-    // The attack, by the hands; its stamina multiplier is the race record's
-    // for that attack (1 for a one-hand or two-hand power attack, 0.5 for
-    // the dual-wield one, vanilla's humanoid races).
+    // The attack, by the hands (core's rule); its stamina multiplier is the
+    // race record's for that attack (1 for a one-hand or two-hand power
+    // attack, 0.5 for the dual-wield one, vanilla's humanoid races).
     float weight = 0.0f;
     float attackMult = 1.0f;
     const RE::TESObjectWEAP *priced = nullptr;
-    if (rightSwings && leftSwings)
+    switch (ft::SwingWith(DescribeHands(actor)))
     {
+    case ft::Swing::Both:
         plan.event = "attackPowerStartDualWield";
         weight = right->GetWeight() + left->GetWeight();
         attackMult = 0.5f;
         priced = right;
-    }
-    else if (rightSwings)
-    {
+        break;
+    case ft::Swing::Right:
         plan.event = "attackPowerStartInPlace";
         weight = right->GetWeight();
         priced = right;
-    }
-    else if (leftSwings && !rightHeld)
-    {
+        break;
+    case ft::Swing::Left:
         plan.event = "attackPowerStartInPlaceLeftHand";
         weight = left->GetWeight();
         priced = left;
-    }
-    else if (fists)
-    {
+        break;
+    case ft::Swing::Fists:
         plan.event = "attackPowerStartInPlace";
-    }
-    else
-    {
+        break;
+    case ft::Swing::None:
         return plan;
     }
 
@@ -740,22 +761,7 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
 BlowPlan PlanBash(RE::Actor *actor, bool power)
 {
     BlowPlan plan;
-    if (!actor)
-        return plan;
-    // What blocks is what bashes, and blocking is the vanilla rule: a
-    // shield or a torch in the left hand, else any weapon in the right --
-    // a one-hander, a two-hander, a bow, a crossbow, a staff -- with the
-    // left hand EMPTY. A weapon alone in the left hand cannot block, nor
-    // can two hands each holding something (a blade and a staff, a blade
-    // and a spell), nor the fists, nor a spell hand.
-    RE::TESForm *leftHeld = actor->GetEquippedObject(true);
-    RE::TESForm *rightHeld = actor->GetEquippedObject(false);
-    const auto *shield = leftHeld ? leftHeld->As<RE::TESObjectARMO>() : nullptr;
-    const auto *torch = leftHeld ? leftHeld->As<RE::TESObjectLIGH>() : nullptr;
-    const auto *right = rightHeld ? rightHeld->As<RE::TESObjectWEAP>() : nullptr;
-    const bool rightWeapon = right && right->GetWeaponType() != RE::WEAPON_TYPE::kHandToHandMelee;
-    const bool bashes = (shield && shield->IsShield()) || torch || (rightWeapon && !leftHeld);
-    if (!bashes)
+    if (!actor || !ft::BashesWith(DescribeHands(actor)))
         return plan;
     plan.event = power ? "bashPowerStart" : "bashStart";
     // The cost is the setting for the kind of bash -- fStaminaBashBase 35,

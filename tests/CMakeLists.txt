@@ -17,7 +17,7 @@ if(NOT Catch2_FOUND)
     list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 endif()
 
-add_executable(ft_tests test_evaluator.cpp test_loadout.cpp test_profile.cpp)
+add_executable(ft_tests test_blows.cpp test_evaluator.cpp test_loadout.cpp test_profile.cpp)
 # nlohmann_json is found or fetched by the top-level CMakeLists, beside ft_core;
 # the profile tests parse the serialiser's output back to check its shape.
 target_link_libraries(ft_tests PRIVATE ft_core Catch2::Catch2WithMain nlohmann_json::nlohmann_json)
