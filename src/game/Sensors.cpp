@@ -1267,6 +1267,43 @@ const std::vector<TreePerk> &TreePerks(RE::ActorValue skill)
     return cache.emplace(skill, std::move(out)).first->second;
 }
 
+// Why a perk the actor holds does nothing for them right now, or empty.
+// A perk has no on-off switch; it has conditions -- on the record, and on
+// each entry, whose first tab is the perk's owner -- and a mod that hands
+// every NPC its perks and gates them on a power writes those to fail until
+// the power is taken. The record's conditions are asked as the engine asks
+// them; an entry's first tab likewise, so a perk none of whose entries
+// could fire is inactive too. Entries with no conditions, and ability or
+// quest entries, count as live.
+std::string PerkInactive(RE::Actor *actor, RE::BGSPerk *perk)
+{
+    if (!actor || !perk)
+        return {};
+    if (perk->perkConditions && !perk->perkConditions.IsTrue(actor, actor))
+        return "the perk's conditions are not met";
+    bool anyEntry = false;
+    bool anyLive = false;
+    for (const auto *entry : perk->perkEntries)
+    {
+        if (!entry)
+            continue;
+        anyEntry = true;
+        if (entry->GetType() != RE::PERK_ENTRY_TYPE::kEntryPoint)
+        {
+            anyLive = true;
+            continue;
+        }
+        const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
+        if (point->conditions.size() == 0 || !point->conditions[0] || point->conditions[0].IsTrue(actor, actor))
+            anyLive = true;
+        if (anyLive)
+            break;
+    }
+    if (anyEntry && !anyLive)
+        return "none of its entries' conditions are met";
+    return {};
+}
+
 // The perks this follower holds in one skill's tree, one row per perk at
 // the highest rank held. Asked of the engine with HasPerk rather than read
 // off her record, so a perk a mod granted at runtime counts the same as one
@@ -1294,6 +1331,8 @@ std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
         SheetRow row = Row(std::move(label), rank);
         row.modifiers = entry.description;
         row.form = entry.perk->GetFormID(); // the name opens the perk's page
+        if (!PerkInactive(actor, entry.perk).empty())
+            row.aside = "Inactive";
         rows.push_back(std::move(row));
     }
     return rows;
@@ -2035,6 +2074,8 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
             info.rows.push_back(Row("Skill", skill));
         if (perk->data.hidden)
             info.rows.push_back(Row("Hidden", "yes"));
+        if (const std::string why = PerkInactive(actor, perk); !why.empty())
+            info.rows.push_back(Row("Inactive", why));
         p.sections.push_back(std::move(info));
 
         SheetSection entries{"Entries", {}, {}};
@@ -2289,6 +2330,8 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                                                                         : std::string());
                 row.modifiers = text.c_str() ? text.c_str() : "";
                 row.form = perk->GetFormID();
+                if (!PerkInactive(actor, perk).empty())
+                    row.aside = "Inactive";
                 s.rows.push_back(std::move(row));
             }
         }

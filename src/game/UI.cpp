@@ -2242,6 +2242,11 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
     {
         Im::TableNextRow(0, 0.0f);
         Im::TableSetColumnIndex(0);
+        // A perk set aside -- its conditions fail for this actor -- is the
+        // shadowed rows' grey, with the reason on its name.
+        const bool aside = !sub.aside.empty();
+        if (aside)
+            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
         if (sub.form != 0 && onLink)
         {
             // The name is a link to the perk's page. The click cell's ID
@@ -2249,13 +2254,19 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
             const Im::ImVec2 pos = Im::GetCursorScreenPos();
             if (CellClicked(("##" + id + "/" + sub.label).c_str()))
                 onLink(sub.form);
+            if (aside && Im::IsItemHovered(0))
+                Im::SetTooltip("%s", sub.aside.c_str());
             Im::SetCursorScreenPos(pos);
         }
         Im::Text("%s", sub.label.c_str());
+        if (aside && !(sub.form != 0 && onLink) && Im::IsItemHovered(0))
+            Im::SetTooltip("%s", sub.aside.c_str());
         Im::TableSetColumnIndex(1);
         Im::Text("%s", sub.value.c_str());
         Im::TableSetColumnIndex(2);
         Im::TextWrapped("%s", sub.modifiers.c_str());
+        if (aside)
+            Im::PopStyleColor(1);
     }
     Im::EndTable();
 }
