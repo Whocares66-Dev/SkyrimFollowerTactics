@@ -142,18 +142,6 @@ std::vector<std::string> RunningEffects(RE::Actor *actor)
     return out;
 }
 
-ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
-{
-    auto *owner = actor->AsActorValueOwner();
-    if (!owner)
-        return {};
-    // Current is the damaged value; permanent is base plus permanent modifiers,
-    // i.e. the maximum the bar can show. Their ratio is what the rules read, so
-    // both are logged in Tactics.cpp to make a wrong reading visible rather
-    // than merely wrong.
-    return ft::Stat{owner->GetActorValue(av), owner->GetPermanentActorValue(av)};
-}
-
 // Defined further down, in this same unnamed namespace, with the sheets.
 SheetRow Row(std::string label, std::string value);
 bool ReadsSkillMods(const RE::Actor *actor);
@@ -186,6 +174,22 @@ std::string Fmt(const char *fmt, double value);
 float GameSetting(const char *name, float vanilla);
 
 } // namespace
+
+ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
+{
+    auto *owner = actor->AsActorValueOwner();
+    if (!owner)
+        return {};
+    // Current is the damaged value. The maximum is the permanent value --
+    // base plus the permanent modifiers, perks and race -- plus the
+    // TEMPORARY modifier, where a Fortify enchantment or potion lands: a
+    // circlet of +50 magicka raises what the bar can show, and reading the
+    // permanent value alone put 346 over 246 (2026-09-09). Their ratio is
+    // what the rules read, so both are logged in Tactics.cpp to make a
+    // wrong reading visible rather than merely wrong.
+    const float temporary = actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, av);
+    return ft::Stat{owner->GetActorValue(av), owner->GetPermanentActorValue(av) + temporary};
+}
 
 void ForEachSpell(RE::Actor *actor, const std::function<void(RE::SpellItem *)> &fn)
 {

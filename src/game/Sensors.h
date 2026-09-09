@@ -60,6 +60,11 @@ struct WeaponCharge
 // it, as the engine's own recharge does, rather than removing it.
 [[nodiscard]] std::vector<ft::Snapshot::SoulGemView> ScanSoulGems(RE::Actor *actor);
 
+// A stat as the bars and the rules read it: the current value, and the
+// maximum with every modifier in -- the permanent (perks, race) and the
+// temporary (a Fortify enchantment or potion).
+[[nodiscard]] ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av);
+
 // One castable spell a follower knows, for the editor's menu.
 //
 // Name and id together because the menu shows one and stores the other: the

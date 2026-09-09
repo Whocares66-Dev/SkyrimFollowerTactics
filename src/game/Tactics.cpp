@@ -332,10 +332,7 @@ void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet
 
 ft::Stat ReadStatFor(RE::Actor *actor, RE::ActorValue av)
 {
-    auto *owner = actor->AsActorValueOwner();
-    if (!owner)
-        return {};
-    return ft::Stat{owner->GetActorValue(av), owner->GetPermanentActorValue(av)};
+    return ReadStat(actor, av); // one reading of a stat, Sensors'
 }
 
 // Level and carry weight, for the panel. Not rule inputs -- three cheap reads,
