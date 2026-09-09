@@ -5,6 +5,23 @@ namespace ft::game
 namespace
 {
 
+// TESPackage::CreatePackage(type): allocate a package and give it the data
+// object its type needs. The type is the record's PKDT type (PACKAGE_TYPE:
+// kPackage is 18, an instance made from a template, what the constructor
+// sets anyway). The library declares the same function with
+// PACKAGE_PROCEDURE_TYPE, whose kPackage is 46, and given 46 the engine
+// returns a package with no data at all (found 2026-09-09: every cast
+// rule "unsupported" since the migration). The declaration is the
+// library's bug; this one takes the type the engine takes, so the call
+// is made with the enum and no cast. The AE ID was checked against
+// 1.6.1170 by reading the function (docs/MAGIC.md "Forms at runtime").
+RE::TESPackage *CreatePackage(RE::PACKAGE_TYPE type)
+{
+    using func_t = RE::TESPackage *(*)(RE::PACKAGE_TYPE);
+    static REL::Relocation<func_t> func{RELOCATION_ID(28732, 29496)};
+    return func(type);
+}
+
 // Move a fresh form from the engine's dynamic ID to ours. The constructor
 // registered it under the dynamic one; SetFormID takes it out of the map and
 // puts it back under the new ID.
@@ -31,16 +48,7 @@ RE::TESPackage *ClonePackage(RE::TESPackage *source, std::uint32_t localID)
     if (!source || !source->data)
         return nullptr;
 
-    // TESPackage::CreatePackage(type) allocates a package and gives it the
-    // data object its type needs; its AE ID was checked against 1.6.1170 by
-    // reading the function (docs/MAGIC.md "Forms at runtime"). The type it
-    // takes is the record's PKDT type -- PACKAGE_TYPE::kPackage, 18, an
-    // instance made from a template, what the constructor sets anyway --
-    // but the library declares the parameter as PACKAGE_PROCEDURE_TYPE,
-    // whose kPackage is 46, and given 46 the engine returns a package with
-    // no data at all (found 2026-09-09: every cast rule "unsupported"). So
-    // the right value goes in through the declared type.
-    auto *pkg = RE::TESPackage::CreatePackage(static_cast<RE::PACKAGE_PROCEDURE_TYPE>(RE::PACKAGE_TYPE::kPackage));
+    auto *pkg = CreatePackage(RE::PACKAGE_TYPE::kPackage);
     if (!pkg)
     {
         logger::error("forms: CreatePackage returned nothing");
