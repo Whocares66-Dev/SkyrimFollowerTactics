@@ -4,6 +4,8 @@
 
 #include "game/Pins.h"
 
+#include "game/Sensors.h"
+
 #include "game/Packages.h"
 
 #include "game/Tactics.h"
@@ -13,6 +15,7 @@
 #include <array>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -1102,6 +1105,22 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         (hands == Hand::Left || hands == Hand::Right))
     {
         const Hand other = hands == Hand::Left ? Hand::Right : Hand::Left;
+        // A weapon in each hand where the combat style forbids it: the
+        // panel greys the cell, and a rule's request is refused here, so
+        // no pin makes a stance the style cannot fight in.
+        if (!DualWieldAllowed(actor))
+        {
+            auto *held = actor->GetEquippedObject(other == Hand::Left);
+            const std::optional<Holdable> inOther =
+                held ? std::optional<Holdable>(DescribeHoldable(actor, held)) : std::nullopt;
+            if (WouldDualWield(described, inOther ? &*inOther : nullptr))
+            {
+                logger::info("{} {} into the {} hand would dual wield, which the combat style forbids -- refused",
+                             Describe(actor), thing->GetName() ? thing->GetName() : "?",
+                             hands == Hand::Left ? "left" : "right");
+                return;
+            }
+        }
         if (EquippedIn(actor, thing, other))
         {
             auto *object = thing->As<RE::TESBoundObject>();

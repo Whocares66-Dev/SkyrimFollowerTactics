@@ -8,6 +8,7 @@
 #include <cctype>
 #include <cstdio>
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -476,6 +477,19 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
     if (!actor)
         return out;
 
+    // What each hand holds, for the dual-wield question: a cell for the
+    // other hand is greyed when the style forbids a weapon in each.
+    const bool dualWield = DualWieldAllowed(actor);
+    std::optional<ft::Holdable> inLeft;
+    std::optional<ft::Holdable> inRight;
+    if (!dualWield)
+    {
+        if (auto *held = actor->GetEquippedObject(true))
+            inLeft = DescribeHoldable(actor, held);
+        if (auto *held = actor->GetEquippedObject(false))
+            inRight = DescribeHoldable(actor, held);
+    }
+
     // The whole bag, not just the potions: this is the one scan whose job is
     // to show everything.
     auto inventory = actor->GetInventory();
@@ -502,6 +516,12 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
         item.worn = entry && entry->IsWorn();
         item.equippedLeft = actor->GetEquippedObject(true) == object;
         item.equippedRight = actor->GetEquippedObject(false) == object;
+        if (!dualWield && object->Is(RE::FormType::Weapon))
+        {
+            const ft::Holdable described = DescribeHoldable(actor, object);
+            item.noDualLeft = ft::WouldDualWield(described, inRight ? &*inRight : nullptr);
+            item.noDualRight = ft::WouldDualWield(described, inLeft ? &*inLeft : nullptr);
+        }
 
         SheetSection stats{"Stats", {}, {}};
         {

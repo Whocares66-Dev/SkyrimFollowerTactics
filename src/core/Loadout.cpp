@@ -28,6 +28,25 @@ bool Pinnable(const Holdable &thing) noexcept
     return !thing.unusable;
 }
 
+namespace
+{
+// A weapon that takes one hand and could take either: a sword, an axe, a
+// dagger, a mace. A shield or a torch is LeftOnly and a bow takes both.
+bool OneHander(const Holdable &thing) noexcept
+{
+    return thing.kind == Kind::Weapon && thing.grip == Grip::Either;
+}
+} // namespace
+
+bool WouldDualWield(const Holdable &thing, const Holdable *inOtherHand) noexcept
+{
+    if (!inOtherHand || !OneHander(thing) || !OneHander(*inOtherHand))
+        return false;
+    if (inOtherHand->form == thing.form && thing.count < 2)
+        return false; // the only one, moving to the other hand
+    return true;
+}
+
 bool IsBanned(const Bans &bans, std::uint32_t form) noexcept
 {
     return std::find(bans.begin(), bans.end(), form) != bans.end();

@@ -266,6 +266,15 @@ struct Contribution
 // panel gave her shows as what it is.
 [[nodiscard]] std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor);
 
+// The combat style the actor fights by: the controller's live copy when
+// there is one, else the record's. Null for an actor with none.
+[[nodiscard]] RE::TESCombatStyle *LiveCombatStyle(RE::Actor *actor);
+
+// May the actor hold a one-handed weapon in each hand? The combat style's
+// flag; an actor with no style may. The panel's cells, and a request, read
+// it (core/Loadout.h WouldDualWield).
+[[nodiscard]] bool DualWieldAllowed(RE::Actor *actor);
+
 // The damage a weapon does in her hands, as the inventory menu would show
 // it: base, times tempering, times the skill curve, through her perks, times
 // any Fortify effect on the skill. `entry` may be null, in which case the

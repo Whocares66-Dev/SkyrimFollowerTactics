@@ -1567,6 +1567,22 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     return out;
 }
 
+RE::TESCombatStyle *LiveCombatStyle(RE::Actor *actor)
+{
+    if (!actor)
+        return nullptr;
+    auto *npc = actor->GetActorBase();
+    auto *record = npc ? npc->GetCombatStyle() : nullptr;
+    auto *controller = actor->GetActorRuntimeData().combatController;
+    return controller && controller->combatStyle ? controller->combatStyle : record;
+}
+
+bool DualWieldAllowed(RE::Actor *actor)
+{
+    auto *style = LiveCombatStyle(actor);
+    return !style || style->flags.all(RE::TESCombatStyle::FLAG::kAllowDualWielding);
+}
+
 std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
 {
     std::vector<SheetSection> out;
@@ -1575,7 +1591,7 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
     auto *npc = actor->GetActorBase();
     auto *record = npc ? npc->GetCombatStyle() : nullptr;
     auto *controller = actor->GetActorRuntimeData().combatController;
-    auto *live = controller && controller->combatStyle ? controller->combatStyle : record;
+    auto *live = LiveCombatStyle(actor);
     if (!live)
         return out;
 

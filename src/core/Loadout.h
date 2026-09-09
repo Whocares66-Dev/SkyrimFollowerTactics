@@ -164,6 +164,16 @@ struct Pin
 // Can it be pinned at all?
 [[nodiscard]] bool Pinnable(const Holdable &thing) noexcept;
 
+// Dual wielding is a one-handed weapon in each hand, and a combat style may
+// forbid it: the AI then never holds two, and a pin that made them would
+// be a stance the style cannot fight in. Would putting `thing` into a hand
+// make one, given what the other hand holds (null for nothing)? A shield,
+// a torch, a spell, a two-hander there is no bar, nor is an armour or a
+// spell coming in. The only copy of the very weapon the other hand holds
+// is a MOVE across, not a second weapon. The caller asks only where the
+// style forbids it.
+[[nodiscard]] bool WouldDualWield(const Holdable &thing, const Holdable *inOtherHand) noexcept;
+
 // Does pinning `incoming` to `hands` mean releasing `held`, pinned to
 // `heldHands`? Hands that overlap; armour on shared body slots; ammunition
 // against ammunition; a voice pin against a voice pin. Anything else lives

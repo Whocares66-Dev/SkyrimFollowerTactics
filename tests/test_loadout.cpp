@@ -58,6 +58,37 @@ TEST_CASE("the hands a thing takes when pinned")
     CHECK(HandsFor(Grip::None, Hand::Left) == Hand::None);
 }
 
+TEST_CASE("dual wielding is one-handed weapon against one-handed weapon, and nothing else")
+{
+    Holdable dagger = Thing(kSteelDagger, Grip::Either);
+    dagger.kind = Kind::Weapon;
+    Holdable sword = Thing(10, Grip::Either);
+    sword.kind = Kind::Weapon;
+    Holdable shield = Thing(kIronShield, Grip::LeftOnly);
+    shield.kind = Kind::Weapon;
+    Holdable bow = Thing(kHuntingBow, Grip::Both);
+    bow.kind = Kind::Weapon;
+    Holdable flames = Thing(kFlames, Grip::Either);
+    flames.kind = Kind::Spell;
+
+    // A second one-hander against the first: that is the thing.
+    CHECK(WouldDualWield(dagger, &sword));
+    CHECK(WouldDualWield(sword, &dagger));
+    // An empty other hand, a shield, a spell, a bow there: no.
+    CHECK_FALSE(WouldDualWield(dagger, nullptr));
+    CHECK_FALSE(WouldDualWield(dagger, &shield));
+    CHECK_FALSE(WouldDualWield(dagger, &flames));
+    CHECK_FALSE(WouldDualWield(dagger, &bow));
+    // A shield or a spell coming in beside a sword: no.
+    CHECK_FALSE(WouldDualWield(shield, &sword));
+    CHECK_FALSE(WouldDualWield(flames, &sword));
+    // The only dagger, asked into the other hand, moves; two daggers are
+    // one in each hand.
+    CHECK_FALSE(WouldDualWield(dagger, &dagger));
+    dagger.count = 2;
+    CHECK(WouldDualWield(dagger, &dagger));
+}
+
 TEST_CASE("a spell above her skill can be equipped but not pinned")
 {
     Holdable chain = Thing(kChainLightning, Grip::RightOnly);
