@@ -1267,41 +1267,34 @@ const std::vector<TreePerk> &TreePerks(RE::ActorValue skill)
     return cache.emplace(skill, std::move(out)).first->second;
 }
 
-// Why a perk the actor holds does nothing for them right now, or empty.
-// A perk has no on-off switch; it has conditions -- on the record, and on
-// each entry, whose first tab is the perk's owner -- and a mod that hands
-// every NPC its perks and gates them on a power writes those to fail until
-// the power is taken. The record's conditions are asked as the engine asks
-// them; an entry's first tab likewise, so a perk none of whose entries
-// could fire is inactive too. Entries with no conditions, and ability or
-// quest entries, count as live.
-std::string PerkInactive(RE::Actor *actor, RE::BGSPerk *perk)
+// Whether a perk the actor holds does something for them right now.
+// A perk has no on-off switch. The conditions on its record are what the
+// skill tree asks before the player may take it -- the perk before it in
+// the chain, a skill level -- and gate nothing once it is held; Augmented
+// Frost given without Elementalist works. What gates the effect is the
+// conditions on each entry, whose first tab is the perk's owner: a mod
+// that hands every NPC its perks and gates them on a power writes those to
+// fail until the power is taken. So a perk is active when any of its
+// entries could fire: an entry-point entry with no owner conditions or
+// with them met, or an ability or quest entry; and a perk with no entries
+// at all, a marker for conditions elsewhere, counts as active.
+bool PerkActive(RE::Actor *actor, RE::BGSPerk *perk)
 {
     if (!actor || !perk)
-        return {};
-    if (perk->perkConditions && !perk->perkConditions.IsTrue(actor, actor))
-        return "the perk's conditions are not met";
+        return false;
     bool anyEntry = false;
-    bool anyLive = false;
     for (const auto *entry : perk->perkEntries)
     {
         if (!entry)
             continue;
         anyEntry = true;
         if (entry->GetType() != RE::PERK_ENTRY_TYPE::kEntryPoint)
-        {
-            anyLive = true;
-            continue;
-        }
+            return true;
         const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
         if (point->conditions.size() == 0 || !point->conditions[0] || point->conditions[0].IsTrue(actor, actor))
-            anyLive = true;
-        if (anyLive)
-            break;
+            return true;
     }
-    if (anyEntry && !anyLive)
-        return "none of its entries' conditions are met";
-    return {};
+    return !anyEntry;
 }
 
 // The perks this follower holds in one skill's tree, one row per perk at
@@ -1331,7 +1324,7 @@ std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
         SheetRow row = Row(std::move(label), rank);
         row.modifiers = entry.description;
         row.form = entry.perk->GetFormID(); // the name opens the perk's page
-        if (!PerkInactive(actor, entry.perk).empty())
+        if (!PerkActive(actor, entry.perk))
             row.aside = "Inactive";
         rows.push_back(std::move(row));
     }
@@ -2191,8 +2184,13 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
             info.rows.push_back(Row("Skill", skill));
         if (perk->data.hidden)
             info.rows.push_back(Row("Hidden", "yes"));
-        if (const std::string why = PerkInactive(actor, perk); !why.empty())
-            info.rows.push_back(Row("Inactive", why));
+        // A tick while the perk does something for them; no row while not.
+        if (PerkActive(actor, perk))
+        {
+            SheetRow active = Row("Active", "");
+            active.icon = kGlyphTick;
+            info.rows.push_back(std::move(active));
+        }
         p.sections.push_back(std::move(info));
 
         SheetSection entries{"Entries", {}, {}};
@@ -2202,11 +2200,10 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         if (!entries.rows.empty())
             p.sections.push_back(std::move(entries));
 
-        // The conditions: the perk's own, then each entry's on its owner --
+        // The conditions that gate the effect: each entry's on its owner --
         // a mod's perk given to everyone is gated there, on the power that
-        // turns it on.
-        if (perk->perkConditions)
-            p.conditions.push_back({"Perk", ConditionRows(actor, perk->perkConditions), "Conditions"});
+        // turns it on. Not the record's own, which are what the skill tree
+        // asks before the player may take it, and nothing to an NPC.
         for (const auto *entry : perk->perkEntries)
         {
             if (!entry || entry->GetType() != RE::PERK_ENTRY_TYPE::kEntryPoint)
@@ -2464,7 +2461,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                                                                         : std::string());
                 row.modifiers = text.c_str() ? text.c_str() : "";
                 row.form = perk->GetFormID();
-                if (!PerkInactive(actor, perk).empty())
+                if (!PerkActive(actor, perk))
                     row.aside = "Inactive";
                 s.rows.push_back(std::move(row));
             }

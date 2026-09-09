@@ -287,10 +287,10 @@ struct PerkPage
     std::string name;
     std::string description;
     std::vector<SheetSection> sections;
-    // The perk's conditions, and each entry's on its owner, as the engine
-    // reads them for this actor: one table per source (title: "Perk" or the
-    // entry point), a row per condition -- the call, the comparison, and a
-    // tick when it is met.
+    // The conditions that gate the perk's effect, as the engine reads them
+    // for this actor: a table per entry point, a row per condition -- the
+    // call, the comparison, and a tick when it is met. Not the record's
+    // own conditions: those are the skill tree's, for the player.
     std::vector<SheetSection> conditions;
 };
 
