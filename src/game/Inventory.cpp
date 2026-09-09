@@ -554,6 +554,22 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
             stats.rows.push_back(Row("Weight", Fmt("%.1f", item.weight)));
             stats.rows.push_back(Row("Value", std::to_string(item.value)));
         }
+        // An outfit piece: added by the actor's Outfit record when they
+        // loaded and marked on its entry, which is what the trade menu hides
+        // it by. A tick when it is; no row when it is not.
+        if (entry && entry->extraLists)
+        {
+            bool outfit = false;
+            for (auto *list : *entry->extraLists)
+                outfit = outfit || (list && list->GetByType<RE::ExtraOutfitItem>() != nullptr);
+            if (outfit)
+            {
+                SheetRow row;
+                row.label = "Outfit";
+                row.icon = kGlyphTick;
+                stats.rows.push_back(std::move(row));
+            }
+        }
         if (item.worn)
         {
             // The pin glyph beside the tick is added by MarkPins, which runs
