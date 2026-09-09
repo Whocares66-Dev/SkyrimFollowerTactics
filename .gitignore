@@ -1,6 +1,7 @@
 # Build output
 build/
 out/
+dist/
 install/
 cmake-build*/
 vcpkg_installed/
@@ -49,3 +50,4 @@ CreationKitDowngradePatcher/
 extern/SKSEMenuFramework/SKSEMenuFramework.h
 SSEEdit/
 CrashLogger/
+

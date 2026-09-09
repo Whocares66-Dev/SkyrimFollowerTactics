@@ -56,6 +56,8 @@ run copies as usual.
 `core` / `core-asan` need no vcpkg and no Skyrim at all -- that is the fast feedback loop.
 `debug` / `release` build the plugin and pull CommonLibSSE-NG through vcpkg.
 
+`.	ools\package.ps1` builds the release plugin and writes `distollower-tactics-<version>.zip`, a mod root (one DLL and a README) to install from the archive in Mod Organizer; the version is `project(... VERSION)` in CMakeLists.txt. `dist/` is ignored.
+
 `SKYRIM_MODS_FOLDER` is set to `MO2\mods`; the build deploys to
 `MO2\mods\FollowerTactics\SKSE\Plugins\`. New mods appear **unticked** in MO2 -- tick it
 or the DLL never loads.
