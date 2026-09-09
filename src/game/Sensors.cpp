@@ -2203,28 +2203,37 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         }
         p.sections.push_back(std::move(info));
 
-        SheetSection entries{"Entries", {}, {}};
-        for (const auto *entry : perk->perkEntries)
-            if (entry)
-                entries.rows.push_back(EntryRow(entry));
-        if (!entries.rows.empty())
-            p.sections.push_back(std::move(entries));
-
-        // The conditions that gate the effect: each entry's on its owner --
-        // a mod's perk given to everyone is gated there, on the power that
-        // turns it on. Not the record's own, which are what the skill tree
-        // asks before the player may take it, and nothing to an NPC.
+        // The effects: an entry each, with the conditions that gate it on
+        // its owner beneath -- a mod's perk given to everyone is gated
+        // there, on the power that turns it on -- and a tick while they are
+        // met. Not the record's own conditions, which are what the skill
+        // tree asks before the player may take it, and nothing to an NPC.
+        SheetSection effects{"Effects", {}, {}};
         for (const auto *entry : perk->perkEntries)
         {
-            if (!entry || entry->GetType() != RE::PERK_ENTRY_TYPE::kEntryPoint)
+            if (!entry)
                 continue;
-            const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
-            if (point->conditions.size() == 0 || !point->conditions[0])
-                continue;
-            const auto index = static_cast<std::size_t>(point->entryData.entryPoint.get());
-            const char *name = index < kEntryPointNames.size() ? kEntryPointNames[index] : "?";
-            p.conditions.push_back({name, ConditionRows(actor, point->conditions[0]), "Conditions"});
+            SheetRow row = EntryRow(entry);
+            bool active = true;
+            if (entry->GetType() == RE::PERK_ENTRY_TYPE::kEntryPoint)
+            {
+                const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
+                if (point->conditions.size() > 0 && point->conditions[0])
+                {
+                    row.detail = ConditionRows(actor, point->conditions[0]);
+                    active = point->conditions[0].IsTrue(actor, actor);
+                }
+            }
+            if (active)
+                row.mark = kGlyphTick;
+            effects.rows.push_back(std::move(row));
         }
+        // By name, the record's order being the author's; two of one name
+        // keep their order, the weaker first as a rule.
+        std::stable_sort(effects.rows.begin(), effects.rows.end(),
+                         [](const SheetRow &a, const SheetRow &b) { return a.label < b.label; });
+        if (!effects.rows.empty())
+            p.sections.push_back(std::move(effects));
         out.push_back(std::move(p));
     };
 

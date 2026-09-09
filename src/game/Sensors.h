@@ -178,6 +178,9 @@ struct SheetRow
     // Why the row is set aside -- a perk whose conditions fail for this
     // actor -- shown on the name; empty for a row that counts.
     std::string aside;
+    // A glyph in the third column, where the table has one: a perk
+    // effect's tick for Active. 0 for none.
+    unsigned mark{0};
 };
 
 struct SheetSection
@@ -286,12 +289,12 @@ struct PerkPage
     std::uint32_t form{0};
     std::string name;
     std::string description;
+    // "Perk", the facts; then "Effects", one row per entry -- what it does,
+    // a tick in the mark while it is active -- opening on the conditions
+    // that gate it, as the engine reads them for this actor: the call, the
+    // comparison, a tick when met. Not the record's own conditions: those
+    // are the skill tree's, for the player.
     std::vector<SheetSection> sections;
-    // The conditions that gate the perk's effect, as the engine reads them
-    // for this actor: a table per entry point, a row per condition -- the
-    // call, the comparison, and a tick when it is met. Not the record's
-    // own conditions: those are the skill tree's, for the player.
-    std::vector<SheetSection> conditions;
 };
 
 // A page for every perk the follower holds, in a skill's tree or loose.

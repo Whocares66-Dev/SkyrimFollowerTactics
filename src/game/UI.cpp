@@ -2271,64 +2271,53 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
     Im::EndTable();
 }
 
-// A perk page's conditions: one heading, a label per source when there is
-// more than one, and a table of call, comparison and a tick where met.
-void DrawConditionTables(const std::vector<SheetSection> &sections)
+// A table of conditions: the call, the comparison, a tick where met.
+void DrawConditionTable(const std::string &id, const std::vector<SheetRow> &rows, float width)
 {
-    if (sections.empty())
-        return;
-    CentredHeading("Conditions");
     float callWidth = TextWidth("Condition");
     float valueWidth = TextWidth("Value");
-    for (const auto &section : sections)
-        for (const auto &row : section.rows)
-        {
-            callWidth = (std::max)(callWidth, TextWidth(row.label));
-            valueWidth = (std::max)(valueWidth, TextWidth(row.value));
-        }
-    const float pad = 2.0f * kCellPadX + 8.0f;
-    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 4.0f));
-    bool first = true;
-    for (const auto &section : sections)
+    for (const auto &row : rows)
     {
-        if (sections.size() > 1)
-        {
-            if (!first)
-            {
-                Im::Spacing();
-                Im::Spacing();
-            }
-            Im::SetCursorPosX(Im::GetCursorPosX() + kCellPadX);
-            Im::Text("%s", section.title.c_str());
-        }
-        first = false;
-        const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
-        if (!Im::BeginTable(("conditions##" + section.title).c_str(), 3, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
-            continue;
-        Im::TableSetupColumn("Condition", Im::ImGuiTableColumnFlags_WidthFixed, callWidth + pad, 0);
-        Im::TableSetupColumn("Value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
-        Im::TableSetupColumn("Met", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-        PlainHeaderRow({"Condition", "Value", "Met"});
-        for (const auto &row : section.rows)
-        {
-            Im::TableNextRow(0, 0.0f);
-            Im::TableSetColumnIndex(0);
-            Im::Text("%s", row.label.c_str());
-            Im::TableSetColumnIndex(1);
-            Im::Text("%s", row.value.c_str());
-            Im::TableSetColumnIndex(2);
-            if (row.icon != 0)
-            {
-                FontAwesome::PushSolid();
-                Im::Text("%s", Utf8(row.icon).c_str());
-                FontAwesome::Pop();
-            }
-        }
-        Im::EndTable();
+        callWidth = (std::max)(callWidth, TextWidth(row.label));
+        valueWidth = (std::max)(valueWidth, TextWidth(row.value));
     }
-    Im::PopStyleVar(1);
-    Im::Spacing();
-    Im::Spacing();
+    const float pad = 2.0f * kCellPadX + 8.0f;
+    const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
+    if (!Im::BeginTable(id.c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
+        return;
+    Im::TableSetupColumn("Condition", Im::ImGuiTableColumnFlags_WidthFixed, callWidth + pad, 0);
+    Im::TableSetupColumn("Value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
+    Im::TableSetupColumn("Met", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+    PlainHeaderRow({"Condition", "Value", "Met"});
+    for (const auto &row : rows)
+    {
+        Im::TableNextRow(0, 0.0f);
+        Im::TableSetColumnIndex(0);
+        Im::Text("%s", row.label.c_str());
+        Im::TableSetColumnIndex(1);
+        Im::Text("%s", row.value.c_str());
+        Im::TableSetColumnIndex(2);
+        if (row.icon != 0)
+        {
+            FontAwesome::PushSolid();
+            Im::Text("%s", Utf8(row.icon).c_str());
+            FontAwesome::Pop();
+        }
+    }
+    Im::EndTable();
+}
+
+// The drawer an open effect row reveals: the conditions that gate it, set
+// in from both edges as the perk drawer is.
+void DrawConditionDrawer(const SheetRow &row, const std::string &key, float left, float right)
+{
+    constexpr float kGap = 6.0f;
+    const float inset = 4.0f * kCellPadX;
+    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    Im::SetCursorScreenPos(Im::ImVec2(left + inset, Im::GetCursorScreenPos().y));
+    const float width = (std::max)(0.0f, right - left - 2.0f * inset);
+    DrawConditionTable("conditions##" + key, row.detail, width);
+    Im::Dummy(Im::ImVec2(0.0f, kGap));
 }
 
 void DrawPerkDrawer(const SheetRow &row, float left, float right, const std::function<void(std::uint32_t)> &onLink = {})
@@ -2368,8 +2357,15 @@ void NoteTooltip(const std::string &note);
 // next is the row line below it; the striping is counted across pieces
 // rather than restarted by each; and the outer left and right borders are
 // drawn by hand across the drawer's height, so the frame is continuous.
+// What an open row reveals, given the row, its key and the parent table's
+// edges. The perk drawer by default.
+using RowDrawer = std::function<void(const SheetRow &, const std::string &, float, float)>;
+
+// `modifiers`: a third column, headed `third`, carrying each row's
+// modifiers text or its mark glyph.
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
-                  const std::function<void(std::uint32_t)> &onLink = {})
+                  const std::function<void(std::uint32_t)> &onLink = {}, const char *third = "Modifiers",
+                  const RowDrawer &drawer = {})
 {
     float nameWidth = 0.0f;
     float valueWidth = 0.0f;
@@ -2454,9 +2450,9 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
             if (modifiers)
             {
-                Im::TableSetupColumn("Modifiers", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+                Im::TableSetupColumn(third, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
                 if (piece == 1)
-                    PlainHeaderRow({"", "", "Modifiers"});
+                    PlainHeaderRow({"", "", third});
             }
             inTable = true;
             return true;
@@ -2486,8 +2482,9 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             continue;
         }
 
-        for (const auto &row : section.rows)
+        for (std::size_t rowIndex = 0; rowIndex < section.rows.size(); ++rowIndex)
         {
+            const SheetRow &row = section.rows[rowIndex];
             if (!inTable && !beginPiece())
                 break;
 
@@ -2523,7 +2520,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 // row unlit; the row background is the rect ImGui derived
                 // for the row, padding and all, so it fits by construction.
                 // The marker and the name are then drawn over it.
-                const std::string key = section.title + "/" + row.label;
+                const std::string key = section.title + "/" + row.label + "#" + std::to_string(rowIndex);
                 open = g_openRows.count(key) > 0;
 
                 const Im::ImVec2 pos = Im::GetCursorScreenPos();
@@ -2585,7 +2582,16 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             if (modifiers)
             {
                 Im::TableSetColumnIndex(2);
-                Im::Text("%s", row.modifiers.c_str());
+                if (row.mark != 0)
+                {
+                    FontAwesome::PushSolid();
+                    Im::Text("%s", Utf8(row.mark).c_str());
+                    FontAwesome::Pop();
+                }
+                else
+                {
+                    Im::Text("%s", row.modifiers.c_str());
+                }
                 if (!row.note.empty() && Im::IsItemHovered(0))
                     NoteTooltip(row.note);
             }
@@ -2594,7 +2600,10 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
 
             // The drawer: close this piece, draw beneath, reopen for the rest.
             endPiece();
-            DrawPerkDrawer(row, left, right, onLink);
+            if (drawer)
+                drawer(row, section.title + "/" + row.label + "#" + std::to_string(rowIndex), left, right);
+            else
+                DrawPerkDrawer(row, left, right, onLink);
             drawerOpen = true;
         }
 
@@ -4247,13 +4256,16 @@ void DrawSkills(const FollowerView &view)
             Im::AlignTextToFramePadding();
             Im::Text("%s", page->name.c_str());
             Im::Spacing();
-            // The perk's facts; its conditions; then what it does.
+            // The perk's facts; then its effects, each with the conditions
+            // that gate it beneath, in the table the skills open into.
             const auto split = page->sections.begin() + (page->sections.empty() ? 0 : 1);
             const std::vector<SheetSection> info(page->sections.begin(), split);
-            const std::vector<SheetSection> rest(split, page->sections.end());
+            const std::vector<SheetSection> effects(split, page->sections.end());
             DrawSections(info, false);
-            DrawConditionTables(page->conditions);
-            DrawSections(rest, false);
+            DrawSections(effects, true, {}, "Active",
+                         [](const SheetRow &row, const std::string &key, float left, float right) {
+                             DrawConditionDrawer(row, key, left, right);
+                         });
             if (!page->description.empty())
             {
                 CentredHeading("Description");
