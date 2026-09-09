@@ -1145,14 +1145,13 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     // Conflicts): its pin goes, and since the engine's equip of one hand
     // leaves the other alone, the weapon is taken off below as well.
     const bool dualWield = DualWieldAllowed(actor);
-    std::vector<Displaced> displacedAcross;
     {
         std::scoped_lock lock(g_pinMutex);
         auto &pins = g_pins[id];
         switch (request)
         {
         case WearRequest::Pin:
-            displacedAcross = ReleaseConflictingPins(actor, pins, described, hands, dualWield);
+            ReleaseConflictingPins(actor, pins, described, hands, dualWield);
             AddPin(pins, described, hands, moving);
             break;
         case WearRequest::Equip:
@@ -1161,7 +1160,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             // only copy of a weapon changing hands takes its own pin with
             // it: a pin on the hand it is leaving would stand over an empty
             // hand (16:28, the steel dagger pinned left and held right).
-            displacedAcross = ReleaseConflictingPins(actor, pins, described, hands, dualWield);
+            ReleaseConflictingPins(actor, pins, described, hands, dualWield);
             if (moving) [[maybe_unused]]
                 const Hand left = LetGo(pins, described, hands == Hand::Left ? Hand::Right : Hand::Left);
             break;
@@ -1206,18 +1205,24 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     }
 
     const char *name = thing->GetName() ? thing->GetName() : "?";
-    // The pinned one-hander a one-hander into the other hand displaced,
-    // where the style forbids two: off, since the engine's equip of this
-    // hand leaves the other as it was.
-    for (const Displaced &gone : displacedAcross)
+    // Where the style forbids two, a one-hander into one hand takes the
+    // one-hander out of the other, pinned (its pin went above) or merely
+    // equipped: the engine's equip of this hand leaves the other as it
+    // was, and the follower would stand with a weapon in each. The only
+    // copy moving across is not this (WouldDualWield).
+    if (!dualWield && (request == WearRequest::Pin || request == WearRequest::Equip) &&
+        (hands == Hand::Left || hands == Hand::Right))
     {
-        if (Overlap(gone.hands, hands) || (gone.hands != Hand::Left && gone.hands != Hand::Right))
-            continue;
-        if (auto *held = RE::TESForm::LookupByID(gone.form))
+        const Hand other = hands == Hand::Left ? Hand::Right : Hand::Left;
+        if (auto *held = actor->GetEquippedObject(other == Hand::Left))
         {
-            logger::info("{} {} comes off the {} hand: the combat style does not dual wield", Describe(actor),
-                         held->GetName() ? held->GetName() : "?", gone.hands == Hand::Left ? "left" : "right");
-            UnequipForm(actor, held, gone.hands, true);
+            const Holdable inOther = DescribeHoldable(actor, held);
+            if (WouldDualWield(described, &inOther))
+            {
+                logger::info("{} {} comes off the {} hand: the combat style does not dual wield", Describe(actor),
+                             held->GetName() ? held->GetName() : "?", other == Hand::Left ? "left" : "right");
+                UnequipForm(actor, held, other, true);
+            }
         }
     }
     switch (request)

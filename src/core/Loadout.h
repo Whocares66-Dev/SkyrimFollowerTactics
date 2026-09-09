@@ -173,12 +173,13 @@ struct Pin
 // is a MOVE across, not a second weapon. The caller asks only where the
 // style forbids it.
 //
-// What is EQUIPPED in the other hand is no bar on its own: the AI swaps
-// weapons as it likes, and a second one-hander offered beside an equipped
-// one is no different from one offered for the same hand. A PINNED
-// one-hander is the bar: the panel greys the other one-handers, and one
-// pinned or equipped into the other hand anyway takes the pinned one off
-// -- Conflicts and MakeRoom say so with `dualWield` false.
+// What is EQUIPPED in the other hand greys nothing: the AI swaps weapons
+// as it likes, and a second one-hander offered beside an equipped one is
+// no different from one offered for the same hand. A PINNED one-hander
+// greys the other one-handers. Either way, one pinned or equipped into the
+// other hand takes the first off -- its pin, through Conflicts and
+// MakeRoom with `dualWield` false, and the weapon itself on the game side
+// -- so the follower never stands with a weapon in each.
 [[nodiscard]] bool WouldDualWield(const Holdable &thing, const Holdable *inOtherHand) noexcept;
 
 // Does pinning `incoming` to `hands` mean releasing `held`, pinned to
