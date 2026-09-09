@@ -2510,7 +2510,8 @@ enum class Tab
 {
     None,
     Character,
-    Inventory
+    Inventory,
+    Magic
 };
 
 struct InventoryTabState
@@ -2562,6 +2563,8 @@ unsigned IconFor(ItemCategory category)
 }
 
 constexpr Im::ImVec4 kEnchanted{0.70f, 0.75f, 1.00f, 1.0f};
+// A Daedric artifact: light gold, over the enchanted blue.
+constexpr Im::ImVec4 kArtifact{0.95f, 0.85f, 0.55f, 1.0f};
 
 // The name filter the list tabs share: a box with "Filter name" for its
 // hint, and a cross inside its right end to clear it, shown only while
@@ -3102,7 +3105,9 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             name += " (" + std::to_string(item->count) + ")";
         // The enchanted tint would override the disabled colour a set-aside
         // row was pushed: dimmed wins, or the row does not read as greyed.
-        if (item->enchanted && !dim)
+        if (item->artifact && !dim)
+            Im::TextColored(kArtifact, "%s", name.c_str());
+        else if (item->enchanted && !dim)
             Im::TextColored(kEnchanted, "%s", name.c_str());
         else
             Im::Text("%s", name.c_str());
@@ -3221,7 +3226,9 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
 
     Im::SameLine(0.0f, kCellPadX);
     Im::AlignTextToFramePadding();
-    if (item.enchanted)
+    if (item.artifact)
+        Im::TextColored(kArtifact, "%s", item.name.c_str());
+    else if (item.enchanted)
         Im::TextColored(kEnchanted, "%s", item.name.c_str());
     else
         Im::Text("%s", item.name.c_str());
@@ -3984,8 +3991,18 @@ void DrawCharacter(const FollowerView &view)
     // A weapon, shield, ammo or torch named on the sheet is a link to its
     // page on the Inventory tab.
     const ft::ActorId id = view.id;
-    DrawSections(view.sheet, false, [id](std::uint32_t form) {
+    DrawSections(view.sheet, false, [id, &view](std::uint32_t form) {
+        // A spell in hand has its page on the Magic tab; anything else on
+        // the Inventory tab.
+        const bool spell = std::any_of(view.magic.begin(), view.magic.end(),
+                                       [form](const MagicEntry &entry) { return entry.form == form; });
         auto &state = g_inventoryTabs[id];
+        if (spell)
+        {
+            g_magicTabs[id].detail = form;
+            state.select = Tab::Magic;
+            return;
+        }
         state.detail = form;
         state.openedFrom = Tab::Character;
         state.select = Tab::Inventory;
@@ -4076,7 +4093,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
         DrawInventory(view);
         Im::EndTabItem();
     }
-    if (Im::BeginTabItem("Magic"))
+    if (Im::BeginTabItem("Magic", nullptr, select == Tab::Magic ? Im::ImGuiTabItemFlags_SetSelected : 0))
     {
         DrawMagic(view);
         Im::EndTabItem();

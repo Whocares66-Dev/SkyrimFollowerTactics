@@ -62,6 +62,9 @@ struct InventoryItem
     float armor{0.0f};  // a piece of armour's rating on her; 0 for the rest
     bool worn{false};
     bool enchanted{false};
+    // A Daedric artifact (the DaedricArtifact keyword, or the vendor one a
+    // few Creation Club pieces carry instead): named in gold.
+    bool artifact{false};
     // A weapon with a poison on it: the poison's effects, one per line,
     // for the detail page's Poison section; empty for none. The row shows
     // a poison glyph after the name.

@@ -500,6 +500,12 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
         // trade menu prices it.
         item.value = entry ? entry->GetValue() : object->GetGoldValue();
         item.worn = entry && entry->IsWorn();
+        if (auto *keyworded = object->As<RE::BGSKeywordForm>())
+        {
+            static auto *artifact = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000A8668);
+            static auto *vendor = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000917E8);
+            item.artifact = (artifact && keyworded->HasKeyword(artifact)) || (vendor && keyworded->HasKeyword(vendor));
+        }
         item.equippedLeft = actor->GetEquippedObject(true) == object;
         item.equippedRight = actor->GetEquippedObject(false) == object;
 

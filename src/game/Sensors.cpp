@@ -341,6 +341,10 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         // here, not 50 with a flag to read. Negating it again showed the
         // weakness as +50% beside a total that had subtracted it
         // (2026-09-08).
+        // An effect on the value with nothing to add (a vampire's Blood
+        // Aura carries a zero here) is not a source.
+        if (std::abs(ae->magnitude) < 0.05f)
+            continue;
         out.push_back({std::move(source), ae->magnitude});
     }
     // Smallest first: the weaknesses, then the boons, the largest last.
@@ -1336,6 +1340,7 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
     if (auto *spell = held->As<RE::SpellItem>())
     {
         rows.push_back(Row("Spell", NameOr(spell, "?")));
+        rows.back().form = spell->GetFormID();
         rows.push_back(Row("Cost", Fmt("%.0f", spell->CalculateMagickaCost(actor))));
         if (const auto *effect = spell->GetCostliestEffectItem(); effect && effect->baseEffect)
         {
@@ -1551,8 +1556,25 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
 
     {
         SheetSection s{"General", {}, {}};
+        // The reference and the base record, as the console names them --
+        // what "prid" takes, and what the log calls the follower.
+        {
+            char id[16];
+            std::snprintf(id, sizeof(id), "%08X", actor->GetFormID());
+            s.rows.push_back(Row("Ref ID", id));
+            const auto *base = actor->GetActorBase();
+            std::snprintf(id, sizeof(id), "%08X", base ? base->GetFormID() : 0u);
+            s.rows.push_back(Row("Base ID", id));
+        }
+        s.rows.push_back(Row("Name", actor->GetName() ? actor->GetName() : "?"));
         auto *race = actor->GetRace();
         s.rows.push_back(Row("Race", race && race->GetName() ? race->GetName() : "?"));
+        if (const auto *base = actor->GetActorBase())
+        {
+            const auto sex = base->GetSex();
+            if (sex == RE::SEX::kMale || sex == RE::SEX::kFemale)
+                s.rows.push_back(Row("Gender", sex == RE::SEX::kMale ? "Male" : "Female"));
+        }
         // Speed is the multiplier every buff lands on -- 100 for plain, and
         // a Fortify Speed or a Slow moves it -- so it reads the same
         // standing and sprinting. What moves it and by whom is the hover
