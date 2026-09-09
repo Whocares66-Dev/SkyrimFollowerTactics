@@ -49,8 +49,7 @@ enum class SubjectKind : std::uint8_t
 };
 
 // What is being asked about the subject. Rule::conditionArg carries the
-// threshold where one applies: a 0..1 fraction for the Pct predicates, a
-// plain count for CountAtLeast.
+// threshold where one applies: a 0..1 fraction for the Pct predicates.
 enum class PredicateKind : std::uint8_t
 {
     Any,
@@ -67,7 +66,9 @@ enum class PredicateKind : std::uint8_t
     // put the travelling gear back.
     CombatBegins,
     CombatEnds,
-    CountAtLeast,
+    // (A count of the group -- "at least N enemies" -- was here until
+    // 2026-09-08. Nobody offered it in the end: an ally's count changes too
+    // rarely to be a condition, and the enemy's was not wanted.)
     // The subject has been hit with Rule::damageKind in the last few
     // seconds. Any subject. Listed here, between the fight's edges and
     // Status, as the editor's menu groups them.

@@ -286,17 +286,6 @@ const EnemyView *NearestEnemy(const Snapshot &s)
     return best;
 }
 
-const AllyView *NearestAlly(const Snapshot &s)
-{
-    const AllyView *best = nullptr;
-    for (const auto &a : s.allies)
-    {
-        if (!best || a.distance < best->distance)
-            best = &a;
-    }
-    return best;
-}
-
 const EnemyView *FindEnemy(const Snapshot &s, ActorId id)
 {
     for (const auto &e : s.enemies)
@@ -334,24 +323,6 @@ bool LetsGo(const Action &a)
 bool AnyPinOf(const std::vector<Pin> &pins, Kind kind)
 {
     return std::any_of(pins.begin(), pins.end(), [kind](const Pin &p) { return p.thing.kind == kind; });
-}
-
-// CountAtLeast asks about the group, not a member, so there is no natural
-// binding. Binding the nearest member keeps the action targetable.
-Binding EvaluateCount(const Snapshot &s, const Rule &r)
-{
-    const bool enemies = r.subject == SubjectKind::Enemy;
-    const auto count = enemies ? s.enemies.size() : s.allies.size();
-    if (static_cast<float>(count) < r.conditionArg)
-        return NoMatch();
-
-    if (enemies)
-    {
-        const auto *e = NearestEnemy(s);
-        return e ? Match(e->id) : NoMatch();
-    }
-    const auto *a = NearestAlly(s);
-    return a ? Match(a->id) : NoMatch();
 }
 
 Binding EvaluateSelf(const Snapshot &s, const Rule &r)
@@ -459,9 +430,6 @@ Binding EvaluateCondition(const Rule &r, const Snapshot &s)
     if (s.combatEnded && r.predicate != PredicateKind::CombatEnds)
         return NoMatch();
 
-    if (r.predicate == PredicateKind::CountAtLeast)
-        return EvaluateCount(s, r);
-
     switch (r.subject)
     {
     case SubjectKind::Self:
@@ -531,10 +499,7 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
             return binding.ok ? yes(binding.id) : no();
         if (s.currentTarget != 0)
             return yes(s.currentTarget);
-        const EnemyView *nearest = nullptr;
-        for (const auto &e : s.enemies)
-            if (!nearest || e.distance < nearest->distance)
-                nearest = &e;
+        const auto *nearest = NearestEnemy(s);
         return nearest ? yes(nearest->id) : no();
     }
     case ActionTargetKind::Ally:

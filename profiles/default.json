@@ -32,16 +32,6 @@
       "action": "stop-combat",
       "actionArg": 0,
       "cooldown": 5.0
-    },
-    {
-      "label": "back off when swarmed",
-      "enabled": false,
-      "subject": "enemy",
-      "predicate": "count-at-least",
-      "conditionArg": 3,
-      "actionTarget": "self",
-      "action": "hold-position",
-      "cooldown": 10.0
     }
   ]
 }

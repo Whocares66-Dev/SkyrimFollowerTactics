@@ -64,14 +64,13 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 36> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 35> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
     {PredicateKind::MagickaPctBelow, "magicka-pct-below", "Magicka"},
     {PredicateKind::CombatBegins, "combat-begins", "Combat begins"},
     {PredicateKind::CombatEnds, "combat-ends", "Combat ends"},
-    {PredicateKind::CountAtLeast, "count-at-least", "Count"},
     {PredicateKind::Status, "status", "Status"},
     {PredicateKind::ArmorPctBelow, "armor-pct-below", "Armor"},
     {PredicateKind::ResistancePctBelow, "resistance-pct-below", "Resistance"},
@@ -333,9 +332,6 @@ ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
     case PredicateKind::ResistancePctAbove:
         return ArgumentKind::Percent;
 
-    case PredicateKind::CountAtLeast:
-        return ArgumentKind::Count;
-
     case PredicateKind::Any:
         return ArgumentKind::None;
 
@@ -367,8 +363,6 @@ std::string_view Describe(PredicateKind v) noexcept
         return "A fight has just begun.";
     case PredicateKind::CombatEnds:
         return "A fight has just ended; no other condition holds on that pass.";
-    case PredicateKind::CountAtLeast:
-        return "At least this many of them.";
     case PredicateKind::Status:
         return "In this state right now.";
     case PredicateKind::ArmorPctBelow:

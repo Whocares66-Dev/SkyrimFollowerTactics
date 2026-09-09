@@ -55,7 +55,7 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 | `rules[]` | in order; first match wins, as in the panel |
 | `rules[].enabled`, `rules[].label` | the row's tick and its free text. `label` is omitted when empty |
 | `if.subject`, `if.predicate` | the condition's two halves, by wire name |
-| `if.arg` | the threshold, present only for predicates that take one: a 0..1 fraction for the percent ones, a count for `count-at-least` |
+| `if.arg` | the threshold, present only for predicates that take one: a 0..1 fraction for the percent ones |
 | `if.status` | only under `status`: which status |
 | `if.damage` | only under the resistance predicates and `attacked-by`: which kind of damage |
 | `if.follower` | only when the subject is `follower`: which one, as a form |

@@ -87,7 +87,6 @@ enum class ArgumentKind : std::uint8_t
 {
     None,    // the predicate takes no argument
     Percent, // 0.0 to 1.0, shown as 0-100%
-    Count,   // a whole number of actors
 };
 
 [[nodiscard]] ArgumentKind ArgumentFor(PredicateKind predicate) noexcept;

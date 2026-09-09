@@ -349,7 +349,6 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::WeaponPoisonActive:
             return true;
         default:
-            // CountAtLeast needs a group.
             return false;
         }
 
@@ -382,11 +381,10 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         }
 
     case SubjectKind::Follower:
-        // One ally, asked about alone: everything an ally answers but the
-        // count, which is a group's -- and Any, which for a NAMED follower
-        // is "they are with us", and so worth asking.
-        return predicate == PredicateKind::Any ||
-               (predicate != PredicateKind::CountAtLeast && IsPredicateValidFor(SubjectKind::Ally, predicate));
+        // One ally, asked about alone: everything an ally answers -- and
+        // Any, which for a NAMED follower is "they are with us", and so
+        // worth asking.
+        return predicate == PredicateKind::Any || IsPredicateValidFor(SubjectKind::Ally, predicate);
 
     case SubjectKind::Enemy:
         switch (predicate)
@@ -395,7 +393,6 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::HealthPctBelow:
         case PredicateKind::MagickaPctBelow:
         case PredicateKind::StaminaPctBelow:
-        case PredicateKind::CountAtLeast:
         case PredicateKind::Attacking:
         case PredicateKind::TargetOf:
             return true;

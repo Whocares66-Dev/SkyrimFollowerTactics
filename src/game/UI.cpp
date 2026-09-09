@@ -235,8 +235,6 @@ std::string ArgumentText(ft::PredicateKind predicate, float value)
     {
     case ft::ArgumentKind::Percent:
         return (ft::IsAbove(predicate) ? "> " : "< ") + std::to_string(static_cast<int>(value * 100.0f + 0.5f)) + "%";
-    case ft::ArgumentKind::Count:
-        return ">= " + std::to_string(static_cast<int>(value));
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -258,8 +256,6 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
     {
     case ft::ArgumentKind::Percent:
         return {0.25f, 0.50f, 0.75f};
-    case ft::ArgumentKind::Count:
-        return {2.0f, 3.0f, 4.0f, 5.0f};
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -580,7 +576,7 @@ bool IsCombatPredicate(ft::PredicateKind p)
 }
 
 // The condition cascade in four groups, a divider between them: Any; the
-// three stats (and a group's count); the fight -- its edges, being
+// three stats; the fight -- its edges, being
 // attacked, a status, and the enemy's relation to the party; the
 // equipment and the field -- weapon, armour, resistance, a summon, the
 // corpses.
@@ -593,7 +589,6 @@ int ConditionGroup(ft::PredicateKind p)
     case ft::PredicateKind::HealthPctBelow:
     case ft::PredicateKind::StaminaPctBelow:
     case ft::PredicateKind::MagickaPctBelow:
-    case ft::PredicateKind::CountAtLeast:
         return 1;
     case ft::PredicateKind::CombatBegins:
     case ft::PredicateKind::CombatEnds:

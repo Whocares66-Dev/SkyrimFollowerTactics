@@ -410,31 +410,6 @@ TEST_CASE("ally conditions bind the ally, not the follower", "[binding]")
     REQUIRE(b.id == 0x202);
 }
 
-TEST_CASE("CountAtLeast asks about the group and binds the nearest member", "[binding]")
-{
-    Snapshot s = Healthy();
-    s.enemies.push_back({0x101, {50.0f, 100.0f}, 900.0f, false, false, true});
-    s.enemies.push_back({0x102, {50.0f, 100.0f}, 300.0f, false, false, true});
-
-    Rule r;
-    r.subject = SubjectKind::Enemy;
-    r.predicate = PredicateKind::CountAtLeast;
-
-    SECTION("holds when the group is big enough")
-    {
-        r.conditionArg = 2.0f;
-        const auto b = EvaluateCondition(r, s);
-        REQUIRE(b.ok);
-        REQUIRE(b.id == 0x102); // nearest
-    }
-
-    SECTION("fails when it is not")
-    {
-        r.conditionArg = 3.0f;
-        REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    }
-}
-
 TEST_CASE("the follower's own target is Enemy: Target of the follower", "[binding]")
 {
     Snapshot s = Healthy();
@@ -474,11 +449,11 @@ TEST_CASE("no binding means the rule is skipped, not fired at nobody", "[evaluat
 TEST_CASE("the subject and predicate validity matrix", "[validity]")
 {
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::MagickaPctBelow));
-    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::CountAtLeast));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Attacking));
     REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Status));
 
-    // A lone subject has no count.
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::CountAtLeast));
+    // A lone subject is not asked whom it is attacking.
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Attacking));
 
     // "Any" is offered for everyone: always true of the player and of an
     // ally, and there so a rule can aim at them under the heading a reader
@@ -947,10 +922,9 @@ TEST_CASE("a named follower is one ally asked about alone", "[follower]")
     r.subjectForm = 0x203;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
-    // Everything an ally answers, less the count.
+    // Everything an ally answers.
     REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::MagickaPctBelow));
     REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::Status));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::CountAtLeast));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::HealthLowest));
 }
 
@@ -991,11 +965,9 @@ TEST_CASE("the enemy on a member of the party, and the one a member is on", "[pa
     // Only the Enemy heading asks these.
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Attacking));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::TargetOf));
-    // Any for the player and an ally; no count for an ally.
+    // Any for the player and an ally.
     REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Any));
     REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Any));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::CountAtLeast));
-    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::CountAtLeast));
     // Under an enemy condition the action goes to that enemy, not to the
     // attacker or the follower's target; under the follower's target, to it.
     REQUIRE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Enemy));
@@ -1034,8 +1006,8 @@ TEST_CASE("an unanswerable pair reports InvalidCondition, not ConditionFalse", "
     RuleSet rs;
     Rule r;
     r.subject = SubjectKind::Self;
-    r.predicate = PredicateKind::CountAtLeast; // nonsense: a count of oneself
-    r.conditionArg = 2.0f;
+    r.predicate = PredicateKind::Attacking; // nonsense: oneself, going for a party member
+    r.subjectForm = 0;
     r.FirstAction().kind = ActionKind::DrinkMagickaPotion;
     rs.rules.push_back(r);
 
@@ -1167,11 +1139,10 @@ TEST_CASE("a different situation is still free to draw a response", "[cooldown]"
 
     Rule swarmed;
     swarmed.subject = SubjectKind::Enemy;
-    swarmed.predicate = PredicateKind::CountAtLeast;
-    swarmed.conditionArg = 2.0f;
+    swarmed.predicate = PredicateKind::Any;
     swarmed.actionTarget = ActionTargetKind::Self;
     swarmed.FirstAction().kind = ActionKind::DrinkStaminaPotion;
-    swarmed.label = "back off when swarmed";
+    swarmed.label = "back off when an enemy is near";
     rs.rules.push_back(swarmed);
 
     Snapshot s = Healthy();
@@ -2469,7 +2440,7 @@ TEST_CASE("the slug format rejects anything a translator would produce", "[vocab
 {
     REQUIRE(IsWireName("drink-strongest-health-potion"));
     REQUIRE(IsWireName("self"));
-    REQUIRE(IsWireName("count-at-least"));
+    REQUIRE(IsWireName("weapon-charge-needed"));
 
     REQUIRE_FALSE(IsWireName("Drink Strongest Healing Potion")); // display text
     REQUIRE_FALSE(IsWireName("SanteEnDessousDe"));               // a translation
@@ -2498,7 +2469,6 @@ TEST_CASE("an unknown wire name is rejected, not guessed at", "[vocabulary]")
 TEST_CASE("the argument shape tells the UI which widget to draw", "[vocabulary]")
 {
     REQUIRE(ArgumentFor(PredicateKind::HealthPctBelow) == ArgumentKind::Percent);
-    REQUIRE(ArgumentFor(PredicateKind::CountAtLeast) == ArgumentKind::Count);
 
     // A predicate that takes no argument must not be given a slider that
     // silently writes a meaningless number into the profile.
