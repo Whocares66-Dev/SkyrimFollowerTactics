@@ -1610,9 +1610,15 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
                               "- Dueling: circles, falls back\n"
                               "- Flanking: keeps a distance, stalks\n"
                               "- One or the other"));
-        s.rows.push_back(note(Row("Dual Wield", live->flags.all(Flag::kAllowDualWielding) ? "allowed" : "no"),
-                              "- May hold a weapon in each hand\n"
-                              "- Humanoids only"));
+        // A tick when allowed, as the equipped state is shown; no row at all
+        // when not.
+        if (live->flags.all(Flag::kAllowDualWielding))
+        {
+            SheetRow row = note(Row("Dual Wield", ""), "- May hold a weapon in each hand\n"
+                                                       "- Humanoids only");
+            row.icon = kGlyphTick;
+            s.rows.push_back(std::move(row));
+        }
         out.push_back(std::move(s));
     }
     {
