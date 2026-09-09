@@ -346,6 +346,7 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 }
 
 float DamageReduction(RE::Actor *actor); // below, with the armour readings
+float HiddenArmor(RE::Actor *actor);
 
 std::string ArmorNote(RE::Actor *actor)
 {
@@ -381,29 +382,35 @@ std::string ArmorNote(RE::Actor *actor)
         rating = owner->GetActorValue(RE::ActorValue::kDamageResist);
     if (std::abs(rating - sum) >= 1.0f)
         parts.push_back({"Other", rating - sum});
+    // And the engine's hidden bonus per piece worn (fArmorBaseFactor, 0.03
+    // of a blow each), in the rating's own units -- 25 a piece at the
+    // vanilla settings, the "25 armour per piece" of the wikis. The list
+    // sums to the row's number, EffectiveArmor.
+    static const float perPiece = GameSetting("fArmorBaseFactor", 0.03f);
+    const float hidden = HiddenArmor(actor);
+    if (hidden > 0.0f && perPiece > 0.0f)
+    {
+        const int pieces = static_cast<int>(actor->GetArmorBaseFactorSum() / perPiece + 0.5f);
+        parts.push_back({"Hidden bonus (x" + std::to_string(pieces) + ")", hidden});
+    }
     std::stable_sort(parts.begin(), parts.end(),
                      [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
     std::string note;
     for (const Contribution &c : parts)
-        note += c.source + ": " + Fmt("%+.0f", c.amount) + "\n";
-    note += "Rating: " + Fmt("%.0f", rating);
-
-    // Then the engine's hidden bonus per piece worn (fArmorBaseFactor, 0.03
-    // of a blow each), in the rating's own units -- 25 a piece at the
-    // vanilla settings, the "25 armour per piece" of the wikis -- and the
-    // two together as the share of a blow they turn away, which is the
-    // number in parentheses on the row.
-    static const float perPiece = GameSetting("fArmorBaseFactor", 0.03f);
-    static const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
-    const float hidden = actor->GetArmorBaseFactorSum();
-    if (hidden > 0.0f && perPiece > 0.0f && scale > 0.0f)
-    {
-        const int pieces = static_cast<int>(hidden / perPiece + 0.5f);
-        note += "\nHidden bonus (x" + std::to_string(pieces) + "): " + Fmt("%+.0f", hidden / scale);
-        note += "\nApplied: " + Fmt("%.0f", rating + hidden / scale) + " = " +
-                Fmt("%.0f%%", DamageReduction(actor) * 100.0f);
-    }
+        note += (note.empty() ? "" : "\n") + c.source + ": " + Fmt("%+.0f", c.amount);
     return note;
+}
+
+float HiddenArmor(RE::Actor *actor)
+{
+    static const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
+    return actor && scale > 0.0f ? actor->GetArmorBaseFactorSum() / scale : 0.0f;
+}
+
+float EffectiveArmor(RE::Actor *actor)
+{
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    return owner ? owner->GetActorValue(RE::ActorValue::kDamageResist) + HiddenArmor(actor) : 0.0f;
 }
 
 std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
@@ -1592,14 +1599,14 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // The armour rating the game shows is not the one it applies: each
         // piece worn adds a hidden bonus before the scaling factor, which is
         // why a displayed 609 lands at 85% and not 73%. One row: the rating
-        // the game shows, and in parentheses the share of a blow it turns
+        // WITH that bonus in its own units, so the hover text's pieces and
+        // bonus sum to it, and in parentheses the share of a blow it turns
         // away -- the same DamageReduction the Armor condition reads, so the
         // sheet and the rules cannot disagree. Robes and boots alone read
-        // 6%: two pieces' hidden bonus and no rating.
-        const float armor = av(RE::ActorValue::kDamageResist);
+        // 50 (6%): two pieces' hidden bonus and no rating.
         const float resistCap = GameSetting("fPlayerMaxResistance", 85.0f);
-        SheetRow armorRow =
-            Row("Armor", Fmt("%.0f", armor) + " (" + Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")");
+        SheetRow armorRow = Row("Armor", Fmt("%.0f", EffectiveArmor(actor)) + " (" +
+                                             Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")");
         armorRow.note = ArmorNote(actor);
         s.rows.push_back(std::move(armorRow));
         // Each resistance with where it comes from as its hover text: the

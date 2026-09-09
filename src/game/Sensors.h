@@ -254,6 +254,11 @@ struct Contribution
 // The armour rating's sources: each piece worn with its rating, and the
 // spells and enchantments on the armour value, smallest first.
 [[nodiscard]] std::string ArmorNote(RE::Actor *actor);
+// The engine's hidden per-piece bonus in the rating's own units, and the
+// rating with it added: what the Armor row shows, and what its sources sum
+// to.
+[[nodiscard]] float HiddenArmor(RE::Actor *actor);
+[[nodiscard]] float EffectiveArmor(RE::Actor *actor);
 
 // The Character tab: race, movement, defence and the equipped weapon. Display
 // only -- none of it is a rule input. Cheap reads, done in and out of combat
