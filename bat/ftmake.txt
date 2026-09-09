@@ -130,6 +130,21 @@ additem 0003EAE1 5
 additem 0003EAE5 10
 additem 00039BE8 5
 
+; Poisons, ten of each, weak and plain by what they damage: for the
+; Apply rules' weakest/strongest policies (docs/ACTIONS.md).
+;    0003A5A4   Weak Poison            damage health
+;    00073F31   Poison                 damage health
+;    00065A65   Weak Magicka Poison    damage magicka
+;    00073F39   Magicka Poison         damage magicka
+;    00065A66   Weak Stamina Poison    damage stamina
+;    00073F41   Stamina Poison         damage stamina
+additem 0003A5A4 10
+additem 00073F31 10
+additem 00065A65 10
+additem 00073F39 10
+additem 00065A66 10
+additem 00073F41 10
+
 addspell 00012FCD
 addspell 00088821
 addshout 00013E07

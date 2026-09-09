@@ -68,6 +68,7 @@ enum class ConsumableKind : std::uint8_t
     Potion,
     Food,
     Ingredient,
+    Poison, // applied to the weapon in hand, not drunk
 };
 
 } // namespace ft

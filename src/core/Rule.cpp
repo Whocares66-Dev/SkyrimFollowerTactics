@@ -16,6 +16,13 @@ double MinimumCooldown(ActionKind action) noexcept
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
     case ActionKind::EatIngredient:
+    case ActionKind::ApplyWeakestHealthPoison:
+    case ActionKind::ApplyWeakestMagickaPoison:
+    case ActionKind::ApplyWeakestStaminaPoison:
+    case ActionKind::ApplyStrongestHealthPoison:
+    case ActionKind::ApplyStrongestMagickaPoison:
+    case ActionKind::ApplyStrongestStaminaPoison:
+    case ActionKind::ApplyPoison:
         // The measured queue-to-effect latency is about two seconds, plus a
         // margin so the next evaluation sees the result of this one.
         // Deliberately not longer: one potion is often not enough, and a
@@ -80,6 +87,23 @@ bool IsConsume(ActionKind action) noexcept
     }
 }
 
+bool IsApply(ActionKind action) noexcept
+{
+    switch (action)
+    {
+    case ActionKind::ApplyWeakestHealthPoison:
+    case ActionKind::ApplyWeakestMagickaPoison:
+    case ActionKind::ApplyWeakestStaminaPoison:
+    case ActionKind::ApplyStrongestHealthPoison:
+    case ActionKind::ApplyStrongestMagickaPoison:
+    case ActionKind::ApplyStrongestStaminaPoison:
+    case ActionKind::ApplyPoison:
+        return true;
+    default:
+        return false;
+    }
+}
+
 ConsumableKind ConsumableOf(ActionKind action) noexcept
 {
     switch (action)
@@ -89,7 +113,7 @@ ConsumableKind ConsumableOf(ActionKind action) noexcept
     case ActionKind::EatIngredient:
         return ConsumableKind::Ingredient;
     default:
-        return ConsumableKind::Potion;
+        return IsApply(action) ? ConsumableKind::Poison : ConsumableKind::Potion;
     }
 }
 
@@ -287,6 +311,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::StaminaPctBelow:
         case PredicateKind::CombatBegins:
         case PredicateKind::CombatEnds:
+        case PredicateKind::WeaponUnpoisoned:
+        case PredicateKind::WeaponPoisoned:
             return true;
         default:
             // CountAtLeast needs a group.

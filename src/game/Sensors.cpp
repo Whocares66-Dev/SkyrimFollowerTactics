@@ -26,9 +26,9 @@ namespace
 // condition refuses.
 constexpr std::uint32_t kMagicNoReanimateKeyword = 0x0006F6FB;
 
-// Highest restore magnitude this potion offers for the given actor value, or 0
-// if it does not restore it at all. Poisons and food are filtered out by the
-// caller, so anything reaching here that restores health is a healing potion.
+// Highest magnitude this potion or poison has on the given actor value, or
+// 0 if it has none. The caller says which side of the bottle it is looking
+// at: a potion's effect on Health restores it, a poison's damages it.
 float RestoreMagnitude(RE::AlchemyItem *alch, RE::ActorValue av)
 {
     float best = 0.0f;
@@ -76,14 +76,44 @@ void RecordPotion(RE::AlchemyItem *alch, std::int32_t count, ft::PotionStock &st
              choice.weakestStamina);
 }
 
-// Which consumable kind an inventory object is, or nothing for what is not
-// eaten: a poison goes on a weapon, and everything else is not food.
+// The poisons, the same way: the strongest and weakest carried by what
+// they damage.
+void RecordPoison(RE::AlchemyItem *alch, std::int32_t count, ft::PotionStock &stock, PotionChoice &choice,
+                  std::array<float, 3> &strongest, std::array<float, 3> &weakest)
+{
+    const auto consider = [&](RE::ActorValue av, int &countOut, float &bestOut, RE::AlchemyItem *&chosen,
+                              float &weakestOut, RE::AlchemyItem *&cheapest) {
+        const float mag = RestoreMagnitude(alch, av);
+        if (mag <= 0.0f)
+            return;
+        countOut += count;
+        if (!chosen || mag > bestOut)
+        {
+            bestOut = mag;
+            chosen = alch;
+        }
+        if (!cheapest || mag < weakestOut)
+        {
+            weakestOut = mag;
+            cheapest = alch;
+        }
+    };
+    consider(RE::ActorValue::kHealth, stock.poisonHealthCount, strongest[0], choice.poisonHealth, weakest[0],
+             choice.weakestPoisonHealth);
+    consider(RE::ActorValue::kMagicka, stock.poisonMagickaCount, strongest[1], choice.poisonMagicka, weakest[1],
+             choice.weakestPoisonMagicka);
+    consider(RE::ActorValue::kStamina, stock.poisonStaminaCount, strongest[2], choice.poisonStamina, weakest[2],
+             choice.weakestPoisonStamina);
+}
+
+// Which consumable kind an inventory object is, or nothing for what is
+// neither eaten nor applied.
 std::optional<ft::ConsumableKind> ConsumableKindOf(RE::TESBoundObject *object)
 {
     if (auto *alch = object->As<RE::AlchemyItem>())
     {
         if (alch->IsPoison())
-            return std::nullopt;
+            return ft::ConsumableKind::Poison;
         return alch->IsFood() ? ft::ConsumableKind::Food : ft::ConsumableKind::Potion;
     }
     if (object->As<RE::IngredientItem>())
@@ -100,6 +130,8 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock, PotionChoice &choice)
         [](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::AlchemyItem) || obj.Is(RE::FormType::Ingredient); });
 
     std::array<float, 3> weakest{};
+    std::array<float, 3> poisonStrongest{};
+    std::array<float, 3> poisonWeakest{};
     for (auto &[object, entry] : inventory)
     {
         const auto count = entry.first;
@@ -114,6 +146,8 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock, PotionChoice &choice)
         // food restores too, but slowly, and is its own action.
         if (*kind == ft::ConsumableKind::Potion)
             RecordPotion(object->As<RE::AlchemyItem>(), count, stock, choice, weakest);
+        else if (*kind == ft::ConsumableKind::Poison)
+            RecordPoison(object->As<RE::AlchemyItem>(), count, stock, choice, poisonStrongest, poisonWeakest);
     }
 }
 
@@ -755,6 +789,15 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
     }
 
     ScanPotions(actor, s.potions, choice);
+    for (const bool left : {false, true})
+    {
+        auto &hand = left ? s.leftWeapon : s.rightWeapon;
+        if (auto *weapon = PoisonableWeaponIn(actor, left))
+        {
+            hand.takesPoison = true;
+            hand.poisoned = WeaponPoisoned(actor, weapon);
+        }
+    }
 
     s.potions.healthEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kHealth);
     s.potions.magickaEffectActive = RestoreEffectRunning(actor, RE::ActorValue::kMagicka);
@@ -1788,6 +1831,51 @@ std::vector<SummonView> ScanSummons(RE::Actor *actor)
         out.push_back(std::move(view));
     }
     return out;
+}
+
+RE::TESObjectWEAP *PoisonableWeaponIn(RE::Actor *actor, bool left)
+{
+    if (!actor)
+        return nullptr;
+    auto *object = actor->GetEquippedObject(left);
+    auto *weapon = object ? object->As<RE::TESObjectWEAP>() : nullptr;
+    if (!weapon)
+        return nullptr;
+    // What the inventory menu offers a poison to: any weapon but a staff
+    // (read from its poisoning routine, which checks that one type).
+    // Unarmed is a weapon record too and never in a bag. A two-hander or a
+    // bow reports from the right hand and the left reports it again; the
+    // dose sits on the one entry either way.
+    const auto type = weapon->GetWeaponType();
+    if (type == RE::WEAPON_TYPE::kStaff || type == RE::WEAPON_TYPE::kHandToHandMelee)
+        return nullptr;
+    if (left && actor->GetEquippedObject(false) == weapon)
+        return nullptr; // the right hand's two-hander, seen from the left
+    return weapon;
+}
+
+RE::TESObjectWEAP *WeaponToPoison(RE::Actor *actor)
+{
+    for (const bool left : {false, true})
+    {
+        auto *weapon = PoisonableWeaponIn(actor, left);
+        if (weapon && !WeaponPoisoned(actor, weapon))
+            return weapon;
+    }
+    return nullptr;
+}
+
+bool WeaponPoisoned(RE::Actor *actor, RE::TESObjectWEAP *weapon)
+{
+    if (!actor || !weapon)
+        return false;
+    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
+    const auto found = inventory.find(weapon);
+    if (found == inventory.end() || !found->second.second)
+        return false;
+    // The poison sits on the worn copy's extra list, which is what the
+    // engine's IsPoisoned reads across every list of the entry.
+    return found->second.second->IsPoisoned();
 }
 
 } // namespace ft::game

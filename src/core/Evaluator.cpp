@@ -370,6 +370,12 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::AttackedBy:
         held = s.traits.AttackedBy(r.damageKind);
         break;
+    case PredicateKind::WeaponUnpoisoned:
+        held = s.AnyWeaponClean();
+        break;
+    case PredicateKind::WeaponPoisoned:
+        held = s.AnyWeaponPoisoned();
+        break;
     default:
         ArmourOrResistance(s.traits, r, &held);
         break;
@@ -571,7 +577,17 @@ bool HasResource(const Action &a, const Snapshot &s)
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
     case ActionKind::EatIngredient:
+    case ActionKind::ApplyPoison:
         return a.form != 0 && s.potions.CountOf(a.form, ConsumableOf(a.kind)) > 0;
+    case ActionKind::ApplyWeakestHealthPoison:
+    case ActionKind::ApplyStrongestHealthPoison:
+        return s.potions.poisonHealthCount > 0;
+    case ActionKind::ApplyWeakestMagickaPoison:
+    case ActionKind::ApplyStrongestMagickaPoison:
+        return s.potions.poisonMagickaCount > 0;
+    case ActionKind::ApplyWeakestStaminaPoison:
+    case ActionKind::ApplyStrongestStaminaPoison:
+        return s.potions.poisonStaminaCount > 0;
 
     case ActionKind::CastSpell:
     case ActionKind::UsePower:
@@ -691,6 +707,16 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         return Verdict::Busy;
     if (!HasResource(a, snap))
         return Verdict::NoResource;
+    // A poison goes on a weapon: none in hand that takes one, and the rule
+    // is not met; one already poisoned, and it waits, as a buff rule waits
+    // on the buff.
+    if (IsApply(a.kind))
+    {
+        if (!snap.AnyWeaponTakesPoison())
+            return Verdict::NothingToPoison;
+        if (!snap.AnyWeaponClean())
+            return Verdict::EffectActive;
+    }
 
     if (IsEquip(a.kind))
     {
@@ -985,6 +1011,9 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "no enemy to point at";
         return ToString(v);
 
+    case Verdict::NothingToPoison:
+        return "no weapon in hand takes a poison";
+
     case Verdict::EffectActive:
         if (IsEquip(action))
             return "already pinned, or nothing of that kind pinned to let go";
@@ -992,6 +1021,8 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "already fighting them";
         if (action == ActionKind::UsePower || action == ActionKind::Shout)
             return "that power is still running";
+        if (IsApply(action))
+            return "every weapon in hand is already poisoned";
         return action == ActionKind::CastSpell ? "that spell is still running" : "previous dose still active";
 
     default:
@@ -1015,6 +1046,8 @@ const char *ToString(Verdict v) noexcept
         return "no target";
     case Verdict::NoResource:
         return "none in inventory";
+    case Verdict::NothingToPoison:
+        return "no weapon to poison";
     case Verdict::CannotAfford:
         return "not enough magicka";
     case Verdict::EffectActive:

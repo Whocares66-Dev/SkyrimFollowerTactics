@@ -2657,3 +2657,107 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::Shout));
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::Target));
 }
+
+TEST_CASE("an apply rule needs a weapon that takes a poison, and waits on one already poisoned", "[evaluator]")
+{
+    RuleSet rs;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::HealthPctBelow;
+    r.conditionArg = 2.0f; // always
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction().kind = ActionKind::ApplyStrongestHealthPoison;
+    rs.rules.push_back(r);
+    EvalContext ctx;
+
+    Snapshot s = Healthy();
+    s.potions.poisonHealthCount = 3;
+
+    SECTION("no weapon in hand: not met, with its own verdict")
+    {
+        Trace trace;
+        const auto d = Evaluate(rs, s, ctx, &trace);
+        REQUIRE_FALSE(d.Fired());
+        REQUIRE(trace.at(0) == Verdict::NothingToPoison);
+    }
+
+    SECTION("every weapon in hand poisoned: waits, as a buff rule waits on the buff")
+    {
+        s.rightWeapon = {true, true};
+        s.leftWeapon = {true, true};
+        Trace trace;
+        const auto d = Evaluate(rs, s, ctx, &trace);
+        REQUIRE_FALSE(d.Fired());
+        REQUIRE(trace.at(0) == Verdict::EffectActive);
+    }
+
+    SECTION("a clean weapon and a poison carried: fires")
+    {
+        s.rightWeapon = {true, false};
+        Trace trace;
+        const auto d = Evaluate(rs, s, ctx, &trace);
+        REQUIRE(d.Fired());
+        REQUIRE(d.action() == ActionKind::ApplyStrongestHealthPoison);
+    }
+
+    SECTION("a poisoned sword right and a clean dagger left: fires, for the dagger")
+    {
+        s.rightWeapon = {true, true};
+        s.leftWeapon = {true, false};
+        Trace trace;
+        const auto d = Evaluate(rs, s, ctx, &trace);
+        REQUIRE(d.Fired());
+    }
+
+    SECTION("no poison carried: none in inventory, before the weapon is asked about")
+    {
+        s.rightWeapon = {true, false};
+        s.potions.poisonHealthCount = 0;
+        Trace trace;
+        const auto d = Evaluate(rs, s, ctx, &trace);
+        REQUIRE_FALSE(d.Fired());
+        REQUIRE(trace.at(0) == Verdict::NoResource);
+    }
+}
+
+TEST_CASE("weapon poisoned and unpoisoned read each hand", "[evaluator]")
+{
+    Snapshot s = Healthy();
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction().kind = ActionKind::DrinkMagickaPotion;
+    RuleSet rs;
+    rs.rules.push_back(r);
+    // A fresh context each time: a firing sets the action's cooldown, which
+    // is not what is being asked here.
+    const auto holds = [&](PredicateKind p) {
+        EvalContext ctx;
+        rs.rules[0].predicate = p;
+        return Evaluate(rs, s, ctx).Fired();
+    };
+
+    // Nothing in hand: neither.
+    REQUIRE_FALSE(holds(PredicateKind::WeaponUnpoisoned));
+    REQUIRE_FALSE(holds(PredicateKind::WeaponPoisoned));
+    // A clean sword: unpoisoned only.
+    s.rightWeapon = {true, false};
+    REQUIRE(holds(PredicateKind::WeaponUnpoisoned));
+    REQUIRE_FALSE(holds(PredicateKind::WeaponPoisoned));
+    // A poisoned sword right and a clean dagger left: both.
+    s.rightWeapon = {true, true};
+    s.leftWeapon = {true, false};
+    REQUIRE(holds(PredicateKind::WeaponUnpoisoned));
+    REQUIRE(holds(PredicateKind::WeaponPoisoned));
+    // Both poisoned: poisoned only.
+    s.leftWeapon = {true, true};
+    REQUIRE_FALSE(holds(PredicateKind::WeaponUnpoisoned));
+    REQUIRE(holds(PredicateKind::WeaponPoisoned));
+    // A staff: nothing to say.
+    s.rightWeapon = {};
+    s.leftWeapon = {};
+    REQUIRE_FALSE(holds(PredicateKind::WeaponUnpoisoned));
+
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::WeaponUnpoisoned));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::WeaponPoisoned));
+}

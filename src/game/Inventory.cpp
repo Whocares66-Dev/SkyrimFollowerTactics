@@ -279,7 +279,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         if (alch->IsPoison())
         {
             item.type = "Poison";
-            item.category = ItemCategory::Potions;
+            item.category = ItemCategory::Poisons;
         }
         else if (alch->IsFood())
         {
@@ -450,6 +450,8 @@ const char *DisplayName(ItemCategory category)
         return "Armor";
     case ItemCategory::Potions:
         return "Potions";
+    case ItemCategory::Poisons:
+        return "Poisons";
     case ItemCategory::Food:
         return "Food";
     case ItemCategory::Ingredients:
@@ -534,6 +536,25 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
             stats.rows.push_back(std::move(equipped));
         }
         item.detail.push_back(std::move(stats));
+
+        // A poison on a weapon: a dose on one of the entry's extra lists,
+        // hits rather than seconds, with the poison's own record behind it.
+        // Named and counted here; the effects go to their own section.
+        if (item.category == ItemCategory::Weapons && entry && entry->extraLists)
+        {
+            for (auto *list : *entry->extraLists)
+            {
+                auto *dose = list ? list->GetByType<RE::ExtraPoison>() : nullptr;
+                if (!dose || !dose->poison)
+                    continue;
+                SheetSection section{"Poison", {}, {}};
+                section.rows.push_back(Row("Name", NameOf(dose->poison)));
+                section.rows.push_back(Row("Hits left", std::to_string(dose->count)));
+                item.detail.push_back(std::move(section));
+                item.poisonEffects = EffectLines(dose->poison);
+                break;
+            }
+        }
 
         // An enchantment, whether the record's or one put on at an arcane
         // enchanter: the entry answers for both.

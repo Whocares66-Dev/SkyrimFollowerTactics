@@ -2,6 +2,8 @@
 
 #include "game/Packages.h"
 #include "game/Pins.h"
+#include "game/Sensors.h"
+#include "game/Util.h"
 
 namespace ft::game
 {
@@ -45,6 +47,51 @@ ActionResult Consume(RE::Actor *actor, RE::TESBoundObject *item)
                               /*forceEquip*/ false,
                               /*playSounds*/ false,
                               /*applyNow*/ false);
+    return ActionResult::Performed;
+}
+
+// Put a poison on the weapon in hand: one dose on the worn copy's extra
+// list, one bottle out of the bag. The engine's own PoisonObject writes to
+// an entry's FIRST extra list, which for a follower with two of the sword
+// need not be the one in hand; the worn list is found here instead. The
+// dose is one hit, as the inventory menu gives a player without the
+// Concentrated Poison perk.
+ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
+{
+    if (!poison)
+        return ActionResult::MissingItem;
+    // The right hand's weapon if it is clean, else the left's: both hands
+    // dressed by two firings of the rule, and none when both carry one
+    // (the evaluator does not fire this then).
+    auto *weapon = WeaponToPoison(actor);
+    if (!weapon)
+        return ActionResult::MissingItem;
+
+    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
+    const auto found = inventory.find(weapon);
+    auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
+    if (!entry || !entry->extraLists)
+        return ActionResult::MissingItem;
+    RE::ExtraDataList *worn = nullptr;
+    for (auto *list : *entry->extraLists)
+    {
+        if (list && (list->HasType<RE::ExtraWorn>() || list->HasType<RE::ExtraWornLeft>()))
+        {
+            worn = list;
+            break;
+        }
+    }
+    if (!worn)
+        return ActionResult::MissingItem;
+
+    worn->Add(new RE::ExtraPoison(poison, 1));
+    actor->RemoveItem(poison, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+    // What the inventory menu's own routine plays after the dose goes on
+    // (read from the executable): the vial, as a UI sound. There is no
+    // character animation for it in the engine either.
+    RE::PlaySound("ITMPoisonUse");
+    logger::info("{} put {} on {}", Describe(actor), poison->GetName() ? poison->GetName() : "?",
+                 weapon->GetName() ? weapon->GetName() : "?");
     return ActionResult::Performed;
 }
 
@@ -115,6 +162,22 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         return Consume(actor, choice.weakestMagicka);
     case ft::ActionKind::DrinkWeakestStaminaPotion:
         return Consume(actor, choice.weakestStamina);
+    case ft::ActionKind::ApplyWeakestHealthPoison:
+        return ApplyPoison(actor, choice.weakestPoisonHealth);
+    case ft::ActionKind::ApplyWeakestMagickaPoison:
+        return ApplyPoison(actor, choice.weakestPoisonMagicka);
+    case ft::ActionKind::ApplyWeakestStaminaPoison:
+        return ApplyPoison(actor, choice.weakestPoisonStamina);
+    case ft::ActionKind::ApplyStrongestHealthPoison:
+        return ApplyPoison(actor, choice.poisonHealth);
+    case ft::ActionKind::ApplyStrongestMagickaPoison:
+        return ApplyPoison(actor, choice.poisonMagicka);
+    case ft::ActionKind::ApplyStrongestStaminaPoison:
+        return ApplyPoison(actor, choice.poisonStamina);
+    case ft::ActionKind::ApplyPoison: {
+        auto *poison = RE::TESForm::LookupByID<RE::AlchemyItem>(action.form);
+        return ApplyPoison(actor, poison && poison->IsPoison() ? poison : nullptr);
+    }
     case ft::ActionKind::DrinkPotion:
     case ft::ActionKind::EatFood:
         // One named potion or food. The evaluator only fires this when the

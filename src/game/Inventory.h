@@ -34,6 +34,7 @@ enum class ItemCategory : std::uint8_t
     Arrows,
     Armor,
     Potions,
+    Poisons,
     Food,
     Ingredients,
     Scrolls,
@@ -61,6 +62,10 @@ struct InventoryItem
     float armor{0.0f};  // a piece of armour's rating on her; 0 for the rest
     bool worn{false};
     bool enchanted{false};
+    // A weapon with a poison on it: the poison's effects, one per line,
+    // for the detail page's Poison section; empty for none. The row shows
+    // a poison glyph after the name.
+    std::string poisonEffects;
     // A thing held in a hand -- weapon, shield, torch -- as opposed to worn;
     // and one that only one particular hand takes: a shield or a torch on
     // the left, a mod's right-hand armour on the right.

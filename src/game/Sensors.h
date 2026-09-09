@@ -37,7 +37,26 @@ struct PotionChoice
     RE::AlchemyItem *weakestHealth{nullptr};
     RE::AlchemyItem *weakestMagicka{nullptr};
     RE::AlchemyItem *weakestStamina{nullptr};
+    // And the poisons, by what they damage.
+    RE::AlchemyItem *poisonHealth{nullptr};
+    RE::AlchemyItem *poisonMagicka{nullptr};
+    RE::AlchemyItem *poisonStamina{nullptr};
+    RE::AlchemyItem *weakestPoisonHealth{nullptr};
+    RE::AlchemyItem *weakestPoisonMagicka{nullptr};
+    RE::AlchemyItem *weakestPoisonStamina{nullptr};
 };
+
+// The weapon in a hand, if it takes a poison (anything but a staff). Null
+// for no weapon there, or a staff.
+[[nodiscard]] RE::TESObjectWEAP *PoisonableWeaponIn(RE::Actor *actor, bool left);
+
+// The weapon a poison would go on: the right hand's if it takes one and is
+// clean, else the left's on the same terms, as the inventory menu goes to
+// the right hand alone. Null when neither qualifies.
+[[nodiscard]] RE::TESObjectWEAP *WeaponToPoison(RE::Actor *actor);
+
+// Does that weapon, as the actor carries it, already have a poison on it?
+[[nodiscard]] bool WeaponPoisoned(RE::Actor *actor, RE::TESObjectWEAP *weapon);
 
 // One castable spell a follower knows, for the editor's menu.
 //

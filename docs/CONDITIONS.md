@@ -1,4 +1,4 @@
-# Conditions: Status, Armor, Resistance, Attacked By, Lowest/Highest, Summon, Corpse
+# Conditions: Status, Armor, Resistance, Attacked By, Lowest/Highest, Summon, Corpse, Weapon
 
 Design for the rule conditions built 2026-09-04 from research done the
 same day (sources at the end). All of it is built: Status, Armor with
@@ -185,3 +185,7 @@ True Armour Rating (Nexus); alandtse/CommonLibSSE-NG `Actor.cpp`,
 `MagicTarget.cpp`; the CharmedBaryon 3.7.0 headers in this build tree;
 Skyrim.esm records read through houseCARL (the 112 damage-keyworded
 effects, the `AbResist*` abilities, the armour settings and base ratings).
+
+## 7. Weapon (built and played 2026-09-08)
+
+**Weapon: Unpoisoned / Poisoned** asks about the follower's own weapons, hand by hand. Unpoisoned holds when a weapon in hand takes a poison (anything but a staff) and has none on it; Poisoned holds when a weapon in hand carries one. Each hand is asked, so with a poisoned sword right and a clean dagger left both hold, and with a spell right and a dagger left the dagger is what is asked about. Self only: the snapshot reads the follower's own hands. The typical pair: `Self: Weapon unpoisoned -> Self: Apply weakest health poison`. The Apply action then goes to the right hand's weapon if it is clean, else the left's, so two firings dress both hands, and with both poisoned it reports "poisoned" and waits. The engine's own inventory menu is stricter: it poisons the right hand only and never the left (`docs/ACTIONS.md`).

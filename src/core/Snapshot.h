@@ -136,6 +136,12 @@ struct PotionStock
     int staminaCount{0};
     float bestStaminaMagnitude{0.0f};
 
+    // Poisons carried, by what they damage. The strongest and weakest of
+    // each are chosen on the game side the way the potions are.
+    int poisonHealthCount{0};
+    int poisonMagickaCount{0};
+    int poisonStaminaCount{0};
+
     // True while a restore effect is still running on the follower.
     //
     // Vanilla alchemy Restore Health is INSTANT -- duration 0, nothing lingers --
@@ -260,6 +266,33 @@ struct Snapshot
     bool combatEnded{false};
     bool weaponDrawn{false};
     bool sneaking{false};
+    // Each hand's weapon: whether it takes a poison (anything but a staff;
+    // false with no weapon there) and whether it carries one. The Weapon
+    // poison condition reads both; an Apply rule needs a hand that takes
+    // one and is clean, the right before the left.
+    struct HandWeapon
+    {
+        bool takesPoison{false};
+        bool poisoned{false};
+        [[nodiscard]] constexpr bool Clean() const noexcept
+        {
+            return takesPoison && !poisoned;
+        }
+    };
+    HandWeapon rightWeapon;
+    HandWeapon leftWeapon;
+    [[nodiscard]] constexpr bool AnyWeaponTakesPoison() const noexcept
+    {
+        return rightWeapon.takesPoison || leftWeapon.takesPoison;
+    }
+    [[nodiscard]] constexpr bool AnyWeaponClean() const noexcept
+    {
+        return rightWeapon.Clean() || leftWeapon.Clean();
+    }
+    [[nodiscard]] constexpr bool AnyWeaponPoisoned() const noexcept
+    {
+        return rightWeapon.poisoned || leftWeapon.poisoned;
+    }
     // Seconds until the voice can shout again, 0 when it can. The engine
     // keeps this per actor -- NPCs too -- as a shout's word recovery time
     // set when the shout fires, and a Shout rule inside it reports

@@ -70,6 +70,13 @@ enum class PredicateKind : std::uint8_t
     // The subject is in the status Rule::statusKind names: poisoned,
     // burning, fleeing ... Any subject.
     Status,
+    // The follower's own weapons: is there one in hand that takes a poison
+    // and has none (Unpoisoned), or one that carries a poison (Poisoned)?
+    // Each hand is asked, so with a poisoned sword right and a clean dagger
+    // left both hold. Self only. Listed under one "Weapon"
+    // heading, above Armor, as the editor walks this enum.
+    WeaponUnpoisoned,
+    WeaponPoisoned,
     // The share of a blow the subject's armour turns away, 0 to 0.8, under
     // conditionArg. Any subject.
     ArmorPctBelow,
@@ -171,6 +178,19 @@ enum class ActionKind : std::uint8_t
     EquipArrows,
     EquipSpell,
     EquipArmor,
+    // Apply: a poison on the weapon in hand, after the equips because that
+    // is the order of the thing -- set the gear, then choose the poison.
+    // Three "weakest carried" and three "strongest carried" policies by
+    // what the poison damages, then one named poison. Needs a weapon that
+    // takes a poison in hand (anything but a staff) and not already
+    // poisoned; the evaluator reports each.
+    ApplyWeakestHealthPoison,
+    ApplyWeakestMagickaPoison,
+    ApplyWeakestStaminaPoison,
+    ApplyStrongestHealthPoison,
+    ApplyStrongestMagickaPoison,
+    ApplyStrongestStaminaPoison,
+    ApplyPoison, // one specific poison, named by actionForm
     // Consume: the three "strongest carried" potion policies, the three
     // "weakest carried" ones -- the cheap potions first, the strong ones
     // kept for when they matter -- then one named thing of each consumable
@@ -206,6 +226,8 @@ enum class ActionKind : std::uint8_t
 // The consume actions, named or by policy; and the kind a named one names
 // (Potion for the three policies, which are potions too).
 [[nodiscard]] bool IsConsume(ActionKind action) noexcept;
+// The apply-a-poison actions, which the Then cascade groups under Apply.
+[[nodiscard]] bool IsApply(ActionKind action) noexcept;
 [[nodiscard]] ConsumableKind ConsumableOf(ActionKind action) noexcept;
 
 // The three actions that fire through the package pool: a spell from a

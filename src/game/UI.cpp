@@ -89,6 +89,8 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
     // spell rule reporting "count: 0" is worse than reporting nothing. A
     // consumable the follower is out of reads as its count, the way the
     // Consume menu shows one.
+    case ft::Verdict::NothingToPoison:
+        return {"no weapon", held};
     case ft::Verdict::NoResource:
         return {action == ft::ActionKind::UsePower ? "no power"
                 : action == ft::ActionKind::Shout  ? "no shout"
@@ -97,7 +99,7 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
                                                    : "count: 0",
                 held};
     case ft::Verdict::EffectActive:
-        return {ft::IsEquip(action) ? "pinned" : "active", held};
+        return {ft::IsEquip(action) ? "pinned" : ft::IsApply(action) ? "poisoned" : "active", held};
     case ft::Verdict::AboveSkill:
         return {"too high", held};
     case ft::Verdict::Outranked:
@@ -671,15 +673,22 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 continue;
             }
 
-            // The summons, under one "Summon" heading: None, Active.
-            if (predicate == ft::PredicateKind::SummonNone || predicate == ft::PredicateKind::SummonActive)
+            // The summons, under one "Summon" heading: None, Active. The
+            // weapons the same way, under "Weapon": Unpoisoned, Poisoned.
+            const bool summon =
+                predicate == ft::PredicateKind::SummonNone || predicate == ft::PredicateKind::SummonActive;
+            const bool weaponPoison =
+                predicate == ft::PredicateKind::WeaponUnpoisoned || predicate == ft::PredicateKind::WeaponPoisoned;
+            if (summon || weaponPoison)
             {
-                if (predicate != ft::PredicateKind::SummonNone)
+                if (predicate != ft::PredicateKind::SummonNone && predicate != ft::PredicateKind::WeaponUnpoisoned)
                     continue;
-                if (!BeginCascade("Summon"))
+                if (!BeginCascade(summon ? "Summon" : "Weapon"))
                     continue;
-                for (const auto [which, label] : {std::pair{ft::PredicateKind::SummonNone, "None"},
-                                                  std::pair{ft::PredicateKind::SummonActive, "Active"}})
+                const auto none = summon ? ft::PredicateKind::SummonNone : ft::PredicateKind::WeaponUnpoisoned;
+                const auto active = summon ? ft::PredicateKind::SummonActive : ft::PredicateKind::WeaponPoisoned;
+                for (const auto [which, label] : {std::pair{none, summon ? "None" : "Unpoisoned"},
+                                                  std::pair{active, summon ? "Active" : "Poisoned"}})
                 {
                     const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which;
                     if (CascadeItem(label, selected))
@@ -901,7 +910,7 @@ bool TakesSpell(ft::ActionKind action)
 bool NamesConsumable(ft::ActionKind action)
 {
     return action == ft::ActionKind::DrinkPotion || action == ft::ActionKind::EatFood ||
-           action == ft::ActionKind::EatIngredient;
+           action == ft::ActionKind::EatIngredient || action == ft::ActionKind::ApplyPoison;
 }
 
 // Could a thing with this grip be pinned in this hand, as the equip menu
@@ -981,9 +990,9 @@ std::string VerdictTooltip(ft::Verdict verdict, ft::ActionKind action, const Fol
 std::string DrinkSubmenuLabel(ft::ActionKind action)
 {
     std::string name(ft::DisplayName(action));
-    constexpr std::string_view prefix = "Drink ";
-    if (name.rfind(prefix, 0) == 0)
-        name.erase(0, prefix.size());
+    for (const std::string_view prefix : {"Drink ", "Apply "})
+        if (name.rfind(prefix, 0) == 0)
+            name.erase(0, prefix.size());
     if (!name.empty())
         name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
     return name;
@@ -1021,7 +1030,9 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     {
         if (act.form == 0)
             return base + "...";
-        const char *verb = act.kind == ft::ActionKind::DrinkPotion ? "Drink " : "Eat ";
+        const char *verb = act.kind == ft::ActionKind::DrinkPotion   ? "Drink "
+                           : act.kind == ft::ActionKind::ApplyPoison ? "Apply "
+                                                                     : "Eat ";
         for (const auto &option : view.consumables)
             if (option.form == act.form && option.kind == ft::ConsumableOf(act.kind))
                 return verb + option.name;
@@ -1248,8 +1259,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
 
             if (BeginCascade("Potion"))
             {
-                // The weakest of each above the strongest: the cheap potion
-                // is the usual choice, the strong one the reserve.
+                // The strongest of each, then the weakest.
                 const auto policy = [&](ft::ActionKind kind) {
                     const bool selected = here && act.kind == kind;
                     if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
@@ -1261,12 +1271,12 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                     if (Im::IsItemHovered(0))
                         Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
                 };
-                for (auto kind : {ft::ActionKind::DrinkWeakestHealthPotion, ft::ActionKind::DrinkWeakestStaminaPotion,
-                                  ft::ActionKind::DrinkWeakestMagickaPotion})
-                    policy(kind);
-                Im::Separator();
                 for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
                                   ft::ActionKind::DrinkMagickaPotion})
+                    policy(kind);
+                Im::Separator();
+                for (auto kind : {ft::ActionKind::DrinkWeakestHealthPotion, ft::ActionKind::DrinkWeakestStaminaPotion,
+                                  ft::ActionKind::DrinkWeakestMagickaPotion})
                     policy(kind);
                 if (carried(ft::ConsumableKind::Potion))
                 {
@@ -1282,6 +1292,57 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                     continue;
                 named(kind);
                 Im::EndMenu();
+            }
+            Im::EndMenu();
+            continue;
+        }
+
+        // The poisons under one "Apply" heading, drawn where the first of
+        // them falls, which is just after Equip: the weakest of each, the
+        // strongest of each, then every poison carried by name.
+        if (ft::IsApply(action))
+        {
+            if (action != ft::ActionKind::ApplyWeakestHealthPoison)
+                continue;
+            if (!BeginCascade("Apply"))
+                continue;
+            const auto policy = [&](ft::ActionKind kind) {
+                const bool selected = here && act.kind == kind;
+                if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
+                {
+                    act.kind = kind;
+                    act.form = 0;
+                    choose();
+                }
+                if (Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+            };
+            for (auto kind : {ft::ActionKind::ApplyStrongestHealthPoison, ft::ActionKind::ApplyStrongestStaminaPoison,
+                              ft::ActionKind::ApplyStrongestMagickaPoison})
+                policy(kind);
+            Im::Separator();
+            for (auto kind : {ft::ActionKind::ApplyWeakestHealthPoison, ft::ActionKind::ApplyWeakestStaminaPoison,
+                              ft::ActionKind::ApplyWeakestMagickaPoison})
+                policy(kind);
+            bool any = false;
+            for (const auto &option : view.consumables)
+                any = any || option.kind == ft::ConsumableKind::Poison;
+            if (any)
+            {
+                Im::Separator();
+                for (const auto &option : view.consumables)
+                {
+                    if (option.kind != ft::ConsumableKind::Poison)
+                        continue;
+                    const std::string label = option.name + " (" + std::to_string(option.count) + ")";
+                    const bool selected = here && act.kind == ft::ActionKind::ApplyPoison && act.form == option.form;
+                    if (CascadeItem(label.c_str(), selected))
+                    {
+                        act.kind = ft::ActionKind::ApplyPoison;
+                        act.form = option.form;
+                        choose();
+                    }
+                }
             }
             Im::EndMenu();
             continue;
@@ -2345,6 +2406,8 @@ unsigned IconFor(ItemCategory category)
         return 0xF553; // tshirt
     case ItemCategory::Potions:
         return 0xF0C3; // flask
+    case ItemCategory::Poisons:
+        return 0xF714; // skull-crossbones
     case ItemCategory::Food:
         return 0xF5D1; // apple-alt
     case ItemCategory::Ingredients:
@@ -2906,6 +2969,20 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             Im::TextColored(kEnchanted, "%s", name.c_str());
         else
             Im::Text("%s", name.c_str());
+        // A poisoned weapon: the poison glyph after the name and count, as
+        // the game's own inventory marks one.
+        if (!item->poisonEffects.empty())
+        {
+            // Drawn as the pin is, at kPinScale: a font glyph fills its em
+            // and reads too big beside text at full size.
+            Im::SameLine(0.0f, kCellPadX);
+            const Im::ImVec2 at = Im::GetCursorScreenPos();
+            const float box = Im::GetFontSize();
+            const float h = Im::GetTextLineHeight();
+            DrawCodepoint(Im::GetWindowDrawList(), 0xF714, at, {at.x + box, at.y + h},
+                          Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), kPinScale); // skull-crossbones
+            Im::Dummy({box, h});
+        }
 
         Im::TableNextColumn();
         Im::Text("%s", item->type.c_str());
@@ -3022,6 +3099,14 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
     {
         CentredHeading("Effects");
         BulletedLines(item.effects);
+        Im::Spacing();
+    }
+    // The poison's effects under the Poison section's own heading, so an
+    // enchanted and poisoned blade reads as two things, which it is.
+    if (!item.poisonEffects.empty())
+    {
+        CentredHeading("Poison effects");
+        BulletedLines(item.poisonEffects);
         Im::Spacing();
     }
     if (!item.description.empty())

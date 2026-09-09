@@ -25,6 +25,7 @@ enum class Verdict : std::uint8_t
     ActionCooldown,
     NoTarget,
     NoResource,
+    NothingToPoison,  // an Apply rule with no weapon in hand that takes a poison
     CannotAfford,     // knows the spell, cannot pay for it right now
     EffectActive,     // a previous dose is still running; or the thing is already pinned
     AboveSkill,       // a spell above the follower's skill: neither cast nor pinned, so cast and equip agree
