@@ -134,6 +134,11 @@ struct Slot
     // nothing is lent; restored on release.
     RE::TESNPC *voiceOf = nullptr;
     RE::BGSVoiceType *ownVoice = nullptr;
+    // For a follower outside the vanilla alias: the record was put at the
+    // front of one of their alias instances' package arrays (PutOnStack),
+    // and comes off on release by a fresh walk of those arrays -- never a
+    // stored pointer, since the arrays are the actor's and go with them.
+    bool onStack = false;
     // The record's one condition; the lease points its parameter at the
     // holder.
     RE::TESConditionItem *condition = nullptr;
@@ -730,8 +735,88 @@ void ReturnShoutVoice(std::size_t i)
     g_pool[i].ownVoice = nullptr;
 }
 
+// A follower in no alias with a combat-override list -- Serana on
+// Dawnguard's own quest, a follower their author's quest drives -- runs the
+// packages of the aliases they fill, each alias's instanced for them as an
+// array on the actor (ExtraAliasInstanceArray). The array whose packages
+// include the one running now is the stack that has them in the fight, so
+// the record goes at its front, where it is evaluated first; the lease's
+// condition gates it as on the list. The created-package route
+// (PutCreatedPackage) was tried first and is not evaluated in a fight
+// (Nordic Souls, 2026-09-09: her follow package stayed current).
+RE::BSTArray<RE::TESPackage *> *PutOnStack(RE::Actor *actor, RE::TESPackage *pkg)
+{
+    auto *extra = actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
+    if (!extra)
+        return nullptr;
+    const auto *running = actor->GetCurrentPackage();
+    RE::BSTArray<RE::TESPackage *> *chosen = nullptr;
+    const RE::BGSRefAliasInstanceData *chosenInst = nullptr;
+    std::uint32_t most = 0;
+    for (const auto *inst : extra->aliases)
+    {
+        if (!inst || !inst->instancedPackages)
+            continue;
+        auto *packages = const_cast<RE::BSTArray<RE::TESPackage *> *>(inst->instancedPackages);
+        const bool holdsRunning = running && std::find(packages->begin(), packages->end(), running) != packages->end();
+        // The array running her now; failing that, the fullest, which is
+        // the quest that drives her.
+        if (holdsRunning || (!chosen && packages->size() > most))
+        {
+            chosen = packages;
+            chosenInst = inst;
+            most = packages->size();
+            if (holdsRunning)
+                break;
+        }
+    }
+    if (!chosen)
+        return nullptr;
+    std::vector<RE::TESPackage *> keep(chosen->begin(), chosen->end());
+    chosen->clear();
+    chosen->push_back(pkg);
+    for (auto *p : keep)
+        if (p != pkg)
+            chosen->push_back(p);
+    logger::info("  {} at the front of {} \"{}\" alias {} ({} packages)", pkg->GetFormID(),
+                 chosenInst->quest ? fmt::format("{:08X}", chosenInst->quest->GetFormID()) : "?",
+                 chosenInst->quest && chosenInst->quest->GetFormEditorID() ? chosenInst->quest->GetFormEditorID() : "",
+                 chosenInst->alias ? chosenInst->alias->aliasID : 0xFFFFFFFF, chosen->size());
+    return chosen;
+}
+
+void TakeOffStack(RE::Actor *actor, RE::TESPackage *pkg)
+{
+    auto *extra = actor ? actor->extraList.GetByType<RE::ExtraAliasInstanceArray>() : nullptr;
+    if (!extra)
+        return;
+    for (const auto *inst : extra->aliases)
+    {
+        if (!inst || !inst->instancedPackages)
+            continue;
+        auto *packages = const_cast<RE::BSTArray<RE::TESPackage *> *>(inst->instancedPackages);
+        std::vector<RE::TESPackage *> keep;
+        for (auto *p : *packages)
+            if (p != pkg)
+                keep.push_back(p);
+        if (keep.size() == packages->size())
+            continue;
+        packages->clear();
+        for (auto *p : keep)
+            packages->push_back(p);
+    }
+}
+
 void Release(std::size_t i)
 {
+    // The record comes off the stack it was put on, if it was, while the
+    // lease still knows whose.
+    if (g_pool[i].onStack && g_pool[i].lease)
+    {
+        if (auto actor = g_pool[i].lease->Actor())
+            TakeOffStack(actor.get(), g_slots[i]);
+    }
+    g_pool[i].onStack = false;
     // The wrapper comes off before the lease goes: the lease is what still
     // knows whose list it is in.
     if (g_pool[i].wrapper && g_pool[i].lease)
@@ -912,16 +997,12 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
     // In the vanilla follower alias, the record reaches her through that
     // alias's combat-override list. Not in it -- Serana, on Dawnguard's own
     // quest; a follower a framework or their own quest drives -- the list
-    // is never consulted, and the record is put on her directly instead,
-    // as the engine's own created package: what Papyrus does to walk an
-    // actor somewhere, ahead of whatever her quests give her. Not owned by
-    // her (the record is ours to keep) and temporary (dropped once done or
-    // invalid: the lease's condition goes false on release). Whether the
-    // AI runs it in a fight is measured by the "OURS" line below
-    // (docs/MAGIC.md).
+    // is never consulted, and the record goes at the front of the package
+    // stack that runs her instead (PutOnStack). Whether the AI takes it in
+    // a fight is measured by the "OURS" line below (docs/MAGIC.md).
     const bool inAlias = InFollowerAlias(actor);
     logger::info("  {} in the DialogueFollower alias: {}", actor->GetName() ? actor->GetName() : "?",
-                 inAlias ? "yes" : "NO -- the record goes on them directly");
+                 inAlias ? "yes" : "NO -- the record goes on their own stack");
 
     slot.armedAt = TacticsSeconds();
     // The window covers the AI's start-up latency. For a stream it is
@@ -945,8 +1026,12 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
     PutInLists(g_slots[chosen]);
     slot.lease.emplace(actor, slot.condition);
     if (!inAlias)
-        actor->PutCreatedPackage(g_slots[chosen], /*temporary*/ true, /*owned by her*/ false,
-                                 /*allow from furniture*/ false);
+    {
+        slot.onStack = PutOnStack(actor, g_slots[chosen]) != nullptr;
+        if (!slot.onStack)
+            logger::info("  {} fills no alias with packages; the record has no way to them",
+                         actor->GetName() ? actor->GetName() : "?");
+    }
 
     // Immediate, or she finishes whatever she is doing first and the rule's
     // timing -- the entire point of this route -- is lost.
@@ -1181,6 +1266,10 @@ void ResetPackages()
             slot.power = nullptr;
         }
         ReturnShoutVoice(i);
+        // A stack entry is not taken off here: the arrays are the actor's
+        // and are rebuilt with them on load; the record's condition is
+        // false by then and the entry never passes.
+        slot.onStack = false;
         if (slot.lease)
             slot.lease->Abandon();
         slot.lease.reset();
