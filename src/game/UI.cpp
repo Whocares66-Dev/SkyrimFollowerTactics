@@ -2271,6 +2271,66 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
     Im::EndTable();
 }
 
+// A perk page's conditions: one heading, a label per source when there is
+// more than one, and a table of call, comparison and a tick where met.
+void DrawConditionTables(const std::vector<SheetSection> &sections)
+{
+    if (sections.empty())
+        return;
+    CentredHeading("Conditions");
+    float callWidth = TextWidth("Condition");
+    float valueWidth = TextWidth("Value");
+    for (const auto &section : sections)
+        for (const auto &row : section.rows)
+        {
+            callWidth = (std::max)(callWidth, TextWidth(row.label));
+            valueWidth = (std::max)(valueWidth, TextWidth(row.value));
+        }
+    const float pad = 2.0f * kCellPadX + 8.0f;
+    Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 4.0f));
+    bool first = true;
+    for (const auto &section : sections)
+    {
+        if (sections.size() > 1)
+        {
+            if (!first)
+            {
+                Im::Spacing();
+                Im::Spacing();
+            }
+            Im::SetCursorPosX(Im::GetCursorPosX() + kCellPadX);
+            Im::Text("%s", section.title.c_str());
+        }
+        first = false;
+        const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
+        if (!Im::BeginTable(("conditions##" + section.title).c_str(), 3, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+            continue;
+        Im::TableSetupColumn("Condition", Im::ImGuiTableColumnFlags_WidthFixed, callWidth + pad, 0);
+        Im::TableSetupColumn("Value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
+        Im::TableSetupColumn("Met", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+        PlainHeaderRow({"Condition", "Value", "Met"});
+        for (const auto &row : section.rows)
+        {
+            Im::TableNextRow(0, 0.0f);
+            Im::TableSetColumnIndex(0);
+            Im::Text("%s", row.label.c_str());
+            Im::TableSetColumnIndex(1);
+            Im::Text("%s", row.value.c_str());
+            Im::TableSetColumnIndex(2);
+            if (row.icon != 0)
+            {
+                FontAwesome::PushSolid();
+                Im::Text("%s", Utf8(row.icon).c_str());
+                FontAwesome::Pop();
+            }
+        }
+        Im::EndTable();
+    }
+    Im::PopStyleVar(1);
+    Im::Spacing();
+    Im::Spacing();
+}
+
 void DrawPerkDrawer(const SheetRow &row, float left, float right, const std::function<void(std::uint32_t)> &onLink = {})
 {
     constexpr float kGap = 6.0f;
@@ -4187,7 +4247,13 @@ void DrawSkills(const FollowerView &view)
             Im::AlignTextToFramePadding();
             Im::Text("%s", page->name.c_str());
             Im::Spacing();
-            DrawSections(page->sections, false);
+            // The perk's facts; its conditions; then what it does.
+            const auto split = page->sections.begin() + (page->sections.empty() ? 0 : 1);
+            const std::vector<SheetSection> info(page->sections.begin(), split);
+            const std::vector<SheetSection> rest(split, page->sections.end());
+            DrawSections(info, false);
+            DrawConditionTables(page->conditions);
+            DrawSections(rest, false);
             if (!page->description.empty())
             {
                 Im::Spacing();

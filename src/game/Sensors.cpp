@@ -1873,6 +1873,123 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
 
 // The entry points by number, from the engine's enum (BGSEntryPoint.h),
 // in the Creation Kit's words: "Mod Attack Damage", "Mod Spell Cost".
+#include "game/ConditionNames.inc"
+
+// A condition's call, as the Creation Kit shows it: "HasSpell(Whirlwind
+// Cloak)", "GetActorValue(Alteration)". A parameter is a form or a number
+// and nothing says which; a heap pointer is above the 32-bit line and a
+// number is not, so that is the test. Trailing zero parameters are dropped,
+// as a function with no parameters holds zeros there.
+std::string HexId(std::uint32_t id)
+{
+    char text[16];
+    std::snprintf(text, sizeof(text), "%08X", id);
+    return text;
+}
+
+std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
+{
+    const auto id = static_cast<std::size_t>(data.functionData.function.get());
+    const char *name = id < kConditionNames.size() && *kConditionNames[id] ? kConditionNames[id] : nullptr;
+    std::string call = name ? name : "Function " + std::to_string(id);
+
+    using Fn = RE::FUNCTION_DATA::FunctionID;
+    const auto fn = data.functionData.function.get();
+    const bool actorValue = fn == Fn::kGetActorValue || fn == Fn::kGetBaseActorValue ||
+                            fn == Fn::kGetPermanentActorValue || fn == Fn::kGetActorValuePercent;
+    std::vector<std::string> args;
+    for (const void *param : data.functionData.params)
+    {
+        const auto raw = reinterpret_cast<std::uintptr_t>(param);
+        if (raw > 0xFFFFFFFFu)
+        {
+            const auto *form = static_cast<const RE::TESForm *>(param);
+            const char *formName = form->GetName();
+            args.push_back(formName && *formName ? formName : HexId(form->GetFormID()));
+        }
+        else if (actorValue && args.empty())
+        {
+            auto *list = RE::ActorValueList::GetSingleton();
+            auto *info = list ? list->GetActorValueInfo(static_cast<RE::ActorValue>(raw)) : nullptr;
+            args.push_back(info && info->GetFullName() && *info->GetFullName() ? info->GetFullName()
+                                                                               : std::to_string(raw));
+        }
+        else
+            args.push_back(std::to_string(raw));
+    }
+    while (!args.empty() && args.back() == "0")
+        args.pop_back();
+    call += "(";
+    for (std::size_t i = 0; i < args.size(); ++i)
+        call += (i ? ", " : "") + args[i];
+    call += ")";
+
+    using Object = RE::CONDITIONITEMOBJECT;
+    switch (data.object.get())
+    {
+    case Object::kSelf:
+        break;
+    case Object::kTarget:
+        call += " on Target";
+        break;
+    case Object::kCombatTarget:
+        call += " on Combat Target";
+        break;
+    case Object::kRef:
+        call += " on Reference";
+        break;
+    case Object::kLinkedRef:
+        call += " on Linked Reference";
+        break;
+    case Object::kQuestAlias:
+        call += " on Quest Alias";
+        break;
+    case Object::kPackData:
+        call += " on Package Data";
+        break;
+    case Object::kEventData:
+        call += " on Event Data";
+        break;
+    case Object::kCommandTarget:
+        call += " on Command Target";
+        break;
+    }
+    return call;
+}
+
+// A condition list as rows: the call, the comparison ("== 1", "OR" after
+// it where the list reads so), and a tick where the actor meets it now.
+std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition)
+{
+    std::vector<SheetRow> rows;
+    for (const auto *item = condition.head; item; item = item->next)
+    {
+        const auto &data = item->data;
+        // The comparison, in the enum's order: ==, !=, >, >=, <, <=.
+        constexpr std::array<const char *, 6> kOps{"==", "!=", ">", ">=", "<", "<="};
+        const auto opIndex = static_cast<std::size_t>(data.flags.opCode);
+        const char *op = opIndex < kOps.size() ? kOps[opIndex] : "?";
+        std::string value;
+        if (data.flags.global)
+        {
+            const auto *global = data.comparisonValue.g;
+            value = global && global->GetFormEditorID() && *global->GetFormEditorID()
+                        ? global->GetFormEditorID()
+                        : (global ? HexId(global->GetFormID()) : "?");
+            if (global)
+                value += Fmt(" (%g)", global->value);
+        }
+        else
+            value = Fmt("%g", data.comparisonValue.f);
+        SheetRow row = Row(ConditionCall(data), std::string(op) + " " + value + (data.flags.isOR ? "  OR" : ""));
+        RE::ConditionCheckParams params(actor, actor);
+        if (item->IsTrue(params))
+            row.icon = kGlyphTick;
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
 constexpr std::array<const char *, 92> kEntryPointNames{{
     "Calculate Weapon Damage",
     "Calculate My Critical Hit Chance",
@@ -2084,6 +2201,23 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
                 entries.rows.push_back(EntryRow(entry));
         if (!entries.rows.empty())
             p.sections.push_back(std::move(entries));
+
+        // The conditions: the perk's own, then each entry's on its owner --
+        // a mod's perk given to everyone is gated there, on the power that
+        // turns it on.
+        if (perk->perkConditions)
+            p.conditions.push_back({"Perk", ConditionRows(actor, perk->perkConditions), "Conditions"});
+        for (const auto *entry : perk->perkEntries)
+        {
+            if (!entry || entry->GetType() != RE::PERK_ENTRY_TYPE::kEntryPoint)
+                continue;
+            const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
+            if (point->conditions.size() == 0 || !point->conditions[0])
+                continue;
+            const auto index = static_cast<std::size_t>(point->entryData.entryPoint.get());
+            const char *name = index < kEntryPointNames.size() ? kEntryPointNames[index] : "?";
+            p.conditions.push_back({name, ConditionRows(actor, point->conditions[0]), "Conditions"});
+        }
         out.push_back(std::move(p));
     };
 
