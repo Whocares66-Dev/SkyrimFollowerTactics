@@ -141,6 +141,10 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
         return {"no magicka", held};
     case ft::Verdict::CannotDualCast:
         return {"no perk", held};
+    case ft::Verdict::NoMeleeWeapon:
+        return {"no weapon", held};
+    case ft::Verdict::NoStamina:
+        return {"no stamina", held};
     case ft::Verdict::Busy:
         return {"busy", held};
     case ft::Verdict::Casting:
@@ -1422,14 +1426,17 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
     };
 
-    // Fight this one. Says what it does in its name; no tooltip.
-    if (valid(ft::ActionKind::Attack))
+    // Attack this one; one power attack. Each says what it does in its
+    // name; no tooltip.
+    for (const auto kind : {ft::ActionKind::Attack, ft::ActionKind::PowerAttack})
     {
+        if (!valid(kind))
+            continue;
         group(0);
-        const bool selected = here && act.kind == ft::ActionKind::Attack;
-        if (CascadeItem(std::string(ft::DisplayName(ft::ActionKind::Attack)).c_str(), selected))
+        const bool selected = here && act.kind == kind;
+        if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
         {
-            act.kind = ft::ActionKind::Attack;
+            act.kind = kind;
             act.form = 0;
             act.hand = Hand::None;
             choose();

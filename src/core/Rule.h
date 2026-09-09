@@ -183,6 +183,13 @@ enum class ActionKind : std::uint8_t
     // engine, only a target; this sets it. Done already when they are the
     // current target, so the rule falls through instead of re-firing.
     Attack,
+    // One power attack, now, with what is in the hands: the right hand's
+    // blade or two-hander, the left's alone, both at once, or the fists;
+    // never a bow, a staff or a spell hand. At an enemy, as Attack is: it
+    // points the follower at them first when they are not the target.
+    // Needs the stamina the swing costs, which the snapshot prices. One
+    // swing per firing.
+    PowerAttack,
     // The equip actions PIN: what they put on stays on, against the engine's
     // own swap and the combat AI's choice, until another rule or the panel
     // lets it go. A plain equip would not do -- the AI re-derives what to

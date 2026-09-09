@@ -113,7 +113,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 24> kActions{{
+constexpr std::array<Entry<ActionKind>, 25> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. That is
     // how "drink-weakest-health-potion" -- don't burn a strong potion on a
@@ -121,6 +121,7 @@ constexpr std::array<Entry<ActionKind>, 24> kActions{{
     // existing one.
     {ActionKind::None, "none", "None"},
     {ActionKind::Attack, "attack", "Attack"},
+    {ActionKind::PowerAttack, "power-attack", "Power Attack"},
     {ActionKind::EquipWeapon, "equip-weapon", "Equip weapon"},
     {ActionKind::EquipArrows, "equip-arrows", "Equip arrows"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
@@ -472,6 +473,9 @@ std::string_view Describe(ActionKind v) noexcept
     case ActionKind::Attack:
         return "Attack them: make them the combat target, and fight however the follower fights. Nothing happens "
                "if they already are.";
+    case ActionKind::PowerAttack:
+        return "One power attack at them with what is in hand -- a blade, a two-hander, both hands, the fists -- "
+               "pointing the follower at them first if need be. Needs the stamina it costs.";
     default:
         return "";
     }

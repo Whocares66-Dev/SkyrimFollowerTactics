@@ -101,6 +101,24 @@ struct SpellOption
     Kind kind{Kind::Spell};
 };
 
+// A power attack with what the actor holds: the animation event that
+// starts it, chosen by the hands -- the right hand's blade or two-hander
+// (attackPowerStartInPlace), the left's alone (...LeftHand), both at once
+// (...DualWield), the fists (the right hand's event) -- and the stamina it
+// costs. No event for a bow, a staff or a spell in the hand that would
+// swing: those bash or cast. The race record's attack data carries the
+// events and their multipliers (docs/ACTIONS.md 6).
+struct PowerAttackPlan
+{
+    const char *event{nullptr};
+    float stamina{0.0f};
+    [[nodiscard]] bool Possible() const noexcept
+    {
+        return event != nullptr;
+    }
+};
+[[nodiscard]] PowerAttackPlan PlanPowerAttack(RE::Actor *actor);
+
 // One consumable she carries -- a potion, a food, an ingredient -- for the
 // editor's Consume menu.
 struct ConsumableOption

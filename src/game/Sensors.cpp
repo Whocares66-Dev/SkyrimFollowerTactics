@@ -641,6 +641,89 @@ RE::EnchantmentItem *EnchantmentOn(RE::Actor *actor, RE::TESObjectWEAP *weapon)
     return weapon->formEnchanting;
 }
 
+// A weapon that swings: a blade, an axe, a mace, a two-hander. Not a bow,
+// a crossbow or a staff, which bash instead.
+bool Swings(const RE::TESObjectWEAP *weapon)
+{
+    if (!weapon)
+        return false;
+    switch (weapon->GetWeaponType())
+    {
+    case RE::WEAPON_TYPE::kHandToHandMelee:
+    case RE::WEAPON_TYPE::kOneHandSword:
+    case RE::WEAPON_TYPE::kOneHandDagger:
+    case RE::WEAPON_TYPE::kOneHandAxe:
+    case RE::WEAPON_TYPE::kOneHandMace:
+    case RE::WEAPON_TYPE::kTwoHandSword:
+    case RE::WEAPON_TYPE::kTwoHandAxe:
+        return true;
+    default:
+        return false;
+    }
+}
+
+PowerAttackPlan PlanPowerAttack(RE::Actor *actor)
+{
+    PowerAttackPlan plan;
+    if (!actor)
+        return plan;
+    RE::TESForm *rightHeld = actor->GetEquippedObject(false);
+    RE::TESForm *leftHeld = actor->GetEquippedObject(true);
+    auto *right = rightHeld ? rightHeld->As<RE::TESObjectWEAP>() : nullptr;
+    auto *left = leftHeld ? leftHeld->As<RE::TESObjectWEAP>() : nullptr;
+    const bool rightSwings = Swings(right);
+    const bool leftSwings = Swings(left) && left->GetWeaponType() != RE::WEAPON_TYPE::kHandToHandMelee;
+    const bool fists = !rightHeld && !leftHeld;
+
+    // The attack, by the hands; its stamina multiplier is the race record's
+    // for that attack (1 for a one-hand or two-hand power attack, 0.5 for
+    // the dual-wield one, vanilla's humanoid races).
+    float weight = 0.0f;
+    float attackMult = 1.0f;
+    const RE::TESObjectWEAP *priced = nullptr;
+    if (rightSwings && leftSwings)
+    {
+        plan.event = "attackPowerStartDualWield";
+        weight = right->GetWeight() + left->GetWeight();
+        attackMult = 0.5f;
+        priced = right;
+    }
+    else if (rightSwings)
+    {
+        plan.event = "attackPowerStartInPlace";
+        weight = right->GetWeight();
+        priced = right;
+    }
+    else if (leftSwings && !rightHeld)
+    {
+        plan.event = "attackPowerStartInPlaceLeftHand";
+        weight = left->GetWeight();
+        priced = left;
+    }
+    else if (fists)
+    {
+        plan.event = "attackPowerStartInPlace";
+    }
+    else
+    {
+        return plan;
+    }
+
+    // The cost: (fStaminaAttackWeaponBase + weight * fStaminaAttackWeaponMult)
+    // times the attack's multiplier, then the actor's perks through the Mod
+    // Power Attack Stamina entry point, which takes the weapon. Vanilla's
+    // settings are 20 and 1. The formula is UESP's; not yet checked against
+    // the engine.
+    float cost =
+        (GameSetting("fStaminaAttackWeaponBase", 20.0f) + weight * GameSetting("fStaminaAttackWeaponMult", 1.0f)) *
+        attackMult;
+    if (priced)
+        RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModPowerAttackStamina, actor,
+                                            const_cast<RE::TESObjectWEAP *>(priced), &cost);
+    plan.stamina = (std::max)(0.0f, cost);
+    return plan;
+}
+
 // What the actor is wielding, a bit per DamageKind: a blade is Melee, a
 // bow or crossbow Ranged, a spell or a staff Magic; and the kind of damage
 // any of it does -- the enchantment's, the staff's or the spell's effects,
@@ -808,6 +891,11 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     {
         s.weaponDrawn = state->IsWeaponDrawn();
         s.sneaking = state->IsSneaking();
+    }
+    {
+        const PowerAttackPlan swing = PlanPowerAttack(actor);
+        s.canPowerAttack = swing.Possible();
+        s.powerAttackCost = swing.stamina;
     }
 
     s.traits = ReadTraits(actor);

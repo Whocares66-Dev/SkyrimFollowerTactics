@@ -357,6 +357,13 @@ struct Snapshot
     Stat stamina{};
 
     bool inCombat{false};
+    // A power attack with what is in the hands: whether one is possible --
+    // a melee weapon or the fists, not a bow, a staff or a spell -- and the
+    // stamina it costs the actor, priced on the game side from the weapon's
+    // weight, the attack's own multiplier and the actor's perks. The
+    // PowerAttack action reads both.
+    bool canPowerAttack{false};
+    float powerAttackCost{0.0f};
     // The edges: this is the first evaluation of a fight, or the one
     // farewell evaluation after it. On the farewell pass only CombatEnds
     // holds -- see PredicateKind.

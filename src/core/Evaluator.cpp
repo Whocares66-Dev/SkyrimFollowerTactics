@@ -677,7 +677,7 @@ namespace
 // consecutive ticks, and per-target keys would allow exactly that.
 EvalContext::ActionKey CooldownKey(const Action &a, ActorId target)
 {
-    if (a.kind == ActionKind::Attack)
+    if (a.kind == ActionKind::Attack || a.kind == ActionKind::PowerAttack)
         return {a.kind, 0, 0, {}};
     return {a.kind, a.form, target, a.effect};
 }
@@ -796,6 +796,19 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
                 return Verdict::NoTarget;
             if (target == snap.currentTarget)
                 return Verdict::EffectActive;
+        }
+        // A power attack: in a fight, at one who is still an enemy, with
+        // something in hand that swings, and the stamina it costs.
+        if (a.kind == ActionKind::PowerAttack)
+        {
+            if (!snap.inCombat)
+                return Verdict::NoResource;
+            if (!snap.canPowerAttack)
+                return Verdict::NoMeleeWeapon;
+            if (target == 0 || !FindEnemy(snap, target))
+                return Verdict::NoTarget;
+            if (snap.stamina.current < snap.powerAttackCost)
+                return Verdict::NoStamina;
         }
         // Exact where the settle time is a guess: on a game whose potions
         // restore over time, the previous dose may still have seconds to run.
@@ -1016,13 +1029,14 @@ const char *Explain(Verdict v, ActionKind action) noexcept
         case ActionKind::EquipArmor:
             return "does not carry that armour";
         case ActionKind::Attack:
+        case ActionKind::PowerAttack:
             return "not in a fight";
         default:
             return ToString(v);
         }
 
     case Verdict::NoTarget:
-        if (action == ActionKind::Attack)
+        if (action == ActionKind::Attack || action == ActionKind::PowerAttack)
             return "no enemy to point at";
         return ToString(v);
 
@@ -1074,6 +1088,10 @@ const char *ToString(Verdict v) noexcept
         return "not enough magicka";
     case Verdict::CannotDualCast:
         return "cannot dual cast it: no perk for the school";
+    case Verdict::NoMeleeWeapon:
+        return "nothing in hand that swings";
+    case Verdict::NoStamina:
+        return "not enough stamina";
     case Verdict::EffectActive:
         return "previous dose still active";
     case Verdict::AboveSkill:

@@ -3101,3 +3101,54 @@ TEST_CASE("a dual cast needs the perk the snapshot reports, and pays the dual co
     REQUIRE(d.action() == ActionKind::CastSpell);
     REQUIRE(d.steps.front().action.dual);
 }
+
+TEST_CASE("a power attack needs a fight, something that swings, and the stamina it costs", "[resources]")
+{
+    RuleSet rs;
+    Rule swing;
+    swing.subject = SubjectKind::Enemy;
+    swing.predicate = PredicateKind::Any;
+    swing.actionTarget = ActionTargetKind::Enemy;
+    swing.FirstAction().kind = ActionKind::PowerAttack;
+    rs.rules.push_back(swing);
+
+    Snapshot s = Healthy();
+    s.inCombat = false;
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, false, true});
+    s.stamina = {30.0f, 100.0f};
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoResource); // not in a fight
+
+    s.inCombat = true;
+    trace.clear();
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoMeleeWeapon); // a bow, a spell, nothing
+
+    s.canPowerAttack = true;
+    s.powerAttackCost = 40.0f;
+    trace.clear();
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoStamina); // 30 against 40
+
+    s.stamina = {50.0f, 100.0f};
+    trace.clear();
+    const auto d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.Fired());
+    REQUIRE(d.action() == ActionKind::PowerAttack);
+
+    // One swing per firing: the next tick is on cooldown.
+    s.now += 0.5;
+    trace.clear();
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+
+    // Done to an enemy, as Attack is: not to oneself.
+    REQUIRE(IsActionValidFor(ActionTargetKind::Enemy, ActionKind::PowerAttack));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Attacker, ActionKind::PowerAttack));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Self, ActionKind::PowerAttack));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Player, ActionKind::PowerAttack));
+}

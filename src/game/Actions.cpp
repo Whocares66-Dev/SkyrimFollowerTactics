@@ -250,6 +250,38 @@ const char *ToString(ActionResult r) noexcept
     return "?";
 }
 
+// Point the combat AI at an enemy: the target the controller holds and the
+// actor's own mirror of it. Everything else -- weapon, spell, spacing --
+// stays the AI's, re-scored for the new target. Whether the standard target
+// selector lets the choice stand is the open question (docs/ACTIONS.md 6):
+// the rule reports "already fighting them" on the next tick if it did, and
+// fires again after its cooldown if it did not, so the log answers it
+// without any extra instrumentation.
+ActionResult PointAt(RE::Actor *actor, std::uint32_t target)
+{
+    auto *enemy = RE::TESForm::LookupByID<RE::Actor>(target);
+    if (!enemy || enemy->IsDead())
+        return ActionResult::MissingItem;
+    auto &runtime = actor->GetActorRuntimeData();
+    auto *controller = runtime.combatController;
+    if (!controller)
+    {
+        logger::info("  target: {} has no combat controller -- not fighting",
+                     actor->GetName() ? actor->GetName() : "?");
+        return ActionResult::NoTarget;
+    }
+    const auto before = runtime.currentCombatTarget.get();
+    logger::info("  target: {} was fighting {} ({:08X}), now {} ({:08X})", actor->GetName() ? actor->GetName() : "?",
+                 before && before->GetName() ? before->GetName() : "no one", before ? before->GetFormID() : 0,
+                 enemy->GetName() ? enemy->GetName() : "?", enemy->GetFormID());
+    const RE::ActorHandle handle = enemy->GetHandle();
+    controller->previousTargetHandle = controller->targetHandle;
+    controller->targetHandle = handle;
+    controller->cachedTarget = RE::NiPointer<RE::Actor>(enemy);
+    runtime.currentCombatTarget = handle;
+    return ActionResult::Performed;
+}
+
 ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor)
 {
     if (!actor)
@@ -409,37 +441,42 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         }
         return PinNow(actor, action.form, action.hand) ? ActionResult::Performed : ActionResult::MissingItem;
 
-    case ft::ActionKind::Attack: {
-        // Point the combat AI at whom the rule aimed: the target the
-        // controller holds and the actor's own mirror of it. Everything
-        // else -- weapon, spell, spacing -- stays the AI's, re-scored for
-        // the new target. Whether the standard target selector lets the
-        // choice stand is the open question (docs/ACTIONS.md 6): the rule
-        // reports "already fighting them" on the next tick if it did, and
-        // fires again after its cooldown if it did not, so the log answers
-        // it without any extra instrumentation.
-        auto *enemy = RE::TESForm::LookupByID<RE::Actor>(target);
-        if (!enemy || enemy->IsDead())
-            return ActionResult::MissingItem;
-        auto &runtime = actor->GetActorRuntimeData();
-        auto *controller = runtime.combatController;
-        if (!controller)
+    case ft::ActionKind::Attack:
+        return PointAt(actor, target);
+
+    case ft::ActionKind::PowerAttack: {
+        // At an enemy who is not the follower's target, point them there
+        // first, as Attack does; then one swing, by the animation
+        // event the race's attack data names for what is in the hands. The
+        // follower's own combat AI runs the same graph, so the event is
+        // refused while a swing, a block or a stagger is in progress: that
+        // is Busy, no cooldown spent, and the rule tries again next tick.
+        // Not yet measured in play (docs/ACTIONS.md 6).
+        const auto current = actor->GetActorRuntimeData().currentCombatTarget.get();
+        const std::uint32_t currentId = current ? current->GetFormID() : 0;
+        if (target != 0 && target != actor->GetFormID() && target != currentId)
         {
-            logger::info("  target: {} has no combat controller -- not fighting",
-                         actor->GetName() ? actor->GetName() : "?");
-            return ActionResult::NoTarget;
+            if (PointAt(actor, target) != ActionResult::Performed)
+                return ActionResult::NoTarget;
         }
-        const auto before = runtime.currentCombatTarget.get();
-        logger::info("  target: {} was fighting {} ({:08X}), now {} ({:08X})",
-                     actor->GetName() ? actor->GetName() : "?",
-                     before && before->GetName() ? before->GetName() : "no one", before ? before->GetFormID() : 0,
-                     enemy->GetName() ? enemy->GetName() : "?", enemy->GetFormID());
-        const RE::ActorHandle handle = enemy->GetHandle();
-        controller->previousTargetHandle = controller->targetHandle;
-        controller->targetHandle = handle;
-        controller->cachedTarget = RE::NiPointer<RE::Actor>(enemy);
-        runtime.currentCombatTarget = handle;
-        return ActionResult::Performed;
+        const PowerAttackPlan swing = PlanPowerAttack(actor);
+        if (!swing.Possible())
+            return ActionResult::MissingItem;
+        auto *state = actor->AsActorState();
+        if (!state || !state->IsWeaponDrawn())
+        {
+            logger::info("  power attack: {} has no weapon drawn", actor->GetName() ? actor->GetName() : "?");
+            return ActionResult::Busy;
+        }
+        if (state->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone)
+        {
+            logger::info("  power attack: {} is mid-attack", actor->GetName() ? actor->GetName() : "?");
+            return ActionResult::Busy;
+        }
+        const bool sent = actor->NotifyAnimationGraph(swing.event);
+        logger::info("  power attack: {} {} ({:.0f} stamina){}", actor->GetName() ? actor->GetName() : "?", swing.event,
+                     swing.stamina, sent ? "" : " -- the graph refused it");
+        return sent ? ActionResult::Performed : ActionResult::Busy;
     }
 
     default:
