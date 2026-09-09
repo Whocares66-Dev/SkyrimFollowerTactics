@@ -232,7 +232,9 @@ bool IsPower(const RE::SpellItem *spell)
 // Whether the actor can dual cast a spell: the perk system's answer to the
 // Can Dual Cast Spell entry point for this spell -- each school's Dual
 // Casting perk sets it for its own school, so a mod's perk counts the same
-// -- and a spell that leaves a hand free: a master spell holds both.
+// -- and a record that leaves a hand free, by its equip slot: vanilla's
+// master spells take both hands, a mod's may not, and the level says
+// nothing.
 bool CanDualCast(RE::Actor *actor, RE::SpellItem *spell)
 {
     if (!actor || !spell || !IsCastable(spell) || spell->IsTwoHanded())

@@ -92,7 +92,9 @@ input; **built 2026-09-09 as the Dual Cast menu**, after Cast. A CastSpell
 action carries a `dual` flag (`"dual": true` on the wire). The sensor asks
 the perk system the Can Dual Cast Spell entry point for each spell the
 follower knows, so the school's Dual Casting perk, or a mod's, decides; a
-master spell, which holds both hands, is out. The menu lists only those,
+spell whose record takes both hands (`IsTwoHanded`, the equip slot's flag)
+is out -- vanilla's master spells, but a mod's one-handed master spell is
+in, since the level says nothing. The menu lists only those,
 the evaluator refuses a dual cast of any other ("no perk"), and the
 magicka check uses the dual cost: the cost times
 `fMagicDualCastingCostMult` (2.8), unless the spell is flagged to take no
