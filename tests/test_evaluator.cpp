@@ -349,7 +349,7 @@ TEST_CASE("the action follows the binding of the condition by default", "[bindin
     r.predicate = PredicateKind::HealthPctBelow;
     r.conditionArg = 0.2f;
     r.actionTarget = ActionTargetKind::Enemy;
-    r.FirstAction().kind = ActionKind::Target;
+    r.FirstAction().kind = ActionKind::Attack;
     rs.rules.push_back(r);
 
     EvalContext ctx;
@@ -382,8 +382,8 @@ TEST_CASE("the action target is its own choice, within what makes sense", "[bind
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Player, ActionKind::DrinkStrongest));
     REQUIRE(IsActionValidFor(ActionTargetKind::Player, ActionKind::CastSpell));
     REQUIRE(IsActionValidFor(ActionTargetKind::Self, ActionKind::DrinkStrongest));
-    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Self, ActionKind::Target));
-    REQUIRE(IsActionValidFor(ActionTargetKind::Attacker, ActionKind::Target));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Self, ActionKind::Attack));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Attacker, ActionKind::Attack));
 
     constexpr std::uint32_t kHeal = 0x00012FCD;
     rs.rules[0].FirstAction().kind = ActionKind::CastSpell;
@@ -413,7 +413,7 @@ TEST_CASE("the action target is its own choice, within what makes sense", "[bind
     Rule mixed;
     mixed.subject = SubjectKind::Ally;
     mixed.actionTarget = ActionTargetKind::Ally;
-    mixed.actions = {{ActionKind::Target}, {ActionKind::CastSpell, kHeal}};
+    mixed.actions = {{ActionKind::Attack}, {ActionKind::CastSpell, kHeal}};
     mixed.subject = SubjectKind::Self;
     Reconcile(mixed);
     REQUIRE(mixed.actionTarget == ActionTargetKind::Self);
@@ -472,7 +472,7 @@ TEST_CASE("no binding means the rule is skipped, not fired at nobody", "[evaluat
     r.subject = SubjectKind::Enemy;
     r.predicate = PredicateKind::Any;
     r.actionTarget = ActionTargetKind::Enemy;
-    r.FirstAction().kind = ActionKind::Target;
+    r.FirstAction().kind = ActionKind::Attack;
     rs.rules.push_back(r);
 
     EvalContext ctx;
@@ -2230,13 +2230,13 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
     archer.predicate = PredicateKind::AttackedBy;
     archer.damageKind = DamageKind::Ranged;
     archer.actionTarget = ActionTargetKind::Attacker;
-    archer.FirstAction().kind = ActionKind::Target;
+    archer.FirstAction().kind = ActionKind::Attack;
 
     Rule peel;
     peel.subject = SubjectKind::Enemy;
     peel.predicate = PredicateKind::Targeting;
     peel.actionTarget = ActionTargetKind::Enemy;
-    peel.FirstAction().kind = ActionKind::Target;
+    peel.FirstAction().kind = ActionKind::Attack;
 
     RuleSet rs;
     rs.rules.push_back(archer);
@@ -2247,7 +2247,7 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
     Trace trace;
     Decision d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 0);
-    REQUIRE(d.action() == ActionKind::Target);
+    REQUIRE(d.action() == ActionKind::Attack);
     REQUIRE(d.targetId() == 0x101);
 
     // The engine took it: the archer rule is done and falls through. The
@@ -2283,21 +2283,21 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
     s.allies[1].traits.attacker = 0x103;
     d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(trace.at(0) == Verdict::NoTarget);
-    REQUIRE(std::string(Explain(Verdict::NoTarget, ActionKind::Target)) == "no enemy to point at");
+    REQUIRE(std::string(Explain(Verdict::NoTarget, ActionKind::Attack)) == "no enemy to point at");
     s.allies[1].traits.attacker = 0x101;
 
     // Out of a fight there is no target to set.
     s.inCombat = false;
     d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(trace.at(0) == Verdict::NoResource);
-    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::Target)) == "not in a fight");
-    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::Target)) == "already fighting them");
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::Attack)) == "not in a fight");
+    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::Attack)) == "already fighting them");
 
     // Ranged is a kind of its own: a sword blow on the ally is not it.
     s.inCombat = true;
     s.allies[1].traits.attackedBy = Bit(DamageKind::Melee);
     REQUIRE_FALSE(EvaluateCondition(archer, s).ok);
-    REQUIRE(MinimumCooldown(ActionKind::Target) == 2.0);
+    REQUIRE(MinimumCooldown(ActionKind::Attack) == 2.0);
 }
 
 TEST_CASE("a cast rule waits while the follower is casting a spell of their own", "[spell]")
@@ -2669,7 +2669,7 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Corpse));
     REQUIRE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::CastSpell));
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::Shout));
-    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::Target));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::Attack));
 }
 
 TEST_CASE("an apply rule needs a weapon that takes a poison, and waits on one already poisoned", "[evaluator]")

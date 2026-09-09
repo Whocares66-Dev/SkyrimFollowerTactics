@@ -88,9 +88,9 @@ in `docs/PLAN.md`.
   `kParalyzed` and the archetype flips first; how long `staggered` holds;
   whether the hit event fires for cloaks, hazards and concentration ticks;
   logged armour figures for a fight's enemies against the estimated tiers.
-- **Target, in play** (docs/ACTIONS.md 6). Whether the standard target
+- **Attack, in play** (docs/ACTIONS.md 6). Whether the standard target
   selector lets a written `targetHandle` stand: `Ally: Attacked by Ranged ->
-  Attacker: Target` against a bandit archer, and read the log for
+  Attacker: Attack` against a bandit archer, and read the log for
   "already fighting them" on the next tick, or the rule re-firing every
   two seconds. If it snaps back, the fallbacks are a selector vtable hook
   or a UseWeapon pool. Also whether a hit event's `projectile` is set for

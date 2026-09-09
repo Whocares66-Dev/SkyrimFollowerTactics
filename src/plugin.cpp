@@ -118,7 +118,7 @@ std::vector<Check> RunSelfCheck()
         r.predicate = ft::PredicateKind::HealthPctBelow;
         r.conditionArg = 0.6f;
         r.actionTarget = ft::ActionTargetKind::Enemy;
-        r.FirstAction().kind = ft::ActionKind::Target;
+        r.FirstAction().kind = ft::ActionKind::Attack;
         rs.rules.push_back(r);
 
         ft::EvalContext ctx;

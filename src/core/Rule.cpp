@@ -50,7 +50,7 @@ double MinimumCooldown(ActionKind action) noexcept
         // pinned is prevented by availability, not by this.
         return 1.0;
 
-    case ActionKind::Target:
+    case ActionKind::Attack:
         // Long enough that a follower is not flicked between two enemies on
         // consecutive ticks; the key is the action alone, not the target, so
         // one Target blocks every other for this long. Raise it if two
@@ -196,7 +196,7 @@ bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept
     case ActionKind::Shout:
         // Aimed anywhere but at a corpse: a Reanimate is a spell.
         return target != ActionTargetKind::Corpse;
-    case ActionKind::Target:
+    case ActionKind::Attack:
         return target == ActionTargetKind::Enemy || target == ActionTargetKind::Attacker;
     default:
         // Potions, pins, and what the follower does with their own feet.

@@ -177,12 +177,12 @@ enum class ActionKind : std::uint8_t
     // (The menu draws these in its own order, the more active thing first
     // -- see ActionItems in game/UI.cpp; the enum's order is nothing.)
     //
-    // Fight the one the rule aims at: make them the follower's combat
+    // Attack the one the rule aims at: make them the follower's combat
     // target, and leave HOW to the AI -- a warrior swings, an archer shoots,
     // a mage casts, each by their own scoring. There is no "attack" in the
     // engine, only a target; this sets it. Done already when they are the
     // current target, so the rule falls through instead of re-firing.
-    Target,
+    Attack,
     // The equip actions PIN: what they put on stays on, against the engine's
     // own swap and the combat AI's choice, until another rule or the panel
     // lets it go. A plain equip would not do -- the AI re-derives what to

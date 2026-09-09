@@ -677,7 +677,7 @@ namespace
 // consecutive ticks, and per-target keys would allow exactly that.
 EvalContext::ActionKey CooldownKey(const Action &a, ActorId target)
 {
-    if (a.kind == ActionKind::Target)
+    if (a.kind == ActionKind::Attack)
         return {a.kind, 0, 0, {}};
     return {a.kind, a.form, target, a.effect};
 }
@@ -783,7 +783,7 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         // since the hit, the rule has no one to point at. Already fighting
         // them is the done state, so the rule falls through -- the
         // availability every state-setting action owes (Rule.h).
-        if (a.kind == ActionKind::Target)
+        if (a.kind == ActionKind::Attack)
         {
             if (!snap.inCombat)
                 return Verdict::NoResource;
@@ -1010,14 +1010,14 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "does not carry those arrows";
         case ActionKind::EquipArmor:
             return "does not carry that armour";
-        case ActionKind::Target:
+        case ActionKind::Attack:
             return "not in a fight";
         default:
             return ToString(v);
         }
 
     case Verdict::NoTarget:
-        if (action == ActionKind::Target)
+        if (action == ActionKind::Attack)
             return "no enemy to point at";
         return ToString(v);
 
@@ -1030,7 +1030,7 @@ const char *Explain(Verdict v, ActionKind action) noexcept
     case Verdict::EffectActive:
         if (IsEquip(action))
             return "already pinned, or nothing of that kind pinned to let go";
-        if (action == ActionKind::Target)
+        if (action == ActionKind::Attack)
             return "already fighting them";
         if (action == ActionKind::UsePower || action == ActionKind::Shout)
             return "that power is still running";

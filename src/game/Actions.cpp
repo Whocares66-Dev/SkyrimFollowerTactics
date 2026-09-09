@@ -409,7 +409,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         }
         return PinNow(actor, action.form, action.hand) ? ActionResult::Performed : ActionResult::MissingItem;
 
-    case ft::ActionKind::Target: {
+    case ft::ActionKind::Attack: {
         // Point the combat AI at whom the rule aimed: the target the
         // controller holds and the actor's own mirror of it. Everything
         // else -- weapon, spell, spacing -- stays the AI's, re-scored for

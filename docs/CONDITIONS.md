@@ -102,7 +102,7 @@ into one per-actor table of `kind -> (game time, attacker)`:
    form says the kind: a weapon or nothing is a blow -- **melee**, or
    **ranged** when the event names a projectile, an arrow or a bolt; a
    magic item is **magic**, and its effects bucket by `resistVariable` and
-   `IsPoison()` as well, so a fire hit is magic and fire both. "Attacked by ranged" is the archer in particular, "attacked by melee" the one at the follower's face, "attacked by magic" any caster (2026-09-04, for the Target action in docs/ACTIONS.md 6 and for armour buffs against blows).
+   `IsPoison()` as well, so a fire hit is magic and fire both. "Attacked by ranged" is the archer in particular, "attacked by melee" the one at the follower's face, "attacked by magic" any caster (2026-09-04, for the Attack action in docs/ACTIONS.md 6 and for armour buffs against blows).
 2. A sink on `TESMagicEffectApplyEvent` for effects that skip the hit event
    (`kNoHitEvent`): cloaks, hazards, spit. Which ones do is to be tested.
 3. The active-effect scan of section 2, with the effect's `caster` as the

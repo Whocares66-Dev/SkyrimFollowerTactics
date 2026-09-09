@@ -222,7 +222,7 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipSpell)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipArrows)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipArmor)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::Target)] = true;
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::Attack)] = true;
 
     // Casting needs the ESL. Without it the action reports Unsupported and the
     // panel greys it out, which is a truthful "not available here" rather than

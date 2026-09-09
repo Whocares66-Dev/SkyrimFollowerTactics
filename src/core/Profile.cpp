@@ -175,7 +175,8 @@ struct FormField
     Action a;
     // The twelve fixed policies of before 2026-09-08 -- the strongest and
     // weakest health, magicka and stamina potion and poison -- read as the
-    // four of today with the vanilla effect's name.
+    // four of today with the vanilla effect's name; and Target, the name
+    // Attack had until 2026-09-09.
     struct Old
     {
         const char *name;
@@ -183,6 +184,7 @@ struct FormField
         const char *effect;
     };
     static constexpr Old kOld[] = {
+        {"target", ActionKind::Attack, nullptr},
         {"drink-strongest-health-potion", ActionKind::DrinkStrongest, "Restore Health"},
         {"drink-strongest-magicka-potion", ActionKind::DrinkStrongest, "Restore Magicka"},
         {"drink-strongest-stamina-potion", ActionKind::DrinkStrongest, "Restore Stamina"},
@@ -202,7 +204,8 @@ struct FormField
         if (*name == o.name)
         {
             a.kind = o.kind;
-            a.effect = o.effect;
+            if (o.effect)
+                a.effect = o.effect;
             old = true;
         }
     }

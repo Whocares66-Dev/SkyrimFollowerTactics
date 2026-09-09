@@ -1421,13 +1421,13 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     };
 
     // Fight this one. Says what it does in its name; no tooltip.
-    if (valid(ft::ActionKind::Target))
+    if (valid(ft::ActionKind::Attack))
     {
         group(0);
-        const bool selected = here && act.kind == ft::ActionKind::Target;
-        if (CascadeItem(std::string(ft::DisplayName(ft::ActionKind::Target)).c_str(), selected))
+        const bool selected = here && act.kind == ft::ActionKind::Attack;
+        if (CascadeItem(std::string(ft::DisplayName(ft::ActionKind::Attack)).c_str(), selected))
         {
-            act.kind = ft::ActionKind::Target;
+            act.kind = ft::ActionKind::Attack;
             act.form = 0;
             act.hand = Hand::None;
             choose();

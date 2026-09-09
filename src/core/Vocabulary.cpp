@@ -120,7 +120,7 @@ constexpr std::array<Entry<ActionKind>, 24> kActions{{
     // scratch -- came in as a new value rather than a breaking change to an
     // existing one.
     {ActionKind::None, "none", "None"},
-    {ActionKind::Target, "target", "Target"},
+    {ActionKind::Attack, "attack", "Attack"},
     {ActionKind::EquipWeapon, "equip-weapon", "Equip weapon"},
     {ActionKind::EquipArrows, "equip-arrows", "Equip arrows"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
@@ -469,8 +469,8 @@ std::string_view Describe(ActionKind v) noexcept
         return "Use this ammunition until another rule or the Inventory tab lets go.";
     case ActionKind::EquipArmor:
         return "Wear this until another rule or the Inventory tab lets go.";
-    case ActionKind::Target:
-        return "Fight them: make them the combat target, and attack however the follower fights. Nothing happens "
+    case ActionKind::Attack:
+        return "Attack them: make them the combat target, and fight however the follower fights. Nothing happens "
                "if they already are.";
     default:
         return "";

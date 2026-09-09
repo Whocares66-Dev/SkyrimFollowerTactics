@@ -81,7 +81,7 @@ Profile Everything()
         r.predicate = PredicateKind::AttackedBy;
         r.damageKind = DamageKind::Any;
         r.actionTarget = ActionTargetKind::Attacker;
-        r.FirstAction().kind = ActionKind::Target;
+        r.FirstAction().kind = ActionKind::Attack;
         p.rules.rules.push_back(r);
     }
     {
@@ -506,4 +506,21 @@ TEST_CASE("a policy names its effect on the wire, and the old fixed names still 
     const auto j = nlohmann::json::parse(again);
     REQUIRE(j["rules"][0]["then"]["do"][1]["action"] == "drink-weakest");
     REQUIRE(j["rules"][0]["then"]["do"][1]["effect"] == "Resist Fire");
+}
+
+TEST_CASE("Attack is \"attack\" on the wire, and the old name \"target\" still reads", "[profile]")
+{
+    const std::string rule = R"({
+        "if": { "subject": "ally", "predicate": "attacked-by", "arg": 2 },
+        "then": { "target": "attacker", "do": [ { "action": "target" } ] }
+    })";
+    const auto read = ReadProfile(OneRuleFile(rule), kHex);
+    REQUIRE(read.profile->rules.rules.size() == 1);
+    REQUIRE(read.profile->rules.rules[0].actions.size() == 1);
+    REQUIRE(read.profile->rules.rules[0].actions[0].kind == ActionKind::Attack);
+    REQUIRE(read.profile->rules.rules[0].actions[0].effect.empty());
+    REQUIRE(read.warnings.empty());
+
+    const auto j = nlohmann::json::parse(WriteProfile(*read.profile, kHex));
+    REQUIRE(j["rules"][0]["then"]["do"][0]["action"] == "attack");
 }
