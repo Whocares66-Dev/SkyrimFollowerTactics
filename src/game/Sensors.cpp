@@ -1896,9 +1896,14 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
         const auto raw = reinterpret_cast<std::uintptr_t>(param);
         if (raw > 0xFFFFFFFFu)
         {
+            // The form's name; a keyword has none, only an editor ID, which
+            // its record keeps in memory; failing both, the ID.
             const auto *form = static_cast<const RE::TESForm *>(param);
             const char *formName = form->GetName();
-            args.push_back(formName && *formName ? formName : HexId(form->GetFormID()));
+            const char *editorID = form->GetFormEditorID();
+            args.push_back(formName && *formName   ? formName
+                           : editorID && *editorID ? editorID
+                                                   : HexId(form->GetFormID()));
         }
         else if (actorValue && args.empty())
         {
@@ -1968,8 +1973,8 @@ std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &co
     for (const auto *item = condition.head; item; item = item->next)
     {
         const auto &data = item->data;
-        // The comparison, in the enum's order: ==, !=, >, >=, <, <=.
-        constexpr std::array<const char *, 6> kOps{"==", "!=", ">", ">=", "<", "<="};
+        // The comparison, in the enum's order: =, !=, >, >=, <, <=.
+        constexpr std::array<const char *, 6> kOps{"=", "!=", ">", ">=", "<", "<="};
         const auto opIndex = static_cast<std::size_t>(data.flags.opCode);
         const char *op = opIndex < kOps.size() ? kOps[opIndex] : "?";
         std::string value;
