@@ -680,10 +680,15 @@ bool AlreadyCasting(const RE::Actor *actor)
 // a player can have, and VoicePowerVoicesList, those plus five story
 // characters. A follower whose voice type is in neither has no line, and
 // shouts in silence, or in whatever else the load order plays. So for the
-// lease the record is lent the player voice type of the follower's sex,
-// FemaleEvenToned or MaleEvenToned, which has every word recorded; the
+// lease the record is lent the player voice type of the follower's race
+// and sex -- the race record names them, an Orc's, a Khajiit's, an elf's
+// haughty one, EvenToned for the humans -- which has every word recorded;
+// EvenToned stands in for a race whose own is not on the list. The
 // condition reads the record's voice type at the shout, and any bark in
 // the same two seconds comes out in the lent voice, which is the cost.
+// The record is changed in memory only: no NPC change flag covers the
+// voice type (TESNPC::ChangeFlags), so a save made mid-lease carries the
+// record's own, and a load reads it back.
 constexpr RE::FormID kVoicesPlayer = 0x00068ACA;
 constexpr RE::FormID kVoicePowerVoicesList = 0x0010D29D;
 constexpr RE::FormID kFemaleEvenToned = 0x00013ADD;
@@ -694,13 +699,19 @@ void LendShoutVoice(std::size_t i, RE::Actor *actor)
     auto *base = actor ? actor->GetActorBase() : nullptr;
     if (!base)
         return;
-    RE::BGSVoiceType *own = base->voiceType;
     auto *players = RE::TESForm::LookupByID<RE::BGSListForm>(kVoicesPlayer);
     auto *powers = RE::TESForm::LookupByID<RE::BGSListForm>(kVoicePowerVoicesList);
-    if (own && ((players && players->HasForm(own)) || (powers && powers->HasForm(own))))
+    const auto hasWords = [&](const RE::BGSVoiceType *voice) {
+        return voice && ((players && players->HasForm(voice)) || (powers && powers->HasForm(voice)));
+    };
+    RE::BGSVoiceType *own = base->voiceType;
+    if (hasWords(own))
         return; // their own voice has the words
     const bool female = base->GetSex() == RE::SEX::kFemale;
-    auto *lent = RE::TESForm::LookupByID<RE::BGSVoiceType>(female ? kFemaleEvenToned : kMaleEvenToned);
+    const auto *race = actor->GetRace();
+    RE::BGSVoiceType *lent = race ? race->defaultVoiceTypes[female ? RE::SEXES::kFemale : RE::SEXES::kMale] : nullptr;
+    if (!hasWords(lent))
+        lent = RE::TESForm::LookupByID<RE::BGSVoiceType>(female ? kFemaleEvenToned : kMaleEvenToned);
     if (!lent)
         return;
     g_pool[i].voiceOf = base;
