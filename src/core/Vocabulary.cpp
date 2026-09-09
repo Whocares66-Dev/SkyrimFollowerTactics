@@ -64,7 +64,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 35> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 36> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
@@ -74,9 +74,10 @@ constexpr std::array<Entry<PredicateKind>, 35> kPredicates{{
     {PredicateKind::Status, "status", "Status"},
     {PredicateKind::ArmorPctBelow, "armor-pct-below", "Armor"},
     {PredicateKind::ResistancePctBelow, "resistance-pct-below", "Resistance"},
-    {PredicateKind::AttackedBy, "attacked-by", "Attacked by"},
-    {PredicateKind::Attacking, "attacking", "Attacking"},
+    {PredicateKind::Targeting, "targeting", "Targeting"},
     {PredicateKind::TargetOf, "target-of", "Target of"},
+    {PredicateKind::Using, "using", "Using"},
+    {PredicateKind::AttackedBy, "attacked-by", "Attacked by"},
     {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
     {PredicateKind::HealthHighest, "health-highest", "Health highest"},
     {PredicateKind::StaminaLowest, "stamina-lowest", "Stamina lowest"},
@@ -385,9 +386,11 @@ std::string_view Describe(PredicateKind v) noexcept
         return "The one least resistant to that kind of damage.";
     case PredicateKind::ResistanceHighest:
         return "The one most resistant to that kind of damage.";
+    case PredicateKind::Using:
+        return "Wielding that: a blade, a bow, a spell or a staff, or anything that does that kind of damage.";
     case PredicateKind::AttackedBy:
         return "Hit with that kind of damage in the last few seconds.";
-    case PredicateKind::Attacking:
+    case PredicateKind::Targeting:
         return "Going for that member of the party.";
     case PredicateKind::TargetOf:
         return "The one that member of the party is fighting.";

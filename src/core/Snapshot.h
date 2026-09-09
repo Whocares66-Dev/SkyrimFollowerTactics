@@ -63,6 +63,24 @@ struct ActorTraits
     // the engine's commanded-actor list, counted. The Summon condition.
     int summons{0};
 
+    // What is in the actor's hands, a bit per DamageKind: Melee for a
+    // blade, Ranged for a bow or crossbow, Magic for a spell or a staff,
+    // and the kind of damage any of it does -- an enchantment's, a staff's
+    // or a spell's effects, a poison on the blade. The Using condition.
+    std::uint8_t wielding{0};
+
+    [[nodiscard]] constexpr bool Using(DamageKind kind) const noexcept
+    {
+        if (kind == DamageKind::Any)
+            return wielding != 0;
+        return (wielding & Bit(kind)) != 0;
+    }
+
+    constexpr void Wield(DamageKind kind) noexcept
+    {
+        wielding |= Bit(kind);
+    }
+
     [[nodiscard]] constexpr bool AttackedBy(DamageKind kind) const noexcept
     {
         if (kind == DamageKind::Any)

@@ -305,7 +305,7 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view)
     else
     {
         text += ft::DisplayName(r.predicate);
-        if (r.predicate == ft::PredicateKind::AttackedBy)
+        if (r.predicate == ft::PredicateKind::AttackedBy || r.predicate == ft::PredicateKind::Using)
         {
             text += ' ';
             text += ft::DisplayName(r.damageKind);
@@ -576,10 +576,9 @@ bool IsCombatPredicate(ft::PredicateKind p)
 }
 
 // The condition cascade in four groups, a divider between them: Any; the
-// three stats; the fight -- its edges, being
-// attacked, a status, and the enemy's relation to the party; the
-// equipment and the field -- weapon, armour, resistance, a summon, the
-// corpses.
+// three stats; the fight -- its edges, the enemy's relation to the party,
+// what is in hand, being attacked, a status; the equipment and the field
+// -- weapon, armour, resistance, a summon, the corpses.
 int ConditionGroup(ft::PredicateKind p)
 {
     switch (p)
@@ -592,10 +591,11 @@ int ConditionGroup(ft::PredicateKind p)
         return 1;
     case ft::PredicateKind::CombatBegins:
     case ft::PredicateKind::CombatEnds:
+    case ft::PredicateKind::Targeting:
+    case ft::PredicateKind::TargetOf:
+    case ft::PredicateKind::Using:
     case ft::PredicateKind::AttackedBy:
     case ft::PredicateKind::Status:
-    case ft::PredicateKind::Attacking:
-    case ft::PredicateKind::TargetOf:
         return 2;
     default:
         return 3;
@@ -824,9 +824,10 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 continue;
             }
 
-            // Attacked by: Any; then how -- a blow, an arrow, a spell of any
-            // kind; then what the spell was. A divider between each group.
-            if (predicate == ft::PredicateKind::AttackedBy)
+            // Using and Attacked by: Any; then how -- a blow, an arrow, a
+            // spell of any kind; then what the spell was. A divider between
+            // each group.
+            if (predicate == ft::PredicateKind::Using || predicate == ft::PredicateKind::AttackedBy)
             {
                 if (!BeginCascade(predicateName.c_str()))
                     continue;
@@ -856,10 +857,10 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 continue;
             }
 
-            // The party: under "Attacking" and "Target of", the members by
+            // The party: under "Targeting" and "Target of", the members by
             // name -- the player, this follower, the other followers -- each
             // a leaf that names the member.
-            if (predicate == ft::PredicateKind::Attacking || predicate == ft::PredicateKind::TargetOf)
+            if (predicate == ft::PredicateKind::Targeting || predicate == ft::PredicateKind::TargetOf)
             {
                 if (!BeginCascade(predicateName.c_str()))
                     continue;

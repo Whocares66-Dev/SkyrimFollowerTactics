@@ -70,7 +70,7 @@ bool EnemySatisfies(const EnemyView &e, const Rule &r, const Snapshot &s)
 {
     switch (r.predicate)
     {
-    case PredicateKind::Attacking:
+    case PredicateKind::Targeting:
         return e.attacking != 0 && e.attacking == MemberId(r);
     case PredicateKind::TargetOf: {
         const ActorId target = MemberTarget(r, s);
@@ -78,6 +78,8 @@ bool EnemySatisfies(const EnemyView &e, const Rule &r, const Snapshot &s)
     }
     case PredicateKind::Any:
         return true;
+    case PredicateKind::Using:
+        return e.traits.Using(r.damageKind);
     case PredicateKind::AttackedBy:
         return e.traits.AttackedBy(r.damageKind);
     case PredicateKind::HealthPctBelow:
@@ -111,6 +113,8 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
     {
     case PredicateKind::Any:
         return true;
+    case PredicateKind::Using:
+        return a.traits.Using(r.damageKind);
     case PredicateKind::AttackedBy:
         return a.traits.AttackedBy(r.damageKind);
     case PredicateKind::HealthPctBelow:
@@ -360,6 +364,9 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::Status:
         held = s.traits.Has(r.statusKind);
         break;
+    case PredicateKind::Using:
+        held = s.traits.Using(r.damageKind);
+        break;
     case PredicateKind::AttackedBy:
         held = s.traits.AttackedBy(r.damageKind);
         break;
@@ -407,6 +414,9 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
         break;
     case PredicateKind::Status:
         held = s.playerTraits.Has(r.statusKind);
+        break;
+    case PredicateKind::Using:
+        held = s.playerTraits.Using(r.damageKind);
         break;
     case PredicateKind::AttackedBy:
         held = s.playerTraits.AttackedBy(r.damageKind);

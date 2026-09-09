@@ -38,28 +38,6 @@ void Note(ft::ActorId target, DamageKind kind, ft::ActorId attacker)
     entry.attacker = attacker;
 }
 
-// The kind of damage a magic effect does, by what resists it -- the same
-// reading as the Status condition's burning, frostbitten and shocked --
-// else magic. Every effect is noted as Magic as well, so "attacked by
-// magic" is any spell and "attacked by fire" the fire in particular. Melee
-// and Ranged are the weapon's, never an effect's.
-DamageKind KindOfEffect(const RE::EffectSetting *base)
-{
-    switch (base->data.resistVariable)
-    {
-    case RE::ActorValue::kResistFire:
-        return DamageKind::Fire;
-    case RE::ActorValue::kResistFrost:
-        return DamageKind::Frost;
-    case RE::ActorValue::kResistShock:
-        return DamageKind::Shock;
-    case RE::ActorValue::kPoisonResist:
-        return DamageKind::Poison;
-    default:
-        return DamageKind::Magic;
-    }
-}
-
 ft::ActorId IdOf(const RE::NiPointer<RE::TESObjectREFR> &ref)
 {
     return ref ? ref->GetFormID() : 0;
@@ -124,6 +102,28 @@ HitSink g_hitSink;
 ApplySink g_applySink;
 
 } // namespace
+
+// By what resists it -- the same reading as the Status condition's
+// burning, frostbitten and shocked -- else magic. Every hit's effect is
+// noted as Magic as well, so "attacked by magic" is any spell and
+// "attacked by fire" the fire in particular. Melee and Ranged are the
+// weapon's, never an effect's.
+DamageKind KindOfEffect(const RE::EffectSetting *base)
+{
+    switch (base->data.resistVariable)
+    {
+    case RE::ActorValue::kResistFire:
+        return DamageKind::Fire;
+    case RE::ActorValue::kResistFrost:
+        return DamageKind::Frost;
+    case RE::ActorValue::kResistShock:
+        return DamageKind::Shock;
+    case RE::ActorValue::kPoisonResist:
+        return DamageKind::Poison;
+    default:
+        return DamageKind::Magic;
+    }
+}
 
 void WatchHits()
 {

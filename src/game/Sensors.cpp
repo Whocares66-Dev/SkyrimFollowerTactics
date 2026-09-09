@@ -565,12 +565,70 @@ void LogArmorReadings(RE::Actor *actor)
                  GameSetting("fArmorBaseFactor", 0.03f), DamageReduction(actor) * 100.0f);
 }
 
+// The enchantment on a weapon the actor carries: a player-made one on the
+// entry (ExtraEnchantment), else the record's. The same reading as
+// ChargeOf.
+RE::EnchantmentItem *EnchantmentOn(RE::Actor *actor, RE::TESObjectWEAP *weapon)
+{
+    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
+    const auto found = inventory.find(weapon);
+    if (found != inventory.end() && found->second.second && found->second.second->extraLists)
+        for (auto *list : *found->second.second->extraLists)
+            if (auto *xEnch = list ? list->GetByType<RE::ExtraEnchantment>() : nullptr; xEnch && xEnch->enchantment)
+                return xEnch->enchantment;
+    return weapon->formEnchanting;
+}
+
+// What the actor is wielding, a bit per DamageKind: a blade is Melee, a
+// bow or crossbow Ranged, a spell or a staff Magic; and the kind of damage
+// any of it does -- the enchantment's, the staff's or the spell's effects,
+// a poison on the blade -- by what resists it. Fists are nothing. A
+// two-hander reports from both hands, which is the same bits twice.
+void ReadHands(RE::Actor *actor, ft::ActorTraits &traits)
+{
+    const auto effectsOf = [&](const RE::MagicItem *magic) {
+        if (!magic)
+            return;
+        for (const auto *effect : magic->effects)
+            if (effect && effect->baseEffect)
+                if (const auto kind = KindOfEffect(effect->baseEffect); kind != ft::DamageKind::Magic)
+                    traits.Wield(kind);
+    };
+    for (const bool left : {false, true})
+    {
+        RE::TESForm *held = actor->GetEquippedObject(left);
+        if (!held)
+            continue;
+        if (auto *weapon = held->As<RE::TESObjectWEAP>())
+        {
+            const auto type = weapon->GetWeaponType();
+            if (type == RE::WEAPON_TYPE::kHandToHandMelee)
+                continue;
+            if (type == RE::WEAPON_TYPE::kStaff)
+                traits.Wield(ft::DamageKind::Magic);
+            else if (weapon->IsBow() || weapon->IsCrossbow())
+                traits.Wield(ft::DamageKind::Ranged);
+            else
+                traits.Wield(ft::DamageKind::Melee);
+            effectsOf(EnchantmentOn(actor, weapon));
+            if (WeaponPoisoned(actor, weapon))
+                traits.Wield(ft::DamageKind::Poison);
+        }
+        else if (auto *magic = held->As<RE::MagicItem>())
+        {
+            traits.Wield(ft::DamageKind::Magic);
+            effectsOf(magic);
+        }
+    }
+}
+
 ft::ActorTraits ReadTraits(RE::Actor *actor)
 {
     ft::ActorTraits traits;
     if (!actor)
         return traits;
     traits.armor = DamageReduction(actor);
+    ReadHands(actor, traits);
     LogArmorReadings(actor);
     // The engine's own list of what the actor commands: a summon, a raised
     // corpse, each with the effect that made it.

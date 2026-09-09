@@ -69,6 +69,18 @@ enum class PredicateKind : std::uint8_t
     // (A count of the group -- "at least N enemies" -- was here until
     // 2026-09-08. Nobody offered it in the end: an ally's count changes too
     // rarely to be a condition, and the enemy's was not wanted.)
+    // The enemy is going for a member of the party, or is the one a
+    // member is going for: the two that make a party fight as one -- peel
+    // the one on the player, or hit what the player hits. The member is
+    // Rule::subjectForm: 0 for the player, the follower's own id for
+    // themself, another follower's id otherwise. Enemy only.
+    Targeting,
+    TargetOf,
+    // The subject is wielding Rule::damageKind: a melee weapon, a bow or
+    // crossbow, a spell or a staff (Magic), or anything that does that
+    // kind of damage -- an enchanted blade, a staff of flames, a poisoned
+    // dagger. Any subject; Any is "anything at all in hand".
+    Using,
     // The subject has been hit with Rule::damageKind in the last few
     // seconds. Any subject. Listed here, between the fight's edges and
     // Status, as the editor's menu groups them.
@@ -95,13 +107,6 @@ enum class PredicateKind : std::uint8_t
     // a fraction (50% is 0.5; a weakness is below zero), under
     // conditionArg. Any subject.
     ResistancePctBelow,
-    // The enemy is going for a member of the party, or is the one a
-    // member is going for: the two that make a party fight as one -- peel
-    // the one on the player, or hit what the player hits. The member is
-    // Rule::subjectForm: 0 for the player, the follower's own id for
-    // themself, another follower's id otherwise. Enemy only.
-    Attacking,
-    TargetOf,
     // The group's extremes: true of the group when it has anyone, binding
     // the member with the least or the most of the measure. Ally and Enemy
     // only. The resistance ones are of Rule::damageKind.
@@ -290,7 +295,7 @@ struct Rule
 
     SubjectKind subject{SubjectKind::Self};
     // Which follower, for SubjectKind::Follower: the actor's FormID, as
-    // opaque here as an action's form is. For Attacking and TargetOf, the
+    // opaque here as an action's form is. For Targeting and TargetOf, the
     // party member: 0 for the player, the follower's own id for themself.
     std::uint32_t subjectForm{0};
     PredicateKind predicate{PredicateKind::Any};

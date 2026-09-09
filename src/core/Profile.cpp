@@ -76,9 +76,9 @@ json WriteRule(const Rule &r, const FormCodec &codec)
     if (r.subject == SubjectKind::Follower)
         cond["follower"] = codec.encode(r.subjectForm);
     cond["predicate"] = WireName(r.predicate);
-    // The party member of Attacking / Target of: "player", or the
+    // The party member of Targeting / Target of: "player", or the
     // follower's form.
-    if (r.predicate == PredicateKind::Attacking || r.predicate == PredicateKind::TargetOf)
+    if (r.predicate == PredicateKind::Targeting || r.predicate == PredicateKind::TargetOf)
         cond["member"] = r.subjectForm == 0 ? std::string("player") : codec.encode(r.subjectForm);
     if (ArgumentFor(r.predicate) != ArgumentKind::None)
         cond["arg"] = r.conditionArg;
@@ -242,7 +242,7 @@ struct FormField
         r.predicate = *p;
     else
         return drop("unknown predicate \"" + *predicate + "\"");
-    if (r.predicate == PredicateKind::Attacking || r.predicate == PredicateKind::TargetOf)
+    if (r.predicate == PredicateKind::Targeting || r.predicate == PredicateKind::TargetOf)
     {
         // Absent or "player" is the player; anything else a follower's form.
         const auto member = Str(*cond, "member");

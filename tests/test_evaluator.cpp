@@ -449,11 +449,11 @@ TEST_CASE("no binding means the rule is skipped, not fired at nobody", "[evaluat
 TEST_CASE("the subject and predicate validity matrix", "[validity]")
 {
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::MagickaPctBelow));
-    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Attacking));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Targeting));
     REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Status));
 
     // A lone subject is not asked whom it is attacking.
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Attacking));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Targeting));
 
     // "Any" is offered for everyone: always true of the player and of an
     // ally, and there so a rule can aim at them under the heading a reader
@@ -943,13 +943,13 @@ TEST_CASE("the enemy on a member of the party, and the one a member is on", "[pa
     Rule r;
     r.subject = SubjectKind::Enemy;
     // The player: member 0.
-    r.predicate = PredicateKind::Attacking;
+    r.predicate = PredicateKind::Targeting;
     REQUIRE(EvaluateCondition(r, s).id == 0x102);
     r.predicate = PredicateKind::TargetOf;
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
     // Another follower, by id.
     r.subjectForm = 0x201;
-    r.predicate = PredicateKind::Attacking;
+    r.predicate = PredicateKind::Targeting;
     REQUIRE(EvaluateCondition(r, s).id == 0x103);
     r.predicate = PredicateKind::TargetOf;
     REQUIRE(EvaluateCondition(r, s).id == 0x103);
@@ -963,7 +963,7 @@ TEST_CASE("the enemy on a member of the party, and the one a member is on", "[pa
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
     // Only the Enemy heading asks these.
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Attacking));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Targeting));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::TargetOf));
     // Any for the player and an ally.
     REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Any));
@@ -1006,7 +1006,7 @@ TEST_CASE("an unanswerable pair reports InvalidCondition, not ConditionFalse", "
     RuleSet rs;
     Rule r;
     r.subject = SubjectKind::Self;
-    r.predicate = PredicateKind::Attacking; // nonsense: oneself, going for a party member
+    r.predicate = PredicateKind::Targeting; // nonsense: oneself, going for a party member
     r.subjectForm = 0;
     r.FirstAction().kind = ActionKind::DrinkMagickaPotion;
     rs.rules.push_back(r);
@@ -2192,7 +2192,7 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
 
     Rule peel;
     peel.subject = SubjectKind::Enemy;
-    peel.predicate = PredicateKind::Attacking;
+    peel.predicate = PredicateKind::Targeting;
     peel.actionTarget = ActionTargetKind::Enemy;
     peel.FirstAction().kind = ActionKind::Target;
 
@@ -2840,4 +2840,39 @@ TEST_CASE("the enemy an action goes to, read from the condition", "[binding]")
     s.enemies.clear();
     REQUIRE(ResolveActionTarget(r, s, Binding{s.self, true}, &ok) == 0);
     REQUIRE_FALSE(ok);
+}
+
+TEST_CASE("Using asks what is in hand, of anyone", "[binding]")
+{
+    for (const auto subject : {SubjectKind::Self, SubjectKind::Player, SubjectKind::Ally, SubjectKind::Enemy})
+        REQUIRE(IsPredicateValidFor(subject, PredicateKind::Using));
+
+    Snapshot s = Healthy();
+    s.traits.Wield(DamageKind::Melee);
+    s.traits.Wield(DamageKind::Fire); // a flaming sword
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, 0, true});
+    s.enemies[0].traits.Wield(DamageKind::Magic);
+
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Using;
+    r.damageKind = DamageKind::Melee;
+    REQUIRE(EvaluateCondition(r, s).ok);
+    r.damageKind = DamageKind::Fire;
+    REQUIRE(EvaluateCondition(r, s).ok);
+    r.damageKind = DamageKind::Magic;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    r.damageKind = DamageKind::Any;
+    REQUIRE(EvaluateCondition(r, s).ok);
+
+    r.subject = SubjectKind::Enemy;
+    r.damageKind = DamageKind::Magic;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+    r.damageKind = DamageKind::Melee;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    // Empty hands are using nothing, Any included.
+    r.subject = SubjectKind::Player;
+    r.damageKind = DamageKind::Any;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 }

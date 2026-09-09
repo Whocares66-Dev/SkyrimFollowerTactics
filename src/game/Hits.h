@@ -27,4 +27,9 @@ struct Attacked
 };
 [[nodiscard]] Attacked AttackedLately(ft::ActorId target);
 
+// The kind of damage a magic effect does, by what resists it: fire, frost,
+// shock or poison, else Magic. What a hit is noted as; and what a spell, a
+// staff or an enchantment in hand counts as using.
+[[nodiscard]] ft::DamageKind KindOfEffect(const RE::EffectSetting *base);
+
 } // namespace ft::game

@@ -324,12 +324,13 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
                                 predicate == PredicateKind::LevelLowest;
     if (subject == SubjectKind::Corpse || corpseQuestion)
         return subject == SubjectKind::Corpse && corpseQuestion;
-    // A status, the armour, the resistances, the hits and the summons are
-    // read off every actor the snapshot carries, so they are answerable
-    // about any of them. The extremes are of a group.
+    // A status, the armour, the resistances, the hands, the hits and the
+    // summons are read off every actor the snapshot carries, so they are
+    // answerable about any of them. The extremes are of a group.
     if (predicate == PredicateKind::Status || predicate == PredicateKind::ArmorPctBelow ||
-        predicate == PredicateKind::ResistancePctBelow || predicate == PredicateKind::AttackedBy ||
-        predicate == PredicateKind::SummonNone || predicate == PredicateKind::SummonActive)
+        predicate == PredicateKind::ResistancePctBelow || predicate == PredicateKind::Using ||
+        predicate == PredicateKind::AttackedBy || predicate == PredicateKind::SummonNone ||
+        predicate == PredicateKind::SummonActive)
         return true;
     if (IsExtreme(predicate))
         return subject == SubjectKind::Ally || subject == SubjectKind::Enemy;
@@ -393,7 +394,7 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::HealthPctBelow:
         case PredicateKind::MagickaPctBelow:
         case PredicateKind::StaminaPctBelow:
-        case PredicateKind::Attacking:
+        case PredicateKind::Targeting:
         case PredicateKind::TargetOf:
             return true;
         default:
