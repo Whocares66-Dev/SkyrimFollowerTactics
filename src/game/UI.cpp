@@ -4256,8 +4256,9 @@ void DrawSkills(const FollowerView &view)
             DrawSections(rest, false);
             if (!page->description.empty())
             {
-                Im::Spacing();
+                CentredHeading("Description");
                 Im::TextWrapped("%s", page->description.c_str());
+                Im::Spacing();
             }
             return;
         }
