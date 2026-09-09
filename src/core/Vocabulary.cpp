@@ -113,7 +113,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 20> kActions{{
+constexpr std::array<Entry<ActionKind>, 24> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. That is
     // how "drink-weakest-health-potion" -- don't burn a strong potion on a
@@ -134,6 +134,10 @@ constexpr std::array<Entry<ActionKind>, 20> kActions{{
     {ActionKind::DrinkStrongest, "drink-strongest", "Drink strongest potion"},
     {ActionKind::DrinkWeakest, "drink-weakest", "Drink weakest potion"},
     {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
+    {ActionKind::EatStrongestFood, "eat-strongest-food", "Eat strongest food"},
+    {ActionKind::EatWeakestFood, "eat-weakest-food", "Eat weakest food"},
+    {ActionKind::EatStrongestIngredient, "eat-strongest-ingredient", "Eat strongest ingredient"},
+    {ActionKind::EatWeakestIngredient, "eat-weakest-ingredient", "Eat weakest ingredient"},
     {ActionKind::EatFood, "eat-food", "Eat food"},
     {ActionKind::EatIngredient, "eat-ingredient", "Eat ingredient"},
     {ActionKind::CastSpell, "cast-spell", "Cast spell"},
@@ -439,6 +443,14 @@ std::string_view Describe(ActionKind v) noexcept
         return "Put this poison on the weapon in hand.";
     case ActionKind::DrinkPotion:
         return "Drink this potion.";
+    case ActionKind::EatStrongestFood:
+        return "Eat the strongest food carried with this effect.";
+    case ActionKind::EatWeakestFood:
+        return "Eat the weakest food carried with this effect: the cheap ones first, the strong ones kept.";
+    case ActionKind::EatStrongestIngredient:
+        return "Eat the strongest ingredient carried with this effect; only those that are food are offered.";
+    case ActionKind::EatWeakestIngredient:
+        return "Eat the weakest ingredient carried with this effect; only those that are food are offered.";
     case ActionKind::EatFood:
         return "Eat this food.";
     case ActionKind::EatIngredient:

@@ -271,11 +271,15 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     case ft::ActionKind::DrinkStrongest:
     case ft::ActionKind::DrinkWeakest:
     case ft::ActionKind::DrinkPotion:
+    case ft::ActionKind::EatStrongestFood:
+    case ft::ActionKind::EatWeakestFood:
     case ft::ActionKind::EatFood:
         // One named potion or food. The evaluator only fires this when the
         // snapshot says she carries it, so a null here is a form that
         // stopped being one between snapshot and dispatch.
         return Consume(actor, RE::TESForm::LookupByID<RE::AlchemyItem>(action.form));
+    case ft::ActionKind::EatStrongestIngredient:
+    case ft::ActionKind::EatWeakestIngredient:
     case ft::ActionKind::EatIngredient:
         return Consume(actor, RE::TESForm::LookupByID<RE::IngredientItem>(action.form));
 

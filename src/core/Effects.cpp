@@ -19,17 +19,17 @@ struct Known
 // speech, smithing, enchanting, alchemy -- and carry weight and
 // waterbreathing are listed last of the known, so a follower's bag of them
 // does not push the useful ones down.
-constexpr std::array<Known, 40> kPotionEffects{{
-    {"Restore Health", 0},       {"Restore Stamina", 0},     {"Restore Magicka", 0},     {"Fortify Health", 1},
-    {"Fortify Stamina", 1},      {"Fortify Magicka", 1},     {"Regenerate Health", 2},   {"Regenerate Stamina", 2},
-    {"Regenerate Magicka", 2},   {"Resist Fire", 3},         {"Resist Frost", 3},        {"Resist Shock", 3},
-    {"Resist Magic", 3},         {"Resist Poison", 3},       {"Resist Disease", 3},      {"Fortify One-handed", 4},
-    {"Fortify Two-handed", 4},   {"Fortify Archery", 4},     {"Fortify Marksman", 4},    {"Fortify Block", 4},
-    {"Fortify Heavy Armor", 4},  {"Fortify Light Armor", 4}, {"Fortify Sneak", 4},       {"Fortify Alteration", 5},
-    {"Fortify Conjuration", 5},  {"Fortify Destruction", 5}, {"Fortify Illusion", 5},    {"Fortify Restoration", 5},
-    {"Invisibility", 6},         {"Cure Poison", 6},         {"Cure Disease", 6},        {"Waterbreathing", 7},
-    {"Fortify Carry Weight", 7}, {"Fortify Barter", 7},      {"Fortify Lockpicking", 7}, {"Fortify Pickpocket", 7},
-    {"Fortify Persuasion", 7},   {"Fortify Speech", 7},      {"Fortify Smithing", 7},    {"Fortify Enchanting", 7},
+constexpr std::array<Known, 38> kPotionEffects{{
+    {"Restore Health", 0},      {"Restore Stamina", 0},    {"Restore Magicka", 0},      {"Fortify Health", 1},
+    {"Fortify Stamina", 1},     {"Fortify Magicka", 1},    {"Regenerate Health", 2},    {"Regenerate Stamina", 2},
+    {"Regenerate Magicka", 2},  {"Resist Fire", 3},        {"Resist Frost", 3},         {"Resist Shock", 3},
+    {"Resist Magic", 3},        {"Resist Poison", 3},      {"Fortify One-handed", 4},   {"Fortify Two-handed", 4},
+    {"Fortify Archery", 4},     {"Fortify Marksman", 4},   {"Fortify Block", 4},        {"Fortify Heavy Armor", 4},
+    {"Fortify Light Armor", 4}, {"Fortify Sneak", 4},      {"Fortify Alteration", 5},   {"Fortify Conjuration", 5},
+    {"Fortify Destruction", 5}, {"Fortify Illusion", 5},   {"Fortify Restoration", 5},  {"Invisibility", 6},
+    {"Cure Poison", 6},         {"Waterbreathing", 7},     {"Fortify Carry Weight", 7}, {"Fortify Barter", 7},
+    {"Fortify Lockpicking", 7}, {"Fortify Pickpocket", 7}, {"Fortify Persuasion", 7},   {"Fortify Speech", 7},
+    {"Fortify Smithing", 7},    {"Fortify Enchanting", 7},
 }};
 
 // The vanilla poison effects: the three damages; what damages over time;
@@ -102,6 +102,11 @@ std::vector<EffectEntry> ArrangeEffects(ConsumableKind kind, std::vector<std::st
     for (auto &r : ranked)
         out.push_back({std::move(r.name), r.group});
     return out;
+}
+
+bool EffectUseless(std::string_view effect) noexcept
+{
+    return effect == "Cure Disease" || effect == "Resist Disease";
 }
 
 std::string_view EffectLabel(std::string_view effect) noexcept

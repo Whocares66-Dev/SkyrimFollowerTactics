@@ -10,7 +10,11 @@ double MinimumCooldown(ActionKind action) noexcept
     case ActionKind::DrinkStrongest:
     case ActionKind::DrinkWeakest:
     case ActionKind::DrinkPotion:
+    case ActionKind::EatStrongestFood:
+    case ActionKind::EatWeakestFood:
     case ActionKind::EatFood:
+    case ActionKind::EatStrongestIngredient:
+    case ActionKind::EatWeakestIngredient:
     case ActionKind::EatIngredient:
     case ActionKind::ApplyStrongest:
     case ActionKind::ApplyWeakest:
@@ -70,7 +74,11 @@ bool IsConsume(ActionKind action) noexcept
     case ActionKind::DrinkStrongest:
     case ActionKind::DrinkWeakest:
     case ActionKind::DrinkPotion:
+    case ActionKind::EatStrongestFood:
+    case ActionKind::EatWeakestFood:
     case ActionKind::EatFood:
+    case ActionKind::EatStrongestIngredient:
+    case ActionKind::EatWeakestIngredient:
     case ActionKind::EatIngredient:
         return true;
     default:
@@ -80,8 +88,26 @@ bool IsConsume(ActionKind action) noexcept
 
 bool IsPolicy(ActionKind action) noexcept
 {
-    return action == ActionKind::DrinkStrongest || action == ActionKind::DrinkWeakest ||
-           action == ActionKind::ApplyStrongest || action == ActionKind::ApplyWeakest;
+    switch (action)
+    {
+    case ActionKind::DrinkStrongest:
+    case ActionKind::DrinkWeakest:
+    case ActionKind::EatStrongestFood:
+    case ActionKind::EatWeakestFood:
+    case ActionKind::EatStrongestIngredient:
+    case ActionKind::EatWeakestIngredient:
+    case ActionKind::ApplyStrongest:
+    case ActionKind::ApplyWeakest:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool IsStrongest(ActionKind action) noexcept
+{
+    return action == ActionKind::DrinkStrongest || action == ActionKind::EatStrongestFood ||
+           action == ActionKind::EatStrongestIngredient || action == ActionKind::ApplyStrongest;
 }
 
 bool IsApply(ActionKind action) noexcept
@@ -100,8 +126,12 @@ ConsumableKind ConsumableOf(ActionKind action) noexcept
 {
     switch (action)
     {
+    case ActionKind::EatStrongestFood:
+    case ActionKind::EatWeakestFood:
     case ActionKind::EatFood:
         return ConsumableKind::Food;
+    case ActionKind::EatStrongestIngredient:
+    case ActionKind::EatWeakestIngredient:
     case ActionKind::EatIngredient:
         return ConsumableKind::Ingredient;
     default:

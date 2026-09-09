@@ -2940,6 +2940,16 @@ TEST_CASE("a policy chooses the bottle by its effect, strongest or weakest", "[e
     s.potions.Add(0x105, 1, ConsumableKind::Poison, {"Restore Health", 999.0f, 0.0f});
     REQUIRE(ChosenForm(Drink("Restore Health"), s.potions) == 0x102);
     REQUIRE(ChosenForm(Apply("Restore Health"), s.potions) == 0x105);
+    // Food and a food-ingredient are chosen from their own kind.
+    s.potions.Add(0x106, 1, ConsumableKind::Food, {"Restore Health", 2.0f, 0.0f});
+    s.potions.Add(0x107, 1, ConsumableKind::Ingredient, {"Restore Health", 5.0f, 0.0f});
+    Action food;
+    food.kind = ActionKind::EatStrongestFood;
+    food.effect = "Restore Health";
+    REQUIRE(ChosenForm(food, s.potions) == 0x106);
+    food.kind = ActionKind::EatWeakestIngredient;
+    REQUIRE(ChosenForm(food, s.potions) == 0x107);
+    REQUIRE(ChosenForm(Drink("Restore Health"), s.potions) == 0x102);
     // A named bottle is its own form.
     Action named;
     named.kind = ActionKind::DrinkPotion;
@@ -3043,4 +3053,7 @@ TEST_CASE("the carried effects arrange themselves for the menu", "[vocabulary]")
     REQUIRE(std::string(EffectLabel("Damage Stamina")) == "Stamina");
     REQUIRE(std::string(EffectLabel("Resist Fire")) == "Resist Fire");
     REQUIRE(std::string(EffectLabel("Restore Healthiness")) == "Restore Healthiness");
+    REQUIRE(EffectUseless("Cure Disease"));
+    REQUIRE(EffectUseless("Resist Disease"));
+    REQUIRE_FALSE(EffectUseless("Cure Poison"));
 }

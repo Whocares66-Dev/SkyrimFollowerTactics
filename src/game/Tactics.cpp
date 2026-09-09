@@ -210,9 +210,10 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
 {
     ft::Capabilities caps; // all false
     for (const auto kind :
-         {ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest, ft::ActionKind::ApplyStrongest,
-          ft::ActionKind::ApplyWeakest, ft::ActionKind::ApplyPoison, ft::ActionKind::ChargeStrongestSoulGem,
-          ft::ActionKind::ChargeWeakestSoulGem, ft::ActionKind::ChargeSoulGem})
+         {ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest, ft::ActionKind::EatStrongestFood,
+          ft::ActionKind::EatWeakestFood, ft::ActionKind::EatStrongestIngredient, ft::ActionKind::EatWeakestIngredient,
+          ft::ActionKind::ApplyStrongest, ft::ActionKind::ApplyWeakest, ft::ActionKind::ApplyPoison,
+          ft::ActionKind::ChargeStrongestSoulGem, ft::ActionKind::ChargeWeakestSoulGem, ft::ActionKind::ChargeSoulGem})
         caps.supported[static_cast<std::size_t>(kind)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EatFood)] = true;

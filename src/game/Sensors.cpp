@@ -1,5 +1,7 @@
 #include "game/Sensors.h"
 
+#include "core/Effects.h"
+
 #include "game/Hits.h"
 #include "game/Inventory.h"
 #include "game/Packages.h"
@@ -31,28 +33,36 @@ constexpr std::uint32_t kMagicNoReanimateKeyword = 0x0006F6FB;
 // magnitude and duration of each. A potion's harmful side (the Slow in
 // Sleeping Tree Sap, the regen loss in an ale) is not a reason to drink
 // it, and a poison is chosen for what it does to the enemy.
-std::vector<ft::PotionStock::Effect> EffectsOf(RE::AlchemyItem *alch, ft::ConsumableKind kind)
+// An ingredient eaten gives its FIRST effect and no other (the rest are for
+// the alchemy table), so that one is the ingredient's effect here.
+std::vector<ft::PotionStock::Effect> EffectsOf(RE::MagicItem *item, ft::ConsumableKind kind)
 {
     std::vector<ft::PotionStock::Effect> out;
-    if (!alch)
+    if (!item)
         return out;
     const bool poison = kind == ft::ConsumableKind::Poison;
-    for (auto *effect : alch->effects)
+    const bool firstOnly = kind == ft::ConsumableKind::Ingredient;
+    for (auto *effect : item->effects)
     {
         if (!effect || !effect->baseEffect)
             continue;
         const auto *base = effect->baseEffect;
         const bool harmful =
             base->IsDetrimental() || base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHostile);
-        if (harmful != poison)
-            continue;
         const char *name = base->GetFullName();
-        if (!name || !*name)
-            continue;
-        out.push_back({name, effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration)});
+        if (harmful == poison && name && *name && !ft::EffectUseless(name))
+            out.push_back({name, effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration)});
+        if (firstOnly)
+            break;
     }
     return out;
 }
+
+// VendorItemFood, Skyrim.esm: the keyword on the few ingredients that are
+// food -- a charred skeever hide, an egg, snowberries. Any other
+// ingredient is eaten only to learn what it does, and a follower has
+// nothing to learn.
+constexpr std::uint32_t kVendorItemFoodKeyword = 0x0008CDEA;
 
 // Which consumable kind an inventory object is, or nothing for what is
 // neither eaten nor applied.
@@ -64,8 +74,13 @@ std::optional<ft::ConsumableKind> ConsumableKindOf(RE::TESBoundObject *object)
             return ft::ConsumableKind::Poison;
         return alch->IsFood() ? ft::ConsumableKind::Food : ft::ConsumableKind::Potion;
     }
-    if (object->As<RE::IngredientItem>())
-        return ft::ConsumableKind::Ingredient;
+    if (auto *ingredient = object->As<RE::IngredientItem>())
+    {
+        auto *food = RE::TESForm::LookupByID<RE::BGSKeyword>(kVendorItemFoodKeyword);
+        if (food && ingredient->HasKeyword(food))
+            return ft::ConsumableKind::Ingredient;
+        return std::nullopt;
+    }
     return std::nullopt;
 }
 
@@ -85,12 +100,8 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock)
         const auto kind = ConsumableKindOf(object);
         if (!kind)
             continue;
-        // A potion's and a poison's effects, for the policies; food restores
-        // too, but slowly, and is its own action, named.
-        std::vector<ft::PotionStock::Effect> effects;
-        if (*kind == ft::ConsumableKind::Potion || *kind == ft::ConsumableKind::Poison)
-            effects = EffectsOf(object->As<RE::AlchemyItem>(), *kind);
-        stock.carried.push_back({object->GetFormID(), static_cast<int>(count), *kind, std::move(effects)});
+        stock.carried.push_back(
+            {object->GetFormID(), static_cast<int>(count), *kind, EffectsOf(object->As<RE::MagicItem>(), *kind)});
     }
 }
 
@@ -957,14 +968,14 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
             const auto *gem = object->As<RE::TESSoulGem>();
             if (!gem || level < gem->GetMaximumCapacity())
                 name += std::string(" (") + SoulLevelName(level) + ")";
-            out.push_back({object->GetFormID(), name, static_cast<int>(count), ft::ConsumableKind::SoulGem});
+            out.push_back({object->GetFormID(), name, static_cast<int>(count), ft::ConsumableKind::SoulGem, {}});
             continue;
         }
         const auto kind = ConsumableKindOf(object);
         if (!kind)
             continue;
         std::vector<std::string> effects;
-        for (const auto &effect : EffectsOf(object->As<RE::AlchemyItem>(), *kind))
+        for (const auto &effect : EffectsOf(object->As<RE::MagicItem>(), *kind))
             effects.push_back(effect.name);
         out.push_back({object->GetFormID(), object->GetName() ? object->GetName() : "?", static_cast<int>(count), *kind,
                        std::move(effects)});

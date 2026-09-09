@@ -34,4 +34,8 @@ struct EffectEntry
 // name.
 [[nodiscard]] std::string_view EffectLabel(std::string_view effect) noexcept;
 
+// An effect no follower can use: the two about disease, which a follower
+// never catches. Left out of the bottles' effects at the scan.
+[[nodiscard]] bool EffectUseless(std::string_view effect) noexcept;
+
 } // namespace ft

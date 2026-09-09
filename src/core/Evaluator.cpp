@@ -554,19 +554,9 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
 
 std::uint32_t ChosenForm(const Action &a, const PotionStock &stock)
 {
-    switch (a.kind)
-    {
-    case ActionKind::DrinkStrongest:
-        return stock.Choose(ConsumableKind::Potion, a.effect, true);
-    case ActionKind::DrinkWeakest:
-        return stock.Choose(ConsumableKind::Potion, a.effect, false);
-    case ActionKind::ApplyStrongest:
-        return stock.Choose(ConsumableKind::Poison, a.effect, true);
-    case ActionKind::ApplyWeakest:
-        return stock.Choose(ConsumableKind::Poison, a.effect, false);
-    default:
+    if (!IsPolicy(a.kind))
         return a.form;
-    }
+    return stock.Choose(ConsumableOf(a.kind), a.effect, IsStrongest(a.kind));
 }
 
 // Takes the whole action, not just its kind: a spell action is only
@@ -578,6 +568,10 @@ bool HasResource(const Action &a, const Snapshot &s)
     {
     case ActionKind::DrinkStrongest:
     case ActionKind::DrinkWeakest:
+    case ActionKind::EatStrongestFood:
+    case ActionKind::EatWeakestFood:
+    case ActionKind::EatStrongestIngredient:
+    case ActionKind::EatWeakestIngredient:
     case ActionKind::ApplyStrongest:
     case ActionKind::ApplyWeakest:
         return ChosenForm(a, s.potions) != 0;
@@ -630,6 +624,10 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s)
     {
     case ActionKind::DrinkStrongest:
     case ActionKind::DrinkWeakest:
+    case ActionKind::EatStrongestFood:
+    case ActionKind::EatWeakestFood:
+    case ActionKind::EatStrongestIngredient:
+    case ActionKind::EatWeakestIngredient:
         return s.potions.IsRunning(a.effect);
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:

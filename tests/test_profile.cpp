@@ -161,6 +161,8 @@ TEST_CASE("a profile round-trips through its file", "[profile]")
     const Profile before = Everything();
     const auto read = ReadProfile(WriteProfile(before, kHex), kHex);
 
+    for (const auto &warning : read.warnings)
+        UNSCOPED_INFO(warning);
     REQUIRE(read.warnings.empty());
     REQUIRE(read.profile.has_value());
     const Profile &after = *read.profile;
@@ -483,17 +485,20 @@ TEST_CASE("a policy names its effect on the wire, and the old fixed names still 
         "then": { "target": "self", "do": [
             { "action": "apply-weakest-stamina-poison" },
             { "action": "drink-weakest", "effect": "Resist Fire" },
+            { "action": "eat-strongest-food", "effect": "Restore Stamina" },
             { "action": "drink-strongest" }
         ] }
     })";
     const auto read = ReadProfile(OneRuleFile(rule), kHex);
     REQUIRE(read.profile->rules.rules.size() == 1);
     const Rule &r = read.profile->rules.rules[0];
-    REQUIRE(r.actions.size() == 2);
+    REQUIRE(r.actions.size() == 3);
     REQUIRE(r.actions[0].kind == ActionKind::ApplyWeakest);
     REQUIRE(r.actions[0].effect == "Damage Stamina");
     REQUIRE(r.actions[1].kind == ActionKind::DrinkWeakest);
     REQUIRE(r.actions[1].effect == "Resist Fire");
+    REQUIRE(r.actions[2].kind == ActionKind::EatStrongestFood);
+    REQUIRE(r.actions[2].effect == "Restore Stamina");
     REQUIRE(read.warnings.size() == 1);
 
     // And back out: the effect is written beside the action.

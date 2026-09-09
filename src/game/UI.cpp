@@ -1148,9 +1148,13 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     {
         if (act.effect.empty())
             return base + "...";
-        const bool strongest = act.kind == ft::ActionKind::DrinkStrongest || act.kind == ft::ActionKind::ApplyStrongest;
-        return std::string(strongest ? "Strongest " : "Weakest ") + std::string(ft::EffectLabel(act.effect)) +
-               (ft::IsApply(act.kind) ? " poison" : " potion");
+        const auto kind = ft::ConsumableOf(act.kind);
+        const char *noun = kind == ft::ConsumableKind::Poison       ? " poison"
+                           : kind == ft::ConsumableKind::Food       ? " food"
+                           : kind == ft::ConsumableKind::Ingredient ? " ingredient"
+                                                                    : " potion";
+        return std::string(ft::IsStrongest(act.kind) ? "Strongest " : "Weakest ") +
+               std::string(ft::EffectLabel(act.effect)) + noun;
     }
 
     if (NamesConsumable(act.kind))
@@ -1454,12 +1458,16 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                      ft::ActionKind::DrinkPotion);
             Im::EndMenu();
         }
-        for (const auto [label, kind] :
-             {std::pair{"Food", ft::ActionKind::EatFood}, std::pair{"Ingredient", ft::ActionKind::EatIngredient}})
+        if (carried(ft::ConsumableKind::Food) && BeginCascade("Food"))
         {
-            if (!carried(ft::ConsumableOf(kind)) || !BeginCascade(label))
-                continue;
-            named(kind);
+            byEffect(ft::ConsumableKind::Food, ft::ActionKind::EatStrongestFood, ft::ActionKind::EatWeakestFood,
+                     ft::ActionKind::EatFood);
+            Im::EndMenu();
+        }
+        if (carried(ft::ConsumableKind::Ingredient) && BeginCascade("Ingredient"))
+        {
+            byEffect(ft::ConsumableKind::Ingredient, ft::ActionKind::EatStrongestIngredient,
+                     ft::ActionKind::EatWeakestIngredient, ft::ActionKind::EatIngredient);
             Im::EndMenu();
         }
     }
@@ -2131,7 +2139,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         fresh.predicate = ft::PredicateKind::Any;
         fresh.conditionArg = 0.0f;
         fresh.actionTarget = ft::ActionTargetKind::Self;
-        fresh.actions = {{ft::ActionKind::None}};
+        fresh.actions = {ft::Action{}};
         rules.rules.push_back(fresh);
         changed = true;
     }

@@ -223,8 +223,14 @@ enum class ActionKind : std::uint8_t
     // through the game's own equip routine, which is what consumes an item.
     DrinkStrongest,
     DrinkWeakest,
-    DrinkPotion,   // one specific potion, named by actionForm
-    EatFood,       // one specific food, named by actionForm
+    DrinkPotion, // one specific potion, named by actionForm
+    // Food, and the few ingredients that are food (a follower does not
+    // taste the rest to learn them), the same three ways each.
+    EatStrongestFood,
+    EatWeakestFood,
+    EatFood, // one specific food, named by actionForm
+    EatStrongestIngredient,
+    EatWeakestIngredient,
     EatIngredient, // one specific ingredient, named by actionForm
     CastSpell,
     // A power (Embrace of Shadows, Battle Cry): a spell record cast from
@@ -247,9 +253,11 @@ enum class ActionKind : std::uint8_t
 // The consume actions, named or by policy; and the kind a named one names
 // (Potion for the drink policies, which are potions too).
 [[nodiscard]] bool IsConsume(ActionKind action) noexcept;
-// The four that choose a bottle by its effect: the strongest or weakest
-// potion or poison carried with Action::effect.
+// The eight that choose by an effect: the strongest or weakest potion,
+// food, ingredient or poison carried with Action::effect.
 [[nodiscard]] bool IsPolicy(ActionKind action) noexcept;
+// Of the policies, the four that take the strongest; the rest the weakest.
+[[nodiscard]] bool IsStrongest(ActionKind action) noexcept;
 // The apply-a-poison actions and the charge-with-a-soul-gem actions, which
 // the Then cascade groups under Weapon.
 [[nodiscard]] bool IsApply(ActionKind action) noexcept;
