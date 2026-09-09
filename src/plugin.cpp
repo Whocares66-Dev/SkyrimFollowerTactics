@@ -155,7 +155,7 @@ std::vector<Check> RunSelfCheck()
         ft::RuleSet rs;
         ft::Rule r;
         r.subject = ft::SubjectKind::Self;
-        r.predicate = ft::PredicateKind::Targeting; // nonsense: oneself, going for a party member
+        r.predicate = ft::PredicateKind::Attacking; // nonsense: oneself, going for a party member
         r.subjectForm = 0;
         r.FirstAction().kind = ft::ActionKind::DrinkStrongest;
         r.FirstAction().effect = "Restore Health";
@@ -165,7 +165,7 @@ std::vector<Check> RunSelfCheck()
         ft::Trace trace;
         const auto d = ft::Evaluate(rs, BaseSnapshot(), ctx, &trace);
 
-        checks.push_back({"Self + Targeting -> invalid condition",
+        checks.push_back({"Self + Attacking -> invalid condition",
                           !d.Fired() && trace.at(0) == ft::Verdict::InvalidCondition,
                           fmt::format("verdict={}", ft::ToString(trace.at(0)))});
     }

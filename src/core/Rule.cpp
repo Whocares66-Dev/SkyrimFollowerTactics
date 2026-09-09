@@ -357,8 +357,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     // summons are read off every actor the snapshot carries, so they are
     // answerable about any of them. The extremes are of a group.
     if (predicate == PredicateKind::Status || predicate == PredicateKind::ArmorPctBelow ||
-        predicate == PredicateKind::ResistancePctBelow || predicate == PredicateKind::Using ||
-        predicate == PredicateKind::AttackedBy || predicate == PredicateKind::SummonNone ||
+        predicate == PredicateKind::ResistancePctBelow || predicate == PredicateKind::HitType ||
+        predicate == PredicateKind::HitBy || predicate == PredicateKind::SummonNone ||
         predicate == PredicateKind::SummonActive)
         return true;
     if (IsExtreme(predicate))
@@ -423,8 +423,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::HealthPctBelow:
         case PredicateKind::MagickaPctBelow:
         case PredicateKind::StaminaPctBelow:
-        case PredicateKind::Targeting:
-        case PredicateKind::TargetOf:
+        case PredicateKind::Attacking:
+        case PredicateKind::AttackedBy:
             return true;
         default:
             return false;

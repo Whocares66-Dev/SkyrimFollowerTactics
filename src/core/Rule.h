@@ -35,7 +35,7 @@ enum class SubjectKind : std::uint8_t
     Ally,
     Enemy,
     // (The follower's own target was a subject here until 2026-09-08; it is
-    // "Enemy: Target of <the follower>" now, one place for one question.)
+    // "Enemy: Attacked by <the follower>" now, one place for one question.)
     // One particular other follower, named by Rule::subjectForm: an ally
     // asked about alone.
     Follower,
@@ -69,22 +69,23 @@ enum class PredicateKind : std::uint8_t
     // (A count of the group -- "at least N enemies" -- was here until
     // 2026-09-08. Nobody offered it in the end: an ally's count changes too
     // rarely to be a condition, and the enemy's was not wanted.)
-    // The enemy is going for a member of the party, or is the one a
-    // member is going for: the two that make a party fight as one -- peel
-    // the one on the player, or hit what the player hits. The member is
+    // The enemy is attacking a member of the party -- their combat target
+    // is that member -- or is attacked by one, being that member's target:
+    // the two that make a party fight as one -- peel the one on the
+    // player, or hit what the player hits. The member is
     // Rule::subjectForm: 0 for the player, the follower's own id for
     // themself, another follower's id otherwise. Enemy only.
-    Targeting,
-    TargetOf,
-    // The subject is wielding Rule::damageKind: a melee weapon, a bow or
-    // crossbow, a spell or a staff (Magic), or anything that does that
-    // kind of damage -- an enchanted blade, a staff of flames, a poisoned
-    // dagger. Any subject; Any is "anything at all in hand".
-    Using,
+    Attacking,
+    AttackedBy,
+    // The subject's hit type: wielding Rule::damageKind -- a melee weapon,
+    // a bow or crossbow, a spell or a staff (Magic), or anything that does
+    // that kind of damage, an enchanted blade, a staff of flames, a
+    // poisoned dagger. Any subject; Any is "anything at all in hand".
+    HitType,
     // The subject has been hit with Rule::damageKind in the last few
     // seconds. Any subject. Listed here, between the fight's edges and
     // Status, as the editor's menu groups them.
-    AttackedBy,
+    HitBy,
     // The subject is in the status Rule::statusKind names: poisoned,
     // burning, fleeing ... Any subject; a few kinds are not asked about
     // the follower themself (IsStatusValidFor).
@@ -331,7 +332,7 @@ struct Rule
 
     SubjectKind subject{SubjectKind::Self};
     // Which follower, for SubjectKind::Follower: the actor's FormID, as
-    // opaque here as an action's form is. For Targeting and TargetOf, the
+    // opaque here as an action's form is. For Attacking and AttackedBy, the
     // party member: 0 for the player, the follower's own id for themself.
     std::uint32_t subjectForm{0};
     PredicateKind predicate{PredicateKind::Any};

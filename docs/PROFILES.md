@@ -58,7 +58,7 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 | `if.arg` | the threshold, present only for predicates that take one: a 0..1 fraction for the percent ones |
 | `then.do[].effect` | for the eight strongest / weakest policies, the effect's name as the game shows it (`"Restore Health"`, `"Resist Fire"`); the potion, food, ingredient or poison is chosen by it at run time |
 | `if.status` | only under `status`: which status |
-| `if.damage` | only under the resistance predicates and `attacked-by`: which kind of damage |
+| `if.damage` | only under the resistance predicates, `hit-by` and `hit-type`: which kind of damage |
 | `if.follower` | only when the subject is `follower`: which one, as a form |
 | `then.target` | whom the actions are done on, by wire name |
 | `then.follower` | only when the target is `follower`: which one |

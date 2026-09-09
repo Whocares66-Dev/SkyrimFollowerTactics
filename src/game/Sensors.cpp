@@ -850,7 +850,7 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     if (const auto *process = actor->GetActorRuntimeData().currentProcess; process && process->middleHigh)
         traits.summons = static_cast<int>(process->middleHigh->commandedActors.size());
     const Attacked attacked = AttackedLately(actor->GetFormID());
-    traits.attackedBy = attacked.kinds;
+    traits.hitBy = attacked.kinds;
     traits.attacker = attacked.attacker;
     if (auto *owner = actor->AsActorValueOwner())
     {

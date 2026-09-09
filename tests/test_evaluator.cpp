@@ -451,13 +451,13 @@ TEST_CASE("ally conditions bind the ally, not the follower", "[binding]")
     REQUIRE(b.id == 0x202);
 }
 
-TEST_CASE("the follower's own target is Enemy: Target of the follower", "[binding]")
+TEST_CASE("the follower's own target is Enemy: Attacked by the follower", "[binding]")
 {
     Snapshot s = Healthy();
     s.currentTarget = 0x101;
     Rule r;
     r.subject = SubjectKind::Enemy;
-    r.predicate = PredicateKind::TargetOf;
+    r.predicate = PredicateKind::AttackedBy;
     r.subjectForm = s.self;
     // Not sensed as an enemy yet: nothing to bind.
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
@@ -490,11 +490,11 @@ TEST_CASE("no binding means the rule is skipped, not fired at nobody", "[evaluat
 TEST_CASE("the subject and predicate validity matrix", "[validity]")
 {
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::MagickaPctBelow));
-    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Targeting));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Attacking));
     REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Status));
 
     // A lone subject is not asked whom it is attacking.
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Targeting));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Attacking));
 
     // "Any" is offered for everyone: always true of the player and of an
     // ally, and there so a rule can aim at them under the heading a reader
@@ -881,7 +881,7 @@ TEST_CASE("resistance is asked by kind as a percent, with a lowest and a highest
     }
     REQUIRE(IsResistance(PredicateKind::ResistanceLowest));
     REQUIRE(IsResistance(PredicateKind::ResistancePctAbove));
-    REQUIRE_FALSE(IsResistance(PredicateKind::AttackedBy));
+    REQUIRE_FALSE(IsResistance(PredicateKind::HitBy));
     REQUIRE(ExtremesOf(PredicateKind::ResistancePctBelow).lowest == PredicateKind::ResistanceLowest);
     REQUIRE(AboveOf(PredicateKind::ResistancePctBelow) == PredicateKind::ResistancePctAbove);
 }
@@ -896,12 +896,12 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
 
     Rule r;
     r.subject = SubjectKind::Ally;
-    r.predicate = PredicateKind::AttackedBy;
+    r.predicate = PredicateKind::HitBy;
     r.damageKind = DamageKind::Fire;
     r.actionTarget = ActionTargetKind::Attacker;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
-    s.allies[0].traits.attackedBy = Bit(DamageKind::Fire) | Bit(DamageKind::Melee);
+    s.allies[0].traits.hitBy = Bit(DamageKind::Fire) | Bit(DamageKind::Melee);
     s.allies[0].traits.attacker = 0x101;
     const Binding bound = EvaluateCondition(r, s);
     REQUIRE(bound.id == 0x201);
@@ -919,7 +919,7 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
     r.subject = SubjectKind::Self;
     r.damageKind = DamageKind::Melee;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    s.traits.attackedBy = Bit(DamageKind::Melee);
+    s.traits.hitBy = Bit(DamageKind::Melee);
     s.traits.attacker = 0x101;
     const Binding self = EvaluateCondition(r, s);
     REQUIRE(self.id == s.self);
@@ -931,14 +931,14 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
     // The player's.
     r.subject = SubjectKind::Player;
     r.damageKind = DamageKind::Shock;
-    s.playerTraits.attackedBy = Bit(DamageKind::Shock);
+    s.playerTraits.hitBy = Bit(DamageKind::Shock);
     s.playerTraits.attacker = 0x101;
     const Binding player = EvaluateCondition(r, s);
     REQUIRE(player.id == kPlayerFormID);
     REQUIRE(ResolveActionTarget(r, s, player, &ok) == 0x101);
 
     for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
-        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::AttackedBy) ==
+        REQUIRE(IsPredicateValidFor(static_cast<SubjectKind>(i), PredicateKind::HitBy) ==
                 (static_cast<SubjectKind>(i) != SubjectKind::Corpse));
 }
 
@@ -984,15 +984,15 @@ TEST_CASE("the enemy on a member of the party, and the one a member is on", "[pa
     Rule r;
     r.subject = SubjectKind::Enemy;
     // The player: member 0.
-    r.predicate = PredicateKind::Targeting;
+    r.predicate = PredicateKind::Attacking;
     REQUIRE(EvaluateCondition(r, s).id == 0x102);
-    r.predicate = PredicateKind::TargetOf;
+    r.predicate = PredicateKind::AttackedBy;
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
     // Another follower, by id.
     r.subjectForm = 0x201;
-    r.predicate = PredicateKind::Targeting;
+    r.predicate = PredicateKind::Attacking;
     REQUIRE(EvaluateCondition(r, s).id == 0x103);
-    r.predicate = PredicateKind::TargetOf;
+    r.predicate = PredicateKind::AttackedBy;
     REQUIRE(EvaluateCondition(r, s).id == 0x103);
     // The follower themself: their own target.
     r.subjectForm = s.self;
@@ -1004,8 +1004,8 @@ TEST_CASE("the enemy on a member of the party, and the one a member is on", "[pa
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
     // Only the Enemy heading asks these.
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Targeting));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::TargetOf));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Attacking));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::AttackedBy));
     // Any for the player and an ally.
     REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Any));
     REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Any));
@@ -1047,7 +1047,7 @@ TEST_CASE("an unanswerable pair reports InvalidCondition, not ConditionFalse", "
     RuleSet rs;
     Rule r;
     r.subject = SubjectKind::Self;
-    r.predicate = PredicateKind::Targeting; // nonsense: oneself, going for a party member
+    r.predicate = PredicateKind::Attacking; // nonsense: oneself, going for a party member
     r.subjectForm = 0;
     r.FirstAction() = DrinkMagicka();
     rs.rules.push_back(r);
@@ -2222,19 +2222,19 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
     s.enemies.push_back({0x102, {100.0f, 100.0f}, 150.0f}); // the one in the follower's face
     s.enemies[1].attacking = kPlayerFormID;
     s.currentTarget = 0x102;
-    s.allies[1].traits.attackedBy = Bit(DamageKind::Melee) | Bit(DamageKind::Ranged);
+    s.allies[1].traits.hitBy = Bit(DamageKind::Melee) | Bit(DamageKind::Ranged);
     s.allies[1].traits.attacker = 0x101;
 
     Rule archer;
     archer.subject = SubjectKind::Ally;
-    archer.predicate = PredicateKind::AttackedBy;
+    archer.predicate = PredicateKind::HitBy;
     archer.damageKind = DamageKind::Ranged;
     archer.actionTarget = ActionTargetKind::Attacker;
     archer.FirstAction().kind = ActionKind::Attack;
 
     Rule peel;
     peel.subject = SubjectKind::Enemy;
-    peel.predicate = PredicateKind::Targeting;
+    peel.predicate = PredicateKind::Attacking;
     peel.actionTarget = ActionTargetKind::Enemy;
     peel.FirstAction().kind = ActionKind::Attack;
 
@@ -2295,7 +2295,7 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
 
     // Ranged is a kind of its own: a sword blow on the ally is not it.
     s.inCombat = true;
-    s.allies[1].traits.attackedBy = Bit(DamageKind::Melee);
+    s.allies[1].traits.hitBy = Bit(DamageKind::Melee);
     REQUIRE_FALSE(EvaluateCondition(archer, s).ok);
     REQUIRE(MinimumCooldown(ActionKind::Attack) == 2.0);
 }
@@ -2372,10 +2372,10 @@ TEST_CASE("attacked by anything, and an ally's magicka and stamina", "[condition
     // Attacked by Any: hit with anything at all in the window.
     Rule hit;
     hit.subject = SubjectKind::Ally;
-    hit.predicate = PredicateKind::AttackedBy;
+    hit.predicate = PredicateKind::HitBy;
     hit.damageKind = DamageKind::Any;
     REQUIRE_FALSE(EvaluateCondition(hit, s).ok);
-    s.allies[2].traits.attackedBy = Bit(DamageKind::Frost);
+    s.allies[2].traits.hitBy = Bit(DamageKind::Frost);
     REQUIRE(EvaluateCondition(hit, s).id == 0x202);
     hit.damageKind = DamageKind::Fire;
     REQUIRE_FALSE(EvaluateCondition(hit, s).ok);
@@ -2887,7 +2887,7 @@ TEST_CASE("the enemy an action goes to, read from the condition", "[binding]")
 TEST_CASE("Using asks what is in hand, of anyone", "[binding]")
 {
     for (const auto subject : {SubjectKind::Self, SubjectKind::Player, SubjectKind::Ally, SubjectKind::Enemy})
-        REQUIRE(IsPredicateValidFor(subject, PredicateKind::Using));
+        REQUIRE(IsPredicateValidFor(subject, PredicateKind::HitType));
 
     Snapshot s = Healthy();
     s.traits.Wield(DamageKind::Melee);
@@ -2897,7 +2897,7 @@ TEST_CASE("Using asks what is in hand, of anyone", "[binding]")
 
     Rule r;
     r.subject = SubjectKind::Self;
-    r.predicate = PredicateKind::Using;
+    r.predicate = PredicateKind::HitType;
     r.damageKind = DamageKind::Melee;
     REQUIRE(EvaluateCondition(r, s).ok);
     r.damageKind = DamageKind::Fire;

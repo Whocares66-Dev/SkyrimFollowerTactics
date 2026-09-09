@@ -70,18 +70,18 @@ bool EnemySatisfies(const EnemyView &e, const Rule &r, const Snapshot &s)
 {
     switch (r.predicate)
     {
-    case PredicateKind::Targeting:
+    case PredicateKind::Attacking:
         return e.attacking != 0 && e.attacking == MemberId(r);
-    case PredicateKind::TargetOf: {
+    case PredicateKind::AttackedBy: {
         const ActorId target = MemberTarget(r, s);
         return target != 0 && e.id == target;
     }
     case PredicateKind::Any:
         return true;
-    case PredicateKind::Using:
+    case PredicateKind::HitType:
         return e.traits.Using(r.damageKind);
-    case PredicateKind::AttackedBy:
-        return e.traits.AttackedBy(r.damageKind);
+    case PredicateKind::HitBy:
+        return e.traits.HitBy(r.damageKind);
     case PredicateKind::HealthPctBelow:
         return e.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
@@ -113,10 +113,10 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
     {
     case PredicateKind::Any:
         return true;
-    case PredicateKind::Using:
+    case PredicateKind::HitType:
         return a.traits.Using(r.damageKind);
-    case PredicateKind::AttackedBy:
-        return a.traits.AttackedBy(r.damageKind);
+    case PredicateKind::HitBy:
+        return a.traits.HitBy(r.damageKind);
     case PredicateKind::HealthPctBelow:
         return a.health.Pct() < r.conditionArg;
     case PredicateKind::HealthPctAbove:
@@ -364,11 +364,11 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::Status:
         held = s.traits.Has(r.statusKind);
         break;
-    case PredicateKind::Using:
+    case PredicateKind::HitType:
         held = s.traits.Using(r.damageKind);
         break;
-    case PredicateKind::AttackedBy:
-        held = s.traits.AttackedBy(r.damageKind);
+    case PredicateKind::HitBy:
+        held = s.traits.HitBy(r.damageKind);
         break;
     case PredicateKind::WeaponChargeNeeded:
         held = s.AnyWeaponChargeNeeded();
@@ -415,11 +415,11 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
     case PredicateKind::Status:
         held = s.playerTraits.Has(r.statusKind);
         break;
-    case PredicateKind::Using:
+    case PredicateKind::HitType:
         held = s.playerTraits.Using(r.damageKind);
         break;
-    case PredicateKind::AttackedBy:
-        held = s.playerTraits.AttackedBy(r.damageKind);
+    case PredicateKind::HitBy:
+        held = s.playerTraits.HitBy(r.damageKind);
         break;
     default:
         ArmourOrResistance(s.playerTraits, r, &held);

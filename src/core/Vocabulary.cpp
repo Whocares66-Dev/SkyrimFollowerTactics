@@ -74,10 +74,10 @@ constexpr std::array<Entry<PredicateKind>, 36> kPredicates{{
     {PredicateKind::Status, "status", "Status"},
     {PredicateKind::ArmorPctBelow, "armor-pct-below", "Armor"},
     {PredicateKind::ResistancePctBelow, "resistance-pct-below", "Resistance"},
-    {PredicateKind::Targeting, "targeting", "Targeting"},
-    {PredicateKind::TargetOf, "target-of", "Target of"},
-    {PredicateKind::Using, "using", "Using"},
+    {PredicateKind::Attacking, "attacking", "Attacking"},
     {PredicateKind::AttackedBy, "attacked-by", "Attacked by"},
+    {PredicateKind::HitType, "hit-type", "Hit type"},
+    {PredicateKind::HitBy, "hit-by", "Hit by"},
     {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
     {PredicateKind::HealthHighest, "health-highest", "Health highest"},
     {PredicateKind::StaminaLowest, "stamina-lowest", "Stamina lowest"},
@@ -385,14 +385,14 @@ std::string_view Describe(PredicateKind v) noexcept
         return "The one least resistant to that kind of damage.";
     case PredicateKind::ResistanceHighest:
         return "The one most resistant to that kind of damage.";
-    case PredicateKind::Using:
-        return "Wielding that: a blade, a bow, a spell or a staff, or anything that does that kind of damage.";
-    case PredicateKind::AttackedBy:
+    case PredicateKind::HitType:
+        return "Hits with that: a blade, a bow, a spell or a staff in hand, or anything that does that kind of damage.";
+    case PredicateKind::HitBy:
         return "Hit with that kind of damage in the last few seconds.";
-    case PredicateKind::Targeting:
-        return "Going for that member of the party.";
-    case PredicateKind::TargetOf:
-        return "The one that member of the party is fighting.";
+    case PredicateKind::Attacking:
+        return "Attacking that member of the party: they are its combat target.";
+    case PredicateKind::AttackedBy:
+        return "Attacked by that member of the party: it is their combat target.";
     case PredicateKind::HealthLowest:
         return "The one with the least health.";
     case PredicateKind::HealthHighest:

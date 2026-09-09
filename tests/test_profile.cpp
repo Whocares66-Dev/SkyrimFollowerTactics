@@ -78,7 +78,7 @@ Profile Everything()
     {
         Rule r;
         r.subject = SubjectKind::Player;
-        r.predicate = PredicateKind::AttackedBy;
+        r.predicate = PredicateKind::HitBy;
         r.damageKind = DamageKind::Any;
         r.actionTarget = ActionTargetKind::Attacker;
         r.FirstAction().kind = ActionKind::Attack;
@@ -139,7 +139,7 @@ void RequireSame(const Rule &a, const Rule &b)
     REQUIRE(a.conditionArg == b.conditionArg);
     if (a.predicate == PredicateKind::Status)
         REQUIRE(a.statusKind == b.statusKind);
-    if (IsResistance(a.predicate) || a.predicate == PredicateKind::AttackedBy)
+    if (IsResistance(a.predicate) || a.predicate == PredicateKind::HitBy)
         REQUIRE(a.damageKind == b.damageKind);
     REQUIRE(a.actionTarget == b.actionTarget);
     REQUIRE(a.actionTargetForm == b.actionTargetForm);

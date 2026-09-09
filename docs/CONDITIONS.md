@@ -102,13 +102,13 @@ into one per-actor table of `kind -> (game time, attacker)`:
    form says the kind: a weapon or nothing is a blow -- **melee**, or
    **ranged** when the event names a projectile, an arrow or a bolt; a
    magic item is **magic**, and its effects bucket by `resistVariable` and
-   `IsPoison()` as well, so a fire hit is magic and fire both. "Attacked by ranged" is the archer in particular, "attacked by melee" the one at the follower's face, "attacked by magic" any caster (2026-09-04, for the Attack action in docs/ACTIONS.md 6 and for armour buffs against blows).
+   `IsPoison()` as well, so a fire hit is magic and fire both. "Hit by ranged" is the archer in particular, "hit by melee" the one at the follower's face, "hit by magic" any caster (2026-09-04, for the Attack action in docs/ACTIONS.md 6 and for armour buffs against blows).
 2. A sink on `TESMagicEffectApplyEvent` for effects that skip the hit event
    (`kNoHitEvent`): cloaks, hazards, spit. Which ones do is to be tested.
 3. The active-effect scan of section 2, with the effect's `caster` as the
    attacker, for anything still running.
 
-The window is 3 s. "Attacked by" is true within it; the attacker is the
+The window is 3 s. "Hit by" (named Attacked by until 2026-09-09) is true within it; the attacker is the
 most recent. The snapshot carries, per actor view, the kinds seen in the
 window and the attacker's id, and the rule can aim its action at the
 attacker: `Attacker` on the Then side, beside Self, Player, Ally, Enemy,
@@ -154,7 +154,7 @@ form, listed by name in the menu after the player.
 
 - `core/Kinds.h`: StatusKind, ArmorBand and BandOf, DamageKind, ResistBand.
 - `core/Snapshot.h`: ActorTraits -- status bits, armour reduction, six
-  resistances, attacked-by bits and the attacker -- on the follower, the
+  resistances, hit-by bits and the attacker -- on the follower, the
   player, each ally and each enemy.
 - `core/Rule.h`: predicates Status, Armor, Resistance, AttackedBy,
   HealthLowest/Highest, ArmorLowest/Highest; the rule's statusKind and
@@ -198,14 +198,14 @@ Self only: the snapshot reads the follower's own hands. The wire names are `weap
 
 ## 9. The cascade as it reads (2026-09-08)
 
-Under every subject the conditions come in five groups with a divider between: Any; Health, Stamina, Magicka; Combat, (for Enemy) Targeting and Target of, Using, Attacked by, Status; Weapon, Armor, Resistance; Summon. Corpse, a subject of its own, has None and Level -> Highest, Lowest. Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. There is no Count of a group any more: an ally's changes too rarely to be a condition and the enemy's was not wanted (it went on 2026-09-08; a save carrying `count-at-least` drops the rule with a warning).
+Under every subject the conditions come in five groups with a divider between: Any; Health, Stamina, Magicka; Combat, (for Enemy) Attacking and Attacked by, Hit type, Hit by, Status; Weapon, Armor, Resistance; Summon. Corpse, a subject of its own, has None and Level -> Highest, Lowest. Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. There is no Count of a group any more: an ally's changes too rarely to be a condition and the enemy's was not wanted (it went on 2026-09-08; a save carrying `count-at-least` drops the rule with a warning).
 
-**Using** is what the subject has in hand, asked with the same kinds as Attacked by: Any (anything at all), then Melee (a blade, an axe, a mace), Ranged (a bow or crossbow), Magic (a spell or a staff), then Fire, Frost, Shock, Poison for whatever in hand does that kind of damage -- a weapon's enchantment, a staff's or a spell's effects, a poison on the blade -- read by what resists the effect, as a hit is. Fists are nothing. Any subject, from the snapshot's traits; the wire name is `using`, the kind under `"damage"` as for Attacked by.
+**Hit type** (Using until 2026-09-09) is what the subject hits with, asked with the same kinds as Hit by: Any (anything at all), then Melee (a blade, an axe, a mace), Ranged (a bow or crossbow), Magic (a spell or a staff), then Fire, Frost, Shock, Poison for whatever in hand does that kind of damage -- a weapon's enchantment, a staff's or a spell's effects, a poison on the blade -- read by what resists the effect, as a hit is. Fists are nothing. Any subject, from the snapshot's traits; the wire name is `hit-type`, the kind under `"damage"` as for Hit by.
 
 The player is "Player" everywhere in the panel, never by name: a long name breaks the layout.
 
 **Statuses** that no action could answer are not asked about the follower themself: bleeding out, casting, fleeing and staggered. The player neither bleeds out nor flees. About anyone else every status is a fair question (`IsStatusValidFor`).
 
-**Targeting and Target of** replace the old "attacking player" and "target of player": each opens on the members of the party -- Self, Player, the other followers by name -- so `Enemy: Target of Player` is the one the player is fighting and `Enemy: Targeting <Lydia>` the one going for Lydia. The member goes on the wire as `"member": "player"` or the follower's form; the predicate's wire name is `targeting` (it was `attacking` for a few hours on 2026-09-08). `Enemy: Target of <this follower>` is the follower's own target, which was a subject of its own ("Target") until 2026-09-08; one place for one question.
+**Attacking and Attacked by** (Targeting and Target of until 2026-09-09) replace the old "attacking player" and "target of player": each opens on the members of the party -- Self, Player, the other followers by name -- so `Enemy: Attacked by Player` is the one the player is fighting and `Enemy: Attacking <Lydia>` the one going for Lydia. The member goes on the wire as `"member": "player"` or the follower's form; the wire names are `attacking` and `attacked-by`. `Enemy: Attacked by <this follower>` is the follower's own target, which was a subject of its own ("Target") until 2026-09-08; one place for one question.
 
 **On the action side** there is one Enemy heading, read from the condition: under an enemy condition it is the enemy the condition matched; under any other, whoever the follower is fighting, and failing that the nearest enemy sensed, since a cast must go at someone and nearest is what the follower's own AI picks. The separate "Target" heading is gone with the subject. Attacker stays: whoever is at the subject's throat, offered under every subject but an enemy, where it reads oddly. Under an enemy condition only Enemy (and self, the player, the followers) are offered.

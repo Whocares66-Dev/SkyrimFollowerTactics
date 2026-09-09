@@ -58,7 +58,7 @@ struct ActorTraits
     // What has hit the actor in the last few seconds, a bit per DamageKind,
     // and who did it last: the Attacked by condition, and the Attacker
     // target. From the hit table on the game side.
-    std::uint8_t attackedBy{0};
+    std::uint8_t hitBy{0};
     ActorId attacker{0};
 
     // How many summons and raised corpses the actor commands right now:
@@ -83,11 +83,11 @@ struct ActorTraits
         wielding |= Bit(kind);
     }
 
-    [[nodiscard]] constexpr bool AttackedBy(DamageKind kind) const noexcept
+    [[nodiscard]] constexpr bool HitBy(DamageKind kind) const noexcept
     {
         if (kind == DamageKind::Any)
-            return attackedBy != 0;
-        return (attackedBy & Bit(kind)) != 0;
+            return hitBy != 0;
+        return (hitBy & Bit(kind)) != 0;
     }
 
     [[nodiscard]] constexpr float Resist(DamageKind kind) const noexcept
