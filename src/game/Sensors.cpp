@@ -1928,85 +1928,121 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         s.rows.push_back(std::move(row));
     };
 
+    // What the two modifier values of each vanilla skill do. No record
+    // links a skill to them, so this is a table; a skill a mod adds gets
+    // none, and its row shows the level alone.
+    struct Pair
     {
-        SheetSection s{"Warrior", {}, {}};
-        skill(s, {"One-Handed",
-                  AV::kOneHanded,
-                  {AV::kOneHandedModifier, "damage", +1},
-                  {AV::kOneHandedPowerModifier, "damage", +1}});
-        skill(s, {"Two-Handed",
-                  AV::kTwoHanded,
-                  {AV::kTwoHandedModifier, "damage", +1},
-                  {AV::kTwoHandedPowerModifier, "damage", +1}});
-        skill(s, {"Block", AV::kBlock, {AV::kBlockModifier, "blocked", +1}, {AV::kBlockPowerModifier, "blocked", +1}});
-        skill(s, {"Smithing",
-                  AV::kSmithing,
-                  {AV::kSmithingModifier, "tempering", +1},
-                  {AV::kSmithingPowerModifier, "tempering", +1}});
-        skill(s, {"Heavy Armor",
-                  AV::kHeavyArmor,
-                  {AV::kHeavyArmorModifier, "damage", -1},
-                  {AV::kHeavyArmorPowerModifier, "damage", -1}});
-        skill(s, {"Light Armor",
-                  AV::kLightArmor,
-                  {AV::kLightArmorModifier, "damage", -1},
-                  {AV::kLightArmorPowerModifier, "damage", -1}});
-        out.push_back(std::move(s));
-    }
-
-    {
-        SheetSection s{"Thief", {}, {}};
-        skill(s, {"Archery",
-                  AV::kArchery,
-                  {AV::kMarksmanModifier, "damage", +1},
-                  {AV::kMarksmanPowerModifier, "damage", +1}});
-        skill(s, {"Pickpocket",
-                  AV::kPickpocket,
-                  {AV::kPickpocketModifier, "chance", +1},
-                  {AV::kPickpocketPowerModifier, "chance", +1}});
-        skill(s, {"Lockpicking",
-                  AV::kLockpicking,
-                  {AV::kLockpickingModifier, "sweet spot", +1},
-                  {AV::kLockpickingPowerModifier, "sweet spot", +1}});
-        skill(
-            s,
-            {"Sneak", AV::kSneak, {AV::kSneakingModifier, "stealth", +1}, {AV::kSneakingPowerModifier, "stealth", +1}});
-        skill(s, {"Alchemy",
-                  AV::kAlchemy,
-                  {AV::kAlchemyModifier, "potion strength", +1},
-                  {AV::kAlchemyPowerModifier, "potion strength", +1}});
+        Modifier mod;
+        Modifier power;
+    };
+    static const std::unordered_map<AV, Pair> kPairs{
+        {AV::kOneHanded, {{AV::kOneHandedModifier, "damage", +1}, {AV::kOneHandedPowerModifier, "damage", +1}}},
+        {AV::kTwoHanded, {{AV::kTwoHandedModifier, "damage", +1}, {AV::kTwoHandedPowerModifier, "damage", +1}}},
+        {AV::kBlock, {{AV::kBlockModifier, "blocked", +1}, {AV::kBlockPowerModifier, "blocked", +1}}},
+        {AV::kSmithing, {{AV::kSmithingModifier, "tempering", +1}, {AV::kSmithingPowerModifier, "tempering", +1}}},
+        {AV::kHeavyArmor, {{AV::kHeavyArmorModifier, "damage", -1}, {AV::kHeavyArmorPowerModifier, "damage", -1}}},
+        {AV::kLightArmor, {{AV::kLightArmorModifier, "damage", -1}, {AV::kLightArmorPowerModifier, "damage", -1}}},
+        {AV::kArchery, {{AV::kMarksmanModifier, "damage", +1}, {AV::kMarksmanPowerModifier, "damage", +1}}},
+        {AV::kPickpocket, {{AV::kPickpocketModifier, "chance", +1}, {AV::kPickpocketPowerModifier, "chance", +1}}},
+        {AV::kLockpicking,
+         {{AV::kLockpickingModifier, "sweet spot", +1}, {AV::kLockpickingPowerModifier, "sweet spot", +1}}},
+        {AV::kSneak, {{AV::kSneakingModifier, "stealth", +1}, {AV::kSneakingPowerModifier, "stealth", +1}}},
+        {AV::kAlchemy,
+         {{AV::kAlchemyModifier, "potion strength", +1}, {AV::kAlchemyPowerModifier, "potion strength", +1}}},
         // Sell prices up and buy prices down by the same factor: "better prices".
-        skill(s, {"Speech",
-                  AV::kSpeech,
-                  {AV::kSpeechcraftModifier, "better prices", +1},
-                  {AV::kSpeechcraftPowerModifier, "better prices", +1}});
-        out.push_back(std::move(s));
+        {AV::kSpeech,
+         {{AV::kSpeechcraftModifier, "better prices", +1}, {AV::kSpeechcraftPowerModifier, "better prices", +1}}},
+        {AV::kAlteration, {{AV::kAlterationModifier, "cost", -1}, {AV::kAlterationPowerModifier, "duration", +1}}},
+        {AV::kConjuration, {{AV::kConjurationModifier, "cost", -1}, {AV::kConjurationPowerModifier, "duration", +1}}},
+        {AV::kDestruction, {{AV::kDestructionModifier, "cost", -1}, {AV::kDestructionPowerModifier, "damage", +1}}},
+        {AV::kIllusion, {{AV::kIllusionModifier, "cost", -1}, {AV::kIllusionPowerModifier, "magnitude", +1}}},
+        {AV::kRestoration, {{AV::kRestorationModifier, "cost", -1}, {AV::kRestorationPowerModifier, "healing", +1}}},
+        {AV::kEnchanting, {none, none}},
+    };
+
+    // The skills themselves are read off the records, not a list here:
+    // every actor value with a skill block, under the category its record
+    // carries (CNAM: 1 combat, 2 magic, 3 stealth -- which puts Archery
+    // with the warriors and Alchemy with the mages, as the game's own
+    // constellations do), by name within it. A mod that retunes, renames
+    // or re-trees a skill is read as it stands; one that adds a skill
+    // block to another value gets a row, without modifiers.
+    struct Found
+    {
+        std::string name;
+        AV value;
+        std::uint32_t category;
+    };
+    std::vector<Found> found;
+    if (auto *list = RE::ActorValueList::GetSingleton())
+    {
+        for (int i = 0; i < static_cast<int>(AV::kTotal); ++i)
+        {
+            const auto value = static_cast<AV>(i);
+            auto *info = list->GetActorValue(value);
+            if (!info || !info->skill)
+                continue;
+            const char *name = info->GetFullName();
+            found.push_back({name && *name ? name : (info->enumName ? info->enumName : "?"), value, info->unk124});
+        }
+    }
+    std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) { return a.name < b.name; });
+
+    struct Category
+    {
+        std::uint32_t code;
+        const char *title;
+    };
+    constexpr Category kCategories[] = {{1, "Warrior"}, {3, "Thief"}, {2, "Magic"}, {0, "Other Skills"}};
+    for (const Category &category : kCategories)
+    {
+        SheetSection s{category.title, {}, {}};
+        for (const Found &f : found)
+        {
+            const bool here = category.code == 0 ? (f.category != 1 && f.category != 2 && f.category != 3)
+                                                 : f.category == category.code;
+            if (!here)
+                continue;
+            const auto pair = kPairs.find(f.value);
+            skill(s, {f.name.c_str(), f.value, pair != kPairs.end() ? pair->second.mod : none,
+                      pair != kPairs.end() ? pair->second.power : none});
+        }
+        if (!s.rows.empty())
+            out.push_back(std::move(s));
     }
 
+    // The perks the follower holds that sit in no skill's tree: a mod's
+    // loose perk, a race's, a quest's. Read off the base record's perk
+    // list; the hidden ones (the two boost perks every actor carries) and
+    // the unnamed stay out.
     {
-        SheetSection s{"Magic", {}, {}};
-        skill(s, {"Alteration",
-                  AV::kAlteration,
-                  {AV::kAlterationModifier, "cost", -1},
-                  {AV::kAlterationPowerModifier, "duration", +1}});
-        skill(s, {"Conjuration",
-                  AV::kConjuration,
-                  {AV::kConjurationModifier, "cost", -1},
-                  {AV::kConjurationPowerModifier, "duration", +1}});
-        skill(s, {"Destruction",
-                  AV::kDestruction,
-                  {AV::kDestructionModifier, "cost", -1},
-                  {AV::kDestructionPowerModifier, "damage", +1}});
-        skill(s, {"Illusion",
-                  AV::kIllusion,
-                  {AV::kIllusionModifier, "cost", -1},
-                  {AV::kIllusionPowerModifier, "magnitude", +1}});
-        skill(s, {"Restoration",
-                  AV::kRestoration,
-                  {AV::kRestorationModifier, "cost", -1},
-                  {AV::kRestorationPowerModifier, "healing", +1}});
-        skill(s, {"Enchanting", AV::kEnchanting, none, none});
-        out.push_back(std::move(s));
+        std::unordered_set<const RE::BGSPerk *> inTrees;
+        for (const Found &f : found)
+            for (const TreePerk &entry : TreePerks(f.value))
+                inTrees.insert(entry.perk);
+        SheetSection s{"Other", {}, {}};
+        if (const auto *base = actor->GetActorBase(); base && base->perks)
+        {
+            for (std::uint32_t i = 0; i < base->perkCount; ++i)
+            {
+                auto *perk = base->perks[i].perk;
+                if (!perk || perk->data.hidden || inTrees.contains(perk) || !actor->HasPerk(perk))
+                    continue;
+                const char *name = perk->GetName();
+                if (!name || !*name)
+                    continue;
+                RE::BSString text;
+                perk->GetDescription(text, perk);
+                SheetRow row = Row(name, base->perks[i].currentRank > 1 ? std::to_string(base->perks[i].currentRank)
+                                                                        : std::string());
+                row.modifiers = text.c_str() ? text.c_str() : "";
+                s.rows.push_back(std::move(row));
+            }
+        }
+        std::sort(s.rows.begin(), s.rows.end(), [](const SheetRow &a, const SheetRow &b) { return a.label < b.label; });
+        if (!s.rows.empty())
+            out.push_back(std::move(s));
     }
 
     return out;
