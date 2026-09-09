@@ -3413,8 +3413,8 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     FilterBox("##magicfilter", g_magicFilter, sizeof(g_magicFilter));
     Im::Spacing();
 
-    // Which columns. Only the All list has a School column; a school's or
-    // a voice's list shows the Type instead. Spells show a cell per hand;
+    // Which columns. Only the All list has a School column; every list has
+    // the Type. Spells show a cell per hand;
     // powers and shouts, which are selected rather than held, show one
     // Equipped cell for the voice slot, clicked like a hand cell: ready
     // it, pin it, put it away. One voice pin sets every other power and
@@ -3446,10 +3446,11 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     // No equip columns on All, as the Inventory tab has it: equipping is
     // done from the school lists.
     const bool allList = state.category < 0;
-    // A school's list has a Type column in the School column's place. A
-    // voice list (shouts, powers) has no school, level or cost to show:
-    // Name, Type, Mag, Cast, Equipped.
-    const int columnCount = voiceList ? 5 : 6 + (allList ? 0 : 2);
+    // All: Name, School, Type, Level, Mag, Cost, Cast. A school's list: the
+    // same less School, plus the two hand cells. A voice list (shouts,
+    // powers) has no school, level or cost to show: Name, Type, Mag, Cast,
+    // Equipped.
+    const int columnCount = voiceList ? 5 : allList ? 7 : 8;
 
     Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
     if (!Im::BeginTable("magic", columnCount, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
@@ -3462,9 +3463,8 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     if (allList)
         Im::TableSetupColumn("School", Im::ImGuiTableColumnFlags_WidthFixed, schoolWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::School));
-    else
-        Im::TableSetupColumn("Type", Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
-                             static_cast<Im::ImGuiID>(Column::Type));
+    Im::TableSetupColumn("Type", Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
+                         static_cast<Im::ImGuiID>(Column::Type));
     if (!voiceList)
         Im::TableSetupColumn("Level", Im::ImGuiTableColumnFlags_WidthFixed, levelWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::Level));
@@ -3544,16 +3544,14 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         // A power or a shout has no school, level or cost: those cells stay
         // empty rather than saying "Power" or "0".
         const bool voice = entry->category == MagicCategory::Shouts || entry->category == MagicCategory::Powers;
-        Im::TableNextColumn();
         if (allList)
         {
+            Im::TableNextColumn();
             if (!voice)
                 Im::Text("%s", entry->school.c_str());
         }
-        else
-        {
-            Im::Text("%s", entry->type.c_str());
-        }
+        Im::TableNextColumn();
+        Im::Text("%s", entry->type.c_str());
         if (!voiceList)
         {
             Im::TableNextColumn();
