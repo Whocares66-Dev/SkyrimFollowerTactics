@@ -4329,7 +4329,7 @@ void SyncFollowers()
         {
             if (slot.id == 0 || present(slot.id))
                 continue;
-            if (SKSEMenuFramework::DeleteSection("Follower Tactics/" + slot.name))
+            if (SKSEMenuFramework::DeleteSection("Follower Tactics/Followers/" + slot.name))
             {
                 logger::info("ui: menu entry removed for {}", slot.name);
                 slot = {};
@@ -4370,8 +4370,9 @@ void SyncFollowers()
         if (index == kSlots)
             continue;
 
-        SKSEMenuFramework::SetSection("Follower Tactics");
-        SKSEMenuFramework::AddSectionItem(view.name, renderers[index]);
+        // Under a Followers subsection, apart from Settings: the path's
+        // components are the tree.
+        SKSEMenuFramework::FullPathAddSectionItem("Follower Tactics/Followers/" + view.name, renderers[index]);
         logger::info("ui: menu entry added for {} (slot {})", view.name, index);
     }
 }
