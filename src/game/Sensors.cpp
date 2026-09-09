@@ -1458,7 +1458,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // Speed is the multiplier every buff lands on -- 100 for plain, and
         // a Fortify Speed or a Slow moves it -- so it reads the same
         // standing and sprinting. What moves it and by whom is the hover
-        // text, as for the regen rates; the pace itself is the next row.
+        // text, as for the regen rates.
         {
             SheetRow row = Row("Speed", Fmt("%.0f%%", av(RE::ActorValue::kSpeedMult)));
             row.note = "Base: " + Fmt("%.0f%%", owner->GetBaseActorValue(RE::ActorValue::kSpeedMult));
@@ -1468,25 +1468,6 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
                                     owner->GetBaseActorValue(RE::ActorValue::kSpeedMult);
                 std::abs(perks) > 0.5f)
                 row.note += "\nPerks and race: " + Fmt("%+.0f%%", perks);
-            s.rows.push_back(std::move(row));
-        }
-        // The pace right now: the speed the animation is being driven at,
-        // in game units a second (about 1.4 cm each), and what the actor is
-        // doing. Read when the panel opened, since the clock is stopped
-        // while it is up; the walk and run speeds it is measured against
-        // are the hover text.
-        {
-            auto *state = actor->AsActorState();
-            const float speed = state ? state->DoGetMovementSpeed() : 0.0f;
-            const char *pace = !state || speed < 1.0f ? "standing"
-                               : state->IsSprinting() ? "sprinting"
-                               : state->IsWalking()   ? "walking"
-                                                      : "running";
-            SheetRow row = Row("Pace", Fmt("%.0f", speed) + " u/s, " + pace);
-            row.note = "Walk: " + Fmt("%.0f", actor->GetWalkSpeed()) +
-                       " u/s\nRun: " + Fmt("%.0f", actor->GetRunSpeed()) +
-                       " u/s\nGame units a second; a sprint is faster than the run by the animation, not by a "
-                       "number here";
             s.rows.push_back(std::move(row));
         }
         s.rows.push_back(Row("Noise", Fmt("%.0f%%", av(RE::ActorValue::kMovementNoiseMult) * 100.0)));
