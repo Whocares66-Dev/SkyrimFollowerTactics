@@ -293,6 +293,12 @@ struct Action
     // concentration spell, for CastSpell.
     float arg{0.0f};
 
+    // For CastSpell: cast from both hands at once, for the stronger and
+    // dearer spell. Only a spell the snapshot says the follower CAN dual
+    // cast -- one the school's Dual Casting perk covers, not a master
+    // spell, which holds both hands already -- and the menu offers no other.
+    bool dual{false};
+
     // Which effect, for the four policies: the magic effect's name as the
     // game shows it -- "Restore Health", "Resist Fire", "Damage Stamina" --
     // read off the bottles the follower carries. A name rather than a form

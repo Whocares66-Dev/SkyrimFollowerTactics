@@ -759,7 +759,12 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
             if (const Holdable *spell = FindHoldable(snap.loadout, a.form); spell && spell->unusable)
                 return Verdict::AboveSkill;
         }
-        if (a.kind == ActionKind::CastSpell && snap.magicka.current < snap.spells.CostOf(a.form))
+        // A dual cast needs the school's Dual Casting perk, which the
+        // snapshot has judged; and costs more, the game's multiplier in.
+        if (a.kind == ActionKind::CastSpell && a.dual && !snap.spells.CanDualCast(a.form))
+            return Verdict::CannotDualCast;
+        if (a.kind == ActionKind::CastSpell &&
+            snap.magicka.current < (a.dual ? snap.spells.DualCostOf(a.form) : snap.spells.CostOf(a.form)))
             return Verdict::CannotAfford;
         // A follower mid-cast on a spell of their own is left to finish it.
         // Firing our package then interrupts the cast in progress -- a
@@ -1067,6 +1072,8 @@ const char *ToString(Verdict v) noexcept
         return "no enchanted weapon";
     case Verdict::CannotAfford:
         return "not enough magicka";
+    case Verdict::CannotDualCast:
+        return "cannot dual cast it: no perk for the school";
     case Verdict::EffectActive:
         return "previous dose still active";
     case Verdict::AboveSkill:

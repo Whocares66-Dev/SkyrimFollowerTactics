@@ -425,6 +425,28 @@ bool SetPackageSpell(RE::TESPackage *pkg, RE::TESForm *spell)
     return SetPackageInput(pkg, "Spell", spell);
 }
 
+// Set a named Bool input -- the UseMagic template's "DualCast". The library
+// maps the input's data word (BGSPackageDataBool, +08) and reads the value
+// off bit 1, as its GetDataAsString does; the input's own type name is
+// checked first so a name that is not a Bool is left alone.
+bool SetPackageBool(RE::TESPackage *pkg, const char *inputName, bool value)
+{
+    if (!pkg)
+        return false;
+    auto *custom = skyrim_cast<RE::TESCustomPackageData *>(pkg->data);
+    if (!custom)
+        return false;
+    std::int8_t uid = 0;
+    if (!FindInputUID(custom, inputName, uid))
+        return false;
+    auto *input = InputByUID(custom, uid);
+    if (!input || input->GetTypeName() != "Bool")
+        return false;
+    auto &data = static_cast<RE::BGSPackageDataBool *>(input)->data;
+    data.i = value ? (data.i | 0x2u) : (data.i & ~0x2u);
+    return true;
+}
+
 // Is this actor the one the vanilla follower alias holds? The combat override
 // list we spliced into belongs to that alias, so a follower who is not in it
 // -- recruited by a framework, or made a teammate from the console -- never
@@ -865,7 +887,8 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
 }
 } // namespace
 
-CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId, float sustainSeconds)
+CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId, float sustainSeconds,
+                        bool dualCast)
 {
     if (!g_available || !actor)
         return CastRequest::NoPackages;
@@ -921,6 +944,14 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
 
     SetPackageTarget(g_slots[chosen], target);
     slot.target = target ? target->GetHandle() : RE::ActorHandle{};
+
+    // Both hands or one: set on every request, since the record is shared
+    // and the last lease may have left it either way.
+    if (!SetPackageBool(g_slots[chosen], "DualCast", dualCast))
+        logger::info("  slot {} has no DualCast input to set{}", chosen,
+                     dualCast ? " -- the cast will be one-handed" : "");
+    else if (dualCast)
+        logger::info("  slot {} casts from both hands", chosen);
 
     // A concentration spell streams for as long as the procedure's CastTime
     // says. Set that to the sustain, and remember that the fire event is

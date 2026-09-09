@@ -374,7 +374,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
 
         // actionArg is the sustain time for a concentration spell, when a rule
         // sets one; zero takes the default.
-        const auto request = RequestCast(actor, action.form, targetId, action.arg);
+        const auto request = RequestCast(actor, action.form, targetId, action.arg, action.dual);
         logger::info("  cast: {}", ToString(request));
         switch (request)
         {

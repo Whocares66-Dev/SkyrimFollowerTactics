@@ -139,6 +139,8 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
         return {"no target", held};
     case ft::Verdict::CannotAfford:
         return {"no magicka", held};
+    case ft::Verdict::CannotDualCast:
+        return {"no perk", held};
     case ft::Verdict::Busy:
         return {"busy", held};
     case ft::Verdict::Casting:
@@ -1230,7 +1232,7 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
         case SpellOption::Kind::Shout:
             return "Shout " + option.name;
         default:
-            return "Cast " + option.name;
+            return (act.dual ? "Dual cast " : "Cast ") + option.name;
         }
     }
 
@@ -1502,12 +1504,20 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // What is cast: the spells that suit this target -- a Self-delivery
     // spell (Fast Healing, Oakflesh) is cast on oneself and on no one
     // else; an aimed one (Heal Other, Firebolt) goes at someone else --
-    // then the shouts, then the powers. A follower with none that fit is
-    // offered nothing rather than an empty submenu that looks broken.
-    for (const auto [label, action] :
-         {std::pair{"Cast", ft::ActionKind::CastSpell}, std::pair{"Shout", ft::ActionKind::Shout},
-          std::pair{"Power", ft::ActionKind::UsePower}})
+    // then the same from both hands, only the spells the follower can dual
+    // cast; then the shouts, then the powers. A follower with none that
+    // fit is offered nothing rather than an empty submenu that looks broken.
+    struct CastMenu
     {
+        const char *label;
+        ft::ActionKind action;
+        bool dual;
+    };
+    for (const CastMenu menu :
+         {CastMenu{"Cast", ft::ActionKind::CastSpell, false}, CastMenu{"Dual Cast", ft::ActionKind::CastSpell, true},
+          CastMenu{"Shout", ft::ActionKind::Shout, false}, CastMenu{"Power", ft::ActionKind::UsePower, false}})
+    {
+        const auto action = menu.action;
         if (!valid(action))
             continue;
         const auto kind = action == ft::ActionKind::UsePower ? SpellOption::Kind::Power
@@ -1519,21 +1529,24 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             // A corpse takes a Reanimate and nothing else.
             if (target == ft::ActionTargetKind::Corpse && !option.reanimate)
                 continue;
+            if (menu.dual && !option.dualCast)
+                continue;
             if (option.kind == kind && (option.location || option.selfOnly == (target == ft::ActionTargetKind::Self)))
                 suited.push_back(&option);
         }
         if (suited.empty())
             continue;
         group(2);
-        if (!BeginCascade(label))
+        if (!BeginCascade(menu.label))
             continue;
         for (const auto *option : suited)
         {
-            const bool selected = here && act.kind == action && act.form == option->form;
+            const bool selected = here && act.kind == action && act.form == option->form && act.dual == menu.dual;
             if (CascadeItem(option->name.c_str(), selected))
             {
                 act.kind = action;
                 act.form = option->form;
+                act.dual = menu.dual;
                 choose();
             }
         }

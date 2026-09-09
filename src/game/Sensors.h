@@ -85,6 +85,11 @@ struct SpellOption
     // The archetype is the record property the engine raises a corpse by,
     // so a mod's reanimate spell is found by it whatever it is called.
     bool reanimate{false};
+    // She can cast it from both hands: the school's Dual Casting perk, as
+    // the perk system answers for this spell, and a spell that is not a
+    // master spell, which holds both hands already. The Dual Cast menu
+    // lists these and no other.
+    bool dualCast{false};
     // Which menu lists it: Cast spell, Use power, or Shout. One list
     // because all three are found by the same walk of what she knows.
     enum class Kind : std::uint8_t

@@ -3057,3 +3057,47 @@ TEST_CASE("the carried effects arrange themselves for the menu", "[vocabulary]")
     REQUIRE(EffectUseless("Resist Disease"));
     REQUIRE_FALSE(EffectUseless("Cure Poison"));
 }
+
+TEST_CASE("a dual cast needs the perk the snapshot reports, and pays the dual cost", "[resources]")
+{
+    constexpr std::uint32_t kBolt = 0x0002DD29;
+
+    RuleSet rs;
+    Rule cast;
+    cast.subject = SubjectKind::Self;
+    cast.predicate = PredicateKind::HealthPctBelow;
+    cast.conditionArg = 0.9f;
+    cast.actionTarget = ActionTargetKind::Self;
+    cast.FirstAction().kind = ActionKind::CastSpell;
+    cast.FirstAction().form = kBolt;
+    cast.FirstAction().dual = true;
+    rs.rules.push_back(cast);
+
+    Snapshot s = Healthy();
+    s.health = {50.0f, 100.0f};
+    s.magicka = {100.0f, 100.0f};
+    s.spells.known.push_back(kBolt);
+    // Known and affordable one-handed, but she cannot dual cast it.
+    s.spells.costs.push_back({kBolt, 40.0f});
+
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::CannotDualCast);
+
+    // With the perk, the dual cost is what counts: 112 against 100 is not
+    // affordable, 112 against 120 is.
+    s.spells.costs[0] = {kBolt, 40.0f, true, 112.0f};
+    trace.clear();
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::CannotAfford);
+
+    s.magicka = {120.0f, 120.0f};
+    trace.clear();
+    const auto d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.Fired());
+    REQUIRE(d.action() == ActionKind::CastSpell);
+    REQUIRE(d.steps.front().action.dual);
+}

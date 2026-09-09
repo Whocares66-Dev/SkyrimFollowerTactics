@@ -278,8 +278,30 @@ struct SpellState
     {
         std::uint32_t form{0};
         float magicka{0.0f};
+        // Whether she can dual cast it -- the school's Dual Casting perk
+        // and a spell that leaves a hand free -- and what it costs then:
+        // the cost times the game's dual-casting multiplier, unless the
+        // spell is flagged to take no dual-cast change.
+        bool dualable{false};
+        float dualMagicka{0.0f};
     };
     std::vector<Cost> costs;
+
+    [[nodiscard]] bool CanDualCast(std::uint32_t form) const
+    {
+        for (const auto &c : costs)
+            if (c.form == form)
+                return c.dualable;
+        return false;
+    }
+
+    [[nodiscard]] float DualCostOf(std::uint32_t form) const
+    {
+        for (const auto &c : costs)
+            if (c.form == form)
+                return c.dualMagicka;
+        return 0.0f;
+    }
 
     // Zero for a spell with no recorded cost, so a snapshot that does not
     // carry costs (a test, an older sensor) never blocks a cast.

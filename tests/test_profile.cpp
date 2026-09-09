@@ -107,6 +107,11 @@ Profile Everything()
         shout.kind = ActionKind::Shout;
         shout.form = 0x13E07;
         r.actions.push_back(shout);
+        Action dual;
+        dual.kind = ActionKind::CastSpell;
+        dual.form = 0x12FCD;
+        dual.dual = true;
+        r.actions.push_back(dual);
         p.rules.rules.push_back(r);
     }
     p.pins.push_back({0x13989, Hand::Both}); // a bow
@@ -121,6 +126,7 @@ void RequireSame(const Action &a, const Action &b)
     REQUIRE(a.form == b.form);
     REQUIRE(a.hand == b.hand);
     REQUIRE(a.arg == b.arg);
+    REQUIRE(a.dual == b.dual);
 }
 
 void RequireSame(const Rule &a, const Rule &b)

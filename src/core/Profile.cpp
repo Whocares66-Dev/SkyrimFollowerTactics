@@ -61,6 +61,8 @@ json WriteAction(const Action &a, const FormCodec &codec)
         j["hand"] = WireName(a.hand);
     if (UsesArg(a.kind) && a.arg != 0.0f)
         j["arg"] = a.arg;
+    if (a.kind == ActionKind::CastSpell && a.dual)
+        j["dual"] = true;
     if (IsPolicy(a.kind))
         j["effect"] = a.effect;
     return j;
@@ -209,6 +211,8 @@ struct FormField
     }
     if (const auto arg = Num(j, "arg"))
         a.arg = static_cast<float>(*arg);
+    if (a.kind == ActionKind::CastSpell)
+        a.dual = Bool(j, "dual").value_or(false);
     return a;
 }
 

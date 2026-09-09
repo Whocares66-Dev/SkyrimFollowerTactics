@@ -28,6 +28,7 @@ enum class Verdict : std::uint8_t
     NothingToPoison,  // an Apply rule with no weapon in hand that takes a poison
     NothingToCharge,  // a Charge rule with no enchanted weapon in hand
     CannotAfford,     // knows the spell, cannot pay for it right now
+    CannotDualCast,   // a dual cast of a spell the follower cannot dual cast: no perk for its school
     EffectActive,     // a previous dose is still running; or the thing is already pinned
     AboveSkill,       // a spell above the follower's skill: neither cast nor pinned, so cast and equip agree
     Outranked,        // a rule above holds the hand or slot this would take

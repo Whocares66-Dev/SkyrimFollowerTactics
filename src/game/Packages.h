@@ -169,8 +169,10 @@ enum class CastRequest : std::uint8_t
 // sustainSeconds applies to a CONCENTRATION spell (Flames, vanilla Healing):
 // how long to hold the stream. Zero means the default. Ignored for a
 // fire-and-forget spell.
+// dualCast: from both hands, the procedure's DualCast input; the caller has
+// judged that the follower can.
 [[nodiscard]] CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId,
-                                      float sustainSeconds);
+                                      float sustainSeconds, bool dualCast);
 
 // Ask a follower to use a power or a shout. A power (a spell record of type
 // Power or Lesser Power): takes a free Shout slot, points its wrapper

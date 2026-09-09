@@ -229,6 +229,27 @@ bool IsPower(const RE::SpellItem *spell)
            IsLeasedPower(spell->GetFormID());
 }
 
+// Whether the actor can dual cast a spell: the perk system's answer to the
+// Can Dual Cast Spell entry point for this spell -- each school's Dual
+// Casting perk sets it for its own school, so a mod's perk counts the same
+// -- and a spell that leaves a hand free: a master spell holds both.
+bool CanDualCast(RE::Actor *actor, RE::SpellItem *spell)
+{
+    if (!actor || !spell || !IsCastable(spell) || spell->IsTwoHanded())
+        return false;
+    float allowed = 0.0f;
+    RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kCanDualCastSpell, actor, spell, &allowed);
+    return allowed != 0.0f;
+}
+
+// What a dual cast costs the actor: the cost times fMagicDualCastingCostMult
+// (2.8 in vanilla), unless the spell is flagged to take no dual-cast change.
+float DualCastCost(RE::Actor *actor, RE::SpellItem *spell)
+{
+    const float cost = spell->CalculateMagickaCost(actor);
+    return spell->GetNoDualCastModifications() ? cost : cost * GameSetting("fMagicDualCastingCostMult", 2.8f);
+}
+
 // "3 min 24 s", "1 h 5 min", "12 s"; nothing for an effect with no
 // duration, an ability's or an enchantment's.
 std::string RemainingText(float seconds)
@@ -944,7 +965,9 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         s.spells.known.push_back(spell->GetFormID());
         // Her cost, not the base cost: CalculateMagickaCost applies her skill
         // and perks, which is what the AI will charge her.
-        s.spells.costs.push_back({spell->GetFormID(), spell->CalculateMagickaCost(actor)});
+        const bool dualable = CanDualCast(actor, spell);
+        s.spells.costs.push_back({spell->GetFormID(), spell->CalculateMagickaCost(actor), dualable,
+                                  dualable ? DualCastCost(actor, spell) : 0.0f});
         // A Reanimate's cap: the level of corpse it can raise is its
         // effect's magnitude (Reanimate Corpse 13, Revenant 21, Dread
         // Zombie 30) -- as SHE casts it, perks and Fortify effects in, the
@@ -1105,6 +1128,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
                               effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate);
         out.push_back(SpellOption{id, std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
                                   spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
+                                  !power && CanDualCast(actor, spell),
                                   power ? SpellOption::Kind::Power : SpellOption::Kind::Spell});
     });
 
@@ -1121,8 +1145,8 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
                     continue;
                 const auto *word = shout->variations[0].spell;
                 const bool self = word && word->GetDelivery() == RE::MagicSystem::Delivery::kSelf;
-                out.push_back(
-                    SpellOption{shout->GetFormID(), shout->GetName(), self, false, false, SpellOption::Kind::Shout});
+                out.push_back(SpellOption{shout->GetFormID(), shout->GetName(), self, false, false, false,
+                                          SpellOption::Kind::Shout});
             }
         }
     }

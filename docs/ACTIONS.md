@@ -88,9 +88,20 @@ which the school's Dual Casting perk sets, so a follower needs that perk
 (`Actor::AddPerk`). No combat-style flag is involved.
 
 Through **our package**, the UseMagic procedure has a DualCast boolean
-input, false on our eight slots today; flip it per lease as the spell and
-target are repointed. Whether the perk is still required through the
-package is unverified. Direct API: dual cast is state on the hand caster
+input; **built 2026-09-09 as the Dual Cast menu**, after Cast. A CastSpell
+action carries a `dual` flag (`"dual": true` on the wire). The sensor asks
+the perk system the Can Dual Cast Spell entry point for each spell the
+follower knows, so the school's Dual Casting perk, or a mod's, decides; a
+master spell, which holds both hands, is out. The menu lists only those,
+the evaluator refuses a dual cast of any other ("no perk"), and the
+magicka check uses the dual cost: the cost times
+`fMagicDualCastingCostMult` (2.8), unless the spell is flagged to take no
+dual-cast change. On request the slot's DualCast input is set (a Bool
+input: bit 1 of the data word, as the library's `GetDataAsString` reads
+it) and cleared again for a one-handed cast, since the record is shared.
+Not yet measured in play: whether the package honours the perk gate or
+bypasses it, and whether the follower's cast shows as dual. Direct API,
+unused: dual cast is state on the hand caster
 (`ActorMagicCaster::SetDualCasting`), not a cast argument. Watch for po3's
 Dual Casting Fix: scripted casts clear the dual state, and our faction-rank
 abilities might too.
@@ -161,7 +172,7 @@ Voice of the Emperor's Pacify is a calm on people. It showed nothing on the cave
 
 **Food and ingredients** are the two lists beside Potion at the top of the Then menu, with the same Strongest and Weakest by effect. Both go through the same `EquipObject` call as a potion; the game consumes the item through its normal path. The snapshot tags every carried consumable with its kind, and a named consume rule checks form AND kind, so a hand-edited profile cannot drink a cabbage. Unverified in play: whether an NPC gets a food's or an ingredient's effect (the player eating an ingredient learns its first effect; an NPC has nothing to learn, and what the engine does instead is not documented). The potion's 3 s settle is used for both until one of their own is measured.
 
-The Then cascade under Self reads, the more active thing first and a divider between the groups: Potion, Food, Ingredient; Cast, Shout, Power; Charge, Poison; Weapon, Armor, Arrows, Spell -- no Equip, Consume or Weapon heading above them (2026-09-08). Under Enemy and Attacker: Attack, a divider, then Cast, Shout, Power. Under the player, an ally or a named follower: Cast, Shout, Power; under a corpse, Cast alone. A heading with nothing under it -- no food carried, no spell that suits the target -- is not drawn, and the dividers follow what is.
+The Then cascade under Self reads, the more active thing first and a divider between the groups: Potion, Food, Ingredient; Cast, Shout, Power; Charge, Poison; Weapon, Armor, Arrows, Spell -- no Equip, Consume or Weapon heading above them (2026-09-08). Under Enemy and Attacker: Attack, a divider, then Cast, Dual Cast, Shout, Power. Under the player, an ally or a named follower: Cast, Dual Cast, Shout, Power; under a corpse, Cast and Dual Cast alone. Dual Cast is drawn only when a spell the follower can dual cast suits the target. A heading with nothing under it -- no food carried, no spell that suits the target -- is not drawn, and the dividers follow what is.
 
 ## Sources
 
