@@ -3297,8 +3297,9 @@ void DrawInventory(const FollowerView &view)
 // SkyUI's Magic menu: All, the five schools, Shouts, Powers.
 struct MagicTabState
 {
-    std::uint32_t detail{0}; // the entry open in detail; 0 for the list
-    int category{-1};        // a MagicCategory, or -1 for all of them
+    std::uint32_t detail{0};    // the entry open in detail; 0 for the list
+    int category{-1};           // a MagicCategory, or -1 for all of them
+    Tab openedFrom{Tab::Magic}; // where the detail page returns to: the list, or the Character sheet
 };
 
 std::unordered_map<ft::ActorId, MagicTabState> g_magicTabs;
@@ -3837,6 +3838,13 @@ void DrawMagic(const FollowerView &view)
             if (entry.form == state.detail)
             {
                 DrawMagicDetail(entry, state);
+                // Back to wherever this was opened from: the list, or the
+                // sheet, whose tab is selected again.
+                if (state.detail == 0 && state.openedFrom != Tab::Magic)
+                {
+                    g_inventoryTabs[view.id].select = state.openedFrom;
+                    state.openedFrom = Tab::Magic;
+                }
                 return;
             }
         }
@@ -4020,6 +4028,7 @@ void DrawCharacter(const FollowerView &view)
         if (spell)
         {
             g_magicTabs[id].detail = form;
+            g_magicTabs[id].openedFrom = Tab::Character;
             state.select = Tab::Magic;
             return;
         }
