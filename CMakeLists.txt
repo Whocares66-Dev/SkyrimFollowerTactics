@@ -136,11 +136,11 @@ if(FT_BUILD_PLUGIN)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
     ft_apply_warnings(${PROJECT_NAME})
-    # A release ships with its .pdb: the code is open, and a crash log with
-    # our frames NAMED is the whole difference between "FollowerTactics.dll
-    # +5C8BD" and knowing which line asked for the actor value that was not
-    # one (the Nordic Souls crash of 2026-09-08 took a disassembly to read).
-    # Full symbols, and the linker still folds and strips as usual.
+    # A release build keeps its .pdb -- in build\release, not in the package
+    # (27 MB against a 1 MB DLL) -- so a crash log's "FollowerTactics.dll
+    # +5C8BD" reads as a line here rather than as a disassembly (the Nordic
+    # Souls crash of 2026-09-08 took one). The linker folds and strips as
+    # usual.
     target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/Zi>)
     target_link_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/DEBUG:FULL /OPT:REF /OPT:ICF>)
     # The SKSE Menu Framework SDK is a single vendored header. It declares the

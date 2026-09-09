@@ -3,10 +3,10 @@
     Build the Release plugin and zip it as an installable mod.
 
 .DESCRIPTION
-    A releasable FollowerTactics is SKSE\Plugins\FollowerTactics.dll with its .pdb
-    beside it, so a crash log names our frames (the code is open; there is
-    nothing to hide). There is no plugin file (the forms are made in memory at
-    load, docs/MAGIC.md "Forms at runtime"), no scripts, no assets. The zip is a mod root,
+    A releasable FollowerTactics is one file, SKSE\Plugins\FollowerTactics.dll.
+    Its .pdb stays in build\release (27 MB against a 1 MB DLL): a crash log's
+    offsets are read against it here. There is no plugin file (the forms are made
+    in memory at load, docs/MAGIC.md "Forms at runtime"), no scripts, no assets. The zip is a mod root,
     so Mod Organizer installs it from the archive as it is, and a manual install
     is "extract into Data".
 
@@ -32,16 +32,14 @@ if (-not $version) { throw "No project VERSION in CMakeLists.txt" }
 & (Join-Path $PSScriptRoot 'build.ps1') -Preset release -NoDeploy
 
 $dll = Join-Path $root 'build\release\FollowerTactics.dll'
-$pdb = Join-Path $root 'build\release\FollowerTactics.pdb'
-foreach ($f in $dll, $pdb) { if (-not (Test-Path $f)) { throw "No $f after the build" } }
+if (-not (Test-Path $dll)) { throw "No $dll after the build" }
 
-# The mod root, staged: SKSE\Plugins\FollowerTactics.dll, its .pdb, a README.
+# The mod root, staged: SKSE\Plugins\FollowerTactics.dll and a short README.
 $stage = Join-Path $root 'build\release\package'
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 $plugins = Join-Path $stage 'SKSE\Plugins'
 New-Item -ItemType Directory -Force $plugins | Out-Null
 Copy-Item $dll $plugins
-Copy-Item $pdb $plugins
 
 $readme = @"
 FollowerTactics $version
