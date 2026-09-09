@@ -347,6 +347,7 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 
 float DamageReduction(RE::Actor *actor); // below, with the armour readings
 float HiddenArmor(RE::Actor *actor);
+float EffectiveArmor(RE::Actor *actor);
 
 std::string ArmorNote(RE::Actor *actor)
 {
@@ -371,17 +372,6 @@ std::string ArmorNote(RE::Actor *actor)
     }
     for (Contribution &c : Contributions(actor, RE::ActorValue::kDamageResist))
         parts.push_back(std::move(c));
-    // Whatever the engine's rating has that the pieces and effects do not
-    // (a formula mod, a rounding), so the list always sums to the rating
-    // and a gap is seen rather than hidden.
-    float sum = 0.0f;
-    for (const Contribution &c : parts)
-        sum += c.amount;
-    float rating = 0.0f;
-    if (auto *owner = actor->AsActorValueOwner())
-        rating = owner->GetActorValue(RE::ActorValue::kDamageResist);
-    if (std::abs(rating - sum) >= 1.0f)
-        parts.push_back({"Other", rating - sum});
     // And the engine's hidden bonus per piece worn (fArmorBaseFactor, 0.03
     // of a blow each), in the rating's own units -- 25 a piece at the
     // vanilla settings, the "25 armour per piece" of the wikis. The list
@@ -395,6 +385,17 @@ std::string ArmorNote(RE::Actor *actor)
     }
     std::stable_sort(parts.begin(), parts.end(),
                      [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
+    // Whatever the engine's figure has that the pieces, the effects and
+    // the bonus do not (a formula mod, a rounding): last, as a remainder,
+    // so the list sums to the row and a gap is seen rather than hidden.
+    // Against the engine's live recomputation, as the row is, not the
+    // DamageResist actor value, which is written at equip time and can
+    // trail the skill.
+    float sum = 0.0f;
+    for (const Contribution &c : parts)
+        sum += c.amount;
+    if (const float gap = EffectiveArmor(actor) - sum; std::abs(gap) >= 1.0f)
+        parts.push_back({"Other", gap});
     std::string note;
     for (const Contribution &c : parts)
         note += (note.empty() ? "" : "\n") + c.source + ": " + Fmt("%+.0f", c.amount);
@@ -409,8 +410,7 @@ float HiddenArmor(RE::Actor *actor)
 
 float EffectiveArmor(RE::Actor *actor)
 {
-    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
-    return owner ? owner->GetActorValue(RE::ActorValue::kDamageResist) + HiddenArmor(actor) : 0.0f;
+    return actor ? actor->CalcArmorRating() + HiddenArmor(actor) : 0.0f;
 }
 
 std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
