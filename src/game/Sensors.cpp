@@ -368,6 +368,18 @@ std::string ArmorNote(RE::Actor *actor)
     }
     for (Contribution &c : Contributions(actor, RE::ActorValue::kDamageResist))
         parts.push_back(std::move(c));
+    // The engine's hidden bonus per piece worn (fArmorBaseFactor, 0.03 of
+    // a blow each), in the rating's own units -- 25 a piece at the vanilla
+    // settings, the "25 armour per piece" of the wikis -- so the list adds
+    // up to what is applied.
+    static const float perPiece = GameSetting("fArmorBaseFactor", 0.03f);
+    static const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
+    const float hidden = actor->GetArmorBaseFactorSum();
+    if (hidden > 0.0f && perPiece > 0.0f && scale > 0.0f)
+    {
+        const int pieces = static_cast<int>(hidden / perPiece + 0.5f);
+        parts.push_back({"Hidden bonus (x" + std::to_string(pieces) + ")", hidden / scale});
+    }
     std::stable_sort(parts.begin(), parts.end(),
                      [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
     std::string note;
