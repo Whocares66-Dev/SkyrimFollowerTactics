@@ -1068,14 +1068,14 @@ float GameSetting(const char *name, float vanilla)
     return setting ? setting->GetFloat() : vanilla;
 }
 
-// "83%", or past the engine's cap "85% (110.00%)": what is actually applied
-// first, what the gear adds up to in brackets. The bracketed number is the one
-// worth seeing when it is there -- it says how much of the follower's kit is
-// doing nothing.
+// "83%", or past the engine's cap "110% (85%)": what the gear adds up to
+// first, and in brackets what is actually applied. The gap between them says
+// how much of the follower's kit is doing nothing.
 std::string CappedPercent(float value, float cap)
 {
+    // "90% (75%)": the value, and in parentheses what the cap makes of it.
     if (value > cap)
-        return Fmt("%.0f%%", cap) + " (" + Fmt("%.2f%%", value) + ")";
+        return Fmt("%.0f%%", value) + " (" + Fmt("%.0f%%", cap) + ")";
     return Fmt("%.0f%%", value);
 }
 
@@ -1599,7 +1599,7 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
         const bool ours = (live->GetFormID() & 0xFF000000U) == 0xFF000000U;
         char id[16];
         std::snprintf(id, sizeof(id), "%08X", live->GetFormID());
-        s.rows.push_back(Row("Record", ours ? std::string(id) + "  (our copy)" : id));
+        s.rows.push_back(Row("Base ID", ours ? std::string(id) + "  (our copy)" : id));
         if (controller && controller->combatStyle && record && controller->combatStyle != record)
         {
             char recordId[16];
