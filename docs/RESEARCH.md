@@ -469,3 +469,14 @@ equip. Rule adopted from their design: never mutate the actor from inside the de
 
 BFEC: one detour on `UpdateNPCOutfit` that, for followers, adds each default-outfit armour
 to inventory, equips it, and returns without running the engine's re-dress. Armour only.
+
+## 8. The skill curve on armour and damage is not the player's for an NPC (2026-09-09)
+
+The wikis' formulas -- displayed armour = base x (1 + 0.4 x skill / 100), weapon damage = base x (1 + skill / 200) -- are the PLAYER's. Read from the executable (`ActorValueOwner::GetArmorRatingSkillMultiplier`, address-library id 26424 on 1.6.1170), the multiplier is `Base + (Max - Base) x skill / 100` and it branches on `IsPlayerOwner`: one pair of game settings for the player, another for everyone else.
+
+| | player | anyone else |
+|---|---|---|
+| armour | `fArmorRatingPCBase` (engine default, 1.0) to `fArmorRatingPCMax` 1.4 | `fArmorRatingBase` 1.0 to `fArmorRatingMax` **2.5** |
+| damage | `fDamagePCSkillMin` (engine default) to `fDamagePCSkillMax` 1.5 | `fDamageSkillMin` to `fDamageSkillMax` (engine defaults) |
+
+The values with a number are Skyrim.esm's game-setting records; "engine default" means the setting has no record in the plugin and holds the executable's built-in value, which `FollowerTactics.log` prints once per session (`armor: skill curve NPC ... player ...`, `damage: ...`) so the actual numbers on a load order are on record. Seen in play before the fix: Jenassa in leather (base 26 + 7 + 7 = 40) read 46 by the player's curve against the engine's 66, which is 40 x (1 + 1.5 x 0.43) at her light armour of about 43. The sheet's per-piece ratings now call the engine's multiplier for armour and use the NPC pair for damage, so they sum to the actor value. The hidden per-piece bonus (`fArmorBaseFactor`, `docs/CONDITIONS.md` 4) is the same for everyone and unaffected.

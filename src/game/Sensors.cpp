@@ -345,6 +345,8 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
     return out;
 }
 
+float DamageReduction(RE::Actor *actor); // below, with the armour readings
+
 std::string ArmorNote(RE::Actor *actor)
 {
     // Each piece worn with its rating as the follower wears it, then the
@@ -368,23 +370,39 @@ std::string ArmorNote(RE::Actor *actor)
     }
     for (Contribution &c : Contributions(actor, RE::ActorValue::kDamageResist))
         parts.push_back(std::move(c));
-    // The engine's hidden bonus per piece worn (fArmorBaseFactor, 0.03 of
-    // a blow each), in the rating's own units -- 25 a piece at the vanilla
-    // settings, the "25 armour per piece" of the wikis -- so the list adds
-    // up to what is applied.
+    // Whatever the engine's rating has that the pieces and effects do not
+    // (a formula mod, a rounding), so the list always sums to the rating
+    // and a gap is seen rather than hidden.
+    float sum = 0.0f;
+    for (const Contribution &c : parts)
+        sum += c.amount;
+    float rating = 0.0f;
+    if (auto *owner = actor->AsActorValueOwner())
+        rating = owner->GetActorValue(RE::ActorValue::kDamageResist);
+    if (std::abs(rating - sum) >= 1.0f)
+        parts.push_back({"Other", rating - sum});
+    std::stable_sort(parts.begin(), parts.end(),
+                     [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
+    std::string note;
+    for (const Contribution &c : parts)
+        note += c.source + ": " + Fmt("%+.0f", c.amount) + "\n";
+    note += "Rating: " + Fmt("%.0f", rating);
+
+    // Then the engine's hidden bonus per piece worn (fArmorBaseFactor, 0.03
+    // of a blow each), in the rating's own units -- 25 a piece at the
+    // vanilla settings, the "25 armour per piece" of the wikis -- and the
+    // two together as the share of a blow they turn away, which is the
+    // number in parentheses on the row.
     static const float perPiece = GameSetting("fArmorBaseFactor", 0.03f);
     static const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
     const float hidden = actor->GetArmorBaseFactorSum();
     if (hidden > 0.0f && perPiece > 0.0f && scale > 0.0f)
     {
         const int pieces = static_cast<int>(hidden / perPiece + 0.5f);
-        parts.push_back({"Hidden bonus (x" + std::to_string(pieces) + ")", hidden / scale});
+        note += "\nHidden bonus (x" + std::to_string(pieces) + "): " + Fmt("%+.0f", hidden / scale);
+        note += "\nApplied: " + Fmt("%.0f", rating + hidden / scale) + " = " +
+                Fmt("%.0f%%", DamageReduction(actor) * 100.0f);
     }
-    std::stable_sort(parts.begin(), parts.end(),
-                     [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
-    std::string note;
-    for (const Contribution &c : parts)
-        note += (note.empty() ? "" : "\n") + c.source + ": " + Fmt("%+.0f", c.amount);
     return note;
 }
 
@@ -1413,17 +1431,29 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
         fortifyPower = AV::kMarksmanPowerModifier;
     }
 
-    static const float curveBase = GameSetting("fDamageSkillBase", 1.0f);
-    static const float curveMult = GameSetting("fDamageSkillMult", 0.5f);
+    // The skill curve: min + (max - min) * skill / 100, and the engine
+    // keeps one pair of settings for the player and another for everyone
+    // else (read off the armour multiplier's disassembly, 2026-09-09, which
+    // branches on IsPlayerOwner; the damage pair is named the same way).
+    // The wikis' "1 + skill / 200" is the player's pair. Logged once, so a
+    // mod that retunes them is visible.
+    static const float npcMin = GameSetting("fDamageSkillMin", 1.0f);
+    static const float npcMax = GameSetting("fDamageSkillMax", 1.5f);
+    static const float pcMin = GameSetting("fDamagePCSkillMin", 1.0f);
+    static const float pcMax = GameSetting("fDamagePCSkillMax", 1.5f);
     static const bool logged = [] {
-        logger::info("damage: skill curve base {:.2f} + {:.2f} * skill/100", curveBase, curveMult);
+        logger::info("damage: skill curve NPC {:.2f} to {:.2f}, player {:.2f} to {:.2f} over skill 0 to 100", npcMin,
+                     npcMax, pcMin, pcMax);
         return true;
     }();
     (void)logged;
 
     auto *owner = actor->AsActorValueOwner();
     const float skillLevel = owner ? owner->GetActorValue(skill) : 0.0f;
-    damage *= curveBase + curveMult * skillLevel / 100.0f;
+    const bool player = actor->IsPlayerRef();
+    const float lo = player ? pcMin : npcMin;
+    const float hi = player ? pcMax : npcMax;
+    damage *= lo + (hi - lo) * skillLevel / 100.0f;
 
     // Perks, through the engine's own entry point, so Armsman and the rest
     // count exactly as they do in a swing. The entry point wants a target,
@@ -1466,17 +1496,23 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     const AV fortify = heavy ? AV::kHeavyArmorModifier : AV::kLightArmorModifier;
     const AV fortifyPower = heavy ? AV::kHeavyArmorPowerModifier : AV::kLightArmorPowerModifier;
 
-    static const float curveBase = GameSetting("fArmorSkillBase", 1.0f);
-    static const float curveMult = GameSetting("fArmorSkillMult", 0.4f);
+    // The skill curve is the engine's own: fArmorRatingBase to
+    // fArmorRatingMax over skill 0 to 100 for an NPC, the PC pair for the
+    // player (GetArmorRatingSkillMultiplier branches on IsPlayerOwner).
+    // The wikis' "1 + 0.4 * skill / 100" is the player's pair, and used
+    // for a follower it read 46 where the engine had 66. Logged once.
     static const bool logged = [] {
-        logger::info("armor: skill curve base {:.2f} + {:.2f} * skill/100", curveBase, curveMult);
+        logger::info("armor: skill curve NPC {:.2f} to {:.2f}, player {:.2f} to {:.2f} over skill 0 to 100",
+                     GameSetting("fArmorRatingBase", 1.0f), GameSetting("fArmorRatingMax", 1.4f),
+                     GameSetting("fArmorRatingPCBase", 1.0f), GameSetting("fArmorRatingPCMax", 1.4f));
         return true;
     }();
     (void)logged;
 
     auto *owner = actor->AsActorValueOwner();
     const float skillLevel = owner ? owner->GetActorValue(skill) : 0.0f;
-    rating *= curveBase + curveMult * skillLevel / 100.0f;
+    if (owner)
+        rating *= owner->GetArmorRatingSkillMultiplier(skillLevel);
 
     // Perks: Juggernaut, Agile Defender and their kin, through the engine's
     // entry point for armour, which takes the piece and the value.
