@@ -406,6 +406,10 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
     const auto *first = shout->variations[0].spell;
     entry.cast = first ? CastWord(first->GetDelivery(), first->GetCastingType()) : "Shout";
     entry.castValue = first ? static_cast<int>(first->GetDelivery()) : 99;
+    // Its type from the same spell's costliest effect: Fire Breath is Fire,
+    // Unrelenting Force a Stagger.
+    if (const auto *costliest = first ? first->GetCostliestEffectItem() : nullptr)
+        entry.type = TypeWord(costliest->baseEffect);
     entry.hand = "Voice";
     entry.equipped = actor->GetActorRuntimeData().selectedPower == shout;
 
