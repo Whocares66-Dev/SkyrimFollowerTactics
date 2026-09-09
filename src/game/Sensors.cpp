@@ -339,7 +339,41 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         // (2026-09-08).
         out.push_back({std::move(source), ae->magnitude});
     }
+    // Smallest first: the weaknesses, then the boons, the largest last.
+    std::stable_sort(out.begin(), out.end(),
+                     [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
     return out;
+}
+
+std::string ArmorNote(RE::Actor *actor)
+{
+    // Each piece worn with its rating as the follower wears it, then the
+    // spells and enchantments on the armour value itself (Oakflesh, a
+    // Fortify Armor), smallest first as the resistances list theirs.
+    if (!actor)
+        return {};
+    std::vector<Contribution> parts;
+    auto inventory = actor->GetInventory([](RE::TESBoundObject &o) { return o.Is(RE::FormType::Armor); });
+    for (auto &[object, slot] : inventory)
+    {
+        auto *entry = slot.second.get();
+        auto *armor = object ? object->As<RE::TESObjectARMO>() : nullptr;
+        if (!armor || !entry || !entry->IsWorn())
+            continue;
+        const float rating = ArmorRating(actor, armor, entry);
+        if (rating <= 0.0f)
+            continue;
+        const char *name = entry->GetDisplayName() ? entry->GetDisplayName() : armor->GetName();
+        parts.push_back({name ? name : "?", rating});
+    }
+    for (Contribution &c : Contributions(actor, RE::ActorValue::kDamageResist))
+        parts.push_back(std::move(c));
+    std::stable_sort(parts.begin(), parts.end(),
+                     [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
+    std::string note;
+    for (const Contribution &c : parts)
+        note += (note.empty() ? "" : "\n") + c.source + ": " + Fmt("%+.0f", c.amount);
+    return note;
 }
 
 std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
@@ -1516,8 +1550,10 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // 6%: two pieces' hidden bonus and no rating.
         const float armor = av(RE::ActorValue::kDamageResist);
         const float resistCap = GameSetting("fPlayerMaxResistance", 85.0f);
-        s.rows.push_back(
-            Row("Armor", Fmt("%.0f", armor) + " (" + Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")"));
+        SheetRow armorRow =
+            Row("Armor", Fmt("%.0f", armor) + " (" + Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")");
+        armorRow.note = ArmorNote(actor);
+        s.rows.push_back(std::move(armorRow));
         // Each resistance with where it comes from as its hover text: the
         // ring, the potion, the race.
         const auto resist = [&](const char *label, RE::ActorValue value, bool capped) {

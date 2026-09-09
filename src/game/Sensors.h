@@ -251,6 +251,10 @@ struct Contribution
 // they add anything. `unit` follows each number ("%" or "").
 [[nodiscard]] std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit);
 
+// The armour rating's sources: each piece worn with its rating, and the
+// spells and enchantments on the armour value, smallest first.
+[[nodiscard]] std::string ArmorNote(RE::Actor *actor);
+
 // The Character tab: race, movement, defence and the equipped weapon. Display
 // only -- none of it is a rule input. Cheap reads, done in and out of combat
 // alike.

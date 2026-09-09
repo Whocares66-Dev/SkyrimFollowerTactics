@@ -198,11 +198,14 @@ struct RowGeometry
 };
 
 void DrawStatRow(const RowGeometry &g, const char *barLabel, const ft::Stat &stat, Im::ImVec4 barColour,
-                 const char *statLabel, const std::function<void()> &drawValue)
+                 const char *statLabel, const std::function<void()> &drawValue, const std::string &note = {})
 {
     Im::SetCursorPosX((std::max)(0.0f, g.barLabelRight - Im::CalcTextSize(barLabel).x));
     Im::AlignTextToFramePadding();
     Im::Text("%s", barLabel);
+    // Where the maximum comes from, on the label, as the sheets' rows have it.
+    if (!note.empty() && Im::IsItemHovered(0))
+        Im::SetTooltip("%s", note.c_str());
 
     Im::SameLine(g.barLeft, -1.0f);
     Im::PushStyleColor(Im::ImGuiCol_PlotHistogram, barColour);
@@ -3961,25 +3964,32 @@ void DrawCharacter(const FollowerView &view)
     geo.valueLeft = contentRight - valueWidth;
     geo.statLabelRight = geo.valueLeft - 12.0f;
 
-    DrawStatRow(geo, "Health", view.snapshot.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
-                [&] { Im::Text("%s", levelText.c_str()); });
+    DrawStatRow(
+        geo, "Health", view.snapshot.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
+        [&] { Im::Text("%s", levelText.c_str()); }, view.healthNote);
 
-    DrawStatRow(geo, "Stamina", view.snapshot.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Status", [&] {
-        if (view.inCombat)
-            Im::TextColored(Im::ImVec4(0.95f, 0.65f, 0.35f, 1.0f), "%s", statusText.c_str());
-        else
-            Im::TextDisabled("%s", statusText.c_str());
-    });
+    DrawStatRow(
+        geo, "Stamina", view.snapshot.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Status",
+        [&] {
+            if (view.inCombat)
+                Im::TextColored(Im::ImVec4(0.95f, 0.65f, 0.35f, 1.0f), "%s", statusText.c_str());
+            else
+                Im::TextDisabled("%s", statusText.c_str());
+        },
+        view.staminaNote);
 
-    DrawStatRow(geo, "Magicka", view.snapshot.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Carrying", [&] {
-        // Over capacity is worth seeing: an overencumbered follower
-        // cannot fight properly, and otherwise you would only notice
-        // by wondering why they are standing still.
-        if (view.carryCapacity > 0.0f && view.carriedWeight > view.carryCapacity)
-            Im::TextColored(Im::ImVec4(0.95f, 0.45f, 0.40f, 1.0f), "%s", carriedText.c_str());
-        else
-            Im::Text("%s", carriedText.c_str());
-    });
+    DrawStatRow(
+        geo, "Magicka", view.snapshot.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Carrying",
+        [&] {
+            // Over capacity is worth seeing: an overencumbered follower
+            // cannot fight properly, and otherwise you would only notice
+            // by wondering why they are standing still.
+            if (view.carryCapacity > 0.0f && view.carriedWeight > view.carryCapacity)
+                Im::TextColored(Im::ImVec4(0.95f, 0.45f, 0.40f, 1.0f), "%s", carriedText.c_str());
+            else
+                Im::Text("%s", carriedText.c_str());
+        },
+        view.magickaNote);
 
     Im::Spacing();
 

@@ -345,6 +345,9 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
 {
     v.level = actor->GetLevel();
     v.carriedWeight = actor->GetWeightInContainer();
+    v.healthNote = ValueNote(actor, RE::ActorValue::kHealth, "");
+    v.staminaNote = ValueNote(actor, RE::ActorValue::kStamina, "");
+    v.magickaNote = ValueNote(actor, RE::ActorValue::kMagicka, "");
     if (auto *owner = actor->AsActorValueOwner())
         v.carryCapacity = owner->GetActorValue(RE::ActorValue::kCarryWeight);
 
