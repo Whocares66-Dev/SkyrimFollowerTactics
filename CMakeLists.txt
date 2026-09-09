@@ -136,6 +136,13 @@ if(FT_BUILD_PLUGIN)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
     ft_apply_warnings(${PROJECT_NAME})
+    # A release ships with its .pdb: the code is open, and a crash log with
+    # our frames NAMED is the whole difference between "FollowerTactics.dll
+    # +5C8BD" and knowing which line asked for the actor value that was not
+    # one (the Nordic Souls crash of 2026-09-08 took a disassembly to read).
+    # Full symbols, and the linker still folds and strips as usual.
+    target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/Zi>)
+    target_link_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/DEBUG:FULL /OPT:REF /OPT:ICF>)
     # The SKSE Menu Framework SDK is a single vendored header. It declares the
     # whole ImGui API under namespace ImGuiMCP and forwards every call into
     # SKSEMenuFramework.dll via GetProcAddress, so there is nothing to link --
@@ -180,7 +187,7 @@ if(FT_BUILD_PLUGIN)
                     "$<TARGET_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
             VERBATIM)
 
-        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release")
             add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
                 COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                         "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>"
