@@ -4119,7 +4119,8 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 //     stays, saying so, until the framework catches up.
 //
 // Entries are registered the first time a follower is seen, so they carry real
-// names. Ordering is first-seen rather than alphabetical.
+// names. Those seen together are registered in name order; a later one comes
+// after them, since an entry cannot be moved once added.
 
 constexpr std::size_t kSlots = 8; // matches kMaxManagedFollowers in Tactics.cpp
 
@@ -4314,9 +4315,18 @@ void SyncFollowers()
         }
     }
 
-    // New: the first free slot.
+    // New: the first free slot, in name order, so the followers who appear
+    // together (the whole party, on a load) list alphabetically. The
+    // framework in the field exports no way to remove or reorder an entry
+    // (see above), so one recruited later goes after them.
+    std::vector<const FollowerView *> arriving;
     for (const auto &view : followers)
+        arriving.push_back(&view);
+    std::sort(arriving.begin(), arriving.end(),
+              [](const FollowerView *a, const FollowerView *b) { return a->name < b->name; });
+    for (const auto *viewPtr : arriving)
     {
+        const auto &view = *viewPtr;
         std::size_t index = kSlots;
         {
             std::scoped_lock lock(g_slotMutex);
