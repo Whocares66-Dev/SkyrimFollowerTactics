@@ -778,7 +778,7 @@ RE::BSTArray<RE::TESPackage *> *PutOnStack(RE::Actor *actor, RE::TESPackage *pkg
     for (auto *p : keep)
         if (p != pkg)
             chosen->push_back(p);
-    logger::info("  {} at the front of {} \"{}\" alias {} ({} packages)", pkg->GetFormID(),
+    logger::info("  {:08X} at the front of {} \"{}\" alias {} ({} packages)", pkg->GetFormID(),
                  chosenInst->quest ? fmt::format("{:08X}", chosenInst->quest->GetFormID()) : "?",
                  chosenInst->quest && chosenInst->quest->GetFormEditorID() ? chosenInst->quest->GetFormEditorID() : "",
                  chosenInst->alias ? chosenInst->alias->aliasID : 0xFFFFFFFF, chosen->size());
