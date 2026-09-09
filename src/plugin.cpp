@@ -200,12 +200,8 @@ void OnDataLoaded()
     ft::game::RefuseEquipsAgainstPins();
     ft::game::WatchHits();
 
-    const bool allPassed = passed == checks.size();
-    if (auto *console = RE::ConsoleLog::GetSingleton())
-    {
-        console->Print("FollowerTactics loaded (self-check %zu/%zu %s) - tactics ACTIVE", passed, checks.size(),
-                       allPassed ? "ok" : "FAILED - see FollowerTactics.log");
-    }
+    logger::info("FollowerTactics loaded (self-check {}/{} {})", passed, checks.size(),
+                 passed == checks.size() ? "ok" : "FAILED");
 }
 
 } // namespace
