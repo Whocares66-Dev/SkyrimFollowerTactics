@@ -145,6 +145,8 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
         return {"no weapon", held};
     case ft::Verdict::NoStamina:
         return {"no stamina", held};
+    case ft::Verdict::OutOfReach:
+        return {"too far", held};
     case ft::Verdict::Busy:
         return {"busy", held};
     case ft::Verdict::Casting:

@@ -31,6 +31,7 @@ enum class Verdict : std::uint8_t
     CannotDualCast,   // a dual cast of a spell the follower cannot dual cast: no perk for its school
     NoMeleeWeapon,    // a power attack with nothing in hand that swings: a bow, a staff, a spell
     NoStamina,        // a power attack the follower cannot pay for right now
+    OutOfReach,       // a power attack at an enemy further than the swing reaches
     EffectActive,     // a previous dose is still running; or the thing is already pinned
     AboveSkill,       // a spell above the follower's skill: neither cast nor pinned, so cast and equip agree
     Outranked,        // a rule above holds the hand or slot this would take

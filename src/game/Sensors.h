@@ -113,6 +113,9 @@ struct PowerAttackPlan
 {
     const char *event{nullptr};
     float stamina{0.0f};
+    // How far it reaches, centre to centre: the engine's reach for this
+    // actor and weapon, plus a margin for the enemy's own body.
+    float reach{0.0f};
     [[nodiscard]] bool Possible() const noexcept
     {
         return event != nullptr;

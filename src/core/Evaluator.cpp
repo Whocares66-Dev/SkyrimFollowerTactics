@@ -805,10 +805,13 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
                 return Verdict::NoResource;
             if (!snap.canPowerAttack)
                 return Verdict::NoMeleeWeapon;
-            if (target == 0 || !FindEnemy(snap, target))
+            const EnemyView *enemy = target != 0 ? FindEnemy(snap, target) : nullptr;
+            if (!enemy)
                 return Verdict::NoTarget;
             if (snap.stamina.current < snap.powerAttackCost)
                 return Verdict::NoStamina;
+            if (enemy->distance > snap.powerAttackReach)
+                return Verdict::OutOfReach;
         }
         // Exact where the settle time is a guess: on a game whose potions
         // restore over time, the previous dose may still have seconds to run.
@@ -1092,6 +1095,8 @@ const char *ToString(Verdict v) noexcept
         return "nothing in hand that swings";
     case Verdict::NoStamina:
         return "not enough stamina";
+    case Verdict::OutOfReach:
+        return "out of reach";
     case Verdict::EffectActive:
         return "previous dose still active";
     case Verdict::AboveSkill:

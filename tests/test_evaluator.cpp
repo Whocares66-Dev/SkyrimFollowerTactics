@@ -3130,11 +3130,19 @@ TEST_CASE("a power attack needs a fight, something that swings, and the stamina 
 
     s.canPowerAttack = true;
     s.powerAttackCost = 40.0f;
+    s.powerAttackReach = 200.0f;
     trace.clear();
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::NoStamina); // 30 against 40
 
+    // Paid for, but the enemy is at 300 against a 200 reach: a swing that
+    // lands on nothing is not made.
     s.stamina = {50.0f, 100.0f};
+    trace.clear();
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::OutOfReach);
+
+    s.enemies[0].distance = 150.0f;
     trace.clear();
     const auto d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.Fired());

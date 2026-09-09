@@ -723,6 +723,14 @@ PowerAttackPlan PlanPowerAttack(RE::Actor *actor)
         RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModPowerAttackStamina, actor,
                                             const_cast<RE::TESObjectWEAP *>(priced), &cost);
     plan.stamina = (std::max)(0.0f, cost);
+    // The engine's own reach for the actor and what they hold -- the weapon's
+    // reach times fCombatDistance, or the race's unarmed reach, times the
+    // actor's scale (docs/ACTIONS.md 6); the margin is
+    // a humanoid's half-width and a step, since the snapshot's distances are
+    // centre to centre. A giant's body is wider than that, so a swing at one
+    // is judged too far a little before it is.
+    constexpr float kBodyMargin = 40.0f;
+    plan.reach = actor->GetReach() + kBodyMargin;
     return plan;
 }
 
@@ -898,6 +906,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         const PowerAttackPlan swing = PlanPowerAttack(actor);
         s.canPowerAttack = swing.Possible();
         s.powerAttackCost = swing.stamina;
+        s.powerAttackReach = swing.reach;
     }
 
     s.traits = ReadTraits(actor);

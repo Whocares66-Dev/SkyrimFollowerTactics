@@ -364,6 +364,11 @@ struct Snapshot
     // PowerAttack action reads both.
     bool canPowerAttack{false};
     float powerAttackCost{0.0f};
+    // How far the swing reaches, centre to centre: the engine's reach for
+    // the actor and weapon, with a margin for the enemy's own body. A swing
+    // at an enemy further than this lands on nothing, and the engine
+    // charges no stamina for it, so the rule waits for the AI to close.
+    float powerAttackReach{0.0f};
     // The edges: this is the first evaluation of a fight, or the one
     // farewell evaluation after it. On the farewell pass only CombatEnds
     // holds -- see PredicateKind.
