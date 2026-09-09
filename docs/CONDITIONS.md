@@ -15,7 +15,7 @@ conditions take a *kind* as well as, or instead of, a number:
 
 | Condition | Kind | Number |
 |---|---|---|
-| Status | poisoned, burning, frostbitten, shocked, paralysed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking | none |
+| Status | poisoned, burning, frostbitten, shocked, paralyzed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking (not all about everyone, see 9) | none |
 | Resistance | fire, frost, shock, magic, poison | a percent, below or above; or lowest / highest |
 | Attacked by | any; melee, ranged, magic; fire, frost, shock, poison | none |
 | Armor | none | a percent, below or above; or lowest / highest |
@@ -195,3 +195,13 @@ The follower's own weapons, hand by hand, under one "Weapon" heading with two en
 **Poison: None / Active** holds when a weapon in hand takes a poison (anything but a staff) and has none on it, or carries one. With a poisoned sword right and a clean dagger left both hold, and with a spell right and a dagger left the dagger is what is asked about. The pair is `Self: Weapon poison none -> Self: Apply weakest health poison`; the action goes to the right hand's weapon if that is clean, else the left's, so two firings dress both hands, and with both poisoned it reports "poisoned" and waits. The engine's own inventory menu is stricter: it poisons the right hand only and never the left (`docs/ACTIONS.md`).
 
 Self only: the snapshot reads the follower's own hands. The wire names are `weapon-charge-needed`, `weapon-poison-none` and `weapon-poison-active` (the last two were briefly `weapon-unpoisoned` and `weapon-poisoned` on 2026-09-08; a save carrying those drops the rule with a warning).
+
+## 9. The cascade as it reads (2026-09-08)
+
+Under every subject the conditions come in four groups with a divider between: Any; Health, Stamina, Magicka (and Count, for Enemy); Combat, Attacked by, Status (and, for Enemy, Attacking and Target of); Weapon, Armor, Resistance, Summon (and the corpse questions). Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. Ally has no Count: how many allies there are changes too rarely to be a condition.
+
+**Statuses** that no action could answer are not asked about the follower themself: bleeding out, casting, fleeing and staggered. The player neither bleeds out nor flees. About anyone else every status is a fair question (`IsStatusValidFor`).
+
+**Attacking and Target of** replace the old "attacking player" and "target of player": each opens on the members of the party by name -- the player, this follower, the other followers -- so `Enemy: Target of <the player>` is the one the player is fighting and `Enemy: Attacking <Lydia>` the one going for Lydia. The member goes on the wire as `"member": "player"` or the follower's form. `Enemy: Target of <this follower>` is the follower's own target, which was a subject of its own ("Target") until 2026-09-08; one place for one question.
+
+**On the action side** there is one Enemy heading, read from the condition: under an enemy condition it is the enemy the condition matched; under any other, whoever the follower is fighting, and failing that the nearest enemy sensed, since a cast must go at someone and nearest is what the follower's own AI picks. The separate "Target" heading is gone with the subject. Attacker stays: whoever is at the subject's throat, offered under every subject but an enemy, where it reads oddly. Under an enemy condition only Enemy (and self, the player, the followers) are offered.

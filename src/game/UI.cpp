@@ -579,6 +579,51 @@ bool IsCombatPredicate(ft::PredicateKind p)
     return p == ft::PredicateKind::CombatBegins || p == ft::PredicateKind::CombatEnds;
 }
 
+// The condition cascade in four groups, a divider between them: Any; the
+// three stats (and a group's count); the fight -- its edges, being
+// attacked, a status, and the enemy's relation to the party; the
+// equipment and the field -- weapon, armour, resistance, a summon, the
+// corpses.
+int ConditionGroup(ft::PredicateKind p)
+{
+    switch (p)
+    {
+    case ft::PredicateKind::Any:
+        return 0;
+    case ft::PredicateKind::HealthPctBelow:
+    case ft::PredicateKind::StaminaPctBelow:
+    case ft::PredicateKind::MagickaPctBelow:
+    case ft::PredicateKind::CountAtLeast:
+        return 1;
+    case ft::PredicateKind::CombatBegins:
+    case ft::PredicateKind::CombatEnds:
+    case ft::PredicateKind::AttackedBy:
+    case ft::PredicateKind::Status:
+    case ft::PredicateKind::Attacking:
+    case ft::PredicateKind::TargetOf:
+        return 2;
+    default:
+        return 3;
+    }
+}
+
+// Is this predicate the one its heading is drawn at? The rest of a heading
+// (Combat ends, Summon active, the poison pair) are drawn under it and
+// skipped in the walk.
+bool DrawsHeading(ft::PredicateKind p)
+{
+    switch (p)
+    {
+    case ft::PredicateKind::CombatEnds:
+    case ft::PredicateKind::SummonActive:
+    case ft::PredicateKind::WeaponPoisonNone:
+    case ft::PredicateKind::WeaponPoisonActive:
+        return false;
+    default:
+        return !ft::IsAbove(p) && !ft::IsExtreme(p);
+    }
+}
+
 // Is the rule about this subject -- and, for a named follower, this one?
 bool SubjectIs(const ft::Rule &rule, ft::SubjectKind subject, std::uint32_t form)
 {
@@ -623,8 +668,6 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
     for (const auto &peer : SortedPeers(view))
         headings.push_back({ft::SubjectKind::Follower, peer.id, peer.name});
     headings.push_back({ft::SubjectKind::Ally, 0, std::string(ft::DisplayName(ft::SubjectKind::Ally))});
-    headings.push_back(
-        {ft::SubjectKind::CurrentTarget, 0, std::string(ft::DisplayName(ft::SubjectKind::CurrentTarget))});
     headings.push_back({ft::SubjectKind::Enemy, 0, std::string(ft::DisplayName(ft::SubjectKind::Enemy))});
     headings.push_back({ft::SubjectKind::Corpse, 0, std::string(ft::DisplayName(ft::SubjectKind::Corpse))});
 
@@ -635,6 +678,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
         if (!BeginCascade(heading.label.c_str()))
             continue;
 
+        int lastGroup = -1;
         for (std::size_t pi = 0; pi < static_cast<std::size_t>(ft::PredicateKind::COUNT); ++pi)
         {
             const auto predicate = static_cast<ft::PredicateKind>(pi);
@@ -643,8 +687,14 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
             // An above predicate is listed under its below counterpart's
             // heading, after a divider, not as a heading of its own; the
             // group's extremes likewise, first under theirs.
-            if (ft::IsAbove(predicate) || ft::IsExtreme(predicate))
+            if (!DrawsHeading(predicate))
                 continue;
+            // A divider where one group of conditions ends and the next
+            // begins.
+            const int group = ConditionGroup(predicate);
+            if (lastGroup >= 0 && group != lastGroup)
+                Im::Separator();
+            lastGroup = group;
 
             // The fight's three, grouped where the first of them falls.
             if (IsCombatPredicate(predicate))
@@ -811,6 +861,39 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 continue;
             }
 
+            // The party: under "Attacking" and "Target of", the members by
+            // name -- the player, this follower, the other followers -- each
+            // a leaf that names the member.
+            if (predicate == ft::PredicateKind::Attacking || predicate == ft::PredicateKind::TargetOf)
+            {
+                if (!BeginCascade(predicateName.c_str()))
+                    continue;
+                // Self; the player; the other followers by name -- a divider
+                // between each part.
+                const auto member = [&](std::uint32_t id, const std::string &label) {
+                    const bool selected =
+                        rule.subject == subject && rule.predicate == predicate && rule.subjectForm == id;
+                    if (CascadeItem(label.c_str(), selected))
+                    {
+                        rule.subject = subject;
+                        rule.subjectForm = id;
+                        rule.predicate = predicate;
+                        changed = true;
+                    }
+                };
+                member(view.id, "Self");
+                Im::Separator();
+                member(0, view.playerName.empty() ? "Player" : view.playerName);
+                if (const auto peers = SortedPeers(view); !peers.empty())
+                {
+                    Im::Separator();
+                    for (const auto &peer : peers)
+                        member(peer.id, peer.name);
+                }
+                Im::EndMenu();
+                continue;
+            }
+
             // A status: the kinds, one leaf each, under "Status", in the
             // order a person looks for them -- by name, not by the enum.
             if (predicate == ft::PredicateKind::Status)
@@ -819,7 +902,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                     continue;
                 std::vector<ft::StatusKind> kinds;
                 for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::StatusKind::COUNT); ++ki)
-                    kinds.push_back(static_cast<ft::StatusKind>(ki));
+                    if (ft::IsStatusValidFor(subject, static_cast<ft::StatusKind>(ki)))
+                        kinds.push_back(static_cast<ft::StatusKind>(ki));
                 std::sort(kinds.begin(), kinds.end(),
                           [](ft::StatusKind a, ft::StatusKind b) { return ft::DisplayName(a) < ft::DisplayName(b); });
                 for (const ft::StatusKind kind : kinds)
@@ -852,9 +936,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 }
                 if (Im::IsItemHovered(0))
                     Im::SetTooltip("%s", std::string(ft::Describe(predicate)).c_str());
-                // Any stands apart from the conditions proper.
-                if (predicate == ft::PredicateKind::Any)
-                    Im::Separator();
+                // (Any's divider from the rest is the group divider above.)
                 continue;
             }
 
@@ -1426,7 +1508,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                 act.hand = Hand::None;
                 choose();
             }
-            if (Im::IsItemHovered(0))
+            // Target says what it does in its name; no tooltip.
+            if (action != ft::ActionKind::Target && Im::IsItemHovered(0))
                 Im::SetTooltip("%s", std::string(ft::Describe(action)).c_str());
             continue;
         }
@@ -1508,8 +1591,8 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
         std::string label;
     };
     // The same order as the If cascade's: self, the player, the other
-    // followers by name, any ally; then the threats, the particular before
-    // the general -- the attacker, the target, any enemy.
+    // followers by name, any ally; then the threats -- the attacker, and
+    // the enemy (the condition's, or the one being fought).
     std::vector<Heading> headings{
         {ft::ActionTargetKind::Self, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Self))},
         {ft::ActionTargetKind::Player, 0,
@@ -1519,8 +1602,6 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
     headings.push_back({ft::ActionTargetKind::Ally, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Ally))});
     headings.push_back(
         {ft::ActionTargetKind::Attacker, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Attacker))});
-    headings.push_back(
-        {ft::ActionTargetKind::CurrentTarget, 0, std::string(ft::DisplayName(ft::ActionTargetKind::CurrentTarget))});
     headings.push_back({ft::ActionTargetKind::Enemy, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Enemy))});
     headings.push_back({ft::ActionTargetKind::Corpse, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Corpse))});
 

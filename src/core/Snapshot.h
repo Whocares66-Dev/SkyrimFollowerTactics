@@ -97,7 +97,9 @@ struct EnemyView
     Stat health{};
     float distance{0.0f};
     bool isCasting{false};
-    bool isAttackingPlayer{false};
+    // Whom this enemy is going for: an id, the player's or a follower's,
+    // or 0 for nobody in particular.
+    ActorId attacking{0};
     bool hasLineOfSight{false};
     ActorTraits traits{};
     // Last, so the tests' positional initialisers above them stand.
@@ -113,6 +115,8 @@ struct AllyView
     ActorTraits traits{};
     Stat magicka{};
     Stat stamina{};
+    // Whom this ally is fighting, or 0.
+    ActorId target{0};
 };
 
 // A corpse nearby: dead, not already raised or summoned, loaded. Its level

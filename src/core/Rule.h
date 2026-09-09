@@ -34,7 +34,8 @@ enum class SubjectKind : std::uint8_t
     Player,
     Ally,
     Enemy,
-    CurrentTarget,
+    // (The follower's own target was a subject here until 2026-09-08; it is
+    // "Enemy: Target of <the follower>" now, one place for one question.)
     // One particular other follower, named by Rule::subjectForm: an ally
     // asked about alone.
     Follower,
@@ -67,8 +68,13 @@ enum class PredicateKind : std::uint8_t
     CombatBegins,
     CombatEnds,
     CountAtLeast,
+    // The subject has been hit with Rule::damageKind in the last few
+    // seconds. Any subject. Listed here, between the fight's edges and
+    // Status, as the editor's menu groups them.
+    AttackedBy,
     // The subject is in the status Rule::statusKind names: poisoned,
-    // burning, fleeing ... Any subject.
+    // burning, fleeing ... Any subject; a few kinds are not asked about
+    // the follower themself (IsStatusValidFor).
     Status,
     // The follower's own weapons, each hand asked, Self only, under one
     // "Weapon" heading above Armor as the editor walks this enum. Charge
@@ -88,14 +94,13 @@ enum class PredicateKind : std::uint8_t
     // a fraction (50% is 0.5; a weakness is below zero), under
     // conditionArg. Any subject.
     ResistancePctBelow,
-    // The subject has been hit with Rule::damageKind in the last few
-    // seconds. Any subject.
-    AttackedBy,
-    // The enemy is going for the player, or is the one the player is
-    // going for: the two that make a party fight as one -- peel the one
-    // on the player, or hit what the player hits. Enemy and Target.
-    AttackingPlayer,
-    TargetOfPlayer,
+    // The enemy is going for a member of the party, or is the one a
+    // member is going for: the two that make a party fight as one -- peel
+    // the one on the player, or hit what the player hits. The member is
+    // Rule::subjectForm: 0 for the player, the follower's own id for
+    // themself, another follower's id otherwise. Enemy only.
+    Attacking,
+    TargetOf,
     // The group's extremes: true of the group when it has anyone, binding
     // the member with the least or the most of the measure. Ally and Enemy
     // only. The resistance ones are of Rule::damageKind.
@@ -144,8 +149,11 @@ enum class ActionTargetKind : std::uint8_t
     Self,
     Player,
     Ally,
+    // An enemy: THE enemy the condition matched when the condition is about
+    // one; otherwise whoever the follower is fighting, else the nearest.
+    // (A separate "Target" heading for the follower's own target was here
+    // until 2026-09-08; one heading, read from the condition, is plainer.)
     Enemy,
-    CurrentTarget,
     // Whoever last attacked the condition's subject: the enemy at the
     // ally's throat, for the rule that answers it.
     Attacker,
@@ -281,7 +289,8 @@ struct Rule
 
     SubjectKind subject{SubjectKind::Self};
     // Which follower, for SubjectKind::Follower: the actor's FormID, as
-    // opaque here as an action's form is.
+    // opaque here as an action's form is. For Attacking and TargetOf, the
+    // party member: 0 for the player, the follower's own id for themself.
     std::uint32_t subjectForm{0};
     PredicateKind predicate{PredicateKind::Any};
     float conditionArg{0.0f};
@@ -386,6 +395,13 @@ struct RuleSet
 // so a rule that cannot work says so instead of never firing for no visible
 // reason.
 [[nodiscard]] bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept;
+
+// Can this status be asked about this subject? Bleeding out, casting,
+// fleeing and staggered are not asked about the follower themself: no
+// action can be taken while any of them holds, so the rule could never do
+// anything. The player neither bleeds out nor flees. About anyone else they
+// are fair questions.
+[[nodiscard]] bool IsStatusValidFor(SubjectKind subject, StatusKind status) noexcept;
 
 // The same for the THEN side. A target of Ally or Enemy is "the one the
 // condition matched", so it needs a condition about an ally (Ally, or a

@@ -342,7 +342,6 @@ TEST_CASE("the action target is its own choice, within what makes sense", "[bind
     REQUIRE(IsActionValidFor(ActionTargetKind::Player, ActionKind::CastSpell));
     REQUIRE(IsActionValidFor(ActionTargetKind::Self, ActionKind::DrinkHealthPotion));
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Self, ActionKind::Target));
-    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::CurrentTarget, ActionKind::Target));
     REQUIRE(IsActionValidFor(ActionTargetKind::Attacker, ActionKind::Target));
 
     constexpr std::uint32_t kHeal = 0x00012FCD;
@@ -360,9 +359,8 @@ TEST_CASE("the action target is its own choice, within what makes sense", "[bind
     REQUIRE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Ally));
     REQUIRE(IsActionTargetValidFor(SubjectKind::Follower, ActionTargetKind::Ally));
     REQUIRE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Enemy));
-    REQUIRE(IsActionTargetValidFor(SubjectKind::CurrentTarget, ActionTargetKind::Enemy));
     REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Self, ActionTargetKind::Ally));
-    REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Enemy));
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Enemy)); // whoever is being fought
     REQUIRE(IsActionTargetValidFor(SubjectKind::Self, ActionTargetKind::Attacker));
     rs.rules[0].actionTarget = ActionTargetKind::Ally;
     d = Evaluate(rs, s, ctx, &trace);
@@ -437,31 +435,18 @@ TEST_CASE("CountAtLeast asks about the group and binds the nearest member", "[bi
     }
 }
 
-TEST_CASE("CurrentTarget needs sensed data for anything beyond existence", "[binding]")
+TEST_CASE("the follower's own target is Enemy: Target of the follower", "[binding]")
 {
     Snapshot s = Healthy();
     s.currentTarget = 0x101;
-
-    SECTION("Always binds on existence alone")
-    {
-        Rule r;
-        r.subject = SubjectKind::CurrentTarget;
-        r.predicate = PredicateKind::Any;
-        REQUIRE(EvaluateCondition(r, s).id == 0x101);
-    }
-
-    SECTION("a health predicate needs the target in the enemy list")
-    {
-        Rule r;
-        r.subject = SubjectKind::CurrentTarget;
-        r.predicate = PredicateKind::HealthPctBelow;
-        r.conditionArg = 0.9f;
-
-        REQUIRE_FALSE(EvaluateCondition(r, s).ok); // not sensed yet
-
-        s.enemies.push_back({0x101, {10.0f, 100.0f}, 200.0f, false, false, true});
-        REQUIRE(EvaluateCondition(r, s).ok);
-    }
+    Rule r;
+    r.subject = SubjectKind::Enemy;
+    r.predicate = PredicateKind::TargetOf;
+    r.subjectForm = s.self;
+    // Not sensed as an enemy yet: nothing to bind.
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    s.enemies.push_back({0x101, {10.0f, 100.0f}, 200.0f, false, 0, true});
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
 }
 
 TEST_CASE("no binding means the rule is skipped, not fired at nobody", "[evaluator]")
@@ -495,12 +480,12 @@ TEST_CASE("the subject and predicate validity matrix", "[validity]")
     // A lone subject has no count.
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::CountAtLeast));
 
-    // "Any" of the player or of an ally is always true -- the player is
-    // always there -- so it is Self: Any and not offered again. A named
-    // follower's Any is "they are with us", and stays.
+    // "Any" is offered for everyone: always true of the player and of an
+    // ally, and there so a rule can aim at them under the heading a reader
+    // looks for it. A named follower's Any is "they are with us".
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Any));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Any));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Any));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Any));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Any));
     REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::Any));
     REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Any));
 
@@ -508,7 +493,6 @@ TEST_CASE("the subject and predicate validity matrix", "[validity]")
     // asked of anyone health is.
     REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::MagickaPctBelow));
     REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::StaminaPctBelow));
-    REQUIRE(IsPredicateValidFor(SubjectKind::CurrentTarget, PredicateKind::StaminaPctBelow));
 
     // Above is answerable exactly where below is.
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::MagickaPctAbove));
@@ -726,15 +710,12 @@ TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[stat
     s.allies[1].traits.Set(StatusKind::Fleeing);
     REQUIRE(EvaluateCondition(r, s).id == 0x202);
 
-    // An enemy, and the target when it is the one.
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
-    s.currentTarget = 0x101;
-    r.subject = SubjectKind::CurrentTarget;
+    // An enemy.
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, 0, true});
+    r.subject = SubjectKind::Enemy;
     r.statusKind = StatusKind::Casting;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
     s.enemies[0].traits.Set(StatusKind::Casting);
-    REQUIRE(EvaluateCondition(r, s).ok);
-    r.subject = SubjectKind::Enemy;
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
 
     // Answerable about everyone alive; a corpse has its own three questions.
@@ -809,7 +790,6 @@ TEST_CASE("armour is asked as a percent, and every measure has a lowest and a hi
     REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::MagickaHighest));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::ArmorHighest));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::MagickaLowest));
-    REQUIRE(IsPredicateValidFor(SubjectKind::CurrentTarget, PredicateKind::ArmorPctBelow));
     REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::ArmorPctAbove));
     REQUIRE(ExtremesOf(PredicateKind::ArmorPctBelow).highest == PredicateKind::ArmorHighest);
     REQUIRE(ExtremesOf(PredicateKind::StaminaPctBelow).lowest == PredicateKind::StaminaLowest);
@@ -974,32 +954,54 @@ TEST_CASE("a named follower is one ally asked about alone", "[follower]")
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::HealthLowest));
 }
 
-TEST_CASE("the enemy on the player, and the one the player is on", "[party]")
+TEST_CASE("the enemy on a member of the party, and the one a member is on", "[party]")
 {
     Snapshot s = Healthy();
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
-    s.enemies.push_back({0x102, {100.0f, 100.0f}, 200.0f, false, true, true}); // going for the player
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, 0, true});
+    s.enemies.push_back({0x102, {100.0f, 100.0f}, 200.0f, false, kPlayerFormID, true}); // going for the player
+    s.enemies.push_back({0x103, {100.0f, 100.0f}, 250.0f, false, 0x201, true});         // going for a follower
     s.playerTarget = 0x101;
+    s.allies.push_back({kPlayerFormID, {100.0f, 100.0f}, 100.0f});
+    s.allies.push_back({0x201, {60.0f, 100.0f}, 300.0f});
+    s.allies[1].target = 0x103;
+    s.currentTarget = 0x102;
 
     Rule r;
     r.subject = SubjectKind::Enemy;
-    r.predicate = PredicateKind::AttackingPlayer;
+    // The player: member 0.
+    r.predicate = PredicateKind::Attacking;
     REQUIRE(EvaluateCondition(r, s).id == 0x102);
-    r.predicate = PredicateKind::TargetOfPlayer;
+    r.predicate = PredicateKind::TargetOf;
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
+    // Another follower, by id.
+    r.subjectForm = 0x201;
+    r.predicate = PredicateKind::Attacking;
+    REQUIRE(EvaluateCondition(r, s).id == 0x103);
+    r.predicate = PredicateKind::TargetOf;
+    REQUIRE(EvaluateCondition(r, s).id == 0x103);
+    // The follower themself: their own target.
+    r.subjectForm = s.self;
+    REQUIRE(EvaluateCondition(r, s).id == 0x102);
 
     // The player fighting no one: nothing is their target.
+    r.subjectForm = 0;
     s.playerTarget = 0;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
-    // The follower's own target, asked the same.
-    s.currentTarget = 0x102;
-    r.subject = SubjectKind::CurrentTarget;
-    r.predicate = PredicateKind::AttackingPlayer;
-    REQUIRE(EvaluateCondition(r, s).id == 0x102);
-
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::AttackingPlayer));
-    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::TargetOfPlayer));
+    // Only the Enemy heading asks these.
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Attacking));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::TargetOf));
+    // Any for the player and an ally; no count for an ally.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Any));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Any));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::CountAtLeast));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::CountAtLeast));
+    // Under an enemy condition the action goes to that enemy, not to the
+    // attacker or the follower's target; under the follower's target, to it.
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Enemy));
+    REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Attacker));
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Self, ActionTargetKind::Enemy));
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Attacker));
 }
 
 TEST_CASE("above and below are the same number from either side", "[evaluator]")
@@ -2205,7 +2207,7 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
     s.allies.push_back({0x201, {60.0f, 100.0f}, 300.0f});
     s.enemies.push_back({0x101, {100.0f, 100.0f}, 900.0f}); // the archer
     s.enemies.push_back({0x102, {100.0f, 100.0f}, 150.0f}); // the one in the follower's face
-    s.enemies[1].isAttackingPlayer = true;
+    s.enemies[1].attacking = kPlayerFormID;
     s.currentTarget = 0x102;
     s.allies[1].traits.attackedBy = Bit(DamageKind::Melee) | Bit(DamageKind::Ranged);
     s.allies[1].traits.attacker = 0x101;
@@ -2219,7 +2221,7 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
 
     Rule peel;
     peel.subject = SubjectKind::Enemy;
-    peel.predicate = PredicateKind::AttackingPlayer;
+    peel.predicate = PredicateKind::Attacking;
     peel.actionTarget = ActionTargetKind::Enemy;
     peel.FirstAction().kind = ActionKind::Target;
 
@@ -2827,4 +2829,45 @@ TEST_CASE("a charge rule needs an enchanted weapon, and waits when none needs a 
     REQUIRE(verdict() == Verdict::ConditionFalse);
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::WeaponChargeNeeded));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::WeaponChargeNeeded));
+}
+
+TEST_CASE("a status no action could answer is not asked about the follower themself", "[vocabulary]")
+{
+    for (const auto status : {StatusKind::BleedingOut, StatusKind::Casting, StatusKind::Fleeing, StatusKind::Staggered})
+    {
+        REQUIRE_FALSE(IsStatusValidFor(SubjectKind::Self, status));
+        REQUIRE(IsStatusValidFor(SubjectKind::Enemy, status));
+    }
+    REQUIRE_FALSE(IsStatusValidFor(SubjectKind::Player, StatusKind::BleedingOut));
+    REQUIRE_FALSE(IsStatusValidFor(SubjectKind::Player, StatusKind::Fleeing));
+    REQUIRE(IsStatusValidFor(SubjectKind::Player, StatusKind::Casting));
+    REQUIRE(IsStatusValidFor(SubjectKind::Self, StatusKind::Poisoned));
+    REQUIRE(IsStatusValidFor(SubjectKind::Self, StatusKind::Burning));
+}
+
+TEST_CASE("the enemy an action goes to, read from the condition", "[binding]")
+{
+    Snapshot s = Healthy();
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, 0, true});
+    s.enemies.push_back({0x102, {100.0f, 100.0f}, 150.0f, false, 0, true});
+
+    Rule r;
+    r.actionTarget = ActionTargetKind::Enemy;
+    // Under an enemy condition: the one matched.
+    r.subject = SubjectKind::Enemy;
+    Binding matched{0x101, true};
+    bool ok = false;
+    REQUIRE(ResolveActionTarget(r, s, matched, &ok) == 0x101);
+    REQUIRE(ok);
+    // Under the follower's own condition: whoever they are fighting.
+    r.subject = SubjectKind::Self;
+    s.currentTarget = 0x101;
+    REQUIRE(ResolveActionTarget(r, s, Binding{s.self, true}, &ok) == 0x101);
+    // Fighting no one: the nearest enemy.
+    s.currentTarget = 0;
+    REQUIRE(ResolveActionTarget(r, s, Binding{s.self, true}, &ok) == 0x102);
+    // No enemy at all: no one.
+    s.enemies.clear();
+    REQUIRE(ResolveActionTarget(r, s, Binding{s.self, true}, &ok) == 0);
+    REQUIRE_FALSE(ok);
 }

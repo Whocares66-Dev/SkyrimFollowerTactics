@@ -55,12 +55,11 @@ template <typename Enum, std::size_t N>
     return std::nullopt;
 }
 
-constexpr std::array<Entry<SubjectKind>, 7> kSubjects{{
+constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Self, "self", "Self"},
     {SubjectKind::Player, "player", "Player"},
     {SubjectKind::Ally, "ally", "Ally"},
     {SubjectKind::Enemy, "enemy", "Enemy"},
-    {SubjectKind::CurrentTarget, "current-target", "Target"},
     {SubjectKind::Follower, "follower", "Follower"},
     {SubjectKind::Corpse, "corpse", "Corpse"},
 }};
@@ -77,8 +76,8 @@ constexpr std::array<Entry<PredicateKind>, 36> kPredicates{{
     {PredicateKind::ArmorPctBelow, "armor-pct-below", "Armor"},
     {PredicateKind::ResistancePctBelow, "resistance-pct-below", "Resistance"},
     {PredicateKind::AttackedBy, "attacked-by", "Attacked by"},
-    {PredicateKind::AttackingPlayer, "attacking-player", "Attacking player"},
-    {PredicateKind::TargetOfPlayer, "target-of-player", "Target of player"},
+    {PredicateKind::Attacking, "attacking", "Attacking"},
+    {PredicateKind::TargetOf, "target-of", "Target of"},
     {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
     {PredicateKind::HealthHighest, "health-highest", "Health highest"},
     {PredicateKind::StaminaLowest, "stamina-lowest", "Stamina lowest"},
@@ -104,12 +103,11 @@ constexpr std::array<Entry<PredicateKind>, 36> kPredicates{{
     {PredicateKind::WeaponPoisonActive, "weapon-poison-active", "Weapon poison: active"},
 }};
 
-constexpr std::array<Entry<ActionTargetKind>, 8> kActionTargets{{
+constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Self, "self", "Self"},
     {ActionTargetKind::Player, "player", "Player"},
     {ActionTargetKind::Ally, "ally", "Ally"},
     {ActionTargetKind::Enemy, "enemy", "Enemy"},
-    {ActionTargetKind::CurrentTarget, "current-target", "Target"},
     {ActionTargetKind::Attacker, "attacker", "Attacker"},
     {ActionTargetKind::Follower, "follower", "Follower"},
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
@@ -166,7 +164,7 @@ constexpr std::array<Entry<StatusKind>, 13> kStatuses{{
     {StatusKind::Burning, "burning", "Burning"},
     {StatusKind::Frostbitten, "frostbitten", "Frostbitten"},
     {StatusKind::Shocked, "shocked", "Shocked"},
-    {StatusKind::Paralysed, "paralysed", "Paralysed"},
+    {StatusKind::Paralysed, "paralyzed", "Paralyzed"},
     {StatusKind::Staggered, "staggered", "Staggered"},
     {StatusKind::Fleeing, "fleeing", "Fleeing"},
     {StatusKind::BleedingOut, "bleeding-out", "Bleeding out"},
@@ -395,10 +393,10 @@ std::string_view Describe(PredicateKind v) noexcept
         return "The one most resistant to that kind of damage.";
     case PredicateKind::AttackedBy:
         return "Hit with that kind of damage in the last few seconds.";
-    case PredicateKind::AttackingPlayer:
-        return "Going for the player.";
-    case PredicateKind::TargetOfPlayer:
-        return "The one the player is fighting.";
+    case PredicateKind::Attacking:
+        return "Going for that member of the party.";
+    case PredicateKind::TargetOf:
+        return "The one that member of the party is fighting.";
     case PredicateKind::HealthLowest:
         return "The one with the least health.";
     case PredicateKind::HealthHighest:

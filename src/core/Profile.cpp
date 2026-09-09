@@ -76,6 +76,10 @@ json WriteRule(const Rule &r, const FormCodec &codec)
     if (r.subject == SubjectKind::Follower)
         cond["follower"] = codec.encode(r.subjectForm);
     cond["predicate"] = WireName(r.predicate);
+    // The party member of Attacking / Target of: "player", or the
+    // follower's form.
+    if (r.predicate == PredicateKind::Attacking || r.predicate == PredicateKind::TargetOf)
+        cond["member"] = r.subjectForm == 0 ? std::string("player") : codec.encode(r.subjectForm);
     if (ArgumentFor(r.predicate) != ArgumentKind::None)
         cond["arg"] = r.conditionArg;
     if (UsesStatus(r.predicate))
@@ -238,6 +242,18 @@ struct FormField
         r.predicate = *p;
     else
         return drop("unknown predicate \"" + *predicate + "\"");
+    if (r.predicate == PredicateKind::Attacking || r.predicate == PredicateKind::TargetOf)
+    {
+        // Absent or "player" is the player; anything else a follower's form.
+        const auto member = Str(*cond, "member");
+        if (member && *member != "player")
+        {
+            const FormField f = ReadForm(*cond, "member", codec);
+            if (!f.ok)
+                return drop("member \"" + f.text + "\" is not in this load order");
+            r.subjectForm = f.id;
+        }
+    }
     if (const auto arg = Num(*cond, "arg"))
         r.conditionArg = static_cast<float>(*arg);
     if (const auto status = Str(*cond, "status"))

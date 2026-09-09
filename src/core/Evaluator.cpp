@@ -46,14 +46,36 @@ bool ArmourOrResistance(const ActorTraits &t, const Rule &r, bool *held)
     }
 }
 
+// The party member a rule names: 0 is the player, the follower's own id is
+// themself, anything else another follower. Their id, and whom they are
+// fighting.
+ActorId MemberId(const Rule &r)
+{
+    return r.subjectForm == 0 ? kPlayerFormID : r.subjectForm;
+}
+
+ActorId MemberTarget(const Rule &r, const Snapshot &s)
+{
+    if (r.subjectForm == 0)
+        return s.playerTarget;
+    if (r.subjectForm == s.self)
+        return s.currentTarget;
+    for (const auto &a : s.allies)
+        if (a.id == r.subjectForm)
+            return a.target;
+    return 0;
+}
+
 bool EnemySatisfies(const EnemyView &e, const Rule &r, const Snapshot &s)
 {
     switch (r.predicate)
     {
-    case PredicateKind::AttackingPlayer:
-        return e.isAttackingPlayer;
-    case PredicateKind::TargetOfPlayer:
-        return s.playerTarget != 0 && e.id == s.playerTarget;
+    case PredicateKind::Attacking:
+        return e.attacking != 0 && e.attacking == MemberId(r);
+    case PredicateKind::TargetOf: {
+        const ActorId target = MemberTarget(r, s);
+        return target != 0 && e.id == target;
+    }
     case PredicateKind::Any:
         return true;
     case PredicateKind::AttackedBy:
@@ -425,21 +447,6 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
     return held ? Match(kPlayerFormID) : NoMatch();
 }
 
-Binding EvaluateCurrentTarget(const Snapshot &s, const Rule &r)
-{
-    if (!s.currentTarget)
-        return NoMatch();
-    if (r.predicate == PredicateKind::Any)
-        return Match(s.currentTarget);
-
-    // Anything beyond mere existence needs sensed data about the target, which
-    // only exists if it is also in the enemy list.
-    const auto *e = FindEnemy(s, s.currentTarget);
-    if (!e)
-        return NoMatch();
-    return EnemySatisfies(*e, r, s) ? Match(s.currentTarget) : NoMatch();
-}
-
 } // namespace
 
 Binding EvaluateCondition(const Rule &r, const Snapshot &s)
@@ -483,9 +490,6 @@ Binding EvaluateCondition(const Rule &r, const Snapshot &s)
         return e ? Match(e->id) : NoMatch();
     }
 
-    case SubjectKind::CurrentTarget:
-        return EvaluateCurrentTarget(s, r);
-
     case SubjectKind::Corpse: {
         // None: no corpse the spell could raise. Otherwise the one bound.
         const auto *c = SelectCorpse(s, r);
@@ -518,11 +522,25 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
         return yes(s.self);
     case ActionTargetKind::Player:
         return yes(kPlayerFormID);
+    case ActionTargetKind::Enemy: {
+        // Under an enemy condition, THE enemy it matched. Under any other,
+        // whoever the follower is fighting; and with no one, the nearest
+        // enemy sensed -- a cast has to go at someone, and nearest is what
+        // the follower's own AI would pick.
+        if (r.subject == SubjectKind::Enemy)
+            return binding.ok ? yes(binding.id) : no();
+        if (s.currentTarget != 0)
+            return yes(s.currentTarget);
+        const EnemyView *nearest = nullptr;
+        for (const auto &e : s.enemies)
+            if (!nearest || e.distance < nearest->distance)
+                nearest = &e;
+        return nearest ? yes(nearest->id) : no();
+    }
     case ActionTargetKind::Ally:
-    case ActionTargetKind::Enemy:
     case ActionTargetKind::Corpse:
-        // THE ally, enemy or corpse the condition matched -- the rule names
-        // them once, in the condition. Valid only for a condition about one,
+        // THE ally or corpse the condition matched -- the rule names them
+        // once, in the condition. Valid only for a condition about one,
         // which IsActionTargetValidFor holds and Evaluate has checked. A
         // Corpse: None binds the follower, so a cast aimed at "the corpse"
         // under it has no one; the menu does not offer that pairing.
@@ -534,8 +552,6 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
             if (a.id == r.actionTargetForm && a.id != kPlayerFormID)
                 return yes(a.id);
         return no();
-    case ActionTargetKind::CurrentTarget:
-        return s.currentTarget ? yes(s.currentTarget) : no();
     case ActionTargetKind::Attacker: {
         // Whoever last hit the actor the condition bound: from that actor's
         // own traits, wherever the snapshot carries them.

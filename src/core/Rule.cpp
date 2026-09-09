@@ -152,12 +152,18 @@ Kind KindOf(ActionKind action) noexcept
 
 bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target) noexcept
 {
+    // "Enemy" reads from the condition: under an enemy condition it is the
+    // one the condition matched; under anyone else, whoever the follower
+    // is fighting, else the nearest. "Attacker" is whoever is at the
+    // subject's throat, and reads oddly when the subject is an enemy.
     switch (target)
     {
     case ActionTargetKind::Ally:
         return subject == SubjectKind::Ally || subject == SubjectKind::Follower;
     case ActionTargetKind::Enemy:
-        return subject == SubjectKind::Enemy || subject == SubjectKind::CurrentTarget;
+        return subject != SubjectKind::Corpse;
+    case ActionTargetKind::Attacker:
+        return subject != SubjectKind::Enemy && subject != SubjectKind::Corpse;
     case ActionTargetKind::Corpse:
         return subject == SubjectKind::Corpse;
     default:
@@ -182,6 +188,22 @@ bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept
     default:
         // Potions, pins, and what the follower does with their own feet.
         return target == ActionTargetKind::Self;
+    }
+}
+
+bool IsStatusValidFor(SubjectKind subject, StatusKind status) noexcept
+{
+    switch (subject)
+    {
+    case SubjectKind::Self:
+        // No action can be taken while any of these holds.
+        return status != StatusKind::BleedingOut && status != StatusKind::Casting && status != StatusKind::Fleeing &&
+               status != StatusKind::Staggered;
+    case SubjectKind::Player:
+        // The player neither bleeds out nor flees.
+        return status != StatusKind::BleedingOut && status != StatusKind::Fleeing;
+    default:
+        return true;
     }
 }
 
@@ -332,10 +354,11 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         }
 
     case SubjectKind::Player:
-        // Not Any: the player is always there, so "Player: Any" is "Self:
-        // Any" under another name, and the menu should not offer it twice.
+        // Any: always true, and worth having so a rule can aim at the
+        // player under the heading a reader looks for it.
         switch (predicate)
         {
+        case PredicateKind::Any:
         case PredicateKind::HealthPctBelow:
         case PredicateKind::MagickaPctBelow:
         case PredicateKind::StaminaPctBelow:
@@ -345,14 +368,14 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         }
 
     case SubjectKind::Ally:
-        // Not Any: a follower always has an ally, the player, so it would
-        // always be true -- that is Self: Any.
+        // Any, as for the player. No count: how many allies there are
+        // changes too rarely to be a condition.
         switch (predicate)
         {
+        case PredicateKind::Any:
         case PredicateKind::HealthPctBelow:
         case PredicateKind::MagickaPctBelow:
         case PredicateKind::StaminaPctBelow:
-        case PredicateKind::CountAtLeast:
             return true;
         default:
             return false;
@@ -373,22 +396,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::MagickaPctBelow:
         case PredicateKind::StaminaPctBelow:
         case PredicateKind::CountAtLeast:
-        case PredicateKind::AttackingPlayer:
-        case PredicateKind::TargetOfPlayer:
-            return true;
-        default:
-            return false;
-        }
-
-    case SubjectKind::CurrentTarget:
-        switch (predicate)
-        {
-        case PredicateKind::Any:
-        case PredicateKind::HealthPctBelow:
-        case PredicateKind::MagickaPctBelow:
-        case PredicateKind::StaminaPctBelow:
-        case PredicateKind::AttackingPlayer:
-        case PredicateKind::TargetOfPlayer:
+        case PredicateKind::Attacking:
+        case PredicateKind::TargetOf:
             return true;
         default:
             return false;

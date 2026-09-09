@@ -722,11 +722,8 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         enemy.magicka = ReadStat(other, RE::ActorValue::kMagicka);
         enemy.stamina = ReadStat(other, RE::ActorValue::kStamina);
         enemy.distance = actor->GetPosition().GetDistance(other->GetPosition());
-        if (player)
-        {
-            auto theirTarget = other->GetActorRuntimeData().currentCombatTarget.get();
-            enemy.isAttackingPlayer = theirTarget && theirTarget.get() == player;
-        }
+        if (auto theirTarget = other->GetActorRuntimeData().currentCombatTarget.get(); theirTarget)
+            enemy.attacking = theirTarget->GetFormID();
         bool losArg = false;
         enemy.hasLineOfSight = actor->HasLineOfSight(other, losArg);
         enemy.traits = ReadTraits(other);
@@ -741,6 +738,9 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, PotionChoice &choice)
         ally.magicka = ReadStat(other, RE::ActorValue::kMagicka);
         ally.stamina = ReadStat(other, RE::ActorValue::kStamina);
         ally.traits = ReadTraits(other);
+        if (auto theirTarget = other->GetActorRuntimeData().currentCombatTarget.get();
+            theirTarget && !theirTarget->IsDead())
+            ally.target = theirTarget->GetFormID();
         return ally;
     };
     if (player && !player->IsDead())
