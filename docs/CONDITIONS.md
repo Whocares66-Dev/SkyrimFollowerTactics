@@ -182,7 +182,7 @@ form, listed by name in the menu after the player.
 UESP Armor, Resist Magic, Followers; CK wiki Actor Value, OnHit, List of
 Animation Variables; CS wiki fArmorRatingMax; Armor Rating Rescaled and
 True Armour Rating (Nexus); alandtse/CommonLibSSE-NG `Actor.cpp`,
-`MagicTarget.cpp`; the CharmedBaryon 3.7.0 headers in this build tree;
+`MagicTarget.cpp` and the headers in this build tree;
 Skyrim.esm records read through houseCARL (the 112 damage-keyworded
 effects, the `AbResist*` abilities, the armour settings and base ratings).
 

@@ -10,7 +10,7 @@
 // plugin that wants to log to a file has to include this itself.
 #include <spdlog/sinks/basic_file_sink.h>
 
-// CommonLibSSE-NG does NOT define a `logger` alias -- verified against the 3.7.0
+// CommonLibSSE-NG does NOT define a `logger` alias -- verified against the
 // headers. Every tutorial uses `logger::info`, which is this line, not the library.
 namespace logger = SKSE::log;
 

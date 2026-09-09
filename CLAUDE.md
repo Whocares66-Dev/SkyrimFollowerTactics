@@ -129,8 +129,8 @@ exists.
   instance is flagged `isComplete: False` and reports an empty package list even though
   `cl.exe` works fine. `tools\build.ps1` probes for `vcvars64.bat` on disk instead.
 - **`vcvars64.bat` overwrites `VCPKG_ROOT`** with the vcpkg bundled inside Visual Studio.
-  That is not our vcpkg and does not have the colorglass registry, so the build resolves
-  CommonLibSSE-NG against the wrong package tree and fails somewhere unrelated-looking
+  That is not our vcpkg, so the build resolves the dependencies against the wrong
+  package tree and fails somewhere unrelated-looking
   (a `fmt` build failure, in our case). `tools\build.ps1` saves and restores it.
 - **Do not put `-DUNICODE`/`-D_UNICODE` in the global `CMAKE_CXX_FLAGS`.** They are the
   plugin's concern and are set on that target only. Globally they leak into third-party
@@ -184,7 +184,7 @@ exists.
 
 ## CommonLibSSE gotchas already hit
 
-Verified against the 3.7.0 headers. Do not "simplify" these away:
+Verified against the headers. Do not "simplify" these away:
 
 - **`logger` is not defined by CommonLibSSE-NG.** `namespace logger = SKSE::log;` in `PCH.h`
   is ours. Tutorials imply the library provides it. It does not.

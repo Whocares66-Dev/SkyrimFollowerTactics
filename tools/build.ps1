@@ -103,9 +103,9 @@ splits on spaces otherwise and reports "installPath: C:\Program".
 }
 
 # vcvars64.bat sets VCPKG_ROOT to the vcpkg bundled inside Visual Studio, which
-# is NOT the one this project uses -- the manifest needs the colorglass registry
-# and a bootstrapped standalone vcpkg. Preserve whatever was set beforehand, or
-# the build silently resolves CommonLibSSE-NG against the wrong package tree.
+# is NOT the one this project uses -- the manifest wants a bootstrapped
+# standalone vcpkg. Preserve whatever was set beforehand, or the build silently
+# resolves the manifest against the wrong package tree.
 $userVcpkgRoot = $env:VCPKG_ROOT
 
 Import-VcVars

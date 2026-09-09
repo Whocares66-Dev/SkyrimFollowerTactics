@@ -217,11 +217,11 @@ for `vcvars64.bat` on disk.
 
 `tools\build.ps1` imports the developer environment itself, so **no "x64 Native Tools
 Command Prompt" is required**. It also restores `VCPKG_ROOT` afterwards — `vcvars64.bat`
-overwrites it with the vcpkg bundled inside Visual Studio, which lacks the colorglass
-registry and makes the build fail somewhere that looks unrelated.
+overwrites it with the vcpkg bundled inside Visual Studio, which is not the one the
+build was bootstrapped against and makes the build fail somewhere that looks unrelated.
 
-The first `debug` configure is slow: vcpkg compiles fmt, spdlog, and CommonLibSSE-NG from
-source. Later builds are fast.
+The first `debug` configure is slow: vcpkg compiles fmt, spdlog and the rest, and the
+first build compiles CommonLibSSE-NG from the submodule. Later builds are fast.
 
 **On auto-deploy and elevation.** The build copies the finished `.dll` to
 `$SKYRIM_MODS_FOLDER` (set to `MO2\mods`, inside this repo). Pointing `SKYRIM_FOLDER` at

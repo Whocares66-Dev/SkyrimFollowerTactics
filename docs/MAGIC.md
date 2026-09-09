@@ -3,8 +3,7 @@
 **Status: works, measured in game (2026-09-02).** A rule fires at 43% health,
 the follower's AI picks up our package on the same tick, her own animation
 graph reports `Fast Healing -- OURS` 1.4 s later, health goes 75 -> 175, and she
-is back to fighting on the next tick. Two consecutive cycles, on **1.6.1170**
-with CommonLibSSE-NG 3.7.0.
+is back to fighting on the next tick. Two consecutive cycles, on **1.6.1170**.
 
 This file is the current design, the facts that were expensive to learn, and
 the routes that do not work. It replaces a longer chronological version; the
@@ -222,9 +221,8 @@ Each of these cost at least one test round.
 - **Copying a vanilla package copies its inputs.** Ours came from
   `MG07AncanoCastAtEye` and shipped aiming at the Eye of Magnus with a
   ten-million-second cast time. Read every input of a copied record.
-- **`BGSRefAlias::ForceRefTo` does not exist in CharmedBaryon 3.7.0.** It does
-  in alandtse's `ng` branch, which is what Simple Follower Framework uses to
-  fill its own aliases from C++. Item for `docs/COMMONLIB.md`.
+- **`BGSRefAlias::ForceRefTo`** is what Simple Follower Framework uses to
+  fill its own aliases from C++; it is in the library we build on.
 
 ---
 

@@ -332,7 +332,7 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
 // Items go through the equip manager WITHOUT the prevent-equip flag: the
 // Creation Kit wiki notes that flag does nothing for weapons on an NPC and
 // works only too well for ammunition, leaving an archer holding a bow she
-// cannot use. A spell has no unequip in CommonLibSSE 3.7.0 or in SKSE; the
+// cannot use. A spell has no unequip in CommonLibSSE or in SKSE; the
 // engine's is the Papyrus native Actor.UnequipSpell(spell, source), 0 for
 // the left hand and 1 for the right, so it is dispatched to the script VM,
 // which runs it on the game thread a frame later.
@@ -360,8 +360,8 @@ bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
 void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
 {
     // The voice: Papyrus's UnequipShout for a shout, UnequipSpell with the
-    // voice source (2) for a power. Neither has a native in CommonLibSSE
-    // 3.7.0, as a hand spell's unequip has not.
+    // voice source (2) for a power. Neither has a native in CommonLibSSE,
+    // as a hand spell's unequip has not.
     if (DescribeHoldable(actor, form).IsVoice())
     {
         if (!InVoice(actor, form))

@@ -178,12 +178,9 @@ v12 for 1.7.99 and v13 for 1.7.104 within a day each
 [TrueHUD needed a third-party "Unofficial DLL Patch"](https://www.nexusmods.com/skyrimspecialedition/mods/189792)
 because its author hadn't shipped a fix — a good illustration of the churn.
 
-**CommonLibSSE-NG's last tagged release is v3.7.0 (May 2024).** 1.7.x support, if it exists,
-is on master or a fork. Community reports say CommonLib lagged the 1.7.99 bump and caused
-crashes. **This is the strongest single argument for pinning 1.6.1170.**
-[repo](https://github.com/CharmedBaryon/CommonLibSSE-NG) ·
-[docs](https://ng.commonlib.dev/) ·
-[releases](https://github.com/CharmedBaryon/CommonLibSSE-NG/releases)
+**CommonLibSSE-NG lagged the 1.7.x bump.** Community reports say CommonLib lagged the
+1.7.99 bump and caused crashes. **This is the strongest single argument for pinning
+1.6.1170.** `docs/COMMONLIB.md` has the fork this project builds on.
 
 The old Unofficial Downgrade Patcher is **discontinued**; current tools are
 [SDT](https://www.nexusmods.com/skyrimspecialedition/mods/188916) (downgrade from any version
@@ -300,7 +297,6 @@ Gotcha: debug and release DLL builds must match exactly or it CTDs.
 - **SKSE plugin template**: no single canonical one. CMake+vcpkg is the mainstream path —
   [SkyrimDev/HelloWorld-using-CommonLibSSE-NG](https://github.com/SkyrimDev/HelloWorld-using-CommonLibSSE-NG)
   supports `SKYRIM_FOLDER` / `SKYRIM_MODS_FOLDER` env vars for auto-deploy on build.
-  vcpkg registry: [gitlab.com/colorglass/vcpkg-colorglass](https://gitlab.com/colorglass/vcpkg-colorglass).
   An XMake camp also exists ([libxse/commonlibsse-ng-template](https://github.com/libxse/commonlibsse-ng-template)).
 - **No SKSE hot reload exists.** Plugins load once at process start; the game caches vtables
   and hooks. The loop is rebuild → deploy → restart.
@@ -327,8 +323,8 @@ Gotcha: debug and release DLL builds must match exactly or it CTDs.
    only. Worth a manual look before publishing any "first of its kind" claim.
 2. **GitHub API was unavailable**, so commit dates and star counts come from rendered pages.
    Treat exact dates as approximate.
-3. **CommonLibSSE-NG's true current state** was not resolved — the releases page shows
-   v3.7.0 (May 2024) while master may be far ahead. Check live before any 1.7.x work.
+3. **CommonLibSSE-NG's true current state** was not resolved at the time; `docs/COMMONLIB.md`
+   settled it. Check live before any 1.7.x work.
 4. Valhalla Combat, Elden Counter, TrueHUD, Wildcat appear closed-source; not exhaustively
    searched for mirrors.
 5. Smart NPC Potions' implementation (SKSE vs Papyrus) was not confirmed. NPCsUsePotions is

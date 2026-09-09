@@ -612,7 +612,7 @@ translations, packaging.
 |---|---|---|
 | Forcing an NPC to drink a potion isn't reliable | **Highest — kills the marquee feature** | Phase 1 exists solely to retire this risk. NPCsUsePotions proves it is solvable and is open source. |
 | Bethesda ships another runtime patch | High | Already mitigated by pinning 1.6.1170 and blocking Steam updates. 1.7.99 and 1.7.104 landed a week apart in Aug 2026 and broke the ecosystem; this is not hypothetical. |
-| CommonLibSSE-NG's last tagged release is v3.7.0 (May 2024) | Medium | Irrelevant at 1.6.1170, which v3.7.0 covers. Becomes the blocking issue only if targeting 1.7.x, which is deferred to Phase 5. Verify master/fork state then. |
+| CommonLibSSE-NG lags a runtime bump | Medium | Irrelevant at 1.6.1170, which the library covers. Becomes the blocking issue only if targeting 1.7.x, which is deferred to Phase 5. Verify the fork's state then. |
 | Native AI overrides scripted actions (re-equips, re-targets) | Medium | Design principle: bias, don't puppet. Capability flags + the debug column make contested actions visible instead of mysterious. |
 | Per-tick cost across 8 followers | Medium | Staggered scheduling, dependency-driven sensors, instrumented from Phase 1. Measure, don't estimate. |
 | No headless test harness exists for Skyrim | Medium | The `RE::`-free architecture line is the entire answer. Pure logic gets real tests; the adapter layer stays thin enough to verify by playing. |
