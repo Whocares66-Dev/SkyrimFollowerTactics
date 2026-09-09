@@ -2554,7 +2554,12 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             if (!info || !info->skill)
                 continue;
             const char *name = info->GetFullName();
-            found.push_back({name && *name ? name : (info->enumName ? info->enumName : "?"), value, info->unk124});
+            // The record's category (1 combat, 2 magic, 3 stealth) is the
+            // constellation, with one exception: Alchemy's record says
+            // Magic, and the skill menu, the Thief Stone and every player
+            // put it under the Thief. The constellation wins.
+            const std::uint32_t category = value == AV::kAlchemy ? 3u : info->unk124;
+            found.push_back({name && *name ? name : (info->enumName ? info->enumName : "?"), value, category});
         }
     }
     std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) { return a.name < b.name; });
