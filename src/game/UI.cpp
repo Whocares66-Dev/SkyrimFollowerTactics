@@ -2244,9 +2244,10 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
         Im::TableSetColumnIndex(0);
         if (sub.form != 0 && onLink)
         {
-            // The name is a link to the perk's page.
+            // The name is a link to the perk's page. The click cell's ID
+            // starts with "##": ImGui draws whatever precedes it as text.
             const Im::ImVec2 pos = Im::GetCursorScreenPos();
-            if (CellClicked((id + "/" + sub.label).c_str()))
+            if (CellClicked(("##" + id + "/" + sub.label).c_str()))
                 onLink(sub.form);
             Im::SetCursorScreenPos(pos);
         }
