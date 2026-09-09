@@ -71,6 +71,12 @@ pointer compare between the evaluating actor and the parameter (read from the
 executable), so pointing the parameter at a follower is one write, and nothing
 is written to her.
 
+### A follower in no such alias (2026-09-09)
+
+The Nordic Souls log settled who the list reaches: only a follower in `DialogueFollower` alias 0. Serana is not -- Dawnguard runs her on its own quest, `DLC1NPCMentalModel`, whose alias has no combat-override list at all (read from the record), and her running packages in a fight were Dawnguard's `DLC1NPCFollowMedium` and sandbox. Custom followers (Megara on `AK69MegaraFollowQuest`, Remiel on `HLIORemiFollower`) likewise. Every cast lease on the three expired "AI never picked it up", and the one list resolved in that load order was the vanilla one. The per-alias package lists live in an unmapped table on the quest (`TESQuest` +0A0, "alias related"), so they cannot be found, cached or planted without a probe, and Serana's alias has none to find.
+
+So `Arm` now takes the other route for a follower outside the alias: the leased record is put on her directly, `Actor::PutCreatedPackage(record, temporary, not owned, not from furniture)` -- the engine's own created package, what Papyrus uses to walk an actor somewhere, ahead of whatever her quests give her. Not owned, so the engine never frees our record; temporary, so it is dropped once done or once the lease's condition goes false on release. The list splice stays for a follower in the alias. Open, to be read off the "OURS" line in play: whether the AI runs a created package in a fight (the record carries IgnoreCombat, as it did for the list). Also open: the actor's package extra data is part of the save (`Actor::ChangeFlags::kPackageExtraData`), so a save inside a lease may reference the record by its form ID, which is recreated at load; what the engine does with that on load is not known.
+
 ### The C++ (`src/game/Packages.cpp`)
 
 1. **A cast rule fires.** Take a free record from the pool, put it at the

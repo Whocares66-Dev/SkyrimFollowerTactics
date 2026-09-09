@@ -909,10 +909,19 @@ std::size_t FreeSlot(std::size_t from, std::size_t to)
 CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double window)
 {
     auto &slot = g_pool[chosen];
-    // The diagnostic that decides what a silence means. Not in the alias: our
-    // list was never consulted and no amount of package tuning will help.
+    // In the vanilla follower alias, the record reaches her through that
+    // alias's combat-override list. Not in it -- Serana, on Dawnguard's own
+    // quest; a follower a framework or their own quest drives -- the list
+    // is never consulted, and the record is put on her directly instead,
+    // as the engine's own created package: what Papyrus does to walk an
+    // actor somewhere, ahead of whatever her quests give her. Not owned by
+    // her (the record is ours to keep) and temporary (dropped once done or
+    // invalid: the lease's condition goes false on release). Whether the
+    // AI runs it in a fight is measured by the "OURS" line below
+    // (docs/MAGIC.md).
+    const bool inAlias = InFollowerAlias(actor);
     logger::info("  {} in the DialogueFollower alias: {}", actor->GetName() ? actor->GetName() : "?",
-                 InFollowerAlias(actor) ? "yes" : "NO -- recruit through dialogue, not the console");
+                 inAlias ? "yes" : "NO -- the record goes on them directly");
 
     slot.armedAt = TacticsSeconds();
     // The window covers the AI's start-up latency. For a stream it is
@@ -935,6 +944,9 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
     // destroyed, and only that clears the condition.
     PutInLists(g_slots[chosen]);
     slot.lease.emplace(actor, slot.condition);
+    if (!inAlias)
+        actor->PutCreatedPackage(g_slots[chosen], /*temporary*/ true, /*owned by her*/ false,
+                                 /*allow from furniture*/ false);
 
     // Immediate, or she finishes whatever she is doing first and the rule's
     // timing -- the entire point of this route -- is lost.
