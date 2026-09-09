@@ -129,6 +129,11 @@ struct Slot
     // release; null when nothing is leased, and for a shout.
     RE::SpellItem *power = nullptr;
     RE::MagicSystem::SpellType powerType = RE::MagicSystem::SpellType::kSpell;
+    // The voice type the follower's record had before the lease lent them
+    // one the shout words are recorded in (see LendShoutVoice). Null when
+    // nothing is lent; restored on release.
+    RE::TESNPC *voiceOf = nullptr;
+    RE::BGSVoiceType *ownVoice = nullptr;
     // The record's one condition; the lease points its parameter at the
     // holder.
     RE::TESConditionItem *condition = nullptr;
@@ -669,6 +674,51 @@ bool AlreadyCasting(const RE::Actor *actor)
 
 // The one way a record comes back. Destroying the lease clears the condition
 // and re-evaluates; nothing else here touches the condition on the way out.
+// The words of a shout are dialogue: lines under the Voice Powers quest
+// (topics Shout01a..03, subtype VoicePowerStart), each conditioned on the
+// shouter's voice type being in a list -- VoicesPlayer, the ten voice types
+// a player can have, and VoicePowerVoicesList, those plus five story
+// characters. A follower whose voice type is in neither has no line, and
+// shouts in silence, or in whatever else the load order plays. So for the
+// lease the record is lent the player voice type of the follower's sex,
+// FemaleEvenToned or MaleEvenToned, which has every word recorded; the
+// condition reads the record's voice type at the shout, and any bark in
+// the same two seconds comes out in the lent voice, which is the cost.
+constexpr RE::FormID kVoicesPlayer = 0x00068ACA;
+constexpr RE::FormID kVoicePowerVoicesList = 0x0010D29D;
+constexpr RE::FormID kFemaleEvenToned = 0x00013ADD;
+constexpr RE::FormID kMaleEvenToned = 0x00013AD2;
+
+void LendShoutVoice(std::size_t i, RE::Actor *actor)
+{
+    auto *base = actor ? actor->GetActorBase() : nullptr;
+    if (!base)
+        return;
+    RE::BGSVoiceType *own = base->voiceType;
+    auto *players = RE::TESForm::LookupByID<RE::BGSListForm>(kVoicesPlayer);
+    auto *powers = RE::TESForm::LookupByID<RE::BGSListForm>(kVoicePowerVoicesList);
+    if (own && ((players && players->HasForm(own)) || (powers && powers->HasForm(own))))
+        return; // their own voice has the words
+    const bool female = base->GetSex() == RE::SEX::kFemale;
+    auto *lent = RE::TESForm::LookupByID<RE::BGSVoiceType>(female ? kFemaleEvenToned : kMaleEvenToned);
+    if (!lent)
+        return;
+    g_pool[i].voiceOf = base;
+    g_pool[i].ownVoice = own;
+    base->voiceType = lent;
+    logger::info("  slot {} lends {} the {} voice for the shout (own: {})", i,
+                 actor->GetName() ? actor->GetName() : "?", lent->GetFormEditorID() ? lent->GetFormEditorID() : "?",
+                 own && own->GetFormEditorID() ? own->GetFormEditorID() : "none");
+}
+
+void ReturnShoutVoice(std::size_t i)
+{
+    if (g_pool[i].voiceOf)
+        g_pool[i].voiceOf->voiceType = g_pool[i].ownVoice;
+    g_pool[i].voiceOf = nullptr;
+    g_pool[i].ownVoice = nullptr;
+}
+
 void Release(std::size_t i)
 {
     // The wrapper comes off before the lease goes: the lease is what still
@@ -678,6 +728,7 @@ void Release(std::size_t i)
         if (auto actor = g_pool[i].lease->Actor())
             TakeWrapper(actor.get(), g_pool[i].wrapper);
     }
+    ReturnShoutVoice(i);
     if (g_pool[i].power)
     {
         g_pool[i].power->data.spellType = g_pool[i].powerType;
@@ -1081,9 +1132,12 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
                         : std::string("self"));
 
     // The procedure fires only a shout the actor has: the wrapper is given
-    // for the lease; a shout of their own they have already.
+    // for the lease; a shout of their own they have already. A shout speaks
+    // its words in a voice that has them.
     if (power)
         GiveWrapper(actor, slot.wrapper);
+    else
+        LendShoutVoice(chosen, actor);
 
     return Arm(chosen, actor, 0.0f, kVoiceArmWindowSeconds);
 }
@@ -1095,13 +1149,15 @@ void ResetPackages()
     for (auto *pkg : g_slots)
         if (pkg)
             TakeOutOfLists(pkg);
-    for (auto &slot : g_pool)
+    for (std::size_t i = 0; i < g_pool.size(); ++i)
     {
+        auto &slot = g_pool[i];
         if (slot.power)
         {
             slot.power->data.spellType = slot.powerType;
             slot.power = nullptr;
         }
+        ReturnShoutVoice(i);
         if (slot.lease)
             slot.lease->Abandon();
         slot.lease.reset();
