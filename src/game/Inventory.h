@@ -104,11 +104,9 @@ struct InventoryItem
     std::vector<SheetSection> detail;
     std::string description;
     std::string effects;
-    // For a potion, poison, food or ingredient: what it does, the effects'
-    // names in one line -- "Restore Health", "Fortify Health, Restore
-    // Magicka" -- the list's column in place of a Type that would only
-    // repeat the heading. An ingredient's is the one eating it gives, the
-    // first.
+    // For a potion, poison, food or ingredient: what it is for, its first
+    // effect's name -- "Restore Health" -- the list's column in place of a
+    // Type that would only repeat the heading. The rest are on its page.
     std::string effect;
 };
 
