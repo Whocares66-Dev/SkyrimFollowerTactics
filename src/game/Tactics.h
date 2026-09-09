@@ -36,9 +36,6 @@ struct FollowerView
     // in the log, where Describe() still emits it -- on screen it is noise the
     // player can get from the console if they ever need it.
     std::string name;
-    // The player's, for the condition menu: "Player" is a kind, and the
-    // menu says who.
-    std::string playerName;
     // Seconds of voice recovery left, for the status tooltip of a shout or
     // power rule waiting on it: "Shout on cooldown (12 s)".
     float voiceRecovery{0.0f};

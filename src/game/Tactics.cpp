@@ -363,8 +363,6 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     v.consumables = ScanCarriedConsumables(actor);
     if (const float recovery = actor->GetVoiceRecoveryTime(); recovery > 0.0f && recovery < 3600.0f)
         v.voiceRecovery = recovery;
-    if (auto *player = RE::PlayerCharacter::GetSingleton())
-        v.playerName = DisplayNameOf(player);
     for (auto *other : CollectManagedFollowers())
     {
         if (other && other != actor)

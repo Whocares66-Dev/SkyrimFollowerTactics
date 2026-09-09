@@ -198,9 +198,11 @@ Self only: the snapshot reads the follower's own hands. The wire names are `weap
 
 ## 9. The cascade as it reads (2026-09-08)
 
-Under every subject the conditions come in four groups with a divider between: Any; Health, Stamina, Magicka; Combat, (for Enemy) Targeting and Target of, Using, Attacked by, Status; Weapon, Armor, Resistance, Summon (and the corpse questions). Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. There is no Count of a group any more: an ally's changes too rarely to be a condition and the enemy's was not wanted (it went on 2026-09-08; a save carrying `count-at-least` drops the rule with a warning).
+Under every subject the conditions come in five groups with a divider between: Any; Health, Stamina, Magicka; Combat, (for Enemy) Targeting and Target of, Using, Attacked by, Status; Weapon, Armor, Resistance; Summon. Corpse, a subject of its own, has None and Level -> Highest, Lowest. Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. There is no Count of a group any more: an ally's changes too rarely to be a condition and the enemy's was not wanted (it went on 2026-09-08; a save carrying `count-at-least` drops the rule with a warning).
 
 **Using** is what the subject has in hand, asked with the same kinds as Attacked by: Any (anything at all), then Melee (a blade, an axe, a mace), Ranged (a bow or crossbow), Magic (a spell or a staff), then Fire, Frost, Shock, Poison for whatever in hand does that kind of damage -- a weapon's enchantment, a staff's or a spell's effects, a poison on the blade -- read by what resists the effect, as a hit is. Fists are nothing. Any subject, from the snapshot's traits; the wire name is `using`, the kind under `"damage"` as for Attacked by.
+
+The player is "Player" everywhere in the panel, never by name: a long name breaks the layout.
 
 **Statuses** that no action could answer are not asked about the follower themself: bleeding out, casting, fleeing and staggered. The player neither bleeds out nor flees. About anyone else every status is a fair question (`IsStatusValidFor`).
 

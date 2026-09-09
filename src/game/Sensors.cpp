@@ -1003,13 +1003,17 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
             continue;
         if (object->Is(RE::FormType::SoulGem))
         {
-            // A filled, spendable gem, named with its soul as the game's
-            // own inventory names it: "Common Soul Gem (Lesser)".
+            // A filled, spendable gem, named with its soul where that is
+            // less than the gem holds, as the game's own inventory names it:
+            // "Common Soul Gem (Lesser)". A full one is just the gem; the
+            // game's "Common Soul Gem (Common)" says it twice.
             const auto level = entry.second ? entry.second->GetSoulLevel() : RE::SOUL_LEVEL::kNone;
             if (level == RE::SOUL_LEVEL::kNone)
                 continue;
             std::string name = object->GetName() ? object->GetName() : "?";
-            name += std::string(" (") + SoulLevelName(level) + ")";
+            const auto *gem = object->As<RE::TESSoulGem>();
+            if (!gem || level < gem->GetMaximumCapacity())
+                name += std::string(" (") + SoulLevelName(level) + ")";
             out.push_back({object->GetFormID(), name, static_cast<int>(count), ft::ConsumableKind::SoulGem});
             continue;
         }

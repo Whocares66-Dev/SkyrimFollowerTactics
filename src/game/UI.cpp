@@ -267,8 +267,6 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
 // one particular follower.
 std::string SubjectText(const ft::Rule &r, const FollowerView &view)
 {
-    if (r.subject == ft::SubjectKind::Player && !view.playerName.empty())
-        return view.playerName;
     if (r.subject == ft::SubjectKind::Follower)
     {
         for (const auto &peer : view.peers)
@@ -575,10 +573,11 @@ bool IsCombatPredicate(ft::PredicateKind p)
     return p == ft::PredicateKind::CombatBegins || p == ft::PredicateKind::CombatEnds;
 }
 
-// The condition cascade in four groups, a divider between them: Any; the
+// The condition cascade in five groups, a divider between them: Any; the
 // three stats; the fight -- its edges, the enemy's relation to the party,
-// what is in hand, being attacked, a status; the equipment and the field
-// -- weapon, armour, resistance, a summon, the corpses.
+// what is in hand, being attacked, a status; the equipment -- weapon,
+// armour, resistance; the summon. (The corpse questions are a subject of
+// their own and fall in one group.)
 int ConditionGroup(ft::PredicateKind p)
 {
     switch (p)
@@ -597,20 +596,24 @@ int ConditionGroup(ft::PredicateKind p)
     case ft::PredicateKind::AttackedBy:
     case ft::PredicateKind::Status:
         return 2;
+    case ft::PredicateKind::SummonNone:
+    case ft::PredicateKind::SummonActive:
+        return 4;
     default:
         return 3;
     }
 }
 
 // Is this predicate the one its heading is drawn at? The rest of a heading
-// (Combat ends, Summon active, the poison pair) are drawn under it and
-// skipped in the walk.
+// (Combat ends, Summon active, Lowest level, the poison pair) are drawn
+// under it and skipped in the walk.
 bool DrawsHeading(ft::PredicateKind p)
 {
     switch (p)
     {
     case ft::PredicateKind::CombatEnds:
     case ft::PredicateKind::SummonActive:
+    case ft::PredicateKind::LevelLowest:
     case ft::PredicateKind::WeaponPoisonNone:
     case ft::PredicateKind::WeaponPoisonActive:
         return false;
@@ -656,10 +659,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
         std::uint32_t form;
         std::string label;
     };
-    std::vector<Heading> headings{
-        {ft::SubjectKind::Self, 0, std::string(ft::DisplayName(ft::SubjectKind::Self))},
-        {ft::SubjectKind::Player, 0,
-         view.playerName.empty() ? std::string(ft::DisplayName(ft::SubjectKind::Player)) : view.playerName}};
+    std::vector<Heading> headings{{ft::SubjectKind::Self, 0, std::string(ft::DisplayName(ft::SubjectKind::Self))},
+                                  {ft::SubjectKind::Player, 0, std::string(ft::DisplayName(ft::SubjectKind::Player))}};
     for (const auto &peer : SortedPeers(view))
         headings.push_back({ft::SubjectKind::Follower, peer.id, peer.name});
     headings.push_back({ft::SubjectKind::Ally, 0, std::string(ft::DisplayName(ft::SubjectKind::Ally))});
@@ -748,6 +749,19 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                     continue;
                 item(ft::PredicateKind::SummonNone, "None");
                 item(ft::PredicateKind::SummonActive, "Active");
+                Im::EndMenu();
+                continue;
+            }
+
+            // The corpses' level, under one "Level" heading: Highest, Lowest.
+            if (predicate == ft::PredicateKind::LevelHighest || predicate == ft::PredicateKind::LevelLowest)
+            {
+                if (predicate != ft::PredicateKind::LevelHighest)
+                    continue;
+                if (!BeginCascade("Level"))
+                    continue;
+                item(ft::PredicateKind::LevelHighest, "Highest");
+                item(ft::PredicateKind::LevelLowest, "Lowest");
                 Im::EndMenu();
                 continue;
             }
@@ -879,7 +893,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 };
                 member(view.id, "Self");
                 Im::Separator();
-                member(0, view.playerName.empty() ? "Player" : view.playerName);
+                member(0, std::string(ft::DisplayName(ft::SubjectKind::Player)));
                 if (const auto peers = SortedPeers(view); !peers.empty())
                 {
                     Im::Separator();
@@ -1112,7 +1126,7 @@ std::string TargetText(const ft::Rule &rule, const FollowerView &view)
     switch (rule.actionTarget)
     {
     case ft::ActionTargetKind::Player:
-        return view.playerName.empty() ? std::string(ft::DisplayName(rule.actionTarget)) : view.playerName;
+        return std::string(ft::DisplayName(rule.actionTarget));
     case ft::ActionTargetKind::Follower:
         for (const auto &peer : view.peers)
             if (peer.id == rule.actionTargetForm)
@@ -1591,8 +1605,7 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
     // the enemy (the condition's, or the one being fought).
     std::vector<Heading> headings{
         {ft::ActionTargetKind::Self, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Self))},
-        {ft::ActionTargetKind::Player, 0,
-         view.playerName.empty() ? std::string(ft::DisplayName(ft::ActionTargetKind::Player)) : view.playerName}};
+        {ft::ActionTargetKind::Player, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Player))}};
     for (const auto &peer : SortedPeers(view))
         headings.push_back({ft::ActionTargetKind::Follower, peer.id, peer.name});
     headings.push_back({ft::ActionTargetKind::Ally, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Ally))});
