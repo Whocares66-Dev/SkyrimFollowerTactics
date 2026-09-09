@@ -167,12 +167,18 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
                      : slotId == 0x00013F43 ? Grip::LeftOnly
                      : slotId == 0x00013F42 ? Grip::RightOnly
                                             : Grip::Either;
-        // Above her skill in its school: the combat AI will not choose it.
+        // Above the follower's skill in its school: the combat AI will not
+        // choose it. An effect of no school (a power's, an ability's) has
+        // no skill to ask about -- its skill is kNone, and asking for that
+        // actor value must not happen: the engine's own getter shrugs it
+        // off, but ActorValueExtension's hook of it indexes a table with
+        // the number and crashes (Nordic Souls, 2026-09-08, on Serana).
         const auto *costliest = spell->GetCostliestEffectItem();
         const auto *effect = costliest ? costliest->baseEffect : nullptr;
         auto *owner = actor->AsActorValueOwner();
-        if (effect && owner)
-            thing.unusable = effect->GetMinimumSkillLevel() > owner->GetActorValue(effect->GetMagickSkill());
+        const auto school = effect ? effect->GetMagickSkill() : RE::ActorValue::kNone;
+        if (effect && owner && school != RE::ActorValue::kNone)
+            thing.unusable = effect->GetMinimumSkillLevel() > owner->GetActorValue(school);
     }
     else if (auto *armor = form->As<RE::TESObjectARMO>())
     {
