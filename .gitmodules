@@ -1,0 +1,4 @@
+[submodule "extern/commonlibsse-ng"]
+	path = extern/commonlibsse-ng
+	url = https://github.com/alandtse/CommonLibSSE-NG.git
+	branch = ng

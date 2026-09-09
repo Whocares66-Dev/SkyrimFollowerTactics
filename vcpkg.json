@@ -3,14 +3,19 @@
     "name": "followertactics",
     "version-string": "0.1.0",
     "dependencies": [
-        "commonlibsse-ng",
         "detours",
-        "nlohmann-json"
+        "directxtk",
+        "fmt",
+        "nlohmann-json",
+        "rapidcsv",
+        "spdlog"
     ],
     "features": {
         "tests": {
             "description": "Build the core unit tests",
-            "dependencies": ["catch2"]
+            "dependencies": [
+                "catch2"
+            ]
         }
     }
 }

@@ -845,7 +845,10 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         s.allies.push_back(allyOf(player));
     if (auto *lists = RE::ProcessLists::GetSingleton())
     {
-        lists->ForEachHighActor([&](RE::Actor &other) {
+        lists->ForEachHighActor([&](RE::Actor *otherPtr) {
+            if (!otherPtr)
+                return RE::BSContainer::ForEachResult::kContinue;
+            RE::Actor &other = *otherPtr;
             if (&other == actor || &other == player || other.IsDead())
                 return RE::BSContainer::ForEachResult::kContinue;
             if (other.IsPlayerTeammate())
@@ -864,7 +867,10 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     {
         constexpr float kCorpseReach = 3000.0f;
         auto *noReanimate = RE::TESForm::LookupByID<RE::BGSKeyword>(kMagicNoReanimateKeyword);
-        lists->ForEachHighActor([&](RE::Actor &other) {
+        lists->ForEachHighActor([&](RE::Actor *otherPtr) {
+            if (!otherPtr)
+                return RE::BSContainer::ForEachResult::kContinue;
+            RE::Actor &other = *otherPtr;
             if (&other == actor || !other.IsDead() || other.IsCommandedActor())
                 return RE::BSContainer::ForEachResult::kContinue;
             if (noReanimate && other.HasKeyword(noReanimate))
@@ -1220,7 +1226,7 @@ const std::vector<TreePerk> &TreePerks(RE::ActorValue skill)
 
     std::vector<TreePerk> out;
     auto *list = RE::ActorValueList::GetSingleton();
-    auto *info = list ? list->GetActorValue(skill) : nullptr;
+    auto *info = list ? list->GetActorValueInfo(skill) : nullptr;
     if (info && info->perkTree)
     {
         std::vector<RE::BGSSkillPerkTreeNode *> stack{info->perkTree};
@@ -1943,8 +1949,8 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
         const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
         const auto index = static_cast<std::size_t>(point->entryData.entryPoint.get());
         const char *name = index < kEntryPointNames.size() ? kEntryPointNames[index] : "?";
-        using Function = RE::BGSEntryPointPerkEntry::EntryData::Function;
-        using DataType = RE::BGSEntryPointFunctionData::FunctionType;
+        using Function = RE::BGSEntryPointPerkEntry::Function;
+        using DataType = RE::BGSEntryPointFunctionData::ENTRY_POINT_FUNCTION_DATA;
         const auto *data = point->functionData;
         const auto dataType = data ? data->GetType() : DataType::kInvalid;
         const float one = dataType == DataType::kOneValue
@@ -1980,16 +1986,19 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
         case Function::kMultiplyActorValueMult:
             value = "x a share of an actor value";
             break;
-        case Function::kMultiply1PlusActorValueMult:
+        case Function::kMultiplyOnePlusActorValueMult:
             value = "x (1 + a share of an actor value)";
             break;
         case Function::kSetText:
             value = "a text";
             break;
         default:
-            if (dataType == DataType::kSpellItem)
-                value = "a spell";
             break;
+        }
+        if (dataType == DataType::kSpellItem)
+        {
+            const auto *spell = static_cast<const RE::BGSEntryPointFunctionDataSpellItem *>(data)->spell;
+            value = spell && spell->GetName() ? spell->GetName() : "a spell";
         }
         return Row(name, value);
     }
@@ -2042,7 +2051,7 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         for (int i = 0; i < static_cast<int>(RE::ActorValue::kTotal); ++i)
         {
             const auto value = static_cast<RE::ActorValue>(i);
-            auto *info = list->GetActorValue(value);
+            auto *info = list->GetActorValueInfo(value);
             if (!info || !info->skill)
                 continue;
             const char *skillName = info->GetFullName();
@@ -2218,7 +2227,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         for (int i = 0; i < static_cast<int>(AV::kTotal); ++i)
         {
             const auto value = static_cast<AV>(i);
-            auto *info = list->GetActorValue(value);
+            auto *info = list->GetActorValueInfo(value);
             if (!info || !info->skill)
                 continue;
             const char *name = info->GetFullName();
@@ -2467,7 +2476,7 @@ float SoulCharge(RE::SOUL_LEVEL level)
     }
     auto *settings = RE::GameSettingCollection::GetSingleton();
     auto *value = settings ? settings->GetSetting(setting) : nullptr;
-    return value ? static_cast<float>(value->GetSInt()) : 0.0f;
+    return value ? static_cast<float>(value->GetInteger()) : 0.0f;
 }
 
 std::vector<ft::Snapshot::SoulGemView> ScanSoulGems(RE::Actor *actor)

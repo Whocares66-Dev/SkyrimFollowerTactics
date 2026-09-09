@@ -107,7 +107,16 @@ if(FT_BUILD_PLUGIN)
         set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/${PROJECT_NAME}")
     endif()
 
-    find_package(CommonLibSSE CONFIG REQUIRED)
+    # CommonLibSSE-NG, alandtse's live fork, as a submodule built with us
+    # (extern/commonlibsse-ng, branch ng). Its own dependencies -- spdlog,
+    # rapidcsv, directxtk and what they pull -- come through our vcpkg
+    # manifest, since a manifest build reads only the top-level one. Its
+    # tests are not ours to build. docs/COMMONLIB.md has the history.
+    set(BUILD_TESTS OFF CACHE BOOL "CommonLibSSE's own tests" FORCE)
+    add_subdirectory(extern/commonlibsse-ng EXCLUDE_FROM_ALL)
+    # add_commonlibsse_plugin: the library's CMakeLists includes it only on
+    # its prebuilt path (7.5.1), so the source build includes it here.
+    include(extern/commonlibsse-ng/cmake/CommonLibSSE.cmake)
 
     # src/game/ -- every RE:: call lives here. Thin, imperative, verified by
     # playing. Nothing in here may be #included from src/core/.

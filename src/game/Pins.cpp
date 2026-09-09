@@ -185,7 +185,7 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
     }
     else if (auto *armor = form->As<RE::TESObjectARMO>())
     {
-        thing.slots = static_cast<std::uint32_t>(armor->GetSlotMask());
+        thing.slots = static_cast<std::uint32_t>(armor->GetSlotMask().underlying());
         thing.grip = ArmorGrip(armor);
         // A shield, or a mod's hand-held piece, is a weapon to the rules as
         // it is to the panel: chosen with the sword, and it takes a hand.
@@ -1557,7 +1557,9 @@ void EquipObjectHook(RE::ActorEquipManager *self, RE::Actor *actor, RE::TESBound
 
 void RefuseEquipsAgainstPins()
 {
-    const REL::Relocation<std::uintptr_t> target{RE::Offset::ActorEquipManager::EquipObject};
+    // The engine's EquipObject, by address-library id (SE 37938, AE 38894): the
+    // same pair the library's own wrapper resolves.
+    const REL::Relocation<std::uintptr_t> target{RELOCATION_ID(37938, 38894)};
     g_equipObject = reinterpret_cast<EquipObjectFn>(target.address());
 
     DetourTransactionBegin();

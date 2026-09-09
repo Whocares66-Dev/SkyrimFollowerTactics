@@ -225,8 +225,9 @@ const char *CannotCastText(std::uint32_t reason) noexcept
         return "casting";
     case RE::MagicSystem::CannotCastReason::kShoutWhileRecovering:
         return "recovering from a shout";
+    default:
+        return "?";
     }
-    return "?";
 }
 
 const char *ToString(ActionResult r) noexcept

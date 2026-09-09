@@ -198,7 +198,7 @@ const char *SoulName(RE::SOUL_LEVEL level)
 std::string SkillName(RE::ActorValue skill)
 {
     auto *list = RE::ActorValueList::GetSingleton();
-    auto *info = list ? list->GetActorValue(skill) : nullptr;
+    auto *info = list ? list->GetActorValueInfo(skill) : nullptr;
     return info ? NameOf(info) : "?";
 }
 

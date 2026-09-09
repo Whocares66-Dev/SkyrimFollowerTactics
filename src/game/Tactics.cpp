@@ -727,7 +727,7 @@ ClockState ReadClock()
 {
     auto *ui = RE::UI::GetSingleton();
     auto *main = RE::Main::GetSingleton();
-    return ClockState{ui && ui->GameIsPaused(), main && main->freezeTime};
+    return ClockState{ui && ui->GameIsPaused(), main && main->GetRuntimeData().freezeTime};
 }
 
 ft::RuleSet GetRules(ft::ActorId id)

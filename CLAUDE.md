@@ -199,11 +199,9 @@ Verified against the 3.7.0 headers. Do not "simplify" these away:
 - **`SKSE::PluginDeclaration::GetSingleton()` does not exist.** The CMake generates a global
   `SKSEPlugin_Version` via `SKSEPluginInfo(...)`. Use a literal name instead.
 
-We are on **CharmedBaryon** CommonLibSSE-NG 3.7.0 via the colorglass vcpkg registry
-(baseline bumped to registry HEAD; the template's pin served 3.6.0, which predates our
-runtime). That fork is stale since Sept 2024 but postdates 1.6.1170, and plugins declare
-`VersionIndependence::AddressLibrary` so offsets resolve at load. The live fork is
-alandtse/CommonLibSSE-NG v7.0.0 — see `docs/COMMONLIB.md` for when and how to migrate.
+We are on **alandtse/CommonLibSSE-NG v7.5.1** as the submodule `extern/commonlibsse-ng`
+(clone with `--recurse-submodules`). Its vcpkg dependencies are in our manifest.
+`docs/COMMONLIB.md` has why the fork was chosen and the API shapes worth knowing.
 
 ## Current phase
 
@@ -263,31 +261,15 @@ which is safe because an empty list does nothing. A fresh install changes nothin
 until a rule is written. The Phase 1 "emergency heal" rule above was the hardcoded
 default until then.
 
-## Where the log actually is — not where you would guess
+## Where the log is
 
 ```
-%USERPROFILE%\OneDrive\Documents\My Games\Skyrim.INI\SKSE\FollowerTactics.log
+%USERPROFILE%\OneDrive\Documents\My Games\Skyrim Special Edition\SKSE\FollowerTactics.log
 ```
 
-Two independent surprises stack up in that path, both verified on this machine:
-
-1. **Documents is redirected to OneDrive.** Resolve it with
-   `[Environment]::GetFolderPath('MyDocuments')`; never assume `%USERPROFILE%\Documents`.
-2. **The subfolder is `Skyrim.INI`, not `Skyrim Special Edition`.** This is a
-   CommonLibSSE-NG bug, not a misconfiguration. `SKSE::log::log_directory()` does not
-   hardcode the name — it reads a relocated global out of the game binary:
-
-   ```cpp
-   path /= *REL::Relocation<const char**>(RELOCATION_ID(508778, 380738)).get();
-   ```
-
-   On **1.6.1170** with CharmedBaryon 3.7.0 that address resolves to a string holding
-   `"Skyrim.INI"`. SKSE64 itself gets it right and writes `skse64.log` to
-   `My Games\Skyrim Special Edition\SKSE\`, so **the two live in different directories** —
-   which is exactly how you lose ten minutes looking in the wrong one.
-
-   Harmless (logging works), but it is a real data point for the fork migration in
-   `docs/COMMONLIB.md`: worth re-checking against alandtse/CommonLibSSE-NG v7.0.0.
+Documents is redirected to OneDrive on this machine. Resolve it with
+`[Environment]::GetFolderPath('MyDocuments')`; never assume `%USERPROFILE%\Documents`.
+SKSE's own `skse64.log` is in the same folder.
 
 ## Reading the executable
 

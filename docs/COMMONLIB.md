@@ -29,61 +29,13 @@ There are four, and the one most tutorials point at is no longer the live one:
 
 | Fork | Last commit | Verdict |
 |---|---|---|
-| [CharmedBaryon/CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG) | 2024-09-04 | Stale ~2 years. What the templates and the colorglass vcpkg registry serve. |
+| [CharmedBaryon/CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG) | 2024-09-04 | Stale ~2 years. What most templates point at. |
 | [alandtse/CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG) | **2026-08-30, v7.0.0** | The live NG fork. Multi-runtime, single DLL for SE/AE/VR. |
 | [powerof3/CommonLibSSE](https://github.com/powerof3/CommonLibSSE) | **2026-09-01** | Also live, but compile-time version-specific (ifdefs), not multi-runtime. |
 | [Ryan-rsm-McKenzie/CommonLibSSE](https://github.com/Ryan-rsm-McKenzie/CommonLibSSE) | 2023-07-20 | The original. Dead. |
 
-## What this project uses, and why
+## What this project uses (2026-09-09): alandtse/CommonLibSSE-NG v7.5.1, as a submodule
 
-**Currently: CharmedBaryon 3.7.0**, via the colorglass vcpkg registry, baseline bumped from
-the template's Nov-2022 pin (which served 3.6.0) to the registry HEAD (which serves 3.7.0).
+`extern/commonlibsse-ng` is a git submodule of alandtse's `ng` branch at v7.5.1, built with us by `add_subdirectory` (its own tests off); its vcpkg dependencies -- spdlog, rapidcsv, directxtk, fmt -- are in our manifest, since a manifest build reads only the top-level one; the default vcpkg baseline is the one the library's own manifest names. Clone with `--recurse-submodules`, or `git submodule update --init --recursive`: the library carries openvr as a submodule of its own, and the link fails without it.
 
-That is stale, and deliberately so for now. The reasoning:
-
-- CharmedBaryon's last commit is **Sept 2024**, which *postdates* our pinned runtime
-  **1.6.1170** (Jan 2024). It knows our target.
-- Plugins built with it declare `SKSE::VersionIndependence::AddressLibrary`, so they aren't
-  pinned to a runtime list at all — offsets resolve at load time from
-  `versionlib-1-6-1170-0.bin`.
-- Its staleness only bites for **1.7.x**, which we deliberately deferred to Phase 5.
-- Switching build systems before the first successful compile means debugging two unknowns
-  at once.
-
-## Known defects in the pinned fork (CharmedBaryon 3.7.0 @ 1.6.1170)
-
-Observed on this machine, not read from an issue tracker:
-
-- **`SKSE::log::log_directory()` returns the wrong folder.** It builds the path from a
-  relocated global rather than a literal:
-
-  ```cpp
-  path /= *REL::Relocation<const char**>(RELOCATION_ID(508778, 380738)).get();
-  ```
-
-  At 1.6.1170 that resolves to `"Skyrim.INI"`, so plugin logs land in
-  `My Games\Skyrim.INI\SKSE\` while SKSE64's own log stays in
-  `My Games\Skyrim Special Edition\SKSE\`. Cosmetic, but it splits the log directory in
-  two and wastes time. **Re-check this first when evaluating the migration** — if
-  alandtse v7.0.0 fixes it, that is a small point in favour.
-
-## The upgrade path, when we need it
-
-Move to **alandtse/CommonLibSSE-NG**. Its README documents a submodule rather than a registry:
-
-```sh
-git submodule add -b ng https://github.com/alandtse/CommonLibSSE-NG.git lib/commonlibsse-ng
-```
-
-then `add_subdirectory(lib/commonlibsse-ng)` in place of `find_package(CommonLibSSE ...)`.
-That also drops the colorglass registry entirely, removing a stale third-party dependency.
-
-Take this route when any of these becomes true:
-
-1. The current setup fails to build or misbehaves at runtime.
-2. We target 1.7.x (Phase 5). CharmedBaryon cannot; alandtse v7.0.0 explicitly versions the
-   AE ≥ 1.7.99 frame fields.
-3. We need a fix or type only present upstream.
-
-Note v7.0.0 shipped a breaking change (`State::GetFrameCount()` and friends replacing direct
-field access), so it is a real migration, not a version bump.
+Things to know about it: `add_commonlibsse_plugin` lives in `cmake/CommonLibSSE.cmake`, which the library's CMakeLists includes only on its prebuilt path, so ours includes it after the subdirectory. There is no `RE::Offset` namespace; a hook target is an address-library id (`RELOCATION_ID(SE, AE)` -- the EquipObject detour uses 37938 / 38894, the pair the library's own wrapper resolves). `Main`'s fields sit behind `GetRuntimeData()`, `ProcessLists::ForEachHighActor` hands out pointers, `GetSlotMask()` is an `EnumSet` (`.underlying()` for the bits), and a perk entry's enums are `BGSEntryPointPerkEntry::Function` and `BGSEntryPointFunctionData::ENTRY_POINT_FUNCTION_DATA`. `SKSE::log::log_directory()` is `My Games\Skyrim Special Edition\SKSE`, beside SKSE's own log. Not modelled: `BGSQuestPerkEntry`.

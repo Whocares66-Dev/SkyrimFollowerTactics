@@ -5,18 +5,6 @@ namespace ft::game
 namespace
 {
 
-// TESPackage::CreatePackage(type): allocate a package and give it the data
-// object its type needs. Not in CharmedBaryon 3.7.0's headers; the AE ID is
-// the one alandtse's fork carries and was checked against 1.6.1170 by reading
-// the function (docs/MAGIC.md "Forms at runtime"). The SE ID is the fork's,
-// unverified here.
-RE::TESPackage *CreatePackage(RE::PACKAGE_PROCEDURE_TYPE type)
-{
-    using func_t = RE::TESPackage *(*)(RE::PACKAGE_PROCEDURE_TYPE);
-    static REL::Relocation<func_t> func{RELOCATION_ID(28732, 29496)};
-    return func(type);
-}
-
 // Move a fresh form from the engine's dynamic ID to ours. The constructor
 // registered it under the dynamic one; SetFormID takes it out of the map and
 // puts it back under the new ID.
@@ -45,7 +33,10 @@ RE::TESPackage *ClonePackage(RE::TESPackage *source, std::uint32_t localID)
 
     // kPackage is the type of an instance made from a template, and is what
     // the constructor sets anyway; the call is for the allocation.
-    auto *pkg = CreatePackage(RE::PACKAGE_PROCEDURE_TYPE::kPackage);
+    // TESPackage::CreatePackage(type): allocate a package and give it the
+    // data object its type needs. Its AE ID was checked against 1.6.1170 by
+    // reading the function (docs/MAGIC.md "Forms at runtime").
+    auto *pkg = RE::TESPackage::CreatePackage(RE::PACKAGE_PROCEDURE_TYPE::kPackage);
     if (!pkg)
     {
         logger::error("forms: CreatePackage returned nothing");
