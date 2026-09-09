@@ -112,11 +112,11 @@ constexpr std::array<Entry<ActionTargetKind>, 8> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 15> kActions{{
+constexpr std::array<Entry<ActionKind>, 18> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
-    // because that is part of the behaviour a profile is asking for. It also
-    // leaves room: "drink-health-potion-weakest" -- don't burn a strong potion
-    // on a scratch -- becomes a new value rather than a breaking change to an
+    // because that is part of the behaviour a profile is asking for. That is
+    // how "drink-weakest-health-potion" -- don't burn a strong potion on a
+    // scratch -- came in as a new value rather than a breaking change to an
     // existing one.
     {ActionKind::None, "none", "None"},
     {ActionKind::Target, "target", "Target"},
@@ -127,6 +127,9 @@ constexpr std::array<Entry<ActionKind>, 15> kActions{{
     {ActionKind::DrinkHealthPotion, "drink-strongest-health-potion", "Drink strongest health potion"},
     {ActionKind::DrinkMagickaPotion, "drink-strongest-magicka-potion", "Drink strongest magicka potion"},
     {ActionKind::DrinkStaminaPotion, "drink-strongest-stamina-potion", "Drink strongest stamina potion"},
+    {ActionKind::DrinkWeakestHealthPotion, "drink-weakest-health-potion", "Drink weakest health potion"},
+    {ActionKind::DrinkWeakestMagickaPotion, "drink-weakest-magicka-potion", "Drink weakest magicka potion"},
+    {ActionKind::DrinkWeakestStaminaPotion, "drink-weakest-stamina-potion", "Drink weakest stamina potion"},
     {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
     {ActionKind::EatFood, "eat-food", "Eat food"},
     {ActionKind::EatIngredient, "eat-ingredient", "Eat ingredient"},
@@ -418,6 +421,12 @@ std::string_view Describe(ActionKind v) noexcept
         return "Drink the strongest magicka potion carried.";
     case ActionKind::DrinkStaminaPotion:
         return "Drink the strongest stamina potion carried.";
+    case ActionKind::DrinkWeakestHealthPotion:
+        return "Drink the weakest healing potion carried: the cheap ones first, the strong ones kept.";
+    case ActionKind::DrinkWeakestMagickaPotion:
+        return "Drink the weakest magicka potion carried: the cheap ones first, the strong ones kept.";
+    case ActionKind::DrinkWeakestStaminaPotion:
+        return "Drink the weakest stamina potion carried: the cheap ones first, the strong ones kept.";
     case ActionKind::DrinkPotion:
         return "Drink this potion.";
     case ActionKind::EatFood:

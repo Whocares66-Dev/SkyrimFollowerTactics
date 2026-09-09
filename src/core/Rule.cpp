@@ -10,6 +10,9 @@ double MinimumCooldown(ActionKind action) noexcept
     case ActionKind::DrinkHealthPotion:
     case ActionKind::DrinkMagickaPotion:
     case ActionKind::DrinkStaminaPotion:
+    case ActionKind::DrinkWeakestHealthPotion:
+    case ActionKind::DrinkWeakestMagickaPotion:
+    case ActionKind::DrinkWeakestStaminaPotion:
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
     case ActionKind::EatIngredient:
@@ -65,6 +68,9 @@ bool IsConsume(ActionKind action) noexcept
     case ActionKind::DrinkHealthPotion:
     case ActionKind::DrinkMagickaPotion:
     case ActionKind::DrinkStaminaPotion:
+    case ActionKind::DrinkWeakestHealthPotion:
+    case ActionKind::DrinkWeakestMagickaPotion:
+    case ActionKind::DrinkWeakestStaminaPotion:
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
     case ActionKind::EatIngredient:

@@ -1248,9 +1248,9 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
 
             if (BeginCascade("Potion"))
             {
-                for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
-                                  ft::ActionKind::DrinkMagickaPotion})
-                {
+                // The weakest of each above the strongest: the cheap potion
+                // is the usual choice, the strong one the reserve.
+                const auto policy = [&](ft::ActionKind kind) {
                     const bool selected = here && act.kind == kind;
                     if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
                     {
@@ -1260,7 +1260,14 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                     }
                     if (Im::IsItemHovered(0))
                         Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
-                }
+                };
+                for (auto kind : {ft::ActionKind::DrinkWeakestHealthPotion, ft::ActionKind::DrinkWeakestStaminaPotion,
+                                  ft::ActionKind::DrinkWeakestMagickaPotion})
+                    policy(kind);
+                Im::Separator();
+                for (auto kind : {ft::ActionKind::DrinkHealthPotion, ft::ActionKind::DrinkStaminaPotion,
+                                  ft::ActionKind::DrinkMagickaPotion})
+                    policy(kind);
                 if (carried(ft::ConsumableKind::Potion))
                 {
                     Im::Separator();

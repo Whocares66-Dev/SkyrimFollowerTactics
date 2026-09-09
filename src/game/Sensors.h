@@ -29,9 +29,14 @@ namespace ft::game
 // still has to be handed the actual potion to equip.
 struct PotionChoice
 {
+    // The strongest carried of each, and the weakest: what the "drink
+    // strongest" and "drink weakest" policies hand to the equip.
     RE::AlchemyItem *health{nullptr};
     RE::AlchemyItem *magicka{nullptr};
     RE::AlchemyItem *stamina{nullptr};
+    RE::AlchemyItem *weakestHealth{nullptr};
+    RE::AlchemyItem *weakestMagicka{nullptr};
+    RE::AlchemyItem *weakestStamina{nullptr};
 };
 
 // One castable spell a follower knows, for the editor's menu.

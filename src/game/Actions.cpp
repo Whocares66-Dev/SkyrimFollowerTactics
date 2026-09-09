@@ -109,6 +109,12 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         return Consume(actor, choice.magicka);
     case ft::ActionKind::DrinkStaminaPotion:
         return Consume(actor, choice.stamina);
+    case ft::ActionKind::DrinkWeakestHealthPotion:
+        return Consume(actor, choice.weakestHealth);
+    case ft::ActionKind::DrinkWeakestMagickaPotion:
+        return Consume(actor, choice.weakestMagicka);
+    case ft::ActionKind::DrinkWeakestStaminaPotion:
+        return Consume(actor, choice.weakestStamina);
     case ft::ActionKind::DrinkPotion:
     case ft::ActionKind::EatFood:
         // One named potion or food. The evaluator only fires this when the

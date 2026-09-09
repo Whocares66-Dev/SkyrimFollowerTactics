@@ -212,6 +212,9 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkHealthPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkMagickaPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkStaminaPotion)] = true;
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkWeakestHealthPotion)] = true;
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkWeakestMagickaPotion)] = true;
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkWeakestStaminaPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkPotion)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EatFood)] = true;
     caps.supported[static_cast<std::size_t>(ft::ActionKind::EatIngredient)] = true;

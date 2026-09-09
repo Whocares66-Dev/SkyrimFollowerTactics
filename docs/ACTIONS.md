@@ -149,6 +149,8 @@ Voice of the Emperor's Pacify is a calm on people. It showed nothing on the cave
 
 **Equip power is deliberately absent.** A pin is a promise the AI will use the thing, and the vanilla AI never reaches for a power. The Magic tab's Equipped cell for powers and shouts stays read-only. A mod that has NPCs choose between powers would make it one more kind in the pin book.
 
+**Strongest and weakest.** The Potion list opens with the three "drink weakest" policies, a divider, then the three "drink strongest", then every potion carried by name. Neither is a list of potions: the sensor reads every carried potion's effects each tick, counts one whose primary actor value is Health (or Magicka, Stamina) and is not a poison or food, and ranks it by its largest such magnitude. So a custom or player-brewed potion is found on its own. Weakest is for the everyday case, the cheap potion first with the strong one kept; strongest for the emergency. Added 2026-09-08.
+
 **Food and ingredients** are the Consume menu's other two lists beside Potion. Both go through the same `EquipObject` call as a potion; the game consumes the item through its normal path. The snapshot tags every carried consumable with its kind, and a named consume rule checks form AND kind, so a hand-edited profile cannot drink a cabbage. Unverified in play: whether an NPC gets a food's or an ingredient's effect (the player eating an ingredient learns its first effect; an NPC has nothing to learn, and what the engine does instead is not documented). The potion's 3 s settle is used for both until one of their own is measured.
 
 The Then cascade under Self now reads Equip, Consume (Potion, Food, Ingredient), Cast spell, Use power; under Enemy and Attacker, Target first, then the two that cast.

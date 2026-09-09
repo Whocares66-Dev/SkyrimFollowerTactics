@@ -6,6 +6,7 @@
 #include "game/Pins.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -42,25 +43,37 @@ float RestoreMagnitude(RE::AlchemyItem *alch, RE::ActorValue av)
     return best;
 }
 
-void RecordPotion(RE::AlchemyItem *alch, std::int32_t count, ft::PotionStock &stock, PotionChoice &choice)
+void RecordPotion(RE::AlchemyItem *alch, std::int32_t count, ft::PotionStock &stock, PotionChoice &choice,
+                  std::array<float, 3> &weakest)
 {
-    const auto consider = [&](RE::ActorValue av, int &countOut, float &bestOut, RE::AlchemyItem *&chosen) {
+    const auto consider = [&](RE::ActorValue av, int &countOut, float &bestOut, RE::AlchemyItem *&chosen,
+                              float &weakestOut, RE::AlchemyItem *&cheapest) {
         const float mag = RestoreMagnitude(alch, av);
         if (mag <= 0.0f)
             return;
         countOut += count;
         // "Best" is the largest restore. A rule that fires at 30% health wants
-        // the strongest thing in the bag, not whichever came first.
+        // the strongest thing in the bag, not whichever came first. The
+        // weakest is the other policy: the cheap potion first, the strong
+        // one kept for when it matters.
         if (mag > bestOut)
         {
             bestOut = mag;
             chosen = alch;
         }
+        if (!cheapest || mag < weakestOut)
+        {
+            weakestOut = mag;
+            cheapest = alch;
+        }
     };
 
-    consider(RE::ActorValue::kHealth, stock.healthCount, stock.bestHealthMagnitude, choice.health);
-    consider(RE::ActorValue::kMagicka, stock.magickaCount, stock.bestMagickaMagnitude, choice.magicka);
-    consider(RE::ActorValue::kStamina, stock.staminaCount, stock.bestStaminaMagnitude, choice.stamina);
+    consider(RE::ActorValue::kHealth, stock.healthCount, stock.bestHealthMagnitude, choice.health, weakest[0],
+             choice.weakestHealth);
+    consider(RE::ActorValue::kMagicka, stock.magickaCount, stock.bestMagickaMagnitude, choice.magicka, weakest[1],
+             choice.weakestMagicka);
+    consider(RE::ActorValue::kStamina, stock.staminaCount, stock.bestStaminaMagnitude, choice.stamina, weakest[2],
+             choice.weakestStamina);
 }
 
 // Which consumable kind an inventory object is, or nothing for what is not
@@ -86,6 +99,7 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock, PotionChoice &choice)
     auto inventory = actor->GetInventory(
         [](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::AlchemyItem) || obj.Is(RE::FormType::Ingredient); });
 
+    std::array<float, 3> weakest{};
     for (auto &[object, entry] : inventory)
     {
         const auto count = entry.first;
@@ -99,7 +113,7 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock, PotionChoice &choice)
         // Only a potion is a candidate for the three "strongest" policies:
         // food restores too, but slowly, and is its own action.
         if (*kind == ft::ConsumableKind::Potion)
-            RecordPotion(object->As<RE::AlchemyItem>(), count, stock, choice);
+            RecordPotion(object->As<RE::AlchemyItem>(), count, stock, choice, weakest);
     }
 }
 

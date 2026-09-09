@@ -560,10 +560,13 @@ bool HasResource(const Action &a, const Snapshot &s)
     switch (a.kind)
     {
     case ActionKind::DrinkHealthPotion:
+    case ActionKind::DrinkWeakestHealthPotion:
         return s.potions.healthCount > 0;
     case ActionKind::DrinkMagickaPotion:
+    case ActionKind::DrinkWeakestMagickaPotion:
         return s.potions.magickaCount > 0;
     case ActionKind::DrinkStaminaPotion:
+    case ActionKind::DrinkWeakestStaminaPotion:
         return s.potions.staminaCount > 0;
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
@@ -606,10 +609,13 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s)
     switch (a.kind)
     {
     case ActionKind::DrinkHealthPotion:
+    case ActionKind::DrinkWeakestHealthPotion:
         return s.potions.healthEffectActive;
     case ActionKind::DrinkMagickaPotion:
+    case ActionKind::DrinkWeakestMagickaPotion:
         return s.potions.magickaEffectActive;
     case ActionKind::DrinkStaminaPotion:
+    case ActionKind::DrinkWeakestStaminaPotion:
         return s.potions.staminaEffectActive;
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:

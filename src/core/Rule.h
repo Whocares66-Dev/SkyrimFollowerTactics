@@ -171,15 +171,20 @@ enum class ActionKind : std::uint8_t
     EquipArrows,
     EquipSpell,
     EquipArmor,
-    // Consume: the three "strongest carried" potion policies, then one
-    // named thing of each consumable kind. All go through the game's own
-    // equip routine, which is what consumes an item.
-    DrinkHealthPotion,  // the strongest carried
-    DrinkMagickaPotion, // the strongest carried
-    DrinkStaminaPotion, // the strongest carried
-    DrinkPotion,        // one specific potion, named by actionForm
-    EatFood,            // one specific food, named by actionForm
-    EatIngredient,      // one specific ingredient, named by actionForm
+    // Consume: the three "strongest carried" potion policies, the three
+    // "weakest carried" ones -- the cheap potions first, the strong ones
+    // kept for when they matter -- then one named thing of each consumable
+    // kind. All go through the game's own equip routine, which is what
+    // consumes an item.
+    DrinkHealthPotion,         // the strongest carried
+    DrinkMagickaPotion,        // the strongest carried
+    DrinkStaminaPotion,        // the strongest carried
+    DrinkWeakestHealthPotion,  // the weakest carried
+    DrinkWeakestMagickaPotion, // the weakest carried
+    DrinkWeakestStaminaPotion, // the weakest carried
+    DrinkPotion,               // one specific potion, named by actionForm
+    EatFood,                   // one specific food, named by actionForm
+    EatIngredient,             // one specific ingredient, named by actionForm
     CastSpell,
     // A power (Embrace of Shadows, Battle Cry): a spell record cast from
     // the voice rather than a hand, no magicka. Performed through a Shout
