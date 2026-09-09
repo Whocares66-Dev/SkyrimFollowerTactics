@@ -346,7 +346,7 @@ std::string_view Describe(PredicateKind v) noexcept
     switch (v)
     {
     case PredicateKind::Any:
-        return "Always true.";
+        return ""; // says it all in its name; no tooltip
     case PredicateKind::HealthPctBelow:
         return "Health under this share of its maximum.";
     case PredicateKind::HealthPctAbove:

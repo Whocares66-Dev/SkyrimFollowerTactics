@@ -609,11 +609,11 @@ bool IsCombatPredicate(ft::PredicateKind p)
     return p == ft::PredicateKind::CombatBegins || p == ft::PredicateKind::CombatEnds;
 }
 
-// The condition cascade in five groups, a divider between them: Any; the
-// three stats; the fight -- its edges, the enemy's relation to the party,
-// what is in hand, being attacked, a status; the equipment -- weapon,
-// armour, resistance; the summon. (The corpse questions are a subject of
-// their own and fall in one group.)
+// The condition cascade in eight groups, a divider between them: Any; the
+// three stats; the fight's edges; the enemy's relation to the party
+// (Attacking, Attacked by); the hits (Hit type, Hit by); Status; the
+// equipment -- weapon, armour, resistance; the summon. (The corpse
+// questions are a subject of their own and fall in one group.)
 int ConditionGroup(ft::PredicateKind p)
 {
     switch (p)
@@ -626,17 +626,20 @@ int ConditionGroup(ft::PredicateKind p)
         return 1;
     case ft::PredicateKind::CombatBegins:
     case ft::PredicateKind::CombatEnds:
+        return 2;
     case ft::PredicateKind::Attacking:
     case ft::PredicateKind::AttackedBy:
+        return 3;
     case ft::PredicateKind::HitType:
     case ft::PredicateKind::HitBy:
+        return 4;
     case ft::PredicateKind::Status:
-        return 2;
+        return 5;
     case ft::PredicateKind::SummonNone:
     case ft::PredicateKind::SummonActive:
-        return 4;
+        return 7;
     default:
-        return 3;
+        return 6;
     }
 }
 
@@ -874,7 +877,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 continue;
             }
 
-            // Using and Attacked by: Any; then how -- a blow, an arrow, a
+            // Hit type and Hit by: Any; then how -- a blow, an arrow, a
             // spell of any kind; then what the spell was. A divider between
             // each group.
             if (predicate == ft::PredicateKind::HitType || predicate == ft::PredicateKind::HitBy)
@@ -980,8 +983,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                     rule.predicate = predicate;
                     changed = true;
                 }
-                if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", std::string(ft::Describe(predicate)).c_str());
+                if (const auto text = ft::Describe(predicate); !text.empty() && Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", std::string(text).c_str());
                 // (Any's divider from the rest is the group divider above.)
                 continue;
             }
