@@ -363,7 +363,8 @@ struct Snapshot
     // enemy's own body. A blow at an enemy further than that lands on
     // nothing, and the engine charges no stamina for it, so the rule waits
     // for the AI to close. A power attack takes a melee weapon or the
-    // fists; a bash takes a shield, or a bow, crossbow, staff or two-hander.
+    // fists; a bash takes what blocks: a shield or a torch in the left
+    // hand, or the right hand's weapon with the left hand empty.
     struct Blow
     {
         bool possible{false};

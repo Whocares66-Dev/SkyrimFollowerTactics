@@ -191,10 +191,10 @@ enum class ActionKind : std::uint8_t
     // Needs the stamina the swing costs, which the snapshot prices. One
     // swing per firing.
     PowerAttack,
-    // A bash, and a power bash, with what blocks: a shield in the left
-    // hand, or a bow, crossbow, staff or two-hander. The interrupt against
-    // a caster; the power one staggers hardest of any blow. Aimed and
-    // priced as a power attack is.
+    // A bash, and a power bash, with what blocks: a shield or a torch in
+    // the left hand, or the right hand's weapon with the left hand empty.
+    // The interrupt against a caster; the power one staggers hardest of
+    // any blow. Aimed and priced as a power attack is.
     Bash,
     PowerBash,
     // The equip actions PIN: what they put on stays on, against the engine's

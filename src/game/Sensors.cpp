@@ -742,29 +742,19 @@ BlowPlan PlanBash(RE::Actor *actor, bool power)
     BlowPlan plan;
     if (!actor)
         return plan;
-    // What blocks is what bashes: the shield in the left hand, else a bow,
-    // crossbow, staff or two-hander in the right. A one-hander alone, a
-    // spell or the fists have nothing to bash with.
+    // What blocks is what bashes, and blocking is the vanilla rule: a
+    // shield or a torch in the left hand, else any weapon in the right --
+    // a one-hander, a two-hander, a bow, a crossbow, a staff -- with the
+    // left hand EMPTY. A weapon alone in the left hand cannot block, nor
+    // can two hands each holding something (a blade and a staff, a blade
+    // and a spell), nor the fists, nor a spell hand.
     RE::TESForm *leftHeld = actor->GetEquippedObject(true);
     RE::TESForm *rightHeld = actor->GetEquippedObject(false);
     const auto *shield = leftHeld ? leftHeld->As<RE::TESObjectARMO>() : nullptr;
+    const auto *torch = leftHeld ? leftHeld->As<RE::TESObjectLIGH>() : nullptr;
     const auto *right = rightHeld ? rightHeld->As<RE::TESObjectWEAP>() : nullptr;
-    bool bashes = shield && shield->IsShield();
-    if (!bashes && right)
-    {
-        switch (right->GetWeaponType())
-        {
-        case RE::WEAPON_TYPE::kTwoHandSword:
-        case RE::WEAPON_TYPE::kTwoHandAxe:
-        case RE::WEAPON_TYPE::kBow:
-        case RE::WEAPON_TYPE::kCrossbow:
-        case RE::WEAPON_TYPE::kStaff:
-            bashes = true;
-            break;
-        default:
-            break;
-        }
-    }
+    const bool rightWeapon = right && right->GetWeaponType() != RE::WEAPON_TYPE::kHandToHandMelee;
+    const bool bashes = (shield && shield->IsShield()) || torch || (rightWeapon && !leftHeld);
     if (!bashes)
         return plan;
     plan.event = power ? "bashPowerStart" : "bashStart";

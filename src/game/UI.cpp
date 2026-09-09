@@ -1546,7 +1546,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
         if (suited.empty())
             continue;
-        group(2);
+        // The hand's casts, then the voice's, a divider between.
+        group(action == ft::ActionKind::CastSpell ? 2 : 3);
         if (!BeginCascade(menu.label))
             continue;
         for (const auto *option : suited)
@@ -1569,7 +1570,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // name; not drawn with none carried).
     if (valid(ft::ActionKind::ChargeStrongestSoulGem))
     {
-        group(3);
+        group(4);
         // The named things of one kind, after a divider when there are any.
         const auto namedAfterDivider = [&](ft::ActionKind kind) {
             if (!carried(ft::ConsumableOf(kind)))
@@ -1596,7 +1597,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // own menu of what is carried or known.
     if (valid(ft::ActionKind::EquipWeapon))
     {
-        group(4);
+        group(5);
         for (const auto kind : {ft::ActionKind::EquipWeapon, ft::ActionKind::EquipArmor, ft::ActionKind::EquipArrows,
                                 ft::ActionKind::EquipSpell})
         {

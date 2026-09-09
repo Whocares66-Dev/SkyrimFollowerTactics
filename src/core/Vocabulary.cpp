@@ -479,12 +479,13 @@ std::string_view Describe(ActionKind v) noexcept
         return "One power attack at them with what is in hand -- a blade, a two-hander, both hands, the fists -- "
                "pointing the follower at them first if need be. Needs the stamina it costs.";
     case ActionKind::Bash:
-        return "One bash at them with the shield, or the bow, crossbow, staff or two-hander held: the interrupt "
-               "against a caster. Pointing the follower at them first if need be. Needs the stamina it costs.";
+        return "One bash at them with what blocks -- the shield or torch, or the weapon in the right hand with the "
+               "left hand empty: the interrupt against a caster. Pointing the follower at them first if need be. "
+               "Needs the stamina it costs.";
     case ActionKind::PowerBash:
-        return "One power bash at them with the shield, or the bow, crossbow, staff or two-hander held: the "
-               "hardest stagger of any blow. Pointing the follower at them first if need be. Needs the stamina "
-               "it costs.";
+        return "One power bash at them with what blocks -- the shield or torch, or the weapon in the right hand "
+               "with the left hand empty: the hardest stagger of any blow. Pointing the follower at them first if "
+               "need be. Needs the stamina it costs.";
     default:
         return "";
     }

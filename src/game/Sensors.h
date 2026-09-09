@@ -124,7 +124,8 @@ struct BlowPlan
 // for a bow, a staff or a spell in the hand that would swing.
 [[nodiscard]] BlowPlan PlanPowerAttack(RE::Actor *actor);
 // A bash (bashStart) or a power bash (bashPowerStart), with what blocks: a
-// shield in the left hand, or a bow, crossbow, staff or two-hander.
+// shield or a torch in the left hand, or the right hand's weapon with the
+// left hand empty.
 [[nodiscard]] BlowPlan PlanBash(RE::Actor *actor, bool power);
 // The blow a kind of action strikes; an empty plan for any other kind.
 [[nodiscard]] BlowPlan PlanBlow(RE::Actor *actor, ft::ActionKind kind);

@@ -1056,7 +1056,7 @@ const char *Explain(Verdict v, ActionKind action) noexcept
 
     case Verdict::NoMeleeWeapon:
         return action == ActionKind::PowerAttack ? "nothing in hand that swings"
-                                                 : "nothing in hand that bashes: no shield, bow, staff or two-hander";
+                                                 : "nothing that blocks to bash with: a shield, a torch, or one weapon";
 
     case Verdict::NothingToPoison:
         return "no weapon in hand takes a poison";
