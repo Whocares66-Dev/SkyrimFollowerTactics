@@ -444,14 +444,16 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     case ft::ActionKind::Attack:
         return PointAt(actor, target);
 
-    case ft::ActionKind::PowerAttack: {
+    case ft::ActionKind::PowerAttack:
+    case ft::ActionKind::Bash:
+    case ft::ActionKind::PowerBash: {
         // At an enemy who is not the follower's target, point them there
-        // first, as Attack does; then one swing, by the animation
-        // event the race's attack data names for what is in the hands. The
-        // follower's own combat AI runs the same graph, so the event is
-        // refused while a swing, a block or a stagger is in progress: that
-        // is Busy, no cooldown spent, and the rule tries again next tick.
-        // Not yet measured in play (docs/ACTIONS.md 6).
+        // first, as Attack does; then one blow, by the animation event the
+        // race's attack data names for what is in the hands. The follower's
+        // own combat AI runs the same graph, so the event is refused while
+        // a swing, a block or a stagger is in progress: that is Busy, no
+        // cooldown spent, and the rule tries again next tick. Not yet
+        // measured in play (docs/ACTIONS.md 6).
         const auto current = actor->GetActorRuntimeData().currentCombatTarget.get();
         const std::uint32_t currentId = current ? current->GetFormID() : 0;
         if (target != 0 && target != actor->GetFormID() && target != currentId)
@@ -459,23 +461,23 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             if (PointAt(actor, target) != ActionResult::Performed)
                 return ActionResult::NoTarget;
         }
-        const PowerAttackPlan swing = PlanPowerAttack(actor);
-        if (!swing.Possible())
+        const BlowPlan blow = PlanBlow(actor, action.kind);
+        if (!blow.Possible())
             return ActionResult::MissingItem;
         auto *state = actor->AsActorState();
         if (!state || !state->IsWeaponDrawn())
         {
-            logger::info("  power attack: {} has no weapon drawn", actor->GetName() ? actor->GetName() : "?");
+            logger::info("  blow: {} has no weapon drawn", actor->GetName() ? actor->GetName() : "?");
             return ActionResult::Busy;
         }
         if (state->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone)
         {
-            logger::info("  power attack: {} is mid-attack", actor->GetName() ? actor->GetName() : "?");
+            logger::info("  blow: {} is mid-attack", actor->GetName() ? actor->GetName() : "?");
             return ActionResult::Busy;
         }
-        const bool sent = actor->NotifyAnimationGraph(swing.event);
-        logger::info("  power attack: {} {} ({:.0f} stamina){}", actor->GetName() ? actor->GetName() : "?", swing.event,
-                     swing.stamina, sent ? "" : " -- the graph refused it");
+        const bool sent = actor->NotifyAnimationGraph(blow.event);
+        logger::info("  blow: {} {} ({:.0f} stamina){}", actor->GetName() ? actor->GetName() : "?", blow.event,
+                     blow.stamina, sent ? "" : " -- the graph refused it");
         return sent ? ActionResult::Performed : ActionResult::Busy;
     }
 

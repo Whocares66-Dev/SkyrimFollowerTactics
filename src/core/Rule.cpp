@@ -51,8 +51,11 @@ double MinimumCooldown(ActionKind action) noexcept
         return 1.0;
 
     case ActionKind::PowerAttack:
+    case ActionKind::PowerBash:
         // One swing takes about this long; the next firing waits for it.
         return 1.5;
+    case ActionKind::Bash:
+        return 1.0;
 
     case ActionKind::Attack:
         // Long enough that a follower is not flicked between two enemies on
@@ -150,6 +153,11 @@ bool IsCast(ActionKind action) noexcept
     return action == ActionKind::CastSpell || action == ActionKind::UsePower || action == ActionKind::Shout;
 }
 
+bool IsBlow(ActionKind action) noexcept
+{
+    return action == ActionKind::PowerAttack || action == ActionKind::Bash || action == ActionKind::PowerBash;
+}
+
 Kind KindOf(ActionKind action) noexcept
 {
     switch (action)
@@ -203,6 +211,8 @@ bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept
     case ActionKind::Attack:
         return target == ActionTargetKind::Enemy || target == ActionTargetKind::Attacker;
     case ActionKind::PowerAttack:
+    case ActionKind::Bash:
+    case ActionKind::PowerBash:
         return target == ActionTargetKind::Enemy || target == ActionTargetKind::Attacker;
     default:
         // Potions, pins, and what the follower does with their own feet.

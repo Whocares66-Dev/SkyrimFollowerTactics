@@ -664,9 +664,15 @@ bool Swings(const RE::TESObjectWEAP *weapon)
     }
 }
 
-PowerAttackPlan PlanPowerAttack(RE::Actor *actor)
+// The margin a blow's reach gets for the enemy's own body, since the
+// snapshot's distances are centre to centre: a humanoid's half-width and a
+// step. A giant's body is wider than that, so a blow at one is judged too
+// far a little before it is.
+constexpr float kBodyMargin = 40.0f;
+
+BlowPlan PlanPowerAttack(RE::Actor *actor)
 {
-    PowerAttackPlan plan;
+    BlowPlan plan;
     if (!actor)
         return plan;
     RE::TESForm *rightHeld = actor->GetEquippedObject(false);
@@ -725,13 +731,67 @@ PowerAttackPlan PlanPowerAttack(RE::Actor *actor)
     plan.stamina = (std::max)(0.0f, cost);
     // The engine's own reach for the actor and what they hold -- the weapon's
     // reach times fCombatDistance, or the race's unarmed reach, times the
-    // actor's scale (docs/ACTIONS.md 6); the margin is
-    // a humanoid's half-width and a step, since the snapshot's distances are
-    // centre to centre. A giant's body is wider than that, so a swing at one
-    // is judged too far a little before it is.
-    constexpr float kBodyMargin = 40.0f;
+    // actor's scale (docs/ACTIONS.md 6) -- and the margin for the enemy's
+    // body.
     plan.reach = actor->GetReach() + kBodyMargin;
     return plan;
+}
+
+BlowPlan PlanBash(RE::Actor *actor, bool power)
+{
+    BlowPlan plan;
+    if (!actor)
+        return plan;
+    // What blocks is what bashes: the shield in the left hand, else a bow,
+    // crossbow, staff or two-hander in the right. A one-hander alone, a
+    // spell or the fists have nothing to bash with.
+    RE::TESForm *leftHeld = actor->GetEquippedObject(true);
+    RE::TESForm *rightHeld = actor->GetEquippedObject(false);
+    const auto *shield = leftHeld ? leftHeld->As<RE::TESObjectARMO>() : nullptr;
+    const auto *right = rightHeld ? rightHeld->As<RE::TESObjectWEAP>() : nullptr;
+    bool bashes = shield && shield->IsShield();
+    if (!bashes && right)
+    {
+        switch (right->GetWeaponType())
+        {
+        case RE::WEAPON_TYPE::kTwoHandSword:
+        case RE::WEAPON_TYPE::kTwoHandAxe:
+        case RE::WEAPON_TYPE::kBow:
+        case RE::WEAPON_TYPE::kCrossbow:
+        case RE::WEAPON_TYPE::kStaff:
+            bashes = true;
+            break;
+        default:
+            break;
+        }
+    }
+    if (!bashes)
+        return plan;
+    plan.event = power ? "bashPowerStart" : "bashStart";
+    // The cost is the setting for the kind of bash -- fStaminaBashBase 35,
+    // fStaminaPowerBashBase 55 in vanilla -- times the attack's multiplier,
+    // 1 for both in the race data. No perk entry point prices a bash. Not
+    // yet checked against the engine.
+    plan.stamina = power ? GameSetting("fStaminaPowerBashBase", 55.0f) : GameSetting("fStaminaBashBase", 35.0f);
+    // The bash's own reach setting (fCombatBashReach, 141 in vanilla) at the
+    // actor's scale, with the same margin for the enemy's body as a swing.
+    plan.reach = GameSetting("fCombatBashReach", 141.0f) * actor->GetScale() + kBodyMargin;
+    return plan;
+}
+
+BlowPlan PlanBlow(RE::Actor *actor, ft::ActionKind kind)
+{
+    switch (kind)
+    {
+    case ft::ActionKind::PowerAttack:
+        return PlanPowerAttack(actor);
+    case ft::ActionKind::Bash:
+        return PlanBash(actor, false);
+    case ft::ActionKind::PowerBash:
+        return PlanBash(actor, true);
+    default:
+        return {};
+    }
 }
 
 // What the actor is wielding, a bit per DamageKind: a blade is Melee, a
@@ -902,11 +962,13 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         s.weaponDrawn = state->IsWeaponDrawn();
         s.sneaking = state->IsSneaking();
     }
+    for (const auto kind : {ft::ActionKind::PowerAttack, ft::ActionKind::Bash, ft::ActionKind::PowerBash})
     {
-        const PowerAttackPlan swing = PlanPowerAttack(actor);
-        s.canPowerAttack = swing.Possible();
-        s.powerAttackCost = swing.stamina;
-        s.powerAttackReach = swing.reach;
+        const BlowPlan plan = PlanBlow(actor, kind);
+        ft::Snapshot::Blow &blow = kind == ft::ActionKind::Bash        ? s.bash
+                                   : kind == ft::ActionKind::PowerBash ? s.powerBash
+                                                                       : s.powerAttack;
+        blow = {plan.Possible(), plan.stamina, plan.reach};
     }
 
     s.traits = ReadTraits(actor);

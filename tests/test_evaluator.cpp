@@ -3128,9 +3128,7 @@ TEST_CASE("a power attack needs a fight, something that swings, and the stamina 
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::NoMeleeWeapon); // a bow, a spell, nothing
 
-    s.canPowerAttack = true;
-    s.powerAttackCost = 40.0f;
-    s.powerAttackReach = 200.0f;
+    s.powerAttack = {true, 40.0f, 200.0f};
     trace.clear();
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::NoStamina); // 30 against 40
@@ -3159,4 +3157,49 @@ TEST_CASE("a power attack needs a fight, something that swings, and the stamina 
     REQUIRE(IsActionValidFor(ActionTargetKind::Attacker, ActionKind::PowerAttack));
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Self, ActionKind::PowerAttack));
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Player, ActionKind::PowerAttack));
+}
+
+TEST_CASE("a bash and a power bash are blows of their own, priced apart", "[resources]")
+{
+    RuleSet rs;
+    Rule bash;
+    bash.subject = SubjectKind::Enemy;
+    bash.predicate = PredicateKind::Any;
+    bash.actionTarget = ActionTargetKind::Enemy;
+    bash.FirstAction().kind = ActionKind::Bash;
+    rs.rules.push_back(bash);
+    Rule powerBash = bash;
+    powerBash.FirstAction().kind = ActionKind::PowerBash;
+    rs.rules.push_back(powerBash);
+
+    Snapshot s = Healthy();
+    s.inCombat = true;
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 100.0f, false, false, true});
+    s.stamina = {40.0f, 100.0f};
+    // A sword and nothing else: a power attack, no bash.
+    s.powerAttack = {true, 25.0f, 180.0f};
+    EvalContext ctx;
+    ctx.caps = Capabilities::All();
+
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoMeleeWeapon);
+    REQUIRE(trace.at(1) == Verdict::NoMeleeWeapon);
+
+    // A shield: the bash is affordable at 35, the power bash at 55 is not.
+    s.bash = {true, 35.0f, 180.0f};
+    s.powerBash = {true, 55.0f, 180.0f};
+    trace.clear();
+    const auto d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.Fired());
+    REQUIRE(d.action() == ActionKind::Bash);
+
+    rs.rules.erase(rs.rules.begin());
+    trace.clear();
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoStamina);
+
+    REQUIRE(IsBlow(ActionKind::Bash));
+    REQUIRE(IsBlow(ActionKind::PowerBash));
+    REQUIRE_FALSE(IsBlow(ActionKind::Attack));
 }

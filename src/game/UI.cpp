@@ -1428,13 +1428,14 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
     };
 
-    // Attack this one; one power attack. Each says what it does in its
-    // name; no tooltip.
-    for (const auto kind : {ft::ActionKind::Attack, ft::ActionKind::PowerAttack})
+    // Attack this one, bash them; then the power blows. Each says what it
+    // does in its name; no tooltip.
+    for (const auto kind :
+         {ft::ActionKind::Attack, ft::ActionKind::Bash, ft::ActionKind::PowerAttack, ft::ActionKind::PowerBash})
     {
         if (!valid(kind))
             continue;
-        group(0);
+        group(kind == ft::ActionKind::Attack || kind == ft::ActionKind::Bash ? 0 : 1);
         const bool selected = here && act.kind == kind;
         if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
         {

@@ -190,6 +190,12 @@ enum class ActionKind : std::uint8_t
     // Needs the stamina the swing costs, which the snapshot prices. One
     // swing per firing.
     PowerAttack,
+    // A bash, and a power bash, with what blocks: a shield in the left
+    // hand, or a bow, crossbow, staff or two-hander. The interrupt against
+    // a caster; the power one staggers hardest of any blow. Aimed and
+    // priced as a power attack is.
+    Bash,
+    PowerBash,
     // The equip actions PIN: what they put on stays on, against the engine's
     // own swap and the combat AI's choice, until another rule or the panel
     // lets it go. A plain equip would not do -- the AI re-derives what to
@@ -274,6 +280,10 @@ enum class ActionKind : std::uint8_t
 // The three actions that fire through the package pool: a spell from a
 // hand, a power and a shout from the voice.
 [[nodiscard]] bool IsCast(ActionKind action) noexcept;
+
+// The three blows sent to the animation graph: a power attack, a bash, a
+// power bash. Each priced in stamina and reach by the snapshot's Blow.
+[[nodiscard]] bool IsBlow(ActionKind action) noexcept;
 
 // One thing to do. A rule carries a list of these, in order.
 struct Action

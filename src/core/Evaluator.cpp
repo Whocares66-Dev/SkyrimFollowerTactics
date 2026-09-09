@@ -675,9 +675,16 @@ namespace
 // except Target, which is keyed by the action alone: the point of its
 // cooldown is that the follower is not flicked between two enemies on
 // consecutive ticks, and per-target keys would allow exactly that.
+// The blow an action strikes: the power attack for any kind but the two
+// bashes.
+const Snapshot::Blow &BlowFor(const Snapshot &snap, ActionKind kind)
+{
+    return kind == ActionKind::Bash ? snap.bash : kind == ActionKind::PowerBash ? snap.powerBash : snap.powerAttack;
+}
+
 EvalContext::ActionKey CooldownKey(const Action &a, ActorId target)
 {
-    if (a.kind == ActionKind::Attack || a.kind == ActionKind::PowerAttack)
+    if (a.kind == ActionKind::Attack || IsBlow(a.kind))
         return {a.kind, 0, 0, {}};
     return {a.kind, a.form, target, a.effect};
 }
@@ -797,20 +804,22 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
             if (target == snap.currentTarget)
                 return Verdict::EffectActive;
         }
-        // A power attack: in a fight, at one who is still an enemy, with
-        // something in hand that swings, and the stamina it costs.
-        if (a.kind == ActionKind::PowerAttack)
+        // A blow -- a power attack, a bash, a power bash: in a fight, at one
+        // who is still an enemy, with something in hand for it, the stamina
+        // it costs, and within its reach.
+        if (IsBlow(a.kind))
         {
+            const Snapshot::Blow &blow = BlowFor(snap, a.kind);
             if (!snap.inCombat)
                 return Verdict::NoResource;
-            if (!snap.canPowerAttack)
+            if (!blow.possible)
                 return Verdict::NoMeleeWeapon;
             const EnemyView *enemy = target != 0 ? FindEnemy(snap, target) : nullptr;
             if (!enemy)
                 return Verdict::NoTarget;
-            if (snap.stamina.current < snap.powerAttackCost)
+            if (snap.stamina.current < blow.stamina)
                 return Verdict::NoStamina;
-            if (enemy->distance > snap.powerAttackReach)
+            if (enemy->distance > blow.reach)
                 return Verdict::OutOfReach;
         }
         // Exact where the settle time is a guess: on a game whose potions
@@ -1033,15 +1042,21 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "does not carry that armour";
         case ActionKind::Attack:
         case ActionKind::PowerAttack:
+        case ActionKind::Bash:
+        case ActionKind::PowerBash:
             return "not in a fight";
         default:
             return ToString(v);
         }
 
     case Verdict::NoTarget:
-        if (action == ActionKind::Attack || action == ActionKind::PowerAttack)
+        if (action == ActionKind::Attack || IsBlow(action))
             return "no enemy to point at";
         return ToString(v);
+
+    case Verdict::NoMeleeWeapon:
+        return action == ActionKind::PowerAttack ? "nothing in hand that swings"
+                                                 : "nothing in hand that bashes: no shield, bow, staff or two-hander";
 
     case Verdict::NothingToPoison:
         return "no weapon in hand takes a poison";
@@ -1092,7 +1107,7 @@ const char *ToString(Verdict v) noexcept
     case Verdict::CannotDualCast:
         return "cannot dual cast it: no perk for the school";
     case Verdict::NoMeleeWeapon:
-        return "nothing in hand that swings";
+        return "nothing in hand for that blow";
     case Verdict::NoStamina:
         return "not enough stamina";
     case Verdict::OutOfReach:

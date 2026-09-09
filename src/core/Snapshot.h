@@ -357,18 +357,22 @@ struct Snapshot
     Stat stamina{};
 
     bool inCombat{false};
-    // A power attack with what is in the hands: whether one is possible --
-    // a melee weapon or the fists, not a bow, a staff or a spell -- and the
-    // stamina it costs the actor, priced on the game side from the weapon's
-    // weight, the attack's own multiplier and the actor's perks. The
-    // PowerAttack action reads both.
-    bool canPowerAttack{false};
-    float powerAttackCost{0.0f};
-    // How far the swing reaches, centre to centre: the engine's reach for
-    // the actor and weapon, with a margin for the enemy's own body. A swing
-    // at an enemy further than this lands on nothing, and the engine
-    // charges no stamina for it, so the rule waits for the AI to close.
-    float powerAttackReach{0.0f};
+    // A blow the actor could strike with what is in the hands, priced on
+    // the game side: whether it is possible at all, the stamina it costs,
+    // and how far it reaches, centre to centre, with a margin for the
+    // enemy's own body. A blow at an enemy further than that lands on
+    // nothing, and the engine charges no stamina for it, so the rule waits
+    // for the AI to close. A power attack takes a melee weapon or the
+    // fists; a bash takes a shield, or a bow, crossbow, staff or two-hander.
+    struct Blow
+    {
+        bool possible{false};
+        float stamina{0.0f};
+        float reach{0.0f};
+    };
+    Blow powerAttack;
+    Blow bash;
+    Blow powerBash;
     // The edges: this is the first evaluation of a fight, or the one
     // farewell evaluation after it. On the farewell pass only CombatEnds
     // holds -- see PredicateKind.

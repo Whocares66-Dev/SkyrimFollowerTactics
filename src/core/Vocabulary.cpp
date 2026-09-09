@@ -113,7 +113,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 25> kActions{{
+constexpr std::array<Entry<ActionKind>, 27> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. That is
     // how "drink-weakest-health-potion" -- don't burn a strong potion on a
@@ -122,6 +122,8 @@ constexpr std::array<Entry<ActionKind>, 25> kActions{{
     {ActionKind::None, "none", "None"},
     {ActionKind::Attack, "attack", "Attack"},
     {ActionKind::PowerAttack, "power-attack", "Power Attack"},
+    {ActionKind::Bash, "bash", "Bash"},
+    {ActionKind::PowerBash, "power-bash", "Power Bash"},
     {ActionKind::EquipWeapon, "equip-weapon", "Equip weapon"},
     {ActionKind::EquipArrows, "equip-arrows", "Equip arrows"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
@@ -476,6 +478,13 @@ std::string_view Describe(ActionKind v) noexcept
     case ActionKind::PowerAttack:
         return "One power attack at them with what is in hand -- a blade, a two-hander, both hands, the fists -- "
                "pointing the follower at them first if need be. Needs the stamina it costs.";
+    case ActionKind::Bash:
+        return "One bash at them with the shield, or the bow, crossbow, staff or two-hander held: the interrupt "
+               "against a caster. Pointing the follower at them first if need be. Needs the stamina it costs.";
+    case ActionKind::PowerBash:
+        return "One power bash at them with the shield, or the bow, crossbow, staff or two-hander held: the "
+               "hardest stagger of any blow. Pointing the follower at them first if need be. Needs the stamina "
+               "it costs.";
     default:
         return "";
     }

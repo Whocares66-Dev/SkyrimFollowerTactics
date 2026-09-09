@@ -5,6 +5,7 @@
 // RE::-free and unit tested; everything below is imperative Skyrim code that
 // can only be verified by playing. Keep this file thin and obvious.
 
+#include "core/Rule.h"
 #include "core/Snapshot.h"
 
 #include <functional>
@@ -102,26 +103,31 @@ struct SpellOption
     Kind kind{Kind::Spell};
 };
 
-// A power attack with what the actor holds: the animation event that
-// starts it, chosen by the hands -- the right hand's blade or two-hander
-// (attackPowerStartInPlace), the left's alone (...LeftHand), both at once
-// (...DualWield), the fists (the right hand's event) -- and the stamina it
-// costs. No event for a bow, a staff or a spell in the hand that would
-// swing: those bash or cast. The race record's attack data carries the
-// events and their multipliers (docs/ACTIONS.md 6).
-struct PowerAttackPlan
+// A blow with what the actor holds: the animation event that starts it,
+// the stamina it costs, and how far it reaches, centre to centre, with a
+// margin for the enemy's own body. No event where the hands hold nothing
+// for it. The race record's attack data carries the events and their
+// multipliers (docs/ACTIONS.md 6).
+struct BlowPlan
 {
     const char *event{nullptr};
     float stamina{0.0f};
-    // How far it reaches, centre to centre: the engine's reach for this
-    // actor and weapon, plus a margin for the enemy's own body.
     float reach{0.0f};
     [[nodiscard]] bool Possible() const noexcept
     {
         return event != nullptr;
     }
 };
-[[nodiscard]] PowerAttackPlan PlanPowerAttack(RE::Actor *actor);
+// A power attack, chosen by the hands: the right hand's blade or
+// two-hander (attackPowerStartInPlace), the left's alone (...LeftHand),
+// both at once (...DualWield), the fists (the right hand's event). None
+// for a bow, a staff or a spell in the hand that would swing.
+[[nodiscard]] BlowPlan PlanPowerAttack(RE::Actor *actor);
+// A bash (bashStart) or a power bash (bashPowerStart), with what blocks: a
+// shield in the left hand, or a bow, crossbow, staff or two-hander.
+[[nodiscard]] BlowPlan PlanBash(RE::Actor *actor, bool power);
+// The blow a kind of action strikes; an empty plan for any other kind.
+[[nodiscard]] BlowPlan PlanBlow(RE::Actor *actor, ft::ActionKind kind);
 
 // One consumable she carries -- a potion, a food, an ingredient -- for the
 // editor's Consume menu.
