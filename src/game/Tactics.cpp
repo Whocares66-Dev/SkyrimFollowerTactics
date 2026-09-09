@@ -364,6 +364,7 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     }
     v.sheet = BuildCharacterSheet(actor);
     v.skills = BuildSkillSheet(actor);
+    v.perks = BuildPerkPages(actor);
     v.summons = ScanSummons(actor);
     v.inventory = ScanInventory(actor);
     v.magic = ScanMagic(actor);

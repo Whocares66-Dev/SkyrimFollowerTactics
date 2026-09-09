@@ -1287,6 +1287,7 @@ std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
         const std::string rank = entry.ranks > 1 ? std::to_string(entry.rank) + "/" + std::to_string(entry.ranks) : "";
         SheetRow row = Row(std::move(label), rank);
         row.modifiers = entry.description;
+        row.form = entry.perk->GetFormID(); // the name opens the perk's page
         rows.push_back(std::move(row));
     }
     return rows;
@@ -1825,6 +1826,243 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
     return out;
 }
 
+// The entry points by number, from the engine's enum (BGSEntryPoint.h),
+// in the Creation Kit's words: "Mod Attack Damage", "Mod Spell Cost".
+constexpr std::array<const char *, 92> kEntryPointNames{{
+    "Calculate Weapon Damage",
+    "Calculate My Critical Hit Chance",
+    "Calculate My Critical Hit Damage",
+    "Calculate Mine Explode Chance",
+    "Adjust Limb Damage",
+    "Adjust Book Skill Points",
+    "Mod Recovered Health",
+    "Get Should Attack",
+    "Mod Buy Prices",
+    "Add Leveled List On Death",
+    "Get Max Carry Weight",
+    "Mod Addiction Chance",
+    "Mod Addiction Duration",
+    "Mod Positive Chem Duration",
+    "Activate",
+    "Ignore Running During Detection",
+    "Ignore Broken Lock",
+    "Mod Enemy Critical Hit Chance",
+    "Mod Sneak Attack Mult",
+    "Mod Max Placeable Mines",
+    "Mod Bow Zoom",
+    "Mod Recover Arrow Chance",
+    "Mod Skill Use",
+    "Mod Telekinesis Distance",
+    "Mod Telekinesis Damage Mult",
+    "Mod Telekinesis Damage",
+    "Mod Bashing Damage",
+    "Mod Power Attack Stamina",
+    "Mod Power Attack Damage",
+    "Mod Spell Magnitude",
+    "Mod Spell Duration",
+    "Mod Secondary Value Weight",
+    "Mod Armor Weight",
+    "Mod Incoming Stagger",
+    "Mod Target Stagger",
+    "Mod Attack Damage",
+    "Mod Incoming Damage",
+    "Mod Target Damage Resistance",
+    "Mod Spell Cost",
+    "Mod Percent Blocked",
+    "Mod Shield Deflect Arrow Chance",
+    "Mod Incoming Spell Magnitude",
+    "Mod Incoming Spell Duration",
+    "Mod Player Intimidation",
+    "Mod Player Reputation",
+    "Mod Favor Points",
+    "Mod Bribe Amount",
+    "Mod Detection Light",
+    "Mod Detection Movement",
+    "Mod Soul Gem Recharge",
+    "Set Sweep Attack",
+    "Apply Combat Hit Spell",
+    "Apply Bashing Spell",
+    "Apply Reanimate Spell",
+    "Set Boolean Graph Variable",
+    "Mod Spell Casting Sound Event",
+    "Mod Pickpocket Chance",
+    "Mod Detection Sneak Skill",
+    "Mod Falling Damage",
+    "Mod Lockpick Sweet Spot",
+    "Mod Sell Prices",
+    "Can Pickpocket Equipped Item",
+    "Mod Lockpick Level Allowed",
+    "Set Lockpick Starting Arc",
+    "Set Progression Picking",
+    "Make Lockpicks Unbreakable",
+    "Mod Alchemy Effectiveness",
+    "Apply Weapon Swing Spell",
+    "Mod Commanded Actor Limit",
+    "Apply Sneaking Spell",
+    "Mod Player Magic Slowdown",
+    "Mod Ward Magicka Absorption Pct",
+    "Mod Initial Ingredient Effects Learned",
+    "Purify Alchemy Ingredients",
+    "Filter Activation",
+    "Can Dual Cast Spell",
+    "Mod Tempering Health",
+    "Mod Enchantment Power",
+    "Mod Soul Pct Captured To Weapon",
+    "Mod Soul Gem Enchanting",
+    "Mod Number Applied Enchantments Allowed",
+    "Set Activate Label",
+    "Mod Shout OK",
+    "Mod Poison Dose Count",
+    "Should Apply Placed Item",
+    "Mod Armor Rating",
+    "Mod Lockpicking Crime Chance",
+    "Mod Ingredients Harvested",
+    "Mod Spell Range Target Loc",
+    "Mod Potions Created",
+    "Mod Lockpicking Key Reward Chance",
+    "Allow Mount Actor",
+}};
+
+// One entry of a perk as a row: the entry point in the Creation Kit's
+// words with what the function does to it, an ability by name, a quest
+// by name and stage.
+SheetRow EntryRow(const RE::BGSPerkEntry *entry)
+{
+    using Type = RE::PERK_ENTRY_TYPE;
+    switch (entry->GetType())
+    {
+    case Type::kAbility: {
+        const auto *ability = static_cast<const RE::BGSAbilityPerkEntry *>(entry);
+        return Row("Ability", ability->ability && ability->ability->GetName() ? ability->ability->GetName() : "?");
+    }
+    case Type::kQuest:
+        // The quest entry's record is not modelled in this CommonLibSSE
+        // fork; the kind is all that can be said.
+        return Row("Quest", "a stage set");
+    case Type::kEntryPoint: {
+        const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
+        const auto index = static_cast<std::size_t>(point->entryData.entryPoint.get());
+        const char *name = index < kEntryPointNames.size() ? kEntryPointNames[index] : "?";
+        using Function = RE::BGSEntryPointPerkEntry::EntryData::Function;
+        using DataType = RE::BGSEntryPointFunctionData::FunctionType;
+        const auto *data = point->functionData;
+        const auto dataType = data ? data->GetType() : DataType::kInvalid;
+        const float one = dataType == DataType::kOneValue
+                              ? static_cast<const RE::BGSEntryPointFunctionDataOneValue *>(data)->data
+                              : 0.0f;
+        std::string value;
+        switch (point->entryData.function.get())
+        {
+        case Function::kSetValue:
+            value = "= " + Fmt("%g", one);
+            break;
+        case Function::kAddValue:
+            value = Fmt("%+g", one);
+            break;
+        case Function::kMultiplyValue:
+            value = "x " + Fmt("%g", one);
+            break;
+        case Function::kAddRangeToValue:
+            value = "+ a range";
+            break;
+        case Function::kAddActorValueMult:
+            value = "+ a share of an actor value";
+            break;
+        case Function::kAddLeveledList:
+            value = "a leveled list";
+            break;
+        case Function::kAddActivateChoice:
+            value = "an activate choice";
+            break;
+        case Function::kSetToActorValueMult:
+            value = "= a share of an actor value";
+            break;
+        case Function::kMultiplyActorValueMult:
+            value = "x a share of an actor value";
+            break;
+        case Function::kMultiply1PlusActorValueMult:
+            value = "x (1 + a share of an actor value)";
+            break;
+        case Function::kSetText:
+            value = "a text";
+            break;
+        default:
+            if (dataType == DataType::kSpellItem)
+                value = "a spell";
+            break;
+        }
+        return Row(name, value);
+    }
+    default:
+        return Row("Entry", "?");
+    }
+}
+
+std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
+{
+    std::vector<PerkPage> out;
+    if (!actor)
+        return out;
+    std::unordered_set<const RE::BGSPerk *> seen;
+    // A page for a perk held: its id, its rank in its chain, the skill
+    // whose tree it sits in, and what it does, entry by entry.
+    const auto page = [&](RE::BGSPerk *perk, int rank, int ranks, const std::string &skill) {
+        if (!perk || !seen.insert(perk).second)
+            return;
+        PerkPage p;
+        p.form = perk->GetFormID();
+        p.name = perk->GetName() ? perk->GetName() : "?";
+        RE::BSString text;
+        perk->GetDescription(text, perk);
+        p.description = text.c_str() ? text.c_str() : "";
+
+        SheetSection info{"Perk", {}, {}};
+        char id[16];
+        std::snprintf(id, sizeof(id), "%08X", perk->GetFormID());
+        info.rows.push_back(Row("Base ID", id));
+        if (ranks > 1)
+            info.rows.push_back(Row("Rank", std::to_string(rank) + " / " + std::to_string(ranks)));
+        if (!skill.empty())
+            info.rows.push_back(Row("Skill", skill));
+        if (perk->data.hidden)
+            info.rows.push_back(Row("Hidden", "yes"));
+        p.sections.push_back(std::move(info));
+
+        SheetSection entries{"Entries", {}, {}};
+        for (const auto *entry : perk->perkEntries)
+            if (entry)
+                entries.rows.push_back(EntryRow(entry));
+        if (!entries.rows.empty())
+            p.sections.push_back(std::move(entries));
+        out.push_back(std::move(p));
+    };
+
+    if (auto *list = RE::ActorValueList::GetSingleton())
+    {
+        for (int i = 0; i < static_cast<int>(RE::ActorValue::kTotal); ++i)
+        {
+            const auto value = static_cast<RE::ActorValue>(i);
+            auto *info = list->GetActorValue(value);
+            if (!info || !info->skill)
+                continue;
+            const char *skillName = info->GetFullName();
+            for (const TreePerk &entry : TreePerks(value))
+            {
+                if (!actor->HasPerk(entry.perk))
+                    continue;
+                if (entry.perk->nextPerk && actor->HasPerk(entry.perk->nextPerk))
+                    continue;
+                page(entry.perk, entry.rank, entry.ranks, skillName ? skillName : "");
+            }
+        }
+    }
+    if (const auto *base = actor->GetActorBase(); base && base->perks)
+        for (std::uint32_t i = 0; i < base->perkCount; ++i)
+            if (auto *perk = base->perks[i].perk; perk && !perk->data.hidden && actor->HasPerk(perk))
+                page(perk, base->perks[i].currentRank, 1, "");
+    return out;
+}
+
 std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
 {
     std::vector<SheetSection> out;
@@ -2037,6 +2275,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                 SheetRow row = Row(name, base->perks[i].currentRank > 1 ? std::to_string(base->perks[i].currentRank)
                                                                         : std::string());
                 row.modifiers = text.c_str() ? text.c_str() : "";
+                row.form = perk->GetFormID();
                 s.rows.push_back(std::move(row));
             }
         }

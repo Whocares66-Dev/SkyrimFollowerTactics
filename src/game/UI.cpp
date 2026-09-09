@@ -2217,17 +2217,14 @@ void DrawDisclosure(Im::ImVec2 pos, bool open)
 
 // The drawer an open skill row reveals: its perks, name and description,
 // set in from both edges of the parent table and given air above and below.
-void DrawPerkDrawer(const SheetRow &row, float left, float right)
+// A table of perks: Perk, Rank, Description, the name a link to the perk's
+// page. The drawer under a skill and the Other section are both this.
+void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, float width,
+                   const std::function<void(std::uint32_t)> &onLink)
 {
-    constexpr float kGap = 6.0f;
-    const float inset = 4.0f * kCellPadX;
-
-    Im::Dummy(Im::ImVec2(0.0f, kGap));
-    Im::SetCursorScreenPos(Im::ImVec2(left + inset, Im::GetCursorScreenPos().y));
-
     float nameWidth = TextWidth("Perk");
     float rankWidth = TextWidth("Rank");
-    for (const auto &sub : row.detail)
+    for (const auto &sub : perks)
     {
         nameWidth = (std::max)(nameWidth, TextWidth(sub.label));
         rankWidth = (std::max)(rankWidth, TextWidth(sub.value));
@@ -2235,25 +2232,42 @@ void DrawPerkDrawer(const SheetRow &row, float left, float right)
     const float pad = 2.0f * kCellPadX + 8.0f;
 
     const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
-    const float width = (std::max)(0.0f, right - left - 2.0f * inset);
-    if (Im::BeginTable(("perks##" + row.label).c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
+    if (!Im::BeginTable(id.c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
+        return;
+    Im::TableSetupColumn("Perk", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
+    Im::TableSetupColumn("Rank", Im::ImGuiTableColumnFlags_WidthFixed, rankWidth + pad, 0);
+    Im::TableSetupColumn("Description", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+    PlainHeaderRow({"Perk", "Rank", "Description"});
+    for (const auto &sub : perks)
     {
-        Im::TableSetupColumn("Perk", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
-        Im::TableSetupColumn("Rank", Im::ImGuiTableColumnFlags_WidthFixed, rankWidth + pad, 0);
-        Im::TableSetupColumn("Description", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-        PlainHeaderRow({"Perk", "Rank", "Description"});
-        for (const auto &sub : row.detail)
+        Im::TableNextRow(0, 0.0f);
+        Im::TableSetColumnIndex(0);
+        if (sub.form != 0 && onLink)
         {
-            Im::TableNextRow(0, 0.0f);
-            Im::TableSetColumnIndex(0);
-            Im::Text("%s", sub.label.c_str());
-            Im::TableSetColumnIndex(1);
-            Im::Text("%s", sub.value.c_str());
-            Im::TableSetColumnIndex(2);
-            Im::TextWrapped("%s", sub.modifiers.c_str());
+            // The name is a link to the perk's page.
+            const Im::ImVec2 pos = Im::GetCursorScreenPos();
+            if (CellClicked((id + "/" + sub.label).c_str()))
+                onLink(sub.form);
+            Im::SetCursorScreenPos(pos);
         }
-        Im::EndTable();
+        Im::Text("%s", sub.label.c_str());
+        Im::TableSetColumnIndex(1);
+        Im::Text("%s", sub.value.c_str());
+        Im::TableSetColumnIndex(2);
+        Im::TextWrapped("%s", sub.modifiers.c_str());
     }
+    Im::EndTable();
+}
+
+void DrawPerkDrawer(const SheetRow &row, float left, float right, const std::function<void(std::uint32_t)> &onLink = {})
+{
+    constexpr float kGap = 6.0f;
+    const float inset = 4.0f * kCellPadX;
+
+    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    Im::SetCursorScreenPos(Im::ImVec2(left + inset, Im::GetCursorScreenPos().y));
+    const float width = (std::max)(0.0f, right - left - 2.0f * inset);
+    DrawPerkTable("perks##" + row.label, row.detail, width, onLink);
     Im::Dummy(Im::ImVec2(0.0f, kGap));
 }
 
@@ -2412,6 +2426,15 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             bool open = false;
             if (row.detail.empty())
             {
+                if (modifiers && row.form != 0 && onLink)
+                {
+                    // A loose perk: its name is the link to its page, as the
+                    // value cell is elsewhere.
+                    const Im::ImVec2 pos = Im::GetCursorScreenPos();
+                    if (CellClicked(("##link" + section.title + "/" + row.label).c_str()))
+                        onLink(row.form);
+                    Im::SetCursorScreenPos(pos);
+                }
                 Im::Text("%s", row.label.c_str());
                 // A row's note is hover text on its label, where there is no
                 // Modifiers column to carry it.
@@ -2459,7 +2482,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             }
 
             Im::TableSetColumnIndex(1);
-            if (row.form != 0 && onLink)
+            if (row.form != 0 && onLink && !modifiers)
             {
                 // The value names an item: that cell is a link to its page,
                 // lit like the inventory's name cell.
@@ -2499,7 +2522,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
 
             // The drawer: close this piece, draw beneath, reopen for the rest.
             endPiece();
-            DrawPerkDrawer(row, left, right);
+            DrawPerkDrawer(row, left, right, onLink);
             drawerOpen = true;
         }
 
@@ -4121,6 +4144,70 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     EndDimmed();
 }
 
+// The Skills tab: the skills, or one perk's page. Keyed by follower, as the
+// other tabs' states are. Render thread only.
+struct SkillsTabState
+{
+    std::uint32_t detail{0}; // the perk open in detail; 0 for the skills
+};
+std::unordered_map<ft::ActorId, SkillsTabState> g_skillsTabs;
+
+void DrawSkills(const FollowerView &view)
+{
+    SkillsTabState &state = g_skillsTabs[view.id];
+    if (state.detail != 0)
+    {
+        const PerkPage *page = nullptr;
+        for (const auto &p : view.perks)
+            if (p.form == state.detail)
+                page = &p;
+        if (!page)
+        {
+            state.detail = 0;
+        }
+        else
+        {
+            Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+            if (GlyphButton("back", Im::GetFrameHeight(), Glyph::Back))
+                state.detail = 0;
+            Im::PopStyleVar(1);
+            Im::SameLine(0.0f, kCellPadX);
+            Im::AlignTextToFramePadding();
+            Im::Text("%s", page->name.c_str());
+            Im::Spacing();
+            DrawSections(page->sections, false);
+            if (!page->description.empty())
+            {
+                Im::Spacing();
+                Im::TextWrapped("%s", page->description.c_str());
+            }
+            return;
+        }
+    }
+    // The skills, with their trees; then the perks in no tree, in the same
+    // table the trees open into, under a heading of their own.
+    const auto open = [&state](std::uint32_t form) { state.detail = form; };
+    std::vector<SheetSection> skills;
+    const SheetSection *other = nullptr;
+    for (const auto &section : view.skills)
+    {
+        if (section.title == "Other")
+            other = &section;
+        else
+            skills.push_back(section);
+    }
+    DrawSections(skills, true, open);
+    if (other)
+    {
+        CentredHeading("Other");
+        Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 4.0f));
+        DrawPerkTable("perks##other", other->rows, 0.0f, open);
+        Im::PopStyleVar(1);
+        Im::Spacing();
+        Im::Spacing();
+    }
+}
+
 // Whether any follower's page has been drawn yet. The first page to open
 // lands on Tactics, which is what the mod is for; from then on the tab bar
 // keeps whatever was last chosen, as tab bars do. Render thread only.
@@ -4174,7 +4261,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     if (Im::BeginTabItem("Skills"))
     {
         Im::Spacing();
-        DrawSections(view.skills, true);
+        DrawSkills(view);
         Im::EndTabItem();
     }
     // What the combat AI is tuned by, before what it is told: a rule works

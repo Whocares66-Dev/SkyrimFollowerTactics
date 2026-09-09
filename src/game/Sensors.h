@@ -274,6 +274,21 @@ struct Contribution
 // any fortify or potion modifier folded into the same line.
 [[nodiscard]] std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor);
 
+// One perk's page: what the record says. The Perk section (id, rank,
+// skill) and an Entries section, one row per thing the perk does -- an
+// entry point with its function, an ability it grants, a quest it
+// advances -- with the description beneath as prose.
+struct PerkPage
+{
+    std::uint32_t form{0};
+    std::string name;
+    std::string description;
+    std::vector<SheetSection> sections;
+};
+
+// A page for every perk the follower holds, in a skill's tree or loose.
+[[nodiscard]] std::vector<PerkPage> BuildPerkPages(RE::Actor *actor);
+
 // The Tactics tab's Combat Style section: the numbers and flags the combat
 // AI is tuned by, read off the style she is using right now -- her live
 // combat controller's in a fight, her record's otherwise -- so a copy the
