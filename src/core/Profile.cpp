@@ -173,61 +173,22 @@ struct FormField
         return std::nullopt;
     }
     Action a;
-    // The twelve fixed policies of before 2026-09-08 -- the strongest and
-    // weakest health, magicka and stamina potion and poison -- read as the
-    // four of today with the vanilla effect's name; and Target, the name
-    // Attack had until 2026-09-09.
-    struct Old
+    const auto kind = ActionFromWireName(*name);
+    if (!kind)
     {
-        const char *name;
-        ActionKind kind;
-        const char *effect;
-    };
-    static constexpr Old kOld[] = {
-        {"target", ActionKind::Attack, nullptr},
-        {"drink-strongest-health-potion", ActionKind::DrinkStrongest, "Restore Health"},
-        {"drink-strongest-magicka-potion", ActionKind::DrinkStrongest, "Restore Magicka"},
-        {"drink-strongest-stamina-potion", ActionKind::DrinkStrongest, "Restore Stamina"},
-        {"drink-weakest-health-potion", ActionKind::DrinkWeakest, "Restore Health"},
-        {"drink-weakest-magicka-potion", ActionKind::DrinkWeakest, "Restore Magicka"},
-        {"drink-weakest-stamina-potion", ActionKind::DrinkWeakest, "Restore Stamina"},
-        {"apply-strongest-health-poison", ActionKind::ApplyStrongest, "Damage Health"},
-        {"apply-strongest-magicka-poison", ActionKind::ApplyStrongest, "Damage Magicka"},
-        {"apply-strongest-stamina-poison", ActionKind::ApplyStrongest, "Damage Stamina"},
-        {"apply-weakest-health-poison", ActionKind::ApplyWeakest, "Damage Health"},
-        {"apply-weakest-magicka-poison", ActionKind::ApplyWeakest, "Damage Magicka"},
-        {"apply-weakest-stamina-poison", ActionKind::ApplyWeakest, "Damage Stamina"},
-    };
-    bool old = false;
-    for (const Old &o : kOld)
-    {
-        if (*name == o.name)
-        {
-            a.kind = o.kind;
-            if (o.effect)
-                a.effect = o.effect;
-            old = true;
-        }
+        why = "unknown action \"" + *name + "\"";
+        return std::nullopt;
     }
-    if (!old)
+    a.kind = *kind;
+    if (IsPolicy(a.kind))
     {
-        const auto kind = ActionFromWireName(*name);
-        if (!kind)
+        const auto effect = Str(j, "effect");
+        if (!effect || effect->empty())
         {
-            why = "unknown action \"" + *name + "\"";
+            why = "no effect for \"" + *name + "\"";
             return std::nullopt;
         }
-        a.kind = *kind;
-        if (IsPolicy(a.kind))
-        {
-            const auto effect = Str(j, "effect");
-            if (!effect || effect->empty())
-            {
-                why = "no effect for \"" + *name + "\"";
-                return std::nullopt;
-            }
-            a.effect = *effect;
-        }
+        a.effect = *effect;
     }
     const FormField form = ReadForm(j, "form", codec);
     if (!form.ok)

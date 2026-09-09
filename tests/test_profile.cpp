@@ -151,7 +151,7 @@ std::string OneRuleFile(const std::string &rule, const std::string &extraTop = "
 const std::string kHealRule = R"({
     "label": "heal",
     "if": { "subject": "self", "predicate": "health-pct-below", "arg": 0.5 },
-    "then": { "target": "self", "do": [ { "action": "drink-strongest-health-potion" } ] }
+    "then": { "target": "self", "do": [ { "action": "drink-strongest", "effect": "Restore Health" } ] }
 })";
 
 } // namespace
@@ -305,7 +305,7 @@ TEST_CASE("a key this build does not know is ignored", "[profile]")
     const std::string rule = R"({
         "colour": "red",
         "if": { "subject": "self", "predicate": "health-pct-below", "arg": 0.5, "mood": "grim" },
-        "then": { "target": "self", "do": [ { "action": "drink-strongest-health-potion", "sip": true } ] }
+        "then": { "target": "self", "do": [ { "action": "drink-strongest", "effect": "Restore Health", "sip": true } ] }
     })";
     const auto read = ReadProfile(OneRuleFile(rule, R"("theme": "dark",)"), kHex);
 
@@ -323,7 +323,7 @@ TEST_CASE("a rule naming a value this build does not know is dropped, and the re
     const std::string unknownPredicate = R"({
         "label": "future",
         "if": { "subject": "self", "predicate": "distance-to-player-above", "arg": 500 },
-        "then": { "target": "self", "do": [ { "action": "drink-strongest-health-potion" } ] }
+        "then": { "target": "self", "do": [ { "action": "drink-strongest", "effect": "Restore Health" } ] }
     })";
     const std::string unknownSubject = R"({
         "if": { "subject": "horse", "predicate": "any" },
@@ -359,7 +359,7 @@ TEST_CASE("an unknown action is dropped alone and its rule kept", "[profile]")
         "if": { "subject": "self", "predicate": "health-pct-below", "arg": 0.5 },
         "then": { "target": "self", "do": [
             { "action": "sing" },
-            { "action": "drink-strongest-health-potion" },
+            { "action": "drink-strongest", "effect": "Restore Health" },
             { "action": "equip-weapon", "hand": "tail" }
         ] }
     })";
@@ -442,7 +442,7 @@ TEST_CASE("a field of the wrong shape reads as absent", "[profile]")
         "enabled": "yes",
         "label": 12,
         "if": { "subject": "self", "predicate": "health-pct-below", "arg": "half" },
-        "then": { "target": "self", "do": { "action": "drink-strongest-health-potion" } }
+        "then": { "target": "self", "do": { "action": "drink-strongest", "effect": "Restore Health" } }
     })";
     const auto read = ReadProfile(OneRuleFile(rule, R"("enabled": "on",)"), kHex);
 
@@ -475,15 +475,12 @@ TEST_CASE("the hex codec passes ids through unchanged", "[profile]")
     REQUIRE_FALSE(kHex.decode("0xA2C94~Skyrim.esm").has_value());
 }
 
-TEST_CASE("a policy names its effect on the wire, and the old fixed names still read", "[profile]")
+TEST_CASE("a policy names its effect on the wire, and one without an effect is dropped alone", "[profile]")
 {
-    // The twelve policies of before 2026-09-08 read as today's four with
-    // the vanilla effect's name; today's names carry the effect beside them,
-    // and one without an effect is dropped alone.
     const std::string rule = R"({
         "if": { "subject": "self", "predicate": "any" },
         "then": { "target": "self", "do": [
-            { "action": "apply-weakest-stamina-poison" },
+            { "action": "apply-weakest", "effect": "Damage Stamina" },
             { "action": "drink-weakest", "effect": "Resist Fire" },
             { "action": "eat-strongest-food", "effect": "Restore Stamina" },
             { "action": "drink-strongest" }
@@ -506,21 +503,4 @@ TEST_CASE("a policy names its effect on the wire, and the old fixed names still 
     const auto j = nlohmann::json::parse(again);
     REQUIRE(j["rules"][0]["then"]["do"][1]["action"] == "drink-weakest");
     REQUIRE(j["rules"][0]["then"]["do"][1]["effect"] == "Resist Fire");
-}
-
-TEST_CASE("Attack is \"attack\" on the wire, and the old name \"target\" still reads", "[profile]")
-{
-    const std::string rule = R"({
-        "if": { "subject": "ally", "predicate": "attacked-by", "arg": 2 },
-        "then": { "target": "attacker", "do": [ { "action": "target" } ] }
-    })";
-    const auto read = ReadProfile(OneRuleFile(rule), kHex);
-    REQUIRE(read.profile->rules.rules.size() == 1);
-    REQUIRE(read.profile->rules.rules[0].actions.size() == 1);
-    REQUIRE(read.profile->rules.rules[0].actions[0].kind == ActionKind::Attack);
-    REQUIRE(read.profile->rules.rules[0].actions[0].effect.empty());
-    REQUIRE(read.warnings.empty());
-
-    const auto j = nlohmann::json::parse(WriteProfile(*read.profile, kHex));
-    REQUIRE(j["rules"][0]["then"]["do"][0]["action"] == "attack");
 }
