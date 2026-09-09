@@ -2940,7 +2940,8 @@ std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const 
         switch (static_cast<Column>(spec.ColumnUserID))
         {
         case Column::Type:
-            return a.type.compare(b.type);
+            // The consumables' lists show the effect in this column.
+            return a.effect.empty() && b.effect.empty() ? a.type.compare(b.type) : a.effect.compare(b.effect);
         case Column::Damage:
             return number(a.damage, b.damage);
         case Column::Armor:
@@ -3008,9 +3009,18 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
 
     constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg | Im::ImGuiTableFlags_Sortable;
     const float gutter = kCellPadX * 2.0f;
-    float typeWidth = TextWidth("Type");
+    // A consumable list's second column is what the thing does, not a Type
+    // that would only repeat the heading.
+    const bool consumables = state.category == static_cast<int>(ItemCategory::Potions) ||
+                             state.category == static_cast<int>(ItemCategory::Poisons) ||
+                             state.category == static_cast<int>(ItemCategory::Food) ||
+                             state.category == static_cast<int>(ItemCategory::Ingredients);
+    const auto typeText = [consumables](const InventoryItem &item) -> const std::string & {
+        return consumables ? item.effect : item.type;
+    };
+    float typeWidth = TextWidth(consumables ? "Effect" : "Type");
     for (const auto &item : view.inventory)
-        typeWidth = (std::max)(typeWidth, TextWidth(item.type));
+        typeWidth = (std::max)(typeWidth, TextWidth(typeText(item)));
     // A sortable heading keeps room beside its label for the sort arrow, and
     // a column sized to the label alone clips it to "D...". The allowance is
     // ImGui's own (TableHeader: FontSize * 0.65 + FramePadding.x), so each
@@ -3036,7 +3046,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     }
     Im::TableSetupColumn("Name", Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
                          static_cast<Im::ImGuiID>(Column::Name));
-    Im::TableSetupColumn("Type", Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
+    Im::TableSetupColumn(consumables ? "Effect" : "Type", Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
                          static_cast<Im::ImGuiID>(Column::Type));
     // The stat, highest first on the first click: for a weapon or a piece
     // of armour it is the number, and the rest wait on the item's page.
@@ -3127,7 +3137,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         }
 
         Im::TableNextColumn();
-        Im::Text("%s", item->type.c_str());
+        Im::Text("%s", typeText(*item).c_str());
 
         char num[32];
         if (weapons || armour)

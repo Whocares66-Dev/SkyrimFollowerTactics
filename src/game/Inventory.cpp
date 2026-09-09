@@ -276,8 +276,23 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         stats.rows.push_back(Row("Damage", Fmt("%.0f", item.damage)));
         return;
     }
+    // The effects' names in one line, for the list. An ingredient gives
+    // its first effect when eaten and no other.
+    const auto effectNames = [](const RE::MagicItem *magic, bool firstOnly) {
+        std::string out;
+        for (const auto *effect : magic->effects)
+        {
+            const char *name = effect && effect->baseEffect ? effect->baseEffect->GetFullName() : nullptr;
+            if (name && *name && out.find(name) == std::string::npos)
+                out += (out.empty() ? "" : ", ") + std::string(name);
+            if (firstOnly)
+                break;
+        }
+        return out;
+    };
     if (auto *alch = object->As<RE::AlchemyItem>())
     {
+        item.effect = effectNames(alch, false);
         if (alch->IsPoison())
         {
             item.type = "Poison";
@@ -300,6 +315,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     {
         item.type = "Ingredient";
         item.category = ItemCategory::Ingredients;
+        item.effect = effectNames(ingredient, true);
         item.effects = EffectLines(ingredient);
         return;
     }
