@@ -4091,29 +4091,9 @@ void DrawSummon(const SummonView &summon)
                 [&] { Im::Text("%s", remainingText.c_str()); });
 
     Im::Spacing();
-    {
-        // Who it is: the reference and its base, for the console, and the
-        // name beneath them.
-        SheetSection identity{"Identity", {}, {}};
-        char id[16];
-        std::snprintf(id, sizeof(id), "%08X", summon.id);
-        SheetRow ref;
-        ref.label = "Ref ID";
-        ref.value = id;
-        identity.rows.push_back(std::move(ref));
-        std::snprintf(id, sizeof(id), "%08X", summon.baseId);
-        SheetRow base;
-        base.label = "Base ID";
-        base.value = id;
-        identity.rows.push_back(std::move(base));
-        SheetRow name;
-        name.label = "Name";
-        name.value = summon.name;
-        identity.rows.push_back(std::move(name));
-        std::vector<SheetSection> sections{std::move(identity)};
-        sections.insert(sections.end(), summon.sheet.begin(), summon.sheet.end());
-        DrawSections(sections, false);
-    }
+    // The sheet's General table has the reference, its base and the name,
+    // as a follower's does.
+    DrawSections(summon.sheet, false);
 }
 
 // The Summons tab: what she commands right now. A chip per summon above the
