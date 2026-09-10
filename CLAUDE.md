@@ -72,7 +72,7 @@ its runtime is present, unused so far.
 `MO2\mods\FollowerTactics\SKSE\Plugins\`. New mods appear **unticked** in MO2 -- tick it
 or the DLL never loads.
 
-Last verified: 147 cases green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 18 (`core-cov`), 2026-09-09; 98% of `src/core` lines covered.
+Last verified green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 18 (`core-cov`), 2026-09-09. Counts -- how many cases, what percentage covered -- are deliberately not kept here: they move with every test added, and a number that goes stale in a week teaches you to distrust the page. Run the presets and read the numbers off them.
 
 ## After every edit
 
@@ -82,7 +82,7 @@ project:
 ```powershell
 .\tools\build.ps1 -Preset core -Test        # 1. tests
 cmake --build --preset core --target format # 2. formatter, rewrites in place
-cmake --build --preset core --target tidy   # 3. linter (~5 min: src/game parses CommonLibSSE without a PCH)
+cmake --build --preset core --target tidy   # 3. linter, src/core
 .\tools\build.ps1 -Preset debug             # 4. plugin builds and deploys
 ```
 
@@ -92,11 +92,14 @@ cmake --build --preset core --target tidy   # 3. linter (~5 min: src/game parses
 concurrency and misc groups, nothing stylistic; the file says what is excluded and
 why, and names the one known false positive.
 
-Before anything is called done, all four must be green, plus:
+Before anything is called done, all four must be green, plus both of these:
 
 ```powershell
-.\tools\build.ps1 -Preset core-asan -Test   # AddressSanitizer, before committing
+.\tools\build.ps1 -Preset core-asan -Test   # AddressSanitizer
+cmake --build --preset debug --target tidy  # the linter over src/game too
 ```
+
+The second is the slower one -- every `src/game` translation unit parses the whole of CommonLibSSE, which no filter avoids and which the `/Y-` above means clang cannot precompile once and reuse. Spread across cores it is about a minute and a half against `src/core`'s twenty seconds, which is why it sits here rather than in the fast loop.
 
 **A green build is not a passing check.** Every one of these has caught a defect
 that compiled perfectly: the tests caught a cooldown interaction that changed
@@ -109,7 +112,7 @@ there IS a real check, so use it.
 
 ### The linter's blind spot, and how it hid
 
-`tidy` covers `src/core` **and** `src/game`. Getting `src/game` covered needs two
+**Each preset's `tidy` lints what its own compile database covers, and no more**: the core presets lint `src/core`, and `src/game` -- which appears only in the *plugin's* database -- is covered by `cmake --build --preset debug --target tidy`. Getting `src/game` covered needs two
 flags that are easy to get wrong:
 
 - `--header-filter=src.(core|game)` keeps CommonLibSSE's thousands of header
@@ -120,9 +123,7 @@ flags that are easy to get wrong:
   looks exactly like a clean run. If tidy ever reports nothing on a file you
   know is messy, check it actually parsed.
 
-`src/game` also only appears in the *plugin's* compile database, which the
-core-only presets never generate, so `tidy` points at `build/debug` when that
-exists.
+Until 2026-09-09 `tidy` reached across presets instead, pointing `-p` at `build/debug` whenever that directory existed. That test is answered at CONFIGURE time, so it went stale in exactly the tree that most needs it -- a fresh clone, or a new worktree -- and clang-tidy then parsed `src/game` with guessed flags and buried the real findings under `no type named 'string_view' in namespace 'std'` and `inline variables are a C++17 extension` -- errors that look like a catastrophe in our own headers and mean nothing at all. It is the `.pch` blind spot wearing the opposite mask, a catastrophic-looking run rather than a clean-looking one, and it is answered the same way: **check that it actually parsed.**
 
 ## Toolchain gotchas already hit
 
