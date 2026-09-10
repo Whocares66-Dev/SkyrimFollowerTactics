@@ -1523,24 +1523,37 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // each, and are not drawn with nothing under them.
     if (valid(ft::ActionKind::DrinkStrongest))
     {
-        group(1);
-        if (carried(ft::ConsumableKind::Potion) && BeginCascade("Potion"))
+        // The group is entered only for a heading that is drawn, or the
+        // divider would stand above the next group with nothing over it.
+        if (carried(ft::ConsumableKind::Potion))
         {
-            byEffect(ft::ConsumableKind::Potion, ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest,
-                     ft::ActionKind::DrinkPotion);
-            Im::EndMenu();
+            group(1);
+            if (BeginCascade("Potion"))
+            {
+                byEffect(ft::ConsumableKind::Potion, ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest,
+                         ft::ActionKind::DrinkPotion);
+                Im::EndMenu();
+            }
         }
-        if (carried(ft::ConsumableKind::Food) && BeginCascade("Food"))
+        if (carried(ft::ConsumableKind::Food))
         {
-            byEffect(ft::ConsumableKind::Food, ft::ActionKind::EatStrongestFood, ft::ActionKind::EatWeakestFood,
-                     ft::ActionKind::EatFood);
-            Im::EndMenu();
+            group(1);
+            if (BeginCascade("Food"))
+            {
+                byEffect(ft::ConsumableKind::Food, ft::ActionKind::EatStrongestFood, ft::ActionKind::EatWeakestFood,
+                         ft::ActionKind::EatFood);
+                Im::EndMenu();
+            }
         }
-        if (carried(ft::ConsumableKind::Ingredient) && BeginCascade("Ingredient"))
+        if (carried(ft::ConsumableKind::Ingredient))
         {
-            byEffect(ft::ConsumableKind::Ingredient, ft::ActionKind::EatStrongestIngredient,
-                     ft::ActionKind::EatWeakestIngredient, ft::ActionKind::EatIngredient);
-            Im::EndMenu();
+            group(1);
+            if (BeginCascade("Ingredient"))
+            {
+                byEffect(ft::ConsumableKind::Ingredient, ft::ActionKind::EatStrongestIngredient,
+                         ft::ActionKind::EatWeakestIngredient, ft::ActionKind::EatIngredient);
+                Im::EndMenu();
+            }
         }
     }
 
