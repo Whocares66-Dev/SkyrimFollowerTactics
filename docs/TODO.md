@@ -174,7 +174,7 @@ in `docs/PLAN.md`.
 - **Pool tests.** The package pool and lease have no unit tests because they
   touch the game. A seam that lets the tick and release logic run against a
   fake actor would cover the release paths.
-- **What the core tests never reach** (coverage, 2026-09-09; `.	oolsuild.ps1 -Preset core-cov -Coverage`, line-by-line in `build\core-cov\coverage\html`). 92% of `src/core` lines overall; `Evaluator.cpp` is 85%, and the misses are whole families, not corners: every magicka and stamina predicate on the enemy, the ally, the player and the follower's own (only health is tested); `HitBy` and `HitType`; the ally as an action target; the `ChargeSoulGem` inventory gate; the armour and resistance predicates on an ally. One test per family would close most of it.
+- **What the core tests never reach** (coverage, 2026-09-09; `.\tools\build.ps1 -Preset core-cov -Coverage`, line-by-line in `build\core-cov\coverage\html`). 98% of `src/core` lines; `Profile.cpp` is complete. What is left is by construction: the resolver's branch for an enemy's attacker (the validity matrix never lets that pair through), the `default:` arms of exhaustive switches, and the `Verdict` words' final `"?"`. Nothing worth a test.
 
 ## Toolchain
 

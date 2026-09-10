@@ -71,7 +71,7 @@ its runtime is present, unused so far.
 `MO2\mods\FollowerTactics\SKSE\Plugins\`. New mods appear **unticked** in MO2 -- tick it
 or the DLL never loads.
 
-Last verified: 127 cases green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 18 (`core-cov`), 2026-09-09; 92% of `src/core` lines covered.
+Last verified: 139 cases green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 18 (`core-cov`), 2026-09-09; 98% of `src/core` lines covered.
 
 ## After every edit
 
