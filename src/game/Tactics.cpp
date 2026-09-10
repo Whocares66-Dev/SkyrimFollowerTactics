@@ -233,11 +233,14 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     caps.supported[static_cast<std::size_t>(ft::ActionKind::CastSpell)] = PackagesAvailable();
     caps.supported[static_cast<std::size_t>(ft::ActionKind::UsePower)] = PackagesAvailable();
     caps.supported[static_cast<std::size_t>(ft::ActionKind::Shout)] = PackagesAvailable();
+    caps.supported[static_cast<std::size_t>(ft::ActionKind::UseScroll)] = PackagesAvailable();
 
     // Transient, unlike the line above: every slot mid-cast means a cast rule
     // is skipped for THIS evaluation only, with no cooldown spent, and the
     // next rule down gets its turn.
     caps.busy[static_cast<std::size_t>(ft::ActionKind::CastSpell)] = PackagesAvailable() && !HasFreeSlot();
+    caps.busy[static_cast<std::size_t>(ft::ActionKind::UseScroll)] =
+        caps.busy[static_cast<std::size_t>(ft::ActionKind::CastSpell)];
     caps.busy[static_cast<std::size_t>(ft::ActionKind::UsePower)] = PackagesAvailable() && !HasFreeVoiceSlot();
     caps.busy[static_cast<std::size_t>(ft::ActionKind::Shout)] =
         caps.busy[static_cast<std::size_t>(ft::ActionKind::UsePower)];

@@ -132,6 +132,9 @@ struct Slot
     // nothing is lent; restored on release.
     RE::TESNPC *voiceOf = nullptr;
     RE::BGSVoiceType *ownVoice = nullptr;
+    // How many of the scroll the actor carried when the read was asked for;
+    // 0 for a spell. See SpendScroll.
+    std::int32_t scrollsBefore = 0;
     // For a follower outside the vanilla alias: the record was put at the
     // front of one of their alias instances' package arrays (PutOnStack),
     // and comes off on release by a fresh walk of those arrays -- never a
@@ -791,6 +794,34 @@ void TakeOffStack(RE::Actor *actor, RE::TESPackage *pkg)
     }
 }
 
+// A scroll read is spent. If the engine spent it on the package cast the
+// count has dropped by one and nothing is done; if not, one is taken off
+// by hand, so a Scroll rule can never read the same scroll for free.
+void SpendScroll(std::size_t i, RE::Actor *actor)
+{
+    auto &slot = g_pool[i];
+    if (slot.scrollsBefore <= 0 || !actor)
+        return;
+    auto *scroll = RE::TESForm::LookupByID<RE::ScrollItem>(slot.spell);
+    if (!scroll)
+        return;
+    const auto counts = actor->GetInventoryCounts([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::Scroll); });
+    const auto it = counts.find(scroll);
+    const std::int32_t now = it != counts.end() ? it->second : 0;
+    if (now < slot.scrollsBefore)
+    {
+        logger::info("  scroll: the engine spent {} ({} -> {})", scroll->GetName() ? scroll->GetName() : "?",
+                     slot.scrollsBefore, now);
+    }
+    else
+    {
+        actor->RemoveItem(scroll, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+        logger::info("  scroll: {} spent by hand ({} -> {})", scroll->GetName() ? scroll->GetName() : "?", now,
+                     now - 1);
+    }
+    slot.scrollsBefore = 0;
+}
+
 void Release(std::size_t i)
 {
     // The record comes off the stack it was put on, if it was, while the
@@ -1014,8 +1045,20 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
     // A concentration spell streams for as long as the procedure's CastTime
     // says. Set that to the sustain, and remember that the fire event is
     // not the end of this one.
-    auto *spellItem = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
+    // A spell or a scroll: both MagicItems with a casting type.
+    auto *spellItem = RE::TESForm::LookupByID<RE::MagicItem>(spellFormID);
     slot.sustained = spellItem && spellItem->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
+    // A scroll is spent by the read. Whether the engine spends it on a
+    // package cast is the open question, so the count is kept and one is
+    // taken by hand on the fire event if it did not drop (SpendScroll).
+    slot.scrollsBefore = 0;
+    if (auto *scroll = spellItem ? spellItem->As<RE::ScrollItem>() : nullptr)
+    {
+        const auto counts =
+            actor->GetInventoryCounts([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::Scroll); });
+        if (const auto it = counts.find(scroll); it != counts.end())
+            slot.scrollsBefore = it->second;
+    }
     const float sustain = sustainSeconds > 0.0f ? sustainSeconds : kDefaultSustainSeconds;
     if (slot.sustained)
     {
@@ -1258,7 +1301,10 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
 
         const char *why = nullptr;
         if (!slot.sustained && slot.fired.load(std::memory_order_relaxed))
+        {
             why = slot.power ? "power fired" : slot.wrapper ? "shout fired" : "spell fired";
+            SpendScroll(i, actor.get());
+        }
         else if (slot.sustained && slot.stopped.load(std::memory_order_relaxed))
             why = "stream ended";
         else if (slot.sustained && slot.target && slot.target.get() && slot.target.get()->IsDead())

@@ -98,7 +98,8 @@ struct SpellOption
     {
         Spell,
         Power,
-        Shout
+        Shout,
+        Scroll // carried, not known: read once and spent
     };
     Kind kind{Kind::Spell};
 };

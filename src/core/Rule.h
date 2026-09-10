@@ -257,6 +257,11 @@ enum class ActionKind : std::uint8_t
     // A shout (Unrelenting Force): a TESShout record the follower has,
     // through the same Shout package with the shout itself in its input.
     Shout,
+    // A scroll carried, read from a hand through the UseMagic package with
+    // the scroll as its spell: no magicka, and the scroll is spent. Named
+    // by actionForm; carried scrolls are in the snapshot's known list, as
+    // spells are, since knowing and carrying are the one question here.
+    UseScroll,
     // No "stop fighting", "flee" or "hold position": the combat AI decides
     // whether it respects a pushed package, and a rule that may or may not
     // be obeyed is worse than none (removed 2026-09-04).

@@ -113,7 +113,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 27> kActions{{
+constexpr std::array<Entry<ActionKind>, 28> kActions{{
     // The potion slugs name the SELECTION POLICY, not just the item type,
     // because that is part of the behaviour a profile is asking for. That is
     // how "drink-weakest-health-potion" -- don't burn a strong potion on a
@@ -146,6 +146,7 @@ constexpr std::array<Entry<ActionKind>, 27> kActions{{
     {ActionKind::CastSpell, "cast-spell", "Cast spell"},
     {ActionKind::UsePower, "use-power", "Use power"},
     {ActionKind::Shout, "shout", "Shout"},
+    {ActionKind::UseScroll, "use-scroll", "Scroll"},
 }};
 
 // The hand an equip rule names. Both is one value, not two flags, on the
@@ -464,6 +465,8 @@ std::string_view Describe(ActionKind v) noexcept
         return "Use this power now.";
     case ActionKind::Shout:
         return "Shout this now.";
+    case ActionKind::UseScroll:
+        return "Read this scroll now: cast from a hand, no magicka, the scroll spent.";
     case ActionKind::EquipWeapon:
         return "Hold this in that hand until another rule or the Inventory tab lets go.";
     case ActionKind::EquipSpell:

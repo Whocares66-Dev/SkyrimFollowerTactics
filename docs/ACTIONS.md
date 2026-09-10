@@ -110,6 +110,8 @@ unused: dual cast is state on the hand caster
 Dual Casting Fix: scripted casts clear the dual state, and our faction-rank
 abilities might too.
 
+**Scrolls (built 2026-09-09, not yet seen in play).** A Scroll action under Cast and Dual Cast, listing the scrolls carried by the scroll's own delivery: a Self one under Self, an aimed one under everyone else, as spells are. A scroll is a MagicItem cast from a hand like a spell, so it rides the UseMagic package with the scroll as the package's spell; the sensor lists carried scrolls in the snapshot's known list, since knowing and carrying are the one question, and no magicka is checked. Open: whether the engine spends the scroll on a package cast. The pool keeps the count from the request and, on the fire event, takes one off by hand if the count did not drop (`SpendScroll`), so a rule can never read the same scroll for free either way; the log says which happened.
+
 ## 5. What to build, in order
 
 1. **Cast on a chosen target**: Execute takes the step's target; the
@@ -180,7 +182,7 @@ Voice of the Emperor's Pacify is a calm on people. It showed nothing on the cave
 
 **Food and ingredients** are the two lists beside Potion at the top of the Then menu, with the same Strongest and Weakest by effect. Both go through the same `EquipObject` call as a potion; the game consumes the item through its normal path. The snapshot tags every carried consumable with its kind, and a named consume rule checks form AND kind, so a hand-edited profile cannot drink a cabbage. Unverified in play: whether an NPC gets a food's or an ingredient's effect (the player eating an ingredient learns its first effect; an NPC has nothing to learn, and what the engine does instead is not documented). The potion's 3 s settle is used for both until one of their own is measured.
 
-The Then cascade under Self reads, the more active thing first and a divider between the groups: Potion, Food, Ingredient; Cast, Dual Cast; Shout, Power; Charge, Poison; Weapon, Armor, Arrows, Spell -- no Equip, Consume or Weapon heading above them (2026-09-08). Under Enemy and Attacker: Attack, Bash; Power Attack, Power Bash; Cast, Dual Cast; Shout, Power, a divider between each group. Under the player, an ally or a named follower: Cast, Dual Cast; Shout, Power; under a corpse, Cast and Dual Cast alone. Dual Cast is drawn only when a spell the follower can dual cast suits the target. A heading with nothing under it -- no food carried, no spell that suits the target -- is not drawn, and the dividers follow what is.
+The Then cascade under Self reads, the more active thing first and a divider between the groups: Potion, Food, Ingredient; Cast, Dual Cast, Scroll; Shout, Power; Charge, Poison; Weapon, Armor, Arrows, Spell -- no Equip, Consume or Weapon heading above them (2026-09-08). Under Enemy and Attacker: Attack, Bash; Power Attack, Power Bash; Cast, Dual Cast, Scroll; Shout, Power, a divider between each group. Under the player, an ally or a named follower: Cast, Dual Cast, Scroll; Shout, Power; under a corpse, Cast and Dual Cast alone. Dual Cast is drawn only when a spell the follower can dual cast suits the target. A heading with nothing under it -- no food carried, no spell that suits the target -- is not drawn, and the dividers follow what is.
 
 ## Sources
 

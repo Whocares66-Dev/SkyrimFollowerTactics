@@ -1117,6 +1117,12 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
             }
         }
     }
+    // A scroll carried is "known" for a Scroll rule: knowing and carrying
+    // are the one question for it, and it costs no magicka.
+    for (const auto &[object, entry] :
+         actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::Scroll); }))
+        if (object && entry.first > 0)
+            s.spells.known.push_back(object->GetFormID());
     ForEachSpell(actor, [&s, actor](RE::SpellItem *spell) {
         // A power is known too, for a Use power rule; it costs nothing and
         // is not held in a hand, so it is in neither of the lists below.
@@ -1296,6 +1302,28 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
                                   !power && CanDualCast(actor, spell),
                                   power ? SpellOption::Kind::Power : SpellOption::Kind::Spell});
     });
+
+    // The scrolls carried, by the scroll's own delivery: a Self one under
+    // Self, an aimed one under everyone else, as a spell is.
+    for (const auto &[object, entry] :
+         actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::Scroll); }))
+    {
+        auto *scroll = object ? object->As<RE::ScrollItem>() : nullptr;
+        if (!scroll || entry.first <= 0)
+            continue;
+        std::string name = scroll->GetName() ? scroll->GetName() : "";
+        if (name.empty())
+            continue;
+        bool reanimate = false;
+        for (const auto *effect : scroll->effects)
+            reanimate =
+                reanimate || (effect && effect->baseEffect &&
+                              effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate);
+        out.push_back(SpellOption{scroll->GetFormID(), std::move(name),
+                                  scroll->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
+                                  scroll->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate, false,
+                                  SpellOption::Kind::Scroll});
+    }
 
     // The shouts on the base record. A shout's delivery is its first word's
     // spell's: Whirlwind Sprint and Become Ethereal are Self, the rest aimed.

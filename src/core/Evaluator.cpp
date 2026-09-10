@@ -590,6 +590,7 @@ bool HasResource(const Action &a, const Snapshot &s)
     case ActionKind::CastSpell:
     case ActionKind::UsePower:
     case ActionKind::Shout:
+    case ActionKind::UseScroll:
         // Knowing the spell is the inventory equivalent. Whether she can AFFORD
         // to cast it is a separate question and deliberately not asked here:
         // magicka cost depends on perks and skill, which live on the game side.
@@ -639,6 +640,7 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s)
     case ActionKind::CastSpell:
     case ActionKind::UsePower:
     case ActionKind::Shout:
+    case ActionKind::UseScroll:
         // The sustained-buff case. Oakflesh runs sixty seconds and no cooldown
         // worth picking is that long, so re-casting can only be stopped by
         // seeing the effect still running. Embrace of Shadows runs three
@@ -1034,6 +1036,8 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "does not know that power";
         case ActionKind::Shout:
             return "does not know that shout";
+        case ActionKind::UseScroll:
+            return "does not carry that scroll";
         case ActionKind::EquipWeapon:
             return "does not carry that weapon";
         case ActionKind::EquipArrows:

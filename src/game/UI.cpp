@@ -119,11 +119,12 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
     case ft::Verdict::NothingToCharge:
         return {"no weapon", held};
     case ft::Verdict::NoResource:
-        return {action == ft::ActionKind::UsePower ? "no power"
-                : action == ft::ActionKind::Shout  ? "no shout"
-                : TakesSpell(action)               ? "no spell"
-                : ft::IsEquip(action)              ? "not carried"
-                                                   : "count: 0",
+        return {action == ft::ActionKind::UsePower    ? "no power"
+                : action == ft::ActionKind::Shout     ? "no shout"
+                : action == ft::ActionKind::UseScroll ? "no scroll"
+                : TakesSpell(action)                  ? "no spell"
+                : ft::IsEquip(action)                 ? "not carried"
+                                                      : "count: 0",
                 held};
     case ft::Verdict::EffectActive:
         return {ft::IsEquip(action)    ? "pinned"
@@ -1257,9 +1258,10 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     if (act.form == 0)
         return base + "...";
 
-    const auto kind = act.kind == ft::ActionKind::UsePower ? SpellOption::Kind::Power
-                      : act.kind == ft::ActionKind::Shout  ? SpellOption::Kind::Shout
-                                                           : SpellOption::Kind::Spell;
+    const auto kind = act.kind == ft::ActionKind::UsePower    ? SpellOption::Kind::Power
+                      : act.kind == ft::ActionKind::Shout     ? SpellOption::Kind::Shout
+                      : act.kind == ft::ActionKind::UseScroll ? SpellOption::Kind::Scroll
+                                                              : SpellOption::Kind::Spell;
     for (const auto &option : view.spells)
     {
         if (option.form != act.form || option.kind != kind)
@@ -1270,15 +1272,18 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
             return "Use " + option.name;
         case SpellOption::Kind::Shout:
             return "Shout " + option.name;
+        case SpellOption::Kind::Scroll:
+            return "Read " + option.name;
         default:
             return (act.dual ? "Dual cast " : "Cast ") + option.name;
         }
     }
 
-    // Named a spell this follower does not know. Says so rather than showing a
-    // plausible-looking action that can never fire -- the status column will
-    // report "no spell", and the two need to agree.
-    return base + " (not known)";
+    // Named a spell this follower does not know, or a scroll not carried.
+    // Says so rather than showing a plausible-looking action that can never
+    // fire -- the status column will report "no spell", and the two need
+    // to agree.
+    return base + (act.kind == ft::ActionKind::UseScroll ? " (not carried)" : " (not known)");
 }
 
 // Is this spell offered for pinning in this hand? Not a shout or a power,
@@ -1571,14 +1576,16 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     };
     for (const CastMenu menu :
          {CastMenu{"Cast", ft::ActionKind::CastSpell, false}, CastMenu{"Dual Cast", ft::ActionKind::CastSpell, true},
-          CastMenu{"Shout", ft::ActionKind::Shout, false}, CastMenu{"Power", ft::ActionKind::UsePower, false}})
+          CastMenu{"Scroll", ft::ActionKind::UseScroll, false}, CastMenu{"Shout", ft::ActionKind::Shout, false},
+          CastMenu{"Power", ft::ActionKind::UsePower, false}})
     {
         const auto action = menu.action;
         if (!valid(action))
             continue;
-        const auto kind = action == ft::ActionKind::UsePower ? SpellOption::Kind::Power
-                          : action == ft::ActionKind::Shout  ? SpellOption::Kind::Shout
-                                                             : SpellOption::Kind::Spell;
+        const auto kind = action == ft::ActionKind::UsePower    ? SpellOption::Kind::Power
+                          : action == ft::ActionKind::Shout     ? SpellOption::Kind::Shout
+                          : action == ft::ActionKind::UseScroll ? SpellOption::Kind::Scroll
+                                                                : SpellOption::Kind::Spell;
         std::vector<const SpellOption *> suited;
         for (const auto &option : view.spells)
         {
@@ -1592,8 +1599,9 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
         if (suited.empty())
             continue;
-        // The hand's casts, then the voice's, a divider between.
-        group(action == ft::ActionKind::CastSpell ? 2 : 3);
+        // The hand's casts -- spells, scrolls -- then the voice's, a
+        // divider between.
+        group(action == ft::ActionKind::CastSpell || action == ft::ActionKind::UseScroll ? 2 : 3);
         if (!BeginCascade(menu.label))
             continue;
         for (const auto *option : suited)

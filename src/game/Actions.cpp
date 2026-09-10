@@ -362,7 +362,8 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         return ActionResult::NoSuchAction;
     }
 
-    case ft::ActionKind::CastSpell: {
+    case ft::ActionKind::CastSpell:
+    case ft::ActionKind::UseScroll: {
         // The package route, on its own. The combat-AI hook is off by default
         // and not called here: running two mechanisms would mean a cast could
         // not be attributed to either, which is what made the earlier
@@ -374,7 +375,8 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // themself, or at no one, a targeted spell goes at the enemy they
         // are engaging, as it always did.
         std::uint32_t targetId = actor->GetFormID();
-        auto *spell = FindSpell(action.form);
+        // A spell, or a scroll: both MagicItems, cast the same way.
+        auto *spell = RE::TESForm::LookupByID<RE::MagicItem>(action.form);
         if (spell)
             logger::info("  cast: {} is {} / {}", spell->GetName() ? spell->GetName() : "?",
                          spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration ? "concentration"

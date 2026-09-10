@@ -33,6 +33,7 @@ double MinimumCooldown(ActionKind action) noexcept
     case ActionKind::CastSpell:
     case ActionKind::UsePower:
     case ActionKind::Shout:
+    case ActionKind::UseScroll:
         // Measured: the AI picks the package up on the same tick, and a heal
         // lands 0.9-2.2 s later. Two seconds lets the next evaluation see the
         // result of this one without re-firing into a cast still in progress;
@@ -150,7 +151,8 @@ ConsumableKind ConsumableOf(ActionKind action) noexcept
 
 bool IsCast(ActionKind action) noexcept
 {
-    return action == ActionKind::CastSpell || action == ActionKind::UsePower || action == ActionKind::Shout;
+    return action == ActionKind::CastSpell || action == ActionKind::UsePower || action == ActionKind::Shout ||
+           action == ActionKind::UseScroll;
 }
 
 bool IsBlow(ActionKind action) noexcept
@@ -206,6 +208,7 @@ bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept
         return true;
     case ActionKind::UsePower:
     case ActionKind::Shout:
+    case ActionKind::UseScroll:
         // Aimed anywhere but at a corpse: a Reanimate is a spell.
         return target != ActionTargetKind::Corpse;
     case ActionKind::Attack:
