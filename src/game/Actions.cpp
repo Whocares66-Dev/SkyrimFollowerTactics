@@ -177,9 +177,9 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm, bool stronges
     {
         // The soul a reusable gem holds is ExtraSoul on its entry; the
         // record's own soul is none. Cleared, the Star is empty and stays.
-        auto gems = actor->GetInventory([gem](RE::TESBoundObject &c) { return &c == gem; });
-        const auto held = gems.find(gem);
-        auto *gemEntry = held != gems.end() ? held->second.second.get() : nullptr;
+        auto carried = actor->GetInventory([gem](RE::TESBoundObject &c) { return &c == gem; });
+        const auto held = carried.find(gem);
+        auto *gemEntry = held != carried.end() ? held->second.second.get() : nullptr;
         bool emptied = false;
         if (gemEntry && gemEntry->extraLists)
         {

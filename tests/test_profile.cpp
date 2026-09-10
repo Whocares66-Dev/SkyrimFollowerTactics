@@ -510,3 +510,95 @@ TEST_CASE("a policy names its effect on the wire, and one without an effect is d
     REQUIRE(j["rules"][0]["then"]["do"][1]["action"] == "drink-weakest");
     REQUIRE(j["rules"][0]["then"]["do"][1]["effect"] == "Resist Fire");
 }
+
+TEST_CASE("a rule missing a part it cannot do without is dropped, and says which part", "[profile]")
+{
+    // Each shape is one rule in one file, so the warning is the whole
+    // story of that file. The heal rule follows it and must survive.
+    struct Shape
+    {
+        const char *rule;
+        const char *reason;
+    };
+    const Shape shapes[] = {
+        {R"({ "then": { "target": "self", "do": [] } })", "no \"if\""},
+        {R"({ "if": { "predicate": "any" }, "then": { "target": "self", "do": [] } })", "no subject"},
+        {R"({ "if": { "subject": "self" }, "then": { "target": "self", "do": [] } })", "no predicate"},
+        {R"({ "if": { "subject": "self", "predicate": "attacked-by", "damage": "psychic" },
+              "then": { "target": "self", "do": [] } })",
+         "unknown damage kind \"psychic\""},
+        {R"({ "if": { "subject": "self", "predicate": "any" } })", "no \"then\""},
+        {R"({ "if": { "subject": "self", "predicate": "any" }, "then": { "do": [] } })", "no target"},
+        {R"({ "if": { "subject": "self", "predicate": "any" },
+              "then": { "target": "follower", "follower": "0x9~Gone.esp", "do": [] } })",
+         "target follower \"0x9~Gone.esp\" is not in this load order"},
+        {R"({ "if": { "subject": "enemy", "predicate": "attacking", "member": "0x9~Gone.esp" },
+              "then": { "target": "self", "do": [] } })",
+         "member \"0x9~Gone.esp\" is not in this load order"},
+    };
+    FormCodec strict = kHex;
+    strict.decode = [](std::string_view) -> std::optional<std::uint32_t> { return std::nullopt; };
+
+    for (const Shape &shape : shapes)
+    {
+        INFO(shape.rule);
+        const std::string file = R"({ "schema": 1, "rules": [ )" + std::string(shape.rule) + "," + kHealRule + " ] }";
+        const auto read = ReadProfile(file, strict);
+        REQUIRE(read.profile.has_value());
+        REQUIRE(read.profile->rules.rules.size() == 1);
+        REQUIRE(read.profile->rules.rules[0].label == "heal");
+        REQUIRE(read.warnings.size() == 1);
+        REQUIRE(read.warnings[0].find("rule 0") != std::string::npos);
+        REQUIRE(read.warnings[0].find(shape.reason) != std::string::npos);
+    }
+
+    // An action that is not an object, or names none, goes alone.
+    const std::string oddActions = R"({ "schema": 1, "rules": [ {
+        "label": "odd",
+        "if": { "subject": "self", "predicate": "any" },
+        "then": { "target": "self", "do": [ 7, { "effect": "Restore Health" },
+                                            { "action": "drink-strongest", "effect": "Restore Health" } ] }
+    } ] })";
+    const auto read = ReadProfile(oddActions, kHex);
+    REQUIRE(read.profile->rules.rules.size() == 1);
+    REQUIRE(read.profile->rules.rules[0].actions.size() == 1);
+    REQUIRE(read.warnings.size() == 2);
+    REQUIRE(read.warnings[0].find("action 0: not an object") != std::string::npos);
+    REQUIRE(read.warnings[1].find("action 1: no action") != std::string::npos);
+}
+
+TEST_CASE("the party member of attacking and attacked by round-trips", "[profile]")
+{
+    // The player is written by name, a follower by form; absent is the
+    // player, as a file from before there was a member.
+    Profile p;
+    Rule onPlayer;
+    onPlayer.subject = SubjectKind::Enemy;
+    onPlayer.predicate = PredicateKind::Attacking;
+    onPlayer.subjectForm = 0;
+    onPlayer.actionTarget = ActionTargetKind::Enemy;
+    onPlayer.FirstAction().kind = ActionKind::Attack;
+    Rule onFollower = onPlayer;
+    onFollower.predicate = PredicateKind::AttackedBy;
+    onFollower.subjectForm = 0x1234;
+    p.rules.rules.push_back(onPlayer);
+    p.rules.rules.push_back(onFollower);
+
+    const std::string text = WriteProfile(p, kHex);
+    const auto j = nlohmann::json::parse(text);
+    REQUIRE(j["rules"][0]["if"]["member"] == "player");
+    REQUIRE(j["rules"][1]["if"]["member"] == "0x1234");
+
+    const auto read = ReadProfile(text, kHex);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules[0].subjectForm == 0);
+    REQUIRE(read.profile->rules.rules[1].subjectForm == 0x1234);
+
+    const std::string older = R"({ "schema": 1, "rules": [ {
+        "if": { "subject": "enemy", "predicate": "attacking" },
+        "then": { "target": "enemy", "do": [ { "action": "attack" } ] }
+    } ] })";
+    const auto old = ReadProfile(older, kHex);
+    REQUIRE(old.warnings.empty());
+    REQUIRE(old.profile->rules.rules[0].subjectForm == 0);
+}

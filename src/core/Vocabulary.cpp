@@ -333,10 +333,8 @@ ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
     case PredicateKind::ResistancePctAbove:
         return ArgumentKind::Percent;
 
-    case PredicateKind::Any:
-        return ArgumentKind::None;
-
     default:
+        // Any, and every predicate that carries nothing.
         return ArgumentKind::None;
     }
 }

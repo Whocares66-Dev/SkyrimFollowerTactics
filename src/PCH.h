@@ -3,8 +3,8 @@
 // Required by add_commonlibsse_plugin. Only the SKSE plugin target uses this;
 // ft_core and the test target are deliberately built without it.
 
-#include "RE/Skyrim.h"
-#include "SKSE/SKSE.h"
+#include <RE/Skyrim.h>
+#include <SKSE/SKSE.h>
 
 // CommonLibSSE-NG's own PCH pulls in <spdlog/spdlog.h> but NOT the sinks, so a
 // plugin that wants to log to a file has to include this itself.

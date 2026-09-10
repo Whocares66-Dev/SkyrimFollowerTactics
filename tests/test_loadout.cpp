@@ -563,24 +563,24 @@ struct World
     int putBacks{0};
 
     // 1. Our equip: the pin's thing into the pin's hands.
-    void OurEquip(const Holdable &thing, Hand hands)
+    void OurEquip(const Holdable &thing, Hand into)
     {
-        if (Overlap(hands, Hand::Left))
-            this->hands.left = thing.form;
-        if (Overlap(hands, Hand::Right))
-            this->hands.right = thing.form;
+        if (Overlap(into, Hand::Left))
+            hands.left = thing.form;
+        if (Overlap(into, Hand::Right))
+            hands.right = thing.form;
     }
 
     // 2. The engine's equip, through the detour: refused against a pin.
-    bool EngineEquip(const Holdable &thing, Hand hands)
+    bool EngineEquip(const Holdable &thing, Hand into)
     {
         if (!FindPin(pins, thing.form))
         {
             for (const Pin &pin : pins)
-                if (Conflicts(thing, hands, pin.thing, pin.hands))
+                if (Conflicts(thing, into, pin.thing, pin.hands))
                     return false;
         }
-        OurEquip(thing, hands);
+        OurEquip(thing, into);
         return true;
     }
 

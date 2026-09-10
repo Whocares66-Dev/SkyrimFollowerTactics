@@ -7,6 +7,8 @@ option(FT_BUILD_TESTS  "Build the core unit tests (no game required)"           
 
 option(FT_SANITIZE     "Build with AddressSanitizer + UBSan where available"      OFF)
 option(FT_WARN_AS_ERR  "Treat warnings as errors (on in CI, off for local hacking)" OFF)
+option(FT_ANALYZE      "MSVC static analysis (/analyze) on our own targets"          OFF)
+option(FT_COVERAGE     "Instrument for test coverage (clang-cl only; core-cov preset)" OFF)
 
 # ---------------------------------------------------------------------------
 # Shared compile hygiene. The core engine is the only part of this project that
@@ -15,9 +17,35 @@ option(FT_WARN_AS_ERR  "Treat warnings as errors (on in CI, off for local hackin
 # ---------------------------------------------------------------------------
 function(ft_apply_warnings target)
     if(MSVC)
-        target_compile_options(${target} PRIVATE /W4 /permissive- /Zc:preprocessor)
+        # MSVC is also true for clang-cl, which takes /W4 and /permissive-
+        # but has nothing to do for /Zc:preprocessor: its preprocessor
+        # conforms already, and it warns about the unused flag.
+        target_compile_options(${target} PRIVATE /W4 /permissive-)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+            target_compile_options(${target} PRIVATE /Zc:preprocessor)
+            # Third-party headers are what <angle brackets> include: the
+            # STL, CommonLibSSE, the menu framework (whose vendored header
+            # has W4 findings of its own). Their warnings are not ours to
+            # fix, so they are not shown; /analyze below skips them too.
+            target_compile_options(${target} PRIVATE /external:anglebrackets /external:W0)
+        else()
+            # clang's /W4 includes -Wextra, which warns when an aggregate
+            # init leaves trailing members out. Those are value-initialised,
+            # by the standard; the tests do it on purpose, everywhere.
+            target_compile_options(${target} PRIVATE -Wno-missing-field-initializers)
+        endif()
         if(FT_WARN_AS_ERR)
             target_compile_options(${target} PRIVATE /WX)
+        endif()
+        # Microsoft's static analyser, a different engine from clang-tidy's:
+        # null dereferences, uninitialised members, buffer bounds through
+        # SAL, the C6xxx warnings. Slower to compile, so it is an option,
+        # toggled by tools\build.ps1 -Analyze; the flag is cached, so a
+        # toggle recompiles our targets both ways. External headers are
+        # analysed only for what our code passes into them. clang-cl
+        # accepts MSVC's flags but not this one.
+        if(FT_ANALYZE AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+            target_compile_options(${target} PRIVATE /analyze /analyze:external-)
         endif()
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wconversion)
@@ -45,6 +73,25 @@ if(FT_SANITIZE)
         add_link_options(-fsanitize=address,undefined)
     endif()
     message(STATUS "FT_SANITIZE: AddressSanitizer enabled for the whole build tree")
+endif()
+
+# Test coverage, clang's source-based kind: every region of ft_core gets a
+# counter, ft_tests runs once, and llvm-cov turns the counts into a report
+# (the `coverage` target, tests/CMakeLists.txt). Needs clang-cl, which the
+# core-cov preset selects; cl.exe has no equivalent. The instrumented
+# objects ask the linker for clang_rt.profile themselves (a /DEFAULTLIB
+# directive), but link.exe does not know clang's resource directory, so it
+# is put on the library path here.
+if(FT_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "FT_COVERAGE needs clang-cl (use the core-cov preset); "
+                            "compiler is ${CMAKE_CXX_COMPILER_ID}")
+    endif()
+    execute_process(COMMAND "${CMAKE_CXX_COMPILER}" /clang:-print-resource-dir
+                    OUTPUT_VARIABLE _clang_resource_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
+    link_directories("${_clang_resource_dir}/lib/windows")
+    add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+    message(STATUS "FT_COVERAGE: instrumenting; profile runtime from ${_clang_resource_dir}/lib/windows")
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -98,7 +145,7 @@ if(FT_BUILD_PLUGIN)
     # and a rebuild lands the .dll straight where the game will load it.
     #
     # FT_DEPLOY=OFF builds without the copy, for compiling while the game
-    # is running and holds the deployed .dll open. toolsuild.ps1 -NoDeploy
+    # is running and holds the deployed .dll open. tools\build.ps1 -NoDeploy
     # sets it, and sets it back to ON on the next plain run: the value is
     # cached, so the script always passes it explicitly.
     option(FT_DEPLOY "Copy the plugin into the game or mods folder after linking" ON)

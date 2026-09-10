@@ -172,6 +172,7 @@ in `docs/PLAN.md`.
 - **Pool tests.** The package pool and lease have no unit tests because they
   touch the game. A seam that lets the tick and release logic run against a
   fake actor would cover the release paths.
+- **What the core tests never reach** (coverage, 2026-09-09; `.\tools\build.ps1 -Preset core-cov -Coverage`, line-by-line in `build\core-cov\coverage\html`). 98% of `src/core` lines; `Profile.cpp` is complete. What is left is by construction: the resolver's branch for an enemy's attacker (the validity matrix never lets that pair through), the `default:` arms of exhaustive switches, and the `Verdict` words' final `"?"`. Nothing worth a test.
 
 ## Toolchain
 

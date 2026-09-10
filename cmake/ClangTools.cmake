@@ -8,9 +8,9 @@
 #   cmake --build --preset core --target format-check    fail if anything is unformatted
 #   cmake --build --preset core --target tidy            static analysis
 #
-# Both tools run on stock configuration: .clang-format is a single BasedOnStyle
-# line, and there is deliberately no .clang-tidy, so clang-tidy uses its built-in
-# default checks.
+# clang-format runs on stock configuration: .clang-format is a single
+# BasedOnStyle line. clang-tidy reads .clang-tidy at the repo root, which adds
+# the correctness and performance check groups and nothing stylistic.
 
 set(_llvm_hints
     "$ENV{VCINSTALLDIR}/Tools/Llvm/x64/bin"
@@ -20,8 +20,11 @@ set(_llvm_hints
     "$ENV{ProgramFiles}/Microsoft Visual Studio/2022/Enterprise/VC/Tools/Llvm/x64/bin"
     "$ENV{ProgramFiles}/LLVM/bin")
 
-find_program(FT_CLANG_FORMAT NAMES clang-format HINTS ${_llvm_hints})
-find_program(FT_CLANG_TIDY   NAMES clang-tidy   HINTS ${_llvm_hints})
+find_program(FT_CLANG_FORMAT  NAMES clang-format  HINTS ${_llvm_hints})
+find_program(FT_CLANG_TIDY    NAMES clang-tidy    HINTS ${_llvm_hints})
+# For the `coverage` target (tests/CMakeLists.txt); same LLVM, same place.
+find_program(FT_LLVM_PROFDATA NAMES llvm-profdata HINTS ${_llvm_hints})
+find_program(FT_LLVM_COV      NAMES llvm-cov      HINTS ${_llvm_hints})
 
 # Our own sources only. Never glob the build tree: it holds fetched third-party
 # code (Catch2) and vcpkg headers, and reformatting those would be both wrong

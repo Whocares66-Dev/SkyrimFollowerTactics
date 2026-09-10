@@ -413,7 +413,7 @@ std::string ArmorNote(RE::Actor *actor)
     const float hidden = HiddenArmor(actor);
     if (hidden > 0.0f && perPiece > 0.0f)
     {
-        const int pieces = static_cast<int>(actor->GetArmorBaseFactorSum() / perPiece + 0.5f);
+        const int pieces = static_cast<int>(std::lround(actor->GetArmorBaseFactorSum() / perPiece));
         parts.push_back({"Hidden bonus (x" + std::to_string(pieces) + ")", hidden});
     }
     std::stable_sort(parts.begin(), parts.end(),
@@ -719,20 +719,30 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     float weight = 0.0f;
     float attackMult = 1.0f;
     const RE::TESObjectWEAP *priced = nullptr;
+    // A swing names a hand with a weapon in it, and DescribeHands read the
+    // same two objects, so the checks below never fail; they are for the
+    // reader and the analyser, per case because the analyser does not
+    // carry one check across a switch.
     switch (ft::SwingWith(DescribeHands(actor)))
     {
     case ft::Swing::Both:
+        if (!right || !left)
+            return plan;
         plan.event = "attackPowerStartDualWield";
         weight = right->GetWeight() + left->GetWeight();
         attackMult = 0.5f;
         priced = right;
         break;
     case ft::Swing::Right:
+        if (!right)
+            return plan;
         plan.event = "attackPowerStartInPlace";
         weight = right->GetWeight();
         priced = right;
         break;
     case ft::Swing::Left:
+        if (!left)
+            return plan;
         plan.event = "attackPowerStartInPlaceLeftHand";
         weight = left->GetWeight();
         priced = left;

@@ -47,23 +47,32 @@ entry point.)
 .\tools\build.ps1 -Preset core  -Test      # rule engine + tests. Seconds. Use constantly.
 .\tools\build.ps1 -Preset debug            # SKSE plugin. First run builds CommonLibSSE-NG.
 .\tools\build.ps1 -Preset core-asan -Test  # same core tests, under AddressSanitizer
+.\tools\build.ps1 -Preset core-cov -Coverage  # same, under clang-cl; which lines the tests reach
+.\tools\build.ps1 -Preset debug -Analyze -NoDeploy  # any preset, under MSVC's static analyser
 ```
 
 `-Fresh` wipes the preset's build directory first. `-NoDeploy` builds the plugin
 without copying it into the mods folder and without the running-game guard, for
 compiling while Skyrim is up (it holds the deployed DLL open); the next plain
-run copies as usual.
+run copies as usual. `-Analyze` compiles our targets with `/analyze` (findings are
+C6xxx warnings; several times slower; the cached flag recompiles our sources on the
+way in and out). `-Coverage` needs `core-cov`, runs the tests once and prints per-file
+line coverage of `src/core`, with the line-by-line HTML in `build\core-cov\coverage\html`.
 
-`core` / `core-asan` need no vcpkg and no Skyrim at all -- that is the fast feedback loop.
-`debug` / `release` build the plugin and pull CommonLibSSE-NG through vcpkg.
+`core` / `core-asan` / `core-cov` need no vcpkg and no Skyrim at all -- that is the fast
+feedback loop. `debug` / `release` build the plugin and pull CommonLibSSE-NG through vcpkg.
+Every tool here ships inside the VS install: `clang-cl`, `llvm-cov`, `clang-tidy` and the
+sanitizer runtimes are the "C++ Clang tools for Windows" component. ASan on MSVC finds
+memory misuse, not leaks (LeakSanitizer has no Windows build); UBSan is clang-only and
+its runtime is present, unused so far.
 
-`.	ools\package.ps1` builds the release plugin and writes `distollower-tactics-<version>.zip`, a mod root (one DLL and a README) to install from the archive in Mod Organizer; the version is `project(... VERSION)` in CMakeLists.txt. `dist/` is ignored.
+`.\tools\package.ps1` builds the release plugin and writes `dist\follower-tactics-<version>.zip`, a mod root (one DLL and a README) to install from the archive in Mod Organizer; the version is `project(... VERSION)` in CMakeLists.txt. `dist/` is ignored.
 
 `SKYRIM_MODS_FOLDER` is set to `MO2\mods`; the build deploys to
 `MO2\mods\FollowerTactics\SKSE\Plugins\`. New mods appear **unticked** in MO2 -- tick it
 or the DLL never loads.
 
-Last verified: 135 cases green under MSVC 19.42 (`core` and `core-asan` presets), 2026-09-09.
+Last verified: 147 cases green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 18 (`core-cov`), 2026-09-09; 98% of `src/core` lines covered.
 
 ## After every edit
 
@@ -73,12 +82,15 @@ project:
 ```powershell
 .\tools\build.ps1 -Preset core -Test        # 1. tests
 cmake --build --preset core --target format # 2. formatter, rewrites in place
-cmake --build --preset core --target tidy   # 3. linter
+cmake --build --preset core --target tidy   # 3. linter (~5 min: src/game parses CommonLibSSE without a PCH)
 .\tools\build.ps1 -Preset debug             # 4. plugin builds and deploys
 ```
 
 (2) and (3) need the developer environment, so run them from a shell where
 `tools\build.ps1` has already imported it, or wrap them the same way it does.
+(3) reads `.clang-tidy` at the repo root: the bugprone, performance, analyzer,
+concurrency and misc groups, nothing stylistic; the file says what is excluded and
+why, and names the one known false positive.
 
 Before anything is called done, all four must be green, plus:
 

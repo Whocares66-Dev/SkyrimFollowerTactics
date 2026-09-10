@@ -1,0 +1,68 @@
+# clang-tidy configuration.
+#
+# Correctness and performance checks only. Nothing here is a style opinion:
+# modernize-*, readability-*, google-*, llvm-*, hicpp-* and the like are left
+# at their default (off), and formatting is clang-format's job with a stock
+# style. The bar for a check being here is that a finding is a plausible bug
+# or a real cost, not a matter of taste.
+#
+# Run:  cmake --build --preset core --target tidy   (see cmake/ClangTools.cmake)
+#
+# Known false positive, left in place: clang-analyzer-cplusplus.NewDelete
+# reports "use of memory after it is freed" inside CommonLibSSE's
+# MemoryManager.h whenever a trace passes through a BSTSmartPointer
+# destructor. `delete` on an intrusive-refcounted object calls the class's
+# own operator delete, which forwards to the game heap; the analyzer models
+# the memory as freed before entering that operator. The check stays because
+# it is the only static use-after-free check src/game gets.
+Checks: >
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-unchecked-optional-access,
+  clang-analyzer-*,
+  concurrency-*,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-virtual-class-destructor,
+  cppcoreguidelines-rvalue-reference-param-not-moved,
+  cppcoreguidelines-misleading-capture-default-by-value,
+  misc-*,
+  -misc-const-correctness,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -misc-use-anonymous-namespace,
+  -misc-no-recursion,
+  -misc-unused-parameters,
+  performance-*,
+  -performance-no-int-to-ptr,
+  -performance-enum-size,
+  portability-*
+
+# Excluded, and why:
+#   bugprone-easily-swappable-parameters   a design lint, fires on (int, int)
+#   bugprone-unchecked-optional-access     cannot see through a predicate
+#                                          (Slot::Busy) or an indexed re-read,
+#                                          so every use in Packages.cpp is a
+#                                          false positive; the debug STL
+#                                          asserts the same thing at run time
+#   performance-no-int-to-ptr              an address cast is what a hook or
+#                                          an offset read of an engine struct
+#                                          IS; ten hits, all of that kind
+#   performance-enum-size                  "make the enum a byte": nothing here
+#                                          has enough of them to matter
+#   misc-const-correctness                 style; also very noisy
+#   misc-include-cleaner                   include hygiene, not correctness
+#   misc-non-private-member-variables-in-classes   style
+#   misc-use-anonymous-namespace           style (static vs anonymous namespace)
+#   misc-no-recursion                      recursion is fine; the evaluator uses it
+#   misc-unused-parameters                 the compiler already warns (C4100)
+
+HeaderFilterRegex: 'src.(core|game)'
+FormatStyle: file
+
+CheckOptions:
+  # int -> float loses nothing below 2^24, and the game's numbers are floats
+  # met by our ints on every line of Sensors.cpp. Truncations the other way
+  # (float -> int, 64 -> 32 bit) are still reported.
+  - key: bugprone-narrowing-conversions.WarnOnIntegerToFloatingPointNarrowingConversion
+    value: false
