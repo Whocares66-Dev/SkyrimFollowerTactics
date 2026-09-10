@@ -623,8 +623,8 @@ void GiveWrapper(RE::Actor *actor, RE::TESShout *wrapper)
     // Done before the log line, not inside its arguments: this has to happen
     // whether or not anything is written.
     const bool added = list->AddShout(wrapper);
-    log::packages.debug("wrapper {:08X} {} to {:08X}'s shout list", wrapper->GetFormID(),
-                        added ? "added" : "NOT added", actor->GetFormID());
+    log::packages.debug("wrapper {:08X} {} to {:08X}'s shout list", wrapper->GetFormID(), added ? "added" : "NOT added",
+                        actor->GetFormID());
 }
 
 void TakeWrapper(RE::Actor *actor, RE::TESShout *wrapper)

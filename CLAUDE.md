@@ -63,7 +63,7 @@ run copies as usual.
 `MO2\mods\FollowerTactics\SKSE\Plugins\`. New mods appear **unticked** in MO2 -- tick it
 or the DLL never loads.
 
-Last verified: 100 cases green under MSVC 19.42 (`core` and `core-asan` presets), 2026-09-04.
+Last verified: 135 cases green under MSVC 19.42 (`core` and `core-asan` presets), 2026-09-09.
 
 ## After every edit
 
