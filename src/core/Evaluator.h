@@ -7,8 +7,6 @@
 #include "Rule.h"
 #include "Snapshot.h"
 
-#include <array>
-
 #include <vector>
 
 namespace ft
@@ -88,6 +86,10 @@ struct EvalContext
     // block healing the player; Oakflesh does not block a heal. What it DOES
     // block is every rule, wherever it sits in the list, that would do the
     // same thing to the same actor before the first has had time to show.
+    //
+    // This is the only timer there is: nothing is keyed by the rule or by
+    // the condition. Why, and what it means when several rules answer one
+    // situation, is at MinimumCooldown in Rule.h.
     struct ActionKey
     {
         ActionKind action{ActionKind::None};
@@ -128,20 +130,6 @@ struct EvalContext
             }
         blocked.push_back({key, until});
     }
-
-    // Per CONDITION -- the (subject, predicate) pair, ignoring the threshold.
-    // Stops one *situation* drawing several remedies at once: given
-    //     health < 25% -> drink a potion
-    //     health < 25% -> cast a healing spell
-    //     health < 25% -> eat food
-    // the follower should drink, then wait to see whether that fixed it, rather
-    // than doing all three in 450 ms. The condition is the problem; the action
-    // is the response; you get one response per problem until it has had a
-    // chance to work.
-    //
-    // Note this is only ever set when a rule actually FIRES. A rule that could
-    // not act -- no potion in the bag, no target -- blocks nothing, so the next
-    // remedy for the same problem is tried immediately, in the same tick.
 
     Capabilities caps{Capabilities::All()};
 
@@ -230,10 +218,6 @@ Binding EvaluateCondition(const Rule &r, const Snapshot &snap);
 // Resolve the action's recipient. `binding` is the condition's result, used
 // when the rule aims at the ally or enemy the condition matched.
 ActorId ResolveActionTarget(const Rule &r, const Snapshot &snap, Binding binding, bool *ok);
-
-// Exposed for testing and for the UI's live readout.
-bool HasResource(const Action &action, const Snapshot &snap);
-bool EffectAlreadyActive(const Action &action, const Snapshot &snap);
 
 const char *ToString(Verdict v) noexcept;
 

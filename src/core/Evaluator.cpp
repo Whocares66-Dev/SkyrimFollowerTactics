@@ -560,6 +560,9 @@ std::uint32_t ChosenForm(const Action &a, const PotionStock &stock)
     return stock.Choose(ConsumableOf(a.kind), a.effect, IsStrongest(a.kind));
 }
 
+namespace
+{
+
 // Takes the whole action, not just its kind: a spell action is only
 // answerable with the spell in hand, and splitting that across two lookups is
 // how the two drift apart.
@@ -670,14 +673,6 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s)
     }
 }
 
-namespace
-{
-
-// What goes on cooldown when this action fires. The action, its form and
-// its target, so that healing the player does not block healing an ally --
-// except Target, which is keyed by the action alone: the point of its
-// cooldown is that the follower is not flicked between two enemies on
-// consecutive ticks, and per-target keys would allow exactly that.
 // The blow an action strikes: the power attack for any kind but the two
 // bashes.
 const Snapshot::Blow &BlowFor(const Snapshot &snap, ActionKind kind)
@@ -685,6 +680,12 @@ const Snapshot::Blow &BlowFor(const Snapshot &snap, ActionKind kind)
     return kind == ActionKind::Bash ? snap.bash : kind == ActionKind::PowerBash ? snap.powerBash : snap.powerAttack;
 }
 
+// What goes on cooldown when this action fires. The action, its form and
+// its target, so that healing the player does not block healing an ally --
+// except Attack and the blows, which are keyed by the action alone: the
+// point of their cooldown is that the follower is not flicked between two
+// enemies on consecutive ticks, and per-target keys would allow exactly
+// that.
 EvalContext::ActionKey CooldownKey(const Action &a, ActorId target)
 {
     if (a.kind == ActionKind::Attack || IsBlow(a.kind))
