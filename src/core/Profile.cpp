@@ -31,7 +31,7 @@ using json = nlohmann::ordered_json;
 
 [[nodiscard]] bool UsesDamage(PredicateKind p) noexcept
 {
-    return IsResistance(p) || p == PredicateKind::HitBy;
+    return IsResistance(p) || p == PredicateKind::HitBy || p == PredicateKind::HitType;
 }
 
 [[nodiscard]] bool UsesForm(ActionKind a) noexcept

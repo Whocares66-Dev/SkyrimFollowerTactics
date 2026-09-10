@@ -567,6 +567,35 @@ TEST_CASE("a rule missing a part it cannot do without is dropped, and says which
     REQUIRE(read.warnings[1].find("action 1: no action") != std::string::npos);
 }
 
+TEST_CASE("the damage kind of a hit condition round-trips", "[profile]")
+{
+    // Hit type carries a damage kind exactly as Hit by does. It was left out
+    // of the writer when the condition was added, so every Hit type rule came
+    // back as the field's default, Fire.
+    Profile p;
+    Rule hitType;
+    hitType.subject = SubjectKind::Enemy;
+    hitType.predicate = PredicateKind::HitType;
+    hitType.damageKind = DamageKind::Ranged;
+    hitType.actionTarget = ActionTargetKind::Enemy;
+    hitType.FirstAction().kind = ActionKind::Attack;
+    Rule hitBy = hitType;
+    hitBy.predicate = PredicateKind::HitBy;
+    hitBy.damageKind = DamageKind::Frost;
+    p.rules.rules.push_back(hitType);
+    p.rules.rules.push_back(hitBy);
+
+    const std::string text = WriteProfile(p, kHex);
+    const auto j = nlohmann::json::parse(text);
+    REQUIRE(j["rules"][0]["if"]["damage"] == "ranged");
+    REQUIRE(j["rules"][1]["if"]["damage"] == "frost");
+
+    const auto read = ReadProfile(text, kHex);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules[0].damageKind == DamageKind::Ranged);
+    REQUIRE(read.profile->rules.rules[1].damageKind == DamageKind::Frost);
+}
+
 TEST_CASE("the party member of attacking and attacked by round-trips", "[profile]")
 {
     // The player is written by name, a follower by form; absent is the
