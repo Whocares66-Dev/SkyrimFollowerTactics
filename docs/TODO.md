@@ -166,9 +166,8 @@ in `docs/PLAN.md`.
 
 ## Harness and diagnostics
 
-- **Structured log.** A JSON-lines file beside `FollowerTactics.log` for the
-  events worth querying (arm, fire, release, rank), so `jq` can answer "did
-  she cast twice" without reading prose.
+- **Structured log.** Designed in `docs/LOGGING.md` (levels, the event catalog,
+  the JSON-lines sidecar); not yet implemented.
 - **Recruiting from the console.** `cqf DialogueFollower SetFollower <refid>`
   should fill the alias without the dialogue; unverified.
 - **Pool tests.** The package pool and lease have no unit tests because they

@@ -6,6 +6,7 @@ A Dragon Age: Origins-style tactics system for Skyrim SE/AE followers: an ordere
 Read `docs/PLAN.md` first. `docs/RESEARCH.md` has the sourced findings behind it, with
 explicit uncertainty flags. `docs/MAGIC.md` is how casting works and what does not;
 `docs/PROFILES.md` is how tactics live in the save (format, when, versioning);
+`docs/LOGGING.md` is the log design (levels, structured events, the JSON-lines sidecar);
 `docs/TODO.md` is what is still to do.
 
 ## The one architectural rule
