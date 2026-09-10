@@ -2184,17 +2184,31 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         else
         {
             // Several: the cell says how many and opens the drawer they are
-            // listed in. A selectable the size of the cell, drawn invisible
-            // and lit through the cell background so it fits by
-            // construction, with the marker and the summary drawn over it.
+            // listed in. An invisible button the size of the cell, lit
+            // through the cell background so it fits by construction, with
+            // the marker and the summary drawn over it.
+            //
+            // A BUTTON, and the same one the one-action cell uses, because
+            // the two cells have to come out the same height. ImGui offsets a
+            // Selectable by the row's text baseline -- `pos.y +=
+            // CurrLineTextBaseOffset`, with ItemSize then charging that
+            // offset ON TOP of the height asked for -- and a table carries
+            // that baseline left to right along the row, so the `#` column's
+            // AlignTextToFramePadding reached this cell and made every rule
+            // with several actions one frame padding taller than a rule with
+            // one. A Button counts the baseline as its own frame padding and
+            // stays put: measured on this font, 50 px of row became 44, which
+            // is what a one-action row and the drawer's own rows are.
             open = g_openRows.count(key) > 0;
             const Im::ImVec2 pos = Im::GetCursorScreenPos();
             const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
-            Im::PushStyleColor(Im::ImGuiCol_Header, invisible);
-            Im::PushStyleColor(Im::ImGuiCol_HeaderHovered, invisible);
-            Im::PushStyleColor(Im::ImGuiCol_HeaderActive, invisible);
+            Im::PushStyleColor(Im::ImGuiCol_Button, invisible);
+            Im::PushStyleColor(Im::ImGuiCol_ButtonHovered, invisible);
+            Im::PushStyleColor(Im::ImGuiCol_ButtonActive, invisible);
+            Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
             const bool clicked =
-                Im::Selectable(("##open" + key).c_str(), false, 0, Im::ImVec2(0.0f, Im::GetFrameHeight()));
+                Im::Button(("##open" + key).c_str(), Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
+            Im::PopStyleVar(1);
             Im::PopStyleColor(3);
             if (clicked)
             {
