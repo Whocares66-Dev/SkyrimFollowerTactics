@@ -41,7 +41,8 @@ constexpr double kTickInterval = 0.5;
 constexpr double kDiagnosticInterval = 2.0;
 
 // A gap this long since we last evaluated a follower means the previous fight
-// ended and this is a new one, so per-rule cooldowns are reset. A cooldown
+// ended and this is a new one, so the whole evaluation context is dropped: the
+// action cooldowns, and any rule caught part way down its list. A cooldown
 // exists to stop a rule thrashing *within* a fight; carrying it into the next
 // fight would silently suppress that fight's first heal.
 constexpr double kNewFightGap = 5.0;

@@ -389,22 +389,27 @@ struct RuleSet
 
 // How long the world takes to reflect this action, in seconds.
 //
-// This one number governs two things after a rule fires: the same ACTION cannot
-// be repeated, and the same CONDITION -- the (subject, predicate) pair -- cannot
-// draw another response. Both for the same reason, which is worth stating
-// plainly because it is not a policy about remedies:
+// After a rule fires, the same ACTION cannot be repeated until this has passed
+// -- "the same action" as EvalContext::ActionKey defines it. The reason is not
+// a policy about remedies:
 //
 //     we acted, the world has not caught up, so do not decide again on
 //     numbers that predate what we just did.
 //
-// Drinking a potion is the case that needs it. Measured in game, about two
-// seconds pass between the equip call and health changing. Without a block,
+// Drinking a potion is the case that needs it: measured in game, about two
+// seconds pass between the equip call and health changing, and without a block
+// the rule would drink again on the next turn, on health that predates the
+// first bottle.
+//
+// Nothing is keyed by the RULE or by the CONDITION, so
 //     health < 25% -> drink a potion
 //     health < 25% -> cast a healing spell
 //     health < 25% -> eat food
-// applies all three inside 450 ms, each deciding on the same stale health.
-// With one, the follower drinks and waits; if the potion worked, health is now
-// above 25%, the other two conditions are false, and they never fire at all.
+// is not one response per problem. The potion fires; on the next turn that
+// rule reports its cooldown and the heal fires; on the turn after, the food.
+// The list is a PREFERENCE ORDER, worked down a remedy per turn, and the
+// follower stops when health rises past 25% and the condition goes false.
+// Tested as "one situation draws its remedies in list order, one per turn".
 //
 // What this number CANNOT do, and it is worth being explicit because the
 // obvious guess is wrong:
