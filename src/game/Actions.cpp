@@ -259,6 +259,12 @@ const char *ToString(ActionResult r) noexcept
         return "every package slot is mid-cast";
     case ActionResult::NoTarget:
         return "the spell needs a target and there is no one to fight";
+    case ActionResult::WeaponSheathed:
+        return "the weapon is not drawn";
+    case ActionResult::MidSwing:
+        return "already mid-swing";
+    case ActionResult::GraphRefused:
+        return "the animation graph refused the blow -- blocking, staggered or recovering";
     }
     return "?";
 }
@@ -466,9 +472,11 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // first, as Attack does; then one blow, by the animation event the
         // race's attack data names for what is in the hands. The follower's
         // own combat AI runs the same graph, so the event is refused while
-        // a swing, a block or a stagger is in progress: that is Busy, no
-        // cooldown spent, and the rule tries again next tick. Not yet
-        // measured in play (docs/ACTIONS.md 6).
+        // a swing, a block or a stagger is in progress. The refusal DOES
+        // spend the action's cooldown: the core stamps it when the decision
+        // is made, before this runs, so the rule waits the full 1.5 s before
+        // trying again rather than retrying on the next tick. Measured in
+        // play 2026-09-09: 3 of 11 blows landed (docs/ACTIONS.md 6).
         const auto current = actor->GetActorRuntimeData().currentCombatTarget.get();
         const std::uint32_t currentId = current ? current->GetFormID() : 0;
         if (target != 0 && target != actor->GetFormID() && target != currentId)
@@ -481,19 +489,13 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             return ActionResult::MissingItem;
         auto *state = actor->AsActorState();
         if (!state || !state->IsWeaponDrawn())
-        {
-            log::actions.debug("blow: {} has no weapon drawn", Describe(actor));
-            return ActionResult::Busy;
-        }
+            return ActionResult::WeaponSheathed;
         if (state->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone)
-        {
-            log::actions.debug("blow: {} is mid-attack", Describe(actor));
-            return ActionResult::Busy;
-        }
+            return ActionResult::MidSwing;
         const bool sent = actor->NotifyAnimationGraph(blow.event);
         log::actions.debug("blow: {} {} ({:.0f} stamina){}", Describe(actor), blow.event, blow.stamina,
                            sent ? "" : " -- the graph refused it");
-        return sent ? ActionResult::Performed : ActionResult::Busy;
+        return sent ? ActionResult::Performed : ActionResult::GraphRefused;
     }
 
     default:

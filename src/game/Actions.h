@@ -22,7 +22,14 @@ enum class ActionResult : std::uint8_t
     MissingItem,    // the potion or spell vanished between snapshot and dispatch
     NoEquipManager, // the game singleton was unavailable
     Busy,           // the package pool was exhausted between evaluation and dispatch
-    NoTarget        // a targeted spell with no enemy engaged
+    NoTarget,       // a targeted spell with no enemy engaged
+    // The three ways a blow is refused at dispatch. They were one Busy until
+    // 2026-09-09, which printed "every package slot is mid-cast" -- a message
+    // about a pool no blow ever touches, and the same word for three different
+    // problems. The log now names which, at info, without turning debug on.
+    WeaponSheathed, // the weapon is away: there is nothing to swing
+    MidSwing,       // the last blow, the AI's or ours, is still running
+    GraphRefused    // the animation graph would not take the event
 };
 
 // Why the game refused a cast, in its own words. Kept separate from
