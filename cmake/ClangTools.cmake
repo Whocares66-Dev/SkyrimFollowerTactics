@@ -82,15 +82,67 @@ if(FT_CLANG_TIDY)
         "${CMAKE_SOURCE_DIR}/src/core/*.cpp"
         "${CMAKE_SOURCE_DIR}/src/game/*.cpp")
 
-    add_custom_target(tidy
-        COMMAND "${FT_CLANG_TIDY}"
-                -p "${FT_TIDY_BUILD_DIR}"
-                --header-filter=src.\(core\|game\)
-                --extra-arg-before=/Y-
-                --extra-arg=-Wno-unused-command-line-argument
-                ${FT_TIDY_SOURCES}
-        COMMENT "Running clang-tidy over src/core and src/game"
-        VERBATIM)
+    # Our own headers: any of them changing can change a finding in any file
+    # that includes it, and clang-tidy has no depfile to tell us which. Coarse
+    # on purpose -- touching PCH.h re-checks everything, which is right, and it
+    # happens about never.
+    file(GLOB FT_TIDY_HEADERS CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/src/*.h"
+        "${CMAKE_SOURCE_DIR}/src/core/*.h"
+        "${CMAKE_SOURCE_DIR}/src/game/*.h")
+
+    # One command per file, not one command over all of them. Measured on this
+    # machine (2026-09-09, 20 logical cores), one src/game translation unit:
+    #
+    #     parse only, no checks                    8.1 s
+    #     + the AST-matcher checks                42.9 s
+    #     + clang-analyzer-*                      71.6 s
+    #
+    # 8 s of that is parsing CommonLibSSE without a PCH; the other 63 s is the
+    # checks walking its inlined header bodies. There is no flag that stops
+    # that -- the checks run over the translation unit's AST, and a header-only
+    # library IS most of that AST. --header-filter only drops the findings
+    # afterwards: about 82,000 per src/game file, which is where the "Suppressed
+    # 1373265 warnings" of a whole serial run came from. Marking the include
+    # dirs /external:I was tried and is not the answer either: 82,707 findings
+    # instead of 82,709, and 68.5 s instead of 71.6. So the cost is inherent per
+    # file, and the way out is to stop paying it 21 times in a row on a 20-core
+    # machine. Measured after this change: 99 s for a full pass, against a
+    # serial run that did not finish inside ten minutes.
+    #
+    # A file per command gives us two things from Ninja for free: the files run
+    # in parallel, and a stamp per file means an unchanged file is not checked
+    # again. The everyday cost after editing two files is two files.
+    #
+    # Note the stamps do NOT depend on the compile database: it is rewritten on
+    # every configure of the debug preset, and depending on it would mean a full
+    # re-check after every plugin build. Delete build/<preset>/tidy to force one.
+    set(FT_TIDY_STAMPS "")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/tidy")
+    foreach(_src IN LISTS FT_TIDY_SOURCES)
+        file(RELATIVE_PATH _rel "${CMAKE_SOURCE_DIR}" "${_src}")
+        string(REPLACE "/" "_" _stampname "${_rel}")
+        set(_stamp "${CMAKE_BINARY_DIR}/tidy/${_stampname}.stamp")
+        add_custom_command(
+            OUTPUT "${_stamp}"
+            COMMAND "${FT_CLANG_TIDY}"
+                    -p "${FT_TIDY_BUILD_DIR}"
+                    --header-filter=src.\(core\|game\)
+                    --extra-arg-before=/Y-
+                    --extra-arg=-Wno-unused-command-line-argument
+                    "${_src}"
+            COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
+            DEPENDS "${_src}" ${FT_TIDY_HEADERS}
+            COMMENT "clang-tidy ${_rel}"
+            VERBATIM)
+        list(APPEND FT_TIDY_STAMPS "${_stamp}")
+    endforeach()
+    unset(_src)
+    unset(_rel)
+    unset(_stampname)
+    unset(_stamp)
+
+    add_custom_target(tidy DEPENDS ${FT_TIDY_STAMPS})
 else()
     message(STATUS "clang-tidy: NOT FOUND -- 'tidy' target unavailable")
 endif()

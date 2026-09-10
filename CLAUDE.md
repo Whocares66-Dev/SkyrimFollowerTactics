@@ -82,7 +82,7 @@ project:
 ```powershell
 .\tools\build.ps1 -Preset core -Test        # 1. tests
 cmake --build --preset core --target format # 2. formatter, rewrites in place
-cmake --build --preset core --target tidy   # 3. linter (~5 min: src/game parses CommonLibSSE without a PCH)
+cmake --build --preset core --target tidy   # 3. linter (seconds after a small edit; ~100 s for a full pass)
 .\tools\build.ps1 -Preset debug             # 4. plugin builds and deploys
 ```
 
@@ -90,7 +90,11 @@ cmake --build --preset core --target tidy   # 3. linter (~5 min: src/game parses
 `tools\build.ps1` has already imported it, or wrap them the same way it does.
 (3) reads `.clang-tidy` at the repo root: the bugprone, performance, analyzer,
 concurrency and misc groups, nothing stylistic; the file says what is excluded and
-why, and names the one known false positive.
+why, and names the one known false positive. It runs one clang-tidy per file, so
+Ninja runs them in parallel and skips the files that have not changed -- delete
+`build\<preset>\tidy` to force a full pass. `cmake/ClangTools.cmake` has the
+measurements behind that: the per-file cost is the checks walking CommonLibSSE's
+inlined headers, and no flag avoids it.
 
 Before anything is called done, all four must be green, plus:
 
