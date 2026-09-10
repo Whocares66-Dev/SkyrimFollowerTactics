@@ -100,24 +100,6 @@ inline constexpr std::size_t kSpellSlots = 8;
 inline constexpr std::size_t kVoiceSlots = 8;
 inline constexpr std::size_t kPackageSlots = kSpellSlots + kVoiceSlots;
 
-// The quest that owns the vanilla follower alias.
-inline constexpr std::uint32_t kDialogueFollowerQuestID = 0x000750BA;
-
-// The combat-override lists a leased record is put at the front of, for the
-// length of the lease; between casts they are exactly vanilla. A plugin that
-// is not loaded is skipped. Only the vanilla follower list today;
-// docs/MAGIC.md "Follower frameworks" records what SFF and NFF use (SFF the
-// same vanilla list, NFF its own nwsFollowerCombatPkList 007429), for when
-// integrating with them is on the table.
-struct OverrideList
-{
-    const char *plugin;
-    std::uint32_t localID;
-};
-inline constexpr OverrideList kOverrideLists[] = {
-    {"Skyrim.esm", 0x0005C852}, // PlayerFollowerCombatOverridePackageList
-};
-
 // The spell every slot is pointed at once made, and the check that the
 // layout found on vanilla records holds on the copies. Fast Healing.
 inline constexpr std::uint32_t kCanarySpellID = 0x0002F3B8;

@@ -35,12 +35,12 @@ in `docs/PLAN.md`.
   Whether equipping a potion interrupts an NPC's cast in progress is not
   verified; one log hint says it might. If so: treat "holding a record" as
   busy for potions too.
-- **Our own quest and aliases.** Today the packages ride the vanilla
-  `DialogueFollower` alias's combat-override list, so only a follower
-  recruited through `SetFollower` is covered. A FollowerTactics quest with
-  eight aliases, filled for any teammate we manage, removes that dependence
-  and covers every framework; `BGSRefAlias::ForceRefTo` is in the library we
-  build on now. Until then, NFF is one line in `kOverrideLists`.
+- **The stack route on a vanilla follower and on Serana.** Since 2026-09-09
+  a leased record goes at the front of the follower's own package stack
+  (`docs/MAGIC.md`), verified on a custom follower. Not yet seen: a follower
+  in the vanilla `DialogueFollower` alias, whose combat-override list has a
+  last entry with no conditions and could shadow the stack, and Serana on
+  Dawnguard's `DLC1NPCMentalModel`. The "OURS" line answers both.
 - **Shout, in play.** Built 2026-09-05 on the shout pool with the shout itself in the package's input (`docs/ACTIONS.md` 7); not yet run. `bat ftmake` teaches Unrelenting Force; the rule is `IF target: any THEN target: Shout -> Unrelenting Force`. The voice recovery is read (`Actor::GetVoiceRecoveryTime`, per actor, NPCs included) and a shout inside it reports "recovering" instead of firing; not yet seen counting down in play. Open: whether a three-word shout's long animation wants the begin step-back's 3 s or more.
 - **A power's Voice type for the lease.** The power's shared record reads Type Voice for the ~2 s of a lease, restored on release (`docs/ACTIONS.md` 7). Works; the clean alternative is Voice spells of our own in the ESP carrying the power's effects, which needs the active-effect check taught which spell stood for which power. Only worth doing if the window ever shows.
 - **Voice pins, in play.** Built 2026-09-05: the Magic tab's Equipped cell for a power or shout readies it in the voice slot, pins it, or puts it away, like a hand cell; one voice pin sets every other power and shout aside with the "<x> is pinned" tooltip; the watchdog puts a pinned one back. Not yet run. Not covered: the combat AI's own shout entries are not in the score hook (only weapon and spell entry classes are), so an AI that shouts its own shout mid-fight is put back by the watchdog a tick later rather than kept from it.

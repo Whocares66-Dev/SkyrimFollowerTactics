@@ -45,37 +45,15 @@ Records say *what* she does; the C++ says *when*. No Papyrus.
 
 There is no faction any more. The condition's parameter is a pointer the C++ writes: the holder's actor for the lease, null after. `src/game/Forms.cpp` makes the forms; "Forms at runtime" below is what was established about doing that.
 
-### The list they live in
+### Where a record goes: the front of her own stack (2026-09-09)
 
-An actor **in combat does not run her package stack**. She runs the **Combat
-Override Package List** on her quest alias, top to bottom, first passing
-condition wins. The vanilla follower alias (`DialogueFollower` alias 0) has
-one: `PlayerFollowerCombatOverridePackageList` (0005C852), two HoldPosition
-entries, the last with no conditions.
+Every alias an actor fills is instanced for them as an array of packages on the actor (`ExtraAliasInstanceArray`, one `BGSRefAliasInstanceData` per alias with its `instancedPackages`; the library maps all of it). The engine walks those arrays quest by quest, highest quest priority first, and the array holding the package running her now is the one at the top of her walk. When a cast rule fires, `PutOnStack` puts the leased record at the **front** of that array (the fullest array when nothing of hers is running), the lease's condition -- `GetIsReference(<holder>)`, a null-safe pointer compare in the engine, one write to point it at her -- gates it, and the release walks her arrays and takes it out. In memory only, per actor, nothing shared: between casts her arrays are exactly what her quests gave her. Verified in play the same day: Megara, a custom follower on `AK69SugarandSpiceQuest` alias 0, ran the record at once (`current package after evaluate: FF3F0800 (OURS)`) and fired the rule's dual-cast Healing Hands from it, three leases in a row.
 
-When a cast rule fires, the C++ puts the leased record at the **front** of that
-list, in memory only, and takes it out again when the lease ends. Between
-casts the list is exactly vanilla. Nothing is overridden on disk and nothing
-is saved. The engine reads the list live on each evaluation (verified
-2026-09-08: a record put in mid-fight is the current package on the same
-tick); until then all sixteen were spliced in at load and left there. Going
-in at cast time also puts ours ahead of anything another mod spliced in at
-its own data-load, whatever order the DLLs loaded in; only a mod that also
-inserts at cast time can get ahead, and only by inserting later.
+Two other routes are history. **The vanilla follower alias's combat-override list** (`PlayerFollowerCombatOverridePackageList`, 0005C852, on `DialogueFollower` alias 0) carried every cast from 2026-09-02 to 2026-09-09: the record at its front for the lease, out again after. It reached only a follower in that alias -- not Serana, whom Dawnguard runs on `DLC1NPCMentalModel`, whose alias has no such list, and not a follower a custom quest or a framework drives, whose leases all expired "AI never picked it up" in Nordic Souls. **The engine's created package** (`Actor::PutCreatedPackage`, what Papyrus uses to walk an actor somewhere) is not evaluated in a fight: placed and re-evaluated, her follow package stayed current. The stack route replaced both, for every follower, at the user's call; if a vanilla follower's list ever shadows it (its last entry has no conditions), the "OURS" line will say so.
 
-The game's own example of this is Mercer Frey in *Blindsighted*: a UseMagic
-package in his alias's override list, gated on quest stage, makes him cast
-Nightingale Strife at the player mid-fight. Ours is the same thing with
-`GetIsReference` as the trigger: the engine's implementation is a null-safe
-pointer compare between the evaluating actor and the parameter (read from the
-executable), so pointing the parameter at a follower is one write, and nothing
-is written to her.
+The game's own example of a package cast mid-fight is Mercer Frey in *Blindsighted*: a UseMagic package in his alias's override list, gated on quest stage, makes him cast Nightingale Strife at the player. Ours is the same package with `GetIsReference` as the trigger, on the actor's stack instead of a list.
 
-### A follower in no such alias (2026-09-09)
-
-The Nordic Souls log settled who the list reaches: only a follower in `DialogueFollower` alias 0. Serana is not -- Dawnguard runs her on its own quest, `DLC1NPCMentalModel`, whose alias has no combat-override list at all (read from the record), and her running packages in a fight were Dawnguard's `DLC1NPCFollowMedium` and sandbox. Custom followers (Megara on `AK69MegaraFollowQuest`, Remiel on `HLIORemiFollower`) likewise. Every cast lease on the three expired "AI never picked it up", and the one list resolved in that load order was the vanilla one. The per-alias package lists live in an unmapped table on the quest (`TESQuest` +0A0, "alias related"), so they cannot be found, cached or planted without a probe, and Serana's alias has none to find.
-
-Two routes were tried for a follower outside the alias. **The engine's created package** (`Actor::PutCreatedPackage`, what Papyrus uses to walk an actor somewhere) is not evaluated in a fight: with it placed and the AI re-evaluated, her follow package stayed current on every lease (Nordic Souls, 2026-09-09). **Her own package stack** is what `Arm` uses now: each alias an actor fills is instanced for them as an array of packages on the actor (`ExtraAliasInstanceArray`, mapped by the library), and the array holding the package running her now is the stack that has her in the fight -- Dawnguard's follow package came out of `DLC1NPCMentalModel` alias 0's. `PutOnStack` puts the leased record at the front of that array (the fullest array when none holds the running one), the lease's condition gates it as on the list, and release walks her arrays and takes it out; nothing is stored across the lease but a flag, since the arrays are hers and go with her. **Verified in play (Nordic Souls, 2026-09-09):** Megara, on `AK69SugarandSpiceQuest` alias 0, ran the record at once (`current package after evaluate: FF3F0800 (OURS)`) and fired the rule's spell, a dual-cast Healing Hands, from the front of that array, three leases in a row. Also open: the actor's package extra data is part of the save (`Actor::ChangeFlags::kPackageExtraData`), so a save inside a lease may reference the record by its form ID, which is recreated at load with its condition pointing at nobody; what the engine does with that on load is not known.
+Open: the actor's package extra data is part of the save (`Actor::ChangeFlags::kPackageExtraData`), so a save inside a lease may reference the record by its form ID, which is recreated at load with its condition pointing at nobody; what the engine does with that on load is not known.
 
 ### The C++ (`src/game/Packages.cpp`)
 

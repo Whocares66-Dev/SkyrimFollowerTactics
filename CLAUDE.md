@@ -235,7 +235,7 @@ now would be optimising a cost that is two orders of magnitude under budget. Rev
 if this number moves. It is logged every 5 s of combat, so drift is visible.
 
 **Casting — WORKS end to end (2026-09-02 13:15).** `docs/MAGIC.md` "The eighth attempt":
-UseMagic packages spliced into the follower alias's combat-override list, gated by a
+UseMagic packages put at the front of the follower's own package stack (until 2026-09-09 the follower alias's combat-override list), gated by a
 condition held by a lease (a faction rank until 2026-09-08), released when the follower's own spell-fire animation event
 names our spell. Measured over two cycles: rule fires at 43% health, package selected on
 the same tick, `Fast Healing -- OURS` 1.4 s later, health 75 -> 175, released next tick,

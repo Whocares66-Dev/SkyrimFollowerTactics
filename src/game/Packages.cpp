@@ -33,8 +33,6 @@ constexpr double kArmWindowSeconds = 2.5;
 // had a second's hesitation on one of the two.
 constexpr double kVoiceArmWindowSeconds = 3.0;
 
-void TakeOutOfLists(RE::TESPackage *pkg);
-
 // The condition, as an owned resource.
 //
 // Pointing a slot's condition at a follower is what makes her package's
@@ -457,41 +455,26 @@ bool SetPackageBool(RE::TESPackage *pkg, const char *inputName, bool value)
     return true;
 }
 
-// Is this actor the one the vanilla follower alias holds? The combat override
-// list we spliced into belongs to that alias, so a follower who is not in it
-// -- recruited by a framework, or made a teammate from the console -- never
-// sees our packages, and the log should say so rather than leave "she did not
-// cast" ambiguous. Read from the ACTOR: every alias she fills is recorded on
-// her as ExtraAliasInstanceArray, and the whole table goes in the log.
-bool InFollowerAlias(RE::Actor *actor)
+// Every alias the actor fills, for the log: what the record's way to them
+// is made of (PutOnStack). Read from the ACTOR: each is recorded on them as
+// ExtraAliasInstanceArray.
+void LogAliases(RE::Actor *actor)
 {
     const auto *extra = actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
     if (!extra)
     {
         logger::info("  {} is in NO quest alias at all", actor->GetName() ? actor->GetName() : "?");
-        return false;
+        return;
     }
-
-    bool found = false;
     for (const auto *inst : extra->aliases)
     {
         if (!inst || !inst->quest)
             continue;
-        const bool ours = inst->quest->GetFormID() == kDialogueFollowerQuestID;
-        found = found || (ours && inst->alias && inst->alias->aliasID == 0);
-        logger::info("  alias: quest {:08X} \"{}\" alias {} \"{}\" ({} instanced packages){}", inst->quest->GetFormID(),
+        logger::info("  alias: quest {:08X} \"{}\" alias {} \"{}\" ({} instanced packages)", inst->quest->GetFormID(),
                      inst->quest->GetFormEditorID() ? inst->quest->GetFormEditorID() : "",
                      inst->alias ? inst->alias->aliasID : 0xFFFFFFFF, inst->alias ? inst->alias->aliasName.c_str() : "",
-                     inst->instancedPackages ? inst->instancedPackages->size() : 0, ours ? "  <- follower alias" : "");
+                     inst->instancedPackages ? inst->instancedPackages->size() : 0);
     }
-
-    // And the faction the follower dialogue puts her in, which "Follow me"
-    // sets alongside the alias and the console script used to set alone.
-    auto *currentFollower = RE::TESForm::LookupByID<RE::TESFaction>(0x0005C84E);
-    logger::info("  CurrentFollowerFaction rank {}, teammate {}",
-                 currentFollower ? actor->GetFactionRank(currentFollower, false) : -99, actor->IsPlayerTeammate());
-
-    return found;
 }
 
 // The PackageTarget behind a named input, or null if the layout has not been
@@ -735,15 +718,16 @@ void ReturnShoutVoice(std::size_t i)
     g_pool[i].ownVoice = nullptr;
 }
 
-// A follower in no alias with a combat-override list -- Serana on
-// Dawnguard's own quest, a follower their author's quest drives -- runs the
-// packages of the aliases they fill, each alias's instanced for them as an
-// array on the actor (ExtraAliasInstanceArray). The array whose packages
-// include the one running now is the stack that has them in the fight, so
-// the record goes at its front, where it is evaluated first; the lease's
-// condition gates it as on the list. The created-package route
-// (PutCreatedPackage) was tried first and is not evaluated in a fight
-// (Nordic Souls, 2026-09-09: her follow package stayed current).
+// How a record reaches a follower: at the front of their own package
+// stack. Every alias an actor fills is instanced for them as an array of
+// packages on the actor (ExtraAliasInstanceArray), and the array whose
+// packages include the one running now is the stack that has them in the
+// fight, so the record goes at its front, where it is evaluated first; the
+// lease's condition gates it. Per actor, so nothing shared is touched: the
+// vanilla follower alias's combat-override list, which was spliced until
+// 2026-09-09, is left alone (docs/MAGIC.md "The list they live in"). The
+// created-package route (PutCreatedPackage) was tried and is not
+// evaluated in a fight.
 RE::BSTArray<RE::TESPackage *> *PutOnStack(RE::Actor *actor, RE::TESPackage *pkg)
 {
     auto *extra = actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
@@ -831,9 +815,8 @@ void Release(std::size_t i)
         g_pool[i].power = nullptr;
     }
     g_pool[i].shouting = nullptr;
-    // Out of the lists before the lease goes: the lease's destructor asks the
-    // AI to re-evaluate, and the record must not be there to be found.
-    TakeOutOfLists(g_slots[i]);
+    // The lease's destructor asks the AI to re-evaluate; the record is off
+    // the stack by then.
     g_pool[i].lease.reset();
     g_pool[i].target = {};
     SetPackageTarget(g_slots[i], nullptr); // no target handle outlives its lease
@@ -843,79 +826,6 @@ void Release(std::size_t i)
     g_pool[i].extended = false;
     g_pool[i].seenRunning = false;
     g_pool[i].streaming = false;
-}
-
-// The follower combat-override lists, resolved once. Empty means casting
-// cannot work in this load order.
-std::vector<RE::BGSListForm *> g_lists;
-
-std::string ListContents(const RE::BGSListForm *list)
-{
-    // FormIDs, not editor ids: packages carry no editor id at runtime, and
-    // the first version of this line printed "[]" for a ten-entry list.
-    std::string ids;
-    for (auto *form : list->forms)
-    {
-        if (!ids.empty())
-            ids += ", ";
-        ids += fmt::format("{:08X}", form ? form->GetFormID() : 0);
-    }
-    return ids;
-}
-
-std::size_t ResolveOverrideLists()
-{
-    auto *handler = RE::TESDataHandler::GetSingleton();
-    g_lists.clear();
-    for (const auto &entry : kOverrideLists)
-    {
-        auto *list = handler ? handler->LookupForm<RE::BGSListForm>(entry.localID, entry.plugin) : nullptr;
-        if (!list)
-        {
-            logger::info("packages: {} not loaded -- its follower list is not used", entry.plugin);
-            continue;
-        }
-        logger::info("packages: {} list {:08X} is [{}] ({} entries); a record is put at its front for each cast",
-                     entry.plugin, list->GetFormID(), ListContents(list), list->forms.size());
-        g_lists.push_back(list);
-    }
-    return g_lists.size();
-}
-
-// A record is in the lists only while it is leased. At the FRONT: the
-// vanilla list's last entry has no conditions, so anything appended after it
-// is never reached. Between casts the lists are exactly vanilla. Game-thread
-// only, as everything here is: the AI reads these lists on the same thread
-// the tick's task runs on, so nothing walks a list while it is rebuilt.
-void PutInLists(RE::TESPackage *pkg)
-{
-    for (auto *list : g_lists)
-    {
-        std::vector<RE::TESForm *> keep(list->forms.begin(), list->forms.end());
-        list->forms.clear();
-        list->forms.push_back(pkg);
-        for (auto *form : keep)
-            if (form != pkg)
-                list->forms.push_back(form);
-        logger::info("  list {:08X} is now [{}]", list->GetFormID(), ListContents(list));
-    }
-}
-
-void TakeOutOfLists(RE::TESPackage *pkg)
-{
-    for (auto *list : g_lists)
-    {
-        std::vector<RE::TESForm *> keep;
-        for (auto *form : list->forms)
-            if (form != pkg)
-                keep.push_back(form);
-        if (keep.size() == list->forms.size())
-            continue;
-        list->forms.clear();
-        for (auto *form : keep)
-            list->forms.push_back(form);
-        logger::info("  list {:08X} is back to [{}]", list->GetFormID(), ListContents(list));
-    }
 }
 
 } // namespace
@@ -994,15 +904,8 @@ std::size_t FreeSlot(std::size_t from, std::size_t to)
 CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double window)
 {
     auto &slot = g_pool[chosen];
-    // In the vanilla follower alias, the record reaches her through that
-    // alias's combat-override list. Not in it -- Serana, on Dawnguard's own
-    // quest; a follower a framework or their own quest drives -- the list
-    // is never consulted, and the record goes at the front of the package
-    // stack that runs her instead (PutOnStack). Whether the AI takes it in
-    // a fight is measured by the "OURS" line below (docs/MAGIC.md).
-    const bool inAlias = InFollowerAlias(actor);
-    logger::info("  {} in the DialogueFollower alias: {}", actor->GetName() ? actor->GetName() : "?",
-                 inAlias ? "yes" : "NO -- the record goes on their own stack");
+    // The aliases the record's way to them is made of, for the log.
+    LogAliases(actor);
 
     slot.armedAt = TacticsSeconds();
     // The window covers the AI's start-up latency. For a stream it is
@@ -1020,18 +923,14 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
         logger::info("  animation sink {} on {:08X}",
                      actor->AddAnimationGraphEventSink(&g_fireSink) ? "added" : "REFUSED", actor->GetFormID());
 
-    // Into the lists, then the lease points the condition at her in its
+    // Onto her stack, then the lease points the condition at her in its
     // constructor. From here on the record is hers until the lease is
     // destroyed, and only that clears the condition.
-    PutInLists(g_slots[chosen]);
     slot.lease.emplace(actor, slot.condition);
-    if (!inAlias)
-    {
-        slot.onStack = PutOnStack(actor, g_slots[chosen]) != nullptr;
-        if (!slot.onStack)
-            logger::info("  {} fills no alias with packages; the record has no way to them",
-                         actor->GetName() ? actor->GetName() : "?");
-    }
+    slot.onStack = PutOnStack(actor, g_slots[chosen]) != nullptr;
+    if (!slot.onStack)
+        logger::info("  {} fills no alias with packages; the record has no way to them",
+                     actor->GetName() ? actor->GetName() : "?");
 
     // Immediate, or she finishes whatever she is doing first and the rule's
     // timing -- the entire point of this route -- is lost.
@@ -1252,11 +1151,6 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
 
 void ResetPackages()
 {
-    // The lists live in memory across a load; an entry a lease left there
-    // (abandoned below) would otherwise stay.
-    for (auto *pkg : g_slots)
-        if (pkg)
-            TakeOutOfLists(pkg);
     for (std::size_t i = 0; i < g_pool.size(); ++i)
     {
         auto &slot = g_pool[i];
@@ -1600,7 +1494,7 @@ void InitPackages()
 
     logger::info("packages: {} UseMagic slots and {} Shout slots with wrappers made in memory", kSpellSlots,
                  kVoiceSlots);
-    g_available = ResolveOverrideLists() > 0;
+    g_available = true;
 }
 
 bool PackagesAvailable()
