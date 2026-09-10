@@ -432,7 +432,7 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
 
 Binding EvaluateCondition(const Rule &r, const Snapshot &s)
 {
-    if (!IsPredicateValidFor(r.subject, r.predicate))
+    if (!IsPredicateValidFor(r.subject, r.predicate) || !IsDamageKindValidFor(r.predicate, r.damageKind))
         return NoMatch();
 
     // The farewell pass after a fight: the fight is over, and the only thing
@@ -984,7 +984,8 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         // never be answered is an authoring mistake, not a condition that
         // happens to be untrue right now, and the debug column must not send
         // someone off to investigate a follower's health for nothing.
-        if (!IsPredicateValidFor(r.subject, r.predicate) || !IsActionTargetValidFor(r.subject, r.actionTarget))
+        if (!IsPredicateValidFor(r.subject, r.predicate) || !IsActionTargetValidFor(r.subject, r.actionTarget) ||
+            !IsDamageKindValidFor(r.predicate, r.damageKind))
         {
             put(Verdict::InvalidCondition);
             continue;

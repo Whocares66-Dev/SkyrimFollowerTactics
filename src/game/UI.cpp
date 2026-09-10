@@ -306,6 +306,14 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
     switch (ft::ArgumentFor(predicate))
     {
     case ft::ArgumentKind::Percent:
+        // A resistance is the one number here that commonly goes negative:
+        // a weakness, from a curse, a race or a spell. So it gets 0 as well,
+        // where "< 0%" is "weak to this" and "> 0%" "resists it at all" --
+        // the questions worth asking about a weakness, and neither of them
+        // expressible with the thresholds alone. Health, magicka, stamina
+        // and armour never go below zero, so 0 would be a dead entry there.
+        if (ft::IsResistance(predicate))
+            return {0.0f, 0.25f, 0.50f, 0.75f};
         return {0.25f, 0.50f, 0.75f};
     case ft::ArgumentKind::None:
     default:
@@ -871,8 +879,10 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::DamageKind::COUNT); ++ki)
                 {
                     const auto kind = static_cast<ft::DamageKind>(ki);
-                    if (kind == ft::DamageKind::Melee || kind == ft::DamageKind::Ranged || kind == ft::DamageKind::Any)
-                        continue; // nothing resists a blow or an arrow but armour, its own heading
+                    // Nothing resists a blow or an arrow but armour, which
+                    // is its own heading, and nothing resists "any".
+                    if (!ft::IsDamageKindValidFor(predicate, kind))
+                        continue;
                     if (!BeginCascade(std::string(ft::DisplayName(kind)).c_str()))
                         continue;
                     const auto pick = [&](ft::PredicateKind which, float arg, const std::string &label) {
@@ -910,9 +920,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                 continue;
             }
 
-            // Hit type and Hit by: Any; then how -- a blow, an arrow, a
-            // spell of any kind; then what the spell was. A divider between
-            // each group.
+            // Hit type and Hit by: how -- a blow, an arrow, a spell of any
+            // kind -- then what the spell was, a divider between each group.
+            // Hit by opens on Any, hit with anything at all inside the
+            // window; Hit type has no Any, because every actor hits with
+            // something and the condition would be true of everyone.
             if (predicate == ft::PredicateKind::HitType || predicate == ft::PredicateKind::HitBy)
             {
                 if (!BeginCascade(predicateName.c_str()))
@@ -929,8 +941,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
                         changed = true;
                     }
                 };
-                pick(ft::DamageKind::Any);
-                Im::Separator();
+                if (ft::IsDamageKindValidFor(predicate, ft::DamageKind::Any))
+                {
+                    pick(ft::DamageKind::Any);
+                    Im::Separator();
+                }
                 pick(ft::DamageKind::Melee);
                 pick(ft::DamageKind::Ranged);
                 pick(ft::DamageKind::Magic);

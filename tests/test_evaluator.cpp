@@ -2886,7 +2886,7 @@ TEST_CASE("the enemy an action goes to, read from the condition", "[binding]")
     REQUIRE_FALSE(ok);
 }
 
-TEST_CASE("Using asks what is in hand, of anyone", "[binding]")
+TEST_CASE("Hit type asks what is in hand, of anyone", "[binding]")
 {
     for (const auto subject : {SubjectKind::Self, SubjectKind::Player, SubjectKind::Ally, SubjectKind::Enemy})
         REQUIRE(IsPredicateValidFor(subject, PredicateKind::HitType));
@@ -2906,8 +2906,18 @@ TEST_CASE("Using asks what is in hand, of anyone", "[binding]")
     REQUIRE(EvaluateCondition(r, s).ok);
     r.damageKind = DamageKind::Magic;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+
+    // Any is not a hit type. The game side reads hands with nothing in them
+    // as Melee -- fists, and a bear's claws -- so every actor hits with
+    // something and the condition would be true of everyone: the plain Any
+    // condition under a heading that promises a filter. It is refused, not
+    // answered, so a profile carrying it reports InvalidCondition rather
+    // than firing on every tick.
     r.damageKind = DamageKind::Any;
-    REQUIRE(EvaluateCondition(r, s).ok);
+    REQUIRE_FALSE(IsDamageKindValidFor(PredicateKind::HitType, DamageKind::Any));
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    // Under Hit by it is the whole point: hit with anything at all.
+    REQUIRE(IsDamageKindValidFor(PredicateKind::HitBy, DamageKind::Any));
 
     r.subject = SubjectKind::Enemy;
     r.damageKind = DamageKind::Magic;
@@ -2915,8 +2925,47 @@ TEST_CASE("Using asks what is in hand, of anyone", "[binding]")
     r.damageKind = DamageKind::Melee;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
-    // Empty hands are using nothing, Any included.
+    // Empty hands in the snapshot hit with nothing: the core compares bits,
+    // and it is Sensors that puts Melee in them for an actor holding nothing.
     r.subject = SubjectKind::Player;
+    r.damageKind = DamageKind::Melee;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+}
+
+TEST_CASE("a resistance is asked only about a kind something resists", "[binding]")
+{
+    // Nothing resists a blow or an arrow but armour, which is its own
+    // condition, and nothing resists "any": the menu offers neither, and a
+    // hand-written profile asking anyway is refused rather than answered
+    // against the 0 those slots hold.
+    for (const auto which : {PredicateKind::ResistancePctBelow, PredicateKind::ResistancePctAbove,
+                             PredicateKind::ResistanceLowest, PredicateKind::ResistanceHighest})
+    {
+        REQUIRE_FALSE(IsDamageKindValidFor(which, DamageKind::Melee));
+        REQUIRE_FALSE(IsDamageKindValidFor(which, DamageKind::Ranged));
+        REQUIRE_FALSE(IsDamageKindValidFor(which, DamageKind::Any));
+        REQUIRE(IsDamageKindValidFor(which, DamageKind::Fire));
+        REQUIRE(IsDamageKindValidFor(which, DamageKind::Magic));
+    }
+    // A predicate that reads no damage kind is unaffected by whichever one
+    // the rule happens to carry.
+    for (const auto kind : {DamageKind::Any, DamageKind::Melee, DamageKind::Fire})
+        REQUIRE(IsDamageKindValidFor(PredicateKind::HealthPctBelow, kind));
+
+    // The two the menu offers at zero, which no threshold above zero can
+    // express: weak to a kind, and resistant to it at all.
+    Snapshot s = Healthy();
+    s.traits.SetResist(DamageKind::Fire, -50.0f);
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::ResistancePctBelow;
+    r.damageKind = DamageKind::Fire;
+    r.conditionArg = 0.0f;
+    REQUIRE(EvaluateCondition(r, s).ok);
+    s.traits.SetResist(DamageKind::Fire, 25.0f);
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    r.predicate = PredicateKind::ResistancePctAbove;
+    REQUIRE(EvaluateCondition(r, s).ok);
     r.damageKind = DamageKind::Any;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 }

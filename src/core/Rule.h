@@ -451,6 +451,16 @@ struct RuleSet
 // are fair questions.
 [[nodiscard]] bool IsStatusValidFor(SubjectKind subject, StatusKind status) noexcept;
 
+// The same for a kind of damage under the predicates that read one. Nothing
+// resists a blow or an arrow but armour, which is its own condition, and
+// nothing resists "any": a resistance is asked about a kind that something
+// resists. Hit type: Any would be true of everyone -- hands with nothing in
+// them read as Melee, so every actor hits with something -- which is the
+// plain Any condition wearing a heading that promises a filter. Any belongs
+// to Hit by alone, where it is a real question: hit with anything at all,
+// inside the window. A predicate that reads no damage kind is unaffected.
+[[nodiscard]] bool IsDamageKindValidFor(PredicateKind predicate, DamageKind kind) noexcept;
+
 // The same for the THEN side. A target of Ally or Enemy is "the one the
 // condition matched", so it needs a condition about an ally (Ally, or a
 // named follower) or an enemy (Enemy, or the current target); every other

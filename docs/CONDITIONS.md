@@ -16,8 +16,9 @@ conditions take a *kind* as well as, or instead of, a number:
 | Condition | Kind | Number |
 |---|---|---|
 | Status | poisoned, burning, frostbitten, shocked, paralyzed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking (not all about everyone, see 9) | none |
-| Resistance | fire, frost, shock, magic, poison | a percent, below or above; or lowest / highest |
-| Attacked by | any; melee, ranged, magic; fire, frost, shock, poison | none |
+| Resistance | fire, frost, shock, magic, poison | a percent, below or above (0 included, see 4); or lowest / highest |
+| Hit by | any; melee, ranged, magic; fire, frost, shock, poison | none |
+| Hit type | melee, ranged, magic; fire, frost, shock, poison -- no "any", see 9 | none |
 | Armor | none | a percent, below or above; or lowest / highest |
 | Health / Stamina / Magicka | lowest, highest | or the existing below / above % |
 
@@ -89,7 +90,11 @@ are uncapped: 100 is immunity. Vanilla values cluster at 25, 33, 50 and
 poison 100, atronachs 100 to their own element and -33 to the opposite,
 dragons 50 own and -25 opposite, vampires frost 50 and fire -50).
 
-**The condition:** the value as a percent, below or above 25 / 50 / 75%, or a group's Lowest and Highest of that kind: "Resistance Fire > 75%" is the atronach, "Resistance Frost < 25%" catches the weakness too. (The named bands Weak / Normal / High / Immune were the first version and are gone.) The snapshot carries the values per actor view.
+**The condition:** the value as a percent, below or above 0 / 25 / 50 / 75%, or a group's Lowest and Highest of that kind: "Resistance Fire > 75%" is the atronach, "Resistance Frost < 25%" catches the weakness too. (The named bands Weak / Normal / High / Immune were the first version and are gone.) The snapshot carries the values per actor view.
+
+**Zero is offered here and nowhere else (2026-09-09).** A resistance is the one measure in the panel that commonly goes negative -- a Dunmer's -25 to frost, a vampire's -50 to fire, an atronach's -33 to the opposite element, and whatever a curse or a cloak has put on -- so "< 0%" is "weak to this" and "> 0%" is "resists it at all", two questions no threshold above zero can express. Health, magicka, stamina and armour never go below zero, so they start at 25% and 0 would be a dead entry.
+
+**Melee, Ranged and Any are not offered under Resistance** and are refused if a hand-written profile asks: nothing resists a blow or an arrow but armour, which is its own condition, and nothing resists "any". `IsDamageKindValidFor` in `core/Rule.cpp` says so, the menu is built from it, and the evaluator reports InvalidCondition rather than answering against the 0 those slots hold.
 
 ## 5. Attacked by
 
@@ -200,7 +205,9 @@ Self only: the snapshot reads the follower's own hands. The wire names are `weap
 
 Under every subject the conditions come in groups with a divider between: Any; Health, Stamina, Magicka; Combat; (for Enemy) Attacking, Attacked by; Hit type, Hit by; Status; Weapon, Armor, Resistance; Summon. Corpse, a subject of its own, has None and Level -> Highest, Lowest. Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. There is no Count of a group any more: an ally's changes too rarely to be a condition and the enemy's was not wanted (it went on 2026-09-08; a save carrying `count-at-least` drops the rule with a warning).
 
-**Hit type** (Using until 2026-09-09) is what the subject hits with, asked with the same kinds as Hit by: Any (anything at all), then Melee (a blade, an axe, a mace), Ranged (a bow or crossbow), Magic (a spell or a staff), then Fire, Frost, Shock, Poison for whatever in hand does that kind of damage -- a weapon's enchantment, a staff's or a spell's effects, a poison on the blade -- read by what resists the effect, as a hit is. Hands with no weapon and no spell in them are Melee: the fists, and a creature's claws, teeth and horns, whose hands hold nothing (a bear read as nothing until 2026-09-09). Any subject, from the snapshot's traits; the wire name is `hit-type`, the kind under `"damage"` as for Hit by.
+**Hit type** (Using until 2026-09-09) is what the subject hits with, asked with the same kinds as Hit by but one: Melee (a blade, an axe, a mace), Ranged (a bow or crossbow), Magic (a spell or a staff), then Fire, Frost, Shock, Poison for whatever in hand does that kind of damage -- a weapon's enchantment, a staff's or a spell's effects, a poison on the blade -- read by what resists the effect, as a hit is. Hands with no weapon and no spell in them are Melee: the fists, and a creature's claws, teeth and horns, whose hands hold nothing (a bear read as nothing until 2026-09-09). Any subject, from the snapshot's traits; the wire name is `hit-type`, the kind under `"damage"` as for Hit by (which the writer left out until 2026-09-09, so every saved Hit type rule came back as the field's default, Fire).
+
+**There is no Hit type: Any (removed 2026-09-09).** Because hands holding nothing read as Melee, every actor hits with something, so the condition was true of everyone: the plain Any condition wearing a heading that promises a filter. `IsDamageKindValidFor` refuses it, so a profile carrying one reports InvalidCondition instead of firing on every tick. Hit by: Any is a different question and stays -- hit with anything at all *inside the 3 s window*, false of an enemy nobody has touched, and it binds the Attacker for the Then side. Ally: Any stays too: it is always true, but Any is the panel's "no condition" entry and it is also what names the target, binding the nearest ally for the action to aim at.
 
 The player is "Player" everywhere in the panel, never by name: a long name breaks the layout.
 

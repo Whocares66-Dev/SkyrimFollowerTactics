@@ -38,9 +38,12 @@ enum class StatusKind : std::uint8_t
 // with. How it arrived first -- a blow, an arrow or bolt, a spell of any
 // kind -- then what a spell was. A Fire hit is Magic as well; an arrow is
 // Ranged and not Melee. Nothing resists a blow or an arrow but armour,
-// which is its own condition. Any is for Attacked by alone: hit with
-// anything at all. Disease is not here: nothing attacks with it, and only
-// the player has a resistance worth asking about. The order is the menu's.
+// which is its own condition. Any is for Hit by alone: hit with anything at
+// all, inside the window. It is not offered as a hit TYPE -- hands with
+// nothing in them read as Melee, so every actor hits with something and the
+// condition would be true of everyone (IsDamageKindValidFor). Disease is not
+// here: nothing attacks with it, and only the player has a resistance worth
+// asking about. The order is the menu's.
 enum class DamageKind : std::uint8_t
 {
     Melee,

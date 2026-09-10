@@ -239,6 +239,15 @@ bool IsStatusValidFor(SubjectKind subject, StatusKind status) noexcept
     }
 }
 
+bool IsDamageKindValidFor(PredicateKind predicate, DamageKind kind) noexcept
+{
+    if (predicate == PredicateKind::HitType)
+        return kind != DamageKind::Any; // every actor hits with something
+    if (IsResistance(predicate))
+        return kind != DamageKind::Melee && kind != DamageKind::Ranged && kind != DamageKind::Any;
+    return true;
+}
+
 void Reconcile(Rule &rule) noexcept
 {
     if (!IsActionTargetValidFor(rule.subject, rule.actionTarget))
