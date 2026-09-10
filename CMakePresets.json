@@ -70,6 +70,18 @@
             "cacheVariables": {
                 "FT_SANITIZE": "ON"
             }
+        },
+        {
+            "name": "core-cov",
+            "inherits": [
+                "core"
+            ],
+            "displayName": "Core only, clang-cl, test coverage",
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "clang-cl.exe",
+                "CMAKE_CXX_FLAGS": "/permissive- /EHsc",
+                "FT_COVERAGE": "ON"
+            }
         }
     ],
     "buildPresets": [
@@ -88,6 +100,10 @@
         {
             "name": "core-asan",
             "configurePreset": "core-asan"
+        },
+        {
+            "name": "core-cov",
+            "configurePreset": "core-cov"
         }
     ],
     "testPresets": [
@@ -108,6 +124,13 @@
         {
             "name": "core-asan",
             "configurePreset": "core-asan",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "core-cov",
+            "configurePreset": "core-cov",
             "output": {
                 "outputOnFailure": true
             }

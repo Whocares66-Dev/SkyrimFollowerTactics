@@ -26,3 +26,37 @@ ft_apply_warnings(ft_tests)
 
 include(Catch)
 catch_discover_tests(ft_tests)
+
+# Coverage report, for the core-cov preset:
+#
+#   .\tools\build.ps1 -Preset core-cov -Coverage
+#   cmake --build --preset core-cov --target coverage
+#
+# Runs ft_tests once as a single process (ctest would run each case in its
+# own process and leave a hundred .profraw files), merges the counts, and
+# prints a per-file summary for src/core. The line-by-line view is written
+# as HTML beside it, in build/core-cov/coverage/. Nothing outside src/core
+# is reported: the tests, Catch2 and the JSON library are means, not the
+# thing measured.
+if(FT_COVERAGE AND FT_LLVM_PROFDATA AND FT_LLVM_COV)
+    set(_cov_dir "${CMAKE_BINARY_DIR}/coverage")
+    add_custom_target(coverage
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_cov_dir}"
+        COMMAND "${CMAKE_COMMAND}" -E env "LLVM_PROFILE_FILE=${_cov_dir}/ft_tests.profraw"
+                "$<TARGET_FILE:ft_tests>"
+        COMMAND "${FT_LLVM_PROFDATA}" merge -sparse "${_cov_dir}/ft_tests.profraw"
+                -o "${_cov_dir}/ft_tests.profdata"
+        COMMAND "${FT_LLVM_COV}" show "$<TARGET_FILE:ft_tests>"
+                "-instr-profile=${_cov_dir}/ft_tests.profdata"
+                -format=html "-output-dir=${_cov_dir}/html"
+                "${CMAKE_SOURCE_DIR}/src/core"
+        COMMAND "${FT_LLVM_COV}" report "$<TARGET_FILE:ft_tests>"
+                "-instr-profile=${_cov_dir}/ft_tests.profdata"
+                "${CMAKE_SOURCE_DIR}/src/core"
+        DEPENDS ft_tests
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        COMMENT "Coverage of src/core by ft_tests; HTML in ${_cov_dir}/html"
+        VERBATIM USES_TERMINAL)
+elseif(FT_COVERAGE)
+    message(WARNING "FT_COVERAGE is ON but llvm-profdata/llvm-cov were not found; no 'coverage' target")
+endif()

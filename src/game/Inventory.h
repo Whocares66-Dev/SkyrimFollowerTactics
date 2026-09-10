@@ -16,7 +16,7 @@
 namespace RE
 {
 class Actor;
-class Effect;
+struct Effect;
 class MagicItem;
 class TESDescription;
 } // namespace RE

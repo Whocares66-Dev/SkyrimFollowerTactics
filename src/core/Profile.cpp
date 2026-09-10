@@ -4,6 +4,7 @@
 
 #include <cctype>
 #include <charconv>
+#include <format>
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -314,7 +315,7 @@ struct FormField
             if (auto action = ReadAction(a, codec, why))
                 r.actions.push_back(*action);
             else
-                warnings.push_back(where + " action " + std::to_string(index) + ": " + why + " -- action dropped");
+                warnings.push_back(std::format("{} action {}: {} -- action dropped", where, index, why));
             ++index;
         }
     }
@@ -447,16 +448,17 @@ ReadResult ReadProfile(std::string_view text, const FormCodec &codec)
                 result.warnings.push_back(where + ": not an object -- pin dropped");
                 continue;
             }
-            const auto text = Str(entry, "form");
-            if (!text)
+            const auto formText = Str(entry, "form");
+            if (!formText)
             {
                 result.warnings.push_back(where + ": no form -- pin dropped");
                 continue;
             }
-            const auto form = codec.decode(*text);
+            const auto form = codec.decode(*formText);
             if (!form)
             {
-                result.warnings.push_back(where + ": form \"" + *text + "\" is not in this load order -- pin dropped");
+                result.warnings.push_back(where + ": form \"" + *formText +
+                                          "\" is not in this load order -- pin dropped");
                 continue;
             }
             PinEntry pin;

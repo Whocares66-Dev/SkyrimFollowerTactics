@@ -13,6 +13,8 @@
     core       core rule engine + tests only. No Skyrim, no vcpkg, no CommonLibSSE.
                This is the fast loop -- use it constantly.
     core-asan  same, built with AddressSanitizer.
+    core-cov   same, built with clang-cl and instrumented for coverage; -Coverage
+               runs the tests and reports which lines of src/core they reach.
     debug      full build: SKSE plugin + tests. The first run compiles CommonLibSSE-NG
                from source via vcpkg and is slow.
     release    same as debug, optimized.
@@ -24,18 +26,35 @@
     open, so the copy would fail -- but the compile and link are still worth
     having. The next run without this switch copies as usual.
 
+.PARAMETER Analyze
+    Compile our own targets under MSVC's static analyser (/analyze). A
+    different engine from clang-tidy's, so it finds different things; the
+    findings come out as C6xxx compiler warnings. Compiles several times
+    slower, and the flag is cached, so this run and the next plain run each
+    recompile our sources (not CommonLibSSE). Works with any preset.
+
+.PARAMETER Coverage
+    After building, run the tests once and report line coverage of src/core
+    (the `coverage` target). Only the core-cov preset is instrumented, so
+    only there does this do anything. The HTML report lands in
+    build\core-cov\coverage\html\index.html.
+
 .EXAMPLE
     .\tools\build.ps1 -Preset core -Test
     .\tools\build.ps1 -Preset debug
     .\tools\build.ps1 -Preset debug -NoDeploy
+    .\tools\build.ps1 -Preset debug -Analyze -NoDeploy
+    .\tools\build.ps1 -Preset core-cov -Coverage
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('core', 'core-asan', 'debug', 'release')]
+    [ValidateSet('core', 'core-asan', 'core-cov', 'debug', 'release')]
     [string] $Preset = 'core',
     [switch] $Test,
     [switch] $Fresh,
-    [switch] $NoDeploy
+    [switch] $NoDeploy,
+    [switch] $Analyze,
+    [switch] $Coverage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -182,7 +201,8 @@ try {
     # FT_DEPLOY is a cached CMake option, so it is passed on EVERY configure:
     # a -NoDeploy run must not leave the next plain run silently not copying.
     $deploy = if ($NoDeploy) { 'OFF' } else { 'ON' }
-    cmake --preset $Preset "-DFT_DEPLOY=$deploy"
+    $analyzeFlag = if ($Analyze) { 'ON' } else { 'OFF' }
+    cmake --preset $Preset "-DFT_DEPLOY=$deploy" "-DFT_ANALYZE=$analyzeFlag"
     if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
     Write-Host "`n== build ($Preset) ==" -ForegroundColor Cyan
@@ -193,6 +213,13 @@ try {
         Write-Host "`n== test ($Preset) ==" -ForegroundColor Cyan
         ctest --preset $Preset
         if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
+    }
+
+    if ($Coverage) {
+        if ($Preset -ne 'core-cov') { throw "-Coverage needs the core-cov preset (instrumented build); got '$Preset'." }
+        Write-Host "`n== coverage ($Preset) ==" -ForegroundColor Cyan
+        cmake --build --preset $Preset --target coverage
+        if ($LASTEXITCODE -ne 0) { throw "coverage failed ($LASTEXITCODE)" }
     }
     Write-Host "`nOK" -ForegroundColor Green
 } finally {

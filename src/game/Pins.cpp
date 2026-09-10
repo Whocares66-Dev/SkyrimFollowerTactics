@@ -372,12 +372,17 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
             return;
         const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
         RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
+        // MakeFunctionArguments takes Args&&: an lvalue pointer deduces a
+        // reference type and fails its is_return_convertible gate, so the
+        // std::move is the call's shape, not a copy avoided.
+        // NOLINTBEGIN(performance-move-const-arg)
         if (auto *shout = form->As<RE::TESShout>())
             vm->DispatchMethodCall2(handle, "Actor", "UnequipShout", RE::MakeFunctionArguments(std::move(shout)),
                                     result);
         else if (auto *power = form->As<RE::SpellItem>())
             vm->DispatchMethodCall2(handle, "Actor", "UnequipSpell",
                                     RE::MakeFunctionArguments(std::move(power), static_cast<std::int32_t>(2)), result);
+        // NOLINTEND(performance-move-const-arg)
         return;
     }
     if (auto *spell = form->As<RE::SpellItem>())
@@ -394,7 +399,8 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
             RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
             vm->DispatchMethodCall2(
                 handle, "Actor", "UnequipSpell",
-                RE::MakeFunctionArguments(std::move(spell), static_cast<std::int32_t>(hand == Hand::Left ? 0 : 1)),
+                RE::MakeFunctionArguments(std::move(spell), // NOLINT(performance-move-const-arg) as above
+                                          static_cast<std::int32_t>(hand == Hand::Left ? 0 : 1)),
                 result);
         }
         return;

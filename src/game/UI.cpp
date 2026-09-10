@@ -20,7 +20,7 @@
 #include "game/Tactics.h"
 #include "game/Util.h"
 
-#include "SKSEMenuFramework.h"
+#include <SKSEMenuFramework.h>
 
 #include <algorithm>
 #include <array>
@@ -284,7 +284,7 @@ std::string ArgumentText(ft::PredicateKind predicate, float value)
     switch (ft::ArgumentFor(predicate))
     {
     case ft::ArgumentKind::Percent:
-        return (ft::IsAbove(predicate) ? "> " : "< ") + std::to_string(static_cast<int>(value * 100.0f + 0.5f)) + "%";
+        return (ft::IsAbove(predicate) ? "> " : "< ") + std::to_string(std::lround(value * 100.0f)) + "%";
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -1167,7 +1167,7 @@ std::string Sentence(std::string_view text)
 std::string VerdictTooltip(ft::Verdict verdict, ft::ActionKind action, const FollowerView &view)
 {
     if (verdict == ft::Verdict::Recovering && view.voiceRecovery > 0.0f)
-        return "Shout on cooldown (" + std::to_string(static_cast<int>(view.voiceRecovery + 0.5f)) + " s)";
+        return "Shout on cooldown (" + std::to_string(std::lround(view.voiceRecovery)) + " s)";
     return Sentence(ft::Explain(verdict, action));
 }
 
@@ -1254,7 +1254,7 @@ bool RuleAvailable(const ft::Rule &rule, const FollowerView &view)
 
 std::string ActionText(const ft::Action &act, const FollowerView &view)
 {
-    const std::string base(ft::DisplayName(act.kind));
+    std::string base(ft::DisplayName(act.kind));
 
     // A policy names its effect: "Strongest Health potion", "Weakest Resist
     // Fire potion", "Strongest Fear poison".
@@ -4753,6 +4753,7 @@ void SyncFollowers()
     // framework in the field exports no way to remove or reorder an entry
     // (see above), so one recruited later goes after them.
     std::vector<const FollowerView *> arriving;
+    arriving.reserve(followers.size());
     for (const auto &view : followers)
         arriving.push_back(&view);
     std::sort(arriving.begin(), arriving.end(),

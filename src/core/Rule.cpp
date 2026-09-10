@@ -203,7 +203,6 @@ bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept
     switch (action)
     {
     case ActionKind::None:
-        return true;
     case ActionKind::CastSpell:
         return true;
     case ActionKind::UsePower:
@@ -212,7 +211,6 @@ bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept
         // Aimed anywhere but at a corpse: a Reanimate is a spell.
         return target != ActionTargetKind::Corpse;
     case ActionKind::Attack:
-        return target == ActionTargetKind::Enemy || target == ActionTargetKind::Attacker;
     case ActionKind::PowerAttack:
     case ActionKind::Bash:
     case ActionKind::PowerBash:
@@ -386,22 +384,11 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         }
 
     case SubjectKind::Player:
-        // Any: always true, and worth having so a rule can aim at the
-        // player under the heading a reader looks for it.
-        switch (predicate)
-        {
-        case PredicateKind::Any:
-        case PredicateKind::HealthPctBelow:
-        case PredicateKind::MagickaPctBelow:
-        case PredicateKind::StaminaPctBelow:
-            return true;
-        default:
-            return false;
-        }
-
     case SubjectKind::Ally:
-        // Any, as for the player. No count: how many allies there are
-        // changes too rarely to be a condition.
+        // Any: always true, and worth having so a rule can aim at the
+        // player or an ally under the heading a reader looks for it.
+        // No ally count: how many allies there are changes too rarely
+        // to be a condition.
         switch (predicate)
         {
         case PredicateKind::Any:
