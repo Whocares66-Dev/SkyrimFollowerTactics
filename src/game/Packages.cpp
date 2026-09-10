@@ -620,8 +620,11 @@ void GiveWrapper(RE::Actor *actor, RE::TESShout *wrapper)
         return;
     if (list->GetIndex(wrapper).has_value())
         return;
+    // Done before the log line, not inside its arguments: this has to happen
+    // whether or not anything is written.
+    const bool added = list->AddShout(wrapper);
     log::packages.debug("wrapper {:08X} {} to {:08X}'s shout list", wrapper->GetFormID(),
-                        list->AddShout(wrapper) ? "added" : "NOT added", actor->GetFormID());
+                        added ? "added" : "NOT added", actor->GetFormID());
 }
 
 void TakeWrapper(RE::Actor *actor, RE::TESShout *wrapper)
@@ -629,8 +632,9 @@ void TakeWrapper(RE::Actor *actor, RE::TESShout *wrapper)
     auto *list = actor ? (actor->GetActorBase() ? actor->GetActorBase()->actorEffects : nullptr) : nullptr;
     if (!list || !wrapper || !list->GetIndex(wrapper).has_value())
         return;
+    const bool removed = list->RemoveShout(wrapper);
     log::packages.debug("wrapper {:08X} {} from {:08X}'s shout list", wrapper->GetFormID(),
-                        list->RemoveShout(wrapper) ? "removed" : "NOT removed", actor->GetFormID());
+                        removed ? "removed" : "NOT removed", actor->GetFormID());
 }
 
 bool IsWrapperForm(std::uint32_t formID)
@@ -975,9 +979,14 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
     slot.begun.store(false, std::memory_order_relaxed);
     slot.extended = false;
 
+    // Registering the sink is what makes a fire event reach us at all, so it
+    // is done here and not inside the log line's arguments -- a guard put
+    // around the logging later must not be able to take casting with it.
     if (g_sinked.insert(actor->GetFormID()).second)
-        log::packages.debug("animation sink {} on {:08X}",
-                            actor->AddAnimationGraphEventSink(&g_fireSink) ? "added" : "REFUSED", actor->GetFormID());
+    {
+        const bool sinked = actor->AddAnimationGraphEventSink(&g_fireSink);
+        log::packages.debug("animation sink {} on {:08X}", sinked ? "added" : "REFUSED", actor->GetFormID());
+    }
 
     // Onto her stack, then the lease points the condition at her in its
     // constructor. From here on the record is hers until the lease is
