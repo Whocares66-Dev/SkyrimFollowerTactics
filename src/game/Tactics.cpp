@@ -472,6 +472,13 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     snapshot.combatBegan = began;
     snapshot.combatEnded = ended;
 
+    // The other edge. One evaluation runs after a fight ends, for the rules
+    // that ask about exactly that, and this is it -- so a query can bracket a
+    // fight between the two events rather than guessing where it stopped.
+    if (ended)
+        log::tactics.event(log::Level::Info, "combat.left", actor, {}, "{} left combat -- one last evaluation",
+                           Describe(actor));
+
     // This follower's own rules, not a shared static -- the whole point of
     // making them per-follower.
     const ft::RuleSet rules = GetRules(id);

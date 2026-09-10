@@ -166,8 +166,7 @@ in `docs/PLAN.md`.
 
 ## Harness and diagnostics
 
-- **Structured log.** Designed in `docs/LOGGING.md` (levels, the event catalog,
-  the JSON-lines sidecar); not yet implemented.
+- **Structured log — built 2026-09-09, not yet verified in play.** `docs/LOGGING.md` is what it does. What is left is a session with the game up: that the ini is found under MO2's virtual file system, that `.events.jsonl` lands beside the log, and that a fight's lines read the way the level table says they should at `info` and at `debug`.
 - **Recruiting from the console.** `cqf DialogueFollower SetFollower <refid>`
   should fill the alias without the dialogue; unverified.
 - **Pool tests.** The package pool and lease have no unit tests because they
