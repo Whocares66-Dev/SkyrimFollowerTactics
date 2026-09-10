@@ -3,7 +3,9 @@
     Build the Release plugin and zip it as an installable mod.
 
 .DESCRIPTION
-    A releasable FollowerTactics is one file, SKSE\Plugins\FollowerTactics.dll.
+    A releasable FollowerTactics is one .dll, SKSE\Plugins\FollowerTactics.dll,
+    with SKSE\Plugins\FollowerTactics.ini beside it (log level and the events
+    file; every value is its default, so the file is optional).
     Its .pdb stays in build\release (27 MB against a 1 MB DLL): a crash log's
     offsets are read against it here. There is no plugin file (the forms are made
     in memory at load, docs/MAGIC.md "Forms at runtime"), no scripts, no assets. The zip is a mod root,
@@ -40,6 +42,9 @@ if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 $plugins = Join-Path $stage 'SKSE\Plugins'
 New-Item -ItemType Directory -Force $plugins | Out-Null
 Copy-Item $dll $plugins
+# Settings, beside the .dll. Every value in it is the default it ships with, so
+# it is documentation as much as configuration -- deleting it changes nothing.
+Copy-Item (Join-Path $root 'assets\FollowerTactics.ini') $plugins
 
 $readme = @"
 FollowerTactics $version

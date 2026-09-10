@@ -64,6 +64,7 @@ add_library(ft_core STATIC
     src/core/Effects.cpp
     src/core/Evaluator.cpp
     src/core/Loadout.cpp
+    src/core/LogEvent.cpp
     src/core/Profile.cpp
     src/core/Rule.cpp
     src/core/Vocabulary.cpp
@@ -123,6 +124,7 @@ if(FT_BUILD_PLUGIN)
     # playing. Nothing in here may be #included from src/core/.
     add_commonlibsse_plugin(${PROJECT_NAME} SOURCES
         src/plugin.cpp
+        src/game/Log.cpp
         src/game/Sensors.cpp
         src/game/Inventory.cpp
         src/game/Magic.cpp
@@ -144,7 +146,11 @@ if(FT_BUILD_PLUGIN)
     # executable then failed to link with an unresolved external 'main'
     # that pointed nowhere near the actual cause.
     target_compile_definitions(${PROJECT_NAME} PRIVATE
-        WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+        WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
+        # Every structured log line carries the build that wrote it
+        # (docs/LOGGING.md's envelope), so a .jsonl attached to a bug report
+        # says which version produced it without anyone having to ask.
+        FT_VERSION="${PROJECT_VERSION}")
     ft_apply_warnings(${PROJECT_NAME})
     # A release build keeps its .pdb -- in build\release, not in the package
     # (27 MB against a 1 MB DLL) -- so a crash log's "FollowerTactics.dll
@@ -195,6 +201,11 @@ if(FT_BUILD_PLUGIN)
             COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLL_FOLDER}"
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                     "$<TARGET_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
+            # The settings file goes beside the .dll, where Log.cpp looks for
+            # it. copy_if_different, so a level set for a play session is not
+            # reverted by the next build.
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${CMAKE_SOURCE_DIR}/assets/FollowerTactics.ini" "${DLL_FOLDER}/FollowerTactics.ini"
             VERBATIM)
 
         if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release")

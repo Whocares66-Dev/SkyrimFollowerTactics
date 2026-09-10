@@ -7,6 +7,7 @@
 
 #include "core/Evaluator.h"
 #include "game/Hits.h"
+#include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
 #include "game/Profiles.h"
@@ -18,22 +19,6 @@
 
 namespace
 {
-
-void InitLogging()
-{
-    auto path = SKSE::log::log_directory();
-    if (!path)
-        return;
-    *path /= "FollowerTactics.log"sv;
-
-    auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
-    auto log = std::make_shared<spdlog::logger>("global", std::move(sink));
-    log->set_level(spdlog::level::info);
-    log->flush_on(spdlog::level::info);
-
-    spdlog::set_default_logger(std::move(log));
-    spdlog::set_pattern("[%H:%M:%S.%e] [%l] %v");
-}
 
 struct Check
 {
@@ -178,14 +163,21 @@ void OnDataLoaded()
     const auto checks = RunSelfCheck();
 
     std::size_t passed = 0;
-    logger::info("---- core self-check ({} scenarios, fabricated snapshots) ----", checks.size());
+    ft::log::plugin.debug("core self-check: {} scenarios, fabricated snapshots", checks.size());
     for (const auto &c : checks)
     {
-        logger::info("  [{}] {}  ({})", c.passed ? "PASS" : "FAIL", c.name, c.detail);
         if (c.passed)
+        {
             ++passed;
+            ft::log::plugin.debug("  PASS {}  ({})", c.name, c.detail);
+        }
+        else
+        {
+            // The engine disagreeing with its own tests is the one thing
+            // this file exists to notice, so it is never quiet about it.
+            ft::log::plugin.error("core self-check FAILED: {}  ({})", c.name, c.detail);
+        }
     }
-    logger::info("---- core self-check: {}/{} passed ----", passed, checks.size());
 
     // Phase 1: start the real thing. The self-check above proves the engine
     // computes correct decisions; this is what connects it to actual followers.
@@ -200,18 +192,21 @@ void OnDataLoaded()
     ft::game::RefuseEquipsAgainstPins();
     ft::game::WatchHits();
 
-    logger::info("FollowerTactics loaded (self-check {}/{} {})", passed, checks.size(),
-                 passed == checks.size() ? "ok" : "FAILED");
+    const bool sane = passed == checks.size();
+    ft::log::plugin.event(sane ? ft::log::Level::Info : ft::log::Level::Error, "plugin.loaded",
+                          {{"selfCheckPassed", passed}, {"selfCheckTotal", checks.size()}},
+                          "FollowerTactics loaded (self-check {}/{} {})", passed, checks.size(),
+                          sane ? "ok" : "FAILED");
 }
 
 } // namespace
 
 SKSEPluginLoad(const SKSE::LoadInterface *skse)
 {
-    InitLogging();
+    ft::log::Init();
     SKSE::Init(skse);
 
-    logger::info("FollowerTactics starting up");
+    ft::log::plugin.info("FollowerTactics starting up");
 
     // Tactics live in the co-save: registered here, before any save can
     // be loaded.
