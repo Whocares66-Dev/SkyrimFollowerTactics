@@ -37,8 +37,8 @@ bool Place(RE::TESForm *form, std::uint32_t localID, const char *what)
                           {"kind", what},
                           {"reason", "id already taken"},
                           {"takenByFormType", static_cast<int>(taken->GetFormType())}},
-                         "{:08X} is already taken by a {} -- {} not made", id,
-                         static_cast<int>(taken->GetFormType()), what);
+                         "{:08X} is already taken by a {} -- {} not made", id, static_cast<int>(taken->GetFormType()),
+                         what);
         return false;
     }
     const auto born = form->GetFormID();
@@ -46,9 +46,10 @@ bool Place(RE::TESForm *form, std::uint32_t localID, const char *what)
     const bool ok = form->GetFormID() == id && RE::TESForm::LookupByID(id) == form;
     if (!ok)
     {
-        log::forms.event(log::Level::Error, "form.error",
-                         {{"requestedFormId", log::Id(id)}, {"kind", what}, {"reason", "not registered after SetFormID"}},
-                         "{} {:08X} (born {:08X}) -- NOT registered", what, form->GetFormID(), born);
+        log::forms.event(
+            log::Level::Error, "form.error",
+            {{"requestedFormId", log::Id(id)}, {"kind", what}, {"reason", "not registered after SetFormID"}},
+            "{} {:08X} (born {:08X}) -- NOT registered", what, form->GetFormID(), born);
         return false;
     }
     log::forms.debug("{} {:08X} (born {:08X})", what, form->GetFormID(), born);
@@ -101,8 +102,7 @@ RE::TESPackage *ClonePackage(RE::TESPackage *source, std::uint32_t localID)
                          "copy of {:08X} incomplete: {} of {} inputs, template {} vs {}, name map {}",
                          source->GetFormID(), custom->data.dataSize, srcCustom->data.dataSize,
                          static_cast<const void *>(custom->templateParent),
-                         static_cast<const void *>(srcCustom->templateParent),
-                         custom->nameMap ? "present" : "ABSENT");
+                         static_cast<const void *>(srcCustom->templateParent), custom->nameMap ? "present" : "ABSENT");
         return nullptr;
     }
 
@@ -146,7 +146,8 @@ RE::TESWordOfPower *CreateWord(std::uint32_t localID, const char *name)
     auto *word = factory ? factory->Create() : nullptr;
     if (!word)
     {
-        log::forms.event(log::Level::Error, "form.error", {{"kind", "word"}, {"reason", "no factory or no word of power"}},
+        log::forms.event(log::Level::Error, "form.error",
+                         {{"kind", "word"}, {"reason", "no factory or no word of power"}},
                          "no factory or no word of power");
         return nullptr;
     }

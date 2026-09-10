@@ -210,8 +210,7 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm, bool stronges
                         {"chargeAfter", charge},
                         {"chargeMax", state.maxCharge}},
                        "{} spent {} ({:.0f}) into {}: charge {:.0f} -> {:.0f} of {:.0f}", Describe(actor),
-                       log::NameOf(gem), it->charge, log::NameOf(weapon), state.charge, charge,
-                       state.maxCharge);
+                       log::NameOf(gem), it->charge, log::NameOf(weapon), state.charge, charge, state.maxCharge);
     return ActionResult::Performed;
 }
 
@@ -285,9 +284,8 @@ ActionResult PointAt(RE::Actor *actor, std::uint32_t target)
     }
     const auto before = runtime.currentCombatTarget.get();
     log::actions.debug("target: {} was fighting {} ({:08X}), now {} ({:08X})", Describe(actor),
-                       before && before->GetName() ? before->GetName() : "no one",
-                       before ? before->GetFormID() : 0, enemy->GetName() ? enemy->GetName() : "?",
-                       enemy->GetFormID());
+                       before && before->GetName() ? before->GetName() : "no one", before ? before->GetFormID() : 0,
+                       enemy->GetName() ? enemy->GetName() : "?", enemy->GetFormID());
     const RE::ActorHandle handle = enemy->GetHandle();
     controller->previousTargetHandle = controller->targetHandle;
     controller->targetHandle = handle;

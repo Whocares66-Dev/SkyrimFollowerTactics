@@ -1,7 +1,7 @@
 #include "game/Profiles.h"
 
-#include "game/Tactics.h"
 #include "game/Log.h"
+#include "game/Tactics.h"
 #include "game/Util.h"
 
 #include <string>
@@ -89,9 +89,10 @@ void OnLoad(SKSE::SerializationInterface *intfc)
     {
         if (type != kFollowerRecord)
         {
-            log::profiles.event(log::Level::Warn, "profile.entryDropped",
-                                {{"kind", "record"}, {"label", log::Id(type)}, {"reason", "not a record this build knows"}},
-                                "co-save record {:08X} is not one this build knows -- skipped", type);
+            log::profiles.event(
+                log::Level::Warn, "profile.entryDropped",
+                {{"kind", "record"}, {"label", log::Id(type)}, {"reason", "not a record this build knows"}},
+                "co-save record {:08X} is not one this build knows -- skipped", type);
             continue;
         }
         std::string key;

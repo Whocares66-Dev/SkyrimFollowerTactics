@@ -499,10 +499,9 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
                                 {"targetFormId", log::Id(step.target)},
                                 {"outcome", ToString(result)},
                                 {"healthPct", snapshot.health.Pct()}},
-                               "{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]",
-                               Describe(actor), decision.ruleIndex, label, ft::WireName(step.action.kind),
-                               ToString(result), snapshot.health.current, snapshot.health.max,
-                               snapshot.health.Pct() * 100.0);
+                               "{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
+                               decision.ruleIndex, label, ft::WireName(step.action.kind), ToString(result),
+                               snapshot.health.current, snapshot.health.max, snapshot.health.Pct() * 100.0);
 
             if (result != ActionResult::Performed)
             {
@@ -646,8 +645,8 @@ void Tick()
             for (auto *f : followers)
                 ids.push_back(f->GetFormID());
             log::tactics.event(log::Level::Info, "followers.controlled",
-                               {{"count", followers.size()}, {"followers", ids}},
-                               "{} follower(s) under control: {}", followers.size(), names);
+                               {{"count", followers.size()}, {"followers", ids}}, "{} follower(s) under control: {}",
+                               followers.size(), names);
         }
     }
 
@@ -683,8 +682,8 @@ void Tick()
         const bool wasDown = g_bleedingOut.contains(follower->GetFormID());
         if (down != wasDown)
         {
-            log::tactics.event(log::Level::Info, down ? "follower.down" : "follower.up", follower, {},
-                               "{} {}", Describe(follower),
+            log::tactics.event(log::Level::Info, down ? "follower.down" : "follower.up", follower, {}, "{} {}",
+                               Describe(follower),
                                down ? "is bleeding out -- tactics held" : "is up -- tactics resume");
             if (down)
                 g_bleedingOut.insert(follower->GetFormID());
@@ -841,8 +840,7 @@ void Install()
 
     log::tactics.event(log::Level::Info, "tactics.installed",
                        {{"tickMs", kTickInterval * 1000.0}, {"maxFollowers", kMaxManagedFollowers}},
-                       "tick {:.0f} ms, combat only, max {} followers", kTickInterval * 1000.0,
-                       kMaxManagedFollowers);
+                       "tick {:.0f} ms, combat only, max {} followers", kTickInterval * 1000.0, kMaxManagedFollowers);
     log::tactics.info("a follower starts with no rules; tactics are kept in the save (SKSE co-save)");
 
     // Detached on purpose: Skyrim never unloads SKSE plugins, and joining a
