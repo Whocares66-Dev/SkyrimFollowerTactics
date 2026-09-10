@@ -108,6 +108,11 @@ struct InventoryItem
     // effect's name -- "Restore Health" -- the list's column in place of a
     // Type that would only repeat the heading. The rest are on its page.
     std::string effect;
+    // For a scroll, as a spell's list has them: how it is cast (Self,
+    // Projectile, Target ...) and the costliest effect's magnitude as the
+    // follower would cast it.
+    std::string cast;
+    float magnitude{0.0f};
 };
 
 // One line per effect of a spell, potion or enchantment: its description

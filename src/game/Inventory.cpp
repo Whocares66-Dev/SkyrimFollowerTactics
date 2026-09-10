@@ -1,5 +1,7 @@
 #include "game/Inventory.h"
 
+#include "game/Magic.h"
+
 #include "game/Sensors.h"
 
 #include "game/Pins.h"
@@ -319,9 +321,32 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     }
     if (auto *scroll = object->As<RE::ScrollItem>())
     {
+        // A scroll is a spell in a wrapper, read once: its page and its
+        // list carry what a spell's do -- school, type, magnitude,
+        // duration, charge time, cast -- less the level and the cost, which
+        // a scroll has not.
         item.type = "Scroll";
         item.category = ItemCategory::Scrolls;
+        item.effect = effectName(scroll);
         item.effects = EffectLines(scroll);
+        item.cast = CastWord(scroll->GetDelivery(), scroll->GetCastingType());
+        const auto *costliest = scroll->GetCostliestEffectItem();
+        const auto *effect = costliest ? costliest->baseEffect : nullptr;
+        if (effect)
+        {
+            const auto school = SchoolOf(effect->GetMagickSkill());
+            if (school != MagicCategory::COUNT)
+                stats.rows.push_back(Row("School", DisplayName(school)));
+            if (const std::string kind = TypeWord(effect); !kind.empty())
+                stats.rows.push_back(Row("Kind", kind)); // the spell page's Type; Type here says Scroll
+            item.magnitude = ActualMagnitude(actor, scroll, costliest);
+            stats.rows.push_back(Row("Magnitude", Fmt("%.0f", item.magnitude)));
+            if (const float duration = ActualDuration(actor, scroll, costliest); duration > 0.0f)
+                stats.rows.push_back(Row("Duration", Fmt("%.0f", duration) + " s"));
+        }
+        if (const float charge = scroll->GetChargeTime(); charge > 0.0f)
+            stats.rows.push_back(Row("Charge Time", Fmt("%.1f s", charge)));
+        stats.rows.push_back(Row("Cast", item.cast));
         return;
     }
     if (auto *book = object->As<RE::TESObjectBOOK>())

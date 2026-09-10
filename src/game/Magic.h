@@ -33,6 +33,14 @@ enum class MagicCategory : std::uint8_t
 
 [[nodiscard]] const char *DisplayName(MagicCategory category);
 
+// The words a spell's page and lists use, shared with a scroll's, which is
+// a spell in a wrapper: the school of a skill; the kind of spell from its
+// costliest effect (the element where it does that kind of damage, else
+// the archetype); how it is cast, delivery and casting type in one word.
+[[nodiscard]] MagicCategory SchoolOf(RE::ActorValue skill);
+[[nodiscard]] std::string TypeWord(const RE::EffectSetting *base);
+[[nodiscard]] const char *CastWord(RE::MagicSystem::Delivery delivery, RE::MagicSystem::CastingType casting);
+
 struct MagicEntry
 {
     std::uint32_t form{0};

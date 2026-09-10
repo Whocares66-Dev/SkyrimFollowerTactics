@@ -114,6 +114,8 @@ const char *LevelWord(int minimumSkill)
     return "Novice";
 }
 
+} // namespace
+
 // A school as a category, or COUNT for a spell whose costliest effect
 // belongs to none of the five (a scripted spell, say).
 MagicCategory SchoolOf(RE::ActorValue skill)
@@ -269,6 +271,9 @@ const char *CastWord(RE::MagicSystem::Delivery delivery, RE::MagicSystem::Castin
         return "?";
     }
 }
+
+namespace
+{
 
 // One entry for a spell or a power. Returns false for the kinds the magic
 // menu does not list.

@@ -3227,6 +3227,10 @@ std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const 
             return number(a.damage, b.damage);
         case Column::Armor:
             return number(a.armor, b.armor);
+        case Column::Cast:
+            return a.cast.compare(b.cast);
+        case Column::Magnitude:
+            return number(a.magnitude, b.magnitude);
         case Column::Weight:
             return number(a.weight, b.weight);
         case Column::Value:
@@ -3292,10 +3296,11 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     const float gutter = kCellPadX * 2.0f;
     // A consumable list's second column is what the thing does, not a Type
     // that would only repeat the heading.
+    const bool scrolls = state.category == static_cast<int>(ItemCategory::Scrolls);
     const bool consumables = state.category == static_cast<int>(ItemCategory::Potions) ||
                              state.category == static_cast<int>(ItemCategory::Poisons) ||
                              state.category == static_cast<int>(ItemCategory::Food) ||
-                             state.category == static_cast<int>(ItemCategory::Ingredients);
+                             state.category == static_cast<int>(ItemCategory::Ingredients) || scrolls;
     const auto typeText = [consumables](const InventoryItem &item) -> const std::string & {
         return consumables ? item.effect : item.type;
     };
@@ -3317,7 +3322,15 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     const float wornWidth = (std::max)(TextWidth("Equipped") + arrow, Im::GetFontSize() * 2.0f) + gutter;
 
     const float handWidth = (std::max)(TextWidth("Right") + arrow, Im::GetFontSize() * 2.0f) + gutter;
-    const int columnCount = 4 + ((weapons || armour) ? 1 : 0) + (anyHand ? 2 : 0) + (anyWorn ? 1 : 0);
+    // A scroll's list: Cast and Mag after the effect, as a spell's list.
+    float castWidth = TextWidth("Cast") + arrow;
+    if (scrolls)
+        for (const auto &item : view.inventory)
+            castWidth = (std::max)(castWidth, TextWidth(item.cast));
+    castWidth += gutter;
+    const float magWidth = (std::max)(TextWidth("Mag") + arrow, TextWidth("999")) + gutter;
+    const int columnCount =
+        4 + ((weapons || armour) ? 1 : 0) + (scrolls ? 2 : 0) + (anyHand ? 2 : 0) + (anyWorn ? 1 : 0);
 
     Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
     if (!Im::BeginTable("inventory", columnCount, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
@@ -3339,6 +3352,14 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         Im::TableSetupColumn("Armor",
                              Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                              armorWidth, static_cast<Im::ImGuiID>(Column::Armor));
+    if (scrolls)
+    {
+        Im::TableSetupColumn("Cast", Im::ImGuiTableColumnFlags_WidthFixed, castWidth,
+                             static_cast<Im::ImGuiID>(Column::Cast));
+        Im::TableSetupColumn("Mag",
+                             Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+                             magWidth, static_cast<Im::ImGuiID>(Column::Magnitude));
+    }
     Im::TableSetupColumn("Wgt", Im::ImGuiTableColumnFlags_WidthFixed, weightWidth,
                          static_cast<Im::ImGuiID>(Column::Weight));
     Im::TableSetupColumn("Val", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth,
@@ -3428,6 +3449,17 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             if (stat > 0.0f)
             {
                 std::snprintf(num, sizeof(num), "%.0f", stat);
+                TextRightInCell(num);
+            }
+        }
+        if (scrolls)
+        {
+            Im::TableNextColumn();
+            Im::Text("%s", item->cast.c_str());
+            Im::TableNextColumn();
+            if (item->magnitude > 0.0f)
+            {
+                std::snprintf(num, sizeof(num), "%.0f", item->magnitude);
                 TextRightInCell(num);
             }
         }
