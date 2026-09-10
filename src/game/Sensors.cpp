@@ -790,13 +790,17 @@ BlowPlan PlanBlow(RE::Actor *actor, ft::ActionKind kind)
     }
 }
 
-// What the actor is wielding, a bit per DamageKind: a blade is Melee, a
-// bow or crossbow Ranged, a spell or a staff Magic; and the kind of damage
-// any of it does -- the enchantment's, the staff's or the spell's effects,
-// a poison on the blade -- by what resists it. Fists are nothing. A
-// two-hander reports from both hands, which is the same bits twice.
+// What the actor hits with, a bit per DamageKind: a blade is Melee, a bow
+// or crossbow Ranged, a spell or a staff Magic; and the kind of damage any
+// of it does -- the enchantment's, the staff's or the spell's effects, a
+// poison on the blade -- by what resists it. Hands with no weapon and no
+// spell in them are Melee too: the fists, and the claws, teeth and horns
+// of a bear, a wolf, a troll, whose hands hold nothing (the Hit type
+// condition on a bear found nothing, 2026-09-09). A two-hander reports
+// from both hands, which is the same bits twice.
 void ReadHands(RE::Actor *actor, ft::ActorTraits &traits)
 {
+    bool armed = false;
     const auto effectsOf = [&](const RE::MagicItem *magic) {
         if (!magic)
             return;
@@ -814,7 +818,8 @@ void ReadHands(RE::Actor *actor, ft::ActorTraits &traits)
         {
             const auto type = weapon->GetWeaponType();
             if (type == RE::WEAPON_TYPE::kHandToHandMelee)
-                continue;
+                continue; // the fists' record: bare hands, below
+            armed = true;
             if (type == RE::WEAPON_TYPE::kStaff)
                 traits.Wield(ft::DamageKind::Magic);
             else if (weapon->IsBow() || weapon->IsCrossbow())
@@ -827,10 +832,13 @@ void ReadHands(RE::Actor *actor, ft::ActorTraits &traits)
         }
         else if (auto *magic = held->As<RE::MagicItem>())
         {
+            armed = true;
             traits.Wield(ft::DamageKind::Magic);
             effectsOf(magic);
         }
     }
+    if (!armed)
+        traits.Wield(ft::DamageKind::Melee);
 }
 
 ft::ActorTraits ReadTraits(RE::Actor *actor)
