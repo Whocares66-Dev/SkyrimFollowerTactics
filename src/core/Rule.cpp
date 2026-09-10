@@ -181,8 +181,10 @@ bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target) noexce
 {
     // "Enemy" reads from the condition: under an enemy condition it is the
     // one the condition matched; under anyone else, whoever the follower
-    // is fighting, else the nearest. "Attacker" is whoever is at the
-    // subject's throat, and reads oddly when the subject is an enemy.
+    // is fighting, else the nearest. "Attacker" is whoever last hit the
+    // actor the condition bound. Under an enemy or a corpse condition that
+    // is one of us, and no rule means to aim at that, so the pair is not
+    // offered and not answered; ResolveActionTarget has no branch for it.
     switch (target)
     {
     case ActionTargetKind::Ally:

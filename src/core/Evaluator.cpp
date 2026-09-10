@@ -528,8 +528,11 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
                 return yes(a.id);
         return no();
     case ActionTargetKind::Attacker: {
-        // Whoever last hit the actor the condition bound: from that actor's
-        // own traits, wherever the snapshot carries them.
+        // Whoever last hit the actor the condition bound. That actor is one
+        // of the party -- the follower, the player, or an ally -- because
+        // IsActionTargetValidFor refuses this target under an enemy or a
+        // corpse condition: an enemy's attacker is one of us, and no rule
+        // means to aim at that.
         if (!binding.ok)
             return no();
         ActorId attacker = 0;
@@ -537,8 +540,6 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
             attacker = s.traits.attacker;
         else if (binding.id == kPlayerFormID)
             attacker = s.playerTraits.attacker;
-        else if (const auto *e = FindEnemy(s, binding.id))
-            attacker = e->traits.attacker;
         else
         {
             for (const auto &a : s.allies)
