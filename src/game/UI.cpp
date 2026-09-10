@@ -47,6 +47,7 @@ namespace Im = ImGuiMCP;
 // --- status ----------------------------------------------------------------
 
 bool TakesSpell(ft::ActionKind action);
+void SlashCell();
 
 // The one grey for everything set aside: a shadowed row, a banned row, an
 // off rule. The theme's disabled text colour, so it follows the theme.
@@ -1207,6 +1208,50 @@ std::string TargetText(const ft::Rule &rule, const FollowerView &view)
     }
 }
 
+// The name a form has in the load order, for an action naming a thing the
+// follower no longer has: the rule keeps the name of what it asked for.
+std::string FormName(std::uint32_t form)
+{
+    const auto *record = form != 0 ? RE::TESForm::LookupByID(form) : nullptr;
+    const char *name = record ? record->GetName() : nullptr;
+    return name && *name ? name : "";
+}
+
+constexpr const char *kNotAvailable = "Item or ability not available";
+
+// Whether what the action names is there to be used: the potion carried,
+// the spell known, the scroll carried, the weapon in the bag. An action
+// that names nothing, or a policy, is always available here; whether it
+// can fire is the evaluator's question.
+bool ActionAvailable(const ft::Action &act, const FollowerView &view)
+{
+    if (act.form == 0)
+        return true;
+    if (NamesConsumable(act.kind))
+    {
+        for (const auto &option : view.consumables)
+            if (option.form == act.form && option.kind == ft::ConsumableOf(act.kind))
+                return true;
+        return false;
+    }
+    if (ft::IsEquip(act.kind))
+        return !EquipTargetName(act, view).empty();
+    if (TakesSpell(act.kind))
+    {
+        for (const auto &option : view.spells)
+            if (option.form == act.form)
+                return true;
+        return false;
+    }
+    return true;
+}
+
+bool RuleAvailable(const ft::Rule &rule, const FollowerView &view)
+{
+    return std::all_of(rule.actions.begin(), rule.actions.end(),
+                       [&](const ft::Action &act) { return ActionAvailable(act, view); });
+}
+
 std::string ActionText(const ft::Action &act, const FollowerView &view)
 {
     const std::string base(ft::DisplayName(act.kind));
@@ -1237,17 +1282,21 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
         for (const auto &option : view.consumables)
             if (option.form == act.form && option.kind == ft::ConsumableOf(act.kind))
                 return verb + option.name;
-        // Not carried: the Status column says "count: 0", so the cell need not.
-        return base;
+        // Not carried: the name from the record, the row set aside.
+        const std::string name = FormName(act.form);
+        return name.empty() ? base : verb + name;
     }
 
     if (ft::IsEquip(act.kind))
     {
         if (act.form == 0)
             return "Unequip " + EquipNoun(act.kind);
-        const std::string name = EquipTargetName(act, view);
+        // Carried or known, else the name from the record: the row set aside.
+        std::string name = EquipTargetName(act, view);
         if (name.empty())
-            return base + (act.kind == ft::ActionKind::EquipSpell ? " (not known)" : " (not carried)");
+            name = FormName(act.form);
+        if (name.empty())
+            return base;
         const bool handed = act.kind == ft::ActionKind::EquipWeapon || act.kind == ft::ActionKind::EquipSpell;
         return "Equip " + name + (handed ? " (" + Lower(ft::DisplayName(act.hand)) + ")" : "");
     }
@@ -1279,11 +1328,17 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
         }
     }
 
-    // Named a spell this follower does not know, or a scroll not carried.
-    // Says so rather than showing a plausible-looking action that can never
-    // fire -- the status column will report "no spell", and the two need
-    // to agree.
-    return base + (act.kind == ft::ActionKind::UseScroll ? " (not carried)" : " (not known)");
+    // Named a spell this follower does not know, or a scroll not carried:
+    // the name from the record, the row set aside.
+    const std::string name = FormName(act.form);
+    if (name.empty())
+        return base;
+    return (act.kind == ft::ActionKind::UsePower    ? "Use "
+            : act.kind == ft::ActionKind::Shout     ? "Shout "
+            : act.kind == ft::ActionKind::UseScroll ? "Read "
+            : act.dual                              ? "Dual cast "
+                                                    : "Cast ") +
+           name;
 }
 
 // Is this spell offered for pinning in this hand? Not a shout or a power,
@@ -1833,6 +1888,8 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::TableSetColumnIndex(0);
             if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr, rule))
                 changed = true;
+            if (!ActionAvailable(rule.actions[a], view) && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+                Im::SetTooltip("%s", kNotAvailable);
 
             Im::TableSetColumnIndex(1);
             Im::AlignTextToFramePadding();
@@ -2024,6 +2081,14 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         auto &rule = rules.rules[i];
         const std::string rowId = std::to_string(i);
+        // A rule naming a thing the follower no longer has -- the potion
+        // drunk up, the spell forgotten, the sword sold -- is set aside:
+        // its switch slashed and dead, as an equip cell that does not apply
+        // is, the row dimmed, the reason on the switch and the action. It
+        // keeps its name, its place and its delete; the switch's own state
+        // is untouched, so the rule comes back as it was when the thing
+        // does.
+        const bool available = RuleAvailable(rule, view);
         Im::TableNextRow(0, 0.0f);
         if (i % 2 == 1)
             Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg0, stripe, -1);
@@ -2035,16 +2100,23 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // Off is no tick at all, as an unequipped item's cell on the
             // Inventory tab; the row's dimming says the rest.
             const Im::ImVec2 pos = Im::GetCursorScreenPos();
-            if (CellClicked(("##on" + rowId).c_str(), Im::GetFrameHeight()))
+            if (!available)
+            {
+                SlashCell();
+                Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
+                if (Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", kNotAvailable);
+            }
+            else if (CellClicked(("##on" + rowId).c_str(), Im::GetFrameHeight()))
             {
                 rule.enabled = !rule.enabled;
                 changed = true;
             }
-            if (Im::IsItemHovered(0))
+            if (available && Im::IsItemHovered(0))
                 Im::SetTooltip(rule.enabled ? "On -- click to turn this rule off"
                                             : "Off -- click to turn this rule on");
 
-            if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.enabled)
+            if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.enabled && available)
             {
                 const float size = Im::GetFrameHeight();
                 const float cell = Im::GetContentRegionAvail().x;
@@ -2058,8 +2130,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // status dim together, and the If and Then cells stop answering, so
         // it cannot be edited without turning it on. The switch itself and
         // the order and delete controls stay live: an off rule is still in
-        // the list and can still be moved or removed.
-        BeginDimmed(!rule.enabled);
+        // the list and can still be moved or removed. A rule set aside for
+        // what it names reads the same.
+        BeginDimmed(!rule.enabled || !available);
 
         Im::TableSetColumnIndex(1);
         Im::AlignTextToFramePadding();
@@ -2084,6 +2157,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             bool addAnother = false;
             if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother, rule))
                 changed = true;
+            if (!available && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+                Im::SetTooltip("%s", kNotAvailable);
             if (addAnother)
             {
                 rule.actions.emplace_back();
