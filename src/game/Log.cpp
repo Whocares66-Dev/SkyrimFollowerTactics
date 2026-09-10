@@ -204,21 +204,24 @@ void Init()
 {
     std::vector<std::string> notes;
     const Settings settings = ReadSettings(notes);
-    g_level.store(settings.level, std::memory_order_relaxed);
 
     const auto directory = SKSE::log::log_directory();
     if (!directory)
         return;
 
+    // Both channels open at debug and are tightened at the bottom of this
+    // function, so the banner saying WHICH level was read is written before
+    // the filter that would hide it. At `level = error` an otherwise empty log
+    // would leave no way to tell a quiet setting from a mod that never loaded.
     {
         auto path = *directory / "FollowerTactics.log";
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
         auto prose = std::make_shared<spdlog::logger>("global", std::move(sink));
-        prose->set_level(ToSpdlog(settings.level));
+        prose->set_level(spdlog::level::debug);
         // Flush at every level that is written at all: a crash mid-session is
         // exactly when the last line matters most, and this log is nowhere
         // near hot enough for the buffering to be worth its risk.
-        prose->flush_on(ToSpdlog(settings.level));
+        prose->flush_on(spdlog::level::debug);
         spdlog::set_default_logger(std::move(prose));
         spdlog::set_pattern("[%H:%M:%S.%e] [%l] %v");
     }
@@ -228,8 +231,8 @@ void Init()
         auto path = *directory / "FollowerTactics.events.jsonl";
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
         g_events = std::make_shared<spdlog::logger>("events", std::move(sink));
-        g_events->set_level(ToSpdlog(settings.level));
-        g_events->flush_on(ToSpdlog(settings.level));
+        g_events->set_level(spdlog::level::debug);
+        g_events->flush_on(spdlog::level::debug);
         g_events->set_pattern("%v");
     }
 
@@ -237,6 +240,15 @@ void Init()
                 settings.events ? "to FollowerTactics.events.jsonl" : "off");
     for (const auto &note : notes)
         plugin.info("{}", note);
+
+    g_level.store(settings.level, std::memory_order_relaxed);
+    spdlog::default_logger()->set_level(ToSpdlog(settings.level));
+    spdlog::default_logger()->flush_on(ToSpdlog(settings.level));
+    if (g_events)
+    {
+        g_events->set_level(ToSpdlog(settings.level));
+        g_events->flush_on(ToSpdlog(settings.level));
+    }
 }
 
 } // namespace ft::log
