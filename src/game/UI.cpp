@@ -1868,9 +1868,17 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
                        float spacing)
 {
     // Seamless with the row above: the drawer's left border on the Then
-    // column's, its top border on the row's bottom border -- one pixel up,
-    // so the two lines are one line and not a doubled one.
-    Im::SetCursorScreenPos(Im::ImVec2(left, Im::GetCursorScreenPos().y - 1.0f));
+    // column's, its top border ON the row's bottom border, so the two lines
+    // are one line.
+    //
+    // No nudge. Moving up a pixel to close that seam is what OPENED it: with
+    // ItemSpacing.y pushed to zero the cursor the piece above leaves behind
+    // already sits on that piece's bottom border, so the drawer's own top
+    // border lands on the same pixel unaided, and the pixel of clearance put
+    // one line above the other instead of on it. Measured off a screenshot:
+    // the border under Action/Status/Order was two pixels where the same
+    // row's border under On/#/Condition was one.
+    Im::SetCursorScreenPos(Im::ImVec2(left, Im::GetCursorScreenPos().y));
 
     const float row = Im::GetFrameHeight();
     const float gutter = kCellPadX * 2.0f;
