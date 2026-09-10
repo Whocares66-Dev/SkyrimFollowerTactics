@@ -3,6 +3,7 @@
 #include "core/Evaluator.h"
 #include "core/Vocabulary.h"
 #include "game/Actions.h"
+#include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
 #include "game/Profiles.h"
@@ -19,6 +20,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace ft::game
 {
@@ -325,14 +327,18 @@ ft::ActionKind FirstKind(const ft::Rule &rule)
 
 void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet &rules, const ft::Trace &trace)
 {
-    logger::info("{} health {:.0f}/{:.0f} ({:.0f}%) combat={} consumables={}", Describe(actor), snap.health.current,
-                 snap.health.max, snap.health.Pct() * 100.0, snap.inCombat, snap.potions.carried.size());
+    if (!log::Enabled(log::Level::Debug))
+        return;
+
+    log::tactics.debug("{} health {:.0f}/{:.0f} ({:.0f}%) combat={} consumables={}", Describe(actor),
+                       snap.health.current, snap.health.max, snap.health.Pct() * 100.0, snap.inCombat,
+                       snap.potions.carried.size());
 
     for (std::size_t i = 0; i < trace.size(); ++i)
     {
         const auto &rule = rules.rules[i];
-        logger::info("    rule {} \"{}\" [{}]: {}", i, rule.label, ActionNames(rule),
-                     ft::Explain(trace[i], FirstKind(rule)));
+        log::tactics.debug("  rule {} \"{}\" [{}]: {}", i, rule.label, ActionNames(rule),
+                           ft::Explain(trace[i], FirstKind(rule)));
     }
 }
 
@@ -430,10 +436,7 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     // A long gap since the last evaluation means a different fight.
     const bool newFight = (now - state.lastEvaluatedAt) > kNewFightGap;
     if (newFight)
-    {
         state.eval = {};
-        logger::info("{} entered combat -- tactics engaged", Describe(actor));
-    }
     state.lastEvaluatedAt = now;
     state.eval.caps = RuntimeCapabilities(actor);
 
@@ -454,7 +457,17 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
             }
             return out.empty() ? std::string("nobody") : out;
         };
-        logger::info("{} allies: {} -- enemies: {}", Describe(actor), names(snapshot.allies), names(snapshot.enemies));
+        const auto ids = [](const auto &views) {
+            std::vector<std::uint32_t> out;
+            out.reserve(views.size());
+            for (const auto &v : views)
+                out.push_back(v.id);
+            return out;
+        };
+        log::tactics.event(log::Level::Info, "combat.entered", actor,
+                           {{"allies", ids(snapshot.allies)}, {"enemies", ids(snapshot.enemies)}},
+                           "{} entered combat -- tactics engaged; allies: {} -- enemies: {}", Describe(actor),
+                           names(snapshot.allies), names(snapshot.enemies));
     }
     snapshot.combatBegan = began;
     snapshot.combatEnded = ended;
@@ -479,16 +492,29 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
         {
             const auto result = Execute(step.action, step.target, actor);
 
-            logger::info("{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
-                         decision.ruleIndex, label, ft::WireName(step.action.kind), ToString(result),
-                         snapshot.health.current, snapshot.health.max, snapshot.health.Pct() * 100.0);
+            log::tactics.event(log::Level::Info, "rule.fired", actor,
+                               {{"ruleIndex", decision.ruleIndex},
+                                {"ruleName", label},
+                                {"action", ft::WireName(step.action.kind)},
+                                {"targetFormId", log::Id(step.target)},
+                                {"outcome", ToString(result)},
+                                {"healthPct", snapshot.health.Pct()}},
+                               "{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]",
+                               Describe(actor), decision.ruleIndex, label, ft::WireName(step.action.kind),
+                               ToString(result), snapshot.health.current, snapshot.health.max,
+                               snapshot.health.Pct() * 100.0);
 
             if (result != ActionResult::Performed)
             {
                 // A rule that fires but does not take effect is the failure
                 // worth shouting about: the engine believed it acted, and it
                 // did not.
-                logger::warn("{} action did NOT take effect: {}", Describe(actor), ToString(result));
+                log::tactics.event(log::Level::Warn, "rule.actionFailed", actor,
+                                   {{"ruleIndex", decision.ruleIndex},
+                                    {"ruleName", label},
+                                    {"action", ft::WireName(step.action.kind)},
+                                    {"reason", ToString(result)}},
+                                   "{} action did NOT take effect: {}", Describe(actor), ToString(result));
             }
         }
 
@@ -546,10 +572,11 @@ bool EvaluationHeld()
     {
         previous = state;
         if (state == 0)
-            logger::info("tactics: time is running -- evaluating");
+            log::tactics.info("time is running -- evaluating");
         else
-            logger::info("tactics: time stopped ({}{}{}) -- evaluation held", clock.pausedMenu ? "paused menu" : "",
-                         (clock.pausedMenu && clock.frozenClock) ? " + " : "", clock.frozenClock ? "frozen clock" : "");
+            log::tactics.info("time stopped ({}{}{}) -- evaluation held", clock.pausedMenu ? "paused menu" : "",
+                              (clock.pausedMenu && clock.frozenClock) ? " + " : "",
+                              clock.frozenClock ? "frozen clock" : "");
     }
     return clock.stopped();
 }
@@ -601,8 +628,9 @@ void Tick()
         g_lastFollowerCount = static_cast<int>(followers.size());
         if (followers.empty())
         {
-            logger::info("tactics: 0 followers. Nobody nearby has the player-teammate flag -- "
-                         "if you just ran a setup script, prid probably selected nothing.");
+            log::tactics.event(log::Level::Info, "followers.controlled", {{"count", std::size_t{0}}},
+                               "0 followers. Nobody nearby has the player-teammate flag -- "
+                               "if you just ran a setup script, prid probably selected nothing.");
         }
         else
         {
@@ -613,7 +641,13 @@ void Tick()
                     names += ", ";
                 names += Describe(f);
             }
-            logger::info("tactics: {} follower(s) under control: {}", followers.size(), names);
+            std::vector<std::uint32_t> ids;
+            ids.reserve(followers.size());
+            for (auto *f : followers)
+                ids.push_back(f->GetFormID());
+            log::tactics.event(log::Level::Info, "followers.controlled",
+                               {{"count", followers.size()}, {"followers", ids}},
+                               "{} follower(s) under control: {}", followers.size(), names);
         }
     }
 
@@ -649,8 +683,9 @@ void Tick()
         const bool wasDown = g_bleedingOut.contains(follower->GetFormID());
         if (down != wasDown)
         {
-            logger::info("{} {}", Describe(follower),
-                         down ? "is bleeding out -- tactics held" : "is up -- tactics resume");
+            log::tactics.event(log::Level::Info, down ? "follower.down" : "follower.up", follower, {},
+                               "{} {}", Describe(follower),
+                               down ? "is bleeding out -- tactics held" : "is up -- tactics resume");
             if (down)
                 g_bleedingOut.insert(follower->GetFormID());
             else
@@ -697,9 +732,11 @@ void Tick()
     if (g_cost.samples > 0 && (now - g_lastCostReport) >= kCostReportInterval)
     {
         g_lastCostReport = now;
-        logger::info("tactics: {} evaluations, avg {:.0f} us, max {:.0f} us  (budget: under "
-                     "500 us/frame across all followers)",
-                     g_cost.samples, g_cost.AvgUs(), g_cost.maxUs);
+        log::tactics.event(log::Level::Info, "tactics.cost",
+                           {{"evaluations", g_cost.samples}, {"avgUs", g_cost.AvgUs()}, {"maxUs", g_cost.maxUs}},
+                           "{} evaluations, avg {:.0f} us, max {:.0f} us  (budget: under "
+                           "500 us/frame across all followers)",
+                           g_cost.samples, g_cost.AvgUs(), g_cost.maxUs);
         g_cost.Reset();
     }
 }
@@ -753,7 +790,7 @@ void PublishAllFollowers()
     const auto followers = CollectManagedFollowers();
     for (auto *follower : followers)
         PublishFollower(follower);
-    logger::info("tactics: panel opened -- {} follower view(s) refreshed", followers.size());
+    log::tactics.debug("panel opened -- {} follower view(s) refreshed", followers.size());
 }
 
 void SetRules(ft::ActorId id, ft::RuleSet rules)
@@ -802,9 +839,11 @@ void Install()
     if (g_installed.exchange(true))
         return;
 
-    logger::info("tactics: tick {:.0f} ms, combat only, max {} followers", kTickInterval * 1000.0,
-                 kMaxManagedFollowers);
-    logger::info("tactics: a follower starts with no rules; tactics are kept in the save (SKSE co-save)");
+    log::tactics.event(log::Level::Info, "tactics.installed",
+                       {{"tickMs", kTickInterval * 1000.0}, {"maxFollowers", kMaxManagedFollowers}},
+                       "tick {:.0f} ms, combat only, max {} followers", kTickInterval * 1000.0,
+                       kMaxManagedFollowers);
+    log::tactics.info("a follower starts with no rules; tactics are kept in the save (SKSE co-save)");
 
     // Detached on purpose: Skyrim never unloads SKSE plugins, and joining a
     // sleeping thread during process teardown is a good way to hang on exit.
@@ -836,7 +875,8 @@ bool IsFollowerEnabled(ft::ActorId id)
 void SetEnabled(bool enabled)
 {
     g_enabled.store(enabled);
-    logger::info("tactics: {}", enabled ? "enabled" : "disabled");
+    log::tactics.event(log::Level::Info, "tactics.switched", {{"enabled", enabled}}, "{}",
+                       enabled ? "enabled" : "disabled");
 }
 
 bool IsEnabled()

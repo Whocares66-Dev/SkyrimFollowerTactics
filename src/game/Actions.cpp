@@ -1,5 +1,6 @@
 #include "game/Actions.h"
 
+#include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
 #include "game/Sensors.h"
@@ -92,8 +93,12 @@ ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
     // (read from the executable): the vial, as a UI sound. There is no
     // character animation for it in the engine either.
     RE::PlaySound("ITMPoisonUse");
-    logger::info("{} put {} on {}", Describe(actor), poison->GetName() ? poison->GetName() : "?",
-                 weapon->GetName() ? weapon->GetName() : "?");
+    log::actions.event(log::Level::Info, "poison.applied", actor,
+                       {{"poisonFormId", log::Id(poison->GetFormID())},
+                        {"poisonName", log::NameOf(poison)},
+                        {"weaponFormId", log::Id(weapon->GetFormID())},
+                        {"weaponName", log::NameOf(weapon)}},
+                       "{} put {} on {}", Describe(actor), log::NameOf(poison), log::NameOf(weapon));
     return ActionResult::Performed;
 }
 
@@ -189,15 +194,24 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm, bool stronges
             }
         }
         if (!emptied)
-            logger::warn("{} {} is reusable but its soul was not found on an extra list -- not emptied",
-                         Describe(actor), gem->GetName() ? gem->GetName() : "?");
+            log::actions.warn("{} {} is reusable but its soul was not found on an extra list -- not emptied",
+                              Describe(actor), log::NameOf(gem));
     }
     else
         actor->RemoveItem(gem, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
     RE::PlaySound("UIEnchantRecharge");
-    logger::info("{} spent {} ({:.0f}) into {}: charge {:.0f} -> {:.0f} of {:.0f}", Describe(actor),
-                 gem->GetName() ? gem->GetName() : "?", it->charge, weapon->GetName() ? weapon->GetName() : "?",
-                 state.charge, charge, state.maxCharge);
+    log::actions.event(log::Level::Info, "soul.spent", actor,
+                       {{"gemFormId", log::Id(gem->GetFormID())},
+                        {"gemName", log::NameOf(gem)},
+                        {"soul", it->charge},
+                        {"weaponFormId", log::Id(weapon->GetFormID())},
+                        {"weaponName", log::NameOf(weapon)},
+                        {"chargeBefore", state.charge},
+                        {"chargeAfter", charge},
+                        {"chargeMax", state.maxCharge}},
+                       "{} spent {} ({:.0f}) into {}: charge {:.0f} -> {:.0f} of {:.0f}", Describe(actor),
+                       log::NameOf(gem), it->charge, log::NameOf(weapon), state.charge, charge,
+                       state.maxCharge);
     return ActionResult::Performed;
 }
 
@@ -266,14 +280,14 @@ ActionResult PointAt(RE::Actor *actor, std::uint32_t target)
     auto *controller = runtime.combatController;
     if (!controller)
     {
-        logger::info("  target: {} has no combat controller -- not fighting",
-                     actor->GetName() ? actor->GetName() : "?");
+        log::actions.debug("target: {} has no combat controller -- not fighting", Describe(actor));
         return ActionResult::NoTarget;
     }
     const auto before = runtime.currentCombatTarget.get();
-    logger::info("  target: {} was fighting {} ({:08X}), now {} ({:08X})", actor->GetName() ? actor->GetName() : "?",
-                 before && before->GetName() ? before->GetName() : "no one", before ? before->GetFormID() : 0,
-                 enemy->GetName() ? enemy->GetName() : "?", enemy->GetFormID());
+    log::actions.debug("target: {} was fighting {} ({:08X}), now {} ({:08X})", Describe(actor),
+                       before && before->GetName() ? before->GetName() : "no one",
+                       before ? before->GetFormID() : 0, enemy->GetName() ? enemy->GetName() : "?",
+                       enemy->GetFormID());
     const RE::ActorHandle handle = enemy->GetHandle();
     controller->previousTargetHandle = controller->targetHandle;
     controller->targetHandle = handle;
@@ -343,9 +357,9 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
             targetId = target;
         const char *what = shout ? "shout" : "power";
-        logger::info("  {}: {} through a shout slot", what, form->GetName() ? form->GetName() : "?");
+        log::actions.debug("{}: {} through a shout slot", what, log::NameOf(form));
         const auto request = RequestShout(actor, action.form, targetId);
-        logger::info("  {}: {}", what, ToString(request));
+        log::actions.debug("{}: {}", what, ToString(request));
         switch (request)
         {
         case CastRequest::Armed:
@@ -378,10 +392,11 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // A spell, or a scroll: both MagicItems, cast the same way.
         auto *spell = RE::TESForm::LookupByID<RE::MagicItem>(action.form);
         if (spell)
-            logger::info("  cast: {} is {} / {}", spell->GetName() ? spell->GetName() : "?",
-                         spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration ? "concentration"
-                                                                                                 : "fire-and-forget",
-                         spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf ? "self" : "targeted");
+            log::actions.debug("cast: {} is {} / {}", log::NameOf(spell),
+                               spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration
+                                   ? "concentration"
+                                   : "fire-and-forget",
+                               spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf ? "self" : "targeted");
         if (spell && spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
         {
             // A Location spell -- a conjuration -- aimed at the follower goes
@@ -398,8 +413,8 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
                 auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
                 if (!enemy)
                 {
-                    logger::info("  cast: {} needs a target and the follower is fighting no one",
-                                 spell->GetName() ? spell->GetName() : "?");
+                    log::actions.debug("cast: {} needs a target and the follower is fighting no one",
+                                       log::NameOf(spell));
                     return ActionResult::NoTarget;
                 }
                 targetId = enemy->GetFormID();
@@ -409,7 +424,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // actionArg is the sustain time for a concentration spell, when a rule
         // sets one; zero takes the default.
         const auto request = RequestCast(actor, action.form, targetId, action.arg, action.dual);
-        logger::info("  cast: {}", ToString(request));
+        log::actions.debug("cast: {}", ToString(request));
         switch (request)
         {
         case CastRequest::Armed:
@@ -469,17 +484,17 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         auto *state = actor->AsActorState();
         if (!state || !state->IsWeaponDrawn())
         {
-            logger::info("  blow: {} has no weapon drawn", actor->GetName() ? actor->GetName() : "?");
+            log::actions.debug("blow: {} has no weapon drawn", Describe(actor));
             return ActionResult::Busy;
         }
         if (state->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone)
         {
-            logger::info("  blow: {} is mid-attack", actor->GetName() ? actor->GetName() : "?");
+            log::actions.debug("blow: {} is mid-attack", Describe(actor));
             return ActionResult::Busy;
         }
         const bool sent = actor->NotifyAnimationGraph(blow.event);
-        logger::info("  blow: {} {} ({:.0f} stamina){}", actor->GetName() ? actor->GetName() : "?", blow.event,
-                     blow.stamina, sent ? "" : " -- the graph refused it");
+        log::actions.debug("blow: {} {} ({:.0f} stamina){}", Describe(actor), blow.event, blow.stamina,
+                           sent ? "" : " -- the graph refused it");
         return sent ? ActionResult::Performed : ActionResult::Busy;
     }
 
