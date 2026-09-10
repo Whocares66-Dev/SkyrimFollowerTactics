@@ -45,20 +45,22 @@ Records say *what* she does; the C++ says *when*. No Papyrus.
 
 There is no faction any more. The condition's parameter is a pointer the C++ writes: the holder's actor for the lease, null after. `src/game/Forms.cpp` makes the forms; "Forms at runtime" below is what was established about doing that.
 
-### Where a record goes: the front of her own stack (2026-09-09)
+### Where a record goes: the front of her own package stack
 
-Every alias an actor fills is instanced for them as an array of packages on the actor (`ExtraAliasInstanceArray`, one `BGSRefAliasInstanceData` per alias with its `instancedPackages`; the library maps all of it). The engine walks those arrays quest by quest, highest quest priority first, and the array holding the package running her now is the one at the top of her walk. When a cast rule fires, `PutOnStack` puts the leased record at the **front** of that array (the fullest array when nothing of hers is running), the lease's condition -- `GetIsReference(<holder>)`, a null-safe pointer compare in the engine, one write to point it at her -- gates it, and the release walks her arrays and takes it out. In memory only, per actor, nothing shared: between casts her arrays are exactly what her quests gave her. Verified in play the same day: Megara, a custom follower on `AK69SugarandSpiceQuest` alias 0, ran the record at once (`current package after evaluate: FF3F0800 (OURS)`) and fired the rule's dual-cast Healing Hands from it, three leases in a row.
+An actor runs one package at a time, chosen by a walk over candidates in priority order, first passing condition wins. The candidates that matter come from quest aliases: every alias an actor fills is instanced for them as an array of packages attached to the actor (`ExtraAliasInstanceArray`, one `BGSRefAliasInstanceData` per alias with its `instancedPackages`; the library maps all of it), and the walk goes quest by quest through those arrays, highest quest priority first. The array holding the package running her now is therefore the one at the top of her walk.
 
-Two other routes are history. **The vanilla follower alias's combat-override list** (`PlayerFollowerCombatOverridePackageList`, 0005C852, on `DialogueFollower` alias 0) carried every cast from 2026-09-02 to 2026-09-09: the record at its front for the lease, out again after. It reached only a follower in that alias -- not Serana, whom Dawnguard runs on `DLC1NPCMentalModel`, whose alias has no such list, and not a follower a custom quest or a framework drives, whose leases all expired "AI never picked it up" in Nordic Souls. **The engine's created package** (`Actor::PutCreatedPackage`, what Papyrus uses to walk an actor somewhere) is not evaluated in a fight: placed and re-evaluated, her follow package stayed current. The stack route replaced both, for every follower, at the user's call; if a vanilla follower's list ever shadows it (its last entry has no conditions), the "OURS" line will say so.
+When a cast rule fires, `PutOnStack` puts the leased record at the **front** of that array -- the fullest array when nothing of hers is running -- and the AI is re-evaluated at once. The lease's condition, `GetIsReference(<holder>)`, gates it: the engine's implementation is a null-safe pointer compare between the evaluating actor and the parameter (read from the executable), so pointing the parameter at her is one write, nothing is written to her, and the record passes for her alone. On release the parameter is cleared and her arrays are walked to take the record out; only a flag is kept across the lease, since the arrays are hers and go with her. In memory only, per actor, nothing shared: between casts her arrays are exactly what her quests gave her, and two followers casting at once each hold their own record on their own stack.
 
-The game's own example of a package cast mid-fight is Mercer Frey in *Blindsighted*: a UseMagic package in his alias's override list, gated on quest stage, makes him cast Nightingale Strife at the player. Ours is the same package with `GetIsReference` as the trigger, on the actor's stack instead of a list.
+This reaches every follower the same way, whatever drives them: one in the vanilla `DialogueFollower` alias, Serana on Dawnguard's `DLC1NPCMentalModel`, a follower on their author's own quest or a framework's. Verified in play 2026-09-09 (Nordic Souls): Megara, on `AK69SugarandSpiceQuest` alias 0, ran the record at once (`current package after evaluate: FF3F0800 (OURS)`) and fired the rule's dual-cast Healing Hands from it, lease after lease; the vanilla-alias followers likewise.
+
+The game's own example of a package cast mid-fight is Mercer Frey in *Blindsighted*: a UseMagic package gated on quest stage makes him cast Nightingale Strife at the player. Ours is the same package with `GetIsReference` as the trigger, on the actor's stack.
 
 Open: the actor's package extra data is part of the save (`Actor::ChangeFlags::kPackageExtraData`), so a save inside a lease may reference the record by its form ID, which is recreated at load with its condition pointing at nobody; what the engine does with that on load is not known.
 
 ### The C++ (`src/game/Packages.cpp`)
 
 1. **A cast rule fires.** Take a free record from the pool, put it at the
-   front of the override list. Repoint its Spell
+   front of her package stack (above). Repoint its Spell
    input at the rule's spell and its Target input by the spell's **delivery**:
    a Self-delivery spell casts on her, anything else goes at the enemy she is
    engaging (a non-hostile targeted spell such as Healing Hands will need the
@@ -222,9 +224,10 @@ repeats them.
    *emits*. NPC Spell Variance receives it; it never initiates a cast.
 3. **`SetCurrentSpellImpl` + `RequestCastImpl`.** Internal virtuals the game's
    update loop calls. Never demonstrated from outside.
-4. **`PutCreatedPackage` + `EvaluatePackage`.** Pushes onto the package stack,
-   which combat does not consult. A quest at priority 99 would have failed the
-   same way; only the alias's override list is read in combat.
+4. **`PutCreatedPackage` + `EvaluatePackage`.** The engine's created
+   package, what Papyrus uses to walk an actor somewhere: placed and
+   re-evaluated, her running package stays current in a fight (Nordic Souls,
+   2026-09-09). The alias arrays are what combat reads.
 5. **Swapping `CombatMagicCaster::magicItem`.** The write takes and changes
    nothing useful; the caster in question had selected a potion.
 6. **Boosting `CalculateScore`.** The spell already out-scored every
@@ -250,19 +253,17 @@ would change when every NPC in Skyrim heals.
 
 ## Follower frameworks, as reference
 
-Read from their plugins with houseCARL. What matters is one alias field,
-`CombatOverridePackageList`.
+Read from their plugins with houseCARL, for where each keeps its followers; the stack route reaches them all alike, since every one fills an alias whose packages are instanced on the actor.
 
-| framework | followers live in | combat-override list |
-|---|---|---|
-| vanilla | `DialogueFollower` alias 0 | `PlayerFollowerCombatOverridePackageList` (0005C852) |
-| Simple Follower Framework 2.0.3 | follower 1 in the vanilla alias; 2..8 in `SFF_FollowerQuest` aliases 1..7, filled from C++ with `ForceRefTo` | the **same vanilla list** -- covered by the splice as-is |
-| Nether's Follower Framework 2.8.6b | overrides `DialogueFollower` (nulls its list) and holds followers in `nwsFollowerPack` `PackAlias1..12` and tiers | `nwsFollowerCombatPkList` (007429), its own |
+| framework | followers live in |
+|---|---|
+| vanilla | `DialogueFollower` alias 0 |
+| Dawnguard (Serana) | `DLC1NPCMentalModel` alias 0 |
+| Simple Follower Framework 2.0.3 | follower 1 in the vanilla alias; 2..8 in `SFF_FollowerQuest` aliases 1..7, filled from C++ with `ForceRefTo` |
+| Nether's Follower Framework 2.8.6b | `nwsFollowerPack` `PackAlias1..12` and tiers |
+| a custom follower (Megara, Remiel) | the author's own follow quest |
 
-The splice is a table (`kOverrideLists`) with the vanilla list as its only
-entry. NFF is one more line when integration is wanted. NFF also has
-`nwsFollowerHealSelf` / `HealPlayer`: UseMagic packages gated on
-`GetFactionRank` of an NFF faction, the same idiom.
+NFF also has `nwsFollowerHealSelf` / `HealPlayer`: UseMagic packages gated on `GetFactionRank` of an NFF faction, the same idiom as ours.
 
 ---
 
