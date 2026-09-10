@@ -1,5 +1,6 @@
 #include "game/Hits.h"
 
+#include "game/Log.h"
 #include "game/Util.h"
 
 #include <array>
@@ -130,12 +131,14 @@ void WatchHits()
     auto *holder = RE::ScriptEventSourceHolder::GetSingleton();
     if (!holder)
     {
-        logger::warn("hits: no event source holder -- Attacked by will never be true");
+        log::hits.event(log::Level::Warn, "install.failed",
+                        {{"what", "hit events"}, {"reason", "no script event source holder"}},
+                        "no event source holder -- Attacked by will never be true");
         return;
     }
     holder->AddEventSink<RE::TESHitEvent>(&g_hitSink);
     holder->AddEventSink<RE::TESMagicEffectApplyEvent>(&g_applySink);
-    logger::info("hits: watching hit and effect-apply events, {} s window", kWindow.count());
+    log::hits.info("watching hit and effect-apply events, {} s window", kWindow.count());
 }
 
 Attacked AttackedLately(ft::ActorId target)

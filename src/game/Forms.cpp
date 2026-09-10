@@ -1,5 +1,7 @@
 #include "game/Forms.h"
 
+#include "game/Log.h"
+
 namespace ft::game
 {
 namespace
@@ -30,14 +32,26 @@ bool Place(RE::TESForm *form, std::uint32_t localID, const char *what)
     const RE::FormID id = kRuntimeFormBase | localID;
     if (auto *taken = RE::TESForm::LookupByID(id))
     {
-        logger::error("forms: {:08X} is already taken by a {} -- {} not made", id,
-                      static_cast<int>(taken->GetFormType()), what);
+        log::forms.event(log::Level::Error, "form.error",
+                         {{"requestedFormId", log::Id(id)},
+                          {"kind", what},
+                          {"reason", "id already taken"},
+                          {"takenByFormType", static_cast<int>(taken->GetFormType())}},
+                         "{:08X} is already taken by a {} -- {} not made", id,
+                         static_cast<int>(taken->GetFormType()), what);
         return false;
     }
     const auto born = form->GetFormID();
     form->SetFormID(id, /*updateFile*/ false);
     const bool ok = form->GetFormID() == id && RE::TESForm::LookupByID(id) == form;
-    logger::info("forms: {} {:08X} (born {:08X}){}", what, form->GetFormID(), born, ok ? "" : " -- NOT registered");
+    if (!ok)
+    {
+        log::forms.event(log::Level::Error, "form.error",
+                         {{"requestedFormId", log::Id(id)}, {"kind", what}, {"reason", "not registered after SetFormID"}},
+                         "{} {:08X} (born {:08X}) -- NOT registered", what, form->GetFormID(), born);
+        return false;
+    }
+    log::forms.debug("{} {:08X} (born {:08X})", what, form->GetFormID(), born);
     return ok;
 }
 
@@ -51,15 +65,21 @@ RE::TESPackage *ClonePackage(RE::TESPackage *source, std::uint32_t localID)
     auto *pkg = CreatePackage(RE::PACKAGE_TYPE::kPackage);
     if (!pkg)
     {
-        logger::error("forms: CreatePackage returned nothing");
+        log::forms.event(log::Level::Error, "form.error",
+                         {{"kind", "package"}, {"reason", "CreatePackage returned nothing"}},
+                         "CreatePackage returned nothing");
         return nullptr;
     }
     auto *custom = skyrim_cast<RE::TESCustomPackageData *>(pkg->data);
     auto *srcCustom = skyrim_cast<RE::TESCustomPackageData *>(source->data);
     if (!custom || !srcCustom)
     {
-        logger::error("forms: package data is not TESCustomPackageData (ours {}, source {})",
-                      static_cast<const void *>(custom), static_cast<const void *>(srcCustom));
+        log::forms.event(log::Level::Error, "form.error",
+                         {{"requestedFormId", log::Id(source->GetFormID())},
+                          {"kind", "package"},
+                          {"reason", "package data is not TESCustomPackageData"}},
+                         "package data is not TESCustomPackageData (ours {}, source {})",
+                         static_cast<const void *>(custom), static_cast<const void *>(srcCustom));
         return nullptr;
     }
 
@@ -71,10 +91,18 @@ RE::TESPackage *ClonePackage(RE::TESPackage *source, std::uint32_t localID)
     if (custom->data.dataSize != srcCustom->data.dataSize || custom->templateParent != srcCustom->templateParent ||
         !custom->nameMap)
     {
-        logger::error("forms: copy of {:08X} incomplete: {} of {} inputs, template {} vs {}, name map {}",
-                      source->GetFormID(), custom->data.dataSize, srcCustom->data.dataSize,
-                      static_cast<const void *>(custom->templateParent),
-                      static_cast<const void *>(srcCustom->templateParent), custom->nameMap ? "present" : "ABSENT");
+        log::forms.event(log::Level::Error, "form.error",
+                         {{"requestedFormId", log::Id(source->GetFormID())},
+                          {"kind", "package"},
+                          {"reason", "copy incomplete"},
+                          {"inputs", custom->data.dataSize},
+                          {"sourceInputs", srcCustom->data.dataSize},
+                          {"nameMap", custom->nameMap != nullptr}},
+                         "copy of {:08X} incomplete: {} of {} inputs, template {} vs {}, name map {}",
+                         source->GetFormID(), custom->data.dataSize, srcCustom->data.dataSize,
+                         static_cast<const void *>(custom->templateParent),
+                         static_cast<const void *>(srcCustom->templateParent),
+                         custom->nameMap ? "present" : "ABSENT");
         return nullptr;
     }
 
@@ -118,7 +146,8 @@ RE::TESWordOfPower *CreateWord(std::uint32_t localID, const char *name)
     auto *word = factory ? factory->Create() : nullptr;
     if (!word)
     {
-        logger::error("forms: no factory or no word of power");
+        log::forms.event(log::Level::Error, "form.error", {{"kind", "word"}, {"reason", "no factory or no word of power"}},
+                         "no factory or no word of power");
         return nullptr;
     }
     word->fullName = name;
@@ -132,7 +161,8 @@ RE::TESShout *CreateShout(std::uint32_t localID, RE::TESWordOfPower *word, RE::T
     auto *shout = factory ? factory->Create() : nullptr;
     if (!shout)
     {
-        logger::error("forms: no factory or no shout");
+        log::forms.event(log::Level::Error, "form.error", {{"kind", "shout"}, {"reason", "no factory or no shout"}},
+                         "no factory or no shout");
         return nullptr;
     }
     shout->fullName = name;

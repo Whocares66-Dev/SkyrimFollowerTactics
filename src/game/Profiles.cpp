@@ -1,6 +1,7 @@
 #include "game/Profiles.h"
 
 #include "game/Tactics.h"
+#include "game/Log.h"
 #include "game/Util.h"
 
 #include <string>
@@ -56,7 +57,9 @@ void OnSave(SKSE::SerializationInterface *intfc)
     {
         if (!WriteFollower(intfc, filed.who.key, ft::WriteProfile(filed.profile, GameFormCodec())))
         {
-            logger::error("tactics: {}: could not write tactics to the save", filed.who.name);
+            log::profiles.event(log::Level::Error, "profile.saveFailed",
+                                {{"key", filed.who.key}, {"reason", "the record could not be written"}},
+                                "{}: could not write tactics to the save", filed.who.name);
             continue;
         }
         ++live;
@@ -65,12 +68,15 @@ void OnSave(SKSE::SerializationInterface *intfc)
     {
         if (!WriteFollower(intfc, key, text))
         {
-            logger::error("tactics: {}: could not write tactics back to the save", key);
+            log::profiles.event(log::Level::Error, "profile.saveFailed",
+                                {{"key", key}, {"reason", "the carried record could not be written back"}},
+                                "{}: could not write tactics back to the save", key);
             continue;
         }
         ++carried;
     }
-    logger::info("tactics: saved {} follower record(s), {} carried from the loaded save", live, carried);
+    log::profiles.event(log::Level::Info, "profile.saved", {{"recordCount", live}, {"carriedCount", carried}},
+                        "saved {} follower record(s), {} carried from the loaded save", live, carried);
 }
 
 void OnLoad(SKSE::SerializationInterface *intfc)
@@ -83,22 +89,29 @@ void OnLoad(SKSE::SerializationInterface *intfc)
     {
         if (type != kFollowerRecord)
         {
-            logger::warn("tactics: co-save record {:08X} is not one this build knows -- skipped", type);
+            log::profiles.event(log::Level::Warn, "profile.entryDropped",
+                                {{"kind", "record"}, {"label", log::Id(type)}, {"reason", "not a record this build knows"}},
+                                "co-save record {:08X} is not one this build knows -- skipped", type);
             continue;
         }
         std::string key;
         std::string text;
         if (!ReadString(intfc, key) || !ReadString(intfc, text))
         {
-            logger::error("tactics: a co-save record is cut short -- skipped");
+            log::profiles.event(log::Level::Error, "profile.entryDropped",
+                                {{"kind", "record"}, {"reason", "cut short"}},
+                                "a co-save record is cut short -- skipped");
             continue;
         }
         if (version > static_cast<std::uint32_t>(ft::kProfileSchema))
-            logger::warn("tactics: {}: saved by a newer build (schema {}) -- reading what this one understands", key,
-                         version);
+            log::profiles.event(log::Level::Warn, "profile.newerSchema",
+                                {{"key", key}, {"schema", version}, {"known", ft::kProfileSchema}},
+                                "{}: saved by a newer build (schema {}) -- reading what this one understands", key,
+                                version);
         g_saved[key] = std::move(text);
     }
-    logger::info("tactics: the save holds tactics for {} follower(s)", g_saved.size());
+    log::profiles.event(log::Level::Info, "profile.loaded", {{"recordCount", g_saved.size()}},
+                        "the save holds tactics for {} follower(s)", g_saved.size());
 }
 
 // Before a load and on a new game: nothing from the last session may
@@ -160,7 +173,7 @@ Identity IdentifyFollower(RE::Actor *actor)
     {
         who.key = fmt::format("dynamic-{:08X}", actor->GetFormID());
         who.form = fmt::format("0x{:X}", actor->GetFormID());
-        logger::warn("tactics: {} has no record in any plugin -- tactics keyed by reference id", Describe(actor));
+        log::profiles.warn("{} has no record in any plugin -- tactics keyed by reference id", Describe(actor));
     }
     return who;
 }
@@ -170,7 +183,9 @@ void InstallSerialization()
     const auto *serialization = SKSE::GetSerializationInterface();
     if (!serialization)
     {
-        logger::error("tactics: no SKSE serialization interface -- tactics will not be saved");
+        log::profiles.event(log::Level::Error, "install.failed",
+                            {{"what", "serialization"}, {"reason", "no SKSE serialization interface"}},
+                            "no SKSE serialization interface -- tactics will not be saved");
         return;
     }
     serialization->SetUniqueID(kPluginId);
@@ -187,14 +202,24 @@ std::optional<ft::Profile> ClaimSaved(const Identity &who)
 
     auto read = ft::ReadProfile(node.mapped(), GameFormCodec());
     for (const auto &warning : read.warnings)
-        logger::warn("tactics: {}: saved tactics: {}", who.name, warning);
+        log::profiles.event(log::Level::Warn, "profile.entryDropped",
+                            {{"key", who.key}, {"kind", "entry"}, {"label", who.name}, {"reason", warning}},
+                            "{}: saved tactics: {}", who.name, warning);
     if (!read.profile)
     {
-        logger::error("tactics: {}: the saved tactics could not be read -- starting with none", who.name);
+        log::profiles.event(log::Level::Warn, "profile.entryDropped",
+                            {{"key", who.key}, {"kind", "profile"}, {"label", who.name}, {"reason", "unreadable"}},
+                            "{}: the saved tactics could not be read -- starting with none", who.name);
         return std::nullopt;
     }
-    logger::info("tactics: {}: {} rule(s) and {} pin(s) from the save, {}", who.name, read.profile->rules.rules.size(),
-                 read.profile->pins.size(), read.profile->enabled ? "on" : "off");
+    log::profiles.event(log::Level::Info, "profile.claimed",
+                        {{"key", who.key},
+                         {"followerName", who.name},
+                         {"ruleCount", read.profile->rules.rules.size()},
+                         {"pinCount", read.profile->pins.size()},
+                         {"enabled", read.profile->enabled}},
+                        "{}: {} rule(s) and {} pin(s) from the save, {}", who.name, read.profile->rules.rules.size(),
+                        read.profile->pins.size(), read.profile->enabled ? "on" : "off");
     return std::move(read.profile);
 }
 

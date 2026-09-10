@@ -16,6 +16,7 @@
 
 #include "core/Effects.h"
 #include "core/Vocabulary.h"
+#include "game/Log.h"
 #include "game/Pins.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
@@ -4742,7 +4743,7 @@ void SyncFollowers()
                 continue;
             if (SKSEMenuFramework::DeleteSection("Follower Tactics/Followers/" + slot.name))
             {
-                logger::info("ui: menu entry removed for {}", slot.name);
+                log::ui.debug("menu entry removed for {}", slot.name);
                 slot = {};
             }
         }
@@ -4784,7 +4785,7 @@ void SyncFollowers()
         // Under a Followers subsection, apart from Settings: the path's
         // components are the tree.
         SKSEMenuFramework::FullPathAddSectionItem("Follower Tactics/Followers/" + view.name, renderers[index]);
-        logger::info("ui: menu entry added for {} (slot {})", view.name, index);
+        log::ui.debug("menu entry added for {} (slot {})", view.name, index);
     }
 }
 
@@ -4795,8 +4796,9 @@ void Install()
     // drinking potions.
     if (!SKSEMenuFramework::IsInstalled())
     {
-        logger::info("ui: SKSE Menu Framework not installed -- no in-game panel. "
-                     "Tactics still run; see this log for what they decide.");
+        log::ui.event(log::Level::Info, "ui.unavailable", {{"reason", "SKSE Menu Framework not installed"}},
+                      "SKSE Menu Framework not installed -- no in-game panel. "
+                      "Tactics still run; see this log for what they decide.");
         return;
     }
 
@@ -4807,8 +4809,8 @@ void Install()
     static auto *const openEvent = SKSEMenuFramework::AddEvent(OnMenuEvent, 0.0f);
     (void)openEvent;
 
-    logger::info("ui: registered with SKSE Menu Framework (F1). "
-                 "Follower entries appear as followers do.");
+    log::ui.event(log::Level::Info, "ui.installed", {},
+                  "registered with SKSE Menu Framework (F1). Follower entries appear as followers do.");
 }
 
 } // namespace ft::game::ui

@@ -5,6 +5,7 @@
 
 #include "game/Hits.h"
 #include "game/Inventory.h"
+#include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
 
@@ -551,6 +552,11 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
 
 void LogActiveEffects(RE::Actor *actor, const char *when)
 {
+    // The whole walk exists to log, so it does not happen at all when the
+    // level would drop the lines.
+    if (!log::Enabled(log::Level::Debug))
+        return;
+
     auto *target = actor ? actor->AsMagicTarget() : nullptr;
     if (!target)
         return;
@@ -558,7 +564,7 @@ void LogActiveEffects(RE::Actor *actor, const char *when)
     auto *effects = target->GetActiveEffectList();
     if (!effects)
     {
-        logger::info("  active effects [{}]: <none>", when);
+        log::sensors.debug("active effects [{}]: <none>", when);
         return;
     }
 
@@ -571,12 +577,12 @@ void LogActiveEffects(RE::Actor *actor, const char *when)
 
         const auto *base = ae->effect->baseEffect;
         const char *sourceName = ae->spell ? ae->spell->GetName() : "<none>";
-        logger::info("  active effect [{}]: \"{}\" from \"{}\"  elapsed {:.1f}/{:.1f}s  mag {:.1f}", when,
-                     base->GetName(), sourceName, ae->elapsedSeconds, ae->duration, ae->magnitude);
+        log::sensors.debug("active effect [{}]: \"{}\" from \"{}\"  elapsed {:.1f}/{:.1f}s  mag {:.1f}", when,
+                           base->GetName(), sourceName, ae->elapsedSeconds, ae->duration, ae->magnitude);
     }
 
     if (count == 0)
-        logger::info("  active effects [{}]: <none>", when);
+        log::sensors.debug("active effects [{}]: <none>", when);
 }
 
 // What an actor is in the middle of, as docs/CONDITIONS.md 2 reads it: the
@@ -622,12 +628,12 @@ void LogArmorReadings(RE::Actor *actor)
         if (actor->GetWornArmor(slot))
             ++pieces;
     const auto &runtime = actor->GetActorRuntimeData();
-    logger::info("armor {}: AV DamageResist {:.1f}, CalcArmorRating {:.1f} (cached {:.1f}), base factor sum {:.3f} "
-                 "(cached {:.3f}) over {} pieces x fArmorBaseFactor {:.2f} -- reduction {:.1f}%",
-                 actor->GetName() ? actor->GetName() : "?",
-                 owner ? owner->GetActorValue(RE::ActorValue::kDamageResist) : 0.0f, actor->CalcArmorRating(),
-                 runtime.armorRating, actor->GetArmorBaseFactorSum(), runtime.armorBaseFactorSum, pieces,
-                 GameSetting("fArmorBaseFactor", 0.03f), DamageReduction(actor) * 100.0f);
+    log::sensors.debug("armor {}: AV DamageResist {:.1f}, CalcArmorRating {:.1f} (cached {:.1f}), base factor sum "
+                       "{:.3f} (cached {:.3f}) over {} pieces x fArmorBaseFactor {:.2f} -- reduction {:.1f}%",
+                       actor->GetName() ? actor->GetName() : "?",
+                       owner ? owner->GetActorValue(RE::ActorValue::kDamageResist) : 0.0f, actor->CalcArmorRating(),
+                       runtime.armorRating, actor->GetArmorBaseFactorSum(), runtime.armorBaseFactorSum, pieces,
+                       GameSetting("fArmorBaseFactor", 0.03f), DamageReduction(actor) * 100.0f);
 }
 
 // The enchantment on a weapon the actor carries: a player-made one on the
@@ -1714,8 +1720,8 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     static const float pcMin = GameSetting("fDamagePCSkillMin", 1.0f);
     static const float pcMax = GameSetting("fDamagePCSkillMax", 1.5f);
     static const bool logged = [] {
-        logger::info("damage: skill curve NPC {:.2f} to {:.2f}, player {:.2f} to {:.2f} over skill 0 to 100", npcMin,
-                     npcMax, pcMin, pcMax);
+        log::sensors.debug("damage: skill curve NPC {:.2f} to {:.2f}, player {:.2f} to {:.2f} over skill 0 to 100",
+                           npcMin, npcMax, pcMin, pcMax);
         return true;
     }();
     (void)logged;
@@ -1774,9 +1780,9 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     // The wikis' "1 + 0.4 * skill / 100" is the player's pair, and used
     // for a follower it read 46 where the engine had 66. Logged once.
     static const bool logged = [] {
-        logger::info("armor: skill curve NPC {:.2f} to {:.2f}, player {:.2f} to {:.2f} over skill 0 to 100",
-                     GameSetting("fArmorRatingBase", 1.0f), GameSetting("fArmorRatingMax", 1.4f),
-                     GameSetting("fArmorRatingPCBase", 1.0f), GameSetting("fArmorRatingPCMax", 1.4f));
+        log::sensors.debug("armor: skill curve NPC {:.2f} to {:.2f}, player {:.2f} to {:.2f} over skill 0 to 100",
+                           GameSetting("fArmorRatingBase", 1.0f), GameSetting("fArmorRatingMax", 1.4f),
+                           GameSetting("fArmorRatingPCBase", 1.0f), GameSetting("fArmorRatingPCMax", 1.4f));
         return true;
     }();
     (void)logged;
