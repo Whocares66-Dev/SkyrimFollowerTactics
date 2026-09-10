@@ -356,6 +356,24 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view)
             text += ' ';
             text += ft::DisplayName(r.damageKind);
         }
+        // The party member: "Enemy: Attacking Self", "Enemy: Attacked by
+        // Player", "... Attacking Lydia".
+        if (r.predicate == ft::PredicateKind::Attacking || r.predicate == ft::PredicateKind::AttackedBy)
+        {
+            text += ' ';
+            if (r.subjectForm == 0)
+                text += ft::DisplayName(ft::SubjectKind::Player);
+            else if (r.subjectForm == view.id)
+                text += "Self";
+            else
+            {
+                std::string name = "a follower (away)";
+                for (const auto &peer : view.peers)
+                    if (peer.id == r.subjectForm)
+                        name = peer.name;
+                text += name;
+            }
+        }
     }
 
     if (const std::string arg = ArgumentText(r.predicate, r.conditionArg); !arg.empty())
