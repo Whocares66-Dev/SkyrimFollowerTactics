@@ -241,10 +241,22 @@ void DrawStatRow(const RowGeometry &g, const char *barLabel, const ft::Stat &sta
 
     Im::SameLine(g.barLeft, -1.0f);
     Im::PushStyleColor(Im::ImGuiCol_PlotHistogram, barColour);
+    // The numbers centred over the bar, drawn by hand: ImGui's own overlay
+    // sits just past the filled part, so it moved with the fill and the
+    // three bars' numbers did not line up.
+    Im::ProgressBar(stat.Pct(), Im::ImVec2(g.barWidth, 0.0f), "");
+    Im::PopStyleColor(1);
     const std::string overlay =
         std::to_string(static_cast<int>(stat.current)) + " / " + std::to_string(static_cast<int>(stat.max));
-    Im::ProgressBar(stat.Pct(), Im::ImVec2(g.barWidth, 0.0f), overlay.c_str());
-    Im::PopStyleColor(1);
+    if (auto *draw = Im::GetWindowDrawList())
+    {
+        const Im::ImVec2 lo = Im::GetItemRectMin();
+        const Im::ImVec2 hi = Im::GetItemRectMax();
+        const Im::ImVec2 size = Im::CalcTextSize(overlay.c_str());
+        Im::ImDrawListManager::AddText(draw,
+                                       {lo.x + (hi.x - lo.x - size.x) * 0.5f, lo.y + (hi.y - lo.y - size.y) * 0.5f},
+                                       Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), overlay.c_str());
+    }
 
     TextRightAlignedAt(g.statLabelRight, statLabel);
 
