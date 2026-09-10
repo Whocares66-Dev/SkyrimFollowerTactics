@@ -4,6 +4,7 @@
 
 #include "game/Pins.h"
 
+#include "game/Log.h"
 #include "game/Sensors.h"
 
 #include "game/Packages.h"
@@ -463,7 +464,8 @@ constexpr bool kDualWieldOnLeftPin = false;
         return;
     if (style->flags.all(RE::TESCombatStyle::FLAG::kAllowDualWielding))
     {
-        logger::info("{} combat style {:08X} already allows dual wielding", Describe(actor), style->GetFormID());
+        log::pins.debug("{} combat style {:08X} already allows dual wielding", Describe(actor),
+                        style->GetFormID());
         return;
     }
 
@@ -471,8 +473,8 @@ constexpr bool kDualWieldOnLeftPin = false;
     auto *ours = copy ? copy->As<RE::TESCombatStyle>() : nullptr;
     if (!ours)
     {
-        logger::warn("{} cannot be allowed to dual wield: combat style {:08X} would not duplicate", Describe(actor),
-                     style->GetFormID());
+        log::pins.warn("{} cannot be allowed to dual wield: combat style {:08X} would not duplicate",
+                       Describe(actor), style->GetFormID());
         return;
     }
     // CreateDuplicateForm gives a NEW combat style at the engine's defaults
@@ -490,8 +492,10 @@ constexpr bool kDualWieldOnLeftPin = false;
     npc->SetCombatStyle(ours);
     if (auto *controller = actor->GetActorRuntimeData().combatController)
         controller->combatStyle = ours;
-    logger::info("{} allowed to dual wield: combat style {:08X} copied as {:08X} with the flag set", Describe(actor),
-                 style->GetFormID(), ours->GetFormID());
+    log::pins.event(log::Level::Info, "dualWield.allowed", actor,
+                    {{"styleFormId", log::Id(style->GetFormID())}, {"copyFormId", log::Id(ours->GetFormID())}},
+                    "{} allowed to dual wield: combat style {:08X} copied as {:08X} with the flag set",
+                    Describe(actor), style->GetFormID(), ours->GetFormID());
 }
 
 // Before something new goes on, whatever it displaces is unpinned, so the
@@ -516,8 +520,13 @@ std::vector<Displaced> ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin>
     for (const Displaced &gone : displaced)
     {
         auto *held = RE::TESForm::LookupByID(gone.form);
-        logger::info("{} unpinning {}{} to make room", Describe(actor), held && held->GetName() ? held->GetName() : "?",
-                     HandTag(gone.hands));
+        log::pins.event(log::Level::Info, "pin.released", actor,
+                        {{"itemFormId", log::Id(gone.form)},
+                         {"itemName", log::NameOf(held)},
+                         {"hand", HandTag(gone.hands)},
+                         {"reason", "to make room"}},
+                        "{} unpinning {}{} to make room", Describe(actor), log::NameOf(held),
+                        HandTag(gone.hands));
     }
     return displaced;
 }
@@ -588,21 +597,37 @@ void RestorePinsAfterFight(RE::Actor *actor, std::vector<Pin> &pins, const std::
         const char *name = thing->GetName() ? thing->GetName() : "?";
         if (gone.takeOff)
         {
-            logger::info("{} fight over -- {}{} pinned during it comes off; what was there before comes back",
-                         Describe(actor), name, HandTag(gone.hands));
+            log::pins.event(log::Level::Info, "pin.released", actor,
+                            {{"itemFormId", log::Id(gone.form)},
+                             {"itemName", name},
+                             {"hand", HandTag(gone.hands)},
+                             {"reason", "the fight ended"}},
+                            "{} fight over -- {}{} pinned during it comes off; what was there before comes "
+                            "back",
+                            Describe(actor), name, HandTag(gone.hands));
             UnequipForm(actor, thing, gone.hands, true);
             continue;
         }
         // Forgetting the pin is the whole of it: nothing on the item marks
         // it pinned, so there is nothing to lift.
-        logger::info("{} fight over -- {}{} pinned during it stays on, unpinned", Describe(actor), name,
-                     HandTag(gone.hands));
+        log::pins.event(log::Level::Info, "pin.released", actor,
+                        {{"itemFormId", log::Id(gone.form)},
+                         {"itemName", name},
+                         {"hand", HandTag(gone.hands)},
+                         {"reason", "the fight ended; the item stays on"}},
+                        "{} fight over -- {}{} pinned during it stays on, unpinned", Describe(actor), name,
+                        HandTag(gone.hands));
     }
     for (const Pin &pin : settle.restored)
     {
         const auto *thing = RE::TESForm::LookupByID(pin.thing.form);
-        logger::info("{} fight over -- {}{} pinned again, as before it", Describe(actor),
-                     thing && thing->GetName() ? thing->GetName() : "?", HandTag(pin.hands));
+        log::pins.event(log::Level::Info, "pin.applied", actor,
+                        {{"itemFormId", log::Id(pin.thing.form)},
+                         {"itemName", log::NameOf(thing)},
+                         {"hand", HandTag(pin.hands)},
+                         {"reason", "restored after the fight"}},
+                        "{} fight over -- {}{} pinned again, as before it", Describe(actor),
+                        log::NameOf(thing), HandTag(pin.hands));
     }
     pins = before;
     if (settle.released.empty() && settle.restored.empty())
@@ -622,7 +647,8 @@ void NoteFight(RE::Actor *actor, std::vector<Pin> &pins, bool fighting)
         g_fighting.insert(id);
         g_pinsBeforeFight[id] = pins;
         if (!pins.empty())
-            logger::info("{} fight begins -- {} pin(s) remembered for after it", Describe(actor), pins.size());
+            log::pins.debug("{} fight begins -- {} pin(s) remembered for after it", Describe(actor),
+                            pins.size());
         return;
     }
     if (!fighting && was)
@@ -672,8 +698,12 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                 // readied or not is the voice slot, and back it goes.
                 if (PutBackNow(*pin, InVoice(actor, form), fighting, casting))
                 {
-                    logger::info("{} put away pinned {} -- readying it in the voice again", Describe(actor),
-                                 form->GetName() ? form->GetName() : "?");
+                    log::pins.event(log::Level::Info, "pin.restored", actor,
+                                    {{"itemFormId", log::Id(form->GetFormID())},
+                                     {"itemName", log::NameOf(form)},
+                                     {"reason", "put away, readied in the voice again"}},
+                                    "{} put away pinned {} -- readying it in the voice again", Describe(actor),
+                                    log::NameOf(form));
                     EquipPinned(actor, form, hands, false);
                 }
             }
@@ -681,8 +711,12 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             {
                 if (PutBackNow(*pin, EquippedIn(actor, form, hands), fighting, casting))
                 {
-                    logger::info("{} put away pinned {} -- readying it again -- {}", Describe(actor),
-                                 form->GetName() ? form->GetName() : "?", HandsState(actor));
+                    log::pins.event(log::Level::Info, "pin.restored", actor,
+                                    {{"itemFormId", log::Id(form->GetFormID())},
+                                     {"itemName", log::NameOf(form)},
+                                     {"reason", "put away, readied again"}},
+                                    "{} put away pinned {} -- readying it again -- {}", Describe(actor),
+                                    log::NameOf(form), HandsState(actor));
                     EquipPinned(actor, form, hands, false);
                 }
             }
@@ -694,8 +728,12 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                 const bool carried = found != inventory.end() && found->second.first > 0;
                 if (!carried)
                 {
-                    logger::info("{} no longer carries {} -- pin dropped", Describe(actor),
-                                 object->GetName() ? object->GetName() : "?");
+                    log::pins.event(log::Level::Info, "pin.released", actor,
+                                    {{"itemFormId", log::Id(object->GetFormID())},
+                                     {"itemName", log::NameOf(object)},
+                                     {"reason", "no longer carried"}},
+                                    "{} no longer carries {} -- pin dropped", Describe(actor),
+                                    log::NameOf(object));
                     pin = pins.erase(pin);
                     continue;
                 }
@@ -703,8 +741,12 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                                                     : EquippedIn(actor, object, hands);
                 if (PutBackNow(*pin, on, fighting, casting))
                 {
-                    logger::info("{} took off pinned {} -- putting it back on", Describe(actor),
-                                 object->GetName() ? object->GetName() : "?");
+                    log::pins.event(log::Level::Info, "pin.restored", actor,
+                                    {{"itemFormId", log::Id(object->GetFormID())},
+                                     {"itemName", log::NameOf(object)},
+                                     {"reason", "taken off"}},
+                                    "{} took off pinned {} -- putting it back on", Describe(actor),
+                                    log::NameOf(object));
                     EquipPinned(actor, object, hands, false);
                 }
             }
@@ -737,8 +779,9 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             const Holdable described = DescribeHoldable(actor, thing);
             if (!OnAnywhere(actor, thing, described))
                 continue;
-            logger::info("{} has banned {} on -- taking it off", Describe(actor),
-                         thing->GetName() ? thing->GetName() : "?");
+            log::pins.event(log::Level::Info, "ban.enforced", actor,
+                            {{"itemFormId", log::Id(thing->GetFormID())}, {"itemName", log::NameOf(thing)}},
+                            "{} has banned {} on -- taking it off", Describe(actor), log::NameOf(thing));
             TakeOffEverywhere(actor, thing, described, false);
         }
     }
@@ -841,9 +884,8 @@ float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
         return score;
     if (g_zeroedOnce.insert(self).second)
     {
-        logger::info("{} AI asked the score of {}{}: {:.2f}, answered 0 ({})", Describe(actor.get()),
-                     self->item->GetName() ? self->item->GetName() : "?", HandTag(SlotHand(self->itemSlot.equipSlot)),
-                     score, why);
+        log::pins.debug("{} AI asked the score of {}{}: {:.2f}, answered 0 ({})", Describe(actor.get()),
+                        log::NameOf(self->item), HandTag(SlotHand(self->itemSlot.equipSlot)), score, why);
     }
     return 0.0f;
 }
@@ -855,7 +897,7 @@ void WatchScoresIn(std::uintptr_t vtable, const char *what)
     REL::Relocation<std::uintptr_t> table{vtable};
     const auto original = table.write_vfunc(kCalculateScoreSlot, ScoreHook);
     g_scoreOriginals[vtable] = reinterpret_cast<ScoreFn>(original);
-    logger::info("watching the AI's score of {} (vtable {:X})", what, vtable);
+    log::pins.debug("watching the AI's score of {} (vtable {:X})", what, vtable);
 }
 
 void WatchScoreOf(RE::CombatInventoryItem *entry)
@@ -867,8 +909,8 @@ void WatchScoreOf(RE::CombatInventoryItem *entry)
         return;
     // A class the load-time table did not name: say so, with the entry's
     // last score as a check that the slot is the scoring one.
-    logger::info("an AI entry class not in the table: entries like {} (last score {:.2f})",
-                 entry->item && entry->item->GetName() ? entry->item->GetName() : "?", entry->itemScore);
+    log::pins.debug("an AI entry class not in the table: entries like {} (last score {:.2f})",
+                    log::NameOf(entry->item), entry->itemScore);
     WatchScoresIn(vtable, "entries of an unlisted class");
 }
 
@@ -896,7 +938,7 @@ void ProbeCombatInventory(RE::Actor *actor)
                      HandTag(entry ? SlotHand(entry->itemSlot.equipSlot) : Hand::None);
             WatchScoreOf(entry.get());
         }
-        logger::info("{} combat inventory [{}]: {}", Describe(actor), slot, names.empty() ? "-" : names);
+        log::pins.debug("{} combat inventory [{}]: {}", Describe(actor), slot, names.empty() ? "-" : names);
     }
     // Which of her spells the AI did not list, and her magicka at the
     // moment, since a cost above the pool is the first guess at the filter
@@ -916,9 +958,10 @@ void ProbeCombatInventory(RE::Actor *actor)
     for (auto *spell : actor->GetActorRuntimeData().addedSpells)
         consider(spell);
     auto *owner = actor->AsActorValueOwner();
-    logger::info("{} combat inventory left out: {} -- magicka {:.0f}/{:.0f}", Describe(actor),
-                 missing.empty() ? "nothing" : missing, owner ? owner->GetActorValue(RE::ActorValue::kMagicka) : 0.0f,
-                 owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
+    log::pins.debug("{} combat inventory left out: {} -- magicka {:.0f}/{:.0f}", Describe(actor),
+                    missing.empty() ? "nothing" : missing,
+                    owner ? owner->GetActorValue(RE::ActorValue::kMagicka) : 0.0f,
+                    owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
 }
 
 // Followers whose view is to be republished on the next pacing beat, whether
@@ -1084,7 +1127,7 @@ void RepublishOwed()
     {
         if (auto *actor = RE::TESForm::LookupByID<RE::Actor>(id))
         {
-            logger::info("{} time running again -- {}", Describe(actor), CasterState(actor));
+            log::pins.debug("{} time running again -- {}", Describe(actor), CasterState(actor));
             PublishFollower(actor);
         }
     }
@@ -1113,8 +1156,12 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         // Neither the panel nor the rules offer this; a pin is a promise the
         // AI would not keep, and it is refused here too rather than
         // half-kept as an equip without a pin.
-        logger::warn("{} {} cannot be pinned: above the follower's skill, the AI would not choose it", Describe(actor),
-                     thing->GetName() ? thing->GetName() : "?");
+        log::pins.event(log::Level::Warn, "pin.refused", actor,
+                        {{"itemFormId", log::Id(thing->GetFormID())},
+                         {"itemName", log::NameOf(thing)},
+                         {"reason", "above the follower's skill; the AI would not choose it"}},
+                        "{} {} cannot be pinned: above the follower's skill, the AI would not choose it",
+                        Describe(actor), log::NameOf(thing));
         return;
     }
     // One weapon cannot be in both hands. Asked to move her only copy to
@@ -1219,8 +1266,8 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             const Holdable inOther = DescribeHoldable(actor, held);
             if (WouldDualWield(described, &inOther))
             {
-                logger::info("{} {} comes off the {} hand: the combat style does not dual wield", Describe(actor),
-                             held->GetName() ? held->GetName() : "?", other == Hand::Left ? "left" : "right");
+                log::pins.info("{} {} comes off the {} hand: the combat style does not dual wield",
+                               Describe(actor), log::NameOf(held), other == Hand::Left ? "left" : "right");
                 UnequipForm(actor, held, other, true);
             }
         }
@@ -1228,7 +1275,10 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     switch (request)
     {
     case WearRequest::Equip:
-        logger::info("{} told to ready {}{} (not pinned)", Describe(actor), name, HandTag(hands));
+        log::pins.event(log::Level::Info, "equip.applied", actor,
+                        {{"itemFormId", log::Id(id)}, {"itemName", name}, {"hand", HandTag(hands)},
+                         {"pinned", false}},
+                        "{} told to ready {}{} (not pinned)", Describe(actor), name, HandTag(hands));
         if (moving)
             UnequipForm(actor, thing, hands == Hand::Left ? Hand::Right : Hand::Left, true);
         EquipPinned(actor, thing, hands, true);
@@ -1236,16 +1286,20 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             g_republish.insert(id);
         break;
     case WearRequest::Ban:
-        logger::info("{} told never to use {} (banned)", Describe(actor), name);
+        log::pins.event(log::Level::Info, "ban.applied", actor, {{"itemFormId", log::Id(id)}, {"itemName", name}},
+                        "{} told never to use {} (banned)", Describe(actor), name);
         TakeOffEverywhere(actor, thing, described, true);
         if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
             g_republish.insert(id);
         break;
     case WearRequest::Unban:
-        logger::info("{} may use {} again (ban lifted)", Describe(actor), name);
+        log::pins.event(log::Level::Info, "ban.released", actor, {{"itemFormId", log::Id(id)}, {"itemName", name}},
+                        "{} may use {} again (ban lifted)", Describe(actor), name);
         break;
     case WearRequest::Pin:
-        logger::info("{} told to ready {} (pinned)", Describe(actor), name);
+        log::pins.event(log::Level::Info, "pin.applied", actor,
+                        {{"itemFormId", log::Id(id)}, {"itemName", name}, {"reason", "the player asked"}},
+                        "{} told to ready {} (pinned)", Describe(actor), name);
         // Off for now, to see what her own style does with a left-hand
         // weapon; the copy stays available for the combat-style work.
         if constexpr (kDualWieldOnLeftPin)
@@ -1261,24 +1315,25 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         // be read off the log.
         if (thing->Is(RE::FormType::Weapon))
         {
-            logger::info("{} weapon {} asked {} -- now left {} right {}", Describe(actor), name,
-                         static_cast<int>(hands), actor->GetEquippedObject(true) == thing,
-                         actor->GetEquippedObject(false) == thing);
+            log::pins.debug("{} weapon {} asked {} -- now left {} right {}", Describe(actor), name,
+                            static_cast<int>(hands), actor->GetEquippedObject(true) == thing,
+                            actor->GetEquippedObject(false) == thing);
         }
         if (auto *spell = thing->As<RE::SpellItem>())
         {
             const auto *slot = spell->GetEquipSlot();
             const auto &data = actor->GetActorRuntimeData();
-            logger::info("{} spell {} asked {} -- record slot {:06X} -- now left {} right {} -- {}", Describe(actor),
-                         name, static_cast<int>(hands), slot ? slot->GetFormID() : 0,
-                         data.selectedSpells[RE::Actor::SlotTypes::kLeftHand] == spell,
-                         data.selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell, CasterState(actor));
+            log::pins.debug("{} spell {} asked {} -- record slot {:06X} -- now left {} right {} -- {}",
+                            Describe(actor), name, static_cast<int>(hands), slot ? slot->GetFormID() : 0,
+                            data.selectedSpells[RE::Actor::SlotTypes::kLeftHand] == spell,
+                            data.selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell,
+                            CasterState(actor));
             // Look again once time runs, to see what the engine finishes.
             g_republish.insert(id);
         }
         if (thing->Is(RE::FormType::Shout))
         {
-            logger::info("{} shout {} -- {}", Describe(actor), name, CasterState(actor));
+            log::pins.debug("{} shout {} -- {}", Describe(actor), name, CasterState(actor));
             g_republish.insert(id);
         }
         break;
@@ -1288,10 +1343,15 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         // prevent-removal flag an item had to come off and go back on
         // without it -- and that path once took a spell off and "put it
         // back" with an item equip, 01:47, Chain Lightning.)
-        logger::info("{} told to keep {}{} but not held to it", Describe(actor), name, HandTag(hands));
+        log::pins.event(log::Level::Info, "pin.applied", actor,
+                        {{"itemFormId", log::Id(id)}, {"itemName", name}, {"hand", HandTag(hands)},
+                         {"held", false}, {"reason", "kept, but not held to it"}},
+                        "{} told to keep {}{} but not held to it", Describe(actor), name, HandTag(hands));
         break;
     case WearRequest::TakeOff:
-        logger::info("{} told to put away {}{}", Describe(actor), name, HandTag(hands));
+        log::pins.event(log::Level::Info, "equip.removed", actor,
+                        {{"itemFormId", log::Id(id)}, {"itemName", name}, {"hand", HandTag(hands)}},
+                        "{} told to put away {}{}", Describe(actor), name, HandTag(hands));
         UnequipForm(actor, thing, hands, true);
         if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
             g_republish.insert(id);
@@ -1358,7 +1418,11 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
         auto *thing = RE::TESForm::LookupByID(entry.form);
         if (!thing)
         {
-            logger::info("{} saved pin {:08X} names nothing in this game -- forgotten", Describe(actor), entry.form);
+            log::pins.event(log::Level::Warn, "profile.entryDropped", actor,
+                            {{"kind", "pin"}, {"label", log::Id(entry.form)},
+                             {"reason", "names nothing in this game"}},
+                            "{} saved pin {:08X} names nothing in this game -- forgotten", Describe(actor),
+                            entry.form);
             continue;
         }
         const char *name = thing->GetName() ? thing->GetName() : "?";
@@ -1367,12 +1431,20 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
         const bool on = described.IsVoice() ? InVoice(actor, thing) : object && Worn(actor, object, entry.hands);
         if (!on || !Pinnable(described))
         {
-            logger::info("{} saved pin on {}{} does not hold -- {} -- forgotten", Describe(actor), name,
-                         HandTag(entry.hands), !on ? "not worn now" : "cannot be pinned");
+            log::pins.event(log::Level::Warn, "profile.entryDropped", actor,
+                            {{"kind", "pin"},
+                             {"label", name},
+                             {"hand", HandTag(entry.hands)},
+                             {"reason", !on ? "not worn now" : "cannot be pinned"}},
+                            "{} saved pin on {}{} does not hold -- {} -- forgotten", Describe(actor), name,
+                            HandTag(entry.hands), !on ? "not worn now" : "cannot be pinned");
             continue;
         }
         AddPin(book, described, entry.hands, false);
-        logger::info("{} saved pin on {}{} taken back", Describe(actor), name, HandTag(entry.hands));
+        log::pins.event(log::Level::Info, "pin.applied", actor,
+                        {{"itemFormId", log::Id(entry.form)}, {"itemName", name},
+                         {"hand", HandTag(entry.hands)}, {"reason", "from the save"}},
+                        "{} saved pin on {}{} taken back", Describe(actor), name, HandTag(entry.hands));
     }
 }
 
@@ -1387,11 +1459,18 @@ void AdoptBans(RE::Actor *actor, const Bans &bans)
         const auto *thing = RE::TESForm::LookupByID(form);
         if (!thing)
         {
-            logger::info("{} saved ban {:08X} names nothing in this game -- forgotten", Describe(actor), form);
+            log::pins.event(log::Level::Warn, "profile.entryDropped", actor,
+                            {{"kind", "ban"}, {"label", log::Id(form)},
+                             {"reason", "names nothing in this game"}},
+                            "{} saved ban {:08X} names nothing in this game -- forgotten", Describe(actor),
+                            form);
             continue;
         }
         if (Ban(book, form))
-            logger::info("{} saved ban on {} taken back", Describe(actor), thing->GetName() ? thing->GetName() : "?");
+            log::pins.event(log::Level::Info, "ban.applied", actor,
+                            {{"itemFormId", log::Id(form)}, {"itemName", log::NameOf(thing)},
+                             {"reason", "from the save"}},
+                            "{} saved ban on {} taken back", Describe(actor), log::NameOf(thing));
     }
 }
 
@@ -1448,8 +1527,13 @@ void ReleaseKind(RE::Actor *actor, Kind kind)
         auto *thing = RE::TESForm::LookupByID(pin.thing.form);
         if (!thing)
             continue;
-        logger::info("{} told to let go of {}{} -- the AI decides again", Describe(actor),
-                     thing->GetName() ? thing->GetName() : "?", HandTag(pin.hands));
+        log::pins.event(log::Level::Info, "pin.released", actor,
+                        {{"itemFormId", log::Id(pin.thing.form)},
+                         {"itemName", log::NameOf(thing)},
+                         {"hand", HandTag(pin.hands)},
+                         {"reason", "the player let go; the AI decides again"}},
+                        "{} told to let go of {}{} -- the AI decides again", Describe(actor),
+                        log::NameOf(thing), HandTag(pin.hands));
         UnequipForm(actor, thing, pin.hands, true);
         if (thing->Is(RE::FormType::Spell))
             g_republish.insert(actor->GetFormID());
@@ -1499,17 +1583,25 @@ bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlo
             CarriedCount(actor, object) >= 2)
             return false;
         if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
-            logger::info("{} the engine would equip pinned {} into the {} hand as well, with one copy -- refused",
-                         Describe(actor), object->GetName() ? object->GetName() : "?",
-                         into == Hand::Left ? "left" : "right");
+            log::pins.event(log::Level::Warn, "pin.refused", actor,
+                            {{"itemFormId", log::Id(object->GetFormID())},
+                             {"itemName", log::NameOf(object)},
+                             {"hand", into == Hand::Left ? "left" : "right"},
+                             {"reason", "one copy cannot fill both hands"}},
+                            "{} the engine would equip pinned {} into the {} hand as well, with one copy -- "
+                            "refused",
+                            Describe(actor), log::NameOf(object), into == Hand::Left ? "left" : "right");
         return true;
     }
     if (BannedHere(actor->GetFormID(), object->GetFormID()))
     {
         if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
-            logger::info("{} the engine would equip banned {} -- refused ({})", Describe(actor),
-                         object->GetName() ? object->GetName() : "?",
-                         actor->IsInCombat() ? "in combat" : "out of combat");
+            log::pins.event(log::Level::Warn, "ban.refused", actor,
+                            {{"itemFormId", log::Id(object->GetFormID())},
+                             {"itemName", log::NameOf(object)},
+                             {"inCombat", actor->IsInCombat()}},
+                            "{} the engine would equip banned {} -- refused ({})", Describe(actor),
+                            log::NameOf(object), actor->IsInCombat() ? "in combat" : "out of combat");
         return true;
     }
     if (!anyPins)
@@ -1534,10 +1626,16 @@ bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlo
         if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
         {
             const auto *held = RE::TESForm::LookupByID(pin.thing.form);
-            logger::info("{} the engine would equip {}{} over pinned {}{} -- refused ({})", Describe(actor),
-                         object->GetName() ? object->GetName() : "?", HandTag(hands),
-                         held && held->GetName() ? held->GetName() : "?", HandTag(pin.hands),
-                         actor->IsInCombat() ? "in combat" : "out of combat");
+            log::pins.event(log::Level::Warn, "pin.refused", actor,
+                            {{"itemFormId", log::Id(pin.thing.form)},
+                             {"itemName", log::NameOf(held)},
+                             {"hand", HandTag(pin.hands)},
+                             {"refusedFormId", log::Id(object->GetFormID())},
+                             {"refusedName", log::NameOf(object)},
+                             {"inCombat", actor->IsInCombat()}},
+                            "{} the engine would equip {}{} over pinned {}{} -- refused ({})", Describe(actor),
+                            log::NameOf(object), HandTag(hands), log::NameOf(held), HandTag(pin.hands),
+                            actor->IsInCombat() ? "in combat" : "out of combat");
         }
         return true;
     }
@@ -1568,14 +1666,16 @@ void RefuseEquipsAgainstPins()
     const LONG result = DetourTransactionCommit();
     if (result != NO_ERROR)
     {
-        logger::error("pins: could not detour ActorEquipManager::EquipObject (Detours error {}) -- the engine's "
-                      "equips will not be refused against the pins",
-                      result);
+        log::pins.event(log::Level::Error, "install.failed",
+                        {{"what", "ActorEquipManager::EquipObject detour"}, {"detoursError", result}},
+                        "could not detour ActorEquipManager::EquipObject (Detours error {}) -- the engine's "
+                        "equips will not be refused against the pins",
+                        result);
         return;
     }
-    logger::info("pins: ActorEquipManager::EquipObject at {:X} detoured -- the engine's equips are refused against "
-                 "the pins",
-                 target.address());
+    log::pins.info("ActorEquipManager::EquipObject at {:X} detoured -- the engine's equips are refused against "
+                   "the pins",
+                   target.address());
 }
 
 } // namespace ft::game

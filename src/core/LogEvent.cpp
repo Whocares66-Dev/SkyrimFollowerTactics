@@ -83,30 +83,6 @@ Field::Field(std::string_view key, std::string_view value) : key_(key), value_(s
 {
 }
 
-Field::Field(std::string_view key, std::int64_t value) : key_(key), value_(value)
-{
-}
-
-Field::Field(std::string_view key, int value) : key_(key), value_(static_cast<std::int64_t>(value))
-{
-}
-
-Field::Field(std::string_view key, unsigned int value) : key_(key), value_(static_cast<std::int64_t>(value))
-{
-}
-
-Field::Field(std::string_view key, std::size_t value) : key_(key), value_(static_cast<std::int64_t>(value))
-{
-}
-
-Field::Field(std::string_view key, double value) : key_(key), value_(value)
-{
-}
-
-Field::Field(std::string_view key, float value) : key_(key), value_(static_cast<double>(value))
-{
-}
-
 Field::Field(std::string_view key, bool value) : key_(key), value_(value)
 {
 }

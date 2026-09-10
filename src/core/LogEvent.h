@@ -12,6 +12,7 @@
 // here. That split is the architectural rule (CLAUDE.md), and it is what lets
 // the envelope's shape be pinned by a test instead of by reading the log.
 
+#include <concepts>
 #include <cstdint>
 #include <initializer_list>
 #include <span>
@@ -57,13 +58,22 @@ class Field
     Field(std::string_view key, std::string value);
     Field(std::string_view key, const char *value);
     Field(std::string_view key, std::string_view value);
-    Field(std::string_view key, std::int64_t value);
-    Field(std::string_view key, int value);
-    Field(std::string_view key, unsigned int value);
-    Field(std::string_view key, std::size_t value);
-    Field(std::string_view key, double value);
-    Field(std::string_view key, float value);
     Field(std::string_view key, bool value);
+
+    // Every integer and every float, rather than a list of the fixed-width
+    // ones: a call site passing a LONG, a DWORD or a std::size_t should not
+    // have to cast, and one that had to would eventually cast wrongly.
+    template <class T>
+        requires std::integral<T> && (!std::same_as<T, bool>)
+    Field(std::string_view key, T value) : key_(key), value_(static_cast<std::int64_t>(value))
+    {
+    }
+
+    template <class T>
+        requires std::floating_point<T>
+    Field(std::string_view key, T value) : key_(key), value_(static_cast<double>(value))
+    {
+    }
 
     // A list of actors or forms, as an array of ids. Taken already-encoded so
     // that core never has to know an id from a count.
