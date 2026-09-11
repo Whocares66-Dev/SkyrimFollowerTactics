@@ -497,10 +497,26 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect)
 {
     const auto *base = effect.baseEffect;
     const float magnitude = effect.effectItem.magnitude;
+    // The value's display name, where the game has one; else the Creation
+    // Kit's, read as words: Ward Power, Damage Resist. Most values the
+    // game never shows have no display name (Spellbreaker's ward read as
+    // "? +100", 2026-09-11).
     const auto valueName = [](RE::ActorValue value) -> std::string {
         auto *list = RE::ActorValueList::GetSingleton();
         auto *info = list ? list->GetActorValueInfo(value) : nullptr;
-        return info && info->GetFullName() && *info->GetFullName() ? info->GetFullName() : "?";
+        if (!info)
+            return "?";
+        if (info->GetFullName() && *info->GetFullName())
+            return info->GetFullName();
+        std::string words;
+        for (const char *c = info->enumName ? info->enumName : ""; *c; ++c)
+        {
+            if (std::isupper(static_cast<unsigned char>(*c)) && !words.empty() &&
+                !std::isupper(static_cast<unsigned char>(words.back())))
+                words += ' ';
+            words += *c;
+        }
+        return words.empty() ? "?" : words;
     };
 
     std::string what;
@@ -560,10 +576,11 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         // As the game's own Active Effects list: hidden ones stay hidden,
         // and one that has run out is gone -- except a hidden effect that
         // moves a value, which the Character sheet's notes name by source
-        // and which therefore wants a page: listed greyed, as one that
-        // does not apply is. A hidden effect that moves nothing -- a
-        // script's, a race monitor's, a cloak's -- stays off the list, as
-        // there would be many and nothing to show for them.
+        // and which therefore wants a page: listed as any other, running
+        // and applied as it is, its page saying it is hidden. A hidden
+        // effect that moves nothing -- a script's, a race monitor's, a
+        // cloak's -- stays off the list, as there would be many and
+        // nothing to show for them.
         const bool hidden = base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI);
         if (hidden && (!MovesValue(base) || std::abs(ae->magnitude) < 0.05f))
             continue;
@@ -576,7 +593,6 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         EffectRow row;
         row.form = base->GetFormID();
         row.sourceForm = ae->spell ? ae->spell->GetFormID() : 0;
-        row.hidden = hidden;
         row.applied = EffectApplies(actor, base);
         row.name = name;
         row.magnitude = ae->magnitude;
@@ -592,7 +608,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         }
 
         // The page.
-        SheetSection stats{"Effect", {}, {}};
+        SheetSection stats{"Effect Details", {}, {}};
         char num[32];
         std::snprintf(num, sizeof(num), "%.0f", row.magnitude);
         if (row.magnitude != 0.0f)
@@ -609,20 +625,29 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             forever.icon = kIconInfinity;
             stats.rows.push_back(std::move(forever));
         }
+        // The source's form, for the panel to make a link of where the
+        // source has a page: the worn item for an enchantment, the spell
+        // otherwise.
+        const bool enchantment = ae->spell && ae->spell->As<RE::EnchantmentItem>();
+        row.linkForm = enchantment ? (ae->source ? ae->source->GetFormID() : 0) : row.sourceForm;
         if (!row.source.empty())
         {
-            // The source's form, for the panel to make a link of where
-            // the source has a page: the worn item for an enchantment,
-            // the spell otherwise.
             SheetRow source = Row("Source", row.source);
-            const bool enchantment = ae->spell && ae->spell->As<RE::EnchantmentItem>();
-            source.form = enchantment ? (ae->source ? ae->source->GetFormID() : 0) : row.sourceForm;
+            source.form = row.linkForm;
             stats.rows.push_back(std::move(source));
         }
         // Whoever cast it, when it was not the follower: the player's
         // Courage, an enemy's Fury.
         if (auto caster = ae->caster.get(); caster && caster.get() != actor && caster->GetName() && *caster->GetName())
             stats.rows.push_back(Row("Caster", caster->GetName()));
+        // A tick where the game's own list would not show it; no row
+        // where it would, as the perk page marks a hidden perk.
+        if (hidden)
+        {
+            SheetRow mark = Row("Hidden", "");
+            mark.icon = kGlyphTick;
+            stats.rows.push_back(std::move(mark));
+        }
         row.detail.push_back(std::move(stats));
         // What the source does, effect by effect, hidden ones included, as
         // the perk page lists a perk's entries: the record beside the
@@ -2532,7 +2557,7 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         perk->GetDescription(text, perk);
         p.description = text.c_str() ? text.c_str() : "";
 
-        SheetSection info{"Perk", {}, {}};
+        SheetSection info{"Perk Details", {}, {}};
         char id[16];
         std::snprintf(id, sizeof(id), "%08X", perk->GetFormID());
         info.rows.push_back(Row("Base ID", id));

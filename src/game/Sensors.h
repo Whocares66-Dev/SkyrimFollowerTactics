@@ -238,6 +238,10 @@ struct EffectRow
     // the same effect can run twice from two sources.
     std::uint32_t form{0};
     std::uint32_t sourceForm{0};
+    // What the source's name links to, where it has a page: the worn item
+    // behind an enchantment, else the spell. The panel decides whether a
+    // page exists, by its own lists.
+    std::uint32_t linkForm{0};
     std::string name;
     float magnitude{0.0f};
     float duration{0.0f};      // in all; 0 for one with no duration
@@ -248,9 +252,6 @@ struct EffectRow
     // Fortify One-handed on a follower, which writes a value nothing on a
     // follower reads. Listed greyed, hovering as "Not applied".
     bool applied{true};
-    // One the game's own list leaves out, listed here because it moves a
-    // value the Character sheet names it for. Greyed, hovering as such.
-    bool hidden{false};
 
     // The page: the effect's numbers as the first section, then what its
     // source does, effect by effect, each opening on its conditions -- the
@@ -329,7 +330,7 @@ struct PerkPage
     std::uint32_t form{0};
     std::string name;
     std::string description;
-    // "Perk", the facts; then "Effects", one row per entry -- what it does,
+    // "Perk Details", the facts; then "Effects", one row per entry -- what it does,
     // a tick in the mark while it is active -- opening on the conditions
     // that gate it, as the engine reads them for this actor: the call, the
     // comparison, a tick when met. Not the record's own conditions: those

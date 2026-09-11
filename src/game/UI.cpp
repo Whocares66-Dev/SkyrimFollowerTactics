@@ -4207,6 +4207,44 @@ std::vector<const EffectRow *> VisibleEffects(const FollowerView &view)
     return rows;
 }
 
+// The page an effect's source opens, if it has one: the worn piece on the
+// Inventory tab, the spell on the Magic tab; None for a source with no
+// page of its own -- a racial ability, a potion drunk up. The tabs' own
+// lists are the rule for what has a page.
+Tab SourcePage(const FollowerView &view, std::uint32_t form)
+{
+    if (form == 0)
+        return Tab::None;
+    if (std::any_of(view.inventory.begin(), view.inventory.end(),
+                    [form](const InventoryItem &item) { return item.form == form; }))
+        return Tab::Inventory;
+    if (std::any_of(view.magic.begin(), view.magic.end(),
+                    [form](const MagicEntry &entry) { return entry.form == form; }))
+        return Tab::Magic;
+    return Tab::None;
+}
+
+// Open it, with the back arrow returning to the Effects tab.
+void OpenSourcePage(const FollowerView &view, std::uint32_t form)
+{
+    auto &inventory = g_inventoryTabs[view.id];
+    switch (SourcePage(view, form))
+    {
+    case Tab::Inventory:
+        inventory.detail = form;
+        inventory.openedFrom = Tab::Effects;
+        inventory.select = Tab::Inventory;
+        break;
+    case Tab::Magic:
+        g_magicTabs[view.id].detail = form;
+        g_magicTabs[view.id].openedFrom = Tab::Effects;
+        inventory.select = Tab::Magic;
+        break;
+    default:
+        break;
+    }
+}
+
 void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const FollowerView &view)
 {
     Im::Spacing();
@@ -4227,38 +4265,14 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Follow
     std::vector<SheetSection> info(row.detail.begin(), split);
     const std::vector<SheetSection> effects(split, row.detail.end());
 
-    // The source is a link to its page where it has one: the worn piece
-    // on the Inventory tab, the spell on the Magic tab. A source with no
-    // page -- a racial ability, a potion drunk up -- is plain text: the
-    // tabs' own lists are the rule for what has a page, and a form in
-    // neither loses its link here rather than lighting a cell that would
-    // go nowhere.
-    const auto carried = [&](std::uint32_t form) {
-        return std::any_of(view.inventory.begin(), view.inventory.end(),
-                           [form](const InventoryItem &item) { return item.form == form; });
-    };
-    const auto known = [&](std::uint32_t form) {
-        return std::any_of(view.magic.begin(), view.magic.end(),
-                           [form](const MagicEntry &entry) { return entry.form == form; });
-    };
+    // The source is a link to its page where it has one (SourcePage); a
+    // source with none loses its link here rather than lighting a cell
+    // that would go nowhere.
     for (auto &section : info)
         for (auto &line : section.rows)
-            if (line.form != 0 && !carried(line.form) && !known(line.form))
+            if (SourcePage(view, line.form) == Tab::None)
                 line.form = 0;
-    const ft::ActorId id = view.id;
-    DrawSections(info, false, [id, &known](std::uint32_t form) {
-        auto &inventory = g_inventoryTabs[id];
-        if (known(form))
-        {
-            g_magicTabs[id].detail = form;
-            g_magicTabs[id].openedFrom = Tab::Effects;
-            inventory.select = Tab::Magic;
-            return;
-        }
-        inventory.detail = form;
-        inventory.openedFrom = Tab::Effects;
-        inventory.select = Tab::Inventory;
-    });
+    DrawSections(info, false, [&view](std::uint32_t form) { OpenSourcePage(view, form); });
     if (!effects.empty())
         DrawSections(effects, true, {}, "Active",
                      [](const SheetRow &entry, const std::string &key, float left, float right) {
@@ -4338,10 +4352,11 @@ void DrawEffects(const FollowerView &view)
         std::snprintf(buf, sizeof(buf), "##effect%08X_%08X", row->form, row->sourceForm);
 
         Im::TableNextRow(0, 0.0f);
-        // Running but changing nothing for this follower, or one the game's
-        // own list hides: the row is drawn in the disabled colour, and its
-        // name hovers as which.
-        const DimText grey(!row->applied || row->hidden);
+        // Running but changing nothing for this follower: the row is drawn
+        // in the disabled colour, and its name hovers as "Not applied". One
+        // the game's own list hides is running and applied all the same,
+        // and reads as any other; its page says it is hidden.
+        const DimText grey(!row->applied);
         Im::TableSetColumnIndex(0);
         const Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
@@ -4351,8 +4366,6 @@ void DrawEffects(const FollowerView &view)
         }
         if (!row->applied && Im::IsItemHovered(0))
             Im::SetTooltip("Not applied");
-        else if (row->hidden && Im::IsItemHovered(0))
-            Im::SetTooltip("Hidden by the game");
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", row->name.c_str());
 
@@ -4368,6 +4381,15 @@ void DrawEffects(const FollowerView &view)
         if (!row->remainingText.empty())
             TextRightInCell(row->remainingText);
         Im::TableSetColumnIndex(3);
+        // The source, a link to its page where it has one, as on the
+        // effect's own page.
+        if (SourcePage(view, row->linkForm) != Tab::None)
+        {
+            const Im::ImVec2 at = Im::GetCursorScreenPos();
+            if (CellClicked((std::string(buf) + "source").c_str()))
+                OpenSourcePage(view, row->linkForm);
+            Im::SetCursorScreenPos(at);
+        }
         Im::Text("%s", row->source.c_str());
     }
     Im::EndTable();
