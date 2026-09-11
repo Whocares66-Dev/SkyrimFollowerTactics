@@ -204,7 +204,13 @@ void OnDataLoaded()
 SKSEPluginLoad(const SKSE::LoadInterface *skse)
 {
     ft::log::Init();
-    SKSE::Init(skse);
+    // NOT CommonLibSSE-NG's own logging: by default SKSE::Init opens the same
+    // FollowerTactics.log with truncation, puts its own logger in as the
+    // default -- at info in a release build, debug in a debug one, whatever
+    // the ini says -- and writes a version banner. Every line then went
+    // through its logger, the ini's level never applied to a release build,
+    // and the lines our Init wrote were truncated away (2026-09-11).
+    SKSE::Init(skse, {.log = false});
 
     ft::log::plugin.info("FollowerTactics starting up");
 

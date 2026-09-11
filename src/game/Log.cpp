@@ -223,8 +223,12 @@ void Init()
         // near hot enough for the buffering to be worth its risk.
         prose->flush_on(spdlog::level::debug);
         spdlog::set_default_logger(std::move(prose));
-        spdlog::set_pattern("[%H:%M:%S.%e] [%l] %v");
+        // The shape CommonLibSSE-NG's logger gave the file while it was the
+        // one writing it: time, thread, the level's letter. Kept, so the
+        // log reads as it always has.
+        spdlog::set_pattern("[%T.%e] [%=5t] [%L] %v");
     }
+    plugin.info("FollowerTactics v{}", FT_VERSION);
 
     if (settings.events)
     {
