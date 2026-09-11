@@ -100,9 +100,8 @@ struct MagicEntry
     // description, as the Inventory tab's pages are laid out.
     std::vector<SheetSection> detail;
     // What the spell does: the table of effects (EffectsOf), at the
-    // follower's own magnitudes, and beneath it each effect's description.
+    // follower's own magnitudes, each row's description in its last column.
     SheetSection effectsTable;
-    std::string effects;
     std::string description;
 };
 

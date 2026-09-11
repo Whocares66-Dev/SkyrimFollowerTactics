@@ -309,7 +309,6 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
             item.category = ItemCategory::Potions;
         }
         item.effectsTable = EffectsOf(actor, alch, [](const RE::Effect *e) { return e->effectItem.magnitude; });
-        item.effects = EffectLines(alch);
         return;
     }
     if (auto *ingredient = object->As<RE::IngredientItem>())
@@ -318,7 +317,6 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.category = ItemCategory::Ingredients;
         item.effect = effectName(ingredient);
         item.effectsTable = EffectsOf(actor, ingredient, [](const RE::Effect *e) { return e->effectItem.magnitude; });
-        item.effects = EffectLines(ingredient);
         return;
     }
     if (auto *scroll = object->As<RE::ScrollItem>())
@@ -331,7 +329,6 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.category = ItemCategory::Scrolls;
         item.effect = effectName(scroll);
         item.effectsTable = EffectsOf(actor, scroll, [](const RE::Effect *e) { return e->effectItem.magnitude; });
-        item.effects = EffectLines(scroll);
         item.cast = CastWord(scroll->GetDelivery(), scroll->GetCastingType());
         const auto *costliest = scroll->GetCostliestEffectItem();
         const auto *effect = costliest ? costliest->baseEffect : nullptr;
@@ -633,12 +630,11 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
         if (RE::EnchantmentItem *ench = entry ? entry->GetEnchantment() : nullptr)
         {
             item.enchanted = true;
-            SheetSection section{"Enchantment", {}, {}};
+            // One row: the name, and what is left of the charge over the
+            // full amount, as numbers and as the share: "89 / 100 (89%)". A
+            // weapon never used has no ExtraCharge and is full.
             const std::string name = NameOf(ench);
-            section.rows.push_back(Row("Name", name.empty() ? "(unnamed)" : name));
-            // What is left over the full amount, as numbers and as the
-            // share: "89 / 100 (89%)". A weapon never used has no
-            // ExtraCharge and is full.
+            std::string charge;
             if (auto *weapon = object->As<RE::TESObjectWEAP>())
             {
                 const WeaponCharge c = ChargeOf(actor, weapon);
@@ -648,14 +644,13 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
                     std::snprintf(text, sizeof(text), "%.0f / %.0f (%.0f%%)", static_cast<double>(c.charge),
                                   static_cast<double>(c.maxCharge),
                                   static_cast<double>(100.0f * c.charge / c.maxCharge));
-                    section.rows.push_back(Row("Charge", text));
+                    charge = text;
                 }
             }
-            else if (const auto charge = entry->GetEnchantmentCharge())
-                section.rows.push_back(Row("Charge", Fmt("%.0f%%", *charge)));
-            item.detail.push_back(std::move(section));
+            else if (const auto left = entry->GetEnchantmentCharge())
+                charge = Fmt("%.0f%%", *left);
+            item.enchantment = SheetSection{"Enchantment", {Row(name.empty() ? "(unnamed)" : name, charge)}, {}};
             item.effectsTable = EffectsOf(actor, ench, [](const RE::Effect *e) { return e->effectItem.magnitude; });
-            item.effects = EffectLines(ench);
         }
 
         out.push_back(std::move(item));

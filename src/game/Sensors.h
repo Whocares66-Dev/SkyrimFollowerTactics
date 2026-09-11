@@ -213,6 +213,9 @@ struct SheetRow
     std::string extra;
     std::string remaining;
     std::string link;
+    // An effect's description with its numbers filled in, for a table
+    // with a wrapped last column of them.
+    std::string description;
     // Rows revealed by expanding this one: a skill's perks. Empty means the
     // row is a plain line and cannot be opened.
     std::vector<SheetRow> detail;

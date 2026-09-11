@@ -393,7 +393,6 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         AddTimeSection(actor, {spell}, entry);
 
     entry.effectsTable = EffectsOf(actor, spell, [&](const RE::Effect *e) { return ActualMagnitude(actor, spell, e); });
-    entry.effects = EffectLines(actor, spell);
     entry.description = DescriptionFor(actor, spell, *spell);
     return true;
 }
@@ -443,11 +442,8 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
     }
 
     if (auto *first = shout->variations[0].spell)
-    {
         entry.effectsTable =
             EffectsOf(actor, first, [&](const RE::Effect *e) { return ActualMagnitude(actor, first, e); });
-        entry.effects = EffectLines(actor, first);
-    }
     // A shout's description is its own record's; its numbers, when it has
     // any, are the first word's spell's.
     entry.description = DescriptionFor(actor, shout->variations[0].spell, *shout);

@@ -103,11 +103,13 @@ struct InventoryItem
     // with the magnitude and duration filled in as the item card does.
     std::vector<SheetSection> detail;
     std::string description;
+    // The enchantment as one row, its name and its charge, under headings
+    // of its own; no rows for an item without one.
+    SheetSection enchantment;
     // What the enchantment, the potion, the scroll does: the table of
-    // effects (EffectsOf), and beneath it each effect's description as
-    // the item card shows it.
+    // effects (EffectsOf), each row's description as the item card shows
+    // it in the table's last column.
     SheetSection effectsTable;
-    std::string effects;
     // For a potion, poison, food or ingredient: what it is for, its first
     // effect's name -- "Restore Health" -- the list's column in place of a
     // Type that would only repeat the heading. The rest are on its page.

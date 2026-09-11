@@ -2667,15 +2667,25 @@ struct ExtraColumn
     std::function<std::string(const SheetRow &)> text;
     bool glyph{false};
     bool link{false};
+    bool wrap{false}; // prose: wrapped to the column, which takes the rest of the table
 };
 
-// The columns an effect table carries after Name and Effect; the effect's
-// own page adds Source. Each drawn only where some row has it.
+// The columns an effect table carries after Name and Effect. Each drawn
+// only where some row has it. An item's or a spell's page ends with the
+// effects' descriptions, wrapped; the effect's own page ends with Source.
 const std::vector<ExtraColumn> kEffectColumns{
-    {"Duration", [](const SheetRow &r) { return r.extra; }},
     {"Remaining", [](const SheetRow &r) { return r.remaining; }},
+    {"Duration", [](const SheetRow &r) { return r.extra; }},
     {"Hidden", [](const SheetRow &r) { return std::string(r.mark != 0 ? "x" : ""); }, true},
 };
+const ExtraColumn kDescriptionColumn{"Description", [](const SheetRow &r) { return r.description; }, false, false,
+                                     true};
+std::vector<ExtraColumn> WithDescription()
+{
+    std::vector<ExtraColumn> columns = kEffectColumns;
+    columns.push_back(kDescriptionColumn);
+    return columns;
+}
 
 // `modifiers`: a third column, headed `third`, carrying each row's
 // modifiers text or its mark glyph -- none at all when `third` is null;
@@ -2718,7 +2728,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             nameWidth = (std::max)(nameWidth, lead + TextWidth(row.label));
             valueWidth = (std::max)(valueWidth, TextWidth(row.value));
             for (std::size_t i = 0; i < extras.size(); ++i)
-                if (!extras[i].glyph)
+                if (!extras[i].glyph && !extras[i].wrap)
                     extraWidths[i] = (std::max)(extraWidths[i], TextWidth(extras[i].text(row)));
         }
     }
@@ -2994,7 +3004,10 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                             onLink(row.form);
                         Im::SetCursorScreenPos(at);
                     }
-                    Im::Text("%s", text.c_str());
+                    if (column.wrap)
+                        Im::TextWrapped("%s", text.c_str());
+                    else
+                        Im::Text("%s", text.c_str());
                 }
             }
             if (!open)
@@ -3860,15 +3873,11 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
     Im::Spacing();
     DrawSections(item.detail, false);
 
-    // The effects as the author wrote them; then, for the curious, the
-    // record: a table in the perk page's shape, each row opening on its
-    // conditions, greyed where they do not hold.
-    if (!item.effects.empty())
-    {
-        CentredHeading("Effects");
-        BulletedLines(item.effects);
-        Im::Spacing();
-    }
+    // The enchantment as one headed row; then the effects, a table in the
+    // perk page's shape with the author's text wrapped in its last column,
+    // each row opening on its conditions, greyed where they do not hold.
+    if (!item.enchantment.rows.empty())
+        DrawSections({item.enchantment}, true, {}, nullptr, {}, "Name", "Charge");
     if (!item.effectsTable.rows.empty())
     {
         DrawSections(
@@ -3876,7 +3885,7 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
             [](const SheetRow &entry, const std::string &key, float left, float right) {
                 DrawConditionDrawer(entry, key, left, right);
             },
-            "Name", "Effect", kEffectColumns);
+            "Name", "Effect", WithDescription());
     }
     // The poison's effects under the Poison section's own heading, so an
     // enchanted and poisoned blade reads as two things, which it is.
@@ -4253,14 +4262,8 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
     Im::Spacing();
     DrawSections(entry.detail, false);
 
-    // The effects as the author wrote them; then the record, as the item
-    // page has it.
-    if (!entry.effects.empty())
-    {
-        CentredHeading("Effects");
-        BulletedLines(entry.effects);
-        Im::Spacing();
-    }
+    // The effects, as the item page has them: the record with the author's
+    // text wrapped in the last column.
     if (!entry.effectsTable.rows.empty())
     {
         DrawSections(
@@ -4268,7 +4271,7 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
             [](const SheetRow &line, const std::string &key, float left, float right) {
                 DrawConditionDrawer(line, key, left, right);
             },
-            "Name", "Effect", kEffectColumns);
+            "Name", "Effect", WithDescription());
     }
     if (!entry.description.empty())
     {

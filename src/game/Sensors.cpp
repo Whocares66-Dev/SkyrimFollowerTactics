@@ -599,6 +599,10 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
     // which holds for as long as it runs.
     if (duration > 0)
         row.extra = std::to_string(duration) + " s";
+    // The author's text with the numbers put in, the magnitude unsigned as
+    // the text expects it ("Deals <mag> points"); empty where the record
+    // has none, and then the table has no column for it.
+    row.description = EffectDescription(base, std::abs(magnitude), static_cast<float>(duration));
     if (base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
         row.mark = kGlyphTick;
     // Two lists gate it: the spell's own entry's, and the effect record's
@@ -621,7 +625,7 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
 SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
                        const std::function<float(const RE::Effect *)> &magnitude)
 {
-    SheetSection section{"Effect Details", {}, {}};
+    SheetSection section{"Effects", {}, {}};
     if (!magic)
         return section;
     for (const auto *effect : magic->effects)
