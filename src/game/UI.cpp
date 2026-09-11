@@ -2167,7 +2167,10 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // it cannot be edited without turning it on. The switch itself and
         // the order and delete controls stay live: an off rule is still in
         // the list and can still be moved or removed. A rule set aside for
-        // what it names reads the same.
+        // what it names reads the same, with one difference: its Then cell
+        // still answers, since choosing another thing there is the way out
+        // of being set aside, and deleting the rule to write it again is
+        // not (2026-09-10).
         BeginDimmed(!rule.enabled || !available);
 
         Im::TableSetColumnIndex(1);
@@ -2178,6 +2181,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         if (ConditionCascade(("##cond" + rowId).c_str(), rule, view))
             changed = true;
 
+        EndDimmed();
+        BeginDimmed(!rule.enabled);
         Im::TableSetColumnIndex(3);
         // Where the Then column begins, for the drawer's border to sit on
         // it: the cell's content less its padding is the column's border.
@@ -2246,9 +2251,17 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             Im::SetCursorScreenPos(Im::ImVec2(pos.x + DisclosureWidth(), pos.y));
             Im::AlignTextToFramePadding();
             // How many, not which: the first by name and "2 more" did not
-            // fit the column, and the drawer is one click away.
+            // fit the column, and the drawer is one click away. Greyed with
+            // the row when set aside: the cell answers, but reads as the
+            // rest of the row does.
+            if (!available)
+                Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
             Im::Text("%zu actions", rule.actions.size());
+            if (!available)
+                Im::PopStyleColor(1);
         }
+        EndDimmed();
+        BeginDimmed(!rule.enabled || !available);
 
         Im::TableSetColumnIndex(4);
         Im::AlignTextToFramePadding();
