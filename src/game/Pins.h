@@ -51,6 +51,12 @@ namespace ft::game
 // it is found on. A ban lets go of any pin on the thing. Unban forgets
 // the ban; the thing stays off until something puts it on. Bans are not
 // a fight's business: the book of bans is one, before, during and after.
+// A rule's pin on a banned thing overrides the ban for the fight, and no
+// longer: the pin goes with the fight's others, and the watchdog's ban
+// pass, later in the same tick, finds the thing on and unpinned and takes
+// it off. What was pinned in its place before the fight comes back by the
+// restore; anything else stays off, and a Combat end rule is how to want
+// it back at once.
 //
 // A fight does not rewrite the book. What is pinned when a follower enters
 // combat is remembered and put back when combat ends: the rules' pins for
