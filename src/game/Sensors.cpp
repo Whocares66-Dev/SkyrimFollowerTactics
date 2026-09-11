@@ -2649,9 +2649,10 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
 
         // The effects: an entry each, with the conditions that gate it on
         // its owner beneath -- a mod's perk given to everyone is gated
-        // there, on the power that turns it on -- and a tick while they are
-        // met. Not the record's own conditions, which are what the skill
-        // tree asks before the player may take it, and nothing to an NPC.
+        // there, on the power that turns it on -- greyed while they are
+        // not met, as an effect's row is. Not the record's own conditions,
+        // which are what the skill tree asks before the player may take
+        // it, and nothing to an NPC.
         SheetSection effects{"Effects", {}, {}};
         for (const auto *entry : perk->perkEntries)
         {
@@ -2668,8 +2669,8 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
                     active = point->conditions[0].IsTrue(actor, actor);
                 }
             }
-            if (active)
-                row.mark = kGlyphTick;
+            if (!active)
+                row.aside = "Conditions not met";
             effects.rows.push_back(std::move(row));
         }
         // By name, the record's order being the author's; two of one name

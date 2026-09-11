@@ -4724,8 +4724,10 @@ void DrawSkills(const FollowerView &view)
             const std::vector<SheetSection> info(page->sections.begin(), split);
             const std::vector<SheetSection> effects(split, page->sections.end());
             DrawSections(info, false);
+            // No third column to speak of: an entry whose conditions fail
+            // is greyed, as an effect's row is, not marked.
             DrawSections(
-                effects, true, {}, "Active",
+                effects, true, {}, "",
                 [](const SheetRow &row, const std::string &key, float left, float right) {
                     DrawConditionDrawer(row, key, left, right);
                 },

@@ -215,8 +215,8 @@ struct SheetRow
     // Why the row is set aside -- a perk whose conditions fail for this
     // actor -- shown on the name; empty for a row that counts.
     std::string aside;
-    // A glyph in the third column, where the table has one: a perk
-    // effect's tick for Active. 0 for none.
+    // A glyph in the third column, where the table has one: an effect's
+    // tick for Hidden. 0 for none.
     unsigned mark{0};
 };
 
