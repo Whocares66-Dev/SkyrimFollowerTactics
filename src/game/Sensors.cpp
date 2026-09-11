@@ -434,6 +434,9 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
             return;
         out.push_back({std::move(source), ae->magnitude});
     });
+    // Smallest first: the weaknesses, then the boons, the largest last.
+    std::stable_sort(out.begin(), out.end(),
+                     [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
     return out;
 }
 
