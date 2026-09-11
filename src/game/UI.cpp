@@ -33,10 +33,12 @@
 #include <functional>
 #include <initializer_list>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace ft::game::ui
@@ -129,12 +131,16 @@ struct Status
     Im::ImVec4 color;
 };
 
+// The colour of what needs seeing to: a broken rule, a bag past its
+// capacity.
+constexpr Im::ImVec4 kAlarm{0.95f, 0.45f, 0.40f, 1.0f};
+
 Status StatusFor(ft::Verdict v, ft::ActionKind action)
 {
-    constexpr Im::ImVec4 acted{0.55f, 0.90f, 0.55f, 1.0f};  // it happened
-    constexpr Im::ImVec4 quiet{0.55f, 0.55f, 0.58f, 1.0f};  // nothing to say
-    constexpr Im::ImVec4 held{0.85f, 0.75f, 0.40f, 1.0f};   // true, but blocked
-    constexpr Im::ImVec4 broken{0.95f, 0.45f, 0.40f, 1.0f}; // needs fixing
+    constexpr Im::ImVec4 acted{0.55f, 0.90f, 0.55f, 1.0f}; // it happened
+    constexpr Im::ImVec4 quiet{0.55f, 0.55f, 0.58f, 1.0f}; // nothing to say
+    constexpr Im::ImVec4 held{0.85f, 0.75f, 0.40f, 1.0f};  // true, but blocked
+    constexpr Im::ImVec4 broken = kAlarm;                  // needs fixing
 
     // The word is core's (Brief), beside the sentence the tooltip shows, so
     // the two cannot disagree; only the colour is decided here.
@@ -176,6 +182,8 @@ constexpr float kOrderGap = 2.0f;
 constexpr float kCellPadX = 6.0f;
 // Vertical padding of the inventory and magic tables' cells.
 constexpr float kCellPadY = 4.0f;
+// A drawer's or a sheet's inner tables sit this far inside their cell.
+constexpr float kTablePad = 2.0f * kCellPadX + 8.0f;
 
 float WidestLabel(std::initializer_list<const char *> labels)
 {
@@ -523,7 +531,7 @@ void PushPopupChrome()
 {
     constexpr float border = 1.0f;
     const auto *style = Im::GetStyle();
-    const float innerY = style ? style->ItemInnerSpacing.y : 4.0f;
+    const float innerY = style->ItemInnerSpacing.y;
     Im::PushStyleVar(Im::ImGuiStyleVar_PopupBorderSize, border);
     Im::PushStyleVar(Im::ImGuiStyleVar_ChildBorderSize, border);
     Im::PushStyleVar(Im::ImGuiStyleVar_ItemInnerSpacing, Im::ImVec2(border, innerY));
@@ -590,7 +598,7 @@ void CellButtonOpensPopup(const char *id, const std::string &label)
 float CascadeIconRight()
 {
     const auto *style = Im::GetStyle();
-    return Im::GetWindowPos().x + Im::GetWindowWidth() - (style ? style->WindowPadding.x : 8.0f);
+    return Im::GetWindowPos().x + Im::GetWindowWidth() - (style->WindowPadding.x);
 }
 
 void CascadeIcon(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 rowPos, float right)
@@ -628,11 +636,6 @@ bool CascadeItem(const char *label, bool selected)
 }
 
 // The two about a fight, under one "Combat" heading: Start, End.
-bool IsCombatPredicate(ft::PredicateKind p)
-{
-    return p == ft::PredicateKind::CombatBegins || p == ft::PredicateKind::CombatEnds;
-}
-
 // The condition cascade in eight groups, a divider between them: Any; the
 // three stats; the fight's edges; the enemy's relation to the party
 // (Attacking, Attacked by); the hits (Hit type, Hit by); Status; the
@@ -683,12 +686,6 @@ bool DrawsHeading(ft::PredicateKind p)
     default:
         return !ft::IsAbove(p) && !ft::IsExtreme(p);
     }
-}
-
-// Is the rule about this subject -- and, for a named follower, this one?
-bool SubjectIs(const ft::Rule &rule, ft::SubjectKind subject, std::uint32_t form)
-{
-    return rule.subject == subject && (subject != ft::SubjectKind::Follower || rule.subjectForm == form);
 }
 
 // The other followers, by name, for the two cascades' headings.
@@ -747,6 +744,86 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
         if (!BeginCascade(heading.label.c_str()))
             continue;
 
+        // One item of the cascade: selected when the rule says exactly
+        // this, and on a click the rule says it. What "this" is beyond the
+        // subject and the predicate -- a number, a kind of damage, a
+        // status, a party member -- is the item's extras. The tooltip is
+        // the predicate's help.
+        struct Extras
+        {
+            std::optional<float> arg;
+            std::optional<ft::DamageKind> damage;
+            std::optional<ft::StatusKind> status;
+            std::optional<std::uint32_t> member;
+        };
+        const auto pick = [&](const char *label, ft::PredicateKind which, const Extras &x = {}) {
+            const std::uint32_t subjectForm = x.member.value_or(form);
+            const bool selected = rule.subject == subject && rule.subjectForm == subjectForm &&
+                                  rule.predicate == which && (!x.damage || rule.damageKind == *x.damage) &&
+                                  (!x.status || rule.statusKind == *x.status) &&
+                                  (!x.arg || std::abs(rule.conditionArg - *x.arg) < 0.001f);
+            if (CascadeItem(label, selected))
+            {
+                rule.subject = subject;
+                rule.subjectForm = subjectForm;
+                rule.predicate = which;
+                if (x.damage)
+                    rule.damageKind = *x.damage;
+                if (x.status)
+                    rule.statusKind = *x.status;
+                if (x.arg)
+                    rule.conditionArg = *x.arg;
+                changed = true;
+            }
+            if (const auto text = ft::Describe(which); !text.empty() && Im::IsItemHovered(0))
+                Im::SetTooltip("%s", std::string(text).c_str());
+        };
+
+        // A heading over a few leaves -- Combat: Start, End -- for the
+        // predicates listed under one name, those the subject answers.
+        struct Leaf
+        {
+            ft::PredicateKind predicate;
+            const char *label;
+        };
+        const auto submenu = [&](const char *title, std::initializer_list<Leaf> leaves) {
+            if (!BeginCascade(title))
+                return;
+            for (const Leaf &leaf : leaves)
+                if (ft::IsPredicateValidFor(subject, leaf.predicate))
+                    pick(leaf.label, leaf.predicate);
+            Im::EndMenu();
+        };
+
+        // The thresholds of a grid predicate: the group's Lowest and
+        // Highest first where the subject is a group, then the percents
+        // below, then above. A resistance's carry its kind of damage.
+        const auto thresholds = [&](ft::PredicateKind predicate, std::optional<ft::DamageKind> damage) {
+            Extras x;
+            x.damage = damage;
+            if (const auto extremes = ft::ExtremesOf(predicate);
+                extremes.lowest != predicate && ft::IsPredicateValidFor(subject, extremes.lowest))
+            {
+                pick("Lowest", extremes.lowest, x);
+                pick("Highest", extremes.highest, x);
+                Im::Separator();
+            }
+            for (const float preset : PresetsFor(predicate))
+            {
+                x.arg = preset;
+                pick(ArgumentText(predicate, preset).c_str(), predicate, x);
+            }
+            if (const auto above = ft::AboveOf(predicate); above != predicate)
+            {
+                Im::Separator();
+                for (const float preset : PresetsFor(above))
+                {
+                    x.arg = preset;
+                    pick(ArgumentText(above, preset).c_str(), above, x);
+                }
+            }
+        };
+
         int lastGroup = -1;
         for (std::size_t pi = 0; pi < static_cast<std::size_t>(ft::PredicateKind::COUNT); ++pi)
         {
@@ -755,7 +832,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 continue;
             // An above predicate is listed under its below counterpart's
             // heading, after a divider, not as a heading of its own; the
-            // group's extremes likewise, first under theirs.
+            // group's extremes likewise, first under theirs; and the rest
+            // of a heading's leaves under the first of them.
             if (!DrawsHeading(predicate))
                 continue;
             // A divider where one group of conditions ends and the next
@@ -765,106 +843,41 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 Im::Separator();
             lastGroup = group;
 
-            // The fight's three, grouped where the first of them falls.
-            if (IsCombatPredicate(predicate))
-            {
-                if (predicate != ft::PredicateKind::CombatBegins)
-                    continue;
-                if (!BeginCascade("Combat"))
-                    continue;
-                struct Phase
-                {
-                    ft::PredicateKind predicate;
-                    const char *label;
-                };
-                constexpr Phase kPhases[] = {{ft::PredicateKind::CombatBegins, "Start"},
-                                             {ft::PredicateKind::CombatEnds, "End"}};
-                for (const Phase &phase : kPhases)
-                {
-                    if (!ft::IsPredicateValidFor(subject, phase.predicate))
-                        continue;
-                    const bool selected = SubjectIs(rule, subject, form) && rule.predicate == phase.predicate;
-                    if (CascadeItem(phase.label, selected))
-                    {
-                        rule.subject = subject;
-                        rule.subjectForm = form;
-                        rule.predicate = phase.predicate;
-                        changed = true;
-                    }
-                    if (Im::IsItemHovered(0))
-                        Im::SetTooltip("%s", std::string(ft::Describe(phase.predicate)).c_str());
-                }
-                Im::EndMenu();
-                continue;
-            }
-
-            // One item of the cascade for a predicate: pick it, and say
-            // what it asks.
-            const auto item = [&](ft::PredicateKind which, const char *label) {
-                const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which;
-                if (CascadeItem(label, selected))
-                {
-                    rule.subject = subject;
-                    rule.subjectForm = form;
-                    rule.predicate = which;
-                    changed = true;
-                }
-                if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", std::string(ft::Describe(which)).c_str());
-            };
-
-            // The summons, under one "Summon" heading: None, Active.
-            if (predicate == ft::PredicateKind::SummonNone || predicate == ft::PredicateKind::SummonActive)
-            {
-                if (predicate != ft::PredicateKind::SummonNone)
-                    continue;
-                if (!BeginCascade("Summon"))
-                    continue;
-                item(ft::PredicateKind::SummonNone, "None");
-                item(ft::PredicateKind::SummonActive, "Active");
-                Im::EndMenu();
-                continue;
-            }
-
-            // The corpses' level, under one "Level" heading: Highest, Lowest.
-            if (predicate == ft::PredicateKind::LevelHighest || predicate == ft::PredicateKind::LevelLowest)
-            {
-                if (predicate != ft::PredicateKind::LevelHighest)
-                    continue;
-                if (!BeginCascade("Level"))
-                    continue;
-                item(ft::PredicateKind::LevelHighest, "Highest");
-                item(ft::PredicateKind::LevelLowest, "Lowest");
-                Im::EndMenu();
-                continue;
-            }
-
-            // The weapons in hand, under one "Weapon" heading: Charge empty,
-            // then a Poison submenu with None and Active.
-            if (predicate == ft::PredicateKind::WeaponChargeNeeded ||
-                predicate == ft::PredicateKind::WeaponPoisonNone || predicate == ft::PredicateKind::WeaponPoisonActive)
-            {
-                if (predicate != ft::PredicateKind::WeaponChargeNeeded)
-                    continue;
-                if (!BeginCascade("Weapon"))
-                    continue;
-                item(ft::PredicateKind::WeaponChargeNeeded, "Charge needed");
-                if (BeginCascade("Poison"))
-                {
-                    item(ft::PredicateKind::WeaponPoisonNone, "None");
-                    item(ft::PredicateKind::WeaponPoisonActive, "Active");
-                    Im::EndMenu();
-                }
-                Im::EndMenu();
-                continue;
-            }
-
-            const auto presets = PresetsFor(predicate);
             const std::string predicateName(ft::DisplayName(predicate));
 
+            // The headings of a few leaves: the fight's edges, the summons,
+            // the corpses' level; the weapons in hand, with the poison pair
+            // under a heading of their own.
+            if (predicate == ft::PredicateKind::CombatBegins)
+            {
+                submenu("Combat", {{ft::PredicateKind::CombatBegins, "Start"}, {ft::PredicateKind::CombatEnds, "End"}});
+                continue;
+            }
+            if (predicate == ft::PredicateKind::SummonNone)
+            {
+                submenu("Summon",
+                        {{ft::PredicateKind::SummonNone, "None"}, {ft::PredicateKind::SummonActive, "Active"}});
+                continue;
+            }
+            if (predicate == ft::PredicateKind::LevelHighest)
+            {
+                submenu("Level",
+                        {{ft::PredicateKind::LevelHighest, "Highest"}, {ft::PredicateKind::LevelLowest, "Lowest"}});
+                continue;
+            }
+            if (predicate == ft::PredicateKind::WeaponChargeNeeded)
+            {
+                if (!BeginCascade("Weapon"))
+                    continue;
+                pick("Charge needed", ft::PredicateKind::WeaponChargeNeeded);
+                submenu("Poison", {{ft::PredicateKind::WeaponPoisonNone, "None"},
+                                   {ft::PredicateKind::WeaponPoisonActive, "Active"}});
+                Im::EndMenu();
+                continue;
+            }
+
             // A resistance: the kinds of damage under "Resistance"; under
-            // each, Lowest and Highest for a group, the percents below, then
-            // above -- the same shape as Health.
+            // each, the same shape as Health.
             if (predicate == ft::PredicateKind::ResistancePctBelow)
             {
                 if (!BeginCascade(predicateName.c_str()))
@@ -878,35 +891,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                         continue;
                     if (!BeginCascade(std::string(ft::DisplayName(kind)).c_str()))
                         continue;
-                    const auto pick = [&](ft::PredicateKind which, float arg, const std::string &label) {
-                        const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which &&
-                                              rule.damageKind == kind &&
-                                              (ft::IsExtreme(which) || std::abs(rule.conditionArg - arg) < 0.001f);
-                        if (CascadeItem(label.c_str(), selected))
-                        {
-                            rule.subject = subject;
-                            rule.subjectForm = form;
-                            rule.predicate = which;
-                            rule.damageKind = kind;
-                            rule.conditionArg = arg;
-                            changed = true;
-                        }
-                        if (Im::IsItemHovered(0))
-                            Im::SetTooltip("%s", std::string(ft::Describe(which)).c_str());
-                    };
-                    if (const auto extremes = ft::ExtremesOf(predicate);
-                        ft::IsPredicateValidFor(subject, extremes.lowest))
-                    {
-                        pick(extremes.lowest, 0.0f, "Lowest");
-                        pick(extremes.highest, 0.0f, "Highest");
-                        Im::Separator();
-                    }
-                    for (const float preset : PresetsFor(predicate))
-                        pick(predicate, preset, ArgumentText(predicate, preset));
-                    Im::Separator();
-                    const auto above = ft::AboveOf(predicate);
-                    for (const float preset : PresetsFor(above))
-                        pick(above, preset, ArgumentText(above, preset));
+                    thresholds(predicate, kind);
                     Im::EndMenu();
                 }
                 Im::EndMenu();
@@ -922,54 +907,39 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             {
                 if (!BeginCascade(predicateName.c_str()))
                     continue;
-                const auto pick = [&](ft::DamageKind kind) {
-                    const bool selected =
-                        SubjectIs(rule, subject, form) && rule.predicate == predicate && rule.damageKind == kind;
-                    if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
-                    {
-                        rule.subject = subject;
-                        rule.subjectForm = form;
-                        rule.predicate = predicate;
-                        rule.damageKind = kind;
-                        changed = true;
-                    }
+                const auto kind = [&](ft::DamageKind k) {
+                    Extras x;
+                    x.damage = k;
+                    pick(std::string(ft::DisplayName(k)).c_str(), predicate, x);
                 };
                 if (ft::IsDamageKindValidFor(predicate, ft::DamageKind::Any))
                 {
-                    pick(ft::DamageKind::Any);
+                    kind(ft::DamageKind::Any);
                     Im::Separator();
                 }
-                pick(ft::DamageKind::Melee);
-                pick(ft::DamageKind::Ranged);
-                pick(ft::DamageKind::Magic);
+                kind(ft::DamageKind::Melee);
+                kind(ft::DamageKind::Ranged);
+                kind(ft::DamageKind::Magic);
                 Im::Separator();
-                pick(ft::DamageKind::Fire);
-                pick(ft::DamageKind::Frost);
-                pick(ft::DamageKind::Shock);
-                pick(ft::DamageKind::Poison);
+                kind(ft::DamageKind::Fire);
+                kind(ft::DamageKind::Frost);
+                kind(ft::DamageKind::Shock);
+                kind(ft::DamageKind::Poison);
                 Im::EndMenu();
                 continue;
             }
 
             // The party: under "Attacking" and "Attacked by", the members by
-            // name -- the player, this follower, the other followers -- each
-            // a leaf that names the member.
+            // name -- this follower, the player, the other followers -- each
+            // a leaf that names the member, a divider between each part.
             if (predicate == ft::PredicateKind::Attacking || predicate == ft::PredicateKind::AttackedBy)
             {
                 if (!BeginCascade(predicateName.c_str()))
                     continue;
-                // Self; the player; the other followers by name -- a divider
-                // between each part.
                 const auto member = [&](std::uint32_t id, const std::string &label) {
-                    const bool selected =
-                        rule.subject == subject && rule.predicate == predicate && rule.subjectForm == id;
-                    if (CascadeItem(label.c_str(), selected))
-                    {
-                        rule.subject = subject;
-                        rule.subjectForm = id;
-                        rule.predicate = predicate;
-                        changed = true;
-                    }
+                    Extras x;
+                    x.member = id;
+                    pick(label.c_str(), predicate, x);
                 };
                 member(view.id, "Self");
                 Im::Separator();
@@ -998,85 +968,26 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                           [](ft::StatusKind a, ft::StatusKind b) { return ft::DisplayName(a) < ft::DisplayName(b); });
                 for (const ft::StatusKind kind : kinds)
                 {
-                    const bool selected =
-                        SubjectIs(rule, subject, form) && rule.predicate == predicate && rule.statusKind == kind;
-                    if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
-                    {
-                        rule.subject = subject;
-                        rule.subjectForm = form;
-                        rule.predicate = predicate;
-                        rule.statusKind = kind;
-                        changed = true;
-                    }
+                    Extras x;
+                    x.status = kind;
+                    pick(std::string(ft::DisplayName(kind)).c_str(), predicate, x);
                 }
                 Im::EndMenu();
                 continue;
             }
 
-            if (presets.empty())
+            // No argument: a leaf. (Any's divider from the rest is the
+            // group divider above.)
+            if (PresetsFor(predicate).empty())
             {
-                // No argument -- a leaf.
-                const bool selected = SubjectIs(rule, subject, form) && rule.predicate == predicate;
-                if (CascadeItem(predicateName.c_str(), selected))
-                {
-                    rule.subject = subject;
-                    rule.subjectForm = form;
-                    rule.predicate = predicate;
-                    changed = true;
-                }
-                if (const auto text = ft::Describe(predicate); !text.empty() && Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", std::string(text).c_str());
-                // (Any's divider from the rest is the group divider above.)
+                pick(predicateName.c_str(), predicate);
                 continue;
             }
 
+            // A number: the thresholds under the heading.
             if (!BeginCascade(predicateName.c_str()))
                 continue;
-
-            // Lowest and Highest first, for a group: the one with the least
-            // or the most of what the heading measures.
-            if (const auto extremes = ft::ExtremesOf(predicate);
-                extremes.lowest != predicate && ft::IsPredicateValidFor(subject, extremes.lowest))
-            {
-                for (const auto [which, label] :
-                     {std::pair{extremes.lowest, "Lowest"}, std::pair{extremes.highest, "Highest"}})
-                {
-                    const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which;
-                    if (CascadeItem(label, selected))
-                    {
-                        rule.subject = subject;
-                        rule.subjectForm = form;
-                        rule.predicate = which;
-                        changed = true;
-                    }
-                    if (Im::IsItemHovered(0))
-                        Im::SetTooltip("%s", std::string(ft::Describe(which)).c_str());
-                }
-                Im::Separator();
-            }
-
-            const auto offer = [&](ft::PredicateKind which) {
-                for (const float preset : PresetsFor(which))
-                {
-                    const bool selected = SubjectIs(rule, subject, form) && rule.predicate == which &&
-                                          std::abs(rule.conditionArg - preset) < 0.001f;
-                    if (CascadeItem(ArgumentText(which, preset).c_str(), selected))
-                    {
-                        rule.subject = subject;
-                        rule.subjectForm = form;
-                        rule.predicate = which;
-                        rule.conditionArg = preset;
-                        changed = true;
-                    }
-                }
-            };
-            offer(predicate);
-            // The other side of the same number, below first.
-            if (const auto above = ft::AboveOf(predicate); above != predicate)
-            {
-                Im::Separator();
-                offer(above);
-            }
+            thresholds(predicate, std::nullopt);
             Im::EndMenu();
         }
         Im::EndMenu();
@@ -2066,8 +1977,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     // The theme's spacing, read before it is pushed away: the drawer spaces
     // its plus with it, as Spacing() spaces the table's own plus below.
     const auto *style = Im::GetStyle();
-    const float spacing = style ? style->ItemSpacing.y : 4.0f;
-    const float framePadY = style ? style->FramePadding.y : 3.0f;
+    const float spacing = style->ItemSpacing.y;
+    const float framePadY = style->FramePadding.y;
 
     // Cells keep a normal margin so headers and the number column are not
     // jammed against the border. The If/Then buttons cancel it locally -- see
@@ -2467,7 +2378,7 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
         nameWidth = (std::max)(nameWidth, TextWidth(sub.label));
         rankWidth = (std::max)(rankWidth, TextWidth(sub.value));
     }
-    const float pad = 2.0f * kCellPadX + 8.0f;
+    const float pad = kTablePad;
 
     const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
     if (!Im::BeginTable(id.c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
@@ -2516,7 +2427,7 @@ void DrawConditionTable(const std::string &id, const std::vector<SheetRow> &rows
         callWidth = (std::max)(callWidth, TextWidth(row.label));
         valueWidth = (std::max)(valueWidth, TextWidth(row.value));
     }
-    const float pad = 2.0f * kCellPadX + 8.0f;
+    const float pad = kTablePad;
     const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
     if (!Im::BeginTable(id.c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
         return;
@@ -2542,29 +2453,27 @@ void DrawConditionTable(const std::string &id, const std::vector<SheetRow> &rows
     Im::EndTable();
 }
 
-// The drawer an open effect row reveals: the conditions that gate it, set
-// in from both edges as the perk drawer is.
-void DrawConditionDrawer(const SheetRow &row, const std::string &key, float left, float right)
+// The drawer an open row reveals -- an effect's conditions, a skill's
+// perks -- set in from both edges, a gap above and below, the table the
+// caller's, drawn at the width left.
+void DrawDrawer(float left, float right, const std::function<void(float)> &table)
 {
     constexpr float kGap = 6.0f;
     const float inset = 4.0f * kCellPadX;
     Im::Dummy(Im::ImVec2(0.0f, kGap));
     Im::SetCursorScreenPos(Im::ImVec2(left + inset, Im::GetCursorScreenPos().y));
-    const float width = (std::max)(0.0f, right - left - 2.0f * inset);
-    DrawConditionTable("conditions##" + key, row.detail, width);
+    table((std::max)(0.0f, right - left - 2.0f * inset));
     Im::Dummy(Im::ImVec2(0.0f, kGap));
+}
+
+void DrawConditionDrawer(const SheetRow &row, const std::string &key, float left, float right)
+{
+    DrawDrawer(left, right, [&](float width) { DrawConditionTable("conditions##" + key, row.detail, width); });
 }
 
 void DrawPerkDrawer(const SheetRow &row, float left, float right, const std::function<void(std::uint32_t)> &onLink = {})
 {
-    constexpr float kGap = 6.0f;
-    const float inset = 4.0f * kCellPadX;
-
-    Im::Dummy(Im::ImVec2(0.0f, kGap));
-    Im::SetCursorScreenPos(Im::ImVec2(left + inset, Im::GetCursorScreenPos().y));
-    const float width = (std::max)(0.0f, right - left - 2.0f * inset);
-    DrawPerkTable("perks##" + row.label, row.detail, width, onLink);
-    Im::Dummy(Im::ImVec2(0.0f, kGap));
+    DrawDrawer(left, right, [&](float width) { DrawPerkTable("perks##" + row.label, row.detail, width, onLink); });
 }
 
 void NoteTooltip(const std::string &note);
@@ -2672,7 +2581,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     extraWidths[i] = (std::max)(extraWidths[i], TextWidth(extras[i].text(row)));
         }
     }
-    const float pad = 2.0f * kCellPadX + 8.0f;
+    const float pad = kTablePad;
     const int columns = modifiers ? 2 + (hasThird ? 1 : 0) + static_cast<int>(extras.size()) : 2;
     // Where a column carries the link -- an effect's source -- the name
     // does not: one link per row, on the cell that names where it goes.
@@ -3241,8 +3150,8 @@ struct Chip
 void DrawChips(const std::vector<Chip> &chips, int &selected)
 {
     const auto *style = Im::GetStyle();
-    const float padX = style ? style->FramePadding.x : 4.0f;
-    const float spacing = style ? style->ItemSpacing.x : 8.0f;
+    const float padX = style->FramePadding.x;
+    const float spacing = style->ItemSpacing.x;
     const float gap = padX;
     const float right = Im::GetCursorPosX() + Im::GetContentRegionAvail().x;
     auto *draw = Im::GetWindowDrawList();
@@ -3774,11 +3683,11 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     char carried[64];
     std::snprintf(carried, sizeof(carried), "Carrying %.0f / %.0f", view.carriedWeight, view.carryCapacity);
     const auto *style = Im::GetStyle();
-    const float inset = style ? style->ItemSpacing.x : 8.0f;
+    const float inset = style->ItemSpacing.x;
     const float rightEdge = Im::GetCursorPosX() + Im::GetContentRegionAvail().x - inset;
     Im::SameLine((std::max)(0.0f, rightEdge - TextWidth(carried)), -1.0f);
     if (view.carryCapacity > 0.0f && view.carriedWeight > view.carryCapacity)
-        Im::TextColored(Im::ImVec4(0.95f, 0.45f, 0.40f, 1.0f), "%s", carried);
+        Im::TextColored(kAlarm, "%s", carried);
     else
         Im::Text("%s", carried);
 }
@@ -4537,7 +4446,7 @@ void DrawSummon(const SummonView &summon)
 
     const float originX = Im::GetCursorPosX();
     const auto *style = Im::GetStyle();
-    const float inset = style ? style->ItemSpacing.x : 8.0f;
+    const float inset = style->ItemSpacing.x;
 
     RowGeometry geo;
     geo.barLabelRight = originX + inset + WidestLabel({"Health", "Stamina", "Magicka"});
@@ -4611,7 +4520,7 @@ void DrawCharacter(const FollowerView &view)
     // border -- which is what "hitting the edge" was.
     const float originX = Im::GetCursorPosX();
     const auto *style = Im::GetStyle();
-    const float inset = style ? style->ItemSpacing.x : 8.0f;
+    const float inset = style->ItemSpacing.x;
 
     RowGeometry geo;
     geo.barLabelRight = originX + inset + WidestLabel({"Health", "Stamina", "Magicka"});
@@ -4647,7 +4556,7 @@ void DrawCharacter(const FollowerView &view)
             // cannot fight properly, and otherwise you would only notice
             // by wondering why they are standing still.
             if (view.carryCapacity > 0.0f && view.carriedWeight > view.carryCapacity)
-                Im::TextColored(Im::ImVec4(0.95f, 0.45f, 0.40f, 1.0f), "%s", carriedText.c_str());
+                Im::TextColored(kAlarm, "%s", carriedText.c_str());
             else
                 Im::Text("%s", carriedText.c_str());
         },
@@ -4999,39 +4908,18 @@ void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
         task->AddTask([]() { PublishAllFollowers(); });
 }
 
-// One trampoline per slot. Tedious, and unavoidable with a render callback that
-// takes no argument.
-void __stdcall RenderSlot0()
+// One trampoline per slot: a render callback takes no argument, so the
+// slot's index is the template's, and the table of them is made from the
+// count.
+template <std::size_t N> void __stdcall RenderSlot()
 {
-    DrawSlot(0);
+    DrawSlot(N);
 }
-void __stdcall RenderSlot1()
+
+template <std::size_t... N>
+constexpr std::array<SKSEMenuFramework::Model::RenderFunction, sizeof...(N)> Renderers(std::index_sequence<N...>)
 {
-    DrawSlot(1);
-}
-void __stdcall RenderSlot2()
-{
-    DrawSlot(2);
-}
-void __stdcall RenderSlot3()
-{
-    DrawSlot(3);
-}
-void __stdcall RenderSlot4()
-{
-    DrawSlot(4);
-}
-void __stdcall RenderSlot5()
-{
-    DrawSlot(5);
-}
-void __stdcall RenderSlot6()
-{
-    DrawSlot(6);
-}
-void __stdcall RenderSlot7()
-{
-    DrawSlot(7);
+    return {RenderSlot<N>...};
 }
 
 } // namespace
@@ -5041,8 +4929,7 @@ void SyncFollowers()
     if (!SKSEMenuFramework::IsInstalled())
         return;
 
-    static const std::array<SKSEMenuFramework::Model::RenderFunction, kSlots> renderers{
-        RenderSlot0, RenderSlot1, RenderSlot2, RenderSlot3, RenderSlot4, RenderSlot5, RenderSlot6, RenderSlot7};
+    static const auto renderers = Renderers(std::make_index_sequence<kSlots>{});
 
     const auto followers = ObserveFollowers();
     const auto present = [&](ft::ActorId id) {
