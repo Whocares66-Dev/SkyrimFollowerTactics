@@ -2124,7 +2124,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             const Im::ImVec2 pos = Im::GetCursorScreenPos();
             if (!available)
             {
-                SlashCell();
+                // Slashed at the end of the row, once its height is known.
                 Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
                 if (Im::IsItemHovered(0))
                     Im::SetTooltip("%s", kNotAvailable);
@@ -2290,6 +2290,14 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         if (DeleteButton("rm" + rowId, row))
             removeAt = static_cast<int>(i);
         Im::PopStyleVar(1);
+
+        // Back to the switch: every cell is drawn, so the row's height is
+        // final and the slash reaches its bottom corner.
+        if (!available)
+        {
+            Im::TableSetColumnIndex(0);
+            SlashCell();
+        }
 
         if (!open)
             continue;
@@ -3173,20 +3181,24 @@ enum class Column : unsigned
 // off. The request goes to the game thread and the cell answers when the
 // view comes back.
 // A diagonal across the current cell, corner to corner: this cell does not
-// apply -- a right hand for a shield, a hand for a cuirass. The cell's
-// rectangle is the content rectangle plus the table's cell padding on each
-// side, which is what the row lines are drawn around.
+// apply -- a right hand for a shield, a hand for a cuirass. The corners are
+// the table's own: the rectangle it fills a cell's background in, from the
+// column's borders and the row's. Not rebuilt from the cursor, the text
+// height and a padding constant: the rule table's rows are a frame high
+// and padded by 2, and that guess ran the slash short of both corners.
+//
+// The rectangle's bottom is where the row has got to so far, so call this
+// once the cells that set the row's height are drawn. The equip cells come
+// after a row's text; the rule table's switch is its first column, and the
+// row comes back to it at the end.
 void SlashCell()
 {
     auto *draw = Im::GetWindowDrawList();
-    if (!draw)
+    const Im::ImGuiTable *table = Im::GetCurrentTable();
+    if (!draw || !table)
         return;
-    const Im::ImVec2 pos = Im::GetCursorScreenPos();
-    const float h = Im::GetTextLineHeight();
-    const float w = Im::GetContentRegionAvail().x;
-    const Im::ImVec2 lo{pos.x - kCellPadX, pos.y - kCellPadY};
-    const Im::ImVec2 hi{pos.x + w + kCellPadX, pos.y + h + kCellPadY};
-    Im::ImDrawListManager::AddLine(draw, {lo.x, hi.y}, {hi.x, lo.y},
+    const Im::ImRect cell = Im::TableGetCellBgRect(table, Im::TableGetColumnIndex());
+    Im::ImDrawListManager::AddLine(draw, {cell.Min.x, cell.Max.y}, {cell.Max.x, cell.Min.y},
                                    Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f), 1.0f);
 }
 
