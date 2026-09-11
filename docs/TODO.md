@@ -178,3 +178,17 @@ in `docs/PLAN.md`.
 
 - **CommonLibSSE-NG migration** to alandtse `ng` (`docs/COMMONLIB.md`): brings
   `ForceRefTo`, and re-check the `Skyrim.INI` log-directory quirk.
+
+## Left from the 2026-09-11 code review
+
+The review's bugs, dead code, duplication and wording items are done (the commits of 2026-09-11). What it also asked for, and is not done, each with why:
+
+- **Verify in play what the review could not.** The cast sink's atomics, the score hook under its lock, the equip detour's one-copy rule, the per-hand poison and charge readings, and calibration refusing an inline canary all compile and lint clean and have not been run in a fight.
+- **Split `UI.cpp` (rule editor, sheet pages, widgets) and `Sensors.cpp` (snapshot, sheets), and move the spell math out of `Inventory.h`.** Mechanical but large, and only verifiable in play; the shared pieces both halves would need are in `game/Sheet.h` now, so the split is a move.
+- **One `PanelState` per follower** in place of the five per-follower maps and three filter buffers, and `InventoryTabState::select` written by three tabs.
+- **The engine's own name tables** for the condition functions and the perk entry points (`SCRIPT_FUNCTION::GetFirstScriptCommand`, `BGSEntryPoint::GetEntryPoint`) in place of `ConditionNames.inc` and `kEntryPointNames`. Needs a play session to confirm the engine's strings match the Creation Kit's wording.
+- **Smaller repeats left in `src/game`:** the cast and shout request prologue in `Packages.cpp` (a `ResolveTarget` and a `ClaimSlot`; the `skyrim_cast` -> `FindInputUID` -> `InputByUID` chain six times), the spells-shouts-scrolls enumeration in the snapshot against the panel's scans, the Fortify-factor block three times, the Speed row's own `ValueNote` threshold, `%08X` inline against `HexId`, the two `ReplaceNoCase` copies, the perk-description read four times, the panel's filter-sort-tiebreak three times and its widget repeats (chip rows, detail headers, up-down-delete, table-in-pieces, stat rows). Each is small; none has cost anything yet.
+- **`/we4062` with no `default:` on switches over the rule enums,** so a new `ActionKind` cannot be half-added. Every classifier is one function now, which covers the case the review found; the compiler check would cover the next one.
+- **`IsPartyMember`:** the tick manages eight followers, the snapshot lists every teammate as an ally, so a ninth can be an ally but never named in a rule.
+- **`Profiles.cpp` and `Tactics.cpp` include each other;** the profile assembly in `LoadIfNew` and `ProfilesToSave` would move into `Profiles.cpp` with the identities.
+- **`Downgrade-Skyrim.ps1 -Step check` and `check_install.py` check the same things twice.**
