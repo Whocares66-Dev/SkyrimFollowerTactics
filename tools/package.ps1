@@ -4,6 +4,9 @@ $root = Split-Path -Parent $PSScriptRoot
 $version = (Select-String -Path (Join-Path $root 'CMakeLists.txt') -Pattern 'project\(\w+ VERSION ([\d.]+)').Matches[0].Groups[1].Value
 if (-not $version) { throw "No project VERSION in CMakeLists.txt" }
 
+# -NoDeploy: the mods-folder deploy is the DEBUG build's, and a release build
+# must not overwrite it. The .pdb stays in build\release, out of the zip:
+# 27 MB against a 1 MB DLL, and a crash log's offsets are read against it here.
 & (Join-Path $PSScriptRoot 'build.ps1') -Preset release -NoDeploy
 
 $dll = Join-Path $root 'build\release\FollowerTactics.dll'
