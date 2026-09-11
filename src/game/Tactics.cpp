@@ -251,7 +251,7 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     // A cast of OURS still in the air -- the lease is held from the request
     // until the follower's own spell-fire event names the spell -- makes
     // every action wait, not just another cast: a pin into the casting hand
-    // or a potion would cut it off. "Combat begins: cast Stoneflesh, equip
+    // or a potion would cut it off. "Combat start: cast Stoneflesh, equip
     // Flames" put Flames in the hand half a second into the cast. A list in
     // progress waits on the next tick; a fresh rule yields for this one.
     // Ours only: the AI's own casting, a pinned Flames streaming all fight,

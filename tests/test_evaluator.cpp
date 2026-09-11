@@ -1966,7 +1966,7 @@ TEST_CASE("two casts in a list wait for each other", "[sequence]")
 
 TEST_CASE("everything after a cast waits while the cast is in the air", "[sequence]")
 {
-    // "Combat begins: cast Stoneflesh, equip Flames." The game side marks
+    // "Combat start: cast Stoneflesh, equip Flames." The game side marks
     // every action busy while a cast of ours is in the air, so the equip
     // waits rather than putting Flames in the casting hand mid-cast.
     constexpr std::uint32_t kStoneflesh = 0x0005AD5D;
@@ -2040,7 +2040,7 @@ TEST_CASE("a list goes on after its condition has lapsed", "[sequence]")
     // Deliberate. "Health below half: drink, then cast the heal" -- the
     // potion works, health is above half by the next tick, and the heal is
     // cast anyway. The list is a commitment once begun, and it has to be:
-    // "combat begins" holds for one tick only, and re-reading it would
+    // "combat start" holds for one tick only, and re-reading it would
     // strand every list written on it after its first action.
     constexpr std::uint32_t kHeal = 0x00012FCC;
     Rule r = HealBelow(0.5f);

@@ -685,7 +685,7 @@ int ConditionGroup(ft::PredicateKind p)
 }
 
 // Is this predicate the one its heading is drawn at? The rest of a heading
-// (Combat ends, Summon active, Lowest level, the poison pair) are drawn
+// (Combat end, Summon active, Lowest level, the poison pair) are drawn
 // under it and skipped in the walk.
 bool DrawsHeading(ft::PredicateKind p)
 {
