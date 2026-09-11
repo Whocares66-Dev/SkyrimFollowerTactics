@@ -4147,7 +4147,10 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         Im::TableSetColumnIndex(0);
         Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
+        {
             state.detail = entry->form;
+            state.openedFrom = Tab::Magic; // back to the list, wherever the last page was opened from
+        }
         // Why the row is dimmed, over the whole cell: asked of the
         // Selectable, before the name is drawn over it. A spell above the
         // follower's skill says so first, even when a pin shadows it too:
@@ -4233,9 +4236,14 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
     Im::PopStyleVar(1);
 
     Im::Spacing();
-    const std::string shown = rows.size() == view.magic.size() ? std::to_string(rows.size()) + " spells"
-                                                               : std::to_string(rows.size()) + " of " +
-                                                                     std::to_string(view.magic.size()) + " spells";
+    // Counted against the category, as the Inventory tab counts: on
+    // Destruction, "3 of 3" until the filter box takes some away.
+    std::size_t inCategory = 0;
+    for (const auto &entry : view.magic)
+        inCategory += (state.category < 0 || static_cast<int>(entry.category) == state.category) ? 1 : 0;
+    const std::string shown = rows.size() == inCategory
+                                  ? std::to_string(rows.size()) + " spells"
+                                  : std::to_string(rows.size()) + " of " + std::to_string(inCategory) + " spells";
     Im::TextDisabled("%s", shown.c_str());
 }
 
@@ -4959,7 +4967,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 // names. Those seen together are registered in name order; a later one comes
 // after them, since an entry cannot be moved once added.
 
-constexpr std::size_t kSlots = 8; // matches kMaxManagedFollowers in Tactics.cpp
+constexpr std::size_t kSlots = kMaxManagedFollowers; // one entry per follower the tick can manage
 
 struct Slot
 {
@@ -5174,7 +5182,15 @@ void SyncFollowers()
             }
         }
         if (index == kSlots)
+        {
+            // Cannot happen while the tick manages at most kSlots: said
+            // once if it does, since the panel would otherwise just lack
+            // a name.
+            static std::unordered_set<ft::ActorId> said;
+            if (said.insert(view.id).second)
+                log::ui.warn("no menu entry for {}: all {} are taken", view.name, kSlots);
             continue;
+        }
 
         // Under a Followers subsection, apart from Settings: the path's
         // components are the tree.

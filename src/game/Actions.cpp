@@ -65,25 +65,12 @@ ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
         return ActionResult::MissingItem;
     // The right hand's weapon if it is clean, else the left's: both hands
     // dressed by two firings of the rule, and none when both carry one
-    // (the evaluator does not fire this then).
-    auto *weapon = WeaponToPoison(actor);
+    // (the evaluator does not fire this then). The dose goes on that
+    // hand's copy: with the same dagger in each hand, the clean one.
+    const auto [weapon, hand] = WeaponToPoison(actor);
     if (!weapon)
         return ActionResult::MissingItem;
-
-    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
-    const auto found = inventory.find(weapon);
-    auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
-    if (!entry || !entry->extraLists)
-        return ActionResult::MissingItem;
-    RE::ExtraDataList *worn = nullptr;
-    for (auto *list : *entry->extraLists)
-    {
-        if (list && (list->HasType<RE::ExtraWorn>() || list->HasType<RE::ExtraWornLeft>()))
-        {
-            worn = list;
-            break;
-        }
-    }
+    RE::ExtraDataList *worn = WornList(actor, weapon, hand);
     if (!worn)
         return ActionResult::MissingItem;
 
@@ -118,7 +105,7 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm, bool stronges
     for (const bool hand : {false, true})
     {
         auto *candidate = WeaponIn(actor, hand);
-        const WeaponCharge c = ChargeOf(actor, candidate);
+        const WeaponCharge c = ChargeOf(actor, candidate, hand ? Hand::Left : Hand::Right);
         if (candidate && c.enchanted && c.charge < c.costPerHit)
         {
             weapon = candidate;
@@ -138,20 +125,8 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm, bool stronges
     if (it == gems.end() || !gem)
         return ActionResult::MissingItem;
 
-    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
-    const auto found = inventory.find(weapon);
-    auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
-    if (!entry || !entry->extraLists)
-        return ActionResult::MissingItem;
-    RE::ExtraDataList *worn = nullptr;
-    for (auto *list : *entry->extraLists)
-    {
-        if (list && (list->HasType<RE::ExtraWorn>() || list->HasType<RE::ExtraWornLeft>()))
-        {
-            worn = list;
-            break;
-        }
-    }
+    // That hand's copy: with the same sword in each hand, the one in need.
+    RE::ExtraDataList *worn = WornList(actor, weapon, left ? Hand::Left : Hand::Right);
     if (!worn)
         return ActionResult::MissingItem;
 

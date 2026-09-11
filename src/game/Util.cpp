@@ -1,10 +1,13 @@
 #include "game/Util.h"
 
+#include <mutex>
+
 namespace ft::game
 {
 
 namespace
 {
+std::mutex g_clockMutex;  // the hit sinks read the clock off the engine's threads
 double g_lastHour = -1.0; // hour-of-day at the previous read, or -1
 double g_seconds = 0.0;   // accumulated real seconds of game time
 } // namespace
@@ -15,6 +18,7 @@ double TacticsSeconds()
     if (!calendar || !calendar->gameHour)
         return NowSeconds(); // before the game is up; nothing is timed then anyway
 
+    std::scoped_lock lock(g_clockMutex);
     const double hour = calendar->gameHour->value;
     if (g_lastHour >= 0.0)
     {

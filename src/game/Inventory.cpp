@@ -637,7 +637,7 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
             std::string charge;
             if (auto *weapon = object->As<RE::TESObjectWEAP>())
             {
-                const WeaponCharge c = ChargeOf(actor, weapon);
+                const WeaponCharge c = ChargeOf(actor, weapon, Hand::None);
                 if (c.enchanted && c.maxCharge > 0.0f)
                 {
                     char text[64];

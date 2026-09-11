@@ -63,7 +63,12 @@ struct Settings
 
 [[nodiscard]] bool IsTrue(std::string_view text) noexcept
 {
-    return text == "1" || text == "true" || text == "TRUE" || text == "True" || text == "yes";
+    return text == "1" || text == "true" || text == "TRUE" || text == "True" || text == "yes" || text == "on";
+}
+
+[[nodiscard]] bool IsFalse(std::string_view text) noexcept
+{
+    return text == "0" || text == "false" || text == "FALSE" || text == "False" || text == "no" || text == "off";
 }
 
 // Data/SKSE/Plugins/FollowerTactics.ini, beside the .dll. Relative to the
@@ -115,7 +120,15 @@ struct Settings
         }
         else if (key == "events")
         {
-            settings.events = IsTrue(value);
+            // A word that is neither is said, not read as off: "events =
+            // yse" silently losing the sidecar would be found only by its
+            // absence.
+            if (IsTrue(value))
+                settings.events = true;
+            else if (IsFalse(value))
+                settings.events = false;
+            else
+                notes.push_back(fmt::format("events \"{}\" is not true or false -- using true", value));
         }
     }
 

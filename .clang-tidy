@@ -65,7 +65,12 @@ FormatStyle: file
 # the findings are still there: a clean-looking pass with work outstanding,
 # the same blind spot as the .pch one in CLAUDE.md. (The stamp also depends
 # on this file, so a check switched on here re-lints everything.)
-WarningsAsErrors: '*'
+#
+# All but the one check with the known false positive above: its finding
+# sits in CommonLibSSE's header, where no NOLINT of ours can reach, so it
+# stays a warning -- reported whenever the file it fires in is re-linted,
+# never failing the run.
+WarningsAsErrors: '*,-clang-analyzer-cplusplus.NewDelete'
 
 CheckOptions:
   # int -> float loses nothing below 2^24, and the game's numbers are floats

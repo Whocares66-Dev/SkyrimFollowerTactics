@@ -38,7 +38,7 @@ namespace ft::game
 //
 // Read from the hour-of-day global, not "hours passed": the latter is a float
 // that loses sub-second precision after a few hundred game days, the former
-// stays within 0..24 and precise. Day wraps are counted here.
+// stays within 0..24 and precise. Day wraps are counted here. Any thread.
 [[nodiscard]] double TacticsSeconds();
 
 // "Lydia (000A2C94)" -- name plus FormID, because in a test cell you will have

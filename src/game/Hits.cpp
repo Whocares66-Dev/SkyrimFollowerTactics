@@ -4,7 +4,6 @@
 #include "game/Util.h"
 
 #include <array>
-#include <chrono>
 #include <mutex>
 #include <unordered_map>
 
@@ -13,16 +12,16 @@ namespace ft::game
 namespace
 {
 
-using Clock = std::chrono::steady_clock;
-
 // How long a hit counts as "being attacked". Long enough that a 500 ms
 // tick sees every blow, short enough that a fight that has moved on is
-// not still "under fire".
-constexpr auto kWindow = std::chrono::seconds(3);
+// not still "under fire". On the tactics clock, game time, like every
+// other timer here: on the wall clock a hit aged out while the panel held
+// the world still.
+constexpr double kWindow = 3.0;
 
 struct Entry
 {
-    Clock::time_point when{};
+    double when{-1.0}; // -1: never hit with this kind
     ft::ActorId attacker{0};
 };
 
@@ -35,7 +34,7 @@ void Note(ft::ActorId target, DamageKind kind, ft::ActorId attacker)
 {
     std::scoped_lock lock(g_mutex);
     auto &entry = g_hits[target][static_cast<std::size_t>(kind)];
-    entry.when = Clock::now();
+    entry.when = TacticsSeconds();
     entry.attacker = attacker;
 }
 
@@ -138,7 +137,7 @@ void WatchHits()
     }
     holder->AddEventSink<RE::TESHitEvent>(&g_hitSink);
     holder->AddEventSink<RE::TESMagicEffectApplyEvent>(&g_applySink);
-    log::hits.info("watching hit and effect-apply events, {} s window", kWindow.count());
+    log::hits.info("watching hit and effect-apply events, {} s window", kWindow);
 }
 
 Attacked AttackedLately(ft::ActorId target)
@@ -148,12 +147,12 @@ Attacked AttackedLately(ft::ActorId target)
     const auto it = g_hits.find(target);
     if (it == g_hits.end())
         return out;
-    const auto now = Clock::now();
-    Clock::time_point latest{};
+    const double now = TacticsSeconds();
+    double latest = -1.0;
     for (std::size_t k = 0; k < it->second.size(); ++k)
     {
         const Entry &entry = it->second[k];
-        if (entry.when == Clock::time_point{} || now - entry.when > kWindow)
+        if (entry.when < 0.0 || now - entry.when > kWindow)
             continue;
         out.kinds |= static_cast<std::uint8_t>(1u << k);
         if (entry.when > latest)

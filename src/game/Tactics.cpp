@@ -43,8 +43,6 @@ constexpr double kDiagnosticInterval = 2.0;
 // How often to report measured tick cost.
 constexpr double kCostReportInterval = 5.0;
 
-constexpr std::size_t kMaxManagedFollowers = 8;
-
 // --- state -----------------------------------------------------------------
 
 std::atomic_bool g_enabled{true};

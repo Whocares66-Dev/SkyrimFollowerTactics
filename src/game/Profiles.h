@@ -24,11 +24,14 @@ namespace ft::game
 //
 // The key is the NPC's base record -- the plugin that defines them and
 // their id within it -- not the placed reference: "Lydia's tactics" are
-// Lydia's whichever reference she is, a placeatme copy shares them, and a
-// plugin's own id survives a load order change where a runtime FormID
-// does not. A follower with no stable record (spawned at runtime, from a
-// dynamic base) gets a key from their reference id, which is as good as it
-// gets, and the log says so.
+// Lydia's whichever reference they are, and a plugin's own id survives a
+// load order change where a runtime FormID does not. Two references of
+// one base (a placeatme copy beside the original) share the key: the
+// first the tick sees claims the saved record, the other starts empty,
+// and both are then saved under the one key, the later write winning. A
+// follower with no stable record (spawned at runtime, from a dynamic
+// base) gets a key from their reference id, which is as good as it gets,
+// and the log says so.
 struct Identity
 {
     std::string key;  // "Skyrim.esm-A2C94"

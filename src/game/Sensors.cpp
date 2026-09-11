@@ -199,24 +199,25 @@ void ForEachSpell(RE::Actor *actor, const std::function<void(RE::SpellItem *)> &
 {
     if (!actor)
         return;
-    const auto walk = [&fn](const RE::TESSpellList::SpellData *list) {
+    // The same spell can be in the record's list and among the added
+    // spells; once is enough, and every caller wants it so.
+    std::unordered_set<const RE::SpellItem *> seen;
+    const auto once = [&](RE::SpellItem *spell) {
+        if (spell && seen.insert(spell).second)
+            fn(spell);
+    };
+    const auto walk = [&once](const RE::TESSpellList::SpellData *list) {
         if (!list)
             return;
         for (std::uint32_t i = 0; i < list->numSpells; ++i)
-        {
-            if (list->spells[i])
-                fn(list->spells[i]);
-        }
+            once(list->spells[i]);
     };
     if (auto *npc = actor->GetActorBase())
         walk(npc->GetSpellList());
     if (auto *race = actor->GetRace())
         walk(race->actorEffects);
     for (auto *spell : actor->GetActorRuntimeData().addedSpells)
-    {
-        if (spell)
-            fn(spell);
-    }
+        once(spell);
 }
 
 bool IsCastable(const RE::SpellItem *spell)
@@ -818,7 +819,7 @@ float DamageReduction(RE::Actor *actor)
 std::unordered_set<std::uint32_t> g_armorLogged;
 void LogArmorReadings(RE::Actor *actor)
 {
-    if (!actor || !g_armorLogged.insert(actor->GetFormID()).second)
+    if (!actor || !log::Enabled(log::Level::Debug) || !g_armorLogged.insert(actor->GetFormID()).second)
         return;
     auto *owner = actor->AsActorValueOwner();
     int pieces = 0;
@@ -1042,7 +1043,7 @@ void ReadHands(RE::Actor *actor, ft::ActorTraits &traits)
             else
                 traits.Wield(ft::DamageKind::Melee);
             effectsOf(EnchantmentOn(actor, weapon));
-            if (WeaponPoisoned(actor, weapon))
+            if (WeaponPoisoned(actor, weapon, left ? Hand::Left : Hand::Right))
                 traits.Wield(ft::DamageKind::Poison);
         }
         else if (auto *magic = held->As<RE::MagicItem>())
@@ -1297,14 +1298,15 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     for (const bool left : {false, true})
     {
         auto &hand = left ? s.leftWeapon : s.rightWeapon;
+        const Hand which = left ? Hand::Left : Hand::Right;
         if (auto *weapon = PoisonableWeaponIn(actor, left))
         {
             hand.takesPoison = true;
-            hand.poisoned = WeaponPoisoned(actor, weapon);
+            hand.poisoned = WeaponPoisoned(actor, weapon, which);
         }
         if (auto *weapon = WeaponIn(actor, left))
         {
-            const WeaponCharge c = ChargeOf(actor, weapon);
+            const WeaponCharge c = ChargeOf(actor, weapon, which);
             hand.enchanted = c.enchanted;
             hand.charge = c.charge;
             hand.maxCharge = c.maxCharge;
@@ -1499,10 +1501,6 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         // has no level.
         if (!power && DescribeHoldable(actor, spell).unusable)
             return;
-        // The same spell can appear in both sources; show it once.
-        const std::uint32_t id = spell->GetFormID();
-        if (std::any_of(out.begin(), out.end(), [id](const SpellOption &o) { return o.form == id; }))
-            return;
 
         std::string name = spell->GetName() ? spell->GetName() : "";
         if (name.empty())
@@ -1512,10 +1510,10 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
             reanimate =
                 reanimate || (effect && effect->baseEffect &&
                               effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate);
-        out.push_back(SpellOption{id, std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
-                                  spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
-                                  !power && CanDualCast(actor, spell),
-                                  power ? SpellOption::Kind::Power : SpellOption::Kind::Spell});
+        out.push_back(SpellOption{
+            spell->GetFormID(), std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
+            spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
+            !power && CanDualCast(actor, spell), power ? SpellOption::Kind::Power : SpellOption::Kind::Spell});
     });
 
     // The scrolls carried, by the scroll's own delivery: a Self one under
@@ -1577,12 +1575,19 @@ std::string Fmt(const char *fmt, double value)
 
 // A float game setting, or the vanilla value if the collection has no such
 // entry. The fallbacks are vanilla's numbers so a missing setting degrades to
-// "what the unmodded game does", not to a zero that reads as a broken sheet.
+// "what the unmodded game does", not to a zero that reads as a broken sheet
+// -- and the miss is said once, at warn, since a misspelt name would
+// otherwise be a vanilla number that looks right.
 float GameSetting(const char *name, float vanilla)
 {
     auto *collection = RE::GameSettingCollection::GetSingleton();
     auto *setting = collection ? collection->GetSetting(name) : nullptr;
-    return setting ? setting->GetFloat() : vanilla;
+    if (setting)
+        return setting->GetFloat();
+    static std::unordered_set<std::string> missing;
+    if (missing.insert(name).second)
+        log::sensors.warn("game setting {} not found -- using vanilla's {}", name, vanilla);
+    return vanilla;
 }
 
 // "83%", or past the engine's cap "110% (85%)": what the gear adds up to
@@ -1734,6 +1739,22 @@ bool PerkActive(RE::Actor *actor, RE::BGSPerk *perk)
 // off her record, so a perk a mod granted at runtime counts the same as one
 // she was authored with. Ordered by the skill level each perk asks for,
 // weakest first; the modifiers column carries its own in-game description.
+namespace
+{
+// A perk's name, trimmed, because the records are not: Skyrim.esm's first
+// rank of Magic Resistance is named " Magic Resistance", leading space and
+// all, and on screen that reads as a row set in for no reason. Empty for
+// a perk with no name.
+std::string PerkName(const RE::BGSPerk *perk)
+{
+    const std::string raw = perk && perk->GetName() ? perk->GetName() : "";
+    const auto first = raw.find_first_not_of(' ');
+    if (first == std::string::npos)
+        return {};
+    return raw.substr(first, raw.find_last_not_of(' ') - first + 1);
+}
+} // namespace
+
 std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
 {
     std::vector<SheetRow> rows;
@@ -1744,13 +1765,9 @@ std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
         if (entry.perk->nextPerk && actor->HasPerk(entry.perk->nextPerk))
             continue; // a higher rank is held; that one gets the row
 
-        // Trimmed, because the records are not: Skyrim.esm's first rank of
-        // Magic Resistance is named " Magic Resistance", leading space and
-        // all, and on screen that reads as a row set in for no reason.
-        std::string label = entry.perk->GetName() ? entry.perk->GetName() : "?";
-        const auto first = label.find_first_not_of(' ');
-        const auto last = label.find_last_not_of(' ');
-        label = first == std::string::npos ? "?" : label.substr(first, last - first + 1);
+        std::string label = PerkName(entry.perk);
+        if (label.empty())
+            label = "?";
 
         const std::string rank = entry.ranks > 1 ? std::to_string(entry.rank) + "/" + std::to_string(entry.ranks) : "";
         SheetRow row = Row(std::move(label), rank);
@@ -1775,9 +1792,7 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
 
     if (auto *weapon = held->As<RE::TESObjectWEAP>())
     {
-        const bool twoHanded =
-            weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow();
-        if (left && twoHanded)
+        if (left && TwoHanded(weapon))
         {
             rows.push_back(Row("Held", "the same, two-handed"));
             return;
@@ -2616,7 +2631,9 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
             return;
         PerkPage p;
         p.form = perk->GetFormID();
-        p.name = perk->GetName() ? perk->GetName() : "?";
+        p.name = PerkName(perk);
+        if (p.name.empty())
+            p.name = "?";
         RE::BSString text;
         perk->GetDescription(text, perk);
         p.description = text.c_str() ? text.c_str() : "";
@@ -2914,8 +2931,8 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                 auto *perk = base->perks[i].perk;
                 if (!perk || perk->data.hidden || inTrees.contains(perk) || !actor->HasPerk(perk))
                     continue;
-                const char *name = perk->GetName();
-                if (!name || !*name)
+                const std::string name = PerkName(perk);
+                if (name.empty())
                     continue;
                 RE::BSString text;
                 perk->GetDescription(text, perk);
@@ -2978,49 +2995,85 @@ std::vector<SummonView> ScanSummons(RE::Actor *actor)
     return out;
 }
 
-RE::TESObjectWEAP *PoisonableWeaponIn(RE::Actor *actor, bool left)
+bool TwoHanded(const RE::TESObjectWEAP *weapon)
 {
-    if (!actor)
-        return nullptr;
-    auto *object = actor->GetEquippedObject(left);
-    auto *weapon = object ? object->As<RE::TESObjectWEAP>() : nullptr;
-    if (!weapon)
-        return nullptr;
-    // What the inventory menu offers a poison to: any weapon but a staff
-    // (read from its poisoning routine, which checks that one type).
-    // Unarmed is a weapon record too and never in a bag. A two-hander or a
-    // bow reports from the right hand and the left reports it again; the
-    // dose sits on the one entry either way.
-    const auto type = weapon->GetWeaponType();
-    if (type == RE::WEAPON_TYPE::kStaff || type == RE::WEAPON_TYPE::kHandToHandMelee)
-        return nullptr;
-    if (left && actor->GetEquippedObject(false) == weapon)
-        return nullptr; // the right hand's two-hander, seen from the left
-    return weapon;
+    return weapon &&
+           (weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow());
 }
 
-RE::TESObjectWEAP *WeaponToPoison(RE::Actor *actor)
+namespace
 {
-    for (const bool left : {false, true})
+// The first extra list of the actor's entry for the object that `pick`
+// accepts. A player's enchantment, tempering, poison and charge live on
+// the INSTANCE's list, not the record, and each copy worn has its own.
+RE::ExtraDataList *ListOf(RE::Actor *actor, RE::TESBoundObject *object, auto pick)
+{
+    auto *changes = actor && object ? actor->GetInventoryChanges() : nullptr;
+    if (!changes || !changes->entryList)
+        return nullptr;
+    for (auto *entry : *changes->entryList)
     {
-        auto *weapon = PoisonableWeaponIn(actor, left);
-        if (weapon && !WeaponPoisoned(actor, weapon))
-            return weapon;
+        if (!entry || entry->object != object)
+            continue;
+        if (!entry->extraLists)
+            return nullptr;
+        for (auto *list : *entry->extraLists)
+        {
+            if (list && pick(*list))
+                return list;
+        }
+        return nullptr;
     }
     return nullptr;
 }
+} // namespace
 
-bool WeaponPoisoned(RE::Actor *actor, RE::TESObjectWEAP *weapon)
+RE::ExtraDataList *UnwornList(RE::Actor *actor, RE::TESBoundObject *object)
 {
-    if (!actor || !weapon)
-        return false;
-    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
-    const auto found = inventory.find(weapon);
-    if (found == inventory.end() || !found->second.second)
-        return false;
-    // The poison sits on the worn copy's extra list, which is what the
-    // engine's IsPoisoned reads across every list of the entry.
-    return found->second.second->IsPoisoned();
+    return ListOf(actor, object, [](const RE::ExtraDataList &list) {
+        return !list.HasType(RE::ExtraDataType::kWorn) && !list.HasType(RE::ExtraDataType::kWornLeft);
+    });
+}
+
+RE::ExtraDataList *WornList(RE::Actor *actor, RE::TESBoundObject *object, Hand hand)
+{
+    return ListOf(actor, object, [hand](const RE::ExtraDataList &list) {
+        const bool right = list.HasType(RE::ExtraDataType::kWorn);
+        const bool left = list.HasType(RE::ExtraDataType::kWornLeft);
+        return hand == Hand::Left ? left : hand == Hand::Right ? right : (left || right);
+    });
+}
+
+RE::TESObjectWEAP *PoisonableWeaponIn(RE::Actor *actor, bool left)
+{
+    auto *weapon = WeaponIn(actor, left);
+    // What the inventory menu offers a poison to: any weapon but a staff
+    // (read from its poisoning routine, which checks that one type).
+    if (!weapon || weapon->GetWeaponType() == RE::WEAPON_TYPE::kStaff)
+        return nullptr;
+    return weapon;
+}
+
+WeaponInHand WeaponToPoison(RE::Actor *actor)
+{
+    for (const bool left : {false, true})
+    {
+        const Hand hand = left ? Hand::Left : Hand::Right;
+        auto *weapon = PoisonableWeaponIn(actor, left);
+        if (weapon && !WeaponPoisoned(actor, weapon, hand))
+            return {weapon, hand};
+    }
+    return {};
+}
+
+bool WeaponPoisoned(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand)
+{
+    // The poison sits on the worn copy's extra list: that hand's, so two
+    // of one dagger with one dosed read as one poisoned and one clean.
+    // (The engine's own IsPoisoned reads every list of the entry, and
+    // answered yes for both.)
+    const RE::ExtraDataList *worn = WornList(actor, weapon, hand);
+    return worn && worn->HasType(RE::ExtraDataType::kPoison);
 }
 
 RE::TESObjectWEAP *WeaponIn(RE::Actor *actor, bool left)
@@ -3029,44 +3082,53 @@ RE::TESObjectWEAP *WeaponIn(RE::Actor *actor, bool left)
         return nullptr;
     auto *object = actor->GetEquippedObject(left);
     auto *weapon = object ? object->As<RE::TESObjectWEAP>() : nullptr;
+    // Unarmed is a weapon record too and never in a bag. A two-hander or a
+    // bow reports from the right hand and the left reports it again; a
+    // one-hander in each hand is the same record twice, and both are
+    // there, so two-handedness is what is asked, not sameness.
     if (!weapon || weapon->GetWeaponType() == RE::WEAPON_TYPE::kHandToHandMelee)
         return nullptr;
-    if (left && actor->GetEquippedObject(false) == weapon)
-        return nullptr; // the right hand's two-hander, seen from the left
+    if (left && TwoHanded(weapon))
+        return nullptr;
     return weapon;
 }
 
-WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon)
+WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand)
 {
     WeaponCharge out;
     if (!actor || !weapon)
         return out;
-    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
-    const auto found = inventory.find(weapon);
-    auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
 
     // The record's enchantment and full charge, or a player-made one's on
-    // the entry (ExtraEnchantment carries both). What is left is
+    // the copy's list (ExtraEnchantment carries both). What is left is
     // ExtraCharge, absent for a weapon never used. The same reading as
-    // the engine's recharge routine.
+    // the engine's recharge routine. In a hand, that hand's copy; in the
+    // bag, whichever lists the entry has.
     RE::EnchantmentItem *ench = weapon->formEnchanting;
     float max = static_cast<float>(weapon->amountofEnchantment);
     float charge = max;
-    if (entry && entry->extraLists)
-    {
-        for (auto *list : *entry->extraLists)
+    const auto read = [&](const RE::ExtraDataList *list) {
+        if (!list)
+            return;
+        if (auto *xEnch = list->GetByType<RE::ExtraEnchantment>(); xEnch && xEnch->enchantment)
         {
-            if (!list)
-                continue;
-            if (auto *xEnch = list->GetByType<RE::ExtraEnchantment>(); xEnch && xEnch->enchantment)
-            {
-                ench = xEnch->enchantment;
-                max = static_cast<float>(xEnch->charge);
-                charge = max;
-            }
-            if (auto *xCharge = list->GetByType<RE::ExtraCharge>())
-                charge = xCharge->charge;
+            ench = xEnch->enchantment;
+            max = static_cast<float>(xEnch->charge);
+            charge = max;
         }
+        if (auto *xCharge = list->GetByType<RE::ExtraCharge>())
+            charge = xCharge->charge;
+    };
+    if (hand != Hand::None)
+        read(WornList(actor, weapon, hand));
+    else
+    {
+        auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
+        const auto found = inventory.find(weapon);
+        auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
+        if (entry && entry->extraLists)
+            for (auto *list : *entry->extraLists)
+                read(list);
     }
     if (!ench || max <= 0.0f)
         return out;
@@ -3075,14 +3137,16 @@ WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon)
     // own record is only written back on unequip. Measured 2026-09-08: a
     // staff cast down to 491 showed no charge record until it was swapped
     // hands, and then 491 appeared. So the hand it is in says where to
-    // read; in the bag, the record.
-    if (auto *owner = actor->AsActorValueOwner())
-    {
-        if (actor->GetEquippedObject(false) == weapon)
-            charge = owner->GetActorValue(RE::ActorValue::kRightItemCharge);
-        else if (actor->GetEquippedObject(true) == weapon)
-            charge = owner->GetActorValue(RE::ActorValue::kLeftItemCharge);
-    }
+    // read; in the bag, the record. Asked with no hand, a copy found worn
+    // reads from the hand it is in, the right first.
+    Hand in = hand;
+    if (in == Hand::None)
+        in = actor->GetEquippedObject(false) == weapon  ? Hand::Right
+             : actor->GetEquippedObject(true) == weapon ? Hand::Left
+                                                        : Hand::None;
+    if (auto *owner = actor->AsActorValueOwner(); owner && in != Hand::None)
+        charge = owner->GetActorValue(in == Hand::Right ? RE::ActorValue::kRightItemCharge
+                                                        : RE::ActorValue::kLeftItemCharge);
     out.enchanted = true;
     out.charge = (std::min)((std::max)(charge, 0.0f), max);
     out.maxCharge = max;
@@ -3116,7 +3180,14 @@ float SoulCharge(RE::SOUL_LEVEL level)
     }
     auto *settings = RE::GameSettingCollection::GetSingleton();
     auto *value = settings ? settings->GetSetting(setting) : nullptr;
-    return value ? static_cast<float>(value->GetInteger()) : 0.0f;
+    if (value)
+        return static_cast<float>(value->GetInteger());
+    // A zero drops every gem of that level from the snapshot, silently;
+    // say so once.
+    static std::unordered_set<std::string> missing;
+    if (missing.insert(setting).second)
+        log::sensors.warn("game setting {} not found -- soul gems of that level count for nothing", setting);
+    return 0.0f;
 }
 
 std::vector<ft::Snapshot::SoulGemView> ScanSoulGems(RE::Actor *actor)

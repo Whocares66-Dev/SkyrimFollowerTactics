@@ -481,10 +481,6 @@ std::vector<MagicEntry> ScanMagic(RE::Actor *actor)
         return out;
 
     ForEachSpell(actor, [&](RE::SpellItem *spell) {
-        // The same spell can appear in both sources; show it once.
-        const std::uint32_t id = spell->GetFormID();
-        if (std::any_of(out.begin(), out.end(), [id](const MagicEntry &e) { return e.form == id; }))
-            return;
         MagicEntry entry;
         if (DescribeSpell(actor, spell, entry))
             out.push_back(std::move(entry));

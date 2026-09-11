@@ -137,67 +137,19 @@ int CarriedCount(RE::Actor *actor, RE::TESBoundObject *object)
 }
 } // namespace
 
-namespace
-{
-// The item's own extra list, to hand the engine with an equip or an
-// unequip, as SKSE's EquipItemEx and UnequipItemEx do. A player's
-// enchantment and tempering live on the INSTANCE's list, not the record,
-// and an equip handed no list is the engine's to resolve; SKSE looks the
-// list up and passes it, and so does this. For an equip, the entry's
-// first list not worn anywhere (a second copy going into the other hand
-// wants the spare one); for an unequip, the list worn in that hand, or in
-// either for a thing with no hand. Null where there is none -- an item
-// with no extra data at all -- which is the plain case the engine takes
-// as before.
-RE::ExtraDataList *ListOf(RE::Actor *actor, RE::TESBoundObject *object, auto pick)
-{
-    auto *changes = actor && object ? actor->GetInventoryChanges() : nullptr;
-    if (!changes || !changes->entryList)
-        return nullptr;
-    for (auto *entry : *changes->entryList)
-    {
-        if (!entry || entry->object != object)
-            continue;
-        if (!entry->extraLists)
-            return nullptr;
-        for (auto *list : *entry->extraLists)
-        {
-            if (list && pick(*list))
-                return list;
-        }
-        return nullptr;
-    }
-    return nullptr;
-}
-
-RE::ExtraDataList *UnwornList(RE::Actor *actor, RE::TESBoundObject *object)
-{
-    return ListOf(actor, object, [](const RE::ExtraDataList &list) {
-        return !list.HasType(RE::ExtraDataType::kWorn) && !list.HasType(RE::ExtraDataType::kWornLeft);
-    });
-}
-
-RE::ExtraDataList *WornList(RE::Actor *actor, RE::TESBoundObject *object, Hand hand)
-{
-    return ListOf(actor, object, [hand](const RE::ExtraDataList &list) {
-        const bool right = list.HasType(RE::ExtraDataType::kWorn);
-        const bool left = list.HasType(RE::ExtraDataType::kWornLeft);
-        return hand == Hand::Left ? left : hand == Hand::Right ? right : (left || right);
-    });
-}
-} // namespace
-
 // The rules themselves are in core/Loadout.cpp, where they are tested.
+// An equip or an unequip hands the engine the copy's own extra list, as
+// SKSE's EquipItemEx and UnequipItemEx do (WornList, UnwornList): an
+// equip handed no list is the engine's to resolve, and a second copy going
+// into the other hand wants the spare one.
 Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
 {
     Holdable thing;
     thing.form = form->GetFormID();
     if (auto *weapon = form->As<RE::TESObjectWEAP>())
     {
-        const bool bothHands =
-            weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe() || weapon->IsBow() || weapon->IsCrossbow();
         thing.kind = Kind::Weapon;
-        thing.grip = bothHands ? Grip::Both : Grip::Either;
+        thing.grip = TwoHanded(weapon) ? Grip::Both : Grip::Either;
         thing.count = CarriedCount(actor, weapon);
     }
     else if (auto *spell = form->As<RE::SpellItem>())
@@ -212,6 +164,11 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
         if (type != RE::MagicSystem::SpellType::kSpell)
             return thing; // an ability, a disease: nothing to hold
         thing.kind = Kind::Spell;
+        // Never short of copies: a spell can be in both hands at once, and
+        // the one-copy rule (KeptFromAI) must not keep it out of the other
+        // hand as it keeps a lone dagger. Left at 1 until 2026-09-11, it
+        // did exactly that, the opposite of what the tests prove.
+        thing.count = 2;
         // The slot records, by FormID from Skyrim.esm: RightHand 013F42,
         // LeftHand 013F43, EitherHand 013F44, BothHands 013F45. The default
         // object table did not answer for them on this game.
@@ -1636,21 +1593,25 @@ bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlo
     if (const Pin *own = anyPins ? FindPin(it->second, object->GetFormID()) : nullptr)
     {
         // The pinned thing itself passes into its own hand, whichever the
-        // engine puts it in; into the OTHER hand only if she has a second
-        // copy, or the engine shows the one in both hands.
+        // engine puts it in. Into the OTHER hand it is kept out exactly as
+        // the score hook keeps it from the AI (KeptFromAI): with one copy,
+        // the engine would show the same object in both hands; with a
+        // second, only while no other pin holds that hand.
         const Hand into = SlotHand(slot);
-        if (into == Hand::None || Overlap(into, own->hands) || own->hands == Hand::None ||
-            CarriedCount(actor, object) >= 2)
+        if (into == Hand::None || own->hands == Hand::None)
             return false;
+        if (!KeptFromAI(it->second, DescribeHoldable(actor, object), into))
+            return false;
+        const char *why =
+            CarriedCount(actor, object) < 2 ? "one copy cannot fill both hands" : "another pin holds that hand";
         if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
             log::pins.event(log::Level::Warn, "pin.refused", actor,
                             {{"itemFormId", log::Id(object->GetFormID())},
                              {"itemName", log::NameOf(object)},
                              {"hand", into == Hand::Left ? "left" : "right"},
-                             {"reason", "one copy cannot fill both hands"}},
-                            "{} the engine would equip pinned {} into the {} hand as well, with one copy -- "
-                            "refused",
-                            Describe(actor), log::NameOf(object), into == Hand::Left ? "left" : "right");
+                             {"reason", why}},
+                            "{} the engine would equip pinned {} into the {} hand as well -- refused ({})",
+                            Describe(actor), log::NameOf(object), into == Hand::Left ? "left" : "right", why);
         return true;
     }
     if (BannedHere(actor->GetFormID(), object->GetFormID()))

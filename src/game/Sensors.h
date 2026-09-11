@@ -27,21 +27,43 @@ class TESObjectWEAP;
 namespace ft::game
 {
 
+// The hands are asked one at a time, and answered per COPY: with the same
+// dagger in each hand -- two entries of one record -- the left's poison and
+// charge are the left's, read off the extra list worn in that hand, not
+// the right's read twice. A two-hander sits in the right hand and the left
+// reports it again; asked about the left, these say nothing is there.
+[[nodiscard]] bool TwoHanded(const RE::TESObjectWEAP *weapon);
+
+// The extra list of the copy worn in that hand -- Left, Right, or either
+// for a thing with no hand -- or the one worn nowhere, for an equip into
+// the other hand. Null where there is none: an item with no extra data,
+// which the engine takes as the plain case.
+[[nodiscard]] RE::ExtraDataList *WornList(RE::Actor *actor, RE::TESBoundObject *object, Hand hand);
+[[nodiscard]] RE::ExtraDataList *UnwornList(RE::Actor *actor, RE::TESBoundObject *object);
+
 // The weapon in a hand, if it takes a poison (anything but a staff). Null
 // for no weapon there, or a staff.
 [[nodiscard]] RE::TESObjectWEAP *PoisonableWeaponIn(RE::Actor *actor, bool left);
 
-// The weapon a poison would go on: the right hand's if it takes one and is
-// clean, else the left's on the same terms, as the inventory menu goes to
-// the right hand alone. Null when neither qualifies.
-[[nodiscard]] RE::TESObjectWEAP *WeaponToPoison(RE::Actor *actor);
+// The weapon a poison would go on, and which hand it is in: the right
+// hand's if it takes one and is clean, else the left's on the same terms,
+// as the inventory menu goes to the right hand alone. Null when neither
+// qualifies.
+struct WeaponInHand
+{
+    RE::TESObjectWEAP *weapon{nullptr};
+    Hand hand{Hand::None};
+};
+[[nodiscard]] WeaponInHand WeaponToPoison(RE::Actor *actor);
 
-// Does that weapon, as the actor carries it, already have a poison on it?
-[[nodiscard]] bool WeaponPoisoned(RE::Actor *actor, RE::TESObjectWEAP *weapon);
+// Does the copy of that weapon worn in that hand have a poison on it?
+[[nodiscard]] bool WeaponPoisoned(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand);
 
 // A weapon's enchantment charge as the actor carries it: what is left, the
 // full amount, and what one hit draws in the actor's hands. Not enchanted
-// reads as all zero.
+// reads as all zero. `hand` names the worn copy to read -- and the hand
+// whose live charge actor value holds what is left -- or None for a copy
+// in the bag, read off its record and whatever list it has.
 struct WeaponCharge
 {
     bool enchanted{false};
@@ -49,7 +71,7 @@ struct WeaponCharge
     float maxCharge{0.0f};
     float costPerHit{0.0f};
 };
-[[nodiscard]] WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon);
+[[nodiscard]] WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand);
 
 // The weapon in a hand, enchanted or not; null for no weapon there.
 [[nodiscard]] RE::TESObjectWEAP *WeaponIn(RE::Actor *actor, bool left);

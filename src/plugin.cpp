@@ -218,27 +218,30 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
     // be loaded.
     ft::game::InstallSerialization();
 
-    SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message *message) {
-        if (message->type == SKSE::MessagingInterface::kDataLoaded)
-            OnDataLoaded();
+    const bool listening =
+        SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message *message) {
+            if (message->type == SKSE::MessagingInterface::kDataLoaded)
+                OnDataLoaded();
 
-        // A load or a new game invalidates every handle the package pool
-        // holds. Drop the pool. (The rules, switches and pins are reset by
-        // the serialization revert callback, which runs before the save's
-        // records load.)
-        if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
-            message->type == SKSE::MessagingInterface::kNewGame)
-            ft::game::ResetPackages();
+            // A load or a new game invalidates every handle the package pool
+            // holds. Drop the pool. (The rules, switches and pins are reset by
+            // the serialization revert callback, which runs before the save's
+            // records load.)
+            if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
+                message->type == SKSE::MessagingInterface::kNewGame)
+                ft::game::ResetPackages();
 
-        // Sent before the engine writes the save (SKSE's SaveGame hook
-        // dispatches it, then calls the original). A follower mid-cast is
-        // running a package of ours, may carry a wrapper shout, may be
-        // shouting a re-typed power: all of it would go into the file, and
-        // the packages are runtime forms that the save cannot bring back
-        // whole. Every lease ends here, so the save holds nothing of ours.
-        if (message->type == SKSE::MessagingInterface::kSaveGame)
-            ft::game::ReleaseAllLeases("saving");
-    });
+            // Sent before the engine writes the save (SKSE's SaveGame hook
+            // dispatches it, then calls the original). A follower mid-cast is
+            // running a package of ours, may carry a wrapper shout, may be
+            // shouting a re-typed power: all of it would go into the file, and
+            // the packages are runtime forms that the save cannot bring back
+            // whole. Every lease ends here, so the save holds nothing of ours.
+            if (message->type == SKSE::MessagingInterface::kSaveGame)
+                ft::game::ReleaseAllLeases("saving");
+        });
+    if (!listening)
+        ft::log::plugin.error("could not register for SKSE's messages -- nothing of the mod will start");
 
     return true;
 }
