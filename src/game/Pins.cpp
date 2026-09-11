@@ -761,7 +761,10 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
     // A banned thing found on comes off -- unless a pin holds it (a rule's
     // instruction, the player's own, wins for as long as it lasts) or one
     // of our casts has the hand. The score hook and the equip detour keep
-    // this from happening; this is what answers it when it has.
+    // this from happening; this is what answers it when it has. After the
+    // pin pass on purpose: the tick a fight ends, NoteFight above lets the
+    // rules' pins go, and a banned thing a rule pinned for the fight is
+    // found here unpinned and taken off in the same pass.
     for (auto *actor : followers)
     {
         const auto it = g_bans.find(actor->GetFormID());
@@ -1277,9 +1280,10 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     switch (request)
     {
     case WearRequest::Equip:
-        log::pins.event(log::Level::Info, "equip.applied", actor,
-                        {{"itemFormId", log::Id(id)}, {"itemName", name}, {"hand", HandTag(hands)}, {"pinned", false}},
-                        "{} told to ready {}{} (not pinned)", Describe(actor), name, HandTag(hands));
+        log::pins.event(
+            log::Level::Info, "equip.applied", actor,
+            {{"itemFormId", log::Id(described.form)}, {"itemName", name}, {"hand", HandTag(hands)}, {"pinned", false}},
+            "{} told to ready {}{} (not pinned)", Describe(actor), name, HandTag(hands));
         if (moving)
             UnequipForm(actor, thing, hands == Hand::Left ? Hand::Right : Hand::Left, true);
         EquipPinned(actor, thing, hands, true);
@@ -1287,19 +1291,21 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             g_republish.insert(id);
         break;
     case WearRequest::Ban:
-        log::pins.event(log::Level::Info, "ban.applied", actor, {{"itemFormId", log::Id(id)}, {"itemName", name}},
+        log::pins.event(log::Level::Info, "ban.applied", actor,
+                        {{"itemFormId", log::Id(described.form)}, {"itemName", name}},
                         "{} told never to use {} (banned)", Describe(actor), name);
         TakeOffEverywhere(actor, thing, described, true);
         if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
             g_republish.insert(id);
         break;
     case WearRequest::Unban:
-        log::pins.event(log::Level::Info, "ban.released", actor, {{"itemFormId", log::Id(id)}, {"itemName", name}},
+        log::pins.event(log::Level::Info, "ban.released", actor,
+                        {{"itemFormId", log::Id(described.form)}, {"itemName", name}},
                         "{} may use {} again (ban lifted)", Describe(actor), name);
         break;
     case WearRequest::Pin:
         log::pins.event(log::Level::Info, "pin.applied", actor,
-                        {{"itemFormId", log::Id(id)}, {"itemName", name}, {"reason", "the player asked"}},
+                        {{"itemFormId", log::Id(described.form)}, {"itemName", name}, {"reason", "the player asked"}},
                         "{} told to ready {} (pinned)", Describe(actor), name);
         // Off for now, to see what her own style does with a left-hand
         // weapon; the copy stays available for the combat-style work.
@@ -1344,7 +1350,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         // without it -- and that path once took a spell off and "put it
         // back" with an item equip, 01:47, Chain Lightning.)
         log::pins.event(log::Level::Info, "pin.applied", actor,
-                        {{"itemFormId", log::Id(id)},
+                        {{"itemFormId", log::Id(described.form)},
                          {"itemName", name},
                          {"hand", HandTag(hands)},
                          {"held", false},
@@ -1353,7 +1359,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         break;
     case WearRequest::TakeOff:
         log::pins.event(log::Level::Info, "equip.removed", actor,
-                        {{"itemFormId", log::Id(id)}, {"itemName", name}, {"hand", HandTag(hands)}},
+                        {{"itemFormId", log::Id(described.form)}, {"itemName", name}, {"hand", HandTag(hands)}},
                         "{} told to put away {}{}", Describe(actor), name, HandTag(hands));
         UnequipForm(actor, thing, hands, true);
         if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
