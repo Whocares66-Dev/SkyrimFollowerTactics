@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "Build.h"
 #include "core/Effects.h"
 #include "core/Evaluator.h"
 #include "core/Vocabulary.h"
@@ -10,6 +11,7 @@
 #include <string>
 
 using namespace ft;
+using ft::test::Player;
 
 namespace
 {
@@ -27,7 +29,6 @@ Snapshot Healthy()
     s.magicka = {100.0f, 100.0f};
     s.stamina = {100.0f, 100.0f};
     s.inCombat = true;
-    s.playerHealth = {100.0f, 100.0f};
     // Five health potions; and the other two kinds too: the tests use them
     // as spare, resource-free actions to tell one rule's firing from
     // another's.
@@ -927,19 +928,20 @@ TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[stat
     r.subject = SubjectKind::Player;
     r.statusKind = StatusKind::Staggered;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    s.playerTraits.Set(StatusKind::Staggered);
+    Player(s).traits.Set(StatusKind::Staggered);
     REQUIRE(EvaluateCondition(r, s).ok);
     REQUIRE(EvaluateCondition(r, s).id == kPlayerFormID);
 
-    // An ally in it binds that ally; the nearest when several are.
+    // An ally in it binds that ally; the nearest when several are. (The
+    // player, an ally too, is in none of these.)
     s.allies.push_back({0x201, {100.0f, 100.0f}, 500.0f});
     s.allies.push_back({0x202, {100.0f, 100.0f}, 200.0f});
     r.subject = SubjectKind::Ally;
     r.statusKind = StatusKind::Fleeing;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    s.allies[0].traits.Set(StatusKind::Fleeing);
-    REQUIRE(EvaluateCondition(r, s).id == 0x201);
     s.allies[1].traits.Set(StatusKind::Fleeing);
+    REQUIRE(EvaluateCondition(r, s).id == 0x201);
+    s.allies[2].traits.Set(StatusKind::Fleeing);
     REQUIRE(EvaluateCondition(r, s).id == 0x202);
 
     // An enemy.
@@ -976,7 +978,7 @@ TEST_CASE("armour is asked as a percent, and every measure has a lowest and a hi
     // The player, in fur.
     r.subject = SubjectKind::Player;
     r.conditionArg = 0.25f;
-    s.playerTraits.armor = 0.1f;
+    Player(s).traits.armor = 0.1f;
     REQUIRE(EvaluateCondition(r, s).ok);
 
     // Enemies: a mage in robes, a chief in plate. The percent binds among
@@ -1147,8 +1149,8 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
     // The player's.
     r.subject = SubjectKind::Player;
     r.damageKind = DamageKind::Shock;
-    s.playerTraits.hitBy = Bit(DamageKind::Shock);
-    s.playerTraits.attacker = 0x101;
+    Player(s).traits.hitBy = Bit(DamageKind::Shock);
+    Player(s).traits.attacker = 0x101;
     const Binding player = EvaluateCondition(r, s);
     REQUIRE(player.id == kPlayerFormID);
     REQUIRE(ResolveActionTarget(r, s, player, &ok) == 0x101);
@@ -1191,9 +1193,9 @@ TEST_CASE("the enemy on a member of the party, and the one a member is on", "[pa
     s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
     s.enemies.push_back({0x102, {100.0f, 100.0f}, 200.0f, kPlayerFormID}); // going for the player
     s.enemies.push_back({0x103, {100.0f, 100.0f}, 250.0f, 0x201});         // going for a follower
-    s.playerTarget = 0x101;
     s.allies.push_back({kPlayerFormID, {100.0f, 100.0f}, 100.0f});
     s.allies.push_back({0x201, {60.0f, 100.0f}, 300.0f});
+    Player(s).target = 0x101;
     s.allies[1].target = 0x103;
     s.currentTarget = 0x102;
 
@@ -1216,7 +1218,7 @@ TEST_CASE("the enemy on a member of the party, and the one a member is on", "[pa
 
     // The player fighting no one: nothing is their target.
     r.subjectForm = 0;
-    s.playerTarget = 0;
+    Player(s).target = 0;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
 
     // Only the Enemy heading asks these.
@@ -1254,7 +1256,7 @@ TEST_CASE("above and below are the same number from either side", "[evaluator]")
 
     r.subject = SubjectKind::Player;
     r.predicate = PredicateKind::HealthPctAbove;
-    s.playerHealth = {90.0f, 100.0f};
+    Player(s).health = {90.0f, 100.0f};
     REQUIRE(EvaluateCondition(r, s).ok);
 }
 
@@ -2429,7 +2431,7 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
     s.allies.push_back({0x201, {60.0f, 100.0f}, 300.0f});
     s.enemies.push_back({0x101, {100.0f, 100.0f}, 900.0f}); // the archer
     s.enemies.push_back({0x102, {100.0f, 100.0f}, 150.0f}); // the one in the follower's face
-    s.enemies[1].attacking = kPlayerFormID;
+    s.enemies[1].target = kPlayerFormID;
     s.currentTarget = 0x102;
     s.allies[1].traits.hitBy = Bit(DamageKind::Melee) | Bit(DamageKind::Ranged);
     s.allies[1].traits.attacker = 0x101;
@@ -2620,9 +2622,9 @@ TEST_CASE("attacked by anything, and an ally's magicka and stamina", "[condition
     player.subject = SubjectKind::Player;
     player.predicate = PredicateKind::MagickaPctBelow;
     player.conditionArg = 0.3f;
-    s.playerMagicka = {50.0f, 100.0f};
+    Player(s).magicka = {50.0f, 100.0f};
     REQUIRE_FALSE(EvaluateCondition(player, s).ok);
-    s.playerMagicka = {20.0f, 100.0f};
+    Player(s).magicka = {20.0f, 100.0f};
     REQUIRE(EvaluateCondition(player, s).ok);
 }
 

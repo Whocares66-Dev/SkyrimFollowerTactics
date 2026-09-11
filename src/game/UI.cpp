@@ -1155,6 +1155,23 @@ bool TakesSpell(ft::ActionKind action)
     return ft::IsCast(action) || action == ft::ActionKind::EquipSpell;
 }
 
+// Which of the spell menu's kinds an action picks from: a power for Use
+// power, a shout for Shout, a scroll for Scroll, a spell for the rest.
+SpellOption::Kind SpellKindOf(ft::ActionKind action)
+{
+    switch (action)
+    {
+    case ft::ActionKind::UsePower:
+        return SpellOption::Kind::Power;
+    case ft::ActionKind::Shout:
+        return SpellOption::Kind::Shout;
+    case ft::ActionKind::UseScroll:
+        return SpellOption::Kind::Scroll;
+    default:
+        return SpellOption::Kind::Spell;
+    }
+}
+
 // Could a thing with this grip be pinned in this hand, as the equip menu
 // asks it? Both means a two-hander, or a spell in each hand at once; one
 // weapon cannot be in both hands.
@@ -1388,8 +1405,7 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
             name = FormName(act.form);
         if (name.empty())
             return base;
-        const bool handed = act.kind == ft::ActionKind::EquipWeapon || act.kind == ft::ActionKind::EquipSpell;
-        return "Equip " + name + (handed ? " (" + Lower(ft::DisplayName(act.hand)) + ")" : "");
+        return "Equip " + name + (ft::TakesHand(act.kind) ? " (" + Lower(ft::DisplayName(act.hand)) + ")" : "");
     }
 
     if (!TakesSpell(act.kind))
@@ -1398,10 +1414,7 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     if (act.form == 0)
         return base + "...";
 
-    const auto kind = act.kind == ft::ActionKind::UsePower    ? SpellOption::Kind::Power
-                      : act.kind == ft::ActionKind::Shout     ? SpellOption::Kind::Shout
-                      : act.kind == ft::ActionKind::UseScroll ? SpellOption::Kind::Scroll
-                                                              : SpellOption::Kind::Spell;
+    const auto kind = SpellKindOf(act.kind);
     for (const auto &option : view.spells)
     {
         if (option.form != act.form || option.kind != kind)
@@ -1728,10 +1741,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         const auto action = menu.action;
         if (!valid(action))
             continue;
-        const auto kind = action == ft::ActionKind::UsePower    ? SpellOption::Kind::Power
-                          : action == ft::ActionKind::Shout     ? SpellOption::Kind::Shout
-                          : action == ft::ActionKind::UseScroll ? SpellOption::Kind::Scroll
-                                                                : SpellOption::Kind::Spell;
+        const auto kind = SpellKindOf(action);
         std::vector<const SpellOption *> suited;
         for (const auto &option : view.spells)
         {

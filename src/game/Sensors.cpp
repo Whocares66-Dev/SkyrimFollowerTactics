@@ -179,6 +179,14 @@ float GameSetting(const char *name, float vanilla);
 
 } // namespace
 
+// Whom an actor is fighting, as the engine sees it, if they are still
+// alive: the dead are nobody's target.
+ft::ActorId LiveTargetOf(RE::Actor *actor)
+{
+    auto target = actor ? actor->GetActorRuntimeData().currentCombatTarget.get() : nullptr;
+    return target && !target->IsDead() ? target->GetFormID() : 0;
+}
+
 ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
 {
     auto *owner = actor->AsActorValueOwner();
@@ -1145,63 +1153,34 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     for (const auto kind : {ft::ActionKind::PowerAttack, ft::ActionKind::Bash, ft::ActionKind::PowerBash})
     {
         const BlowPlan plan = PlanBlow(actor, kind);
-        ft::Snapshot::Blow &blow = kind == ft::ActionKind::Bash        ? s.bash
-                                   : kind == ft::ActionKind::PowerBash ? s.powerBash
-                                                                       : s.powerAttack;
-        blow = {plan.Possible(), plan.stamina, plan.reach};
+        s.BlowFor(kind) = {plan.Possible(), plan.stamina, plan.reach};
     }
 
     s.traits = ReadTraits(actor);
-    if (auto *player = RE::PlayerCharacter::GetSingleton())
-    {
-        s.playerHealth = ReadStat(player, RE::ActorValue::kHealth);
-        s.playerMagicka = ReadStat(player, RE::ActorValue::kMagicka);
-        s.playerStamina = ReadStat(player, RE::ActorValue::kStamina);
-        s.playerTraits = ReadTraits(player);
-    }
 
     // Whom the follower is fighting, as the engine sees it: what "current
     // target" resolves to.
-    if (auto target = actor->GetActorRuntimeData().currentCombatTarget.get(); target && !target->IsDead())
-        s.currentTarget = target->GetFormID();
-    if (auto *player = RE::PlayerCharacter::GetSingleton())
-    {
-        if (auto target = player->GetActorRuntimeData().currentCombatTarget.get(); target && !target->IsDead())
-            s.playerTarget = target->GetFormID();
-    }
+    s.currentTarget = LiveTargetOf(actor);
 
     // The party and the enemies, by definition (docs/CONDITIONS.md 6). An
     // ally is the player and every other actor with the teammate flag; an
     // enemy is anyone the compass paints red for the player, in combat and
-    // hostile to them. One walk of the loaded actors, alive ones only.
+    // hostile to them. One walk of the loaded actors, alive ones only, each
+    // read the same way: the player is the first ally.
     auto *player = RE::PlayerCharacter::GetSingleton();
-    const auto enemyOf = [&](RE::Actor *other) {
-        ft::EnemyView enemy;
-        enemy.id = other->GetFormID();
-        enemy.health = ReadStat(other, RE::ActorValue::kHealth);
-        enemy.magicka = ReadStat(other, RE::ActorValue::kMagicka);
-        enemy.stamina = ReadStat(other, RE::ActorValue::kStamina);
-        enemy.distance = actor->GetPosition().GetDistance(other->GetPosition());
-        if (auto theirTarget = other->GetActorRuntimeData().currentCombatTarget.get(); theirTarget)
-            enemy.attacking = theirTarget->GetFormID();
-        enemy.traits = ReadTraits(other);
-        return enemy;
-    };
-    const auto allyOf = [&](RE::Actor *other) {
-        ft::AllyView ally;
-        ally.id = other->GetFormID();
-        ally.health = ReadStat(other, RE::ActorValue::kHealth);
-        ally.distance = actor->GetPosition().GetDistance(other->GetPosition());
-        ally.magicka = ReadStat(other, RE::ActorValue::kMagicka);
-        ally.stamina = ReadStat(other, RE::ActorValue::kStamina);
-        ally.traits = ReadTraits(other);
-        if (auto theirTarget = other->GetActorRuntimeData().currentCombatTarget.get();
-            theirTarget && !theirTarget->IsDead())
-            ally.target = theirTarget->GetFormID();
-        return ally;
+    const auto viewOf = [&](RE::Actor *other) {
+        ft::ActorView view;
+        view.id = other->GetFormID();
+        view.health = ReadStat(other, RE::ActorValue::kHealth);
+        view.magicka = ReadStat(other, RE::ActorValue::kMagicka);
+        view.stamina = ReadStat(other, RE::ActorValue::kStamina);
+        view.distance = actor->GetPosition().GetDistance(other->GetPosition());
+        view.target = LiveTargetOf(other);
+        view.traits = ReadTraits(other);
+        return view;
     };
     if (player && !player->IsDead())
-        s.allies.push_back(allyOf(player));
+        s.allies.push_back(viewOf(player));
     if (auto *lists = RE::ProcessLists::GetSingleton())
     {
         lists->ForEachHighActor([&](RE::Actor *otherPtr) {
@@ -1211,9 +1190,9 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
             if (&other == actor || &other == player || other.IsDead())
                 return RE::BSContainer::ForEachResult::kContinue;
             if (other.IsPlayerTeammate())
-                s.allies.push_back(allyOf(&other));
+                s.allies.push_back(viewOf(&other));
             else if (player && other.IsInCombat() && other.IsHostileToActor(player))
-                s.enemies.push_back(enemyOf(&other));
+                s.enemies.push_back(viewOf(&other));
             return RE::BSContainer::ForEachResult::kContinue;
         });
     }
@@ -1244,11 +1223,10 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
 
     // The follower's own target is an enemy whether or not the player is
     // in its fight yet.
-    if (s.currentTarget != 0 && !std::any_of(s.enemies.begin(), s.enemies.end(),
-                                             [&](const ft::EnemyView &e) { return e.id == s.currentTarget; }))
+    if (s.currentTarget != 0 && !s.Enemy(s.currentTarget))
     {
         if (auto *target = RE::TESForm::LookupByID<RE::Actor>(s.currentTarget))
-            s.enemies.push_back(enemyOf(target));
+            s.enemies.push_back(viewOf(target));
     }
 
     ScanPotions(actor, s.potions);

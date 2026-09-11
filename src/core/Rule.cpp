@@ -5,66 +5,43 @@ namespace ft
 
 double MinimumCooldown(ActionKind action) noexcept
 {
+    // The consumables, the poisons and the soul gems: the measured
+    // queue-to-effect latency is about two seconds, plus a margin so the
+    // next evaluation sees the result of this one. Deliberately not longer:
+    // one potion is often not enough, and a follower who is still badly
+    // hurt should drink again promptly. Food and ingredients take the
+    // potion's number until one of their own is measured; they go through
+    // the same equip call, as a poison and a gem go through the engine's
+    // own routines.
+    if (IsConsume(action) || IsApply(action) || IsCharge(action))
+        return 3.0;
+    // The casts. Measured: the AI picks the package up on the same tick,
+    // and a heal lands 0.9-2.2 s later. Two seconds lets the next
+    // evaluation see the result of this one without re-firing into a cast
+    // still in progress; the package pool's lease covers the case where it
+    // has not landed. A power or a shout rides a package of its own and
+    // takes the same number; the shout's own recovery time is the engine's.
+    if (IsCast(action))
+        return 2.0;
+    // A pin is cheap and its result is visible at once, so this only needs
+    // to be long enough not to thrash. Re-pinning what is already pinned is
+    // prevented by availability, not by this.
+    if (IsEquip(action))
+        return 1.0;
     switch (action)
     {
-    case ActionKind::DrinkStrongest:
-    case ActionKind::DrinkWeakest:
-    case ActionKind::DrinkPotion:
-    case ActionKind::EatStrongestFood:
-    case ActionKind::EatWeakestFood:
-    case ActionKind::EatFood:
-    case ActionKind::EatStrongestIngredient:
-    case ActionKind::EatWeakestIngredient:
-    case ActionKind::EatIngredient:
-    case ActionKind::ApplyStrongest:
-    case ActionKind::ApplyWeakest:
-    case ActionKind::ApplyPoison:
-    case ActionKind::ChargeStrongestSoulGem:
-    case ActionKind::ChargeWeakestSoulGem:
-    case ActionKind::ChargeSoulGem:
-        // The measured queue-to-effect latency is about two seconds, plus a
-        // margin so the next evaluation sees the result of this one.
-        // Deliberately not longer: one potion is often not enough, and a
-        // follower who is still badly hurt should drink again promptly.
-        // Food and ingredients take the potion's number until one of their
-        // own is measured; they go through the same equip call.
-        return 3.0;
-
-    case ActionKind::CastSpell:
-    case ActionKind::UsePower:
-    case ActionKind::Shout:
-    case ActionKind::UseScroll:
-        // Measured: the AI picks the package up on the same tick, and a heal
-        // lands 0.9-2.2 s later. Two seconds lets the next evaluation see the
-        // result of this one without re-firing into a cast still in progress;
-        // the package pool's lease covers the case where it has not landed.
-        // A power or a shout rides a package of its own and takes the same
-        // number; the shout's own recovery time is the engine's.
-        return 2.0;
-
-    case ActionKind::EquipWeapon:
-    case ActionKind::EquipSpell:
-    case ActionKind::EquipArrows:
-    case ActionKind::EquipArmor:
-        // A pin is cheap and its result is visible at once, so this only
-        // needs to be long enough not to thrash. Re-pinning what is already
-        // pinned is prevented by availability, not by this.
-        return 1.0;
-
     case ActionKind::PowerAttack:
     case ActionKind::PowerBash:
         // One swing takes about this long; the next firing waits for it.
         return 1.5;
     case ActionKind::Bash:
         return 1.0;
-
     case ActionKind::Attack:
         // Long enough that a follower is not flicked between two enemies on
         // consecutive ticks; the key is the action alone, not the target, so
         // one Target blocks every other for this long. Raise it if two
         // seconds still looks like dithering in play.
         return 2.0;
-
     default:
         return 0.0;
     }
@@ -73,6 +50,11 @@ double MinimumCooldown(ActionKind action) noexcept
 bool IsEquip(ActionKind action) noexcept
 {
     return KindOf(action) != Kind::Other;
+}
+
+bool TakesHand(ActionKind action) noexcept
+{
+    return action == ActionKind::EquipWeapon || action == ActionKind::EquipSpell;
 }
 
 bool IsConsume(ActionKind action) noexcept
@@ -282,83 +264,105 @@ void Reconcile(Rule &rule) noexcept
     }
 }
 
-PredicateKind AboveOf(PredicateKind predicate) noexcept
+Grid GridOf(PredicateKind predicate) noexcept
 {
+    using M = Measure;
+    using S = Side;
     switch (predicate)
     {
     case PredicateKind::HealthPctBelow:
-        return PredicateKind::HealthPctAbove;
+        return {M::Health, S::Below};
+    case PredicateKind::HealthPctAbove:
+        return {M::Health, S::Above};
+    case PredicateKind::HealthLowest:
+        return {M::Health, S::Lowest};
+    case PredicateKind::HealthHighest:
+        return {M::Health, S::Highest};
     case PredicateKind::StaminaPctBelow:
-        return PredicateKind::StaminaPctAbove;
+        return {M::Stamina, S::Below};
+    case PredicateKind::StaminaPctAbove:
+        return {M::Stamina, S::Above};
+    case PredicateKind::StaminaLowest:
+        return {M::Stamina, S::Lowest};
+    case PredicateKind::StaminaHighest:
+        return {M::Stamina, S::Highest};
     case PredicateKind::MagickaPctBelow:
-        return PredicateKind::MagickaPctAbove;
+        return {M::Magicka, S::Below};
+    case PredicateKind::MagickaPctAbove:
+        return {M::Magicka, S::Above};
+    case PredicateKind::MagickaLowest:
+        return {M::Magicka, S::Lowest};
+    case PredicateKind::MagickaHighest:
+        return {M::Magicka, S::Highest};
     case PredicateKind::ArmorPctBelow:
-        return PredicateKind::ArmorPctAbove;
+        return {M::Armor, S::Below};
+    case PredicateKind::ArmorPctAbove:
+        return {M::Armor, S::Above};
+    case PredicateKind::ArmorLowest:
+        return {M::Armor, S::Lowest};
+    case PredicateKind::ArmorHighest:
+        return {M::Armor, S::Highest};
     case PredicateKind::ResistancePctBelow:
-        return PredicateKind::ResistancePctAbove;
+        return {M::Resistance, S::Below};
+    case PredicateKind::ResistancePctAbove:
+        return {M::Resistance, S::Above};
+    case PredicateKind::ResistanceLowest:
+        return {M::Resistance, S::Lowest};
+    case PredicateKind::ResistanceHighest:
+        return {M::Resistance, S::Highest};
     default:
-        return predicate;
+        return {};
     }
+}
+
+PredicateKind PredicateAt(Measure measure, Side side) noexcept
+{
+    if (measure == Measure::None || side == Side::None)
+        return PredicateKind::Any;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(PredicateKind::COUNT); ++i)
+    {
+        const auto p = static_cast<PredicateKind>(i);
+        const Grid g = GridOf(p);
+        if (g.measure == measure && g.side == side)
+            return p;
+    }
+    return PredicateKind::Any;
+}
+
+PredicateKind AboveOf(PredicateKind predicate) noexcept
+{
+    const Grid g = GridOf(predicate);
+    return g.side == Side::Below ? PredicateAt(g.measure, Side::Above) : predicate;
+}
+
+PredicateKind BelowOf(PredicateKind predicate) noexcept
+{
+    const Grid g = GridOf(predicate);
+    return g.side == Side::Above ? PredicateAt(g.measure, Side::Below) : predicate;
 }
 
 bool IsAbove(PredicateKind predicate) noexcept
 {
-    switch (predicate)
-    {
-    case PredicateKind::HealthPctAbove:
-    case PredicateKind::StaminaPctAbove:
-    case PredicateKind::MagickaPctAbove:
-    case PredicateKind::ArmorPctAbove:
-    case PredicateKind::ResistancePctAbove:
-        return true;
-    default:
-        return false;
-    }
+    return GridOf(predicate).side == Side::Above;
 }
 
 Extremes ExtremesOf(PredicateKind predicate) noexcept
 {
-    switch (predicate)
-    {
-    case PredicateKind::HealthPctBelow:
-        return {PredicateKind::HealthLowest, PredicateKind::HealthHighest};
-    case PredicateKind::StaminaPctBelow:
-        return {PredicateKind::StaminaLowest, PredicateKind::StaminaHighest};
-    case PredicateKind::MagickaPctBelow:
-        return {PredicateKind::MagickaLowest, PredicateKind::MagickaHighest};
-    case PredicateKind::ArmorPctBelow:
-        return {PredicateKind::ArmorLowest, PredicateKind::ArmorHighest};
-    case PredicateKind::ResistancePctBelow:
-        return {PredicateKind::ResistanceLowest, PredicateKind::ResistanceHighest};
-    default:
+    const Grid g = GridOf(predicate);
+    if (g.side != Side::Below)
         return {predicate, predicate};
-    }
+    return {PredicateAt(g.measure, Side::Lowest), PredicateAt(g.measure, Side::Highest)};
 }
 
 bool IsExtreme(PredicateKind predicate) noexcept
 {
-    switch (predicate)
-    {
-    case PredicateKind::HealthLowest:
-    case PredicateKind::HealthHighest:
-    case PredicateKind::StaminaLowest:
-    case PredicateKind::StaminaHighest:
-    case PredicateKind::MagickaLowest:
-    case PredicateKind::MagickaHighest:
-    case PredicateKind::ArmorLowest:
-    case PredicateKind::ArmorHighest:
-    case PredicateKind::ResistanceLowest:
-    case PredicateKind::ResistanceHighest:
-        return true;
-    default:
-        return false;
-    }
+    const Side side = GridOf(predicate).side;
+    return side == Side::Lowest || side == Side::Highest;
 }
 
 bool IsResistance(PredicateKind predicate) noexcept
 {
-    return predicate == PredicateKind::ResistancePctBelow || predicate == PredicateKind::ResistancePctAbove ||
-           predicate == PredicateKind::ResistanceLowest || predicate == PredicateKind::ResistanceHighest;
+    return GridOf(predicate).measure == Measure::Resistance;
 }
 
 bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
@@ -370,15 +374,7 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     // An above predicate is answerable exactly where its below counterpart
     // is: the same number, the other side.
     if (IsAbove(predicate))
-    {
-        for (std::size_t i = 0; i < static_cast<std::size_t>(PredicateKind::COUNT); ++i)
-        {
-            const auto below = static_cast<PredicateKind>(i);
-            if (below != predicate && AboveOf(below) == predicate)
-                return IsPredicateValidFor(subject, below);
-        }
-        return false;
-    }
+        return IsPredicateValidFor(subject, BelowOf(predicate));
     // The corpses answer their own three questions and no other; nobody
     // else answers them.
     const bool corpseQuestion = predicate == PredicateKind::CorpseNone || predicate == PredicateKind::LevelHighest ||

@@ -319,24 +319,10 @@ std::string_view DisplayName(DamageKind v) noexcept
 }
 ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 {
-    switch (predicate)
-    {
-    case PredicateKind::HealthPctBelow:
-    case PredicateKind::MagickaPctBelow:
-    case PredicateKind::StaminaPctBelow:
-    case PredicateKind::ArmorPctBelow:
-    case PredicateKind::ResistancePctBelow:
-    case PredicateKind::HealthPctAbove:
-    case PredicateKind::MagickaPctAbove:
-    case PredicateKind::StaminaPctAbove:
-    case PredicateKind::ArmorPctAbove:
-    case PredicateKind::ResistancePctAbove:
-        return ArgumentKind::Percent;
-
-    default:
-        // Any, and every predicate that carries nothing.
-        return ArgumentKind::None;
-    }
+    // A threshold, on either side of the grid; the extremes and every
+    // predicate off the grid carry nothing.
+    const Side side = GridOf(predicate).side;
+    return side == Side::Below || side == Side::Above ? ArgumentKind::Percent : ArgumentKind::None;
 }
 
 std::string_view Describe(PredicateKind v) noexcept

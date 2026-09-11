@@ -8,9 +8,6 @@ namespace ft
 namespace
 {
 
-// Does one specific enemy satisfy the rule's predicate? Predicates that are not
-// answerable about an enemy return false; IsPredicateValidFor rejects those
-// pairs before we get here, so this is belt and braces.
 // A resistance as the rule's number reads it: the game's percent as a
 // fraction, so 50 is 0.5 and a weakness is negative.
 float ResistFraction(const ActorTraits &t, DamageKind kind)
@@ -18,32 +15,80 @@ float ResistFraction(const ActorTraits &t, DamageKind kind)
     return t.Resist(kind) / 100.0f;
 }
 
-// The armour and resistance predicates, the same for every subject.
-bool ArmourOrResistance(const ActorTraits &t, const Rule &r, bool *held)
+// What a condition reads of an actor: the three bars and the traits. The
+// follower's own are the snapshot's; anyone else's are their view's.
+struct Facts
+{
+    const Stat &health;
+    const Stat &magicka;
+    const Stat &stamina;
+    const ActorTraits &traits;
+};
+
+Facts FactsOf(const ActorView &v)
+{
+    return {v.health, v.magicka, v.stamina, v.traits};
+}
+
+Facts FactsOf(const Snapshot &s)
+{
+    return {s.health, s.magicka, s.stamina, s.traits};
+}
+
+// The predicate's measure, read off the actor: what the grid's threshold
+// is compared with, and what a group's extreme is chosen by. Nothing for
+// a predicate off the grid.
+std::optional<float> MeasureOf(const Rule &r, const Facts &f)
+{
+    switch (GridOf(r.predicate).measure)
+    {
+    case Measure::Health:
+        return f.health.Pct();
+    case Measure::Magicka:
+        return f.magicka.Pct();
+    case Measure::Stamina:
+        return f.stamina.Pct();
+    case Measure::Armor:
+        return f.traits.armor;
+    case Measure::Resistance:
+        return ResistFraction(f.traits, r.damageKind);
+    case Measure::None:
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+// The predicates asked alike of everyone -- the follower, the player, an
+// ally, an enemy: the grid, the hits, a status, the summons, and Any.
+// Nothing for a predicate that is one subject's own (the fight's edges,
+// the follower's weapons, an enemy's mark); the callers add those.
+std::optional<bool> Common(const Rule &r, const Facts &f)
 {
     switch (r.predicate)
     {
-    case PredicateKind::ArmorPctBelow:
-        *held = t.armor < r.conditionArg;
+    case PredicateKind::Any:
         return true;
-    case PredicateKind::ArmorPctAbove:
-        *held = t.armor > r.conditionArg;
-        return true;
-    case PredicateKind::ResistancePctBelow:
-        *held = ResistFraction(t, r.damageKind) < r.conditionArg;
-        return true;
-    case PredicateKind::ResistancePctAbove:
-        *held = ResistFraction(t, r.damageKind) > r.conditionArg;
-        return true;
+    case PredicateKind::HitType:
+        return f.traits.Using(r.damageKind);
+    case PredicateKind::HitBy:
+        return f.traits.HitBy(r.damageKind);
+    case PredicateKind::Status:
+        return f.traits.Has(r.statusKind);
     case PredicateKind::SummonNone:
-        *held = t.summons == 0;
-        return true;
+        return f.traits.summons == 0;
     case PredicateKind::SummonActive:
-        *held = t.summons > 0;
-        return true;
+        return f.traits.summons > 0;
     default:
-        return false;
+        break;
     }
+    // The group's extreme: everyone qualifies, the selection binds the
+    // one. A threshold: the measure against the rule's number, on the
+    // side the predicate names.
+    if (IsExtreme(r.predicate))
+        return true;
+    if (const auto measure = MeasureOf(r, f))
+        return IsAbove(r.predicate) ? *measure > r.conditionArg : *measure < r.conditionArg;
+    return std::nullopt;
 }
 
 // The party member a rule names: 0 is the player, the follower's own id is
@@ -56,88 +101,37 @@ ActorId MemberId(const Rule &r)
 
 ActorId MemberTarget(const Rule &r, const Snapshot &s)
 {
-    if (r.subjectForm == 0)
-        return s.playerTarget;
     if (r.subjectForm == s.self)
         return s.currentTarget;
-    for (const auto &a : s.allies)
-        if (a.id == r.subjectForm)
-            return a.target;
-    return 0;
+    const ActorView *member = s.Ally(MemberId(r));
+    return member ? member->target : 0;
 }
 
-bool EnemySatisfies(const EnemyView &e, const Rule &r, const Snapshot &s)
+// Does one member of a group -- an ally, the player among them, or an
+// enemy -- satisfy the rule's predicate? The common questions, and the
+// enemy's own two; IsPredicateValidFor keeps an ally from being asked
+// those.
+bool MemberSatisfies(const ActorView &v, const Rule &r, const Snapshot &s)
 {
     switch (r.predicate)
     {
     case PredicateKind::Attacking:
-        return e.attacking != 0 && e.attacking == MemberId(r);
+        return v.target != 0 && v.target == MemberId(r);
     case PredicateKind::AttackedBy: {
         const ActorId target = MemberTarget(r, s);
-        return target != 0 && e.id == target;
+        return target != 0 && v.id == target;
     }
-    case PredicateKind::Any:
-        return true;
-    case PredicateKind::HitType:
-        return e.traits.Using(r.damageKind);
-    case PredicateKind::HitBy:
-        return e.traits.HitBy(r.damageKind);
-    case PredicateKind::HealthPctBelow:
-        return e.health.Pct() < r.conditionArg;
-    case PredicateKind::HealthPctAbove:
-        return e.health.Pct() > r.conditionArg;
-    case PredicateKind::MagickaPctBelow:
-        return e.magicka.Pct() < r.conditionArg;
-    case PredicateKind::MagickaPctAbove:
-        return e.magicka.Pct() > r.conditionArg;
-    case PredicateKind::StaminaPctBelow:
-        return e.stamina.Pct() < r.conditionArg;
-    case PredicateKind::StaminaPctAbove:
-        return e.stamina.Pct() > r.conditionArg;
-    case PredicateKind::Status:
-        return e.traits.Has(r.statusKind);
-    default: {
-        // The group's extreme: everyone qualifies, the selection binds the
-        // one. Otherwise armour or a resistance, or nothing.
-        if (IsExtreme(r.predicate))
-            return true;
-        bool held = false;
-        return ArmourOrResistance(e.traits, r, &held) && held;
-    }
+    default:
+        return Common(r, FactsOf(v)).value_or(false);
     }
 }
 
-bool AllySatisfies(const AllyView &a, const Rule &r)
+// Does the predicate want the MOST of its measure -- an above, or a
+// highest -- rather than the least?
+bool WantsMost(PredicateKind p)
 {
-    switch (r.predicate)
-    {
-    case PredicateKind::Any:
-        return true;
-    case PredicateKind::HitType:
-        return a.traits.Using(r.damageKind);
-    case PredicateKind::HitBy:
-        return a.traits.HitBy(r.damageKind);
-    case PredicateKind::HealthPctBelow:
-        return a.health.Pct() < r.conditionArg;
-    case PredicateKind::HealthPctAbove:
-        return a.health.Pct() > r.conditionArg;
-    case PredicateKind::MagickaPctBelow:
-        return a.magicka.Pct() < r.conditionArg;
-    case PredicateKind::MagickaPctAbove:
-        return a.magicka.Pct() > r.conditionArg;
-    case PredicateKind::StaminaPctBelow:
-        return a.stamina.Pct() < r.conditionArg;
-    case PredicateKind::StaminaPctAbove:
-        return a.stamina.Pct() > r.conditionArg;
-    case PredicateKind::Status:
-        return a.traits.Has(r.statusKind);
-    default: {
-        if (IsExtreme(r.predicate))
-            return true;
-        bool held = false;
-        return ArmourOrResistance(a.traits, r, &held) && held;
-    }
-    }
+    const Side side = GridOf(p).side;
+    return side == Side::Above || side == Side::Highest || p == PredicateKind::LevelHighest;
 }
 
 // When several group members match, which one does the rule bind to? By
@@ -146,92 +140,24 @@ bool AllySatisfies(const AllyView &a, const Rule &r)
 // the most or least resistant to fire; anything else binds the nearest.
 // That rule matters -- it is what makes "enemy below 30% health" mean the
 // WEAKEST such enemy rather than an arbitrary one.
-std::optional<float> MeasureOf(const Rule &r, const Stat &health, const Stat &magicka, const Stat &stamina,
-                               const ActorTraits &traits)
+bool Better(const Rule &r, const ActorView &candidate, const ActorView &best)
 {
-    switch (r.predicate)
-    {
-    case PredicateKind::HealthPctBelow:
-    case PredicateKind::HealthPctAbove:
-    case PredicateKind::HealthLowest:
-    case PredicateKind::HealthHighest:
-        return health.Pct();
-    case PredicateKind::MagickaPctBelow:
-    case PredicateKind::MagickaPctAbove:
-    case PredicateKind::MagickaLowest:
-    case PredicateKind::MagickaHighest:
-        return magicka.Pct();
-    case PredicateKind::StaminaPctBelow:
-    case PredicateKind::StaminaPctAbove:
-    case PredicateKind::StaminaLowest:
-    case PredicateKind::StaminaHighest:
-        return stamina.Pct();
-    case PredicateKind::ArmorPctBelow:
-    case PredicateKind::ArmorPctAbove:
-    case PredicateKind::ArmorLowest:
-    case PredicateKind::ArmorHighest:
-        return traits.armor;
-    case PredicateKind::ResistancePctBelow:
-    case PredicateKind::ResistancePctAbove:
-    case PredicateKind::ResistanceLowest:
-    case PredicateKind::ResistanceHighest:
-        return ResistFraction(traits, r.damageKind);
-    default:
-        return std::nullopt;
-    }
+    const auto c = MeasureOf(r, FactsOf(candidate));
+    const auto b = MeasureOf(r, FactsOf(best));
+    if (!c || !b)
+        return candidate.distance < best.distance;
+    return WantsMost(r.predicate) ? *c > *b : *c < *b;
 }
 
-// Does the predicate want the MOST of its measure -- an above, or a
-// highest -- rather than the least?
-bool WantsMost(PredicateKind p)
+const ActorView *Select(const std::vector<ActorView> &group, const Rule &r, const Snapshot &s)
 {
-    switch (p)
+    const ActorView *best = nullptr;
+    for (const auto &v : group)
     {
-    case PredicateKind::HealthHighest:
-    case PredicateKind::MagickaHighest:
-    case PredicateKind::StaminaHighest:
-    case PredicateKind::ArmorHighest:
-    case PredicateKind::ResistanceHighest:
-    case PredicateKind::LevelHighest:
-        return true;
-    default:
-        return IsAbove(p);
-    }
-}
-
-// Is the candidate a better binding than the best so far?
-bool Better(const Rule &r, std::optional<float> candidate, float candidateDistance, std::optional<float> best,
-            float bestDistance)
-{
-    if (!candidate || !best)
-        return candidateDistance < bestDistance;
-    return WantsMost(r.predicate) ? *candidate > *best : *candidate < *best;
-}
-
-const EnemyView *SelectEnemy(const Snapshot &s, const Rule &r)
-{
-    const EnemyView *best = nullptr;
-    for (const auto &e : s.enemies)
-    {
-        if (!EnemySatisfies(e, r, s))
+        if (!MemberSatisfies(v, r, s))
             continue;
-        if (!best || Better(r, MeasureOf(r, e.health, e.magicka, e.stamina, e.traits), e.distance,
-                            MeasureOf(r, best->health, best->magicka, best->stamina, best->traits), best->distance))
-            best = &e;
-    }
-    return best;
-}
-
-const AllyView *SelectAlly(const Snapshot &s, const Rule &r)
-{
-    const AllyView *best = nullptr;
-    for (const auto &a : s.allies)
-    {
-        if (!AllySatisfies(a, r))
-            continue;
-        if (!best || Better(r, MeasureOf(r, a.health, a.magicka, a.stamina, a.traits), a.distance,
-                            MeasureOf(r, best->health, best->magicka, best->stamina, best->traits), best->distance))
-            best = &a;
+        if (!best || Better(r, v, *best))
+            best = &v;
     }
     return best;
 }
@@ -279,25 +205,15 @@ const CorpseView *SelectCorpse(const Snapshot &s, const Rule &r)
     return best;
 }
 
-const EnemyView *NearestEnemy(const Snapshot &s)
+const ActorView *NearestEnemy(const Snapshot &s)
 {
-    const EnemyView *best = nullptr;
+    const ActorView *best = nullptr;
     for (const auto &e : s.enemies)
     {
         if (!best || e.distance < best->distance)
             best = &e;
     }
     return best;
-}
-
-const EnemyView *FindEnemy(const Snapshot &s, ActorId id)
-{
-    for (const auto &e : s.enemies)
-    {
-        if (e.id == id)
-            return &e;
-    }
-    return nullptr;
 }
 
 constexpr Binding Match(ActorId id)
@@ -314,7 +230,7 @@ constexpr Binding NoMatch()
 // none for armour and ammunition, which have no hand.
 Hand HandsWanted(const Action &a)
 {
-    return (a.kind == ActionKind::EquipWeapon || a.kind == ActionKind::EquipSpell) ? a.hand : Hand::None;
+    return TakesHand(a.kind) ? a.hand : Hand::None;
 }
 
 // A "none" action: an equip naming nothing, which lets go of every pin of
@@ -329,46 +245,18 @@ bool AnyPinOf(const std::vector<Pin> &pins, Kind kind)
     return std::any_of(pins.begin(), pins.end(), [kind](const Pin &p) { return p.thing.kind == kind; });
 }
 
+// The follower themself: the common questions, the fight's edges, and
+// the weapons in their hands.
 Binding EvaluateSelf(const Snapshot &s, const Rule &r)
 {
     bool held = false;
     switch (r.predicate)
     {
-    case PredicateKind::Any:
-        held = true;
-        break;
-    case PredicateKind::HealthPctBelow:
-        held = s.health.Pct() < r.conditionArg;
-        break;
-    case PredicateKind::HealthPctAbove:
-        held = s.health.Pct() > r.conditionArg;
-        break;
-    case PredicateKind::MagickaPctBelow:
-        held = s.magicka.Pct() < r.conditionArg;
-        break;
-    case PredicateKind::MagickaPctAbove:
-        held = s.magicka.Pct() > r.conditionArg;
-        break;
-    case PredicateKind::StaminaPctBelow:
-        held = s.stamina.Pct() < r.conditionArg;
-        break;
-    case PredicateKind::StaminaPctAbove:
-        held = s.stamina.Pct() > r.conditionArg;
-        break;
     case PredicateKind::CombatBegins:
         held = s.combatBegan;
         break;
     case PredicateKind::CombatEnds:
         held = s.combatEnded;
-        break;
-    case PredicateKind::Status:
-        held = s.traits.Has(r.statusKind);
-        break;
-    case PredicateKind::HitType:
-        held = s.traits.Using(r.damageKind);
-        break;
-    case PredicateKind::HitBy:
-        held = s.traits.HitBy(r.damageKind);
         break;
     case PredicateKind::WeaponChargeNeeded:
         held = s.AnyWeaponChargeNeeded();
@@ -380,52 +268,18 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
         held = s.AnyWeaponPoisoned();
         break;
     default:
-        ArmourOrResistance(s.traits, r, &held);
+        held = Common(r, FactsOf(s)).value_or(false);
         break;
     }
     return held ? Match(s.self) : NoMatch();
 }
 
+// The player: the ally with their id, asked as any ally is. Not in the
+// snapshot -- dead, or not yet loaded -- and nothing about them holds.
 Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
 {
-    bool held = false;
-    switch (r.predicate)
-    {
-    case PredicateKind::Any:
-        held = true;
-        break;
-    case PredicateKind::HealthPctBelow:
-        held = s.playerHealth.Pct() < r.conditionArg;
-        break;
-    case PredicateKind::HealthPctAbove:
-        held = s.playerHealth.Pct() > r.conditionArg;
-        break;
-    case PredicateKind::MagickaPctBelow:
-        held = s.playerMagicka.Pct() < r.conditionArg;
-        break;
-    case PredicateKind::MagickaPctAbove:
-        held = s.playerMagicka.Pct() > r.conditionArg;
-        break;
-    case PredicateKind::StaminaPctBelow:
-        held = s.playerStamina.Pct() < r.conditionArg;
-        break;
-    case PredicateKind::StaminaPctAbove:
-        held = s.playerStamina.Pct() > r.conditionArg;
-        break;
-    case PredicateKind::Status:
-        held = s.playerTraits.Has(r.statusKind);
-        break;
-    case PredicateKind::HitType:
-        held = s.playerTraits.Using(r.damageKind);
-        break;
-    case PredicateKind::HitBy:
-        held = s.playerTraits.HitBy(r.damageKind);
-        break;
-    default:
-        ArmourOrResistance(s.playerTraits, r, &held);
-        break;
-    }
-    return held ? Match(kPlayerFormID) : NoMatch();
+    const ActorView *player = s.Ally(kPlayerFormID);
+    return player && MemberSatisfies(*player, r, s) ? Match(kPlayerFormID) : NoMatch();
 }
 
 } // namespace
@@ -449,22 +303,18 @@ Binding EvaluateCondition(const Rule &r, const Snapshot &s)
         return EvaluatePlayer(s, r);
 
     case SubjectKind::Ally: {
-        const auto *a = SelectAlly(s, r);
+        const auto *a = Select(s.allies, r, s);
         return a ? Match(a->id) : NoMatch();
     }
 
     case SubjectKind::Follower: {
         // The one named, if they are with us, and only if they are.
-        for (const auto &a : s.allies)
-        {
-            if (a.id == r.subjectForm)
-                return AllySatisfies(a, r) ? Match(a.id) : NoMatch();
-        }
-        return NoMatch();
+        const ActorView *a = s.Ally(r.subjectForm);
+        return a && MemberSatisfies(*a, r, s) ? Match(a->id) : NoMatch();
     }
 
     case SubjectKind::Enemy: {
-        const auto *e = SelectEnemy(s, r);
+        const auto *e = Select(s.enemies, r, s);
         return e ? Match(e->id) : NoMatch();
     }
 
@@ -538,14 +388,8 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
         ActorId attacker = 0;
         if (binding.id == s.self)
             attacker = s.traits.attacker;
-        else if (binding.id == kPlayerFormID)
-            attacker = s.playerTraits.attacker;
-        else
-        {
-            for (const auto &a : s.allies)
-                if (a.id == binding.id)
-                    attacker = a.traits.attacker;
-        }
+        else if (const ActorView *a = s.Ally(binding.id))
+            attacker = a->traits.attacker;
         return attacker ? yes(attacker) : no();
     }
     default:
@@ -574,92 +418,52 @@ namespace
 // how the two drift apart.
 bool HasResource(const Action &a, const Snapshot &s)
 {
-    switch (a.kind)
-    {
-    case ActionKind::DrinkStrongest:
-    case ActionKind::DrinkWeakest:
-    case ActionKind::EatStrongestFood:
-    case ActionKind::EatWeakestFood:
-    case ActionKind::EatStrongestIngredient:
-    case ActionKind::EatWeakestIngredient:
-    case ActionKind::ApplyStrongest:
-    case ActionKind::ApplyWeakest:
-    case ActionKind::ChargeStrongestSoulGem:
-    case ActionKind::ChargeWeakestSoulGem:
+    // A policy has what it chooses, or nothing.
+    if (IsPolicy(a.kind) || a.kind == ActionKind::ChargeStrongestSoulGem || a.kind == ActionKind::ChargeWeakestSoulGem)
         return ChosenForm(a, s) != 0;
-    case ActionKind::DrinkPotion:
-    case ActionKind::EatFood:
-    case ActionKind::EatIngredient:
-    case ActionKind::ApplyPoison:
-        return a.form != 0 && s.potions.CountOf(a.form, ConsumableOf(a.kind)) > 0;
-    case ActionKind::ChargeSoulGem:
+    if (a.kind == ActionKind::ChargeSoulGem)
         return a.form != 0 && std::any_of(s.soulGems.begin(), s.soulGems.end(),
                                           [&](const Snapshot::SoulGemView &g) { return g.form == a.form; });
-
-    case ActionKind::CastSpell:
-    case ActionKind::UsePower:
-    case ActionKind::Shout:
-    case ActionKind::UseScroll:
-        // Knowing the spell is the inventory equivalent. Whether she can AFFORD
-        // to cast it is a separate question and deliberately not asked here:
-        // magicka cost depends on perks and skill, which live on the game side.
-        // The action reports that back instead. A power and a shout are in
-        // the same known list and cost nothing; the menu keeps the three
-        // apart by the record's type.
+    if (NamesConsumable(a.kind))
+        return a.form != 0 && s.potions.CountOf(a.form, ConsumableOf(a.kind)) > 0;
+    // Knowing the spell is the inventory equivalent. Whether the follower
+    // can AFFORD to cast it is a separate question and deliberately not
+    // asked here: magicka cost depends on perks and skill, which live on
+    // the game side. The action reports that back instead. A power and a
+    // shout are in the same known list and cost nothing; the menu keeps the
+    // three apart by the record's type.
+    if (IsCast(a.kind))
         return a.form != 0 && s.spells.Knows(a.form);
-
-    case ActionKind::EquipWeapon:
-    case ActionKind::EquipSpell:
-    case ActionKind::EquipArrows:
-    case ActionKind::EquipArmor: {
-        // "None" needs nothing. A named thing must be hers, and of the kind
-        // the action says: a hand-edited profile could put a spell under
-        // equip-weapon, and that is a rule that can never work.
+    if (IsEquip(a.kind))
+    {
+        // "None" needs nothing. A named thing must be the follower's, and
+        // of the kind the action says: a hand-edited profile could put a
+        // spell under equip-weapon, and that is a rule that can never work.
         if (LetsGo(a))
             return true;
         const Holdable *thing = FindHoldable(s.loadout, a.form);
         return thing && thing->kind == KindOf(a.kind);
     }
-
-    default:
-        return true; // most actions cost nothing from inventory
-    }
+    return true; // Attack and the blows cost nothing from inventory
 }
 
 bool EffectAlreadyActive(const Action &a, const Snapshot &s)
 {
-    // Reported separately from "no potion" because the fix is different: the
-    // follower has plenty, she is simply still absorbing the last one.
-    switch (a.kind)
-    {
-    case ActionKind::DrinkStrongest:
-    case ActionKind::DrinkWeakest:
-    case ActionKind::EatStrongestFood:
-    case ActionKind::EatWeakestFood:
-    case ActionKind::EatStrongestIngredient:
-    case ActionKind::EatWeakestIngredient:
+    // Reported separately from "no potion" because the fix is different:
+    // the follower has plenty, and is simply still absorbing the last one.
+    // A named consumable could restore anything or nothing; only the
+    // per-form cooldown spaces it. A poison policy is answered by the
+    // hands (Availability), not by an effect.
+    if (IsPolicy(a.kind) && IsConsume(a.kind))
         return s.potions.IsRunning(a.effect);
-    case ActionKind::DrinkPotion:
-    case ActionKind::EatFood:
-    case ActionKind::EatIngredient:
-        // A named consumable could restore anything or nothing; only the
-        // per-form cooldown spaces it.
-        return false;
-
-    case ActionKind::CastSpell:
-    case ActionKind::UsePower:
-    case ActionKind::Shout:
-    case ActionKind::UseScroll:
-        // The sustained-buff case. Oakflesh runs sixty seconds and no cooldown
-        // worth picking is that long, so re-casting can only be stopped by
-        // seeing the effect still running. Embrace of Shadows runs three
-        // minutes, and a greater power is once a day besides.
+    // The sustained-buff case. Oakflesh runs sixty seconds and no cooldown
+    // worth picking is that long, so re-casting can only be stopped by
+    // seeing the effect still running. Embrace of Shadows runs three
+    // minutes, and a greater power is once a day besides.
+    if (IsCast(a.kind))
         return a.form != 0 && s.spells.IsActive(a.form);
-
-    case ActionKind::EquipWeapon:
-    case ActionKind::EquipSpell:
-    case ActionKind::EquipArrows:
-    case ActionKind::EquipArmor: {
+    if (IsEquip(a.kind))
+    {
         // Availability, the mechanism the note in Rule.h says every
         // state-setting action owes: without it a rule that pins what is
         // already pinned wins every evaluation and starves every rule below
@@ -672,17 +476,7 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s)
         const Pin *pin = FindPin(s.pins, a.form);
         return pin && Covers(pin->hands, HandsWanted(a));
     }
-
-    default:
-        return false;
-    }
-}
-
-// The blow an action strikes: the power attack for any kind but the two
-// bashes.
-const Snapshot::Blow &BlowFor(const Snapshot &snap, ActionKind kind)
-{
-    return kind == ActionKind::Bash ? snap.bash : kind == ActionKind::PowerBash ? snap.powerBash : snap.powerAttack;
+    return false;
 }
 
 // What goes on cooldown when this action fires. The action, its form and
@@ -808,7 +602,7 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         {
             if (!snap.inCombat)
                 return Verdict::NotInCombat;
-            if (target == 0 || !FindEnemy(snap, target))
+            if (target == 0 || !snap.Enemy(target))
                 return Verdict::NoTarget;
             if (target == snap.currentTarget)
                 return Verdict::EffectActive;
@@ -818,12 +612,12 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         // it costs, and within its reach.
         if (IsBlow(a.kind))
         {
-            const Snapshot::Blow &blow = BlowFor(snap, a.kind);
+            const Snapshot::Blow &blow = snap.BlowFor(a.kind);
             if (!snap.inCombat)
                 return Verdict::NotInCombat;
             if (!blow.possible)
                 return Verdict::NoMeleeWeapon;
-            const EnemyView *enemy = target != 0 ? FindEnemy(snap, target) : nullptr;
+            const ActorView *enemy = target != 0 ? snap.Enemy(target) : nullptr;
             if (!enemy)
                 return Verdict::NoTarget;
             if (snap.stamina.current < blow.stamina)

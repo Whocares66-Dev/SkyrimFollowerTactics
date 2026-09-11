@@ -7,12 +7,14 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "Build.h"
 #include "core/Evaluator.h"
 #include "core/Vocabulary.h"
 
 #include <string>
 
 using namespace ft;
+using ft::test::Player;
 
 namespace
 {
@@ -33,7 +35,6 @@ Snapshot Party()
     s.now = 100.0;
     s.inCombat = true;
     s.health = s.magicka = s.stamina = {100.0f, 100.0f};
-    s.playerHealth = s.playerMagicka = s.playerStamina = {100.0f, 100.0f};
     s.allies.push_back({kPlayerFormID, {100.0f, 100.0f}, 100.0f});
     s.allies.push_back({kOtherFollower, {100.0f, 100.0f}, 300.0f});
     for (auto &a : s.allies)
@@ -75,7 +76,7 @@ Stat &StatOf(Snapshot &s, SubjectKind subject, Which which)
     case SubjectKind::Self:
         return PickStat(which, s.health, s.magicka, s.stamina);
     case SubjectKind::Player:
-        return PickStat(which, s.playerHealth, s.playerMagicka, s.playerStamina);
+        return PickStat(which, Player(s).health, Player(s).magicka, Player(s).stamina);
     case SubjectKind::Enemy: {
         auto &e = s.enemies[1]; // the far one, so distance is not what binds
         return PickStat(which, e.health, e.magicka, e.stamina);
@@ -221,10 +222,10 @@ TEST_CASE("hit by and using are asked of every subject, from that actor's own tr
 {
     Snapshot s = Party();
     s.traits.hitBy = Bit(DamageKind::Fire);
-    s.playerTraits.hitBy = Bit(DamageKind::Frost);
+    Player(s).traits.hitBy = Bit(DamageKind::Frost);
     s.enemies[0].traits.hitBy = Bit(DamageKind::Melee);
     s.allies[1].traits.Wield(DamageKind::Ranged);
-    s.playerTraits.Wield(DamageKind::Shock);
+    Player(s).traits.Wield(DamageKind::Shock);
 
     SECTION("hit by, of the follower, the player and an enemy")
     {
@@ -269,7 +270,7 @@ TEST_CASE("armour and resistance are asked of an ally, and of the player", "[con
 {
     Snapshot s = Party();
     s.allies[1].traits.armor = 0.6f;
-    s.playerTraits.armor = 0.2f;
+    Player(s).traits.armor = 0.2f;
 
     Rule r = About(SubjectKind::Ally, PredicateKind::ArmorPctAbove);
     r.conditionArg = 0.5f;
@@ -388,7 +389,7 @@ TEST_CASE("the attacker of an enemy is not a target: the pair is unanswerable", 
     // being the nearest, from the player's own traits.
     rs.rules[0].subject = SubjectKind::Ally;
     REQUIRE(FirstVerdict(rs, s) == Verdict::NoTarget);
-    s.playerTraits.attacker = kEnemy;
+    Player(s).traits.attacker = kEnemy;
     Decision d;
     REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
     REQUIRE(d.targetId() == kEnemy);
@@ -445,4 +446,41 @@ TEST_CASE("every verdict has a word, plain and for each action", "[vocabulary]")
             REQUIRE(worded != "?");
         }
     }
+}
+
+TEST_CASE("the predicate grid: every cell names one predicate, and every grid predicate its cell", "[grid]")
+{
+    // The five measures by four sides are the whole of the numeric
+    // predicates; nothing else has a measure or a side, and the pairings
+    // the editor and the evaluator read (AboveOf, BelowOf, ExtremesOf) are
+    // the grid read back.
+    int onGrid = 0;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(PredicateKind::COUNT); ++i)
+    {
+        const auto p = static_cast<PredicateKind>(i);
+        const Grid g = GridOf(p);
+        if (g.measure == Measure::None)
+        {
+            REQUIRE(g.side == Side::None);
+            REQUIRE(AboveOf(p) == p);
+            REQUIRE(BelowOf(p) == p);
+            REQUIRE_FALSE(IsAbove(p));
+            REQUIRE_FALSE(IsExtreme(p));
+            continue;
+        }
+        ++onGrid;
+        REQUIRE(PredicateAt(g.measure, g.side) == p);
+        REQUIRE(IsAbove(p) == (g.side == Side::Above));
+        REQUIRE(IsExtreme(p) == (g.side == Side::Lowest || g.side == Side::Highest));
+        REQUIRE(IsResistance(p) == (g.measure == Measure::Resistance));
+        REQUIRE(BelowOf(AboveOf(p)) == (g.side == Side::Below ? p : BelowOf(p)));
+        REQUIRE((ArgumentFor(p) == ArgumentKind::Percent) == (g.side == Side::Below || g.side == Side::Above));
+    }
+    REQUIRE(onGrid == 20);
+    REQUIRE(AboveOf(PredicateKind::ArmorPctBelow) == PredicateKind::ArmorPctAbove);
+    REQUIRE(BelowOf(PredicateKind::ResistancePctAbove) == PredicateKind::ResistancePctBelow);
+    REQUIRE(ExtremesOf(PredicateKind::StaminaPctBelow).lowest == PredicateKind::StaminaLowest);
+    REQUIRE(ExtremesOf(PredicateKind::StaminaPctBelow).highest == PredicateKind::StaminaHighest);
+    REQUIRE(ExtremesOf(PredicateKind::Status).lowest == PredicateKind::Status);
+    REQUIRE(PredicateAt(Measure::None, Side::Below) == PredicateKind::Any);
 }

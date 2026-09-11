@@ -458,6 +458,8 @@ struct RuleSet
 // Is this one of the equip actions, and what kind of thing does it name?
 [[nodiscard]] bool IsEquip(ActionKind action) noexcept;
 [[nodiscard]] Kind KindOf(ActionKind action) noexcept;
+// The two equips that name a hand: a weapon's, a spell's.
+[[nodiscard]] bool TakesHand(ActionKind action) noexcept;
 
 // Not every predicate means anything about every subject. The Snapshot carries
 // no magicka for allies, and "distance" is meaningless for Self. Rather than
@@ -506,10 +508,46 @@ struct RuleSet
 // menus would not offer.
 void Reconcile(Rule &rule) noexcept;
 
+// The grid the numeric predicates make: five measures by four sides. A
+// measure is what is read off the actor -- a fraction of health, stamina
+// or magicka, the armour share, a resistance -- and a side is how it is
+// asked: below or above the rule's number, or the group's lowest or
+// highest. Every function beneath reads the grid, so widening it -- a
+// sixth measure -- is one row per predicate here and nothing else. A
+// predicate off the grid (Any, the edges, Status, the corpse questions)
+// has no measure and no side.
+enum class Measure : std::uint8_t
+{
+    None,
+    Health,
+    Stamina,
+    Magicka,
+    Armor,
+    Resistance
+};
+enum class Side : std::uint8_t
+{
+    None,
+    Below,
+    Above,
+    Lowest,
+    Highest
+};
+struct Grid
+{
+    Measure measure{Measure::None};
+    Side side{Side::None};
+};
+[[nodiscard]] Grid GridOf(PredicateKind predicate) noexcept;
+// The predicate at a cell of the grid, or Any for an empty one.
+[[nodiscard]] PredicateKind PredicateAt(Measure measure, Side side) noexcept;
+
 // The above-counterpart of a below predicate -- HealthPctAbove for
-// HealthPctBelow -- or the predicate itself for one with no counterpart.
-// The editor lists both under one heading, the below values first.
+// HealthPctBelow -- and back, or the predicate itself for one with no
+// counterpart. The editor lists both under one heading, the below values
+// first.
 [[nodiscard]] PredicateKind AboveOf(PredicateKind predicate) noexcept;
+[[nodiscard]] PredicateKind BelowOf(PredicateKind predicate) noexcept;
 [[nodiscard]] bool IsAbove(PredicateKind predicate) noexcept;
 
 // The group extremes a predicate's heading offers -- Lowest and Highest

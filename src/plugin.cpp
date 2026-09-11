@@ -39,7 +39,7 @@ ft::Snapshot BaseSnapshot()
     s.magicka = {100.0f, 100.0f};
     s.stamina = {100.0f, 100.0f};
     s.inCombat = true;
-    s.playerHealth = {100.0f, 100.0f};
+    s.allies.push_back({ft::kPlayerFormID, {100.0f, 100.0f}, 100.0f});
     s.potions.Add(0x3EADE, 5, ft::ConsumableKind::Potion, {"Restore Health", 50.0f, 0.0f});
     return s;
 }

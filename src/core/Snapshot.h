@@ -11,6 +11,7 @@
 
 #include "Kinds.h"
 #include "Loadout.h"
+#include "Rule.h"
 
 #include <algorithm>
 #include <array>
@@ -22,7 +23,7 @@
 namespace ft
 {
 
-using ActorId = std::uint32_t; // FormID, resolved via ResolveFormID on load
+using ActorId = std::uint32_t; // a FormID, as the game reports it
 
 // The player is always 0x14. Named here so the evaluator does not carry a
 // bare magic number, and so src/game/ and src/core/ agree on it.
@@ -111,29 +112,19 @@ struct ActorTraits
     }
 };
 
-struct EnemyView
+// Another actor as a condition reads them: an ally (the player among
+// them) or an enemy, the same view either way.
+struct ActorView
 {
     ActorId id{0};
     Stat health{};
     float distance{0.0f};
-    // Whom this enemy is going for: an id, the player's or a follower's,
-    // or 0 for nobody in particular.
-    ActorId attacking{0};
-    ActorTraits traits{};
-    Stat magicka{};
-    Stat stamina{};
-};
-
-struct AllyView
-{
-    ActorId id{0};
-    Stat health{};
-    float distance{0.0f};
-    ActorTraits traits{};
-    Stat magicka{};
-    Stat stamina{};
-    // Whom this ally is fighting, or 0.
+    // Whom they are fighting -- an enemy's mark, the player's or a
+    // follower's; an ally's target -- or 0 for nobody, the dead included.
     ActorId target{0};
+    ActorTraits traits{};
+    Stat magicka{};
+    Stat stamina{};
 };
 
 // A corpse nearby: dead, not already raised or summoned, loaded. Its level
@@ -257,9 +248,9 @@ struct PotionStock
 // only asks whether one is in a list. That keeps the "is this buff already up"
 // question answerable without core knowing what a spell is.
 //
-// This is the general form of what PotionStock's three bools do for restores.
-// A buff like Oakflesh runs for sixty seconds, far longer than any cooldown
-// worth choosing, so spacing cannot solve re-casting and only the effect list
+// The same question PotionStock::running answers for a dose. A buff like
+// Oakflesh runs for sixty seconds, far longer than any cooldown worth
+// choosing, so spacing cannot solve re-casting and only the effect list
 // can: ask whether it is still running.
 struct SpellState
 {
@@ -365,6 +356,16 @@ struct Snapshot
     Blow powerAttack;
     Blow bash;
     Blow powerBash;
+    // The blow an action strikes: the power attack for any kind but the
+    // two bashes.
+    [[nodiscard]] constexpr const Blow &BlowFor(ActionKind kind) const noexcept
+    {
+        return kind == ActionKind::Bash ? bash : kind == ActionKind::PowerBash ? powerBash : powerAttack;
+    }
+    [[nodiscard]] constexpr Blow &BlowFor(ActionKind kind) noexcept
+    {
+        return kind == ActionKind::Bash ? bash : kind == ActionKind::PowerBash ? powerBash : powerAttack;
+    }
     // The edges: this is the first evaluation of a fight, or the one
     // farewell evaluation after it. On the farewell pass only CombatEnds
     // holds -- see PredicateKind.
@@ -438,19 +439,30 @@ struct Snapshot
     float voiceRecovery{0.0f};
     ActorTraits traits{};
 
-    Stat playerHealth{};
-    Stat playerMagicka{};
-    Stat playerStamina{};
-    ActorTraits playerTraits{};
-
     ActorId currentTarget{0};
-    // Whom the player is fighting, for "target of the player": focus fire
-    // is the enemy the player has picked.
-    ActorId playerTarget{0};
 
-    std::vector<EnemyView> enemies;
-    std::vector<AllyView> allies;
+    // The party and the enemies, by definition (docs/CONDITIONS.md 6): the
+    // allies are the player and every other teammate, so the player is
+    // read as an ally with kPlayerFormID; the enemies are whoever the
+    // compass paints red. Alive ones only.
+    std::vector<ActorView> enemies;
+    std::vector<ActorView> allies;
     std::vector<CorpseView> corpses;
+
+    [[nodiscard]] const ActorView *Ally(ActorId id) const noexcept
+    {
+        for (const auto &a : allies)
+            if (a.id == id)
+                return &a;
+        return nullptr;
+    }
+    [[nodiscard]] const ActorView *Enemy(ActorId id) const noexcept
+    {
+        for (const auto &e : enemies)
+            if (e.id == id)
+                return &e;
+        return nullptr;
+    }
 
     PotionStock potions;
     SpellState spells;
