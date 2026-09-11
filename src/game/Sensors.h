@@ -383,9 +383,21 @@ struct Contribution
 };
 [[nodiscard]] std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value);
 
-// The hover text for a sheet row that reads an actor value: "Base: 3",
-// then each running effect by its source, then "Perks and race: +2" when
-// they add anything. `unit` follows each number ("%" or "").
+// A note's lines, one per source, smallest first -- the weaknesses, then
+// the boons, the largest last: "Silver Ruby Ring: +50%". `decimals` and
+// `unit` shape each number; `scale` turns an amount into the line's
+// number where the two differ (a regen multiplier's sources read as the
+// rate they add).
+[[nodiscard]] std::string SourceLines(std::vector<Contribution> sources, int decimals, const char *unit,
+                                      float scale = 1.0f);
+
+// The hover text for a value: "Base: 3", the sources, then "Perks and
+// race: +2" when they add anything -- what is permanent beyond the base,
+// which is perks and race, not effects (temporary) and not damage (below
+// the base).
+[[nodiscard]] std::string ValueNote(float base, std::vector<Contribution> sources, float perks, int decimals,
+                                    const char *unit, float scale = 1.0f);
+// The same read off an actor value, its running effects as the sources.
 [[nodiscard]] std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit);
 
 // The armour rating's sources: each piece worn with its rating, and the

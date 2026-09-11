@@ -478,8 +478,6 @@ std::string ArmorNote(RE::Actor *actor)
         const int pieces = static_cast<int>(std::lround(actor->GetArmorBaseFactorSum() / perPiece));
         parts.push_back({"Hidden bonus (x" + std::to_string(pieces) + ")", hidden});
     }
-    std::stable_sort(parts.begin(), parts.end(),
-                     [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
     // Whatever the engine's figure has that the pieces, the effects and
     // the bonus do not (a formula mod, a rounding): last, as a remainder,
     // so the list sums to the row and a gap is seen rather than hidden.
@@ -489,11 +487,9 @@ std::string ArmorNote(RE::Actor *actor)
     float sum = 0.0f;
     for (const Contribution &c : parts)
         sum += c.amount;
+    std::string note = SourceLines(std::move(parts), 0, "");
     if (const float gap = EffectiveArmor(actor) - sum; std::abs(gap) >= 1.0f)
-        parts.push_back({"Other", gap});
-    std::string note;
-    for (const Contribution &c : parts)
-        note += (note.empty() ? "" : "\n") + c.source + ": " + Fmt("%+.0f", c.amount);
+        note += (note.empty() ? "" : "\n") + std::string("Other: ") + Fmt("%+.0f", gap);
     return note;
 }
 
@@ -515,21 +511,37 @@ float EffectiveArmor(RE::Actor *actor)
     return actor ? actor->CalcArmorRating() + HiddenArmor(actor) : 0.0f;
 }
 
+std::string SourceLines(std::vector<Contribution> sources, int decimals, const char *unit, float scale)
+{
+    std::stable_sort(sources.begin(), sources.end(),
+                     [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
+    const std::string fmt = "%+." + std::to_string(decimals) + "f";
+    std::string lines;
+    for (const Contribution &c : sources)
+        lines += (lines.empty() ? "" : "\n") + c.source + ": " + Fmt(fmt.c_str(), c.amount * scale) + unit;
+    return lines;
+}
+
+std::string ValueNote(float base, std::vector<Contribution> sources, float perks, int decimals, const char *unit,
+                      float scale)
+{
+    const std::string fmt = "%." + std::to_string(decimals) + "f";
+    std::string note = "Base: " + Fmt(fmt.c_str(), base) + unit;
+    if (const std::string lines = SourceLines(std::move(sources), decimals, unit, scale); !lines.empty())
+        note += "\n" + lines;
+    // Half a unit or more: a rounding of the permanent value is not perks.
+    if (std::abs(perks * scale) >= 0.5f / std::pow(10.0f, static_cast<float>(decimals)))
+        note += "\nPerks and race: " + Fmt(("%+." + std::to_string(decimals) + "f").c_str(), perks * scale) + unit;
+    return note;
+}
+
 std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
 {
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     if (!owner)
         return {};
     const float base = owner->GetBaseActorValue(value);
-    const float permanent = owner->GetPermanentActorValue(value);
-    std::string note = "Base: " + Fmt("%.0f", base) + unit;
-    for (const Contribution &c : Contributions(actor, value))
-        note += "\n" + c.source + ": " + Fmt("%+.0f", c.amount) + unit;
-    // What is permanent beyond the base is perks and race: not effects,
-    // which are temporary, and not damage, which is below the base.
-    if (const float perks = permanent - base; std::abs(perks) > 0.05f)
-        note += "\nPerks and race: " + Fmt("%+.0f", perks) + unit;
-    return note;
+    return ValueNote(base, Contributions(actor, value), owner->GetPermanentActorValue(value) - base, 0, unit);
 }
 
 std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition); // below, with the perks
@@ -1945,13 +1957,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // text, as for the regen rates.
         {
             SheetRow row = Row("Speed", Fmt("%.0f%%", av(RE::ActorValue::kSpeedMult)));
-            row.note = "Base: " + Fmt("%.0f%%", owner->GetBaseActorValue(RE::ActorValue::kSpeedMult));
-            for (const Contribution &c : Contributions(actor, RE::ActorValue::kSpeedMult))
-                row.note += "\n" + c.source + ": " + Fmt("%+.0f%%", c.amount);
-            if (const float perks = owner->GetPermanentActorValue(RE::ActorValue::kSpeedMult) -
-                                    owner->GetBaseActorValue(RE::ActorValue::kSpeedMult);
-                std::abs(perks) > 0.5f)
-                row.note += "\nPerks and race: " + Fmt("%+.0f%%", perks);
+            row.note = ValueNote(actor, RE::ActorValue::kSpeedMult, "%");
             s.rows.push_back(std::move(row));
         }
         s.rows.push_back(Row("Noise", Fmt("%.0f%%", av(RE::ActorValue::kMovementNoiseMult) * 100.0)));
@@ -2031,12 +2037,9 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
             // The base rate, then what speeds it up and by whom.
             // Each as the rate it adds, not the speed it multiplies by:
             // "+3.00%" for robes that double a 3% base reads straight off.
-            row.note = "Base: " + Fmt("%.2f%%", base);
-            for (const Contribution &c : Contributions(actor, mult))
-                row.note += "\n" + c.source + ": " + Fmt("%+.2f%%", base * c.amount / 100.0f);
-            if (const float perks = owner->GetPermanentActorValue(mult) - owner->GetBaseActorValue(mult);
-                std::abs(perks) > 0.05f)
-                row.note += "\nPerks and race: " + Fmt("%+.2f%%", base * perks / 100.0f);
+            row.note =
+                ValueNote(base, Contributions(actor, mult),
+                          owner->GetPermanentActorValue(mult) - owner->GetBaseActorValue(mult), 2, "%", base / 100.0f);
             s.rows.push_back(std::move(row));
         };
         regen("Health Rate", RE::ActorValue::kHealRate, RE::ActorValue::kHealRateMult);
