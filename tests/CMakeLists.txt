@@ -21,6 +21,7 @@ add_executable(ft_tests
     test_blows.cpp
     test_conditions.cpp
     test_evaluator.cpp
+    test_hits.cpp
     test_loadout.cpp
     test_logevent.cpp
     test_profile.cpp

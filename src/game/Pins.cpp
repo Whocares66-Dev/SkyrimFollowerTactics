@@ -444,21 +444,22 @@ void TakeOffEverywhere(RE::Actor *actor, RE::TESForm *form, const Holdable &desc
 // book and the body agree: the engine's own displacement would leave the
 // old pin in the book, and the watchdog would put it straight back over the
 // new thing. Taking it off is the engine's, in the equip that follows.
-void ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Holdable &incoming, Hand hands,
-                            bool dualWield)
+// A request applied to the book (core's ApplyRequest), and what gave way
+// logged. Only the book changes here. What gave way is NOT taken off: the
+// engine's equip displaces it -- a weapon or spell from the hand it takes,
+// armour from shared body slots, arrows from the quiver, a power or shout
+// from the voice -- so the explicit unequip that used to follow did
+// nothing for items and spells and undid the new equip for the voice (its
+// spell unequip is a deferred Papyrus call, which landed a frame after the
+// new power was in and emptied the slot, 2026-09-05). The unequip was
+// needed while pinned items carried the engine's prevent-removal flag,
+// which refused the engine's own swap; the flag went on 2026-09-04, and
+// this went with it. The one unequip that stays is the move of a
+// follower's only weapon to the other hand, in Wear.
+void ApplyToBook(RE::Actor *actor, std::vector<Pin> &pins, PinRequest request, const Holdable &incoming, Hand hands,
+                 bool moving, bool dualWield)
 {
-    // Only the book changes here. What gave way is NOT taken off: the
-    // engine's equip displaces it -- a weapon or spell from the hand it
-    // takes, armour from shared body slots, arrows from the quiver, a power
-    // or shout from the voice -- so the explicit unequip that used to follow
-    // did nothing for items and spells and undid the new equip for the
-    // voice (its spell unequip is a deferred Papyrus call, which landed a
-    // frame after the new power was in and emptied the slot, 2026-09-05).
-    // The unequip was needed while pinned items carried the engine's
-    // prevent-removal flag, which refused the engine's own swap; the flag
-    // went on 2026-09-04, and this went with it. The one unequip that stays
-    // is the move of a follower's only weapon to the other hand, in Wear.
-    for (const Displaced &gone : MakeRoom(pins, incoming, hands, dualWield))
+    for (const Displaced &gone : ApplyRequest(pins, request, incoming, hands, moving, dualWield))
     {
         auto *held = RE::TESForm::LookupByID(gone.form);
         log::pins.event(log::Level::Info, "pin.released", actor,
@@ -1201,55 +1202,26 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     {
         std::scoped_lock lock(g_pinMutex);
         auto &pins = g_pins[id];
-        switch (request)
+        // What the request does to the book is core's (ApplyRequest); the
+        // bans are the game side's own list. The panel's word mid-fight is
+        // the new normal: the same change goes into the book remembered for
+        // after the fight, so the player's pin is what comes back, not the
+        // one it replaced. A rule's pin is for the fight only and leaves the
+        // remembered book alone.
+        const auto bookRequest = request == WearRequest::Pin     ? PinRequest::Pin
+                                 : request == WearRequest::Equip ? PinRequest::Equip
+                                                                 : PinRequest::Ban;
+        if (request != WearRequest::Unban)
         {
-        case WearRequest::Pin:
-            ReleaseConflictingPins(actor, pins, described, hands, dualWield);
-            AddPin(pins, described, hands, moving);
-            break;
-        case WearRequest::Equip:
-            // The AI's to change afterwards; but a pin in the way would put
-            // its thing straight back, so the click lets that pin go. Their
-            // only copy of a weapon changing hands takes its own pin with
-            // it: a pin on the hand it is leaving would stand over an empty
-            // hand (16:28, the steel dagger pinned left and held right).
-            ReleaseConflictingPins(actor, pins, described, hands, dualWield);
-            if (moving) [[maybe_unused]]
-                const Hand left = LetGo(pins, described, Without(Hand::Both, hands));
-            break;
-        case WearRequest::Ban: {
-            [[maybe_unused]] const Hand let = LetGo(pins, described, Hand::None);
+            ApplyToBook(actor, pins, bookRequest, described, hands, moving, dualWield);
+            if (fromPanel && g_fighting.contains(id)) [[maybe_unused]]
+                const auto mirrored =
+                    ApplyRequest(g_pinsBeforeFight[id], bookRequest, described, hands, moving, dualWield);
+        }
+        if (request == WearRequest::Ban)
             Ban(g_bans[id], described.form);
-            break;
-        }
-        case WearRequest::Unban:
+        else if (request == WearRequest::Unban)
             Unban(g_bans[id], described.form);
-            break;
-        }
-        // The panel's word mid-fight is the new normal: the same change goes
-        // into the book remembered for after the fight, so the player's pin
-        // is what comes back, not the one it replaced. A rule's pin is for
-        // the fight only and leaves the remembered book alone.
-        if (fromPanel && g_fighting.contains(id))
-        {
-            auto &before = g_pinsBeforeFight[id];
-            if (request == WearRequest::Pin)
-            {
-                [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands, dualWield);
-                AddPin(before, described, hands, moving);
-            }
-            else if (request == WearRequest::Equip)
-            {
-                [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands, dualWield);
-                if (moving) [[maybe_unused]]
-                    const Hand left = LetGo(before, described, Without(Hand::Both, hands));
-            }
-            else if (request != WearRequest::Unban)
-            {
-                [[maybe_unused]] const Hand gone =
-                    LetGo(before, described, request == WearRequest::Ban ? Hand::None : HandsFor(described.grip, hand));
-            }
-        }
         g_refusedLogged.clear();
     }
 
@@ -1540,38 +1512,15 @@ using EquipObjectFn = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::TESBoun
                                std::uint32_t, const RE::BGSEquipSlot *, bool, bool, bool, bool);
 EquipObjectFn g_equipObject = nullptr;
 
-// Would this equip, which is not ours, break a pin? The pinned thing itself
-// always passes, whichever hand the engine puts it in; the watchdog and
-// the score hook see to where it goes.
+// Would this equip, which is not ours, break a pin? The rule is core's
+// (RefusesEngineEquip, tested against the simulated engine); a ban refuses
+// outright, and a bound weapon passes: it is the conjuration in progress,
+// and refusing it ends the spell they are casting (Follower Equip Control
+// found this the hard way). The score hook keeps the AI from choosing the
+// spell for a pinned hand in the first place.
 bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlot *slot)
 {
     std::scoped_lock lock(g_pinMutex);
-    const auto it = g_pins.find(actor->GetFormID());
-    const bool anyPins = it != g_pins.end() && !it->second.empty();
-    if (const Pin *own = anyPins ? FindPin(it->second, object->GetFormID()) : nullptr)
-    {
-        // The pinned thing itself passes into its own hand, whichever the
-        // engine puts it in. Into the OTHER hand it is kept out exactly as
-        // the score hook keeps it from the AI (KeptFromAI): with one copy,
-        // the engine would show the same object in both hands; with a
-        // second, only while no other pin holds that hand.
-        const Hand into = SlotHand(slot);
-        if (into == Hand::None || own->hands == Hand::None)
-            return false;
-        if (!KeptFromAI(it->second, DescribeHoldable(actor, object), into))
-            return false;
-        const char *why =
-            CarriedCount(actor, object) < 2 ? "one copy cannot fill both hands" : "another pin holds that hand";
-        if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
-            log::pins.event(log::Level::Warn, "pin.refused", actor,
-                            {{"itemFormId", log::Id(object->GetFormID())},
-                             {"itemName", log::NameOf(object)},
-                             {"hand", into == Hand::Left ? "left" : "right"},
-                             {"reason", why}},
-                            "{} the engine would equip pinned {} into the {} hand as well -- refused ({})",
-                            Describe(actor), log::NameOf(object), into == Hand::Left ? "left" : "right", why);
-        return true;
-    }
     if (BannedHere(actor->GetFormID(), object->GetFormID()))
     {
         if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
@@ -1583,42 +1532,35 @@ bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlo
                             actor->IsInCombat() ? "in combat" : "out of combat");
         return true;
     }
-    if (!anyPins)
+    const auto it = g_pins.find(actor->GetFormID());
+    if (it == g_pins.end() || it->second.empty())
         return false;
-    const std::vector<Pin> &pins = it->second;
-
-    const Holdable thing = DescribeHoldable(actor, object);
-    if (thing.kind == Kind::Other)
-        return false; // a potion, a scroll: no hand, no slot
-    // A bound weapon is the conjuration in progress: refusing it ends the
-    // spell they are casting (Follower Equip Control found this the hard
-    // way). It passes; the score hook keeps the AI from choosing the spell
-    // for a pinned hand in the first place.
     if (const auto *weapon = object->As<RE::TESObjectWEAP>(); weapon && weapon->IsBound())
         return false;
-    const Hand hands = HandsFor(thing.grip, SlotHand(slot));
-    const bool dualWield = DualWieldAllowed(actor);
-    for (const Pin &pin : pins)
+    const Holdable thing = DescribeHoldable(actor, object);
+    const Hand into = SlotHand(slot);
+    const Refusal refusal = RefusesEngineEquip(it->second, thing, into, DualWieldAllowed(actor));
+    if (!refusal)
+        return false;
+    if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
     {
-        if (!Conflicts(thing, hands, pin.thing, pin.hands, dualWield))
-            continue;
-        if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
-        {
-            const auto *held = RE::TESForm::LookupByID(pin.thing.form);
-            log::pins.event(log::Level::Warn, "pin.refused", actor,
-                            {{"itemFormId", log::Id(pin.thing.form)},
-                             {"itemName", log::NameOf(held)},
-                             {"hand", HandTag(pin.hands)},
-                             {"refusedFormId", log::Id(object->GetFormID())},
-                             {"refusedName", log::NameOf(object)},
-                             {"inCombat", actor->IsInCombat()}},
-                            "{} the engine would equip {}{} over pinned {}{} -- refused ({})", Describe(actor),
-                            log::NameOf(object), HandTag(hands), log::NameOf(held), HandTag(pin.hands),
-                            actor->IsInCombat() ? "in combat" : "out of combat");
-        }
-        return true;
+        const auto *held = RE::TESForm::LookupByID(refusal.pin->thing.form);
+        const char *why = refusal.why == Refusal::Why::OneCopy    ? "one copy cannot fill both hands"
+                          : refusal.why == Refusal::Why::OtherPin ? "another pin holds that hand"
+                                                                  : "a pin holds the hand or slot";
+        log::pins.event(log::Level::Warn, "pin.refused", actor,
+                        {{"itemFormId", log::Id(refusal.pin->thing.form)},
+                         {"itemName", log::NameOf(held)},
+                         {"hand", HandTag(refusal.pin->hands)},
+                         {"refusedFormId", log::Id(object->GetFormID())},
+                         {"refusedName", log::NameOf(object)},
+                         {"reason", why},
+                         {"inCombat", actor->IsInCombat()}},
+                        "{} the engine would equip {}{} over pinned {}{} -- refused: {} ({})", Describe(actor),
+                        log::NameOf(object), HandTag(HandsFor(thing.grip, into)), log::NameOf(held),
+                        HandTag(refusal.pin->hands), why, actor->IsInCombat() ? "in combat" : "out of combat");
     }
-    return false;
+    return true;
 }
 
 void EquipObjectHook(RE::ActorEquipManager *self, RE::Actor *actor, RE::TESBoundObject *object,

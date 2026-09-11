@@ -7,6 +7,7 @@
 // the snapshot asks it "attacked by fire in the last few seconds?" -- the
 // Attacked by condition (docs/CONDITIONS.md 5).
 
+#include "core/HitTable.h"
 #include "core/Kinds.h"
 #include "core/Snapshot.h"
 
@@ -19,12 +20,8 @@ namespace ft::game
 void WatchHits();
 
 // What has hit this actor within the window, as a bit per DamageKind, and
-// who did it last. Any thread; the table is locked.
-struct Attacked
-{
-    std::uint8_t kinds{0};
-    ft::ActorId attacker{0};
-};
+// who did it last (core/HitTable.h). Any thread; the table is locked.
+using ft::Attacked;
 [[nodiscard]] Attacked AttackedLately(ft::ActorId target);
 
 // The actor value that resists a kind of damage -- ResistFire for Fire,

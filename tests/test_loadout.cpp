@@ -571,15 +571,12 @@ struct World
             hands.right = thing.form;
     }
 
-    // 2. The engine's equip, through the detour: refused against a pin.
+    // 2. The engine's equip, through the detour: refused against a pin,
+    //    by the rule the detour asks.
     bool EngineEquip(const Holdable &thing, Hand into)
     {
-        if (!FindPin(pins, thing.form))
-        {
-            for (const Pin &pin : pins)
-                if (Conflicts(thing, into, pin.thing, pin.hands))
-                    return false;
-        }
+        if (RefusesEngineEquip(pins, thing, into, true))
+            return false;
         OurEquip(thing, into);
         return true;
     }
@@ -698,8 +695,10 @@ TEST_CASE("a dagger in each hand survives a Lightning Bolt cast, and comes back 
     CHECK_FALSE(w.EngineEquip(Thing(kIronSword, Grip::Either), Hand::Right));
     CHECK_FALSE(w.EngineEquip(Thing(kHuntingBow, Grip::Both), Hand::Both));
     CHECK(w.hands.right == kIronDagger);
-    // The pinned thing itself always passes, whichever hand.
+    // The pinned thing itself passes into its own hand; into the other,
+    // with one copy, the engine would show it in both, so that is refused.
     CHECK(w.EngineEquip(iron, Hand::Right));
+    CHECK_FALSE(w.EngineEquip(iron, Hand::Left));
 
     // Out of the fight, the same rule holds: a dagger knocked out by
     // anything comes straight back.
@@ -765,4 +764,62 @@ TEST_CASE("a ban is a set of forms, once each", "[loadout]")
     REQUIRE(Unban(bans, 0x13989));
     REQUIRE_FALSE(Unban(bans, 0x13989));
     REQUIRE(bans.empty());
+}
+
+TEST_CASE("the engine's equip is refused by one rule, with the reason", "[pins]")
+{
+    // A dagger pinned right, a spell pinned left.
+    Holdable dagger = Thing(kIronDagger, Grip::Either);
+    const Holdable flames = Thing(kFlames, Grip::Either);
+    const std::vector<Pin> pins{{dagger, Hand::Right}, {flames, Hand::Left}};
+
+    // Its own hand passes; the other is refused for the one copy, and with
+    // a second copy for the pin that holds that hand.
+    CHECK_FALSE(RefusesEngineEquip(pins, dagger, Hand::Right, true));
+    CHECK(RefusesEngineEquip(pins, dagger, Hand::Left, true).why == Refusal::Why::OneCopy);
+    dagger.count = 2;
+    const Refusal other = RefusesEngineEquip(pins, dagger, Hand::Left, true);
+    CHECK(other.why == Refusal::Why::OtherPin);
+    CHECK(other.pin->thing.form == kIronDagger);
+    // No hand named for a pinned thing: the engine's choice, not refused.
+    CHECK_FALSE(RefusesEngineEquip(pins, dagger, Hand::None, true));
+
+    // Another thing into a pinned hand: refused, and the pin in the way
+    // named. Into a free place, or with no hand or slot at all, not.
+    const Refusal sword = RefusesEngineEquip(pins, Thing(kIronSword, Grip::Either), Hand::Right, true);
+    CHECK(sword.why == Refusal::Why::Conflict);
+    CHECK(sword.pin->thing.form == kIronDagger);
+    CHECK(RefusesEngineEquip(pins, Thing(kHuntingBow, Grip::Both), Hand::Both, true));
+    Holdable potion;
+    potion.form = 0x3EADE;
+    CHECK_FALSE(RefusesEngineEquip(pins, potion, Hand::None, true));
+    CHECK_FALSE(RefusesEngineEquip({}, dagger, Hand::Left, true));
+}
+
+TEST_CASE("a request from the panel does the same to either book", "[pins]")
+{
+    const Holdable dagger = Thing(kIronDagger, Grip::Either);
+    const Holdable sword = Thing(kIronSword, Grip::Either);
+    std::vector<Pin> book{{dagger, Hand::Right}};
+
+    // A pin makes room: the dagger's pin gives way to the sword's.
+    const auto displaced = ApplyRequest(book, PinRequest::Pin, sword, Hand::Right, false, true);
+    REQUIRE(displaced.size() == 1);
+    CHECK(displaced[0].form == kIronDagger);
+    REQUIRE(book.size() == 1);
+    CHECK(book[0].thing.form == kIronSword);
+
+    // An equip makes room too, and pins nothing; the only copy moving
+    // across leaves the hand it came from.
+    book = {{dagger, Hand::Right}};
+    CHECK(ApplyRequest(book, PinRequest::Equip, sword, Hand::Right, false, true).size() == 1);
+    CHECK(book.empty());
+    book = {{dagger, Hand::Left}};
+    CHECK(ApplyRequest(book, PinRequest::Equip, dagger, Hand::Right, true, true).empty());
+    CHECK(book.empty());
+
+    // A ban lets the whole pin go.
+    book = {{dagger, Hand::Both}};
+    CHECK(ApplyRequest(book, PinRequest::Ban, dagger, Hand::None, false, true).empty());
+    CHECK(book.empty());
 }

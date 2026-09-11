@@ -203,6 +203,52 @@ bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) 
     return Overlap(slot, pinned);
 }
 
+Refusal RefusesEngineEquip(const std::vector<Pin> &pins, const Holdable &thing, Hand into, bool dualWield) noexcept
+{
+    if (pins.empty())
+        return {};
+    if (const Pin *own = FindPin(pins, thing.form))
+    {
+        if (into == Hand::None || own->hands == Hand::None || !KeptFromAI(pins, thing, into))
+            return {};
+        return {thing.count < 2 ? Refusal::Why::OneCopy : Refusal::Why::OtherPin, own};
+    }
+    if (thing.grip == Grip::None && thing.slots == 0 && !thing.IsAmmo() && !thing.IsVoice())
+        return {}; // a potion, a scroll: no hand, no slot, nothing a pin holds
+    const Hand hands = HandsFor(thing.grip, into);
+    for (const Pin &pin : pins)
+        if (Conflicts(thing, hands, pin.thing, pin.hands, dualWield))
+            return {Refusal::Why::Conflict, &pin};
+    return {};
+}
+
+std::vector<Displaced> ApplyRequest(std::vector<Pin> &pins, PinRequest request, const Holdable &thing, Hand hands,
+                                    bool moving, bool dualWield)
+{
+    switch (request)
+    {
+    case PinRequest::Pin: {
+        std::vector<Displaced> displaced = MakeRoom(pins, thing, hands, dualWield);
+        AddPin(pins, thing, hands, moving);
+        return displaced;
+    }
+    case PinRequest::Equip: {
+        // The AI's to change afterwards; but a pin in the way would put its
+        // thing straight back, so the request lets that pin go. The only
+        // copy of a weapon changing hands takes its own pin with it: a pin
+        // on the hand it is leaving would stand over an empty hand.
+        std::vector<Displaced> displaced = MakeRoom(pins, thing, hands, dualWield);
+        if (moving) [[maybe_unused]]
+            const Hand left = LetGo(pins, thing, Without(Hand::Both, hands));
+        return displaced;
+    }
+    case PinRequest::Ban:
+        [[maybe_unused]] const Hand let = LetGo(pins, thing, Hand::None);
+        return {};
+    }
+    return {};
+}
+
 // A pin with no hand holding the place a thing would take: a body slot
 // they share, the quiver, or the voice.
 bool HoldsPlaceOf(const Pin &pin, const Holdable &thing) noexcept

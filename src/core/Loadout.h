@@ -238,6 +238,48 @@ void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool movi
 // that carries no hand falls back to the coarse rule.
 [[nodiscard]] bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) noexcept;
 
+// Would the engine's own equip of `thing` into `into` -- the slot's hand,
+// None for a thing with none -- break a pin? What the equip detour asks
+// (game/Pins.cpp), and what the test's engine does. The pinned thing
+// itself passes into its own hand, and into another as the AI is kept
+// from it (KeptFromAI): with one copy the engine would show it in both
+// hands, and a pin may hold that hand. Anything else is refused where it
+// conflicts with a pin; a thing with no hand and no slot never does. The
+// answer says why, for the log, and which pin where one is in the way.
+struct Refusal
+{
+    enum class Why : std::uint8_t
+    {
+        None,
+        OneCopy,  // its own pin, and no second copy for the other hand
+        OtherPin, // its own pin, and another pin holds the hand asked
+        Conflict  // another pin's hand or slot
+    };
+    Why why{Why::None};
+    const Pin *pin{nullptr};
+
+    [[nodiscard]] explicit operator bool() const noexcept
+    {
+        return why != Why::None;
+    }
+};
+[[nodiscard]] Refusal RefusesEngineEquip(const std::vector<Pin> &pins, const Holdable &thing, Hand into,
+                                         bool dualWield) noexcept;
+
+// What a request from the panel does to a book of pins, the same on the
+// book in use and on the one remembered for after the fight. Pin makes
+// room and adds; Equip makes room, and a lone weapon moving hands
+// (`moving`) leaves the hand it came from; Ban lets the whole pin go.
+// Returns what gave way to make room, for the log.
+enum class PinRequest : std::uint8_t
+{
+    Pin,
+    Equip,
+    Ban
+};
+[[nodiscard]] std::vector<Displaced> ApplyRequest(std::vector<Pin> &pins, PinRequest request, const Holdable &thing,
+                                                  Hand hands, bool moving, bool dualWield);
+
 // Is a thing entirely unavailable to the AI: every hand it could take is
 // spoken for? What the panel greys out. Armour is not on the AI's list at
 // all, but a pinned piece holds its body slots against the engine's own

@@ -3,9 +3,7 @@
 #include "game/Log.h"
 #include "game/Util.h"
 
-#include <array>
 #include <mutex>
-#include <unordered_map>
 
 namespace ft::game
 {
@@ -19,23 +17,16 @@ namespace
 // the world still.
 constexpr double kWindow = 3.0;
 
-struct Entry
-{
-    double when{-1.0}; // -1: never hit with this kind
-    ft::ActorId attacker{0};
-};
-
-// Per target, per kind. Written by the sinks on whatever thread the engine
-// sends them from, read by the tick: locked.
+// Written by the sinks on whatever thread the engine sends them from, read
+// by the tick: locked.
 std::mutex g_mutex;
-std::unordered_map<ft::ActorId, std::array<Entry, static_cast<std::size_t>(DamageKind::COUNT)>> g_hits;
+ft::HitTable g_hits;
 
 void Note(ft::ActorId target, DamageKind kind, ft::ActorId attacker)
 {
+    const double now = TacticsSeconds();
     std::scoped_lock lock(g_mutex);
-    auto &entry = g_hits[target][static_cast<std::size_t>(kind)];
-    entry.when = TacticsSeconds();
-    entry.attacker = attacker;
+    g_hits.Note(target, kind, attacker, now);
 }
 
 ft::ActorId IdOf(const RE::NiPointer<RE::TESObjectREFR> &ref)
@@ -152,26 +143,9 @@ void WatchHits()
 
 Attacked AttackedLately(ft::ActorId target)
 {
-    Attacked out;
-    std::scoped_lock lock(g_mutex);
-    const auto it = g_hits.find(target);
-    if (it == g_hits.end())
-        return out;
     const double now = TacticsSeconds();
-    double latest = -1.0;
-    for (std::size_t k = 0; k < it->second.size(); ++k)
-    {
-        const Entry &entry = it->second[k];
-        if (entry.when < 0.0 || now - entry.when > kWindow)
-            continue;
-        out.kinds |= Bit(static_cast<DamageKind>(k));
-        if (entry.when > latest)
-        {
-            latest = entry.when;
-            out.attacker = entry.attacker;
-        }
-    }
-    return out;
+    std::scoped_lock lock(g_mutex);
+    return g_hits.Lately(target, now, kWindow);
 }
 
 } // namespace ft::game

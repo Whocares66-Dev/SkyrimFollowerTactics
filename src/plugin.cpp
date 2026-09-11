@@ -1,11 +1,8 @@
 // SKSE entry point: logging, the co-save, the messages, and at data load
-// the packages, the tick, the panel and the hooks (src/game/).
-//
-// The self-check below evaluates the rule engine against fabricated
-// snapshots inside the game, to prove the engine behaves under the plugin's
-// compiler flags exactly as it does under Catch2. It touches no follower.
+// the packages, the tick, the panel and the hooks (src/game/). The rule
+// engine is tested under Catch2 (tests/), and the plugin links the same
+// library the tests do, so nothing is re-proved here.
 
-#include "core/Evaluator.h"
 #include "game/Hits.h"
 #include "game/Log.h"
 #include "game/Packages.h"
@@ -14,173 +11,11 @@
 #include "game/Tactics.h"
 #include "game/UI.h"
 
-#include <string>
-#include <vector>
-
 namespace
 {
 
-struct Check
-{
-    const char *name;
-    bool passed;
-    std::string detail;
-};
-
-// A follower at full health with potions in the bag. Scenarios below damage it
-// or add actors as needed. Mirrors Healthy() in tests/test_evaluator.cpp on
-// purpose -- the whole point is that both sides agree.
-ft::Snapshot BaseSnapshot()
-{
-    ft::Snapshot s;
-    s.self = 0xA2C94; // Lydia, for familiarity in the log
-    s.now = 100.0;
-    s.health = {100.0f, 100.0f};
-    s.magicka = {100.0f, 100.0f};
-    s.stamina = {100.0f, 100.0f};
-    s.inCombat = true;
-    s.allies.push_back({ft::kPlayerFormID, {100.0f, 100.0f}, 100.0f});
-    s.potions.Add(0x3EADE, 5, ft::ConsumableKind::Potion, {"Restore Health", 50.0f, 0.0f});
-    return s;
-}
-
-ft::Rule HealBelow(float pct)
-{
-    ft::Rule r;
-    r.subject = ft::SubjectKind::Self;
-    r.predicate = ft::PredicateKind::HealthPctBelow;
-    r.conditionArg = pct;
-    r.actionTarget = ft::ActionTargetKind::Self;
-    r.FirstAction().kind = ft::ActionKind::DrinkStrongest;
-    r.FirstAction().effect = "Restore Health";
-    r.label = "heal";
-    return r;
-}
-
-std::vector<Check> RunSelfCheck()
-{
-    std::vector<Check> checks;
-
-    // 1. The marquee rule fires when it should, and binds to the follower.
-    {
-        ft::RuleSet rs;
-        rs.rules.push_back(HealBelow(0.5f));
-        auto s = BaseSnapshot();
-        s.health = {40.0f, 100.0f};
-
-        ft::EvalContext ctx;
-        const auto d = ft::Evaluate(rs, s, ctx);
-
-        checks.push_back({"health 40% < 50% -> drink potion",
-                          d.Fired() && d.action() == ft::ActionKind::DrinkStrongest && d.targetId() == s.self,
-                          fmt::format("fired={} target={:08X}", d.Fired(), d.targetId())});
-    }
-
-    // 2. ...and stays quiet when it should not. An empty result must be as
-    //    reliable as a firing one, or the mod is worse than vanilla.
-    {
-        ft::RuleSet rs;
-        rs.rules.push_back(HealBelow(0.5f));
-
-        ft::EvalContext ctx;
-        ft::Trace trace;
-        const auto d = ft::Evaluate(rs, BaseSnapshot(), ctx, &trace);
-
-        checks.push_back({"health 100% -> no rule fires", !d.Fired() && trace.at(0) == ft::Verdict::ConditionFalse,
-                          fmt::format("verdict={}", ft::ToString(trace.at(0)))});
-    }
-
-    // 3. Group binding: two enemies qualify, and a health predicate must bind
-    //    the weakest rather than the nearest.
-    {
-        auto s = BaseSnapshot();
-        s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f});
-        s.enemies.push_back({0x102, {10.0f, 100.0f}, 900.0f});
-
-        ft::RuleSet rs;
-        ft::Rule r;
-        r.subject = ft::SubjectKind::Enemy;
-        r.predicate = ft::PredicateKind::HealthPctBelow;
-        r.conditionArg = 0.6f;
-        r.actionTarget = ft::ActionTargetKind::Enemy;
-        r.FirstAction().kind = ft::ActionKind::Attack;
-        rs.rules.push_back(r);
-
-        ft::EvalContext ctx;
-        const auto d = ft::Evaluate(rs, s, ctx);
-
-        checks.push_back({"enemy < 60% health -> binds the weakest (0x102, not 0x101)",
-                          d.Fired() && d.targetId() == 0x102, fmt::format("target={:08X}", d.targetId())});
-    }
-
-    // 4. The action is aimed where the rule says, within what makes sense:
-    //    a potion is only ever drunk by oneself, so one "on the player" is
-    //    unfireable rather than fired at the wrong actor.
-    {
-        ft::RuleSet rs;
-        auto r = HealBelow(0.5f);
-        r.actionTarget = ft::ActionTargetKind::Player;
-        rs.rules.push_back(r);
-
-        auto s = BaseSnapshot();
-        s.health = {40.0f, 100.0f};
-
-        ft::EvalContext ctx;
-        ft::Trace trace;
-        const auto d = ft::Evaluate(rs, s, ctx, &trace);
-
-        checks.push_back({"a potion aimed at the player -> unsupported, not drunk",
-                          !d.Fired() && trace.at(0) == ft::Verdict::Unsupported,
-                          fmt::format("fired={} verdict={}", d.Fired(), ft::ToString(trace.at(0)))});
-    }
-
-    // 5. An unanswerable subject/predicate pair is reported as broken authoring,
-    //    not as a condition that happens to be false.
-    {
-        ft::RuleSet rs;
-        ft::Rule r;
-        r.subject = ft::SubjectKind::Self;
-        r.predicate = ft::PredicateKind::Attacking; // nonsense: oneself, going for a party member
-        r.subjectForm = 0;
-        r.FirstAction().kind = ft::ActionKind::DrinkStrongest;
-        r.FirstAction().effect = "Restore Health";
-        rs.rules.push_back(r);
-
-        ft::EvalContext ctx;
-        ft::Trace trace;
-        const auto d = ft::Evaluate(rs, BaseSnapshot(), ctx, &trace);
-
-        checks.push_back({"Self + Attacking -> invalid condition",
-                          !d.Fired() && trace.at(0) == ft::Verdict::InvalidCondition,
-                          fmt::format("verdict={}", ft::ToString(trace.at(0)))});
-    }
-
-    return checks;
-}
-
 void OnDataLoaded()
 {
-    const auto checks = RunSelfCheck();
-
-    std::size_t passed = 0;
-    ft::log::plugin.debug("core self-check: {} scenarios, fabricated snapshots", checks.size());
-    for (const auto &c : checks)
-    {
-        if (c.passed)
-        {
-            ++passed;
-            ft::log::plugin.debug("  PASS {}  ({})", c.name, c.detail);
-        }
-        else
-        {
-            // The engine disagreeing with its own tests is the one thing
-            // this file exists to notice, so it is never quiet about it.
-            ft::log::plugin.error("core self-check FAILED: {}  ({})", c.name, c.detail);
-        }
-    }
-
-    // Phase 1: start the real thing. The self-check above proves the engine
-    // computes correct decisions; this is what connects it to actual followers.
     // The package pool, made in memory (game/Forms.h): if any step of that
     // fails it reports unavailable and cast rules stay off, rather than
     // failing the whole plugin.
@@ -192,11 +27,7 @@ void OnDataLoaded()
     ft::game::RefuseEquipsAgainstPins();
     ft::game::WatchHits();
 
-    const bool sane = passed == checks.size();
-    ft::log::plugin.event(sane ? ft::log::Level::Info : ft::log::Level::Error, "plugin.loaded",
-                          {{"selfCheckPassed", passed}, {"selfCheckTotal", checks.size()}},
-                          "FollowerTactics loaded (self-check {}/{} {})", passed, checks.size(),
-                          sane ? "ok" : "FAILED");
+    ft::log::plugin.event(ft::log::Level::Info, "plugin.loaded", {}, "FollowerTactics loaded");
 }
 
 } // namespace

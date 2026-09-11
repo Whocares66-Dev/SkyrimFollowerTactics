@@ -105,6 +105,7 @@ add_library(ft_core STATIC
     src/core/Blows.cpp
     src/core/Effects.cpp
     src/core/Evaluator.cpp
+    src/core/HitTable.cpp
     src/core/Loadout.cpp
     src/core/LogEvent.cpp
     src/core/Profile.cpp
