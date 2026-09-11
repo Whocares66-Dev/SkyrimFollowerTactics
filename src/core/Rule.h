@@ -58,12 +58,15 @@ enum class PredicateKind : std::uint8_t
     MagickaPctBelow,
     // The edges of a fight, true on one tick each. There is no "in combat"
     // beside them: tactics only run in a fight, so it would always hold,
-    // and bleeding out is a Status. CombatBegins holds on the
-    // first evaluation of a fight and the list runs on as usual beneath it.
-    // CombatEnds holds on one farewell evaluation after the follower leaves
-    // combat -- and on THAT evaluation nothing else holds: a standing "Any"
-    // rule must not re-pin the bow the moment the after-fight restore has
-    // put the travelling gear back.
+    // and bleeding out is a Status. CombatBegins holds on the first
+    // evaluation of a fight, CombatEnds on one farewell evaluation after
+    // the follower leaves combat. On its edge, every rule with that
+    // predicate is looked at FIRST, wherever it sits, and their lists run
+    // one after another in list order, one action per tick (Evaluate); the
+    // rest of the list gets a turn only if none of them can do anything.
+    // On the farewell evaluation nothing else holds at all: a standing
+    // "Any" rule must not re-pin the bow the moment the after-fight restore
+    // has put the travelling gear back.
     CombatBegins,
     CombatEnds,
     // (A count of the group -- "at least N enemies" -- was here until

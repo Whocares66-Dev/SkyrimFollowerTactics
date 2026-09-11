@@ -38,6 +38,7 @@ enum class Verdict : std::uint8_t
     Casting,          // a cast rule, while the follower is mid-cast on a spell of their own: it waits
     Recovering,       // a shout rule, while the voice is still recovering from the last shout: it waits
     InvalidCondition, // this subject/predicate pair is not answerable at all
+    Queued,           // an edge rule whose list waits behind another's on the same edge
     NotReached,       // an earlier rule already fired
 };
 
@@ -153,6 +154,19 @@ struct EvalContext
         }
     };
     Sequence pending;
+    // The lists that follow it, in order: the edge of a fight puts every
+    // Combat start (or Combat end) rule's list here at once, since the edge
+    // holds for one evaluation and a rule not begun on it would never be.
+    // Each is committed from its first action -- the edge is not coming
+    // back -- and one starts as the one before it is through.
+    std::vector<Sequence> queued;
+
+    // Is a list being run, or waiting to be? Out of a fight this is the
+    // Combat end lists, and the only reason to evaluate at all.
+    [[nodiscard]] bool InProgress() const noexcept
+    {
+        return pending.Active() || !queued.empty();
+    }
 };
 
 // What to do this tick: the actions of one rule that can be done now, in

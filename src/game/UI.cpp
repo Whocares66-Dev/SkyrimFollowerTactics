@@ -156,6 +156,8 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
         return {"casting", held};
     case ft::Verdict::Recovering:
         return {"cooldown", held}; // the shout's own, told apart from the action's in the tooltip
+    case ft::Verdict::Queued:
+        return {"queued", held};
 
     case ft::Verdict::Disabled:
         return {"off", quiet};

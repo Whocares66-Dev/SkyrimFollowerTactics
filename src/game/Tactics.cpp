@@ -477,7 +477,7 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     // that ask about exactly that, and this is it -- so a query can bracket a
     // fight between the two events rather than guessing where it stopped.
     if (ended)
-        log::tactics.event(log::Level::Info, "combat.left", actor, {}, "{} left combat -- one last evaluation",
+        log::tactics.event(log::Level::Info, "combat.left", actor, {}, "{} left combat -- the Combat end rules run",
                            Describe(actor));
 
     // This follower's own rules, not a shared static -- the whole point of
@@ -553,7 +553,9 @@ void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace
     v.decision = decision;
     v.lastEvaluatedAt = now;
     v.evaluated = true;
-    v.inCombat = true;
+    // Evaluated is no longer the same as fighting: the Combat end lists
+    // run on after the fight.
+    v.inCombat = snapshot.inCombat;
     v.tacticsEnabled = IsFollowerEnabled(v.id);
     FillDisplayFields(actor, v);
     PublishOne(std::move(v));
@@ -701,13 +703,17 @@ void Tick()
 
         // The edges of a fight, from the tick: one evaluation is the first
         // of the fight, and one more runs after it ends, for the rules that
-        // ask about exactly that.
+        // ask about exactly that. The Combat end lists that evaluation
+        // queues run one action per tick, so evaluation goes on out of the
+        // fight while one is in progress; the core decides nothing else on
+        // those ticks.
         auto &state = g_followers[follower->GetFormID()];
         const bool began = fighting && !state.fighting;
         const bool ended = !fighting && state.fighting;
         state.fighting = fighting;
 
-        if (g_enabled.load() && (fighting || ended) && !down && IsFollowerEnabled(follower->GetFormID()))
+        if (g_enabled.load() && (fighting || ended || state.eval.InProgress()) && !down &&
+            IsFollowerEnabled(follower->GetFormID()))
             EvaluateFollower(follower, now, began, ended);
         else
             PublishIdle(follower, now, fighting);

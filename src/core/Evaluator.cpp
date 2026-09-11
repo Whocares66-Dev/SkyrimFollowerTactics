@@ -851,12 +851,14 @@ bool Transient(Verdict v)
 // cooldown, and the list waits at the one after it for the next tick.
 // One that cannot be done at all is skipped. One that cannot be done YET
 // stops the run: it is left for the next tick -- IF the rule has
-// committed, which it has once any of its actions is done. A rule whose
-// very first action is only blocked for the moment has not begun, and
+// `committed`, which it has once any of its actions is done, and which an
+// edge rule's list has from the start (the edge holds for one evaluation,
+// so a list that yielded on it would be lost). A rule whose very first
+// action is only blocked for the moment has otherwise not begun, and
 // yields to the rules beneath it, as a single-action rule always did.
 // Returns whether the run stopped on a wait.
 bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, ActionTargetKind aimedAt, ActorId target,
-         const Snapshot &snap, EvalContext &ctx, Decision &decision, std::vector<Verdict> &verdicts,
+         bool committed, const Snapshot &snap, EvalContext &ctx, Decision &decision, std::vector<Verdict> &verdicts,
          std::vector<Pin> &heldAbove)
 {
     verdicts.assign(actions.size(), Verdict::NotReached);
@@ -884,7 +886,6 @@ bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, Ac
         }
         if (!Transient(v))
             continue; // cannot be done at all: skipped
-        const bool committed = from > 0;
         if (committed)
         {
             ctx.pending = {ruleIndex, aimedAt, target, actions, i};
@@ -909,6 +910,35 @@ Verdict Summary(const Decision &decision, const std::vector<Verdict> &verdicts)
     return Verdict::Unsupported;
 }
 
+// Whether a rule gets as far as its actions this tick, and against whom.
+// Fired here means admitted; anything else is the verdict that stopped it,
+// and stands for the rule in the trace.
+Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, ActorId &target)
+{
+    if (!r.enabled)
+        return Verdict::Disabled;
+    // Nothing this runtime can do: said before the condition is looked at,
+    // because the answer does not depend on it.
+    const bool anySupported = std::any_of(r.actions.begin(), r.actions.end(), [&](const Action &a) {
+        return a.kind != ActionKind::None && ctx.caps.Supports(a.kind);
+    });
+    if (!anySupported)
+        return Verdict::Unsupported;
+    // Reported separately from ConditionFalse on purpose: a pair that can
+    // never be answered is an authoring mistake, not a condition that
+    // happens to be untrue right now, and the debug column must not send
+    // someone off to investigate a follower's health for nothing.
+    if (!IsPredicateValidFor(r.subject, r.predicate) || !IsActionTargetValidFor(r.subject, r.actionTarget) ||
+        !IsDamageKindValidFor(r.predicate, r.damageKind))
+        return Verdict::InvalidCondition;
+    const Binding binding = EvaluateCondition(r, snap);
+    if (!binding)
+        return Verdict::ConditionFalse;
+    bool targetOk = false;
+    target = ResolveActionTarget(r, snap, binding, &targetOk);
+    return targetOk ? Verdict::Fired : Verdict::NoTarget;
+}
+
 } // namespace
 
 Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace, ActionTrace *actionTrace)
@@ -921,32 +951,76 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         for (std::size_t i = 0; i < rs.rules.size(); ++i)
             (*actionTrace)[i].assign(rs.rules[i].actions.size(), Verdict::NotReached);
     }
+    const auto put = [&](std::size_t i, Verdict v) {
+        if (trace && i < trace->size())
+            (*trace)[i] = v;
+    };
 
     Decision decision;
 
-    // The fight is over: what a rule was in the middle of is dropped.
-    if (snap.combatEnded)
-        ctx.pending = {};
-
-    // A rule in progress owns the tick while it is doing or waiting. If
-    // what remains of its list turns out to be nothing it can do -- no
-    // potion left, the cast unaffordable -- the list is through, and the
-    // tick goes on to the rules from the top, as it would have without it.
-    if (ctx.pending.Active())
+    // The edge of a fight. What a rule was in the middle of is dropped: the
+    // fight it was for is over, or a new one has begun. Then every rule on
+    // this edge is looked at first, wherever it sits in the list, and the
+    // lists of those that hold are queued in order, one after another, to
+    // run one action per tick from here -- the edge holds for this one
+    // evaluation, and a rule not begun on it would never be. The rest of
+    // the list gets a turn only if the edge rules can do nothing.
+    const bool edge = snap.combatBegan || snap.combatEnded;
+    const PredicateKind at = snap.combatBegan ? PredicateKind::CombatBegins : PredicateKind::CombatEnds;
+    if (edge)
     {
+        ctx.pending = {};
+        ctx.queued.clear();
+        for (std::size_t i = 0; i < rs.rules.size(); ++i)
+        {
+            const Rule &r = rs.rules[i];
+            if (r.predicate != at)
+                continue;
+            ActorId target = 0;
+            const Verdict admitted = Admit(r, snap, ctx, target);
+            if (admitted != Verdict::Fired)
+            {
+                put(i, admitted);
+                continue;
+            }
+            ctx.queued.push_back({static_cast<int>(i), r.actionTarget, target, r.actions, 0});
+        }
+    }
+
+    // A list in progress owns the tick while it is doing or waiting, and
+    // the lists queued behind it wait their turn. If what remains of one
+    // turns out to be nothing it can do -- no potion left, the cast
+    // unaffordable -- it is through, and the next queued list, or the
+    // rules from the top, get the same tick, as they would have without it.
+    for (;;)
+    {
+        if (!ctx.pending.Active())
+        {
+            if (ctx.queued.empty())
+                break;
+            ctx.pending = std::move(ctx.queued.front());
+            ctx.queued.erase(ctx.queued.begin());
+        }
         const EvalContext::Sequence seq = ctx.pending;
         std::vector<Pin> none;
         std::vector<Verdict> verdicts;
-        const bool waiting =
-            Run(seq.actions, seq.next, seq.ruleIndex, seq.aimedAt, seq.target, snap, ctx, decision, verdicts, none);
+        const bool waiting = Run(seq.actions, seq.next, seq.ruleIndex, seq.aimedAt, seq.target, true, snap, ctx,
+                                 decision, verdicts, none);
         const auto i = static_cast<std::size_t>(seq.ruleIndex);
-        if (trace && i < trace->size())
-            (*trace)[i] = Summary(decision, verdicts);
+        put(i, Summary(decision, verdicts));
         if (actionTrace && i < actionTrace->size() && (*actionTrace)[i].size() == verdicts.size())
             (*actionTrace)[i] = verdicts;
+        for (const EvalContext::Sequence &later : ctx.queued)
+            put(static_cast<std::size_t>(later.ruleIndex), Verdict::Queued);
         if (decision.Fired() || waiting)
             return decision;
     }
+
+    // Out of a fight only the Combat end lists run, and they have: the
+    // farewell evaluation itself goes on, so the trace can say the standing
+    // rules are false on it, but the ticks after it decide nothing.
+    if (!snap.inCombat && !snap.combatEnded)
+        return decision;
 
     // What the satisfied equip rules above hold. An equip rule whose
     // condition holds and whose thing is pinned is DONE, and falls through
@@ -961,56 +1035,23 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
     for (std::size_t i = 0; i < rs.rules.size(); ++i)
     {
         const Rule &r = rs.rules[i];
-        const auto put = [&](Verdict v) {
-            if (trace)
-                (*trace)[i] = v;
-        };
+        // The edge's own rules were looked at above, first; their word
+        // stands.
+        if (edge && r.predicate == at)
+            continue;
 
-        if (!r.enabled)
+        ActorId target = 0;
+        const Verdict admitted = Admit(r, snap, ctx, target);
+        if (admitted != Verdict::Fired)
         {
-            put(Verdict::Disabled);
-            continue;
-        }
-        // Nothing this runtime can do: said before the condition is looked
-        // at, because the answer does not depend on it.
-        const bool anySupported = std::any_of(r.actions.begin(), r.actions.end(), [&](const Action &a) {
-            return a.kind != ActionKind::None && ctx.caps.Supports(a.kind);
-        });
-        if (!anySupported)
-        {
-            put(Verdict::Unsupported);
-            continue;
-        }
-        // Reported separately from ConditionFalse on purpose: a pair that can
-        // never be answered is an authoring mistake, not a condition that
-        // happens to be untrue right now, and the debug column must not send
-        // someone off to investigate a follower's health for nothing.
-        if (!IsPredicateValidFor(r.subject, r.predicate) || !IsActionTargetValidFor(r.subject, r.actionTarget) ||
-            !IsDamageKindValidFor(r.predicate, r.damageKind))
-        {
-            put(Verdict::InvalidCondition);
-            continue;
-        }
-
-        const Binding binding = EvaluateCondition(r, snap);
-        if (!binding)
-        {
-            put(Verdict::ConditionFalse);
-            continue;
-        }
-
-        bool targetOk = false;
-        const ActorId target = ResolveActionTarget(r, snap, binding, &targetOk);
-        if (!targetOk)
-        {
-            put(Verdict::NoTarget);
+            put(i, admitted);
             continue;
         }
 
         std::vector<Verdict> verdicts;
-        const bool waiting =
-            Run(r.actions, 0, static_cast<int>(i), r.actionTarget, target, snap, ctx, decision, verdicts, heldAbove);
-        put(Summary(decision, verdicts));
+        const bool waiting = Run(r.actions, 0, static_cast<int>(i), r.actionTarget, target, false, snap, ctx, decision,
+                                 verdicts, heldAbove);
+        put(i, Summary(decision, verdicts));
         if (actionTrace)
             (*actionTrace)[i] = verdicts;
         if (decision.Fired() || waiting)
@@ -1135,6 +1176,8 @@ const char *ToString(Verdict v) noexcept
         return "shout on cooldown, waiting";
     case Verdict::InvalidCondition:
         return "invalid condition";
+    case Verdict::Queued:
+        return "waiting its turn behind the rule above on the same edge";
     case Verdict::NotReached:
         return "not reached";
     }

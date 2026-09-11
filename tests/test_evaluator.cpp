@@ -551,19 +551,201 @@ TEST_CASE("the edges of a fight hold for one evaluation each", "[evaluator]")
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 1);
     REQUIRE(trace.at(0) == Verdict::ConditionFalse);
 
-    // The farewell pass: only ends holds. The standing rule is false on it,
-    // so it cannot re-pin what the after-fight restore just put back.
+    // The farewell pass: only ends holds, and its rule takes the tick
+    // before the others are looked at. The standing rule is false on it
+    // regardless, so it cannot re-pin what the after-fight restore just
+    // put back.
     s.inCombat = false;
     s.combatEnded = true;
     s.now += 5.0;
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 2);
-    REQUIRE(trace.at(0) == Verdict::ConditionFalse);
-    REQUIRE(trace.at(1) == Verdict::ConditionFalse);
+    REQUIRE(trace.at(0) == Verdict::NotReached);
+    REQUIRE(trace.at(1) == Verdict::NotReached);
+    REQUIRE_FALSE(EvaluateCondition(always, s).ok);
+    REQUIRE_FALSE(EvaluateCondition(onBegin, s).ok);
 
     // Only the follower's own fight has edges.
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::CombatEnds));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::CombatBegins));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::CombatEnds));
+}
+
+TEST_CASE("on its edge every Combat start rule is checked first, and their lists run in order", "[edge]")
+{
+    // A standing rule ABOVE two Combat start rules, the second with two
+    // actions. Position does not matter on the edge: the edge rules go
+    // first, and together, as one list -- stamina; magicka, health -- one
+    // action per tick, and the standing rule waits for all of it.
+    Rule always;
+    always.subject = SubjectKind::Self;
+    always.predicate = PredicateKind::Any;
+    always.actionTarget = ActionTargetKind::Self;
+    always.FirstAction() = DrinkHealth();
+
+    Rule first = always;
+    first.predicate = PredicateKind::CombatBegins;
+    first.FirstAction() = DrinkStamina();
+
+    Rule second = first;
+    second.FirstAction() = DrinkMagicka();
+    second.actions.push_back(DrinkHealth());
+
+    RuleSet rs;
+    rs.rules = {always, first, second};
+    EvalContext ctx;
+    Trace trace;
+
+    Snapshot s = Healthy();
+    s.combatBegan = true;
+    Decision d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(d.action() == ActionKind::DrinkStrongest);
+    REQUIRE(d.actionForm() == kStaminaPotion);
+    REQUIRE(trace.at(0) == Verdict::NotReached);
+    REQUIRE(trace.at(1) == Verdict::Fired);
+    REQUIRE(trace.at(2) == Verdict::Queued);
+    REQUIRE(ctx.InProgress());
+
+    // The edge has passed, and the second rule's list runs anyway: it was
+    // queued on the edge. The standing rule still waits.
+    s.combatBegan = false;
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 2);
+    REQUIRE(d.actionForm() == kMagickaPotion);
+    REQUIRE(trace.at(0) == Verdict::NotReached);
+
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 2);
+    REQUIRE(d.actionForm() == kHealthPotion);
+    REQUIRE_FALSE(ctx.InProgress());
+
+    // Through: the standing rule has the next tick, once its potion is
+    // off cooldown, and the edge rules beneath it are not reached.
+    s.now += 5.0;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(trace.at(1) == Verdict::NotReached);
+    REQUIRE(trace.at(2) == Verdict::NotReached);
+}
+
+TEST_CASE("an edge rule's list waits rather than yields, even at its first action", "[edge]")
+{
+    // The edge is not coming back: a Combat start rule whose first action is
+    // merely on cooldown waits for it, where a standing rule would yield to
+    // the rules beneath and be lost.
+    Rule onBegin;
+    onBegin.subject = SubjectKind::Self;
+    onBegin.predicate = PredicateKind::CombatBegins;
+    onBegin.actionTarget = ActionTargetKind::Self;
+    onBegin.FirstAction() = DrinkHealth();
+    Rule always = onBegin;
+    always.predicate = PredicateKind::Any;
+    always.FirstAction() = DrinkMagicka();
+
+    RuleSet rs;
+    rs.rules = {onBegin, always};
+    EvalContext ctx;
+    Trace trace;
+    Snapshot s = Healthy();
+    ctx.Block({ActionKind::DrinkStrongest, 0, s.self, "Restore Health"}, s.now + 1.0);
+
+    s.combatBegan = true;
+    Decision d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE_FALSE(d.Fired());
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+    REQUIRE(trace.at(1) == Verdict::NotReached);
+    REQUIRE(ctx.InProgress());
+
+    s.combatBegan = false;
+    s.now += 2.0;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.actionForm() == kHealthPotion);
+    REQUIRE_FALSE(ctx.InProgress());
+}
+
+TEST_CASE("the Combat end lists run on after the fight, and nothing else does", "[edge]")
+{
+    Rule always;
+    always.subject = SubjectKind::Self;
+    always.predicate = PredicateKind::Any;
+    always.actionTarget = ActionTargetKind::Self;
+    always.FirstAction() = DrinkHealth();
+
+    Rule first = always;
+    first.predicate = PredicateKind::CombatEnds;
+    first.FirstAction() = DrinkStamina();
+    Rule second = first;
+    second.FirstAction() = DrinkMagicka();
+
+    RuleSet rs;
+    rs.rules = {always, first, second};
+    EvalContext ctx;
+    Trace trace;
+
+    // Mid-fight, the standing rule is in the middle of nothing; the fight
+    // ends. The farewell evaluation: the first Combat end rule fires, the
+    // second is queued, the standing rule above them is not reached.
+    Snapshot s = Healthy();
+    s.inCombat = false;
+    s.combatEnded = true;
+    Decision d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::NotReached);
+    REQUIRE(trace.at(2) == Verdict::Queued);
+    REQUIRE(ctx.InProgress());
+
+    // The tick after, out of the fight: the second list runs, and the
+    // standing rule is not looked at.
+    s.combatEnded = false;
+    s.now += 0.5;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 2);
+    REQUIRE(trace.at(0) == Verdict::NotReached);
+    REQUIRE_FALSE(ctx.InProgress());
+
+    // Through, and still out of the fight: nothing fires, however true the
+    // standing rule is.
+    s.now += 5.0;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE_FALSE(d.Fired());
+    REQUIRE(trace.at(0) == Verdict::NotReached);
+}
+
+TEST_CASE("a new fight drops the Combat end lists still running", "[edge]")
+{
+    Rule onEnd;
+    onEnd.subject = SubjectKind::Self;
+    onEnd.predicate = PredicateKind::CombatEnds;
+    onEnd.actionTarget = ActionTargetKind::Self;
+    onEnd.FirstAction() = DrinkStamina();
+    onEnd.actions.push_back(DrinkMagicka());
+    Rule onBegin = onEnd;
+    onBegin.predicate = PredicateKind::CombatBegins;
+    onBegin.actions = {DrinkHealth()};
+
+    RuleSet rs;
+    rs.rules = {onEnd, onBegin};
+    EvalContext ctx;
+
+    Snapshot s = Healthy();
+    s.inCombat = false;
+    s.combatEnded = true;
+    REQUIRE(Evaluate(rs, s, ctx).actionForm() == kStaminaPotion);
+    REQUIRE(ctx.InProgress());
+
+    // Before the magicka potion, a new fight: the end list goes, and the
+    // start list runs instead.
+    s.inCombat = true;
+    s.combatEnded = false;
+    s.combatBegan = true;
+    s.now += 0.5;
+    const Decision d = Evaluate(rs, s, ctx);
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(d.actionForm() == kHealthPotion);
+    REQUIRE_FALSE(ctx.InProgress());
 }
 
 TEST_CASE("a rule does its actions one per tick, in order, and waits rather than yields mid-list", "[sequence]")
@@ -2286,10 +2468,24 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
     REQUIRE(std::string(Explain(Verdict::NoTarget, ActionKind::Attack)) == "no enemy to point at");
     s.allies[1].traits.attacker = 0x101;
 
-    // Out of a fight there is no target to set.
-    s.inCombat = false;
-    d = Evaluate(rs, s, ctx, &trace);
-    REQUIRE(trace.at(0) == Verdict::NoResource);
+    // Out of a fight there is no target to set. The one way a rule is looked
+    // at out of one is the farewell pass, so: on Combat end, attack the
+    // enemy.
+    {
+        Rule farewell;
+        farewell.subject = SubjectKind::Self;
+        farewell.predicate = PredicateKind::CombatEnds;
+        farewell.actionTarget = ActionTargetKind::Enemy;
+        farewell.FirstAction().kind = ActionKind::Attack;
+        RuleSet ending;
+        ending.rules = {farewell};
+        EvalContext fresh;
+        Snapshot over = s;
+        over.inCombat = false;
+        over.combatEnded = true;
+        REQUIRE_FALSE(Evaluate(ending, over, fresh, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::NoResource);
+    }
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::Attack)) == "not in a fight");
     REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::Attack)) == "already fighting them");
 
@@ -3164,17 +3360,28 @@ TEST_CASE("a power attack needs a fight, something that swings, and the stamina 
     rs.rules.push_back(swing);
 
     Snapshot s = Healthy();
-    s.inCombat = false;
     s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, false, true});
     s.stamina = {30.0f, 100.0f};
     EvalContext ctx;
     ctx.caps = Capabilities::All();
 
+    // Out of a fight, on the one pass a rule is looked at there: the
+    // farewell, through a Combat end rule.
     Trace trace;
-    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
-    REQUIRE(trace.at(0) == Verdict::NoResource); // not in a fight
+    {
+        Rule farewell = swing;
+        farewell.subject = SubjectKind::Self;
+        farewell.predicate = PredicateKind::CombatEnds;
+        RuleSet ending;
+        ending.rules = {farewell};
+        EvalContext fresh;
+        Snapshot over = s;
+        over.inCombat = false;
+        over.combatEnded = true;
+        REQUIRE_FALSE(Evaluate(ending, over, fresh, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::NoResource); // not in a fight
+    }
 
-    s.inCombat = true;
     trace.clear();
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::NoMeleeWeapon); // a bow, a spell, nothing
