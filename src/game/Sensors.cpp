@@ -567,10 +567,10 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
         if (base->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kDualValueModifier &&
             base->data.secondaryAV != RE::ActorValue::kNone)
         {
-            // Two values, one per line, each with the dash the effect
-            // descriptions carry.
-            amount = "- " + amount + "\n- " + Fmt("%+g", magnitude * base->data.secondAVWeight) + " " +
-                     valueName(base->data.secondaryAV);
+            // Two values, one per line. No dash before them: beside a
+            // signed number it read as a minus.
+            amount +=
+                "\n" + Fmt("%+g", magnitude * base->data.secondAVWeight) + " " + valueName(base->data.secondaryAV);
         }
         // Nothing in the record says "per second"; the engine's rule does.
         // Health, Magicka and Stamina take a timed modifier once a second
