@@ -4447,20 +4447,36 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // The global switch on the Settings page never had this problem because
     // it reads its flag directly; this now does the same.
     const bool followerEnabled = IsFollowerEnabled(view.id);
+    // With the Settings switch off nothing here runs whatever this switch
+    // says, so the switch and its word are greyed like the rules beneath,
+    // and the hover says where to look. Not toggled while greyed: the
+    // setting to change is on the other page.
+    const bool all = IsEnabled();
+    BeginDimmed(!all);
     // The same tick as the rule rows, and like theirs absent when off --
     // not a ghost of one -- with the word beside it: one glyph for "on"
     // everywhere on this tab, not ImGui's boxed tick next to ours.
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
     const bool toggled = GlyphButton("enabled", Im::GetFrameHeight(), Glyph::Tick, followerEnabled);
     Im::PopStyleVar(1);
-    if (toggled)
+    if (toggled && all)
         SetFollowerEnabled(view.id, !followerEnabled);
-    if (Im::IsItemHovered(0))
-        Im::SetTooltip(followerEnabled ? "On -- click to turn this follower's tactics off"
-                                       : "Off -- click to turn this follower's tactics on");
+    // The switch and the word alike: a disabled item reports no hover
+    // unless asked, and the greyed switch is exactly when the hover has
+    // something to say.
+    const auto tip = [&]() {
+        if (!Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+            return;
+        Im::SetTooltip("%s", !all              ? "Disabled for all in Settings"
+                             : followerEnabled ? "Click to disable all"
+                                               : "Click to enable all");
+    };
+    tip();
     Im::SameLine(0.0f, kCellPadX);
     Im::AlignTextToFramePadding();
     Im::Text("Enabled");
+    tip();
+    EndDimmed();
 
     // Space, but no rule: the table's own border already reads as the boundary,
     // and a separator immediately above it draws a second line doing the same
@@ -4471,8 +4487,9 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // Greyed out, NOT rewritten. Turning a follower off is a presentation change
     // over the rules, not an edit to them: each rule keeps its own `enabled`
     // exactly as the player left it, so switching back restores the list rather
-    // than handing back a set of boxes they have to re-tick.
-    BeginDimmed(!followerEnabled);
+    // than handing back a set of boxes they have to re-tick. The Settings
+    // switch greys the same way, for the same reason.
+    BeginDimmed(!followerEnabled || !all);
     // Edit a copy, then hand the whole set back. Nothing partial is ever
     // visible to the tick.
     ft::RuleSet editable = rules;
