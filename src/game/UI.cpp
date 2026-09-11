@@ -2724,6 +2724,10 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
     }
     const float pad = 2.0f * kCellPadX + 8.0f;
     const int columns = modifiers ? 2 + (hasThird ? 1 : 0) + static_cast<int>(extras.size()) : 2;
+    // Where a column carries the link -- an effect's source -- the name
+    // does not: one link per row, on the cell that names where it goes.
+    const bool linkColumn =
+        std::any_of(extras.begin(), extras.end(), [](const ExtraColumn &column) { return column.link; });
 
     const auto border = Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f);
     const auto stripe = Im::GetColorU32(Im::ImGuiCol_TableRowBgAlt, 1.0f);
@@ -2855,7 +2859,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             bool open = false;
             if (row.detail.empty())
             {
-                if (modifiers && row.form != 0 && onLink)
+                if (modifiers && row.form != 0 && onLink && !linkColumn)
                 {
                     // A loose perk: its name is the link to its page, as the
                     // value cell is elsewhere.
@@ -2966,10 +2970,15 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     const std::string text = column.text(row);
                     if (column.glyph)
                     {
+                        // The tick centred in its cell, under a heading
+                        // wider than it.
                         if (!text.empty())
                         {
                             FontAwesome::PushSolid();
-                            Im::Text("%s", Utf8(kGlyphTick).c_str());
+                            const std::string tick = Utf8(kGlyphTick);
+                            const float slack = Im::GetContentRegionAvail().x - TextWidth(tick);
+                            Im::SetCursorPosX(Im::GetCursorPosX() + (std::max)(0.0f, slack * 0.5f));
+                            Im::Text("%s", tick.c_str());
                             FontAwesome::Pop();
                         }
                         continue;
@@ -2978,8 +2987,10 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     // value cell is elsewhere.
                     if (column.link && row.form != 0 && onLink)
                     {
+                        // Its own ID: the same as the name cell's, and the
+                        // click went to the name (2026-09-11).
                         const Im::ImVec2 at = Im::GetCursorScreenPos();
-                        if (CellClicked(("##link" + section.title + "/" + row.label).c_str()))
+                        if (CellClicked(("##source" + section.title + "/" + row.label).c_str()))
                             onLink(row.form);
                         Im::SetCursorScreenPos(at);
                     }
