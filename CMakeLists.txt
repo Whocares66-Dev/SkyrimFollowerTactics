@@ -173,6 +173,7 @@ if(FT_BUILD_PLUGIN)
         src/plugin.cpp
         src/game/Log.cpp
         src/game/Sensors.cpp
+        src/game/Sheet.cpp
         src/game/Inventory.cpp
         src/game/Magic.cpp
         src/game/Pins.cpp

@@ -8,6 +8,7 @@
 #include "game/Pins.h"
 #include "game/Profiles.h"
 #include "game/Sensors.h"
+#include "game/Sheet.h"
 #include "game/UI.h"
 #include "game/Util.h"
 
@@ -320,8 +321,7 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     // cached until something invalidates it.
     v.spells = ScanCastableSpells(actor);
     v.consumables = ScanCarriedConsumables(actor);
-    if (const float recovery = actor->GetVoiceRecoveryTime(); recovery > 0.0f && recovery < 3600.0f)
-        v.voiceRecovery = recovery;
+    v.voiceRecovery = VoiceRecoveryOf(actor);
     for (auto *other : CollectManagedFollowers())
     {
         if (other && other != actor)
@@ -401,7 +401,7 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
             for (const auto &v : views)
             {
                 auto *who = RE::TESForm::LookupByID<RE::Actor>(v.id);
-                out += (out.empty() ? "" : ", ") + std::string(who && who->GetName() ? who->GetName() : "?");
+                out += (out.empty() ? "" : ", ") + std::string(NameOr(who, "?"));
             }
             return out.empty() ? std::string("nobody") : out;
         };

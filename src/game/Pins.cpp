@@ -6,6 +6,7 @@
 
 #include "game/Log.h"
 #include "game/Sensors.h"
+#include "game/Sheet.h"
 
 #include "game/Packages.h"
 
@@ -75,27 +76,22 @@ struct OwnEquip
 // change, so a fresh conflict is logged afresh.
 std::unordered_set<std::uint64_t> g_refusedLogged;
 
-// The hand's equip slot record, by FormID: LeftHand 013F43, RightHand
-// 013F42 in Skyrim.esm. Not through the default object table, which did
-// not answer for these on this game (01:29): a null slot here means "the
-// default", and the default is the right hand -- which is where every
-// left-hand dagger went (01:51).
+// The hand's equip slot record (Sensors.h).
 const RE::BGSEquipSlot *HandSlot(Hand hand)
 {
-    return RE::TESForm::LookupByID<RE::BGSEquipSlot>(hand == Hand::Left ? 0x00013F43 : 0x00013F42);
+    return RE::TESForm::LookupByID<RE::BGSEquipSlot>(hand == Hand::Left ? kLeftHandSlot : kRightHandSlot);
 }
 
-// The hand a slot record names: RightHand 013F42, LeftHand 013F43,
-// BothHands 013F45. EitherHand (013F44) and no record are None.
+// The hand a slot record names. EitherHand and no record are None.
 Hand SlotHand(const RE::BGSEquipSlot *slot)
 {
     switch (slot ? slot->GetFormID() : 0)
     {
-    case 0x00013F42:
+    case kRightHandSlot:
         return Hand::Right;
-    case 0x00013F43:
+    case kLeftHandSlot:
         return Hand::Left;
-    case 0x00013F45:
+    case kBothHandsSlot:
         return Hand::Both;
     default:
         return Hand::None;
@@ -120,20 +116,13 @@ const char *HandTag(Hand hand)
 
 } // namespace
 
-// The Voice equip slot record, Skyrim.esm (beside the hand slots below).
-constexpr std::uint32_t kVoiceSlotID = 0x00025BEE;
-
 namespace
 {
 // How many of an item she carries, for the one-copy rule. A spell is not
 // an item and needs no count.
 int CarriedCount(RE::Actor *actor, RE::TESBoundObject *object)
 {
-    if (!actor || !object)
-        return 0;
-    auto inventory = actor->GetInventory([object](RE::TESBoundObject &c) { return &c == object; });
-    const auto found = inventory.find(object);
-    return found == inventory.end() ? 0 : found->second.first;
+    return CarriedOf(actor, object).count;
 }
 } // namespace
 
@@ -168,15 +157,12 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
         // hand as it keeps a lone dagger. Left at 1 until 2026-09-11, it
         // did exactly that, the opposite of what the tests prove.
         thing.count = 2;
-        // The slot records, by FormID from Skyrim.esm: RightHand 013F42,
-        // LeftHand 013F43, EitherHand 013F44, BothHands 013F45. The default
-        // object table did not answer for them on this game.
         const auto *slot = spell->GetEquipSlot();
         const std::uint32_t slotId = slot ? slot->GetFormID() : 0;
-        thing.grip = spell->IsTwoHanded()   ? Grip::Both
-                     : slotId == 0x00013F43 ? Grip::LeftOnly
-                     : slotId == 0x00013F42 ? Grip::RightOnly
-                                            : Grip::Either;
+        thing.grip = spell->IsTwoHanded()       ? Grip::Both
+                     : slotId == kLeftHandSlot  ? Grip::LeftOnly
+                     : slotId == kRightHandSlot ? Grip::RightOnly
+                                                : Grip::Either;
         // Above the follower's skill in its school: the combat AI will not
         // choose it. An effect of no school (a power's, an ability's) has
         // no skill to ask about -- its skill is kNone, and asking for that
@@ -281,13 +267,12 @@ bool EquippedIn(RE::Actor *actor, RE::TESForm *form, Hand hands)
 std::string CasterState(RE::Actor *actor)
 {
     const auto &data = actor->GetActorRuntimeData();
-    const auto name = [](const RE::MagicItem *spell) { return spell && spell->GetName() ? spell->GetName() : "-"; };
+    const auto name = [](const RE::MagicItem *spell) { return NameOr(spell, "-"); };
     const auto *left = actor->GetMagicCaster(RE::MagicSystem::CastingSource::kLeftHand);
     const auto *right = actor->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
     const auto *voice = data.selectedPower;
     return std::string("selected L=") + name(data.selectedSpells[RE::Actor::SlotTypes::kLeftHand]) +
-           " R=" + name(data.selectedSpells[RE::Actor::SlotTypes::kRightHand]) +
-           " voice=" + (voice && voice->GetName() ? voice->GetName() : "-") +
+           " R=" + name(data.selectedSpells[RE::Actor::SlotTypes::kRightHand]) + " voice=" + (NameOr(voice, "-")) +
            " -- caster L=" + name(left ? left->currentSpell : nullptr) +
            " R=" + name(right ? right->currentSpell : nullptr);
 }
@@ -309,7 +294,7 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
     if (auto *spell = form->As<RE::SpellItem>(); spell && DescribeHoldable(actor, spell).IsVoice())
     {
         if (!InVoice(actor, spell))
-            manager->EquipSpell(actor, spell, RE::TESForm::LookupByID<RE::BGSEquipSlot>(kVoiceSlotID));
+            manager->EquipSpell(actor, spell, RE::TESForm::LookupByID<RE::BGSEquipSlot>(kVoiceSlot));
         return;
     }
     if (auto *spell = form->As<RE::SpellItem>())
@@ -360,9 +345,8 @@ bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
 {
     if (hands != Hand::None)
         return EquippedIn(actor, object, hands);
-    auto inventory = actor->GetInventory([object](RE::TESBoundObject &c) { return &c == object; });
-    const auto found = inventory.find(object);
-    return found != inventory.end() && found->second.second && found->second.second->IsWorn();
+    const Carried carried = CarriedOf(actor, object);
+    return carried.entry && carried.entry->IsWorn();
 }
 
 // Take a spell out of a hand, or an item off. A no-op when it is not
@@ -506,7 +490,7 @@ void ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Hold
 // For the log: what each hand holds right now, spell or item.
 std::string HandsState(RE::Actor *actor)
 {
-    const auto name = [](const RE::TESForm *form) { return form && form->GetName() ? form->GetName() : "-"; };
+    const auto name = [](const RE::TESForm *form) { return NameOr(form, "-"); };
     return CasterState(actor) + " -- held L=" + name(actor->GetEquippedObject(true)) +
            " R=" + name(actor->GetEquippedObject(false));
 }
@@ -549,7 +533,7 @@ void RestorePinsAfterFight(RE::Actor *actor, std::vector<Pin> &pins, const std::
         auto *thing = RE::TESForm::LookupByID(gone.form);
         if (!thing)
             continue;
-        const char *name = thing->GetName() ? thing->GetName() : "?";
+        const std::string name = NameOr(thing, "?");
         if (gone.takeOff)
         {
             log::pins.event(log::Level::Info, "pin.released", actor,
@@ -676,11 +660,10 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             }
             else if (auto *object = form->As<RE::TESBoundObject>())
             {
-                auto inventory =
-                    actor->GetInventory([object](RE::TESBoundObject &candidate) { return &candidate == object; });
-                const auto found = inventory.find(object);
-                const bool carried = found != inventory.end() && found->second.first > 0;
-                if (!carried)
+                // One lookup for the count and the worn state both: this
+                // runs per pin per tick.
+                const Carried carried = CarriedOf(actor, object);
+                if (carried.count <= 0)
                 {
                     log::pins.event(log::Level::Info, "pin.released", actor,
                                     {{"itemFormId", log::Id(object->GetFormID())},
@@ -690,8 +673,8 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                     pin = pins.erase(pin);
                     continue;
                 }
-                const bool on = hands == Hand::None ? (found->second.second && found->second.second->IsWorn())
-                                                    : EquippedIn(actor, object, hands);
+                const bool on =
+                    hands == Hand::None ? (carried.entry && carried.entry->IsWorn()) : EquippedIn(actor, object, hands);
                 if (PutBackNow(*pin, on, fighting, casting))
                 {
                     log::pins.event(log::Level::Info, "pin.restored", actor,
@@ -929,7 +912,7 @@ void ProbeCombatInventory(RE::Actor *actor)
             const auto *form = entry ? entry->item : nullptr;
             listed.insert(form);
             if (logging)
-                names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?") +
+                names += (names.empty() ? "" : ", ") + std::string(NameOr(form, "?")) +
                          HandTag(entry ? SlotHand(entry->itemSlot.equipSlot) : Hand::None);
             WatchScoreOf(entry.get());
         }
@@ -944,7 +927,7 @@ void ProbeCombatInventory(RE::Actor *actor)
     std::string missing;
     const auto consider = [&](RE::SpellItem *spell) {
         if (spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell && !listed.contains(spell))
-            missing += (missing.empty() ? "" : ", ") + std::string(spell->GetName() ? spell->GetName() : "?") + " (" +
+            missing += (missing.empty() ? "" : ", ") + std::string(NameOr(spell, "?")) + " (" +
                        std::to_string(static_cast<int>(spell->CalculateMagickaCost(actor))) + ")";
     };
     if (auto *npc = actor->GetActorBase())
@@ -1000,7 +983,7 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
         for (const Pin &pin : shadowing)
         {
             const auto *holder = RE::TESForm::LookupByID(pin.thing.form);
-            const char *name = holder && holder->GetName() ? holder->GetName() : "Something";
+            const std::string name = NameOr(holder, "Something");
             lines += (lines.empty() ? "" : "\n") + std::string(name) + " is pinned";
         }
         return lines;
@@ -1011,7 +994,7 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     const auto pinGlyph = [](std::vector<SheetSection> &detail) {
         for (auto &section : detail)
             for (auto &row : section.rows)
-                if (row.label == "Equipped" && row.icon == kGlyphTick)
+                if (row.equipped)
                     row.icon2 = kGlyphPin;
     };
 
@@ -1175,13 +1158,11 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     if ((request == WearRequest::Pin || request == WearRequest::Equip) && thing->Is(RE::FormType::Weapon) &&
         (hands == Hand::Left || hands == Hand::Right))
     {
-        const Hand other = hands == Hand::Left ? Hand::Right : Hand::Left;
+        const Hand other = Without(Hand::Both, hands);
         if (EquippedIn(actor, thing, other))
         {
             auto *object = thing->As<RE::TESBoundObject>();
-            auto inventory = actor->GetInventory([object](RE::TESBoundObject &c) { return &c == object; });
-            const auto found = inventory.find(object);
-            moving = (found != inventory.end() ? found->second.first : 0) < 2;
+            moving = CarriedCount(actor, object) < 2;
         }
     }
 
@@ -1212,7 +1193,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             // hand (16:28, the steel dagger pinned left and held right).
             ReleaseConflictingPins(actor, pins, described, hands, dualWield);
             if (moving) [[maybe_unused]]
-                const Hand left = LetGo(pins, described, hands == Hand::Left ? Hand::Right : Hand::Left);
+                const Hand left = LetGo(pins, described, Without(Hand::Both, hands));
             break;
         case WearRequest::Ban: {
             [[maybe_unused]] const Hand let = LetGo(pins, described, Hand::None);
@@ -1239,7 +1220,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             {
                 [[maybe_unused]] const auto displaced = MakeRoom(before, described, hands, dualWield);
                 if (moving) [[maybe_unused]]
-                    const Hand left = LetGo(before, described, hands == Hand::Left ? Hand::Right : Hand::Left);
+                    const Hand left = LetGo(before, described, Without(Hand::Both, hands));
             }
             else if (request != WearRequest::Unban)
             {
@@ -1250,7 +1231,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         g_refusedLogged.clear();
     }
 
-    const char *name = thing->GetName() ? thing->GetName() : "?";
+    const std::string name = NameOr(thing, "?");
     // Where the style forbids two, a one-hander into one hand takes the
     // one-hander out of the other, pinned (its pin went above) or merely
     // equipped: the engine's equip of this hand leaves the other as it
@@ -1259,7 +1240,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     if (!dualWield && (request == WearRequest::Pin || request == WearRequest::Equip) &&
         (hands == Hand::Left || hands == Hand::Right))
     {
-        const Hand other = hands == Hand::Left ? Hand::Right : Hand::Left;
+        const Hand other = Without(Hand::Both, hands);
         if (auto *held = actor->GetEquippedObject(other == Hand::Left))
         {
             const Holdable inOther = DescribeHoldable(actor, held);
@@ -1279,7 +1260,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             {{"itemFormId", log::Id(described.form)}, {"itemName", name}, {"hand", HandTag(hands)}, {"pinned", false}},
             "{} told to ready {}{} (not pinned)", Describe(actor), name, HandTag(hands));
         if (moving)
-            UnequipForm(actor, thing, hands == Hand::Left ? Hand::Right : Hand::Left, true);
+            UnequipForm(actor, thing, Without(Hand::Both, hands), true);
         EquipPinned(actor, thing, hands, true);
         if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
             g_republish.insert(id);
@@ -1302,7 +1283,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
                         {{"itemFormId", log::Id(described.form)}, {"itemName", name}, {"reason", "the player asked"}},
                         "{} told to ready {} (pinned)", Describe(actor), name);
         if (moving)
-            UnequipForm(actor, thing, hands == Hand::Left ? Hand::Right : Hand::Left, true);
+            UnequipForm(actor, thing, Without(Hand::Both, hands), true);
         EquipPinned(actor, thing, hands, true);
         // Which hand a weapon or spell lands in is the AI's call as much
         // as ours: say what was asked and where it went, so the rule can
@@ -1397,7 +1378,7 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
                             "{} saved pin {:08X} names nothing in this game -- forgotten", Describe(actor), entry.form);
             continue;
         }
-        const char *name = thing->GetName() ? thing->GetName() : "?";
+        const std::string name = NameOr(thing, "?");
         const Holdable described = DescribeHoldable(actor, thing);
         auto *object = thing->As<RE::TESBoundObject>();
         const bool on = described.IsVoice() ? InVoice(actor, thing) : object && Worn(actor, object, entry.hands);

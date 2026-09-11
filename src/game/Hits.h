@@ -27,6 +27,13 @@ struct Attacked
 };
 [[nodiscard]] Attacked AttackedLately(ft::ActorId target);
 
+// The actor value that resists a kind of damage -- ResistFire for Fire,
+// PoisonResist for Poison, ResistMagic for Magic -- and kNone for the
+// kinds nothing resists but armour (Melee, Ranged, Any). One table, read
+// both ways: what a resistance is read off, and what an effect's resist
+// value says of it.
+[[nodiscard]] RE::ActorValue ResistValueOf(ft::DamageKind kind);
+
 // The kind of damage a magic effect does, by what resists it: fire, frost,
 // shock or poison, else Magic. What a hit is noted as; and what a spell, a
 // staff or an enchantment in hand counts as using.

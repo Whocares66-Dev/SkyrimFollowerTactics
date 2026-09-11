@@ -4,6 +4,7 @@
 #include "game/Packages.h"
 #include "game/Pins.h"
 #include "game/Sensors.h"
+#include "game/Sheet.h"
 #include "game/Util.h"
 
 #include <algorithm>
@@ -151,9 +152,8 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
     {
         // The soul a reusable gem holds is ExtraSoul on its entry; the
         // record's own soul is none. Cleared, the Star is empty and stays.
-        auto carried = actor->GetInventory([gem](RE::TESBoundObject &c) { return &c == gem; });
-        const auto held = carried.find(gem);
-        auto *gemEntry = held != carried.end() ? held->second.second.get() : nullptr;
+        const Carried carried = CarriedOf(actor, gem);
+        auto *gemEntry = carried.entry.get();
         bool emptied = false;
         if (gemEntry && gemEntry->extraLists)
         {
@@ -186,6 +186,25 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
                        "{} spent {} ({:.0f}) into {}: charge {:.0f} -> {:.0f} of {:.0f}", Describe(actor),
                        log::NameOf(gem), it->charge, log::NameOf(weapon), state.charge, charge, state.maxCharge);
     return ActionResult::Performed;
+}
+
+// What a cast request comes back as, in the action's words.
+ActionResult ResultOf(CastRequest request)
+{
+    switch (request)
+    {
+    case CastRequest::Armed:
+        return ActionResult::Performed;
+    case CastRequest::SpellNotInSlot:
+    case CastRequest::TargetGone:
+        return ActionResult::MissingItem;
+    case CastRequest::PoolBusy:
+    case CastRequest::AlreadyCasting:
+        return ActionResult::Busy;
+    case CastRequest::NoPackages:
+        return ActionResult::NoSuchAction;
+    }
+    return ActionResult::NoSuchAction;
 }
 
 } // namespace
@@ -264,8 +283,8 @@ ActionResult PointAt(RE::Actor *actor, std::uint32_t target)
     }
     const auto before = runtime.currentCombatTarget.get();
     log::actions.debug("target: {} was fighting {} ({:08X}), now {} ({:08X})", Describe(actor),
-                       before && before->GetName() ? before->GetName() : "no one", before ? before->GetFormID() : 0,
-                       enemy->GetName() ? enemy->GetName() : "?", enemy->GetFormID());
+                       NameOr(before.get(), "no one"), before ? before->GetFormID() : 0, NameOr(enemy, "?"),
+                       enemy->GetFormID());
     const RE::ActorHandle handle = enemy->GetHandle();
     controller->previousTargetHandle = controller->targetHandle;
     controller->targetHandle = handle;
@@ -336,20 +355,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         log::actions.debug("{}: {} through a shout slot", what, log::NameOf(form));
         const auto request = RequestShout(actor, action.form, targetId);
         log::actions.debug("{}: {}", what, ToString(request));
-        switch (request)
-        {
-        case CastRequest::Armed:
-            return ActionResult::Performed;
-        case CastRequest::SpellNotInSlot:
-        case CastRequest::TargetGone:
-            return ActionResult::MissingItem;
-        case CastRequest::PoolBusy:
-        case CastRequest::AlreadyCasting:
-            return ActionResult::Busy;
-        case CastRequest::NoPackages:
-            return ActionResult::NoSuchAction;
-        }
-        return ActionResult::NoSuchAction;
+        return ResultOf(request);
     }
 
     case ft::ActionKind::CastSpell:
@@ -401,21 +407,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // sets one; zero takes the default.
         const auto request = RequestCast(actor, action.form, targetId, action.arg, action.dual);
         log::actions.debug("cast: {}", ToString(request));
-        switch (request)
-        {
-        case CastRequest::Armed:
-            return ActionResult::Performed;
-        case CastRequest::SpellNotInSlot:
-            return ActionResult::MissingItem;
-        case CastRequest::PoolBusy:
-        case CastRequest::AlreadyCasting:
-            return ActionResult::Busy;
-        case CastRequest::TargetGone:
-            return ActionResult::MissingItem;
-        case CastRequest::NoPackages:
-            return ActionResult::NoSuchAction;
-        }
-        return ActionResult::NoSuchAction;
+        return ResultOf(request);
     }
 
     case ft::ActionKind::EquipWeapon:

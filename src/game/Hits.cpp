@@ -108,21 +108,31 @@ ApplySink g_applySink;
 // noted as Magic as well, so "attacked by magic" is any spell and
 // "attacked by fire" the fire in particular. Melee and Ranged are the
 // weapon's, never an effect's.
+RE::ActorValue ResistValueOf(DamageKind kind)
+{
+    switch (kind)
+    {
+    case DamageKind::Magic:
+        return RE::ActorValue::kResistMagic;
+    case DamageKind::Fire:
+        return RE::ActorValue::kResistFire;
+    case DamageKind::Frost:
+        return RE::ActorValue::kResistFrost;
+    case DamageKind::Shock:
+        return RE::ActorValue::kResistShock;
+    case DamageKind::Poison:
+        return RE::ActorValue::kPoisonResist;
+    default:
+        return RE::ActorValue::kNone;
+    }
+}
+
 DamageKind KindOfEffect(const RE::EffectSetting *base)
 {
-    switch (base->data.resistVariable)
-    {
-    case RE::ActorValue::kResistFire:
-        return DamageKind::Fire;
-    case RE::ActorValue::kResistFrost:
-        return DamageKind::Frost;
-    case RE::ActorValue::kResistShock:
-        return DamageKind::Shock;
-    case RE::ActorValue::kPoisonResist:
-        return DamageKind::Poison;
-    default:
-        return DamageKind::Magic;
-    }
+    for (const auto kind : {DamageKind::Fire, DamageKind::Frost, DamageKind::Shock, DamageKind::Poison})
+        if (base->data.resistVariable == ResistValueOf(kind))
+            return kind;
+    return DamageKind::Magic;
 }
 
 void WatchHits()
@@ -154,7 +164,7 @@ Attacked AttackedLately(ft::ActorId target)
         const Entry &entry = it->second[k];
         if (entry.when < 0.0 || now - entry.when > kWindow)
             continue;
-        out.kinds |= static_cast<std::uint8_t>(1u << k);
+        out.kinds |= Bit(static_cast<DamageKind>(k));
         if (entry.when > latest)
         {
             latest = entry.when;

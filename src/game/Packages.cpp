@@ -2,6 +2,7 @@
 
 #include "game/Forms.h"
 #include "game/Log.h"
+#include "game/Sheet.h"
 #include "game/Util.h"
 
 #include <algorithm>
@@ -1269,7 +1270,7 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
             Release(i);
             continue;
         }
-        const char *name = actor->GetName() ? actor->GetName() : "?";
+        const std::string name = NameOr(actor.get(), "?");
 
         const bool running = actor->GetCurrentPackage() == g_slots[i];
         if (running && !slot.seenRunning)

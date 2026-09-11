@@ -1,5 +1,8 @@
 #include "game/Magic.h"
 
+#include "core/Vocabulary.h"
+#include "game/Sheet.h"
+
 #include "game/Hits.h"
 #include "game/Packages.h"
 
@@ -16,63 +19,21 @@ namespace ft::game
 namespace
 {
 
-std::string Fmt(const char *fmt, double value)
-{
-    char buf[48];
-    std::snprintf(buf, sizeof(buf), fmt, value);
-    return buf;
-}
-
-SheetRow Row(std::string label, std::string value)
-{
-    SheetRow row;
-    row.label = std::move(label);
-    row.value = std::move(value);
-    return row;
-}
-
-std::string NameOf(const RE::TESForm *form)
-{
-    return form && form->GetName() ? form->GetName() : "";
-}
-
-// The Equipped row: a tick, and a pin beside it when a pin holds the thing.
-// Only on a page of something equipped; a bare "no" says nothing.
-SheetRow EquippedRow(bool pinned)
-{
-    SheetRow row;
-    row.label = "Equipped";
-    row.icon = kGlyphTick;
-    if (pinned)
-        row.icon2 = kGlyphPin;
-    return row;
-}
-
-// The equip slot records, read off Skyrim.esm (not from memory, which had
-// them wrong): RightHand 013F42, LeftHand 013F43, EitherHand 013F44,
-// BothHands 013F45, Voice 025BEE.
-constexpr std::uint32_t kRightHandSlot = 0x00013F42;
-constexpr std::uint32_t kLeftHandSlot = 0x00013F43;
-
 // The seconds left on the longest effect one of `sources` is running on
 // `who`, or 0 for none. A power's source is itself; a shout's are its words'
 // spells. Marked for Death runs on the enemy, Embrace of Shadows on the
 // follower, so the caller asks about both.
 float RemainingOn(RE::Actor *who, const std::vector<const RE::MagicItem *> &sources)
 {
-    auto *target = who ? who->AsMagicTarget() : nullptr;
-    auto *effects = target ? target->GetActiveEffectList() : nullptr;
-    if (!effects)
-        return 0.0f;
     float best = 0.0f;
-    for (const auto *ae : *effects)
-    {
-        if (!ae || !ae->spell || ae->duration <= 0.0f)
-            continue;
+    ForEachActiveEffect(who, [&](RE::ActiveEffect &effect) {
+        const auto *ae = &effect;
+        if (!ae->spell || ae->duration <= 0.0f)
+            return;
         if (std::find(sources.begin(), sources.end(), ae->spell) == sources.end())
-            continue;
+            return;
         best = (std::max)(best, ae->duration - ae->elapsedSeconds);
-    }
+    });
     return best;
 }
 
@@ -86,8 +47,7 @@ void AddTimeSection(RE::Actor *actor, const std::vector<const RE::MagicItem *> &
     SheetSection time{"Time", {}, {}};
     if (!actor)
         return;
-    const float recovery = actor->GetVoiceRecoveryTime();
-    if (recovery > 0.0f && recovery < 3600.0f)
+    if (const float recovery = VoiceRecoveryOf(actor); recovery > 0.0f)
         time.rows.push_back(Row("Cooldown", Fmt("%.0f", recovery) + " s"));
 
     float remaining = RemainingOn(actor, sources);
@@ -143,19 +103,8 @@ std::string TypeWord(const RE::EffectSetting *base)
 {
     if (!base)
         return "";
-    switch (KindOfEffect(base))
-    {
-    case ft::DamageKind::Fire:
-        return "Fire";
-    case ft::DamageKind::Frost:
-        return "Frost";
-    case ft::DamageKind::Shock:
-        return "Shock";
-    case ft::DamageKind::Poison:
-        return "Poison";
-    default:
-        break;
-    }
+    if (const auto kind = KindOfEffect(base); kind != ft::DamageKind::Magic)
+        return std::string(ft::DisplayName(kind));
     using Archetype = RE::EffectArchetypes::ArchetypeID;
     using AV = RE::ActorValue;
     switch (base->GetArchetype())

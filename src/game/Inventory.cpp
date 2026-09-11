@@ -1,5 +1,7 @@
 #include "game/Inventory.h"
 
+#include "game/Sheet.h"
+
 #include "game/Magic.h"
 
 #include "game/Sensors.h"
@@ -17,26 +19,6 @@ namespace ft::game
 {
 namespace
 {
-
-std::string Fmt(const char *fmt, double value)
-{
-    char buf[48];
-    std::snprintf(buf, sizeof(buf), fmt, value);
-    return buf;
-}
-
-SheetRow Row(std::string label, std::string value)
-{
-    SheetRow row;
-    row.label = std::move(label);
-    row.value = std::move(value);
-    return row;
-}
-
-std::string NameOf(const RE::TESForm *form)
-{
-    return form && form->GetName() ? form->GetName() : "";
-}
 
 // Replace every `token` in `text`, ignoring case. The effect descriptions in
 // Skyrim.esm write <mag>; mods are not so consistent, and the engine takes
@@ -97,15 +79,14 @@ const char *WeaponTypeName(const RE::TESObjectWEAP *weapon)
 
 ft::Grip ArmorGrip(const RE::TESObjectARMO *armor)
 {
-    // The slot records, by FormID from Skyrim.esm: RightHand 013F42,
-    // LeftHand 013F43, EitherHand 013F44, BothHands 013F45. The first two
-    // may sit above a slot of the mod's own, so the parents are walked.
+    // The hand slots (Sensors.h) may sit above a slot of the mod's own, so
+    // the parents are walked.
     const RE::BGSEquipSlot *root = armor->GetEquipSlot();
     if (!root)
         return ft::Grip::None;
-    if (root->GetFormID() == 0x00013F44)
+    if (root->GetFormID() == kEitherHandSlot)
         return ft::Grip::Either;
-    if (root->GetFormID() == 0x00013F45)
+    if (root->GetFormID() == kBothHandsSlot)
         return ft::Grip::Both;
     ft::Hand hands = ft::Hand::None;
     std::vector<const RE::BGSEquipSlot *> open{root};
@@ -117,9 +98,9 @@ ft::Grip ArmorGrip(const RE::TESObjectARMO *armor)
         if (std::find(seen.begin(), seen.end(), slot) != seen.end())
             continue;
         seen.push_back(slot);
-        if (slot->GetFormID() == 0x00013F43)
+        if (slot->GetFormID() == kLeftHandSlot)
             hands = hands | ft::Hand::Left;
-        else if (slot->GetFormID() == 0x00013F42)
+        else if (slot->GetFormID() == kRightHandSlot)
             hands = hands | ft::Hand::Right;
         for (const RE::BGSEquipSlot *parent : slot->parentSlots)
         {
@@ -176,25 +157,6 @@ std::string ArmorTypeName(const RE::TESObjectARMO *armor)
     if (clothing)
         return piece;
     return std::string(armorClass == Class::kHeavyArmor ? "Heavy " : "Light ") + piece;
-}
-
-const char *SoulName(RE::SOUL_LEVEL level)
-{
-    switch (level)
-    {
-    case RE::SOUL_LEVEL::kPetty:
-        return "Petty";
-    case RE::SOUL_LEVEL::kLesser:
-        return "Lesser";
-    case RE::SOUL_LEVEL::kCommon:
-        return "Common";
-    case RE::SOUL_LEVEL::kGreater:
-        return "Greater";
-    case RE::SOUL_LEVEL::kGrand:
-        return "Grand";
-    default:
-        return "empty";
-    }
 }
 
 std::string SkillName(RE::ActorValue skill)

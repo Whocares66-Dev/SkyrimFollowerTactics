@@ -1,5 +1,7 @@
 #include "game/Sensors.h"
 
+#include "game/Sheet.h"
+
 #include "core/Blows.h"
 #include "core/Effects.h"
 
@@ -124,30 +126,18 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock)
 std::vector<std::string> RunningEffects(RE::Actor *actor)
 {
     std::vector<std::string> out;
-    auto *target = actor->AsMagicTarget();
-    if (!target)
-        return out;
-    auto *effects = target->GetActiveEffectList();
-    if (!effects)
-        return out;
-    for (auto *ae : *effects)
-    {
-        if (!ae || !ae->effect || !ae->effect->baseEffect)
-            continue;
-        if (ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled))
-            continue;
+    ForEachActiveEffect(actor, [&out](RE::ActiveEffect &ae) {
         // duration 0 is an instant effect that has already happened.
-        if (!(ae->duration > 0.0f && ae->elapsedSeconds < ae->duration))
-            continue;
-        const char *name = ae->effect->baseEffect->GetFullName();
+        if (!(ae.duration > 0.0f && ae.elapsedSeconds < ae.duration))
+            return;
+        const char *name = ae.effect->baseEffect->GetFullName();
         if (name && *name)
             out.emplace_back(name);
-    }
+    });
     return out;
 }
 
 // Defined further down, in this same unnamed namespace, with the sheets.
-SheetRow Row(std::string label, std::string value);
 bool ReadsSkillMods(const RE::Actor *actor);
 bool ReadsSkillPowerMods(const RE::Actor *actor);
 
@@ -174,10 +164,45 @@ bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base)
         return ReadsSkillPowerMods(actor);
     return true;
 }
-std::string Fmt(const char *fmt, double value);
 float GameSetting(const char *name, float vanilla);
 
 } // namespace
+
+Carried CarriedOf(RE::Actor *actor, RE::TESBoundObject *object)
+{
+    Carried out;
+    if (!actor || !object)
+        return out;
+    auto inventory = actor->GetInventory([object](RE::TESBoundObject &c) { return &c == object; });
+    const auto found = inventory.find(object);
+    if (found == inventory.end())
+        return out;
+    out.count = found->second.first;
+    out.entry = std::move(found->second.second);
+    return out;
+}
+
+void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEffect &)> &fn)
+{
+    auto *target = actor ? actor->AsMagicTarget() : nullptr;
+    auto *effects = target ? target->GetActiveEffectList() : nullptr;
+    if (!effects)
+        return;
+    for (auto *ae : *effects)
+    {
+        if (!ae || !ae->effect || !ae->effect->baseEffect)
+            continue;
+        if (ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled))
+            continue;
+        fn(*ae);
+    }
+}
+
+float VoiceRecoveryOf(RE::Actor *actor)
+{
+    const float recovery = actor ? actor->GetVoiceRecoveryTime() : 0.0f;
+    return recovery > 0.0f && recovery < 3600.0f ? recovery : 0.0f;
+}
 
 // Whom an actor is fighting, as the engine sees it, if they are still
 // alive: the dead are nobody's target.
@@ -328,7 +353,7 @@ WornSource WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic, const RE::
         const char *given = entry.second->GetDisplayName();
         if (given && *given)
             return {object->GetFormID(), given};
-        return {object->GetFormID(), object->GetName() ? object->GetName() : ""};
+        return {object->GetFormID(), NameOr(object, "")};
     }
     if (from)
         return WornSourceOf(actor, magic, nullptr);
@@ -382,30 +407,22 @@ std::string SourceName(RE::Actor *actor, const RE::ActiveEffect *ae)
 std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 {
     std::vector<Contribution> out;
-    auto *target = actor ? actor->AsMagicTarget() : nullptr;
-    auto *effects = target ? target->GetActiveEffectList() : nullptr;
-    if (!effects)
-        return out;
     using Archetype = RE::EffectArchetypes::ArchetypeID;
-    for (auto *ae : *effects)
-    {
-        if (!ae || !ae->effect || !ae->effect->baseEffect)
-            continue;
-        if (ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled))
-            continue;
+    ForEachActiveEffect(actor, [&](RE::ActiveEffect &effect) {
+        auto *ae = &effect;
         const auto *base = ae->effect->baseEffect;
         const auto archetype = base->GetArchetype();
         const bool moves = archetype == Archetype::kValueModifier || archetype == Archetype::kPeakValueModifier ||
                            archetype == Archetype::kDualValueModifier;
         if (!moves)
-            continue;
+            return;
         const bool primary = base->data.primaryAV == value;
         const bool secondary = archetype == Archetype::kDualValueModifier && base->data.secondaryAV == value;
         if (!primary && !secondary)
-            continue;
+            return;
         std::string source = SourceName(actor, ae);
         if (source.empty())
-            source = base->GetName() ? base->GetName() : "?";
+            source = NameOr(base, "?");
         // The active effect's magnitude already carries the engine's sign:
         // a detrimental modifier (Weakness to Fire on a vampire) is -50
         // here, not 50 with a flag to read. Negating it again showed the
@@ -414,12 +431,9 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         // An effect on the value with nothing to add (a vampire's Blood
         // Aura carries a zero here) is not a source.
         if (std::abs(ae->magnitude) < 0.05f)
-            continue;
+            return;
         out.push_back({std::move(source), ae->magnitude});
-    }
-    // Smallest first: the weaknesses, then the boons, the largest last.
-    std::stable_sort(out.begin(), out.end(),
-                     [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
+    });
     return out;
 }
 
@@ -480,9 +494,16 @@ std::string ArmorNote(RE::Actor *actor)
     return note;
 }
 
-float HiddenArmor(RE::Actor *actor)
+// fArmorScalingFactor over 100: what a point of armour rating turns away.
+float ArmorScale()
 {
     static const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
+    return scale;
+}
+
+float HiddenArmor(RE::Actor *actor)
+{
+    const float scale = ArmorScale();
     return actor && scale > 0.0f ? actor->GetArmorBaseFactorSum() / scale : 0.0f;
 }
 
@@ -779,7 +800,7 @@ float DamageReduction(RE::Actor *actor)
 {
     if (!actor)
         return 0.0f;
-    static const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
+    const float scale = ArmorScale();
     static const float cap = GameSetting("fMaxArmorRating", 80.0f) / 100.0f;
     const float rating = actor->CalcArmorRating();
     const float hidden = actor->GetArmorBaseFactorSum();
@@ -803,10 +824,10 @@ void LogArmorReadings(RE::Actor *actor)
     const auto &runtime = actor->GetActorRuntimeData();
     log::sensors.debug("armor {}: AV DamageResist {:.1f}, CalcArmorRating {:.1f} (cached {:.1f}), base factor sum "
                        "{:.3f} (cached {:.3f}) over {} pieces x fArmorBaseFactor {:.2f} -- reduction {:.1f}%",
-                       actor->GetName() ? actor->GetName() : "?",
-                       owner ? owner->GetActorValue(RE::ActorValue::kDamageResist) : 0.0f, actor->CalcArmorRating(),
-                       runtime.armorRating, actor->GetArmorBaseFactorSum(), runtime.armorBaseFactorSum, pieces,
-                       GameSetting("fArmorBaseFactor", 0.03f), DamageReduction(actor) * 100.0f);
+                       NameOr(actor, "?"), owner ? owner->GetActorValue(RE::ActorValue::kDamageResist) : 0.0f,
+                       actor->CalcArmorRating(), runtime.armorRating, actor->GetArmorBaseFactorSum(),
+                       runtime.armorBaseFactorSum, pieces, GameSetting("fArmorBaseFactor", 0.03f),
+                       DamageReduction(actor) * 100.0f);
 }
 
 // The enchantment on a weapon the actor carries: a player-made one on the
@@ -814,10 +835,9 @@ void LogArmorReadings(RE::Actor *actor)
 // ChargeOf.
 RE::EnchantmentItem *EnchantmentOn(RE::Actor *actor, RE::TESObjectWEAP *weapon)
 {
-    auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
-    const auto found = inventory.find(weapon);
-    if (found != inventory.end() && found->second.second && found->second.second->extraLists)
-        for (auto *list : *found->second.second->extraLists)
+    const Carried carried = CarriedOf(actor, weapon);
+    if (carried.entry && carried.entry->extraLists)
+        for (auto *list : *carried.entry->extraLists)
             if (auto *xEnch = list ? list->GetByType<RE::ExtraEnchantment>() : nullptr; xEnch && xEnch->enchantment)
                 return xEnch->enchantment;
     return weapon->formEnchanting;
@@ -1047,24 +1067,16 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     traits.attacker = attacked.attacker;
     if (auto *owner = actor->AsActorValueOwner())
     {
-        traits.SetResist(ft::DamageKind::Magic, owner->GetActorValue(RE::ActorValue::kResistMagic));
-        traits.SetResist(ft::DamageKind::Fire, owner->GetActorValue(RE::ActorValue::kResistFire));
-        traits.SetResist(ft::DamageKind::Frost, owner->GetActorValue(RE::ActorValue::kResistFrost));
-        traits.SetResist(ft::DamageKind::Shock, owner->GetActorValue(RE::ActorValue::kResistShock));
-        traits.SetResist(ft::DamageKind::Poison, owner->GetActorValue(RE::ActorValue::kPoisonResist));
+        for (const auto kind : {ft::DamageKind::Magic, ft::DamageKind::Fire, ft::DamageKind::Frost,
+                                ft::DamageKind::Shock, ft::DamageKind::Poison})
+            traits.SetResist(kind, owner->GetActorValue(ResistValueOf(kind)));
     }
     using Archetype = RE::EffectArchetypes::ArchetypeID;
 
-    if (auto *target = actor->AsMagicTarget())
     {
-        if (auto *effects = target->GetActiveEffectList())
         {
-            for (auto *ae : *effects)
-            {
-                if (!ae || !ae->effect || !ae->effect->baseEffect)
-                    continue;
-                if (ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled))
-                    continue;
+            ForEachActiveEffect(actor, [&](RE::ActiveEffect &effect) {
+                auto *ae = &effect;
                 const auto *base = ae->effect->baseEffect;
                 // Burning, frostbitten, shocked: a hostile effect resisted by
                 // that element. The keyword would say the same of vanilla
@@ -1102,7 +1114,7 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
                 default:
                     break;
                 }
-            }
+            });
         }
     }
 
@@ -1144,12 +1156,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     s.stamina = ReadStat(actor, RE::ActorValue::kStamina);
 
     s.inCombat = actor->IsInCombat();
-    // Per actor, NPCs included: the last shout's word recovery, counting
-    // down. Negative or nonsense reads as "can shout".
-    {
-        const float recovery = actor->GetVoiceRecoveryTime();
-        s.voiceRecovery = recovery > 0.0f && recovery < 3600.0f ? recovery : 0.0f;
-    }
+    s.voiceRecovery = VoiceRecoveryOf(actor);
     for (const auto kind : {ft::ActionKind::PowerAttack, ft::ActionKind::Bash, ft::ActionKind::PowerBash})
     {
         const BlowPlan plan = PlanBlow(actor, kind);
@@ -1324,49 +1331,16 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     }
     s.pins = PinsOf(s.self);
 
-    if (auto *target = actor->AsMagicTarget())
-    {
-        if (auto *effects = target->GetActiveEffectList())
-        {
-            for (auto *ae : *effects)
-            {
-                if (!ae || !ae->spell)
-                    continue;
-                // Instant effects have already happened and never lapse, so
-                // treating them as "still up" would block the rule forever.
-                if (ae->duration <= 0.0f)
-                    continue;
-                if (ae->elapsedSeconds >= ae->duration)
-                    continue;
-                s.spells.active.push_back(ae->spell->GetFormID());
-            }
-        }
-    }
+    ForEachActiveEffect(actor, [&s](RE::ActiveEffect &ae) {
+        // Instant effects have already happened and never lapse, so
+        // treating them as "still up" would block the rule forever.
+        if (!ae.spell || ae.duration <= 0.0f || ae.elapsedSeconds >= ae.duration)
+            return;
+        s.spells.active.push_back(ae.spell->GetFormID());
+    });
 
     return s;
 }
-
-namespace
-{
-const char *SoulLevelName(RE::SOUL_LEVEL level)
-{
-    switch (level)
-    {
-    case RE::SOUL_LEVEL::kPetty:
-        return "Petty";
-    case RE::SOUL_LEVEL::kLesser:
-        return "Lesser";
-    case RE::SOUL_LEVEL::kCommon:
-        return "Common";
-    case RE::SOUL_LEVEL::kGreater:
-        return "Greater";
-    case RE::SOUL_LEVEL::kGrand:
-        return "Grand";
-    default:
-        return "Empty";
-    }
-}
-} // namespace
 
 std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
 {
@@ -1391,10 +1365,10 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
             const auto level = entry.second ? entry.second->GetSoulLevel() : RE::SOUL_LEVEL::kNone;
             if (level == RE::SOUL_LEVEL::kNone)
                 continue;
-            std::string name = object->GetName() ? object->GetName() : "?";
+            std::string name = NameOr(object, "?");
             const auto *gem = object->As<RE::TESSoulGem>();
             if (!gem || level < gem->GetMaximumCapacity())
-                name += std::string(" (") + SoulLevelName(level) + ")";
+                name += std::string(" (") + SoulName(level) + ")";
             out.push_back({object->GetFormID(), name, static_cast<int>(count), ft::ConsumableKind::SoulGem, {}});
             continue;
         }
@@ -1404,8 +1378,7 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
         std::vector<std::string> effects;
         for (const auto &effect : EffectsOf(object->As<RE::MagicItem>(), *kind))
             effects.push_back(effect.name);
-        out.push_back({object->GetFormID(), object->GetName() ? object->GetName() : "?", static_cast<int>(count), *kind,
-                       std::move(effects)});
+        out.push_back({object->GetFormID(), NameOr(object, "?"), static_cast<int>(count), *kind, std::move(effects)});
     }
     std::sort(out.begin(), out.end(),
               [](const ConsumableOption &a, const ConsumableOption &b) { return a.name < b.name; });
@@ -1428,7 +1401,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         if (!power && DescribeHoldable(actor, spell).unusable)
             return;
 
-        std::string name = spell->GetName() ? spell->GetName() : "";
+        std::string name = NameOr(spell, "");
         if (name.empty())
             return; // nameless entries are internal; nothing to show a player
         bool reanimate = false;
@@ -1450,7 +1423,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         auto *scroll = object ? object->As<RE::ScrollItem>() : nullptr;
         if (!scroll || entry.first <= 0)
             continue;
-        std::string name = scroll->GetName() ? scroll->GetName() : "";
+        std::string name = NameOr(scroll, "");
         if (name.empty())
             continue;
         bool reanimate = false;
@@ -1492,13 +1465,6 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
 namespace
 {
 
-std::string Fmt(const char *fmt, double value)
-{
-    char buf[48];
-    std::snprintf(buf, sizeof(buf), fmt, value);
-    return buf;
-}
-
 // A float game setting, or the vanilla value if the collection has no such
 // entry. The fallbacks are vanilla's numbers so a missing setting degrades to
 // "what the unmodded game does", not to a zero that reads as a broken sheet
@@ -1525,19 +1491,6 @@ std::string CappedPercent(float value, float cap)
     if (value > cap)
         return Fmt("%.0f%%", value) + " (" + Fmt("%.0f%%", cap) + ")";
     return Fmt("%.0f%%", value);
-}
-
-SheetRow Row(std::string label, std::string value)
-{
-    SheetRow row;
-    row.label = std::move(label);
-    row.value = std::move(value);
-    return row;
-}
-
-std::string NameOr(const RE::TESForm *form, const char *fallback)
-{
-    return form && form->GetName() && *form->GetName() ? form->GetName() : fallback;
 }
 
 // --- perks -------------------------------------------------------------------
@@ -1673,7 +1626,7 @@ namespace
 // a perk with no name.
 std::string PerkName(const RE::BGSPerk *perk)
 {
-    const std::string raw = perk && perk->GetName() ? perk->GetName() : "";
+    const std::string raw = NameOr(perk, "");
     const auto first = raw.find_first_not_of(' ');
     if (first == std::string::npos)
         return {};
@@ -1726,10 +1679,8 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
         rows.push_back(Row("Weapon", NameOr(weapon, "?")));
         rows.back().form = weapon->GetFormID();
         // In her hands: the carried item, for its tempering.
-        auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &o) { return &o == weapon; });
-        const auto found = inventory.find(weapon);
-        auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
-        rows.push_back(Row("Damage", Fmt("%.0f", WeaponDamage(actor, weapon, entry))));
+        const Carried carried = CarriedOf(actor, weapon);
+        rows.push_back(Row("Damage", Fmt("%.0f", WeaponDamage(actor, weapon, carried.entry.get()))));
         rows.push_back(Row("Speed", Fmt("%.2f", weapon->GetSpeed())));
         rows.push_back(Row("Reach", Fmt("%.2f", weapon->GetReach())));
         rows.push_back(Row("Stagger", Fmt("%.2f", weapon->GetStagger())));
@@ -1770,10 +1721,8 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
         const bool shield = armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield);
         rows.push_back(Row(shield ? "Shield" : "Held", NameOr(armor, "?")));
         rows.back().form = armor->GetFormID();
-        auto inventory = actor->GetInventory([armor](RE::TESBoundObject &o) { return &o == armor; });
-        const auto found = inventory.find(armor);
-        auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
-        rows.push_back(Row("Armor", Fmt("%.0f", ArmorRating(actor, armor, entry))));
+        const Carried carried = CarriedOf(actor, armor);
+        rows.push_back(Row("Armor", Fmt("%.0f", ArmorRating(actor, armor, carried.entry.get()))));
         return;
     }
 
@@ -1978,9 +1927,9 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
             std::snprintf(id, sizeof(id), "%08X", base ? base->GetFormID() : 0u);
             s.rows.push_back(Row("Base ID", id));
         }
-        s.rows.push_back(Row("Name", actor->GetName() ? actor->GetName() : "?"));
+        s.rows.push_back(Row("Name", NameOr(actor, "?")));
         auto *race = actor->GetRace();
-        s.rows.push_back(Row("Race", race && race->GetName() ? race->GetName() : "?"));
+        s.rows.push_back(Row("Race", NameOr(race, "?")));
         if (const auto *base = actor->GetActorBase())
         {
             const auto sex = base->GetSex();
@@ -2476,7 +2425,7 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
     {
     case Type::kAbility: {
         const auto *ability = static_cast<const RE::BGSAbilityPerkEntry *>(entry);
-        return Row("Ability", ability->ability && ability->ability->GetName() ? ability->ability->GetName() : "?");
+        return Row("Ability", NameOr(ability->ability, "?"));
     }
     case Type::kQuest:
         // The quest entry's record is not modelled in this CommonLibSSE
@@ -2535,7 +2484,7 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
         if (dataType == DataType::kSpellItem)
         {
             const auto *spell = static_cast<const RE::BGSEntryPointFunctionDataSpellItem *>(data)->spell;
-            value = spell && spell->GetName() ? spell->GetName() : "a spell";
+            value = NameOr(spell, "a spell");
         }
         return Row(name, value);
     }
@@ -2893,7 +2842,7 @@ std::vector<SummonView> ScanSummons(RE::Actor *actor)
         SummonView view;
         view.id = summon->GetFormID();
         view.baseId = summon->GetActorBase() ? summon->GetActorBase()->GetFormID() : 0;
-        view.name = summon->GetName() ? summon->GetName() : "?";
+        view.name = NameOr(summon.get(), "?");
         view.level = summon->GetLevel();
         view.health = ReadStat(summon.get(), RE::ActorValue::kHealth);
         view.magicka = ReadStat(summon.get(), RE::ActorValue::kMagicka);
@@ -3040,14 +2989,10 @@ WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand)
     };
     if (hand != Hand::None)
         read(WornList(actor, weapon, hand));
-    else
+    else if (const Carried carried = CarriedOf(actor, weapon); carried.entry && carried.entry->extraLists)
     {
-        auto inventory = actor->GetInventory([weapon](RE::TESBoundObject &c) { return &c == weapon; });
-        const auto found = inventory.find(weapon);
-        auto *entry = found != inventory.end() ? found->second.second.get() : nullptr;
-        if (entry && entry->extraLists)
-            for (auto *list : *entry->extraLists)
-                read(list);
+        for (auto *list : *carried.entry->extraLists)
+            read(list);
     }
     if (!ench || max <= 0.0f)
         return out;

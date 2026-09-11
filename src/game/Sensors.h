@@ -9,6 +9,7 @@
 #include "core/Snapshot.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,40 @@ class TESObjectWEAP;
 
 namespace ft::game
 {
+
+// The equip slot records, by FormID in Skyrim.esm: read off the game, not
+// from memory, which had them wrong. Not through the default object
+// table, which did not answer for them on this game (01:29): a null slot
+// handed to an equip means "the default", and the default is the right
+// hand -- which is where every left-hand dagger went (01:51).
+inline constexpr std::uint32_t kRightHandSlot = 0x00013F42;
+inline constexpr std::uint32_t kLeftHandSlot = 0x00013F43;
+inline constexpr std::uint32_t kEitherHandSlot = 0x00013F44;
+inline constexpr std::uint32_t kBothHandsSlot = 0x00013F45;
+inline constexpr std::uint32_t kVoiceSlot = 0x00025BEE;
+
+// One thing the actor carries, as the engine's inventory map reports it:
+// how many, and the entry -- a copy, as GetInventory makes, with its
+// extra lists -- or null for none carried. The twelve hand-written walks
+// of that map were one lookup each.
+struct Carried
+{
+    std::int32_t count{0};
+    std::unique_ptr<RE::InventoryEntryData> entry;
+};
+[[nodiscard]] Carried CarriedOf(RE::Actor *actor, RE::TESBoundObject *object);
+
+// Every effect running on the actor that is live -- with a base effect,
+// not inactive, not dispelled -- in one walk. What the snapshot's
+// statuses, running effects and active spells read, and the sheets'
+// contributions. (The Effects tab walks the list itself: it shows the
+// inactive ones, greyed.)
+void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEffect &)> &fn);
+
+// Seconds until the voice can shout again, 0 when it can. The engine
+// keeps this per actor, NPCs too; negative or nonsense (an hour or more)
+// reads as "can shout".
+[[nodiscard]] float VoiceRecoveryOf(RE::Actor *actor);
 
 // The hands are asked one at a time, and answered per COPY: with the same
 // dagger in each hand -- two entries of one record -- the left's poison and
@@ -249,6 +284,8 @@ struct SheetRow
     // A glyph in the third column, where the table has one: an effect's
     // tick for Hidden. 0 for none.
     unsigned mark{0};
+    // The Equipped row of a page (EquippedRow), where the pin glyph goes.
+    bool equipped{false};
 };
 
 struct SheetSection
