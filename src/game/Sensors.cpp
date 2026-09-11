@@ -610,7 +610,15 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             stats.rows.push_back(std::move(forever));
         }
         if (!row.source.empty())
-            stats.rows.push_back(Row("Source", row.source));
+        {
+            // The source's form, for the panel to make a link of where
+            // the source has a page: the worn item for an enchantment,
+            // the spell otherwise.
+            SheetRow source = Row("Source", row.source);
+            const bool enchantment = ae->spell && ae->spell->As<RE::EnchantmentItem>();
+            source.form = enchantment ? (ae->source ? ae->source->GetFormID() : 0) : row.sourceForm;
+            stats.rows.push_back(std::move(source));
+        }
         // Whoever cast it, when it was not the follower: the player's
         // Courage, an enemy's Fury.
         if (auto caster = ae->caster.get(); caster && caster.get() != actor && caster->GetName() && *caster->GetName())

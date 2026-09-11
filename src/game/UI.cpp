@@ -2934,7 +2934,8 @@ enum class Tab
     None,
     Character,
     Inventory,
-    Magic
+    Magic,
+    Effects
 };
 
 struct InventoryTabState
@@ -4206,7 +4207,7 @@ std::vector<const EffectRow *> VisibleEffects(const FollowerView &view)
     return rows;
 }
 
-void DrawEffectDetail(const EffectRow &row, EffectsTabState &state)
+void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const FollowerView &view)
 {
     Im::Spacing();
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
@@ -4223,9 +4224,41 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state)
     // each with its conditions beneath, in the table the perk page uses
     // for a perk's entries.
     const auto split = row.detail.begin() + (row.detail.empty() ? 0 : 1);
-    const std::vector<SheetSection> info(row.detail.begin(), split);
+    std::vector<SheetSection> info(row.detail.begin(), split);
     const std::vector<SheetSection> effects(split, row.detail.end());
-    DrawSections(info, false);
+
+    // The source is a link to its page where it has one: the worn piece
+    // on the Inventory tab, the spell on the Magic tab. A source with no
+    // page -- a racial ability, a potion drunk up -- is plain text: the
+    // tabs' own lists are the rule for what has a page, and a form in
+    // neither loses its link here rather than lighting a cell that would
+    // go nowhere.
+    const auto carried = [&](std::uint32_t form) {
+        return std::any_of(view.inventory.begin(), view.inventory.end(),
+                           [form](const InventoryItem &item) { return item.form == form; });
+    };
+    const auto known = [&](std::uint32_t form) {
+        return std::any_of(view.magic.begin(), view.magic.end(),
+                           [form](const MagicEntry &entry) { return entry.form == form; });
+    };
+    for (auto &section : info)
+        for (auto &line : section.rows)
+            if (line.form != 0 && !carried(line.form) && !known(line.form))
+                line.form = 0;
+    const ft::ActorId id = view.id;
+    DrawSections(info, false, [id, &known](std::uint32_t form) {
+        auto &inventory = g_inventoryTabs[id];
+        if (known(form))
+        {
+            g_magicTabs[id].detail = form;
+            g_magicTabs[id].openedFrom = Tab::Effects;
+            inventory.select = Tab::Magic;
+            return;
+        }
+        inventory.detail = form;
+        inventory.openedFrom = Tab::Effects;
+        inventory.select = Tab::Inventory;
+    });
     if (!effects.empty())
         DrawSections(effects, true, {}, "Active",
                      [](const SheetRow &entry, const std::string &key, float left, float right) {
@@ -4249,7 +4282,7 @@ void DrawEffects(const FollowerView &view)
         {
             if (row.form == state.detailForm && row.sourceForm == state.detailSource)
             {
-                DrawEffectDetail(row, state);
+                DrawEffectDetail(row, state, view);
                 return;
             }
         }
@@ -4717,7 +4750,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
         DrawSummons(view);
         Im::EndTabItem();
     }
-    if (Im::BeginTabItem("Effects"))
+    if (Im::BeginTabItem("Effects", nullptr, select == Tab::Effects ? Im::ImGuiTabItemFlags_SetSelected : 0))
     {
         DrawEffects(view);
         Im::EndTabItem();
