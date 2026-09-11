@@ -82,6 +82,31 @@ void EndDimmed()
     Im::PopStyleVar(1);
 }
 
+// The same grey over what follows, to the end of the scope, and nothing
+// else: unlike BeginDimmed's region, what is drawn stays live. For a row
+// set aside, for a cell greyed with its row but still answering, for a
+// perk whose conditions fail. One guard, so every greyed-but-live thing
+// on the panel is greyed by the same line.
+class DimText
+{
+  public:
+    explicit DimText(bool dim) : dim_(dim)
+    {
+        if (dim_)
+            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
+    }
+    ~DimText()
+    {
+        if (dim_)
+            Im::PopStyleColor(1);
+    }
+    DimText(const DimText &) = delete;
+    DimText &operator=(const DimText &) = delete;
+
+  private:
+    bool dim_;
+};
+
 // One short word for the Status column, and the colour to say it in.
 //
 // Deliberately terse. This column sits beside two editable cells in a narrow
@@ -736,11 +761,10 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     // colour is pushed round the cell alone, so the menu reads as usual;
     // `setAside` greys it with the rest of a row set aside for its action.
     const bool available = ConditionAvailable(rule, view);
-    if (setAside || !available)
-        Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
-    CellButtonOpensPopup(id, ConditionText(rule, view));
-    if (setAside || !available)
-        Im::PopStyleColor(1);
+    {
+        const DimText grey(setAside || !available);
+        CellButtonOpensPopup(id, ConditionText(rule, view));
+    }
     if (!available && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
         Im::SetTooltip("%s", kFollowerAway);
 
@@ -1817,11 +1841,10 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
     const char *reason = !TargetAvailable(rule, view)  ? kFollowerAway
                          : !ActionAvailable(act, view) ? kNotAvailable
                                                        : nullptr;
-    if (setAside || reason)
-        Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
-    CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
-    if (setAside || reason)
-        Im::PopStyleColor(1);
+    {
+        const DimText grey(setAside || reason != nullptr);
+        CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
+    }
     if (reason && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
         Im::SetTooltip("%s", reason);
 
@@ -2232,11 +2255,10 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         Im::TableSetColumnIndex(1);
         Im::AlignTextToFramePadding();
-        if (!available)
-            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
-        Im::Text("%zu", i + 1);
-        if (!available)
-            Im::PopStyleColor(1);
+        {
+            const DimText grey(!available);
+            Im::Text("%zu", i + 1);
+        }
 
         Im::TableSetColumnIndex(2);
         if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, !available))
@@ -2313,11 +2335,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // fit the column, and the drawer is one click away. Greyed with
             // the row when set aside: the cell answers, but reads as the
             // rest of the row does.
-            if (!available)
-                Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
+            const DimText grey(!available);
             Im::Text("%zu actions", rule.actions.size());
-            if (!available)
-                Im::PopStyleColor(1);
         }
 
         Im::TableSetColumnIndex(4);
@@ -2524,8 +2543,7 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
         // A perk set aside -- its conditions fail for this actor -- is the
         // shadowed rows' grey, with the reason on its name.
         const bool aside = !sub.aside.empty();
-        if (aside)
-            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
+        const DimText grey(aside);
         if (sub.form != 0 && onLink)
         {
             // The name is a link to the perk's page. The click cell's ID
@@ -2544,8 +2562,6 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
         Im::Text("%s", sub.value.c_str());
         Im::TableSetColumnIndex(2);
         Im::TextWrapped("%s", sub.modifiers.c_str());
-        if (aside)
-            Im::PopStyleColor(1);
     }
     Im::EndTable();
 }
@@ -3577,8 +3593,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         // Not on All, where nothing can be equipped and the dimming would
         // have no cell to explain it.
         const bool dim = (Disabled(*item) || item->banned) && state.category >= 0;
-        if (dim)
-            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
+        const DimText grey(dim);
         Im::TableSetColumnIndex(0);
 
         // The NAME is the click target for the detail page, not the row: the
@@ -3678,8 +3693,6 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             if (item->equipable)
                 OnCell(buf, view.id, item->form, WornCell(*item), Hand::None, true);
         }
-        if (dim)
-            Im::PopStyleColor(1);
     }
     Im::EndTable();
     Im::PopStyleVar(1);
@@ -4006,8 +4019,7 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         // the disabled colour, ticks included, since every glyph takes the
         // text colour.
         const bool dim = (Disabled(*entry) || entry->banned) && !allList;
-        if (dim)
-            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
+        const DimText grey(dim);
         Im::TableSetColumnIndex(0);
         Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
@@ -4092,8 +4104,6 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
             Im::TableNextColumn();
             OnCell(buf, view.id, entry->form, RightCell(*entry), Hand::Right, !voice);
         }
-        if (dim)
-            Im::PopStyleColor(1);
     }
     Im::EndTable();
     Im::PopStyleVar(1);
@@ -4286,8 +4296,7 @@ void DrawEffects(const FollowerView &view)
         Im::TableNextRow(0, 0.0f);
         // Running but changing nothing for this follower: the row is drawn
         // in the disabled colour, and its name hovers as "Not applied".
-        if (!row->applied)
-            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
+        const DimText grey(!row->applied);
         Im::TableSetColumnIndex(0);
         const Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
@@ -4313,8 +4322,6 @@ void DrawEffects(const FollowerView &view)
             TextRightInCell(row->remainingText);
         Im::TableSetColumnIndex(3);
         Im::Text("%s", row->source.c_str());
-        if (!row->applied)
-            Im::PopStyleColor(1);
     }
     Im::EndTable();
     Im::PopStyleVar(1);
