@@ -1470,7 +1470,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 // heading of the Then cascade, those that make sense on that target
 // (IsActionValidFor), in a fixed order with the more active thing first --
 // Target; Potion, Food, Ingredient; Cast, Shout, Power; Charge, Poison;
-// Weapon, Armor, Arrows, Spell -- a divider between the groups. Every list
+// Weapon, Arrows, Armor, Spell -- a divider between the groups. Every list
 // is the follower's own, so a rule cannot name a thing they do not have:
 // the same guarantee the condition side gets from the validity matrix, and
 // for the same reason -- an unfireable rule should be unauthorable, not
@@ -1718,12 +1718,14 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
     }
 
-    // What is put on, and PINNED: Weapon, Armor, Arrows, Spell, each its
-    // own menu of what is carried or known.
+    // What is put on, and PINNED: Weapon, Arrows, Armor, Spell, each its
+    // own menu of what is carried or known. The heading's tooltip is the
+    // action's name, "Equip weapon": what choosing from it writes into the
+    // rule, not the promise the pin makes.
     if (valid(ft::ActionKind::EquipWeapon))
     {
         group(5);
-        for (const auto kind : {ft::ActionKind::EquipWeapon, ft::ActionKind::EquipArmor, ft::ActionKind::EquipArrows,
+        for (const auto kind : {ft::ActionKind::EquipWeapon, ft::ActionKind::EquipArrows, ft::ActionKind::EquipArmor,
                                 ft::ActionKind::EquipSpell})
         {
             std::string noun = EquipNoun(kind);
@@ -1731,7 +1733,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                 noun[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(noun[0])));
             const bool open = BeginCascade(noun.c_str());
             if (Im::IsItemHovered(0))
-                Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+                Im::SetTooltip("%s", std::string(ft::DisplayName(kind)).c_str());
             if (!open)
                 continue;
             if (EquipMenu(act, kind, view))
