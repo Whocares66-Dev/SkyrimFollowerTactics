@@ -578,8 +578,8 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
         const auto value = base->data.primaryAV;
         const bool pool =
             value == RE::ActorValue::kHealth || value == RE::ActorValue::kMagicka || value == RE::ActorValue::kStamina;
-        if (duration > 0)
-            amount += std::string(pool ? "/s" : "") + " for " + std::to_string(duration) + " s";
+        if (duration > 0 && pool)
+            amount += "/s";
     }
     else
     {
@@ -590,11 +590,13 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
             amount += std::string(" ") + named->GetName();
         if (magnitude != 0.0f)
             amount += " " + Fmt("%g", magnitude);
-        if (duration > 0)
-            amount += " for " + std::to_string(duration) + " s";
     }
 
     SheetRow row = Row(name, amount);
+    // The duration in its own column; blank for an effect with none,
+    // which holds for as long as it runs.
+    if (duration > 0)
+        row.extra = std::to_string(duration) + " s";
     if (base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
         row.mark = kGlyphTick;
     // Two lists gate it: the spell's own entry's, and the effect record's

@@ -2658,13 +2658,17 @@ using RowDrawer = std::function<void(const SheetRow &, const std::string &, floa
 
 // `modifiers`: a third column, headed `third`, carrying each row's
 // modifiers text or its mark glyph; `first` and `second` head the name
-// and value columns then, where the table has a header row at all.
+// and value columns then, where the table has a header row at all; and
+// `fourth`, when given, a column between the value and the last, headed
+// so, carrying each row's `extra` -- an effect's duration.
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                   const std::function<void(std::uint32_t)> &onLink = {}, const char *third = "Modifiers",
-                  const RowDrawer &drawer = {}, const char *first = "", const char *second = "")
+                  const RowDrawer &drawer = {}, const char *first = "", const char *second = "",
+                  const char *fourth = nullptr)
 {
     float nameWidth = modifiers ? TextWidth(first) : 0.0f;
     float valueWidth = modifiers ? TextWidth(second) : 0.0f;
+    float extraWidth = fourth ? TextWidth(fourth) : 0.0f;
     // A row with perks carries the disclosure marker before its name and
     // is measured with it; a row without starts its name where the marker
     // would be, so the two kinds line up on their left edge.
@@ -2676,9 +2680,11 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             const float lead = row.detail.empty() ? 0.0f : marker;
             nameWidth = (std::max)(nameWidth, lead + TextWidth(row.label));
             valueWidth = (std::max)(valueWidth, TextWidth(row.value));
+            extraWidth = (std::max)(extraWidth, TextWidth(row.extra));
         }
     }
     const float pad = 2.0f * kCellPadX + 8.0f;
+    const int lastColumn = fourth ? 3 : 2;
 
     const auto border = Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f);
     const auto stripe = Im::GetColorU32(Im::ImGuiCol_TableRowBgAlt, 1.0f);
@@ -2734,7 +2740,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
         const auto beginPiece = [&]() {
             const std::string id = section.title + "##" + std::to_string(piece++);
             const auto flags = Im::ImGuiTableFlags_Borders;
-            if (!Im::BeginTable(id.c_str(), modifiers ? 3 : 2, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+            if (!Im::BeginTable(id.c_str(), modifiers ? lastColumn + 1 : 2, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
                 return false;
             Im::TableSetupColumn("##name", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
             // The value column takes the rest of the table when nothing
@@ -2746,8 +2752,12 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
             if (modifiers)
             {
+                if (fourth)
+                    Im::TableSetupColumn("##extra", Im::ImGuiTableColumnFlags_WidthFixed, extraWidth + pad, 0);
                 Im::TableSetupColumn(third, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-                if (piece == 1)
+                if (piece == 1 && fourth)
+                    PlainHeaderRow({first, second, fourth, third});
+                else if (piece == 1)
                     PlainHeaderRow({first, second, third});
             }
             inTable = true;
@@ -2882,7 +2892,12 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             }
             if (modifiers)
             {
-                Im::TableSetColumnIndex(2);
+                if (fourth)
+                {
+                    Im::TableSetColumnIndex(2);
+                    Im::Text("%s", row.extra.c_str());
+                }
+                Im::TableSetColumnIndex(lastColumn);
                 if (row.mark != 0)
                 {
                     FontAwesome::PushSolid();
@@ -3775,7 +3790,7 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
             [](const SheetRow &entry, const std::string &key, float left, float right) {
                 DrawConditionDrawer(entry, key, left, right);
             },
-            "Name", "Magnitude");
+            "Name", "Magnitude", "Duration");
     }
     // The poison's effects under the Poison section's own heading, so an
     // enchanted and poisoned blade reads as two things, which it is.
@@ -4167,7 +4182,7 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
             [](const SheetRow &line, const std::string &key, float left, float right) {
                 DrawConditionDrawer(line, key, left, right);
             },
-            "Name", "Magnitude");
+            "Name", "Magnitude", "Duration");
     }
     if (!entry.description.empty())
     {
@@ -4308,7 +4323,7 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Follow
             [](const SheetRow &entry, const std::string &key, float left, float right) {
                 DrawConditionDrawer(entry, key, left, right);
             },
-            "Name", "Magnitude");
+            "Name", "Magnitude", "Duration");
 
     if (!row.description.empty())
     {
