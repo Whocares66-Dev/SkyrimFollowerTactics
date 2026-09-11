@@ -709,7 +709,10 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             SheetSection page{"Effect", {}, {}};
             SheetRow line = EffectEntryRow(actor, *ae->effect, ae->magnitude);
             if (ae->duration > 0.0f)
-                line.extra = row.remainingText + " of " + RemainingText(ae->duration);
+            {
+                line.extra = RemainingText(ae->duration);
+                line.remaining = row.remainingText;
+            }
             line.link = row.source;
             // Whoever cast it, when it was not the follower: the player's
             // Courage, an enemy's Fury.

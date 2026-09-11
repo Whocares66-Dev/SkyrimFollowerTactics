@@ -206,10 +206,12 @@ struct SheetRow
     unsigned icon2{0};     // a second glyph after the first: the pin beside the tick
     std::string modifiers; // Skills tab only: "+35% damage, -17% cost"
     std::string note;      // tooltip on the modifiers; empty for none
-    // A fourth column, where the table has one: an effect's duration.
+    // The columns an effect's row may carry after its value, each drawn
+    // only where some row has it: the duration, what is left of it, and
+    // the source, a link to `form` where that has a page. Hidden is the
+    // `mark`.
     std::string extra;
-    // A last column, where the table has one: an effect's source, a link
-    // to `form` where that has a page.
+    std::string remaining;
     std::string link;
     // Rows revealed by expanding this one: a skill's perks. Empty means the
     // row is a plain line and cannot be opened.

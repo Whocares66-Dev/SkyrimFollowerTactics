@@ -2656,22 +2656,56 @@ void NoteTooltip(const std::string &note);
 // edges. The perk drawer by default.
 using RowDrawer = std::function<void(const SheetRow &, const std::string &, float, float)>;
 
+// A column a table may carry after the value: its heading, and each row's
+// text in it. Left out of the table altogether when every row's text is
+// empty -- a Remaining column on a page of effects that never end says
+// nothing. `glyph`: the text is only whether to draw the tick. `link`:
+// the cell is a link to the row's form, where the table has an onLink.
+struct ExtraColumn
+{
+    const char *heading{""};
+    std::function<std::string(const SheetRow &)> text;
+    bool glyph{false};
+    bool link{false};
+};
+
+// The columns an effect table carries after Name and Effect; the effect's
+// own page adds Source. Each drawn only where some row has it.
+const std::vector<ExtraColumn> kEffectColumns{
+    {"Duration", [](const SheetRow &r) { return r.extra; }},
+    {"Remaining", [](const SheetRow &r) { return r.remaining; }},
+    {"Hidden", [](const SheetRow &r) { return std::string(r.mark != 0 ? "x" : ""); }, true},
+};
+
 // `modifiers`: a third column, headed `third`, carrying each row's
-// modifiers text or its mark glyph; `first` and `second` head the name
-// and value columns then, where the table has a header row at all; and
-// `fourth`, when given, a column between the value and the last, headed
-// so, carrying each row's `extra` -- an effect's duration; and `fifth`,
-// when given, a column after the last, headed so, carrying each row's
-// `link` -- an effect's source, lit as a link to the row's form.
+// modifiers text or its mark glyph -- none at all when `third` is null;
+// `first` and `second` head the name and value columns then, where the
+// table has a header row at all; and `wanted` are the columns after it,
+// of which those with anything in them are drawn, the last column taking
+// the rest of the table.
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                   const std::function<void(std::uint32_t)> &onLink = {}, const char *third = "Modifiers",
                   const RowDrawer &drawer = {}, const char *first = "", const char *second = "",
-                  const char *fourth = nullptr, const char *fifth = nullptr)
+                  const std::vector<ExtraColumn> &wanted = {})
 {
+    std::vector<ExtraColumn> extras;
+    for (const auto &column : wanted)
+    {
+        const bool any = std::any_of(sections.begin(), sections.end(), [&](const SheetSection &section) {
+            return std::any_of(section.rows.begin(), section.rows.end(),
+                               [&](const SheetRow &row) { return !column.text(row).empty(); });
+        });
+        if (any)
+            extras.push_back(column);
+    }
+    const bool hasThird = modifiers && third != nullptr;
+
     float nameWidth = modifiers ? TextWidth(first) : 0.0f;
     float valueWidth = modifiers ? TextWidth(second) : 0.0f;
-    float extraWidth = fourth ? TextWidth(fourth) : 0.0f;
-    float thirdWidth = fifth ? TextWidth(third) : 0.0f;
+    std::vector<float> extraWidths;
+    extraWidths.reserve(extras.size());
+    for (const auto &column : extras)
+        extraWidths.push_back((std::max)(TextWidth(column.heading), column.glyph ? Im::GetFontSize() : 0.0f));
     // A row with perks carries the disclosure marker before its name and
     // is measured with it; a row without starts its name where the marker
     // would be, so the two kinds line up on their left edge.
@@ -2683,11 +2717,13 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             const float lead = row.detail.empty() ? 0.0f : marker;
             nameWidth = (std::max)(nameWidth, lead + TextWidth(row.label));
             valueWidth = (std::max)(valueWidth, TextWidth(row.value));
-            extraWidth = (std::max)(extraWidth, TextWidth(row.extra));
+            for (std::size_t i = 0; i < extras.size(); ++i)
+                if (!extras[i].glyph)
+                    extraWidths[i] = (std::max)(extraWidths[i], TextWidth(extras[i].text(row)));
         }
     }
     const float pad = 2.0f * kCellPadX + 8.0f;
-    const int lastColumn = fourth ? 3 : 2;
+    const int columns = modifiers ? 2 + (hasThird ? 1 : 0) + static_cast<int>(extras.size()) : 2;
 
     const auto border = Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f);
     const auto stripe = Im::GetColorU32(Im::ImGuiCol_TableRowBgAlt, 1.0f);
@@ -2743,41 +2779,37 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
         const auto beginPiece = [&]() {
             const std::string id = section.title + "##" + std::to_string(piece++);
             const auto flags = Im::ImGuiTableFlags_Borders;
-            if (!Im::BeginTable(id.c_str(), modifiers ? lastColumn + 1 + (fifth ? 1 : 0) : 2, flags,
-                                Im::ImVec2(0.0f, 0.0f), 0.0f))
+            if (!Im::BeginTable(id.c_str(), columns, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
                 return false;
-            Im::TableSetupColumn("##name", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
-            // The value column takes the rest of the table when nothing
-            // follows it, so a value cell that is a link lights up to the
-            // table's edge rather than stopping at the widest value.
-            if (modifiers)
-                Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
-            else
-                Im::TableSetupColumn("##value", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+            // The last column takes the rest of the table, so a value cell
+            // that is a link lights up to the table's edge rather than
+            // stopping at the widest value; every column before it is as
+            // wide as its widest text.
+            int index = 0;
+            const auto column = [&](const char *label, float width) {
+                const bool last = ++index == columns;
+                if (last)
+                    Im::TableSetupColumn(label, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+                else
+                    Im::TableSetupColumn(label, Im::ImGuiTableColumnFlags_WidthFixed, width + pad, 0);
+            };
+            column("##name", nameWidth);
+            column("##value", valueWidth);
             if (modifiers)
             {
-                if (fourth)
-                    Im::TableSetupColumn("##extra", Im::ImGuiTableColumnFlags_WidthFixed, extraWidth + pad, 0);
-                // The last column takes the rest of the table: the third,
-                // or the fifth when there is one, the third then as wide
-                // as its heading and its glyph.
-                if (fifth)
+                std::vector<const char *> labels{first, second};
+                if (hasThird)
                 {
-                    Im::TableSetupColumn(third, Im::ImGuiTableColumnFlags_WidthFixed, thirdWidth + pad, 0);
-                    Im::TableSetupColumn(fifth, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-                }
-                else
-                    Im::TableSetupColumn(third, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-                if (piece == 1)
-                {
-                    std::vector<const char *> labels{first, second};
-                    if (fourth)
-                        labels.push_back(fourth);
+                    column(third, TextWidth(third));
                     labels.push_back(third);
-                    if (fifth)
-                        labels.push_back(fifth);
-                    PlainHeaderRow(labels);
                 }
+                for (std::size_t i = 0; i < extras.size(); ++i)
+                {
+                    column(extras[i].heading, extraWidths[i]);
+                    labels.push_back(extras[i].heading);
+                }
+                if (piece == 1)
+                    PlainHeaderRow(labels);
             }
             inTable = true;
             return true;
@@ -2911,37 +2943,47 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             }
             if (modifiers)
             {
-                if (fourth)
+                int index = 2;
+                if (hasThird)
                 {
-                    Im::TableSetColumnIndex(2);
-                    Im::Text("%s", row.extra.c_str());
+                    Im::TableSetColumnIndex(index++);
+                    if (row.mark != 0)
+                    {
+                        FontAwesome::PushSolid();
+                        Im::Text("%s", Utf8(row.mark).c_str());
+                        FontAwesome::Pop();
+                    }
+                    else
+                    {
+                        Im::Text("%s", row.modifiers.c_str());
+                    }
+                    if (!row.note.empty() && Im::IsItemHovered(0))
+                        NoteTooltip(row.note);
                 }
-                Im::TableSetColumnIndex(lastColumn);
-                if (row.mark != 0)
+                for (const auto &column : extras)
                 {
-                    FontAwesome::PushSolid();
-                    Im::Text("%s", Utf8(row.mark).c_str());
-                    FontAwesome::Pop();
-                }
-                else
-                {
-                    Im::Text("%s", row.modifiers.c_str());
-                }
-                if (!row.note.empty() && Im::IsItemHovered(0))
-                    NoteTooltip(row.note);
-                if (fifth)
-                {
-                    // The source, a link to its page where the row has
-                    // one, as the value cell is elsewhere.
-                    Im::TableSetColumnIndex(lastColumn + 1);
-                    if (row.form != 0 && onLink)
+                    Im::TableSetColumnIndex(index++);
+                    const std::string text = column.text(row);
+                    if (column.glyph)
+                    {
+                        if (!text.empty())
+                        {
+                            FontAwesome::PushSolid();
+                            Im::Text("%s", Utf8(kGlyphTick).c_str());
+                            FontAwesome::Pop();
+                        }
+                        continue;
+                    }
+                    // A link to the row's page where it has one, as the
+                    // value cell is elsewhere.
+                    if (column.link && row.form != 0 && onLink)
                     {
                         const Im::ImVec2 at = Im::GetCursorScreenPos();
                         if (CellClicked(("##link" + section.title + "/" + row.label).c_str()))
                             onLink(row.form);
                         Im::SetCursorScreenPos(at);
                     }
-                    Im::Text("%s", row.link.c_str());
+                    Im::Text("%s", text.c_str());
                 }
             }
             if (!open)
@@ -3819,11 +3861,11 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
     if (!item.effectsTable.rows.empty())
     {
         DrawSections(
-            {item.effectsTable}, true, {}, "Hidden",
+            {item.effectsTable}, true, {}, nullptr,
             [](const SheetRow &entry, const std::string &key, float left, float right) {
                 DrawConditionDrawer(entry, key, left, right);
             },
-            "Name", "Effect", "Duration");
+            "Name", "Effect", kEffectColumns);
     }
     // The poison's effects under the Poison section's own heading, so an
     // enchanted and poisoned blade reads as two things, which it is.
@@ -4211,11 +4253,11 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
     if (!entry.effectsTable.rows.empty())
     {
         DrawSections(
-            {entry.effectsTable}, true, {}, "Hidden",
+            {entry.effectsTable}, true, {}, nullptr,
             [](const SheetRow &line, const std::string &key, float left, float right) {
                 DrawConditionDrawer(line, key, left, right);
             },
-            "Name", "Effect", "Duration");
+            "Name", "Effect", kEffectColumns);
     }
     if (!entry.description.empty())
     {
@@ -4346,12 +4388,14 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Follow
         for (auto &line : section.rows)
             if (SourcePage(view, line.form) == Tab::None)
                 line.form = 0;
+    std::vector<ExtraColumn> columns = kEffectColumns;
+    columns.push_back({"Source", [](const SheetRow &r) { return r.link; }, false, true});
     DrawSections(
-        sections, true, [&view](std::uint32_t form) { OpenSourcePage(view, form); }, "Hidden",
+        sections, true, [&view](std::uint32_t form) { OpenSourcePage(view, form); }, nullptr,
         [](const SheetRow &entry, const std::string &key, float left, float right) {
             DrawConditionDrawer(entry, key, left, right);
         },
-        "Name", "Effect", "Duration", "Source");
+        "Name", "Effect", columns);
 
     if (!row.description.empty())
     {
@@ -4767,10 +4811,10 @@ void DrawSkills(const FollowerView &view)
             const std::vector<SheetSection> info(page->sections.begin(), split);
             const std::vector<SheetSection> effects(split, page->sections.end());
             DrawSections(info, false);
-            // No third column to speak of: an entry whose conditions fail
-            // is greyed, as an effect's row is, not marked.
+            // No third column: an entry whose conditions fail is greyed,
+            // as an effect's row is, not marked.
             DrawSections(
-                effects, true, {}, "",
+                effects, true, {}, nullptr,
                 [](const SheetRow &row, const std::string &key, float left, float right) {
                     DrawConditionDrawer(row, key, left, right);
                 },
