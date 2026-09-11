@@ -248,4 +248,11 @@ const char *ToString(Verdict v) noexcept;
 // the log misdirects exactly when it is being read most carefully.
 [[nodiscard]] const char *Explain(Verdict v, ActionKind action) noexcept;
 
+// The same again in a word or two, for the status column beside a rule:
+// "fired", "false", "count: 0", "no fight". Kept beside Explain so the
+// column and its tooltip cannot disagree (the column said "count: 0" of a
+// blow out of a fight while the tooltip said "not in a fight"). Empty for
+// NotReached: an empty cell, not a placeholder.
+[[nodiscard]] const char *Brief(Verdict v, ActionKind action) noexcept;
+
 } // namespace ft

@@ -136,77 +136,22 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
     constexpr Im::ImVec4 held{0.85f, 0.75f, 0.40f, 1.0f};   // true, but blocked
     constexpr Im::ImVec4 broken{0.95f, 0.45f, 0.40f, 1.0f}; // needs fixing
 
+    // The word is core's (Brief), beside the sentence the tooltip shows, so
+    // the two cannot disagree; only the colour is decided here.
+    const char *text = ft::Brief(v, action);
     switch (v)
     {
     case ft::Verdict::Fired:
-        return {"fired", acted};
+        return {text, acted};
     case ft::Verdict::ConditionFalse:
-        return {"false", quiet};
-
-    case ft::Verdict::ActionCooldown:
-        return {"cooldown", held};
-
-    // The same verdict means different things to different actions, and the
-    // word has to match or it sends someone looking in the wrong place: a
-    // spell rule reporting "count: 0" is worse than reporting nothing. A
-    // consumable the follower is out of reads as its count, the way the
-    // Consume menu shows one.
-    case ft::Verdict::NothingToPoison:
-    case ft::Verdict::NothingToCharge:
-        return {"no weapon", held};
-    case ft::Verdict::NoResource:
-        return {action == ft::ActionKind::UsePower    ? "no power"
-                : action == ft::ActionKind::Shout     ? "no shout"
-                : action == ft::ActionKind::UseScroll ? "no scroll"
-                : TakesSpell(action)                  ? "no spell"
-                : ft::IsEquip(action)                 ? "not carried"
-                                                      : "count: 0",
-                held};
-    case ft::Verdict::NotInCombat:
-        return {"no fight", held};
-    case ft::Verdict::EffectActive:
-        return {ft::IsEquip(action)    ? "pinned"
-                : ft::IsApply(action)  ? "poisoned"
-                : ft::IsCharge(action) ? "charged"
-                                       : "active",
-                held};
-    case ft::Verdict::AboveSkill:
-        return {"too high", held};
-    case ft::Verdict::Outranked:
-        return {"outranked", held};
-    case ft::Verdict::NoTarget:
-        return {"no target", held};
-    case ft::Verdict::CannotAfford:
-        return {"no magicka", held};
-    case ft::Verdict::CannotDualCast:
-        return {"no perk", held};
-    case ft::Verdict::NoMeleeWeapon:
-        return {"no weapon", held};
-    case ft::Verdict::NoStamina:
-        return {"no stamina", held};
-    case ft::Verdict::OutOfReach:
-        return {"too far", held};
-    case ft::Verdict::Busy:
-        return {"busy", held};
-    case ft::Verdict::Casting:
-        return {"casting", held};
-    case ft::Verdict::Recovering:
-        return {"cooldown", held}; // the shout's own, told apart from the action's in the tooltip
-    case ft::Verdict::Queued:
-        return {"queued", held};
-
     case ft::Verdict::Disabled:
-        return {"off", quiet};
     case ft::Verdict::NotReached:
-        return {"", quiet}; // nothing to say: an empty cell, not a placeholder
-
+        return {text, quiet};
     case ft::Verdict::InvalidCondition:
-        return {"invalid", broken};
     case ft::Verdict::Unsupported:
-        return {"n/a", broken};
-
+        return {text, broken};
     default:
-        return {"", quiet};
+        return {text, held};
     }
 }
 
@@ -1191,14 +1136,6 @@ bool Fits(ft::Grip grip, Hand hand, bool spell)
 }
 
 // "Equip weapon" -> "weapon", for "Unequip weapon" and the None tooltip.
-std::string EquipNoun(ft::ActionKind action)
-{
-    std::string name(ft::DisplayName(action));
-    constexpr std::string_view prefix = "Equip ";
-    if (name.rfind(prefix, 0) == 0)
-        name.erase(0, prefix.size());
-    return name;
-}
 
 // The name of the thing an equip rule names, as they carry or know it;
 // empty if they do not.
@@ -1244,15 +1181,11 @@ std::string VerdictTooltip(ft::Verdict verdict, ft::ActionKind action, const Fol
     return Sentence(ft::Explain(verdict, action));
 }
 
-// "Charge with strongest soul gem" -> "Strongest soul gem", under the Charge
-// heading. The only policy leaf that reads its label off the display name;
-// the drink and apply leaves are worded by their effect.
-std::string ChargeSubmenuLabel(ft::ActionKind action)
+// The thing an action names, capitalised for a heading of its own:
+// "Weapon" under Equip, "Strongest soul gem" under Charge.
+std::string NounHeading(ft::ActionKind action)
 {
-    std::string name(ft::DisplayName(action));
-    constexpr std::string_view prefix = "Charge with ";
-    if (name.rfind(prefix, 0) == 0)
-        name.erase(0, prefix.size());
+    std::string name(ft::Noun(action));
     if (!name.empty())
         name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
     return name;
@@ -1398,7 +1331,7 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     if (ft::IsEquip(act.kind))
     {
         if (act.form == 0)
-            return "Unequip " + EquipNoun(act.kind);
+            return "Unequip " + std::string(ft::Noun(act.kind));
         // Carried or known, else the name from the record: the row set aside.
         std::string name = EquipTargetName(act, view);
         if (name.empty())
@@ -1593,7 +1526,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // One leaf that picks a policy: the strongest of a kind, the weakest.
     const auto policy = [&](ft::ActionKind kind) {
         const bool selected = here && act.kind == kind;
-        if (CascadeItem(ChargeSubmenuLabel(kind).c_str(), selected))
+        if (CascadeItem(NounHeading(kind).c_str(), selected))
         {
             act.kind = kind;
             act.form = 0;
@@ -1813,10 +1746,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         for (const auto kind : {ft::ActionKind::EquipWeapon, ft::ActionKind::EquipArrows, ft::ActionKind::EquipArmor,
                                 ft::ActionKind::EquipSpell})
         {
-            std::string noun = EquipNoun(kind);
-            if (!noun.empty())
-                noun[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(noun[0])));
-            const bool open = BeginCascade(noun.c_str());
+            const bool open = BeginCascade(NounHeading(kind).c_str());
             if (Im::IsItemHovered(0))
                 Im::SetTooltip("%s", std::string(ft::DisplayName(kind)).c_str());
             if (!open)
@@ -1951,12 +1881,17 @@ void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
     }
 }
 
-// The widest word the Status column shows, measured once.
+// The widest word the Status column shows: every verdict's, for the
+// actions worded differently, measured off the words themselves.
 float StatusColumnWidth()
 {
-    return WidestLabel({"cooldown", "no target", "count: 0", "no magicka", "invalid", "fired", "false", "pinned",
-                        "outranked", "not carried", "no fight"}) +
-           kCellPadX * 2.0f;
+    float widest = 0.0f;
+    for (std::size_t v = 0; v <= static_cast<std::size_t>(ft::Verdict::NotReached); ++v)
+        for (const auto action : {ft::ActionKind::DrinkStrongest, ft::ActionKind::CastSpell, ft::ActionKind::UsePower,
+                                  ft::ActionKind::Shout, ft::ActionKind::UseScroll, ft::ActionKind::EquipWeapon,
+                                  ft::ActionKind::ApplyPoison, ft::ActionKind::ChargeSoulGem, ft::ActionKind::Attack})
+            widest = (std::max)(widest, TextWidth(ft::Brief(static_cast<ft::Verdict>(v), action)));
+    return widest + kCellPadX * 2.0f;
 }
 
 // The drawer an open rule reveals: its actions, one row each in the order

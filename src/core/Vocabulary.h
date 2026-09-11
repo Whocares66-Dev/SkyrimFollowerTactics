@@ -78,6 +78,14 @@ namespace ft
 [[nodiscard]] std::string_view Describe(PredicateKind v) noexcept;
 [[nodiscard]] std::string_view Describe(ActionKind v) noexcept;
 
+// The thing an action names, as the menu heads it once the verb is the
+// heading's: the equips' kind of thing ("weapon", "spell"), the charge
+// policies' gem ("strongest soul gem"). Empty for an action the menu
+// shows by its display name. Lowercase; the panel capitalises where it
+// stands alone. Display text, never parsed -- which is why it is here and
+// not cut out of the display name.
+[[nodiscard]] std::string_view Noun(ActionKind v) noexcept;
+
 // --- argument shape --------------------------------------------------------
 
 // What kind of number a predicate's conditionArg is, if any.

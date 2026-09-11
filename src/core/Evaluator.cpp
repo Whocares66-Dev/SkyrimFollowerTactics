@@ -447,15 +447,29 @@ bool HasResource(const Action &a, const Snapshot &s)
     return true; // Attack and the blows cost nothing from inventory
 }
 
-bool EffectAlreadyActive(const Action &a, const Snapshot &s)
+// Is the action already in effect, so that the rule falls through to the
+// next: the availability every state-setting action owes (Rule.h). One
+// place for every "already done": a dose still running, a buff still up,
+// the thing already pinned, every weapon in hand already poisoned, none
+// needing a charge, the enemy already the target.
+bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
 {
     // Reported separately from "no potion" because the fix is different:
     // the follower has plenty, and is simply still absorbing the last one.
     // A named consumable could restore anything or nothing; only the
-    // per-form cooldown spaces it. A poison policy is answered by the
-    // hands (Availability), not by an effect.
+    // per-form cooldown spaces it.
     if (IsPolicy(a.kind) && IsConsume(a.kind))
         return s.potions.IsRunning(a.effect);
+    // A poison goes on a clean weapon; a gem into one that cannot pay for
+    // its next hit. None such in hand, and the rule waits, as a buff rule
+    // waits on the buff.
+    if (IsApply(a.kind))
+        return !s.AnyWeaponClean();
+    if (IsCharge(a.kind))
+        return !s.AnyWeaponChargeNeeded();
+    // Already fighting them is the done state.
+    if (a.kind == ActionKind::Attack)
+        return target != 0 && target == s.currentTarget;
     // The sustained-buff case. Oakflesh runs sixty seconds and no cooldown
     // worth picking is that long, so re-casting can only be stopped by
     // seeing the effect still running. Embrace of Shadows runs three
@@ -477,6 +491,92 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s)
         return pin && Covers(pin->hands, HandsWanted(a));
     }
     return false;
+}
+
+// The equips' own gates: a thing above the follower's skill, and a hand
+// or slot a rule above holds. A pin is a promise the AI will use it; a
+// spell above the follower's skill it never would, so the promise cannot
+// be kept, and the rule says so rather than equipping something that gets
+// swapped straight out.
+Verdict EquipAvailability(const Action &a, const Snapshot &snap, const std::vector<Pin> &heldAbove)
+{
+    const Holdable *thing = LetsGo(a) ? nullptr : FindHoldable(snap.loadout, a.form);
+    if (thing && thing->unusable)
+        return Verdict::AboveSkill;
+    const Hand hands = HandsWanted(a);
+    const bool outranked = std::any_of(heldAbove.begin(), heldAbove.end(), [&](const Pin &held) {
+        return thing ? Conflicts(*thing, hands, held.thing, held.hands) : held.thing.kind == KindOf(a.kind);
+    });
+    return outranked ? Verdict::Outranked : Verdict::Fired;
+}
+
+// The casts' own gates. A cast they cannot pay for is not a cast: the AI
+// would decline the package and the rule would have spent its cooldown
+// on nothing -- the 12:20 run fired four heals at empty magicka. A spell
+// above the follower's skill is not cast either: the package would make
+// them cast it regardless; it is refused so that cast and equip agree,
+// and the menus offer neither. A dual cast needs the school's Dual
+// Casting perk, which the snapshot has judged, and costs more, the game's
+// multiplier in. A follower mid-cast on a spell of their own is left to
+// finish it: firing our package then interrupts the cast in progress -- a
+// Lightning Bolt rule on "magicka above half" cut off every spell the AI
+// began -- so the rule waits, as it does for a busy pool: no cooldown
+// spent, the next rule gets its turn. (The risk, stated: an AI that never
+// stops casting never lets the rule through. If that shows in play, the
+// cast cooldown is the next knob, 2 s to 4 s. Our own cast in progress is
+// reported Busy before this. A power goes through a package too, and
+// would interrupt as well.) The voice recovers between shouts, NPCs
+// included; a shout asked for inside that is one the AI will not make, so
+// the rule waits; a power's wrapper has a one-second recovery of its own
+// and is gated by the same number.
+Verdict CastAvailability(const Action &a, const Snapshot &snap)
+{
+    if (a.kind == ActionKind::CastSpell)
+    {
+        if (const Holdable *spell = FindHoldable(snap.loadout, a.form); spell && spell->unusable)
+            return Verdict::AboveSkill;
+        if (a.dual && !snap.spells.CanDualCast(a.form))
+            return Verdict::CannotDualCast;
+        if (snap.magicka.current < (a.dual ? snap.spells.DualCostOf(a.form) : snap.spells.CostOf(a.form)))
+            return Verdict::CannotAfford;
+    }
+    if (snap.traits.Has(StatusKind::Casting))
+        return Verdict::Casting;
+    if ((a.kind == ActionKind::Shout || a.kind == ActionKind::UsePower) && snap.voiceRecovery > 0.0f)
+        return Verdict::Recovering;
+    return Verdict::Fired;
+}
+
+// A target is picked from a fight, and only an enemy can be one: aimed at
+// the player, an ally, or someone who has died or fled since the hit, the
+// rule has no one to point at.
+Verdict AttackAvailability(const Snapshot &snap, ActorId target)
+{
+    if (!snap.inCombat)
+        return Verdict::NotInCombat;
+    if (target == 0 || !snap.Enemy(target))
+        return Verdict::NoTarget;
+    return Verdict::Fired;
+}
+
+// A blow -- a power attack, a bash, a power bash: in a fight, at one who
+// is still an enemy, with something in hand for it, the stamina it costs,
+// and within its reach.
+Verdict BlowAvailability(const Action &a, const Snapshot &snap, ActorId target)
+{
+    const Snapshot::Blow &blow = snap.BlowFor(a.kind);
+    if (!snap.inCombat)
+        return Verdict::NotInCombat;
+    if (!blow.possible)
+        return Verdict::NoMeleeWeapon;
+    const ActorView *enemy = target != 0 ? snap.Enemy(target) : nullptr;
+    if (!enemy)
+        return Verdict::NoTarget;
+    if (snap.stamina.current < blow.stamina)
+        return Verdict::NoStamina;
+    if (enemy->distance > blow.reach)
+        return Verdict::OutOfReach;
+    return Verdict::Fired;
 }
 
 // What goes on cooldown when this action fires. The action, its form and
@@ -513,122 +613,36 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         return Verdict::Busy;
     if (!HasResource(a, snap))
         return Verdict::NoResource;
-    // A poison goes on a weapon: none in hand that takes one, and the rule
-    // is not met; one already poisoned, and it waits, as a buff rule waits
-    // on the buff.
-    if (IsApply(a.kind))
-    {
-        if (!snap.AnyWeaponTakesPoison())
-            return Verdict::NothingToPoison;
-        if (!snap.AnyWeaponClean())
-            return Verdict::EffectActive;
-    }
-    // A soul gem goes into an enchanted weapon in hand that cannot pay for
-    // its next hit: none enchanted in hand, and the rule is not met; none
-    // in need, and it waits.
-    if (IsCharge(a.kind))
-    {
-        if (!snap.AnyWeaponEnchanted())
-            return Verdict::NothingToCharge;
-        if (!snap.AnyWeaponChargeNeeded())
-            return Verdict::EffectActive;
-    }
+    // A poison goes on a weapon, a gem into an enchanted one: none in hand
+    // that takes it, and the rule is not met.
+    if (IsApply(a.kind) && !snap.AnyWeaponTakesPoison())
+        return Verdict::NothingToPoison;
+    if (IsCharge(a.kind) && !snap.AnyWeaponEnchanted())
+        return Verdict::NothingToCharge;
 
+    // The family's own gates.
+    Verdict gate = Verdict::Fired;
     if (IsEquip(a.kind))
+        gate = EquipAvailability(a, snap, heldAbove);
+    else if (IsCast(a.kind))
+        gate = CastAvailability(a, snap);
+    else if (a.kind == ActionKind::Attack)
+        gate = AttackAvailability(snap, target);
+    else if (IsBlow(a.kind))
+        gate = BlowAvailability(a, snap, target);
+    if (gate != Verdict::Fired)
+        return gate;
+
+    // Already in effect: the rule falls through. Exact where the settle
+    // time is a guess -- on a game whose potions restore over time, the
+    // previous dose may still have seconds to run -- and for an equip, the
+    // pin it holds outranks a conflicting equip beneath it.
+    if (EffectAlreadyActive(a, snap, target))
     {
-        const Holdable *thing = LetsGo(a) ? nullptr : FindHoldable(snap.loadout, a.form);
-        // A pin is a promise the AI will use it. A spell above the
-        // follower's skill it never would, so the promise cannot be kept,
-        // and the rule says so rather than equipping something that gets
-        // swapped straight out.
-        if (thing && thing->unusable)
-            return Verdict::AboveSkill;
-        const Hand hands = HandsWanted(a);
-        const bool outranked = std::any_of(heldAbove.begin(), heldAbove.end(), [&](const Pin &held) {
-            return thing ? Conflicts(*thing, hands, held.thing, held.hands) : held.thing.kind == KindOf(a.kind);
-        });
-        if (outranked)
-            return Verdict::Outranked;
-        if (EffectAlreadyActive(a, snap))
-        {
-            if (const Pin *pin = thing ? FindPin(snap.pins, thing->form) : nullptr)
+        if (IsEquip(a.kind) && !LetsGo(a))
+            if (const Pin *pin = FindPin(snap.pins, a.form))
                 heldAbove.push_back(*pin);
-            return Verdict::EffectActive;
-        }
-    }
-    else
-    {
-        // A cast they cannot pay for is not a cast. The AI would decline the
-        // package and the rule would have spent its cooldown on nothing --
-        // the 12:20 run fired four heals at empty magicka.
-        // A spell above the follower's skill is not cast either. The
-        // package would make them cast it regardless; it is refused so that
-        // cast and equip agree, and the menus offer neither.
-        if (a.kind == ActionKind::CastSpell)
-        {
-            if (const Holdable *spell = FindHoldable(snap.loadout, a.form); spell && spell->unusable)
-                return Verdict::AboveSkill;
-        }
-        // A dual cast needs the school's Dual Casting perk, which the
-        // snapshot has judged; and costs more, the game's multiplier in.
-        if (a.kind == ActionKind::CastSpell && a.dual && !snap.spells.CanDualCast(a.form))
-            return Verdict::CannotDualCast;
-        if (a.kind == ActionKind::CastSpell &&
-            snap.magicka.current < (a.dual ? snap.spells.DualCostOf(a.form) : snap.spells.CostOf(a.form)))
-            return Verdict::CannotAfford;
-        // A follower mid-cast on a spell of their own is left to finish it.
-        // Firing our package then interrupts the cast in progress -- a
-        // Lightning Bolt rule on "magicka above half" cut off every spell
-        // the AI began -- so the rule waits, as it does for a busy pool: no
-        // cooldown spent, the next rule gets its turn. The risk, stated: an
-        // AI that never stops casting never lets the rule through. If that
-        // shows in play, the cast cooldown is the next knob (2 s to 4 s).
-        // Our own cast in progress is reported Busy above, before this.
-        // A power goes through a package too, and would interrupt as well.
-        if (IsCast(a.kind) && snap.traits.Has(StatusKind::Casting))
-            return Verdict::Casting;
-        // The voice recovers between shouts, NPCs included; a shout asked for
-        // inside that is one the AI will not make, so the rule waits -- no
-        // cooldown spent, the next rule gets its turn. A power's wrapper has
-        // a one-second recovery of its own and is gated by the same number.
-        if ((a.kind == ActionKind::Shout || a.kind == ActionKind::UsePower) && snap.voiceRecovery > 0.0f)
-            return Verdict::Recovering;
-        // A target is picked from a fight, and only an enemy can be one:
-        // aimed at the player, an ally, or someone who has died or fled
-        // since the hit, the rule has no one to point at. Already fighting
-        // them is the done state, so the rule falls through -- the
-        // availability every state-setting action owes (Rule.h).
-        if (a.kind == ActionKind::Attack)
-        {
-            if (!snap.inCombat)
-                return Verdict::NotInCombat;
-            if (target == 0 || !snap.Enemy(target))
-                return Verdict::NoTarget;
-            if (target == snap.currentTarget)
-                return Verdict::EffectActive;
-        }
-        // A blow -- a power attack, a bash, a power bash: in a fight, at one
-        // who is still an enemy, with something in hand for it, the stamina
-        // it costs, and within its reach.
-        if (IsBlow(a.kind))
-        {
-            const Snapshot::Blow &blow = snap.BlowFor(a.kind);
-            if (!snap.inCombat)
-                return Verdict::NotInCombat;
-            if (!blow.possible)
-                return Verdict::NoMeleeWeapon;
-            const ActorView *enemy = target != 0 ? snap.Enemy(target) : nullptr;
-            if (!enemy)
-                return Verdict::NoTarget;
-            if (snap.stamina.current < blow.stamina)
-                return Verdict::NoStamina;
-            if (enemy->distance > blow.reach)
-                return Verdict::OutOfReach;
-        }
-        // Exact where the settle time is a guess: on a game whose potions
-        // restore over time, the previous dose may still have seconds to run.
-        if (EffectAlreadyActive(a, snap))
-            return Verdict::EffectActive;
+        return Verdict::EffectActive;
     }
 
     if (snap.now < ctx.BlockedUntil(CooldownKey(a, target)))
@@ -929,6 +943,75 @@ const char *Explain(Verdict v, ActionKind action) noexcept
     default:
         return ToString(v);
     }
+}
+
+const char *Brief(Verdict v, ActionKind action) noexcept
+{
+    switch (v)
+    {
+    case Verdict::Fired:
+        return "fired";
+    case Verdict::ConditionFalse:
+        return "false";
+    case Verdict::ActionCooldown:
+    case Verdict::Recovering: // the shout's own, told apart from the action's in the tooltip
+        return "cooldown";
+    case Verdict::NothingToPoison:
+    case Verdict::NothingToCharge:
+    case Verdict::NoMeleeWeapon:
+        return "no weapon";
+    case Verdict::NoResource:
+        // A consumable the follower is out of reads as its count, the way
+        // the Consume menu shows one; a spell rule reporting "count: 0"
+        // would be worse than reporting nothing.
+        switch (action)
+        {
+        case ActionKind::UsePower:
+            return "no power";
+        case ActionKind::Shout:
+            return "no shout";
+        case ActionKind::UseScroll:
+            return "no scroll";
+        case ActionKind::CastSpell:
+        case ActionKind::EquipSpell:
+            return "no spell";
+        default:
+            return IsEquip(action) ? "not carried" : "count: 0";
+        }
+    case Verdict::NotInCombat:
+        return "no fight";
+    case Verdict::EffectActive:
+        return IsEquip(action) ? "pinned" : IsApply(action) ? "poisoned" : IsCharge(action) ? "charged" : "active";
+    case Verdict::AboveSkill:
+        return "too high";
+    case Verdict::Outranked:
+        return "outranked";
+    case Verdict::NoTarget:
+        return "no target";
+    case Verdict::CannotAfford:
+        return "no magicka";
+    case Verdict::CannotDualCast:
+        return "no perk";
+    case Verdict::NoStamina:
+        return "no stamina";
+    case Verdict::OutOfReach:
+        return "too far";
+    case Verdict::Busy:
+        return "busy";
+    case Verdict::Casting:
+        return "casting";
+    case Verdict::Queued:
+        return "queued";
+    case Verdict::Disabled:
+        return "off";
+    case Verdict::NotReached:
+        return ""; // nothing to say: an empty cell, not a placeholder
+    case Verdict::InvalidCondition:
+        return "invalid";
+    case Verdict::Unsupported:
+        return "n/a";
+    }
+    return "?";
 }
 
 const char *ToString(Verdict v) noexcept

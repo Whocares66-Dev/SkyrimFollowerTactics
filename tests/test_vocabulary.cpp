@@ -367,6 +367,33 @@ TEST_CASE("every value has display text and help text", "[vocabulary]")
     }
 }
 
+TEST_CASE("every verdict has a word for the column, for every action", "[vocabulary]")
+{
+    // The status column's word and its tooltip's sentence come from the
+    // same place, so a new verdict cannot reach the panel wordless, and
+    // the word for a blow out of a fight says so (it said "count: 0").
+    for (std::size_t v = 0; v <= static_cast<std::size_t>(Verdict::NotReached); ++v)
+    {
+        const auto verdict = static_cast<Verdict>(v);
+        for (std::size_t a = 0; a < static_cast<std::size_t>(ActionKind::COUNT); ++a)
+        {
+            const auto action = static_cast<ActionKind>(a);
+            const std::string word = Brief(verdict, action);
+            REQUIRE(word != "?");
+            REQUIRE((word.empty() == (verdict == Verdict::NotReached)));
+            REQUIRE(std::string(Explain(verdict, action)) != "?");
+        }
+    }
+    REQUIRE(std::string(Brief(Verdict::NotInCombat, ActionKind::Attack)) == "no fight");
+    REQUIRE(std::string(Brief(Verdict::NoResource, ActionKind::Shout)) == "no shout");
+    REQUIRE(std::string(Brief(Verdict::NoResource, ActionKind::DrinkPotion)) == "count: 0");
+    REQUIRE(std::string(Brief(Verdict::EffectActive, ActionKind::EquipArmor)) == "pinned");
+    // The nouns the menus head with: the equips' things, the charges' gems.
+    REQUIRE(std::string(Noun(ActionKind::EquipWeapon)) == "weapon");
+    REQUIRE(std::string(Noun(ActionKind::ChargeWeakestSoulGem)) == "weakest soul gem");
+    REQUIRE(Noun(ActionKind::DrinkStrongest).empty());
+}
+
 TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
 {
     // The log said "previous dose still active" about an EQUIP rule, which is

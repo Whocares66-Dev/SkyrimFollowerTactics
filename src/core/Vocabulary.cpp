@@ -406,6 +406,29 @@ std::string_view Describe(PredicateKind v) noexcept
     }
 }
 
+std::string_view Noun(ActionKind v) noexcept
+{
+    switch (v)
+    {
+    case ActionKind::EquipWeapon:
+        return "weapon";
+    case ActionKind::EquipArrows:
+        return "arrows";
+    case ActionKind::EquipSpell:
+        return "spell";
+    case ActionKind::EquipArmor:
+        return "armor";
+    case ActionKind::ChargeStrongestSoulGem:
+        return "strongest soul gem";
+    case ActionKind::ChargeWeakestSoulGem:
+        return "weakest soul gem";
+    case ActionKind::ChargeSoulGem:
+        return "soul gem";
+    default:
+        return "";
+    }
+}
+
 std::string_view Describe(ActionKind v) noexcept
 {
     switch (v)
