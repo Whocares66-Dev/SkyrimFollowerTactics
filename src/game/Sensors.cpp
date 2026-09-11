@@ -544,7 +544,12 @@ std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
     return ValueNote(base, Contributions(actor, value), owner->GetPermanentActorValue(value) - base, 0, unit);
 }
 
-std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition); // below, with the perks
+// The conditions of one tab, a row each: the call, the comparison, and a
+// tick where it holds for the actor. `on` names the entry's argument the
+// tab is on, for a tab other than the first (the perk's owner): those are
+// listed, not evaluated.
+std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition,
+                                    const char *on = nullptr); // below, with the perks
 
 // Does the effect move an actor value: the kinds the Character sheet's
 // notes list by source.
@@ -2300,7 +2305,7 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
 
 // A condition list as rows: the call, the comparison ("== 1", "OR" after
 // it where the list reads so), and a tick where the actor meets it now.
-std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition)
+std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition, const char *on)
 {
     std::vector<SheetRow> rows;
     for (const auto *item = condition.head; item; item = item->next)
@@ -2322,10 +2327,17 @@ std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &co
         }
         else
             value = Fmt("%g", data.comparisonValue.f);
-        SheetRow row = Row(ConditionCall(data), std::string(op) + " " + value + (data.flags.isOR ? "  OR" : ""));
-        RE::ConditionCheckParams params(actor, actor);
-        if (item->IsTrue(params))
-            row.icon = kGlyphTick;
+        SheetRow row = Row(ConditionCall(data) + (on ? std::string(" on ") + on : ""),
+                           std::string(op) + " " + value + (data.flags.isOR ? "  OR" : ""));
+        // Met only where the condition is on the actor: one on another
+        // argument -- the spell, the weapon, the target -- has nothing to
+        // be asked of here, and a tick from asking the actor would lie.
+        if (!on)
+        {
+            RE::ConditionCheckParams params(actor, actor);
+            if (item->IsTrue(params))
+                row.icon = kGlyphTick;
+        }
         rows.push_back(std::move(row));
     }
     return rows;
@@ -2558,11 +2570,24 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
             bool active = true;
             if (entry->GetType() == RE::PERK_ENTRY_TYPE::kEntryPoint)
             {
+                // Tab 0 is on the owner and decides `active`; the other
+                // tabs are on the entry point's further arguments (Mod
+                // Spell Magnitude's second is the spell), which the library
+                // numbers and does not name. They are listed as such,
+                // unevaluated.
                 const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
                 if (point->conditions.size() > 0 && point->conditions[0])
                 {
                     row.detail = ConditionRows(actor, point->conditions[0]);
                     active = point->conditions[0].IsTrue(actor, actor);
+                }
+                for (std::uint32_t tab = 1; tab < point->conditions.size(); ++tab)
+                {
+                    if (!point->conditions[tab])
+                        continue;
+                    const std::string on = "argument " + std::to_string(tab + 1);
+                    for (SheetRow &r : ConditionRows(actor, point->conditions[tab], on.c_str()))
+                        row.detail.push_back(std::move(r));
                 }
             }
             if (!active)
