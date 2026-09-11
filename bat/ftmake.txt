@@ -7,7 +7,7 @@
 ;  Marcurio  000B9986   Destruction Mage, a real magicka pool
 ;  Jenassa   000E1BA9   Ranger
 ;
-;  THEN TALK TO HER AND CHOOSE "Follow me."
+;  THEN TALK TO THEM AND CHOOSE "Follow me."
 ;  This file no longer sets setplayerteammate / CurrentFollowerFaction.
 ;  Those make a TEAMMATE, which the potion rules are happy with, but
 ;  cast rules run through the DialogueFollower quest's alias and its

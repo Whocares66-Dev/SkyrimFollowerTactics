@@ -272,7 +272,7 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     entry.type = TypeWord(effect);
     entry.cast = CastWord(spell->GetDelivery(), spell->GetCastingType());
     entry.castValue = static_cast<int>(spell->GetDelivery());
-    // Her numbers, not the record's: the perk entry points applied, as the
+    // Their numbers, not the record's: the perk entry points applied, as the
     // engine applies them when the effect is made.
     entry.magnitude = costliest ? ActualMagnitude(actor, spell, costliest) : 0.0f;
     {

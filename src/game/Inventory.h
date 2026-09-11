@@ -2,7 +2,7 @@
 // A follower's inventory, worded for the panel.
 //
 // Built on the game thread from the live actor and copied to the render thread
-// with the rest of the view, so the panel can list what she carries without
+// with the rest of the view, so the panel can list what they carry without
 // touching an RE:: type -- and without the player having to open a trade
 // dialogue to find out.
 
@@ -58,8 +58,8 @@ struct InventoryItem
     int count{0};
     float weight{0.0f}; // of one
     int value{0};       // of one, enchantment included
-    float damage{0.0f}; // a weapon's damage in her hands, or ammunition's; 0 for the rest
-    float armor{0.0f};  // a piece of armour's rating on her; 0 for the rest
+    float damage{0.0f}; // a weapon's damage in their hands, or ammunition's; 0 for the rest
+    float armor{0.0f};  // a piece of armour's rating on them; 0 for the rest
     bool worn{false};
     bool enchanted{false};
     // A Daedric artifact (the DaedricArtifact keyword, or the vendor one a
@@ -82,7 +82,7 @@ struct InventoryItem
     bool equippedRight{false};
     bool pinnedLeft{false};
     bool pinnedRight{false};
-    // Something she can put on: a weapon, a piece of armour, ammunition, a
+    // Something they can put on: a weapon, a piece of armour, ammunition, a
     // torch. Only these take a click in the Worn column.
     bool equipable{false};
     // Kept on by us: the tick puts it back whenever the game takes it off.
@@ -153,7 +153,7 @@ struct InventoryItem
 // hand slot itself or one beneath it. Body armour takes none.
 [[nodiscard]] ft::Grip ArmorGrip(const RE::TESObjectARMO *armor);
 
-// Everything she carries that the game would list, sorted by name. Nameless
+// Everything they carry that the game would list, sorted by name. Nameless
 // entries and armour or weapons flagged non-playable are left out, as the
 // container menu leaves them out.
 [[nodiscard]] std::vector<InventoryItem> ScanInventory(RE::Actor *actor);

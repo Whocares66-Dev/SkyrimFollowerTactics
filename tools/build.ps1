@@ -197,6 +197,7 @@ if ($Fresh -and (Test-Path $buildDir)) {
 
 Push-Location $repo
 try {
+    if ($Coverage -and $Preset -ne 'core-cov') { throw "-Coverage needs the core-cov preset (instrumented build); got '$Preset'." }
     Write-Host "`n== configure ($Preset) ==" -ForegroundColor Cyan
     # FT_DEPLOY is a cached CMake option, so it is passed on EVERY configure:
     # a -NoDeploy run must not leave the next plain run silently not copying.
@@ -216,7 +217,6 @@ try {
     }
 
     if ($Coverage) {
-        if ($Preset -ne 'core-cov') { throw "-Coverage needs the core-cov preset (instrumented build); got '$Preset'." }
         Write-Host "`n== coverage ($Preset) ==" -ForegroundColor Cyan
         cmake --build --preset $Preset --target coverage
         if ($LASTEXITCODE -ne 0) { throw "coverage failed ($LASTEXITCODE)" }

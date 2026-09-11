@@ -8,8 +8,6 @@ namespace ft::game::ui
 // Register the panel. Call once, after kDataLoaded.
 void Install();
 
-// The render callback. __stdcall because that is the calling convention the
-// framework's function pointer type demands.
 // Add a menu entry for any follower that does not have one yet, and remove
 // the entry of anyone dismissed where the framework allows it. Called from
 // the tick, because followers come and go after Install() has run.

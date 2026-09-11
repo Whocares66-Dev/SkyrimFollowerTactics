@@ -1,15 +1,10 @@
 #pragma once
-// The Phase 1 spike: find followers, evaluate one hardcoded rule against each,
-// and act on the result.
-//
-// Scope is deliberately narrow (docs/PLAN.md section 4, Phase 1):
-//   if a follower's health drops below 50%, drink the best health potion,
-//   at most once every 10 seconds.
-//
-// It began as the Phase 1 spike, to retire one risk -- whether an NPC can be
-// made to reliably consume a potion -- and now carries the per-follower
-// rules, their switches, and the reading and writing of both to disk
-// (game/Profiles.h).
+// The tick: find the followers, build each one's snapshot, evaluate their
+// rules against it, act on the decision, and publish a view for the panel.
+// It also holds the per-follower rules and switches the panel edits and
+// the co-save keeps (game/Profiles.h). It began as the Phase 1 spike, to
+// retire one risk -- whether an NPC can be made to reliably consume a
+// potion.
 
 #include "core/Evaluator.h"
 #include "game/Inventory.h"
@@ -68,7 +63,7 @@ struct FollowerView
     // Lives on the view rather than in Snapshot because it is menu content, not
     // a rule input -- the evaluator only ever compares FormIDs.
     std::vector<SpellOption> spells;
-    // The potions, food and ingredients she carries, for the Consume menu.
+    // The potions, food and ingredients they carry, for the Consume menu.
     // Same reasoning.
     std::vector<ConsumableOption> consumables;
 
@@ -85,9 +80,9 @@ struct FollowerView
     std::vector<SheetSection> skills;
     // A page per perk held, for the Skills tab's perk page.
     std::vector<PerkPage> perks;
-    // What she commands right now, for the Summons tab.
+    // What they command right now, for the Summons tab.
     std::vector<SummonView> summons;
-    // The Inventory tab: everything she carries, sorted by name.
+    // The Inventory tab: everything they carry, sorted by name.
     std::vector<InventoryItem> inventory;
     // The Magic tab: spells, powers and shouts, sorted by name.
     std::vector<MagicEntry> magic;
@@ -113,8 +108,10 @@ inline constexpr std::size_t kMaxManagedFollowers = 8;
 // many frames as it likes and writes the result back, with no partial state
 // visible to the tick and no lock held across rendering.
 //
-// Only the UI writes. The tick reads. That is what makes read-modify-write safe
-// here without a version check.
+// The panel writes as the player edits, and a load writes what the save
+// held (LoadIfNew); the tick reads. A follower's list is never edited by
+// two of those at once, which is what makes read-modify-write safe here
+// without a version check.
 [[nodiscard]] ft::RuleSet GetRules(ft::ActorId id);
 void SetRules(ft::ActorId id, ft::RuleSet rules);
 
@@ -137,7 +134,7 @@ struct Filed
 void ForgetSession();
 
 // Rebuild and publish one follower's view now, out of turn: for a request
-// that has just changed her, so the panel answers before the next tick --
+// that has just changed them, so the panel answers before the next tick --
 // which the frozen clock holds while the panel is open.
 void PublishFollower(RE::Actor *actor);
 

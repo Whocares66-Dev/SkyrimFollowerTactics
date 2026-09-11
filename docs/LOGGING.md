@@ -112,7 +112,7 @@ Diagnostic-only call sites do not get an event name; they are prose-only at `deb
 
 ## Why not JSON for everything
 
-The project's own play-test workflow is tailing `FollowerTactics.log` and reading it as it scrolls — every measured claim in `CLAUDE.md`'s phase writeups is a human reading prose. A `.jsonl` is worse for that and better for the other half: "did she cast twice", a before/after across two runs, or a file attached to a bug report that needs no tooling to read. Splitting the two keeps each doing the half it is good at, instead of one doing both badly.
+The project's own play-test workflow is tailing `FollowerTactics.log` and reading it as it scrolls — every measured claim in `CLAUDE.md`'s phase writeups is a human reading prose. A `.jsonl` is worse for that and better for the other half: "did they cast twice", a before/after across two runs, or a file attached to a bug report that needs no tooling to read. Splitting the two keeps each doing the half it is good at, instead of one doing both badly.
 
 ## Relationship to devbench
 

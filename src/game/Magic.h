@@ -1,6 +1,6 @@
 #pragma once
-// A follower's magic, worded for the panel: the spells she knows, her powers,
-// her shouts. Built on the game thread, copied with the view.
+// A follower's magic, worded for the panel: the spells they know, their powers,
+// their shouts. Built on the game thread, copied with the view.
 
 #include "core/Loadout.h"
 #include "game/Sensors.h"
@@ -89,7 +89,7 @@ struct MagicEntry
     ft::Grip grip{ft::Grip::None};
     // Kept from the combat AI in a fight because it would take a hand a
     // pin holds: it scores zero whenever the combat AI asks. Still known, and a
-    // cast rule can still make her cast it. Listed dimmed.
+    // cast rule can still make them cast it. Listed dimmed.
     bool setAside{false};
     // Why, when it is: one line per pin that holds a hand it could take,
     // "Firebolt is pinned", for the row's tooltip.
@@ -105,7 +105,7 @@ struct MagicEntry
     std::string description;
 };
 
-// Everything castable she has, sorted by name. Abilities, diseases and the
+// Everything castable they have, sorted by name. Abilities, diseases and the
 // like are left out, as the magic menu leaves them out.
 [[nodiscard]] std::vector<MagicEntry> ScanMagic(RE::Actor *actor);
 

@@ -6,14 +6,15 @@ option(FT_BUILD_PLUGIN "Build the SKSE plugin (needs CommonLibSSE-NG, Windows on
 option(FT_BUILD_TESTS  "Build the core unit tests (no game required)"                ON)
 
 option(FT_SANITIZE     "Build with AddressSanitizer + UBSan where available"      OFF)
-option(FT_WARN_AS_ERR  "Treat warnings as errors (on in CI, off for local hacking)" OFF)
 option(FT_ANALYZE      "MSVC static analysis (/analyze) on our own targets"          OFF)
 option(FT_COVERAGE     "Instrument for test coverage (clang-cl only; core-cov preset)" OFF)
 
 # ---------------------------------------------------------------------------
 # Shared compile hygiene. The core engine is the only part of this project that
 # can be verified without launching Skyrim, so it is worth over-tooling: max
-# warnings, and a sanitized build variant for the test loop.
+# warnings, and a sanitized build variant for the test loop. The conformance
+# flags are set here, per target, and nowhere else: the presets carry only
+# /EHsc, and CommonLibSSE propagates /Zc:preprocessor to the plugin itself.
 # ---------------------------------------------------------------------------
 function(ft_apply_warnings target)
     if(MSVC)
@@ -34,9 +35,6 @@ function(ft_apply_warnings target)
             # by the standard; the tests do it on purpose, everywhere.
             target_compile_options(${target} PRIVATE -Wno-missing-field-initializers)
         endif()
-        if(FT_WARN_AS_ERR)
-            target_compile_options(${target} PRIVATE /WX)
-        endif()
         # Microsoft's static analyser, a different engine from clang-tidy's:
         # null dereferences, uninitialised members, buffer bounds through
         # SAL, the C6xxx warnings. Slower to compile, so it is an option,
@@ -49,9 +47,6 @@ function(ft_apply_warnings target)
         endif()
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wconversion)
-        if(FT_WARN_AS_ERR)
-            target_compile_options(${target} PRIVATE -Werror)
-        endif()
     endif()
 endfunction()
 
@@ -216,12 +211,9 @@ if(FT_BUILD_PLUGIN)
     # something actionable rather than 200 lines of "ImGuiMCP is undeclared".
     if(NOT EXISTS "${CMAKE_SOURCE_DIR}/extern/SKSEMenuFramework/SKSEMenuFramework.h")
         message(FATAL_ERROR
-            "Missing extern/SKSEMenuFramework/SKSEMenuFramework.h.
-"
-            "Download \"SKSEMenuFramework Header\" from the Files tab of
-"
-            "  https://www.nexusmods.com/skyrimspecialedition/mods/120352
-"
+            "Missing extern/SKSEMenuFramework/SKSEMenuFramework.h.\n"
+            "Download \"SKSEMenuFramework Header\" from the Files tab of\n"
+            "  https://www.nexusmods.com/skyrimspecialedition/mods/120352\n"
             "and extract it there. See extern/SKSEMenuFramework/README.md.")
     endif()
 

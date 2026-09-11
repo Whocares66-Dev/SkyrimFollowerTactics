@@ -25,7 +25,7 @@ bool g_available = false;
 // How long the AI gets to START the cast before the record is taken back.
 // Measured: every cast that happened fired 0.65-2.2 s after arming; the ones
 // that did not had not started by 4 s either. The window only costs anything
-// in that second case -- it is how long she stands held and unreactive -- so
+// in that second case -- it is how long they stand held and unreactive -- so
 // it is set just above the slowest measured start.
 constexpr double kArmWindowSeconds = 2.5;
 // A shout slot releases on the voice's fire event. Measured (2026-09-05,
@@ -37,9 +37,9 @@ constexpr double kVoiceArmWindowSeconds = 3.0;
 
 // The condition, as an owned resource.
 //
-// Pointing a slot's condition at a follower is what makes her package's
+// Pointing a slot's condition at a follower is what makes their package's
 // condition pass, and forgetting to clear it is the one mistake this file
-// must not be able to make: she would pass that condition on every
+// must not be able to make: they would pass that condition on every
 // evaluation for the rest of the session. So the pointer is held by an
 // object, and the ONLY way to give a record back is to destroy that object.
 // The destructor clears the parameter and asks the AI to re-evaluate, so
@@ -53,7 +53,7 @@ constexpr double kVoiceArmWindowSeconds = 3.0;
 // compares the evaluating actor's pointer with the parameter's, null-safe
 // (read from the executable, docs/MAGIC.md "Forms at runtime"). Nothing is
 // written to the actor, so nothing about a lease can reach a save through
-// her.
+// them.
 class SlotLease
 {
   public:
@@ -80,7 +80,7 @@ class SlotLease
             return;
         log::packages.debug("{:08X} releases the condition (lease ended)", id_);
 
-        // Without this she stays in the package until the AI's own next
+        // Without this they stay in the package until the AI's own next
         // evaluation, which after a completed cast can be a long time: that
         // was the "he healed and then froze" of the first successful run.
         actor->EvaluatePackage(/*immediate*/ true, /*resetAI*/ false);
@@ -111,7 +111,7 @@ class SlotLease
 
 // A slot is a package record and, while a cast is in flight, exactly one
 // follower's lease on it. One holder per record, always: every input in the
-// record -- spell today, target tomorrow -- is hers alone for as long as she
+// record -- spell today, target tomorrow -- is theirs alone for as long as they
 // holds it, so nothing that gets repointed later can be shared by accident.
 // A slot with no lease is free, whatever spell it was last pointed at.
 struct Slot
@@ -182,13 +182,13 @@ struct Slot
 };
 std::array<Slot, kPackageSlots> g_pool{};
 
-// The release signals come from her animation graph.
+// The release signals come from their animation graph.
 //
-// A UseMagic package does NOT complete after its cast (measured: still her
-// current package four seconds later, with her standing idle), so the end of
+// A UseMagic package does NOT complete after its cast (measured: still their
+// current package four seconds later, with them standing idle), so the end of
 // a cast has to be observed. The graph emits MRh_SpellFire_Event /
 // MLh_SpellFire_Event when a spell leaves a hand, and CastStop when a cast
-// ends. Both fire for EVERY spell she casts, her own combat spells included,
+// ends. Both fire for EVERY spell they cast, their own combat spells included,
 // so the sink reads which spell is equipped in the firing hand and flags the
 // slot only for ours (the caster's currentSpell is already null by then).
 // The tick does the releasing; the sink only sets flags.
@@ -322,7 +322,7 @@ std::size_t g_castTimeOffset = kNotCalibrated; // found by scanning for the auth
 bool g_castTimeCalibrated = false;
 
 // How long a stream runs when the rule does not say. Long enough to matter
-// against a bear, short enough that the AI has her back for the next turn.
+// against a bear, short enough that the AI has them back for the next turn.
 // (Later, perhaps a random length within a range.)
 constexpr float kDefaultSustainSeconds = 3.0f;
 std::int8_t g_typeSpecificReference = -1;
@@ -702,8 +702,8 @@ RE::BSTArray<RE::TESPackage *> *PutOnStack(RE::Actor *actor, RE::TESPackage *pkg
             continue;
         auto *packages = const_cast<RE::BSTArray<RE::TESPackage *> *>(inst->instancedPackages);
         const bool holdsRunning = running && std::find(packages->begin(), packages->end(), running) != packages->end();
-        // The array running her now; failing that, the fullest, which is
-        // the quest that drives her.
+        // The array running them now; failing that, the fullest, which is
+        // the quest that drives them.
         if (holdsRunning || (!chosen && packages->size() > most))
         {
             chosen = packages;
@@ -910,7 +910,7 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
     slot.armedAt = TacticsSeconds();
     // The window covers the AI's start-up latency. For a stream it is
     // extended when the stream actually starts (see the tick), so a stream
-    // that never starts does not hold her for the sustain on top.
+    // that never starts does not hold them for the sustain on top.
     slot.until = slot.armedAt + window;
     slot.sustain = sustain;
     slot.seenRunning = false;
@@ -940,7 +940,7 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
     if (!slot.onStack)
         log::packages.warn("{} fills no alias with packages; the record has no way to them", Describe(actor));
 
-    // Immediate, or she finishes whatever she is doing first and the rule's
+    // Immediate, or they finish whatever they are doing first and the rule's
     // timing -- the entire point of this route -- is lost.
     actor->EvaluatePackage(/*immediate*/ true, /*resetAI*/ false);
 
@@ -960,7 +960,7 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
         return CastRequest::NoPackages;
 
     // Self, or someone else. Anyone else must be a loaded actor right now;
-    // the record will hold a handle to her for the duration of the lease.
+    // the record will hold a handle to them for the duration of the lease.
     RE::Actor *target = nullptr;
     if (targetId != 0 && targetId != actor->GetFormID())
     {
@@ -981,7 +981,7 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
         return CastRequest::AlreadyCasting;
 
     // Take any free spell record. Never one in use, even for the same
-    // spell: the record is hers for the duration, so the pool cannot be
+    // spell: the record is theirs for the duration, so the pool cannot be
     // caught out by an input it did not think to compare.
     const std::size_t chosen = FreeSlot(0, kSpellSlots);
     if (chosen == kPackageSlots)
@@ -1264,7 +1264,7 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         if (!actor)
         {
             // Unloaded or gone. The lease's destructor finds no actor and
-            // clears nothing; the sweep above catches her if she comes back.
+            // clears nothing; the sweep above catches them if they come back.
             log::packages.event(log::Level::Info, "package.released", {{"slot", i}, {"reason", "holder vanished"}},
                                 "slot {} holder vanished -- released", i);
             Release(i);
@@ -1283,7 +1283,7 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         // ONE release, with a reason. The deadline is the guarantee: a record
         // is never held past it, whatever the game did or did not do. The
         // other two are only signals that the hold can end sooner -- the spell
-        // has left her hand, or the AI has already moved on -- so a follower
+        // has left their hand, or the AI has already moved on -- so a follower
         // is not kept for four seconds after a one-second cast.
         // A stream that has started gets its sustain added to the window,
         // once, from the moment it started.

@@ -195,7 +195,7 @@ bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) 
     if (pin != nullptr)
     {
         // Its own hand is the pin. Another hand is off when a pin holds it,
-        // and also when this is her only one: no second copy for that hand.
+        // and also when this is their only one: no second copy for that hand.
         if (Overlap(slot, pin->hands))
             return false;
         return thing.count < 2 || Overlap(slot, pinned);

@@ -114,11 +114,10 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
 }};
 
 constexpr std::array<Entry<ActionKind>, 28> kActions{{
-    // The potion slugs name the SELECTION POLICY, not just the item type,
-    // because that is part of the behaviour a profile is asking for. That is
-    // how "drink-weakest-health-potion" -- don't burn a strong potion on a
-    // scratch -- came in as a new value rather than a breaking change to an
-    // existing one.
+    // The consumable slugs name the SELECTION POLICY, not just the item
+    // type, because that is part of the behaviour a profile is asking for:
+    // "drink-weakest" -- don't burn a strong potion on a scratch -- beside
+    // "drink-strongest", the effect named on the action.
     {ActionKind::None, "none", "None"},
     {ActionKind::Attack, "attack", "Attack"},
     {ActionKind::PowerAttack, "power-attack", "Power Attack"},

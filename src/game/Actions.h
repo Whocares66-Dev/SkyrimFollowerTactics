@@ -33,7 +33,7 @@ enum class ActionResult : std::uint8_t
 };
 
 // Why the game refused a cast, in its own words. Kept separate from
-// ActionResult because "she cannot afford it" and "she is mid-shout" are the
+// ActionResult because "they cannot afford it" and "they are mid-shout" are the
 // same failure to us and completely different to a player.
 [[nodiscard]] const char *CannotCastText(std::uint32_t reason) noexcept;
 

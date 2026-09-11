@@ -1,9 +1,9 @@
-// SKSE entry point. Everything here is still Phase 0 scaffolding.
+// SKSE entry point: logging, the co-save, the messages, and at data load
+// the packages, the tick, the panel and the hooks (src/game/).
 //
-// IMPORTANT, so nobody is misled by a green line in the console: this file does
-// not touch a follower. It evaluates the rule engine against *fabricated*
-// snapshots to prove the engine behaves inside Skyrim exactly as it does under
-// Catch2. Reading a real actor is Phase 1, and src/game/ does not exist yet.
+// The self-check below evaluates the rule engine against fabricated
+// snapshots inside the game, to prove the engine behaves under the plugin's
+// compiler flags exactly as it does under Catch2. It touches no follower.
 
 #include "core/Evaluator.h"
 #include "game/Hits.h"

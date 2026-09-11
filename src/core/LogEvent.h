@@ -2,7 +2,7 @@
 // One structured event, as one line of JSON.
 //
 // The prose log is for a human tailing it while playing; this is the other
-// half of the job -- "did she cast twice", a before/after across two runs, a
+// half of the job -- "did they cast twice", a before/after across two runs, a
 // file attached to a bug report that needs no tooling to read. docs/LOGGING.md
 // says which events exist and what each carries.
 //

@@ -28,11 +28,11 @@ namespace ft::game
 // Put an item or a spell on, keep it on, or take it off, from the panel.
 //
 // Pin equips it and KEEPS it on: the tick puts it back whenever the game
-// takes it off, until the item leaves her inventory or a later request lets
-// go. The game re-dresses a follower freely -- her default outfit comes
+// takes it off, until the item leaves their inventory or a later request lets
+// go. The game re-dresses a follower freely -- their default outfit comes
 // back on a cell change, and a better piece of armour handed over is worn
 // at once -- and a pin is how "wear this" survives that without touching
-// her outfit record, which is what the heavier follower frameworks do.
+// their outfit record, which is what the heavier follower frameworks do.
 // Pinning releases any pin it conflicts with (same body slot, other hand),
 // since the engine will not displace a pinned item on its own.
 //

@@ -558,7 +558,7 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
     }
     else
     {
-        // A cast she cannot pay for is not a cast. The AI would decline the
+        // A cast they cannot pay for is not a cast. The AI would decline the
         // package and the rule would have spent its cooldown on nothing --
         // the 12:20 run fired four heals at empty magicka.
         // A spell above the follower's skill is not cast either. The

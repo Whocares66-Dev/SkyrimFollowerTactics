@@ -317,7 +317,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     case ft::ActionKind::EatWeakestFood:
     case ft::ActionKind::EatFood:
         // One named potion or food. The evaluator only fires this when the
-        // snapshot says she carries it, so a null here is a form that
+        // snapshot says they carry it, so a null here is a form that
         // stopped being one between snapshot and dispatch.
         return Consume(actor, RE::TESForm::LookupByID<RE::AlchemyItem>(action.form));
     case ft::ActionKind::EatStrongestIngredient:
@@ -360,11 +360,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
 
     case ft::ActionKind::CastSpell:
     case ft::ActionKind::UseScroll: {
-        // The package route, on its own. The combat-AI hook is off by default
-        // and not called here: running two mechanisms would mean a cast could
-        // not be attributed to either, which is what made the earlier
-        // animation-event experiment worthless.
-        // Who the spell goes at. A Self-delivery spell (Fast Healing,
+        // The package route. Who the spell goes at. A Self-delivery spell (Fast Healing,
         // Oakflesh) cannot take a target. Anything else goes at whom the
         // RULE aimed it: the ally it matched, the player, their attacker --
         // that is how Heal Other reaches the hurt one. Aimed at the follower
@@ -417,7 +413,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // A pin, in the same book as the panel's. Naming nothing lets go of
         // every pin of the kind and takes those things off, so the AI
         // decides again. The evaluator only fires this when the snapshot
-        // says she has the thing, so a miss here is a form that left her
+        // says they have the thing, so a miss here is a form that left them
         // between snapshot and dispatch.
         if (action.form == 0)
         {

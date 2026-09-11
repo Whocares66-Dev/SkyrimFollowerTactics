@@ -9,12 +9,14 @@
 # Run:  cmake --build --preset core --target tidy   (see cmake/ClangTools.cmake)
 #
 # Known false positive, left in place: clang-analyzer-cplusplus.NewDelete
-# reports "use of memory after it is freed" inside CommonLibSSE's
-# MemoryManager.h whenever a trace passes through a BSTSmartPointer
-# destructor. `delete` on an intrusive-refcounted object calls the class's
-# own operator delete, which forwards to the game heap; the analyzer models
-# the memory as freed before entering that operator. The check stays because
-# it is the only static use-after-free check src/game gets.
+# reports "use of memory after it is freed" or "attempt to free released
+# memory" inside CommonLibSSE's headers (MemoryManager.h,
+# BSIntrusiveRefCounted.h, InventoryEntryData.h) whenever a trace passes
+# through the destructor of a BSTSmartPointer or of an object the game heap
+# owns. `delete` on such an object calls the class's own operator delete,
+# which forwards to the game heap; the analyzer models the memory as freed
+# before entering that operator. The check stays because it is the only
+# static use-after-free check src/game gets.
 Checks: >
   bugprone-*,
   -bugprone-easily-swappable-parameters,

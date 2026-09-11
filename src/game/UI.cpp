@@ -1,11 +1,11 @@
-// The in-game panel, drawn with ImGui via SKSE Menu Framework.
+// The in-game panel, drawn with ImGui via SKSE Menu Framework: the rule
+// editor, with the status column beside every rule, and the character
+// sheet -- inventory, magic, effects, summons, character, skills.
 //
-// Read-only for now, and deliberately so. docs/PLAN.md 3.7 says to build the
-// debug column FIRST, not last, and the reason is worth restating: authoring
-// rules against an opaque engine is guesswork without it. The engine already
-// records, per rule, exactly why that rule did not fire -- this puts it on
-// screen instead of in a log file. Editing arrives with profile persistence;
-// there is little point letting someone change a rule that cannot be saved.
+// The status column came first, before editing, and the reason is worth
+// restating (docs/PLAN.md 3.7): authoring rules against an opaque engine
+// is guesswork without it. The engine records, per rule, exactly why that
+// rule did not fire -- this puts it on screen instead of in a log file.
 //
 // Everything here runs on the render thread. It never touches an RE::Actor and
 // never reaches into live engine state -- ObserveFollowers() hands back a copy.
@@ -682,7 +682,7 @@ bool CascadeItem(const char *label, bool selected)
     return clicked;
 }
 
-// The three about a fight, under one "Combat" heading: Start, During, End.
+// The two about a fight, under one "Combat" heading: Start, End.
 bool IsCombatPredicate(ft::PredicateKind p)
 {
     return p == ft::PredicateKind::CombatBegins || p == ft::PredicateKind::CombatEnds;
@@ -1200,8 +1200,8 @@ std::string EquipNoun(ft::ActionKind action)
     return name;
 }
 
-// The name of the thing an equip rule names, as she carries or knows it;
-// empty if she does not.
+// The name of the thing an equip rule names, as they carry or know it;
+// empty if they do not.
 std::string EquipTargetName(const ft::Action &act, const FollowerView &view)
 {
     if (act.kind == ft::ActionKind::EquipSpell)
@@ -1473,7 +1473,7 @@ bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const
 // None first, in a section by itself: let go of every pin of this kind, and
 // the AI chooses again. Then, for the two that take a hand, Left, Right and
 // Both, each listing what fits that hand; for arrows and armour, the things
-// themselves. Every list is hers, so a rule cannot name a thing she does
+// themselves. Every list is theirs, so a rule cannot name a thing they do
 // not have.
 bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 {
@@ -2097,9 +2097,8 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
 // this safe: the tick never sees a half-applied change, and no lock is held
 // while rendering.
 //
-// Edits do not survive a reload yet. That is a real limitation, and the panel
-// says so rather than letting someone spend ten minutes on a rule set that
-// quietly evaporates.
+// Edits go into the co-save with the next save (game/Profiles.h), and
+// roll back with it.
 //
 // A rule with several actions opens like a drawer, as a skill opens its
 // perks, and the table is drawn in PIECES for the same reason and by the
@@ -3352,7 +3351,7 @@ void DrawChips(const std::vector<Chip> &chips, int &selected)
     }
 }
 
-// SkyUI's tab strip: All, then every category she has something in. Empty
+// SkyUI's tab strip: All, then every category they have something in. Empty
 // categories are left out, as SkyUI leaves them out -- a tab promising
 // nothing is noise.
 void DrawCategoryRow(const FollowerView &view, InventoryTabState &state)
@@ -3403,7 +3402,7 @@ enum class Column : unsigned
 
 // A cell that says whether something is on -- in a hand, or worn -- with a
 // tick, a pin beside it if we are keeping it there, and, when clickable, a
-// click that rounds the three states: off -> kept on -> hers to change ->
+// click that rounds the three states: off -> kept on -> theirs to change ->
 // off. The request goes to the game thread and the cell answers when the
 // view comes back.
 // A diagonal across the current cell, corner to corner: this cell does not
@@ -3436,7 +3435,7 @@ void SlashCell()
 struct EquipCell
 {
     bool allowed{true};   // false: slashed, the cell cannot take the thing
-    bool disabled{false}; // the row is dim: set aside by a pin, or above her skill
+    bool disabled{false}; // the row is dim: set aside by a pin, or above their skill
     bool on{false};
     bool pinned{false};
     bool banned{false};
@@ -3527,7 +3526,7 @@ int CellRank(const EquipCell &cell)
 
 // The rows to show, in the order the table's header asks for. Sorted every
 // frame rather than on change: a hundred pointers is nothing, and the set
-// itself changes with the filter and with what she picks up.
+// itself changes with the filter and with what they pick up.
 std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const InventoryTabState &state)
 {
     std::vector<const InventoryItem *> rows;
@@ -3825,7 +3824,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     Im::PopStyleVar(1);
 
     // What the list came to, and what it weighs: the reason to look in a
-    // follower's bag is usually to decide whether she can carry more.
+    // follower's bag is usually to decide whether they can carry more.
     Im::Spacing();
     // Counted against the category, not the whole bag: on Weapons, "3 of
     // 3" until the filter box takes some away. Only All counts everything.
@@ -4149,7 +4148,7 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         std::snprintf(buf, sizeof(buf), "##magic%08X", entry->form);
 
         Im::TableNextRow(0, 0.0f);
-        // Kept from the AI -- a pin holds a hand it would take -- or above her
+        // Kept from the AI -- a pin holds a hand it would take -- or above their
         // skill, so the AI would not choose it: the whole row is drawn in
         // the disabled colour, ticks included, since every glyph takes the
         // text colour.
@@ -4587,7 +4586,7 @@ void DrawMagic(const FollowerView &view)
 
 // One summon or raised corpse, laid out as the Character tab is: the three
 // bars on the left, level, kind and time left on the right, then its sheet.
-// The sheet's links go nowhere: a summon's sword is not in her inventory.
+// The sheet's links go nowhere: a summon's sword is not in their inventory.
 void DrawSummon(const SummonView &summon)
 {
     Im::Spacing();
@@ -4626,7 +4625,7 @@ void DrawSummon(const SummonView &summon)
     DrawSections(summon.sheet, false);
 }
 
-// The Summons tab: what she commands right now. A chip per summon above the
+// The Summons tab: what they command right now. A chip per summon above the
 // page, as the Inventory tab has categories -- always, one summon included,
 // since the chip is where its name is.
 std::unordered_map<ft::ActorId, int> g_summonTabs;
@@ -4653,7 +4652,7 @@ void DrawSummons(const FollowerView &view)
     DrawSummon(view.summons[static_cast<std::size_t>(chosen)]);
 }
 
-// The character sheet: what she is, as opposed to what she has been told to
+// The character sheet: what they are, as opposed to what they have been told to
 // do. Everything here is display only and already on the view, so it costs
 // the game thread nothing extra to show.
 void DrawCharacter(const FollowerView &view)
@@ -5124,8 +5123,8 @@ void SyncFollowers()
     };
 
     // Dismissed: delete the entry where the framework allows it, and free
-    // the slot. Where it does not, the slot stays hers, so the entry still
-    // reads as her page if she is recruited again.
+    // the slot. Where it does not, the slot stays theirs, so the entry still
+    // reads as their page if they are recruited again.
     {
         std::scoped_lock lock(g_slotMutex);
         for (auto &slot : g_slots)

@@ -1303,7 +1303,7 @@ Rule HurtBut(float pct, const Action &action, const char *label)
 TEST_CASE("one situation draws its remedies in list order, one per turn", "[cooldown]")
 {
     // Three rules, one problem. The list is a preference order: the potion
-    // first, and if the next turn still finds her hurt, the next remedy. Each
+    // first, and if the next turn still finds them hurt, the next remedy. Each
     // action carries its own cooldown; nothing is keyed by the condition.
     RuleSet rs;
     rs.rules.push_back(HurtBut(0.25f, DrinkHealth(), "potion"));
@@ -1515,7 +1515,7 @@ TEST_CASE("a busy action is skipped without spending a cooldown", "[capabilities
     REQUIRE(trace.at(0) == Verdict::Fired);
 }
 
-TEST_CASE("a cast she cannot afford is reported and spends no cooldown", "[resources]")
+TEST_CASE("a cast they cannot afford is reported and spends no cooldown", "[resources]")
 {
     constexpr std::uint32_t kHeal = 0x0002F3B8;
 
@@ -1803,7 +1803,7 @@ Holdable Held(std::uint32_t form, Kind kind, Grip grip, std::uint32_t slots = 0)
 }
 
 // A follower with a sword, a bow, a shield, a helmet, arrows, and two spells,
-// one of them above her skill. Nothing pinned.
+// one of them above their skill. Nothing pinned.
 Snapshot Armed()
 {
     Snapshot s = Healthy();
@@ -1988,13 +1988,13 @@ TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI wo
     EvalContext ctx;
     Trace trace;
 
-    // Not hers.
+    // Not theirs.
     RuleSet rs;
     rs.rules.push_back(Equip(ActionKind::EquipWeapon, 0xDEAD, Hand::Right));
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
     REQUIRE(trace.at(0) == Verdict::NoResource);
 
-    // Hers, but a spell under equip-weapon: a hand-edited profile's mistake.
+    // Theirs, but a spell under equip-weapon: a hand-edited profile's mistake.
     rs.rules[0] = Equip(ActionKind::EquipWeapon, kFirebolt, Hand::Right);
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
     REQUIRE(trace.at(0) == Verdict::NoResource);
@@ -2010,7 +2010,7 @@ TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI wo
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
     REQUIRE(trace.at(0) == Verdict::AboveSkill);
 
-    // A spell she can use, in both hands at once.
+    // A spell they can use, in both hands at once.
     rs.rules[0] = Equip(ActionKind::EquipSpell, kFirebolt, Hand::Both);
     Decision d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 0);
@@ -2327,7 +2327,7 @@ TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
 
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
-    // Not "no potion" -- she has twelve. The reason has to be the real one or
+    // Not "no potion" -- they have twelve. The reason has to be the real one or
     // the debug column sends you to check the inventory for nothing.
     REQUIRE(trace.at(0) == Verdict::EffectActive);
 
@@ -3361,7 +3361,7 @@ TEST_CASE("a dual cast needs the perk the snapshot reports, and pays the dual co
     s.health = {50.0f, 100.0f};
     s.magicka = {100.0f, 100.0f};
     s.spells.known.push_back(kBolt);
-    // Known and affordable one-handed, but she cannot dual cast it.
+    // Known and affordable one-handed, but they cannot dual cast it.
     s.spells.costs.push_back({kBolt, 40.0f});
 
     EvalContext ctx;

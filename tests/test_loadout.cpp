@@ -135,7 +135,7 @@ TEST_CASE("where the style forbids dual wielding, a pinned one-hander gives way 
     CHECK(pins.size() == 1);
 }
 
-TEST_CASE("a spell above her skill can be equipped but not pinned")
+TEST_CASE("a spell above their skill can be equipped but not pinned")
 {
     Holdable chain = Thing(kChainLightning, Grip::RightOnly);
     CHECK(Pinnable(chain));
@@ -374,7 +374,7 @@ TEST_CASE("pinning the other hand of an either-hand thing pins both")
     AddPin(pins, kFlamesSpell, HandsFor(kFlamesSpell.grip, Hand::Right), false);
     REQUIRE(pins.size() == 1);
     CHECK(pins[0].hands == Hand::Both);
-    // Her one dagger moving from the left to the right leaves the left.
+    // Their one dagger moving from the left to the right leaves the left.
     std::vector<Pin> one;
     AddPin(one, kDagger, Hand::Left, false);
     AddPin(one, kDagger, Hand::Right, true);

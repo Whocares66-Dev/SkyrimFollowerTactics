@@ -30,15 +30,17 @@ namespace
 
 // --- tuning ----------------------------------------------------------------
 
-// docs/PLAN.md 3.2 wants 150 ms.
 // The TURN. Every half second the list is walked and at most one rule
 // fires. There is no separate "global cooldown": the turn is the spacing
-// between decisions, and the only other timers are per action.
+// between decisions, and the only other timers are per action. (docs/PLAN.md
+// 3.2 asked for 150 ms; a decision a half-second is the cadence a fight
+// reads well at, and the cost is far under budget either way.)
 constexpr double kTickInterval = 0.5;
 
-// How often a follower may report *why* it did not act. Without this the log is
-// seven lines per second per follower and unreadable; with it, the answer to
-// "why didn't she drink" is always in the last few seconds of the file.
+// How often a follower may report *why* it did not act. Without this the log
+// is a line per rule per tick per follower and unreadable; with it, the
+// answer to "why didn't they drink" is always in the last few seconds of the
+// file.
 constexpr double kDiagnosticInterval = 2.0;
 
 // How often to report measured tick cost.
@@ -69,16 +71,12 @@ struct FollowerState
 
 std::unordered_map<ft::ActorId, FollowerState> g_followers;
 
-// The last evaluation for each follower, kept for the UI.
-//
-// Written on the game thread by the tick, read on the render thread by the UI,
-// so it is guarded. The lock is held only for the copy in or out -- never
-// across rendering, and never across BuildSnapshot.
-// Only the exceptions are stored, so a follower we have never seen -- or a new
-// one -- defaults to enabled without needing an entry.
 // The followers switched OFF. A follower starts on: with the default rule
 // set empty, on is safe -- an empty list does nothing -- and the switch is
-// for silencing a written list without losing it.
+// for silencing a written list without losing it. Only the exceptions are
+// stored, so a follower we have never seen -- or a new one -- defaults to
+// enabled without needing an entry. Written by the panel and by a load,
+// read by the tick: guarded.
 std::mutex g_disabledMutex;
 std::unordered_set<ft::ActorId> g_disabledFollowers;
 
@@ -147,6 +145,16 @@ std::vector<Filed> ProfilesToSave()
 namespace
 {
 
+// The last evaluation for each follower, kept for the UI.
+//
+// Written on the game thread by the tick, read on the render thread by the UI,
+// so it is guarded. The lock is held only for the copy in or out -- never
+// across rendering, and never across BuildSnapshot.
+// The last evaluation for each follower, kept for the UI.
+//
+// Written on the game thread by the tick, read on the render thread by the UI,
+// so it is guarded. The lock is held only for the copy in or out -- never
+// across rendering, and never across BuildSnapshot.
 std::mutex g_viewMutex;
 std::vector<FollowerView> g_view;
 
@@ -583,7 +591,7 @@ void Tick()
     // Not an early return on the tactics switch: the switch gates rule
     // EVALUATION, and the rest of this -- the views behind the Character,
     // Skills and Inventory tabs, the pin watchdog -- is not tactics and runs
-    // whether or not she is being told what to do. The frozen clock still
+    // whether or not they are being told what to do. The frozen clock still
     // holds everything, since nothing below can act on a stopped world.
     if (EvaluationHeld())
         return;
@@ -657,7 +665,7 @@ void Tick()
         // not evaluated, which is what the empty Status column then says.
         // Bleeding out, nothing can be performed: no potion, no cast, and the
         // 12:20 run fired a cast rule four times at negative health. Hold
-        // evaluation until she is up again, and say so once.
+        // evaluation until they are up again, and say so once.
         const bool down = follower->AsActorState() && follower->AsActorState()->IsBleedingOut();
         const bool wasDown = g_bleedingOut.contains(follower->GetFormID());
         if (down != wasDown)
@@ -790,7 +798,8 @@ void Install()
 
     log::tactics.event(log::Level::Info, "tactics.installed",
                        {{"tickMs", kTickInterval * 1000.0}, {"maxFollowers", kMaxManagedFollowers}},
-                       "tick {:.0f} ms, combat only, max {} followers", kTickInterval * 1000.0, kMaxManagedFollowers);
+                       "tick {:.0f} ms, rules in a fight and on its farewell, max {} followers", kTickInterval * 1000.0,
+                       kMaxManagedFollowers);
     log::tactics.info("a follower starts with no rules; tactics are kept in the save (SKSE co-save)");
 
     // Detached on purpose: Skyrim never unloads SKSE plugins, and joining a

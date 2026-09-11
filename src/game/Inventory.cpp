@@ -193,7 +193,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.equipable = true;
         item.handItem = true;
         item.grip = DescribeHoldable(actor, weapon).grip;
-        // In her hands, as the inventory menu would show it; the record's
+        // In their hands, as the inventory menu would show it; the record's
         // own figure beneath it, for the curious.
         item.damage = WeaponDamage(actor, weapon, entry);
         stats.rows.push_back(Row("Damage", Fmt("%.0f", item.damage)));

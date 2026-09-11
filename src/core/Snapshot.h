@@ -257,15 +257,15 @@ struct SpellState
     std::vector<std::uint32_t> known;
     std::vector<std::uint32_t> active;
 
-    // What each known spell costs HER, in magicka, with her perks and skill
+    // What each known spell costs THEM, in magicka, with their perks and skill
     // already applied. The game computes it; core only compares it against
-    // the magicka she has, so a cast rule she cannot afford is reported as
+    // the magicka they have, so a cast rule they cannot afford is reported as
     // such instead of firing a package the AI will decline.
     struct Cost
     {
         std::uint32_t form{0};
         float magicka{0.0f};
-        // Whether she can dual cast it -- the school's Dual Casting perk
+        // Whether they can dual cast it -- the school's Dual Casting perk
         // and a spell whose record leaves a hand free -- and what it costs then:
         // the cost times the game's dual-casting multiplier, unless the
         // spell is flagged to take no dual-cast change.
@@ -467,8 +467,8 @@ struct Snapshot
     PotionStock potions;
     SpellState spells;
 
-    // What she could hold or wear, as the pin book describes it -- weapons,
-    // shields, torches, armour, ammunition, and the spells she knows -- and
+    // What they could hold or wear, as the pin book describes it -- weapons,
+    // shields, torches, armour, ammunition, and the spells they know -- and
     // what is pinned right now, by the panel or by a rule. The equip actions
     // read both: a thing not here cannot be pinned, and one already pinned
     // in the hands asked for is done, so the rule falls through.

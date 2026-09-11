@@ -34,8 +34,6 @@ enum class SubjectKind : std::uint8_t
     Player,
     Ally,
     Enemy,
-    // (The follower's own target was a subject here until 2026-09-08; it is
-    // "Enemy: Attacked by <the follower>" now, one place for one question.)
     // One particular other follower, named by Rule::subjectForm: an ally
     // asked about alone.
     Follower,
@@ -161,8 +159,6 @@ enum class ActionTargetKind : std::uint8_t
     Ally,
     // An enemy: THE enemy the condition matched when the condition is about
     // one; otherwise whoever the follower is fighting, else the nearest.
-    // (A separate "Target" heading for the follower's own target was here
-    // until 2026-09-08; one heading, read from the condition, is plainer.)
     Enemy,
     // Whoever last attacked the condition's subject: the enemy at the
     // ally's throat, for the rule that answers it.
@@ -203,7 +199,7 @@ enum class ActionKind : std::uint8_t
     // The equip actions PIN: what they put on stays on, against the engine's
     // own swap and the combat AI's choice, until another rule or the panel
     // lets it go. A plain equip would not do -- the AI re-derives what to
-    // hold on its own schedule, so a sword put in her hand without a pin
+    // hold on its own schedule, so a sword put in their hand without a pin
     // lasts until its next decision, which may be the same second. Each
     // names a thing by actionForm, and Weapon and Spell a hand as well; a
     // form of 0 is "none": let go of every pin of that kind and take those
@@ -223,15 +219,11 @@ enum class ActionKind : std::uint8_t
     ChargeSoulGem, // one specific gem, named by actionForm
     // Apply: a poison on the weapon in hand, after the equips because that
     // is the order of the thing -- set the gear, then choose the poison.
-    // Three "weakest carried" and three "strongest carried" policies by
-    // what the poison damages, then one named poison. Needs a weapon that
-    // takes a poison in hand (anything but a staff) and not already
-    // poisoned; the evaluator reports each.
     // The strongest poison carried with Action::effect, or the weakest --
     // the cheap ones first, the strong ones kept for when they matter --
-    // or one named by actionForm. (Until 2026-09-08 there were six fixed
-    // policies here, health, magicka and stamina by two; the effect is the
-    // bottle's own now, whatever it is.)
+    // or one named by actionForm. Needs a weapon that takes a poison in
+    // hand (anything but a staff) and not already poisoned; the evaluator
+    // reports each.
     ApplyStrongest,
     ApplyWeakest,
     ApplyPoison,
@@ -286,8 +278,8 @@ enum class ActionKind : std::uint8_t
 [[nodiscard]] bool IsCharge(ActionKind action) noexcept;
 [[nodiscard]] ConsumableKind ConsumableOf(ActionKind action) noexcept;
 
-// The three actions that fire through the package pool: a spell from a
-// hand, a power and a shout from the voice.
+// The four actions that fire through the package pool: a spell and a
+// scroll from a hand, a power and a shout from the voice.
 [[nodiscard]] bool IsCast(ActionKind action) noexcept;
 
 // The three blows sent to the animation graph: a power attack, a bash, a
@@ -342,7 +334,7 @@ struct Action // NOLINT(clang-analyzer-core.uninitialized.Assign)
     // the slot decides, never the level) -- and the menu offers no other.
     bool dual{false};
 
-    // Which effect, for the four policies: the magic effect's name as the
+    // Which effect, for the eight policies: the magic effect's name as the
     // game shows it -- "Restore Health", "Resist Fire", "Damage Stamina" --
     // read off the bottles the follower carries. A name rather than a form
     // so that the same rule reads any mod's potion of the effect, and so a
@@ -366,8 +358,8 @@ struct Rule
     // Which status, for PredicateKind::Status. Ignored by every other
     // predicate.
     StatusKind statusKind{StatusKind::Poisoned};
-    // Which kind of damage, for the Resistance predicates and AttackedBy.
-    // Ignored by every other predicate.
+    // Which kind of damage, for the Resistance predicates, Hit type and
+    // Hit by. Ignored by every other predicate.
     DamageKind damageKind{DamageKind::Fire};
 
     ActionTargetKind actionTarget{ActionTargetKind::Self};
@@ -461,9 +453,10 @@ struct RuleSet
 // The two equips that name a hand: a weapon's, a spell's.
 [[nodiscard]] bool TakesHand(ActionKind action) noexcept;
 
-// Not every predicate means anything about every subject. The Snapshot carries
-// no magicka for allies, and "distance" is meaningless for Self. Rather than
-// quietly answering false -- which would look identical to a condition that was
+// Not every predicate means anything about every subject: the fight's
+// edges and the weapons in hand are the follower's own, the extremes a
+// group's, the corpse questions the corpses'. Rather than quietly
+// answering false -- which would look identical to a condition that was
 // simply untrue -- the pair is rejected outright.
 //
 // This drives two things: the UI builds its cascading menu from it, so an
@@ -489,15 +482,15 @@ struct RuleSet
 // inside the window. A predicate that reads no damage kind is unaffected.
 [[nodiscard]] bool IsDamageKindValidFor(PredicateKind predicate, DamageKind kind) noexcept;
 
-// The same for the THEN side. A target of Ally or Enemy is "the one the
+// The same for the THEN side. A target of Ally or Corpse is "the one the
 // condition matched", so it needs a condition about an ally (Ally, or a
-// named follower) or an enemy (Enemy, or the current target); every other
-// target stands on its own. And an action must make sense on its target: a
-// potion, an equip, a retreat are the follower's own; Target picks an
-// enemy, so it takes Enemy or Attacker and nothing else -- on the current
-// target it would always be done already. Cast is the one action aimed
-// anywhere; which spells suit which target is the menu's business, since
-// core does not know a spell's delivery.
+// named follower) or a corpse; Enemy reads from an enemy condition and
+// stands on its own under any other; Attacker is whoever hit one of us.
+// And an action must make sense on its target: a potion and an equip are
+// the follower's own; Attack and the blows go at an enemy, so they take
+// Enemy or Attacker and nothing else. The casts are aimed anywhere but a
+// corpse (a spell may be); which spells suit which target is the menu's
+// business, since core does not know a spell's delivery.
 [[nodiscard]] bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target) noexcept;
 [[nodiscard]] bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept;
 

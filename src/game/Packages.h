@@ -9,12 +9,11 @@
 // the AI a package and a reason to pick it.
 //
 // The first attempt pushed the package straight onto the actor and lost on
-// priority. The fix is not a higher-priority quest: it is that the follower is
-// IN COMBAT, and an actor in combat does not run her package stack at all. She
-// runs her alias's COMBAT OVERRIDE package list, which the vanilla follower
-// alias already has (PlayerFollowerCombatOverridePackageList, 0005C852). The
-// game's own worked example is Mercer Frey, whose "cast Nightingale Strife at
-// the player" UseMagic package sits in exactly such a list, gated by a
+// priority. What works is the follower's OWN package stack: every alias an
+// actor fills is instanced for them as an array of packages on the actor,
+// and the array whose package is running now is the stack that has them in
+// the fight. The game's own worked example is Mercer Frey, whose "cast
+// Nightingale Strife at the player" UseMagic package is gated by a
 // condition on quest stage. Ours are gated by `GetIsReference(<holder>)`: a
 // condition whose parameter is a pointer this plugin writes.
 //
@@ -23,13 +22,17 @@
 //     load        sixteen packages are MADE IN MEMORY (game/Forms.h), each
 //                 a copy of a vanilla instance with its own condition
 //     rule fires  repoint the slot's Spell input, put the record at the
-//                 FRONT of the vanilla follower combat-override list, point
-//                 the slot's condition at the follower, ask the AI to
-//                 re-evaluate
-//     the AI      finds the first list entry whose condition passes -- ours --
+//                 FRONT of the follower's running package array
+//                 (PutOnStack), point the slot's condition at the follower,
+//                 ask the AI to re-evaluate
+//     the AI      finds the first entry whose condition passes -- ours --
 //                 and runs the UseMagic procedure: animation, cost, interrupts
-//     afterwards  the tick takes the record out of the list and clears the
-//                 condition, so the list is exactly vanilla again
+//     afterwards  the tick takes the record out of the array and clears the
+//                 condition, so the follower's stack is exactly as it was
+//
+// (Until 2026-09-09 the record was spliced into the vanilla follower
+// alias's combat-override list instead, which is shared and covered only
+// the followers that alias holds; docs/MAGIC.md "The list they live in".)
 //
 // NO PLUGIN FILE, NOTHING IN THE SAVE
 // Every record this needs is created at load and forgotten at exit. The load
@@ -49,12 +52,12 @@
 // window has passed), and then it goes back. Never shared, even for the same
 // spell: every input in the record -- spell, target, cast time -- belongs to
 // the holder. The limit is eight followers mid-cast at the same instant. When
-// that is exceeded, or she already holds one, the rule engine reports her cast
+// that is exceeded, or they already hold one, the rule engine reports their cast
 // rules busy for that turn -- no cooldown is spent, and the next rule in the
 // list gets its turn.
 //
 // THE INPUTS, AND HOW THEY ARE FOUND
-// Three inputs are written per request: Spell, Target (Self for herself, a
+// Three inputs are written per request: Spell, Target (Self for themself, a
 // specific reference for anyone else), and for a concentration spell the two
 // CastTime floats that say how long the stream runs. The container that holds
 // a package's inputs is not mapped by CommonLibSSE, so none of these offsets
@@ -65,9 +68,8 @@
 // checked the same way: Fast Healing is written into each and read back.
 //
 // LIMITS, STATED
-// - Only a follower the vanilla DialogueFollower alias holds is covered: the
-//   override list belongs to that alias. A follower recruited by a framework
-//   (NFF, EFF, AFT) runs its own alias. RequestCast reports which case she is.
+// - A follower whose aliases instance no package array on them -- none is
+//   running -- has no stack to put the record on; RequestCast says so.
 // - A concentration spell's fire event marks the START of the stream, so it
 //   is not a release signal for one; the stream is released on the CastStop
 //   that follows, or when the target dies, or at a deadline.
@@ -104,9 +106,9 @@ inline constexpr std::size_t kPackageSlots = kSpellSlots + kVoiceSlots;
 // layout found on vanilla records holds on the copies. Fast Healing.
 inline constexpr std::uint32_t kCanarySpellID = 0x0002F3B8;
 
-// Find the input layout on vanilla records, make the pool, splice it into
-// the follower combat-override list. If any step fails everything reports
-// unavailable and cast rules stay unsupported; the log says which step.
+// Find the input layout on vanilla records and make the pool. If any step
+// fails everything reports unavailable and cast rules stay unsupported; the
+// log says which step.
 void InitPackages();
 
 [[nodiscard]] bool PackagesAvailable();
@@ -127,14 +129,14 @@ void InitPackages();
 // type ask this so the power does not vanish from them meanwhile.
 [[nodiscard]] bool IsLeasedPower(std::uint32_t formID);
 
-// Is this follower holding a record right now? The rule engine treats her
-// cast rules as busy while she is, so a second request during a cast is
+// Is this follower holding a record right now? The rule engine treats them
+// cast rules as busy while they are, so a second request during a cast is
 // skipped for that turn without spending a cooldown.
 [[nodiscard]] bool IsMidCast(const RE::Actor *actor);
 
 enum class CastRequest : std::uint8_t
 {
-    Armed,          // her slot's condition now passes; the AI decides the rest
+    Armed,          // their slot's condition now passes; the AI decides the rest
     NoPackages,     // the pool could not be made at load (see the log)
     PoolBusy,       // every record is held by a follower mid-cast
     AlreadyCasting, // this follower already holds a record; one cast at a time
@@ -144,10 +146,10 @@ enum class CastRequest : std::uint8_t
 
 [[nodiscard]] const char *ToString(CastRequest r) noexcept;
 
-// Ask a follower to cast a spell. targetId is the rule's resolved target: her
-// own id (or zero) casts on herself; any other actor is written into the
+// Ask a follower to cast a spell. targetId is the rule's resolved target: their
+// own id (or zero) casts on themself; any other actor is written into the
 // record's Target input for the duration of the lease, so an offensive spell
-// goes at the enemy she is engaging and a heal can go to the player.
+// goes at the enemy they are engaging and a heal can go to the player.
 // sustainSeconds applies to a CONCENTRATION spell (Flames, vanilla Healing):
 // how long to hold the stream. Zero means the default. Ignored for a
 // fire-and-forget spell.

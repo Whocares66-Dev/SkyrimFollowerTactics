@@ -2,7 +2,7 @@
 // Small helpers for the game layer. Deliberately minimal.
 //
 // The temptation with an engine adapter is to build a utility layer before you
-// know what actually repeats. These two earn their place because every
+// know what actually repeats. These earn their place because every
 // diagnostic line needs to name an actor, and every cooldown needs a clock.
 // Anything else stays inline until it has repeated three times.
 

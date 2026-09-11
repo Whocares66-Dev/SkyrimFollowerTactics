@@ -56,10 +56,11 @@ namespace ft
 [[nodiscard]] std::optional<StatusKind> StatusFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept;
 
-// ASCII letters and digits only, starting with a letter. Nothing else
-// round-trips safely through a JSON file, a forum post and a filesystem -- and,
-// the point here, no translated string can satisfy it. A test holds this line
-// mechanically so "never localise the wire names" is enforced rather than asked.
+// A slug: lowercase ASCII letters and digits, hyphen-separated, no leading,
+// trailing or doubled hyphen. Nothing else round-trips safely through a JSON
+// file, a forum post and a filesystem -- and, the point here, no translated
+// string can satisfy it. A test holds this line mechanically so "never
+// localise the wire names" is enforced rather than asked.
 [[nodiscard]] bool IsWireName(std::string_view s) noexcept;
 
 // --- display text, all of it translatable ----------------------------------

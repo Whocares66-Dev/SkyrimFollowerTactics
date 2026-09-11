@@ -145,14 +145,14 @@ struct SpellOption
     // The archetype is the record property the engine raises a corpse by,
     // so a mod's reanimate spell is found by it whatever it is called.
     bool reanimate{false};
-    // She can cast it from both hands: the school's Dual Casting perk, as
+    // They can cast it from both hands: the school's Dual Casting perk, as
     // the perk system answers for this spell, and a record that does not
     // take both hands -- the equip slot, not the level: vanilla's master
     // spells take both, a mod's may not. The Dual Cast menu lists these
     // and no other.
     bool dualCast{false};
     // Which menu lists it: Cast spell, Use power, or Shout. One list
-    // because all three are found by the same walk of what she knows.
+    // because all three are found by the same walk of what they know.
     enum class Kind : std::uint8_t
     {
         Spell,
@@ -190,7 +190,7 @@ struct BlowPlan
 // The blow a kind of action strikes; an empty plan for any other kind.
 [[nodiscard]] BlowPlan PlanBlow(RE::Actor *actor, ft::ActionKind kind);
 
-// One consumable she carries -- a potion, a food, an ingredient -- for the
+// One consumable they carry -- a potion, a food, an ingredient -- for the
 // editor's Consume menu.
 struct ConsumableOption
 {
@@ -203,7 +203,7 @@ struct ConsumableOption
     std::vector<std::string> effects;
 };
 
-// Every consumable she carries, sorted by name. Menu content only. Poisons
+// Every consumable they carry, sorted by name. Menu content only. Poisons
 // are left out: they go on a weapon, not down the throat.
 [[nodiscard]] std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor);
 
@@ -427,9 +427,9 @@ struct PerkPage
 [[nodiscard]] std::vector<PerkPage> BuildPerkPages(RE::Actor *actor);
 
 // The Tactics tab's Combat Style section: the numbers and flags the combat
-// AI is tuned by, read off the style she is using right now -- her live
-// combat controller's in a fight, her record's otherwise -- so a copy the
-// panel gave her shows as what it is.
+// AI is tuned by, read off the style they are using right now -- their live
+// combat controller's in a fight, their record's otherwise -- so a copy the
+// panel gave them shows as what it is.
 [[nodiscard]] std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor);
 
 // The combat style the actor fights by: the controller's live copy when
@@ -441,14 +441,14 @@ struct PerkPage
 // it (core/Loadout.h WouldDualWield).
 [[nodiscard]] bool DualWieldAllowed(RE::Actor *actor);
 
-// The damage a weapon does in her hands, as the inventory menu would show
-// it: base, times tempering, times the skill curve, through her perks, times
+// The damage a weapon does in their hands, as the inventory menu would show
+// it: base, times tempering, times the skill curve, through their perks, times
 // any Fortify effect on the skill. `entry` may be null, in which case the
 // weapon is taken as untempered.
 [[nodiscard]] float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry);
 
-// The armour rating a piece gives her, the same way: base, times tempering,
-// times the armour skill's curve, through her perks, times any Fortify
+// The armour rating a piece gives them, the same way: base, times tempering,
+// times the armour skill's curve, through their perks, times any Fortify
 // effect on the skill. Clothing rates 0.
 [[nodiscard]] float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry);
 

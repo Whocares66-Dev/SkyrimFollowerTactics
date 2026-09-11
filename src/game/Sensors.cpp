@@ -1259,7 +1259,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
 
     s.potions.running = RunningEffects(actor);
 
-    // Spells: what she knows, what is running, what is in hand. All three are
+    // Spells: what they know, what is running, what is in hand. All three are
     // ids only -- Snapshot never sees an RE:: type -- and all three are needed
     // to tell "cannot", "already up" and "already held" apart in the status
     // column.
@@ -1293,8 +1293,8 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         if (!IsCastable(spell))
             return;
         s.spells.known.push_back(spell->GetFormID());
-        // Her cost, not the base cost: CalculateMagickaCost applies her skill
-        // and perks, which is what the AI will charge her.
+        // Their cost, not the base cost: CalculateMagickaCost applies their skill
+        // and perks, which is what the AI will charge them.
         const bool dualable = CanDualCast(actor, spell);
         s.spells.costs.push_back({spell->GetFormID(), spell->CalculateMagickaCost(actor), dualable,
                                   dualable ? DualCastCost(actor, spell) : 0.0f});
@@ -1316,8 +1316,8 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         s.loadout.push_back(DescribeHoldable(actor, spell));
     });
 
-    // What she could hold or wear, as the pin book sees it, and what is
-    // pinned. A walk of her inventory that keeps only the equipable kinds;
+    // What they could hold or wear, as the pin book sees it, and what is
+    // pinned. A walk of their inventory that keeps only the equipable kinds;
     // the potion scan above walks it too, and the two could share one pass
     // if the cost ever showed, which at tens of microseconds it does not.
     for (const auto &[object, entry] : actor->GetInventory())
@@ -1615,8 +1615,8 @@ bool PerkActive(RE::Actor *actor, RE::BGSPerk *perk)
 
 // The perks this follower holds in one skill's tree, one row per perk at
 // the highest rank held. Asked of the engine with HasPerk rather than read
-// off her record, so a perk a mod granted at runtime counts the same as one
-// she was authored with. Ordered by the skill level each perk asks for,
+// off their record, so a perk a mod granted at runtime counts the same as one
+// they were authored with. Ordered by the skill level each perk asks for,
 // weakest first; the modifiers column carries its own in-game description.
 namespace
 {
@@ -1678,7 +1678,7 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
         }
         rows.push_back(Row("Weapon", NameOr(weapon, "?")));
         rows.back().form = weapon->GetFormID();
-        // In her hands: the carried item, for its tempering.
+        // In their hands: the carried item, for its tempering.
         const Carried carried = CarriedOf(actor, weapon);
         rows.push_back(Row("Damage", Fmt("%.0f", WeaponDamage(actor, weapon, carried.entry.get()))));
         rows.push_back(Row("Speed", Fmt("%.2f", weapon->GetSpeed())));
@@ -1834,9 +1834,9 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
 
     // Perks, through the engine's own entry point, so Armsman and the rest
     // count exactly as they do in a swing. The entry point wants a target,
-    // and there is none outside a fight; she stands in for it herself. A
+    // and there is none outside a fight; they stand in for it themself. A
     // perk that reads the target (against undead, say) evaluates against
-    // her and so stays out of the figure -- the same figure the player's
+    // them and so stays out of the figure -- the same figure the player's
     // own inventory menu shows, which has no target either.
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, actor, weapon, actor,
                                         &damage);
@@ -1958,7 +1958,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     // Attack: what each hand holds, whatever it is. The old Attack section
     // knew only weapons, which left a mage's page saying "unarmed". A hand
     // holding nothing gets no table; with both empty, the one thing worth
-    // saying is what her fists do.
+    // saying is what their fists do.
     {
         SheetSection right{"Right Hand", {}, "Attack"};
         HandRows(actor, false, right.rows);
@@ -2129,7 +2129,7 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
         out.push_back(std::move(s));
     }
     {
-        // The six that decide what she prefers to hold.
+        // The six that decide what they prefer to hold.
         const auto &g = live->generalData;
         SheetSection s{"Equipment Scores", {}, {}};
         constexpr const char *kScore = "- Multiplies the damage of attacks of this kind\n"

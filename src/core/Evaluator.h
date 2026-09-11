@@ -44,18 +44,18 @@ enum class Verdict : std::uint8_t
     NotReached,       // an earlier rule already fired
 };
 
-// The actor a condition matched.
-//
-// For Self/Player/CurrentTarget this is just that actor. For the group subjects
-// it is the specific ally or enemy that satisfied the predicate -- and that is
-// the point of returning it: the action then applies to whoever matched,
-// without the rule naming them twice.
 // The gem a charge policy spends into a weapon short by `missing`. Strongest
 // is the largest that would not overfill it, or the smallest carried when
 // every one would; weakest the smallest carried. Zero for no gems.
 [[nodiscard]] std::uint32_t ChooseSoulGem(const std::vector<Snapshot::SoulGemView> &gems, float missing,
                                           bool strongest) noexcept;
 
+// The actor a condition matched.
+//
+// For Self and Player this is just that actor. For the group subjects it is
+// the specific ally, enemy or corpse that satisfied the predicate -- and
+// that is the point of returning it: the action then applies to whoever
+// matched, without the rule naming them twice.
 struct Binding
 {
     ActorId id{0};
@@ -86,7 +86,7 @@ struct EvalContext
     // that both drink potions must not drink two potions in consecutive ticks.
     // What exactly is on cooldown: the action, the spell it casts (zero for
     // an action without one) and the actor it was applied to. Drinking a
-    // health potion does not block a magicka potion; healing herself does not
+    // health potion does not block a magicka potion; healing themself does not
     // block healing the player; Oakflesh does not block a heal. What it DOES
     // block is every rule, wherever it sits in the list, that would do the
     // same thing to the same actor before the first has had time to show.

@@ -33,6 +33,10 @@ ft_apply_warnings(ft_tests)
 include(Catch)
 catch_discover_tests(ft_tests)
 
+# Not a Catch2 test: a grep over the sources, so a gendered pronoun for a
+# follower fails the run rather than waiting for a review to find it.
+add_test(NAME pronouns COMMAND "${CMAKE_COMMAND}" -DROOT=${CMAKE_SOURCE_DIR} -P "${CMAKE_SOURCE_DIR}/tests/pronouns.cmake")
+
 # Coverage report, for the core-cov preset:
 #
 #   .\tools\build.ps1 -Preset core-cov -Coverage

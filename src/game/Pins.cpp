@@ -72,7 +72,7 @@ struct OwnEquip
 };
 
 // Refusals already logged, one per follower and thing: the engine asks
-// again every frame or so, and one line says it. Cleared when her pins
+// again every frame or so, and one line says it. Cleared when their pins
 // change, so a fresh conflict is logged afresh.
 std::unordered_set<std::uint64_t> g_refusedLogged;
 
@@ -118,7 +118,7 @@ const char *HandTag(Hand hand)
 
 namespace
 {
-// How many of an item she carries, for the one-copy rule. A spell is not
+// How many of an item they carry, for the one-copy rule. A spell is not
 // an item and needs no count.
 int CarriedCount(RE::Actor *actor, RE::TESBoundObject *object)
 {
@@ -327,7 +327,7 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
 //
 // Items go through the equip manager WITHOUT the prevent-equip flag: the
 // Creation Kit wiki notes that flag does nothing for weapons on an NPC and
-// works only too well for ammunition, leaving an archer holding a bow she
+// works only too well for ammunition, leaving an archer holding a bow they
 // cannot use. A spell has no unequip in CommonLibSSE or in SKSE; the
 // engine's is the Papyrus native Actor.UnequipSpell(spell, source), 0 for
 // the left hand and 1 for the right, so it is dispatched to the script VM,
@@ -730,20 +730,20 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
 //
 // The combat AI chooses from a list of its own, the combat inventory it
 // builds when a fight begins: spells and items together, scored, in seven
-// arrays by role. It does not read her spell lists or her bag again during
-// the fight -- Firebolt was cast after being removed from her record, a
+// arrays by role. It does not read their spell lists or their bag again during
+// the fight -- Firebolt was cast after being removed from their record, a
 // removed dagger never was. So a pin is kept by answering THAT list's
 // scoring, below: an entry that would take a pinned hand scores zero when
-// the AI asks. Nothing of hers changes, nothing is saved, and the engine
+// the AI asks. Nothing of theirs changes, nothing is saved, and the engine
 // discards the list when the fight ends, so there is nothing to restore.
-// Two earlier ways were dropped: removing competing spells from her record
-// for the life of a pin (it worked, and left her without them for every
+// Two earlier ways were dropped: removing competing spells from their record
+// for the life of a pin (it worked, and left them without those for every
 // menu, script and mod in between), and erasing entries from the list on
 // each tick (a race the AI won; it re-lists every few seconds).
 
 // What the combat AI is choosing from: its combat inventory, seven arrays
 // of scored options built for the fight. Logged once per fight, by name,
-// to learn the layout -- the AI cast a spell we had removed from her lists
+// to learn the layout -- the AI cast a spell we had removed from their lists
 // (03:18), so this list, not those, is what it reads.
 std::unordered_set<ft::ActorId> g_probedFights;
 // Entries whose zeroed score has been logged this fight: once each.
@@ -1150,7 +1150,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
                         Describe(actor), log::NameOf(thing));
         return;
     }
-    // One weapon cannot be in both hands. Asked to move her only copy to
+    // One weapon cannot be in both hands. Asked to move their only copy to
     // the other hand, take it out of the first; otherwise the engine's
     // equip, finding none free, conjures a second (02:05, the doubled
     // dagger). Two in the bag may go one per hand.
@@ -1187,7 +1187,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             break;
         case WearRequest::Equip:
             // The AI's to change afterwards; but a pin in the way would put
-            // its thing straight back, so the click lets that pin go. Her
+            // its thing straight back, so the click lets that pin go. Their
             // only copy of a weapon changing hands takes its own pin with
             // it: a pin on the hand it is leaving would stand over an empty
             // hand (16:28, the steel dagger pinned left and held right).
@@ -1313,7 +1313,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         break;
     }
 
-    // Redraw her now. The Creation Kit wiki, on EquipItem: armour
+    // Redraw them now. The Creation Kit wiki, on EquipItem: armour
     // equipped while a menu holds the actor "will not be visible ...
     // until the dialogue is ended" unless the model is refreshed
     // straight after -- which is this call, the one SKSE's
@@ -1337,7 +1337,7 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         return;
     // Queued to the game thread and run there once. The panel is open while
     // this is clicked, and with FreezeTimeOnMenu the tick is held, so the
-    // task also republishes her view: the cell answers now rather than when
+    // task also republishes their view: the cell answers now rather than when
     // the panel closes.
     task->AddTask([id, form, request, hand]() {
         auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
@@ -1569,7 +1569,7 @@ bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlo
     if (thing.kind == Kind::Other)
         return false; // a potion, a scroll: no hand, no slot
     // A bound weapon is the conjuration in progress: refusing it ends the
-    // spell she is casting (Follower Equip Control found this the hard
+    // spell they are casting (Follower Equip Control found this the hard
     // way). It passes; the score hook keeps the AI from choosing the spell
     // for a pinned hand in the first place.
     if (const auto *weapon = object->As<RE::TESObjectWEAP>(); weapon && weapon->IsBound())

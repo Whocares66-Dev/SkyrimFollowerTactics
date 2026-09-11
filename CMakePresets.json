@@ -6,14 +6,13 @@
             "hidden": true,
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/${presetName}",
-            "installDir": "${sourceDir}/install/${presetName}",
             "architecture": {
                 "value": "x64",
                 "strategy": "external"
             },
             "cacheVariables": {
                 "CMAKE_CXX_COMPILER": "cl.exe",
-                "CMAKE_CXX_FLAGS": "/permissive- /Zc:preprocessor /EHsc /MP",
+                "CMAKE_CXX_FLAGS": "/EHsc",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             }
         },
@@ -79,7 +78,6 @@
             "displayName": "Core only, clang-cl, test coverage",
             "cacheVariables": {
                 "CMAKE_CXX_COMPILER": "clang-cl.exe",
-                "CMAKE_CXX_FLAGS": "/permissive- /EHsc",
                 "FT_COVERAGE": "ON"
             }
         }
@@ -110,6 +108,13 @@
         {
             "name": "debug",
             "configurePreset": "debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "release",
+            "configurePreset": "release",
             "output": {
                 "outputOnFailure": true
             }

@@ -4,9 +4,9 @@
 //
 // A pin says "this stays in this hand" (or "this stays on", for a thing with
 // no hand). Everything else is derived from the pins and from a plain
-// description of what she has: which hands a thing could take, whether the
+// description of what they have: which hands a thing could take, whether the
 // combat AI would choose it at all, which body slots a piece of armour
-// covers. The game layer builds that description from her records, asks
+// covers. The game layer builds that description from their records, asks
 // these functions, and imposes the answers on the engine. Nothing here knows
 // how; that is what keeps it testable.
 //
@@ -19,7 +19,8 @@
 // decides what to hold, and that score is answered by us: zero for anything
 // that competes for a pinned hand, so it is never chosen (verified: a pinned
 // bow held at melee range against a sword the AI kept re-listing). And a
-// WATCHDOG puts back, out of combat, whatever got past both. (The engine's
+// WATCHDOG puts back, in a fight or out of one, whatever got past both --
+// a hand pin waits only while one of our casts holds the hand. (The engine's
 // prevent-removal flag once doubled the first for items; it lives on the
 // worn item in the save and outlived the mod, so it is no longer set.)
 
@@ -105,20 +106,20 @@ enum class Kind : std::uint8_t
     Voice
 };
 
-// One thing she has, as the planner sees it.
+// One thing they have, as the planner sees it.
 struct Holdable
 {
     std::uint32_t form{0};
     Kind kind{Kind::Other};
     Grip grip{Grip::None};
-    // A spell above her skill. The combat AI will not choose it on its own,
+    // A spell above their skill. The combat AI will not choose it on its own,
     // so a pin on it would be a promise unkept: it can be equipped, not
     // pinned.
     bool unusable{false};
     // The body slots a piece of armour covers, for armour against armour;
     // 0 for everything else.
     std::uint32_t slots{0};
-    // How many she carries: an item's count, and "plenty" for a spell,
+    // How many they carry: an item's count, and "plenty" for a spell,
     // which can be in both hands at once. A single item pinned in one hand
     // has no second copy for the other, and the engine, asked for one,
     // shows the same object in both hands (the doubled dagger).
@@ -217,7 +218,7 @@ struct Displaced
                                               bool dualWield = true);
 
 // Pin `thing` in `hands`. An either-hand thing already pinned in the other
-// hand is pinned in both, a spell once in each -- unless `moving`, her one
+// hand is pinned in both, a spell once in each -- unless `moving`, their one
 // weapon changing hands, which leaves the first hand.
 void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool moving);
 
