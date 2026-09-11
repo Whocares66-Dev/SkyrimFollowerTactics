@@ -599,7 +599,20 @@ void NoteFight(RE::Actor *actor, std::vector<Pin> &pins, bool fighting)
 
 void EnforcePins(const std::vector<RE::Actor *> &followers)
 {
-    std::scoped_lock lock(g_pinMutex);
+    // The book is read and changed under the lock; the engine is acted on
+    // after it, as ReleaseKind does: an equip re-enters the equip detour,
+    // and the combat AI's scoring takes the same lock.
+    struct Deferred
+    {
+        RE::Actor *actor;
+        RE::TESForm *form;
+        Hand hands;
+        bool takeOff;
+        Holdable described;
+    };
+    std::vector<Deferred> todo;
+
+    std::unique_lock lock(g_pinMutex);
 
     for (auto *actor : followers)
     {
@@ -642,7 +655,7 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                                      {"reason", "put away, readied in the voice again"}},
                                     "{} put away pinned {} -- readying it in the voice again", Describe(actor),
                                     log::NameOf(form));
-                    EquipPinned(actor, form, hands, false);
+                    todo.push_back({actor, form, hands, false, {}});
                 }
             }
             else if (form->Is(RE::FormType::Spell))
@@ -655,7 +668,7 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                                      {"reason", "put away, readied again"}},
                                     "{} put away pinned {} -- readying it again -- {}", Describe(actor),
                                     log::NameOf(form), HandsState(actor));
-                    EquipPinned(actor, form, hands, false);
+                    todo.push_back({actor, form, hands, false, {}});
                 }
             }
             else if (auto *object = form->As<RE::TESBoundObject>())
@@ -683,7 +696,7 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                                      {"reason", "taken off"}},
                                     "{} took off pinned {} -- putting it back on", Describe(actor),
                                     log::NameOf(object));
-                    EquipPinned(actor, object, hands, false);
+                    todo.push_back({actor, object, hands, false, {}});
                 }
             }
             ++pin;
@@ -721,8 +734,17 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             log::pins.event(log::Level::Info, "ban.enforced", actor,
                             {{"itemFormId", log::Id(thing->GetFormID())}, {"itemName", log::NameOf(thing)}},
                             "{} has banned {} on -- taking it off", Describe(actor), log::NameOf(thing));
-            TakeOffEverywhere(actor, thing, described, false);
+            todo.push_back({actor, thing, Hand::None, true, described});
         }
+    }
+
+    lock.unlock();
+    for (const Deferred &d : todo)
+    {
+        if (d.takeOff)
+            TakeOffEverywhere(d.actor, d.form, d.described, false);
+        else
+            EquipPinned(d.actor, d.form, d.hands, false);
     }
 }
 

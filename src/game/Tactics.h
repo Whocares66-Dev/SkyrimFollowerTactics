@@ -12,6 +12,7 @@
 #include "game/Profiles.h"
 #include "game/Sensors.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -98,7 +99,10 @@ inline constexpr std::size_t kMaxManagedFollowers = 8;
 
 // Everything the UI needs, all copied. Includes followers who are NOT fighting:
 // tactics are authored before a fight, so the panel has to show them then.
+// One follower's alone, for the page that draws one: every open page copied
+// every follower's view each frame until 2026-09-11.
 [[nodiscard]] std::vector<FollowerView> ObserveFollowers();
+[[nodiscard]] std::optional<FollowerView> ObserveFollower(ft::ActorId id);
 
 // This follower's rules, as a copy: none until someone writes some, so a
 // fresh install changes nothing.

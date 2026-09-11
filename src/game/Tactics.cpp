@@ -17,6 +17,7 @@
 #include <chrono>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -442,9 +443,11 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     ft::ActionTrace actionTrace;
     const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
 
-    PublishView(actor, snapshot, trace, actionTrace);
-
+    // The cost measured is the snapshot and the evaluation -- the rules'
+    // own -- not the panel's sheets, which PublishView builds after.
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
+
+    PublishView(actor, snapshot, trace, actionTrace);
 
     if (decision.Fired())
     {
@@ -789,6 +792,15 @@ std::vector<FollowerView> ObserveFollowers()
 {
     std::scoped_lock lock(g_viewMutex);
     return g_view;
+}
+
+std::optional<FollowerView> ObserveFollower(ft::ActorId id)
+{
+    std::scoped_lock lock(g_viewMutex);
+    for (const auto &view : g_view)
+        if (view.id == id)
+            return view;
+    return std::nullopt;
 }
 
 void Install()

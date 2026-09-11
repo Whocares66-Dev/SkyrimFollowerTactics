@@ -5003,13 +5003,10 @@ void DrawSlot(std::size_t slot)
         return;
     }
 
-    for (const auto &view : ObserveFollowers())
+    if (const auto view = ObserveFollower(id))
     {
-        if (view.id == id)
-        {
-            DrawFollower(GetRules(view.id), view);
-            return;
-        }
+        DrawFollower(GetRules(view->id), *view);
+        return;
     }
 
     Im::TextDisabled("Dismissed. This entry cannot be removed until the menu framework's next "

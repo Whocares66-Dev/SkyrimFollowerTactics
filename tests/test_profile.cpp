@@ -4,30 +4,19 @@
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
 
+#include "Build.h"
 #include "core/Profile.h"
 #include "core/Vocabulary.h"
 
 #include <string>
 
 using namespace ft;
+using ft::test::HealBelow;
 
 namespace
 {
 
 const FormCodec kHex = FormCodec::Hex();
-
-Rule HealBelow(float pct)
-{
-    Rule r;
-    r.subject = SubjectKind::Self;
-    r.predicate = PredicateKind::HealthPctBelow;
-    r.conditionArg = pct;
-    r.actionTarget = ActionTargetKind::Self;
-    r.FirstAction().kind = ActionKind::DrinkStrongest;
-    r.FirstAction().effect = "Restore Health";
-    r.label = "emergency heal";
-    return r;
-}
 
 // One rule of every shape the file has to carry: a named follower on both
 // sides, a status, a damage kind, an equip with a hand, a cast with an
@@ -38,7 +27,7 @@ Profile Everything()
     p.followerName = "Lydia";
     p.followerForm = "0xA2C94";
     p.enabled = false;
-    p.rules.rules.push_back(HealBelow(0.5f));
+    p.rules.rules.push_back(HealBelow(0.5f, "emergency heal"));
 
     {
         Rule r;
