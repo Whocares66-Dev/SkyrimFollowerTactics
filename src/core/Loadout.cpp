@@ -203,8 +203,11 @@ bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) 
     return Overlap(slot, pinned);
 }
 
-Refusal RefusesEngineEquip(const std::vector<Pin> &pins, const Holdable &thing, Hand into, bool dualWield) noexcept
+Refusal RefusesEngineEquip(const std::vector<Pin> &pins, const Bans &bans, const Holdable &thing, Hand into,
+                           bool dualWield) noexcept
 {
+    if (IsBanned(bans, thing.form))
+        return {Refusal::Why::Banned, nullptr};
     if (pins.empty())
         return {};
     if (const Pin *own = FindPin(pins, thing.form))

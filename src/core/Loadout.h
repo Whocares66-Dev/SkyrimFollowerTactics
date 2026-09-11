@@ -153,6 +153,9 @@ struct Pin
     Hand hands{Hand::None};
 };
 
+// The forms the follower must never use (the bans, below).
+using Bans = std::vector<std::uint32_t>;
+
 [[nodiscard]] Pin *FindPin(std::vector<Pin> &pins, std::uint32_t form) noexcept;
 [[nodiscard]] const Pin *FindPin(const std::vector<Pin> &pins, std::uint32_t form) noexcept;
 
@@ -239,18 +242,21 @@ void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool movi
 [[nodiscard]] bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) noexcept;
 
 // Would the engine's own equip of `thing` into `into` -- the slot's hand,
-// None for a thing with none -- break a pin? What the equip detour asks
-// (game/Pins.cpp), and what the test's engine does. The pinned thing
-// itself passes into its own hand, and into another as the AI is kept
-// from it (KeptFromAI): with one copy the engine would show it in both
-// hands, and a pin may hold that hand. Anything else is refused where it
-// conflicts with a pin; a thing with no hand and no slot never does. The
-// answer says why, for the log, and which pin where one is in the way.
+// None for a thing with none -- break a ban or a pin? What the equip
+// detours ask (game/Pins.cpp) of an item, a spell and a shout alike, and
+// what the test's engine does. A banned thing is refused outright. The
+// pinned thing itself passes into its own hand, and into another as the
+// AI is kept from it (KeptFromAI): with one copy the engine would show it
+// in both hands, and a pin may hold that hand. Anything else is refused
+// where it conflicts with a pin; a thing with no hand and no slot never
+// does. The answer says why, for the log, and which pin where one is in
+// the way.
 struct Refusal
 {
     enum class Why : std::uint8_t
     {
         None,
+        Banned,   // the thing is banned, whatever the hands
         OneCopy,  // its own pin, and no second copy for the other hand
         OtherPin, // its own pin, and another pin holds the hand asked
         Conflict  // another pin's hand or slot
@@ -263,8 +269,8 @@ struct Refusal
         return why != Why::None;
     }
 };
-[[nodiscard]] Refusal RefusesEngineEquip(const std::vector<Pin> &pins, const Holdable &thing, Hand into,
-                                         bool dualWield) noexcept;
+[[nodiscard]] Refusal RefusesEngineEquip(const std::vector<Pin> &pins, const Bans &bans, const Holdable &thing,
+                                         Hand into, bool dualWield) noexcept;
 
 // What a request from the panel does to a book of pins, the same on the
 // book in use and on the one remembered for after the fight. Pin makes
@@ -304,7 +310,6 @@ enum class PinRequest : std::uint8_t
 // the panel's ban lets the pin go. A rule's pin on a banned thing is the
 // player's own instruction and wins for as long as it lasts; the watchdog
 // leaves a pinned thing alone whatever the bans say.
-using Bans = std::vector<std::uint32_t>;
 
 [[nodiscard]] bool IsBanned(const Bans &bans, std::uint32_t form) noexcept;
 // Each returns whether the book changed.

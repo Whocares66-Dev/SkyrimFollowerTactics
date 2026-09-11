@@ -1533,44 +1533,49 @@ bool Refused(RE::Actor *actor, RE::TESForm *form, const RE::BGSEquipSlot *slot)
     if (IsOurCast(actor, form->GetFormID()))
         return false;
     std::scoped_lock lock(g_pinMutex);
-    if (BannedHere(actor->GetFormID(), form->GetFormID()))
+    static const std::vector<Pin> kNoPins;
+    static const Bans kNoBans;
+    const auto pinsIt = g_pins.find(actor->GetFormID());
+    const auto bansIt = g_bans.find(actor->GetFormID());
+    const std::vector<Pin> &pins = pinsIt == g_pins.end() ? kNoPins : pinsIt->second;
+    const Bans &bans = bansIt == g_bans.end() ? kNoBans : bansIt->second;
+    if (pins.empty() && bans.empty())
+        return false;
+    const Holdable thing = DescribeHoldable(actor, form);
+    const Hand into = SlotHand(slot);
+    const Refusal refusal = RefusesEngineEquip(pins, bans, thing, into, DualWieldAllowed(actor));
+    if (!refusal)
+        return false;
+    if (refusal.why != Refusal::Why::Banned)
+        if (const auto *weapon = form->As<RE::TESObjectWEAP>(); weapon && weapon->IsBound())
+            return false;
+    if (g_refusedLogged.insert(ReadyKey(actor, form)).second)
     {
-        if (g_refusedLogged.insert(ReadyKey(actor, form)).second)
+        if (refusal.why == Refusal::Why::Banned)
             log::pins.event(log::Level::Warn, "ban.refused", actor,
                             {{"itemFormId", log::Id(form->GetFormID())},
                              {"itemName", log::NameOf(form)},
                              {"inCombat", actor->IsInCombat()}},
                             "{} the engine would equip banned {} -- refused ({})", Describe(actor), log::NameOf(form),
                             actor->IsInCombat() ? "in combat" : "out of combat");
-        return true;
-    }
-    const auto it = g_pins.find(actor->GetFormID());
-    if (it == g_pins.end() || it->second.empty())
-        return false;
-    if (const auto *weapon = form->As<RE::TESObjectWEAP>(); weapon && weapon->IsBound())
-        return false;
-    const Holdable thing = DescribeHoldable(actor, form);
-    const Hand into = SlotHand(slot);
-    const Refusal refusal = RefusesEngineEquip(it->second, thing, into, DualWieldAllowed(actor));
-    if (!refusal)
-        return false;
-    if (g_refusedLogged.insert(ReadyKey(actor, form)).second)
-    {
-        const auto *held = RE::TESForm::LookupByID(refusal.pin->thing.form);
-        const char *why = refusal.why == Refusal::Why::OneCopy    ? "one copy cannot fill both hands"
-                          : refusal.why == Refusal::Why::OtherPin ? "another pin holds that hand"
-                                                                  : "a pin holds the hand or slot";
-        log::pins.event(log::Level::Warn, "pin.refused", actor,
-                        {{"itemFormId", log::Id(refusal.pin->thing.form)},
-                         {"itemName", log::NameOf(held)},
-                         {"hand", HandTag(refusal.pin->hands)},
-                         {"refusedFormId", log::Id(form->GetFormID())},
-                         {"refusedName", log::NameOf(form)},
-                         {"reason", why},
-                         {"inCombat", actor->IsInCombat()}},
-                        "{} the engine would equip {}{} over pinned {}{} -- refused: {} ({})", Describe(actor),
-                        log::NameOf(form), HandTag(HandsFor(thing.grip, into)), log::NameOf(held),
-                        HandTag(refusal.pin->hands), why, actor->IsInCombat() ? "in combat" : "out of combat");
+        else
+        {
+            const auto *held = RE::TESForm::LookupByID(refusal.pin->thing.form);
+            const char *why = refusal.why == Refusal::Why::OneCopy    ? "one copy cannot fill both hands"
+                              : refusal.why == Refusal::Why::OtherPin ? "another pin holds that hand"
+                                                                      : "a pin holds the hand or slot";
+            log::pins.event(log::Level::Warn, "pin.refused", actor,
+                            {{"itemFormId", log::Id(refusal.pin->thing.form)},
+                             {"itemName", log::NameOf(held)},
+                             {"hand", HandTag(refusal.pin->hands)},
+                             {"refusedFormId", log::Id(form->GetFormID())},
+                             {"refusedName", log::NameOf(form)},
+                             {"reason", why},
+                             {"inCombat", actor->IsInCombat()}},
+                            "{} the engine would equip {}{} over pinned {}{} -- refused: {} ({})", Describe(actor),
+                            log::NameOf(form), HandTag(HandsFor(thing.grip, into)), log::NameOf(held),
+                            HandTag(refusal.pin->hands), why, actor->IsInCombat() ? "in combat" : "out of combat");
+        }
     }
     return true;
 }

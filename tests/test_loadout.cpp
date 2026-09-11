@@ -536,15 +536,18 @@ TEST_CASE("a pin kept through the fight, or made in the panel during it, is unto
 // written down here as it was learned in play, and the watchdog's rule is
 // run against it. The three facts, each verified in game (CLAUDE.md, the
 // SKSE gotchas):
-//   1. Our own equip puts an item in a hand with the prevent-removal flag,
-//      the pin, which holds against the engine's equip-best swap.
-//   2. The engine's own equips land in our detour of EquipObject, which
-//      refuses one that would break a pin -- the sword over pinned Flames
-//      when a fight ends -- unless the thing is the pinned one itself.
-//   3. EquipSpell is not detoured, and a spell going into a hand displaces
-//      whatever is there, pinned or not: a pinned dagger comes off the
-//      moment a spell wants the hand. The UseMagic package our cast rules
-//      run does exactly this for the spell they cast.
+//   1. Our own equip puts the pin's thing in the pin's hands, and passes
+//      the detours below: only the engine's are refused.
+//   2. The engine's equips of an item, a spell and a shout -- the AI's, a
+//      script's, a package's -- land in our detours of EquipObject,
+//      EquipSpell and EquipShout, which refuse a banned thing and one that
+//      would break a pin -- the sword over pinned Flames when a fight ends
+//      -- unless the thing is the pinned one itself, into its own hand.
+//   3. The spell a record of OURS casts passes the spell detour, since
+//      the package's equip of it is ours: it goes into the hand it needs
+//      and displaces whatever is there, pinned or not. A pinned dagger
+//      comes off the moment our cast wants the hand, and the watchdog
+//      puts it back once the spell has left.
 namespace
 {
 
@@ -558,6 +561,7 @@ struct World
 {
     Hands hands;
     std::vector<Pin> pins;
+    Bans bans;
     bool fighting{false};
     bool casting{false}; // one of OUR casts holds a package record
     int putBacks{0};
@@ -571,18 +575,20 @@ struct World
             hands.right = thing.form;
     }
 
-    // 2. The engine's equip, through the detour: refused against a pin,
-    //    by the rule the detour asks.
+    // 2. The engine's equip of anything -- an item, a spell, a shout --
+    //    through its detour: refused against a ban or a pin, by the rule
+    //    the detours ask.
     bool EngineEquip(const Holdable &thing, Hand into)
     {
-        if (RefusesEngineEquip(pins, thing, into, true))
+        if (RefusesEngineEquip(pins, bans, thing, into, true))
             return false;
         OurEquip(thing, into);
         return true;
     }
 
-    // 3. A spell into a hand, by the package or the AI: displaces, always.
-    void EquipSpell(const Holdable &spell, Hand hand)
+    // 3. The package's equip of the spell a record of ours casts: passes
+    //    the detour, and displaces.
+    void OurCast(const Holdable &spell, Hand hand)
     {
         OurEquip(spell, hand);
     }
@@ -663,7 +669,7 @@ TEST_CASE("a dagger in each hand survives a Lightning Bolt cast, and comes back 
     // leaves the hand alone -- putting the dagger back now would knock the
     // bolt out mid-cast.
     w.casting = true;
-    w.EquipSpell(bolt, Hand::Left);
+    w.OurCast(bolt, Hand::Left);
     REQUIRE(w.hands.left == kLightningBolt);
     w.Watchdog();
     CHECK(w.hands.left == kLightningBolt);
@@ -682,7 +688,7 @@ TEST_CASE("a dagger in each hand survives a Lightning Bolt cast, and comes back 
 
     // The second cast, two seconds on: the same borrow, the same return.
     w.casting = true;
-    w.EquipSpell(bolt, Hand::Left);
+    w.OurCast(bolt, Hand::Left);
     w.Watchdog();
     CHECK(w.hands.left == kLightningBolt);
     w.casting = false;
@@ -703,7 +709,7 @@ TEST_CASE("a dagger in each hand survives a Lightning Bolt cast, and comes back 
     // Out of the fight, the same rule holds: a dagger knocked out by
     // anything comes straight back.
     w.fighting = false;
-    w.EquipSpell(bolt, Hand::Left);
+    w.OurCast(bolt, Hand::Left);
     w.Watchdog();
     CHECK(w.hands.left == kSteelDagger);
 }
@@ -775,25 +781,25 @@ TEST_CASE("the engine's equip is refused by one rule, with the reason", "[pins]"
 
     // Its own hand passes; the other is refused for the one copy, and with
     // a second copy for the pin that holds that hand.
-    CHECK_FALSE(RefusesEngineEquip(pins, dagger, Hand::Right, true));
-    CHECK(RefusesEngineEquip(pins, dagger, Hand::Left, true).why == Refusal::Why::OneCopy);
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, dagger, Hand::Right, true));
+    CHECK(RefusesEngineEquip(pins, {}, dagger, Hand::Left, true).why == Refusal::Why::OneCopy);
     dagger.count = 2;
-    const Refusal other = RefusesEngineEquip(pins, dagger, Hand::Left, true);
+    const Refusal other = RefusesEngineEquip(pins, {}, dagger, Hand::Left, true);
     CHECK(other.why == Refusal::Why::OtherPin);
     CHECK(other.pin->thing.form == kIronDagger);
     // No hand named for a pinned thing: the engine's choice, not refused.
-    CHECK_FALSE(RefusesEngineEquip(pins, dagger, Hand::None, true));
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, dagger, Hand::None, true));
 
     // Another thing into a pinned hand: refused, and the pin in the way
     // named. Into a free place, or with no hand or slot at all, not.
-    const Refusal sword = RefusesEngineEquip(pins, Thing(kIronSword, Grip::Either), Hand::Right, true);
+    const Refusal sword = RefusesEngineEquip(pins, {}, Thing(kIronSword, Grip::Either), Hand::Right, true);
     CHECK(sword.why == Refusal::Why::Conflict);
     CHECK(sword.pin->thing.form == kIronDagger);
-    CHECK(RefusesEngineEquip(pins, Thing(kHuntingBow, Grip::Both), Hand::Both, true));
+    CHECK(RefusesEngineEquip(pins, {}, Thing(kHuntingBow, Grip::Both), Hand::Both, true));
     Holdable potion;
     potion.form = 0x3EADE;
-    CHECK_FALSE(RefusesEngineEquip(pins, potion, Hand::None, true));
-    CHECK_FALSE(RefusesEngineEquip({}, dagger, Hand::Left, true));
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, potion, Hand::None, true));
+    CHECK_FALSE(RefusesEngineEquip({}, {}, dagger, Hand::Left, true));
 }
 
 TEST_CASE("a request from the panel does the same to either book", "[pins]")
@@ -822,4 +828,50 @@ TEST_CASE("a request from the panel does the same to either book", "[pins]")
     book = {{dagger, Hand::Both}};
     CHECK(ApplyRequest(book, PinRequest::Ban, dagger, Hand::None, false, true).empty());
     CHECK(book.empty());
+}
+
+TEST_CASE("the engine's spell and shout equips are refused as an item's are; ours pass", "[pins]")
+{
+    // Flames pinned left; the AI, or a mod's script, wants a spell in a
+    // hand: the right is free, the left is pinned.
+    World w;
+    const Holdable flames = Thing(kFlames, Grip::Either);
+    const Holdable firebolt = Thing(kFirebolt, Grip::RightOnly);
+    const Holdable bolt = Thing(kLightningBolt, Grip::LeftOnly);
+    w.pins = {{flames, Hand::Left}};
+    w.OurEquip(flames, Hand::Left);
+    CHECK(w.EngineEquip(firebolt, Hand::Right));
+    CHECK(w.hands.right == kFirebolt);
+    CHECK_FALSE(w.EngineEquip(bolt, Hand::Left));
+    CHECK(w.hands.left == kFlames);
+    // The spell our own record casts takes the pinned hand: the package's
+    // equip is ours, and the watchdog puts the pin back after.
+    w.OurCast(bolt, Hand::Left);
+    CHECK(w.hands.left == kLightningBolt);
+    w.Watchdog();
+    CHECK(w.hands.left == kFlames);
+
+    // A banned spell is refused into any hand, pins or none, with the
+    // reason; the same spell cast by a rule of ours still goes.
+    w.bans = {kFirebolt};
+    CHECK_FALSE(w.EngineEquip(firebolt, Hand::Right));
+    CHECK(RefusesEngineEquip({}, w.bans, firebolt, Hand::Right, true).why == Refusal::Why::Banned);
+    CHECK(RefusesEngineEquip({}, w.bans, firebolt, Hand::None, true).why == Refusal::Why::Banned);
+    w.OurCast(firebolt, Hand::Right);
+    CHECK(w.hands.right == kFirebolt);
+
+    // A shout or a power has no hand: banned, it is refused; and a voice
+    // pin holds the voice against another one.
+    Holdable battleCry;
+    battleCry.form = 0x000E40C3;
+    battleCry.kind = Kind::Voice;
+    Holdable unrelentingForce;
+    unrelentingForce.form = 0x00013E07;
+    unrelentingForce.kind = Kind::Voice;
+    const Bans banned{unrelentingForce.form};
+    CHECK(RefusesEngineEquip({}, banned, unrelentingForce, Hand::None, true).why == Refusal::Why::Banned);
+    CHECK_FALSE(RefusesEngineEquip({}, banned, battleCry, Hand::None, true));
+    const std::vector<Pin> voicePin{{battleCry, Hand::None}};
+    CHECK(RefusesEngineEquip(voicePin, {}, unrelentingForce, Hand::None, true).why == Refusal::Why::Conflict);
+    CHECK_FALSE(RefusesEngineEquip(voicePin, {}, battleCry, Hand::None, true));
 }
