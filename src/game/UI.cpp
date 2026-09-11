@@ -3237,12 +3237,16 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
 }
 
 // The order of an equip cell when its column is sorted, ascending: pinned,
-// then equipped, then unequipped, then banned, then the slashed cells that
-// cannot take it at all. What she holds to comes first, what she cannot
-// hold last.
-int CellRank(bool allowed, bool on, bool pinned, bool banned)
+// then equipped, then unequipped, then banned, then disabled -- the row
+// drawn dim because a pin sets the thing aside or the spell is above the
+// follower's skill, and the slashed cell that cannot take it at all. What
+// the follower holds to comes first, what cannot be held last. `disabled`
+// is the row's dimming and the cell's slash together, so the order agrees
+// with what is drawn: a spell above her skill sorted among the unequipped
+// once, its slash unread (2026-09-10).
+int CellRank(bool allowed, bool disabled, bool on, bool pinned, bool banned)
 {
-    return !allowed ? 4 : banned ? 3 : pinned ? 0 : on ? 1 : 2;
+    return !allowed || disabled ? 4 : banned ? 3 : pinned ? 0 : on ? 1 : 2;
 }
 
 // The rows to show, in the order the table's header asks for. Sorted every
@@ -3287,14 +3291,15 @@ std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const 
         case Column::Value:
             return number(static_cast<float>(a.value), static_cast<float>(b.value));
         case Column::Equipped:
-            return rank([](const InventoryItem &i) { return CellRank(!i.handItem, i.worn, i.pinned, i.banned); });
+            return rank(
+                [](const InventoryItem &i) { return CellRank(!i.handItem, i.setAside, i.worn, i.pinned, i.banned); });
         case Column::Left:
             return rank([](const InventoryItem &i) {
-                return CellRank(i.handItem && !i.rightOnly, i.equippedLeft, i.pinnedLeft, i.banned);
+                return CellRank(i.handItem && !i.rightOnly, i.setAside, i.equippedLeft, i.pinnedLeft, i.banned);
             });
         case Column::Right:
             return rank([](const InventoryItem &i) {
-                return CellRank(i.handItem && !i.leftOnly, i.equippedRight, i.pinnedRight, i.banned);
+                return CellRank(i.handItem && !i.leftOnly, i.setAside, i.equippedRight, i.pinnedRight, i.banned);
             });
         case Column::Name:
         default:
@@ -3742,14 +3747,22 @@ std::vector<const MagicEntry *> VisibleMagic(const FollowerView &view, const Mag
             return number(a.costValue, b.costValue);
         case Column::Magnitude:
             return number(a.magnitude, b.magnitude);
+        // The hand cells are slashed for a spell above the follower's skill
+        // as for a hand it cannot take, and the rank reads both the same.
         case Column::Equipped:
-            return rank([](const MagicEntry &e) { return CellRank(true, e.equipped, e.pinned, e.banned); });
+            return rank([](const MagicEntry &e) {
+                return CellRank(true, e.setAside || e.aboveSkill, e.equipped, e.pinned, e.banned);
+            });
         case Column::Left:
-            return rank(
-                [](const MagicEntry &e) { return CellRank(e.leftAllowed, e.equippedLeft, e.pinnedLeft, e.banned); });
+            return rank([](const MagicEntry &e) {
+                return CellRank(e.leftAllowed && !e.aboveSkill, e.setAside || e.aboveSkill, e.equippedLeft,
+                                e.pinnedLeft, e.banned);
+            });
         case Column::Right:
-            return rank(
-                [](const MagicEntry &e) { return CellRank(e.rightAllowed, e.equippedRight, e.pinnedRight, e.banned); });
+            return rank([](const MagicEntry &e) {
+                return CellRank(e.rightAllowed && !e.aboveSkill, e.setAside || e.aboveSkill, e.equippedRight,
+                                e.pinnedRight, e.banned);
+            });
         case Column::Name:
         default:
             return a.name.compare(b.name);
