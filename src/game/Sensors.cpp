@@ -276,20 +276,27 @@ std::string RemainingText(float seconds)
 
 // The worn item carrying this enchantment, by the name the game shows for
 // it, or empty if none is worn.
-std::string WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic)
+// The worn item an enchantment's effect comes from, by name -- the name
+// given at the table, else the record's. `from` is the item the active
+// effect itself names (ActiveEffect::source), and is asked for first: two
+// pieces enchanted alike at a table share one enchantment form, and
+// searching by the form named the ring for the necklace's effect too
+// (2026-09-11, a Silver Ruby Ring listed twice). Without it, the first
+// worn item carrying the form.
+std::string WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic, const RE::TESBoundObject *from)
 {
     for (const auto &[object, entry] : actor->GetInventory())
     {
         if (!object || entry.first <= 0 || !entry.second || !entry.second->IsWorn())
             continue;
-        if (entry.second->GetEnchantment() != magic)
+        if (from ? object != from : entry.second->GetEnchantment() != magic)
             continue;
         const char *given = entry.second->GetDisplayName();
         if (given && *given)
             return given;
         return object->GetName() ? object->GetName() : "";
     }
-    return {};
+    return from ? WornSourceOf(actor, magic, nullptr) : std::string{};
 }
 
 // The effect's description with <mag> and <dur> filled in. Skyrim.esm
@@ -328,7 +335,7 @@ std::string SourceName(RE::Actor *actor, const RE::ActiveEffect *ae)
     if (!ae->spell)
         return source;
     if (ae->spell->As<RE::EnchantmentItem>())
-        source = WornSourceOf(actor, ae->spell);
+        source = WornSourceOf(actor, ae->spell, ae->source);
     if (source.empty() && ae->spell->GetName())
         source = ae->spell->GetName();
     return source;
@@ -498,7 +505,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         if (ae->spell)
         {
             if (ae->spell->As<RE::EnchantmentItem>())
-                row.source = WornSourceOf(actor, ae->spell);
+                row.source = WornSourceOf(actor, ae->spell, ae->source);
             if (row.source.empty() && ae->spell->GetName())
                 row.source = ae->spell->GetName();
         }
