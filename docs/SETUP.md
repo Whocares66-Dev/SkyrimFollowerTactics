@@ -229,7 +229,7 @@ the Steam install under `C:\Program Files (x86)` instead would make the post-bui
 require Administrator; the MO2 route avoids that entirely and is the better setup.
 
 **Exit criterion for Phase 0:** launch through SKSE and see
-`FollowerTactics loaded (core self-check: ok)` in the `~` console, plus a matching line in
+`FollowerTactics loaded` in the `~` console, plus a matching line in
 `%USERPROFILE%\OneDrive\Documents\My Games\Skyrim.INI\SKSE\FollowerTactics.log`.
 
 **That path is doubly counter-intuitive, and both halves are verified.** Documents is
