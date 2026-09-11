@@ -1955,8 +1955,6 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::SameLine(0.0f, kOrderGap);
             if (DeleteButton("rm" + actId, row))
                 removeAt = static_cast<int>(a);
-            if (Im::IsItemHovered(0))
-                Im::SetTooltip("Remove this action");
             Im::PopStyleVar(1);
         }
 
@@ -1975,7 +1973,7 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
     }
     Im::PopStyleVar(1);
     if (Im::IsItemHovered(0))
-        Im::SetTooltip("Add an action, done after the ones above.");
+        Im::SetTooltip("Click to add action");
 
     if (moveFrom >= 0 && moveTo >= 0 && moveTo < static_cast<int>(rule.actions.size()))
     {
@@ -2137,8 +2135,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 changed = true;
             }
             if (available && Im::IsItemHovered(0))
-                Im::SetTooltip(rule.enabled ? "On -- click to turn this rule off"
-                                            : "Off -- click to turn this rule on");
+                Im::SetTooltip(rule.enabled ? "Click to disable" : "Click to enable");
 
             if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.enabled && available)
             {
@@ -2292,8 +2289,6 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::SameLine(0.0f, kOrderGap);
         if (DeleteButton("rm" + rowId, row))
             removeAt = static_cast<int>(i);
-        if (Im::IsItemHovered(0))
-            Im::SetTooltip("Delete this rule");
         Im::PopStyleVar(1);
 
         if (!open)
@@ -2341,6 +2336,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
     const bool addClicked = GlyphButton("addrule", Im::GetFrameHeight(), Glyph::Plus);
     Im::PopStyleVar(1);
+    if (Im::IsItemHovered(0))
+        Im::SetTooltip("Click to add tactic");
 
     if (addClicked)
     {
