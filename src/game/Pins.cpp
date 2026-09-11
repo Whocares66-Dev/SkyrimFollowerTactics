@@ -853,11 +853,16 @@ RE::NiPointer<RE::Actor> AttackerOf(RE::CombatController *controller)
 }
 
 // Kept from the AI: banned, or pinned against. A ban is looked up by form
-// alone, whatever hand the entry is for.
+// alone, whatever hand the entry is for. The hook runs for EVERY actor the
+// combat AI scores for, so an actor with no pins and no bans -- every
+// creature in the cell, and a follower nobody has touched -- is answered
+// with no more than the lock and two map lookups; the record and the
+// inventory are only read for the few with a book.
 bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor, const char *&why)
 {
     if (!entry || !entry->item || !actor)
         return false;
+    std::vector<Pin> pins;
     {
         std::scoped_lock lock(g_pinMutex);
         if (BannedHere(actor->GetFormID(), entry->item->GetFormID()))
@@ -865,6 +870,10 @@ bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor, const char 
             why = "banned";
             return true;
         }
+        const auto it = g_pins.find(actor->GetFormID());
+        if (it == g_pins.end() || it->second.empty())
+            return false;
+        pins = it->second;
     }
     const Holdable thing = DescribeHoldable(actor, entry->item);
     const Hand slot = SlotHand(entry->itemSlot.equipSlot);
@@ -878,26 +887,42 @@ bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor, const char 
     if (thing.kind == Kind::Weapon && thing.count < 2 && (slot == Hand::Left || slot == Hand::Right) &&
         actor->GetEquippedObject(slot != Hand::Left) == entry->item)
     {
-        why = "her only one, in the other hand";
+        why = "the only one, in the other hand";
         return true;
     }
-    const std::vector<Pin> pins = PinsOf(actor->GetFormID());
-    if (pins.empty())
-        return false;
     why = "pinned against";
     return KeptFromAI(pins, thing, slot);
 }
 
+// The originals are looked up and the once-set touched under the pin
+// mutex: the AI scores on its own schedule, and ProbeCombatInventory adds
+// classes and clears the set from the tick.
 float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
 {
     const auto vtable = *reinterpret_cast<const std::uintptr_t *>(self);
-    const auto original = g_scoreOriginals.find(vtable);
-    const float score = original != g_scoreOriginals.end() ? original->second(self, controller) : 0.0f;
+    ScoreFn originalFn = nullptr;
+    {
+        std::scoped_lock lock(g_pinMutex);
+        const auto original = g_scoreOriginals.find(vtable);
+        if (original != g_scoreOriginals.end())
+            originalFn = original->second;
+    }
+    // Cannot happen -- a class's original is recorded before its slot is
+    // written -- and if it does the entry keeps its last score rather than
+    // being silently scored 0 for everyone.
+    if (!originalFn)
+        return self->itemScore;
+    const float score = originalFn(self, controller);
     const RE::NiPointer<RE::Actor> actor = AttackerOf(controller);
     const char *why = "";
     if (!ShadowedEntry(self, actor.get(), why))
         return score;
-    if (g_zeroedOnce.insert(self).second)
+    bool first = false;
+    {
+        std::scoped_lock lock(g_pinMutex);
+        first = g_zeroedOnce.insert(self).second;
+    }
+    if (first)
     {
         log::pins.debug("{} AI asked the score of {}{}: {:.2f}, answered 0 ({})", Describe(actor.get()),
                         log::NameOf(self->item), HandTag(SlotHand(self->itemSlot.equipSlot)), score, why);
@@ -907,11 +932,15 @@ float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
 
 void WatchScoresIn(std::uintptr_t vtable, const char *what)
 {
+    std::scoped_lock lock(g_pinMutex);
     if (g_scoreOriginals.contains(vtable))
         return;
+    // The original is recorded BEFORE the slot is written, so a call that
+    // lands between the two finds it.
     REL::Relocation<std::uintptr_t> table{vtable};
-    const auto original = table.write_vfunc(kCalculateScoreSlot, ScoreHook);
-    g_scoreOriginals[vtable] = reinterpret_cast<ScoreFn>(original);
+    const auto slot = table.address() + kCalculateScoreSlot * sizeof(std::uintptr_t);
+    g_scoreOriginals[vtable] = reinterpret_cast<ScoreFn>(*reinterpret_cast<std::uintptr_t *>(slot));
+    table.write_vfunc(kCalculateScoreSlot, ScoreHook);
     log::pins.debug("watching the AI's score of {} (vtable {:X})", what, vtable);
 }
 
@@ -920,8 +949,11 @@ void WatchScoreOf(RE::CombatInventoryItem *entry)
     if (!entry)
         return;
     const auto vtable = *reinterpret_cast<const std::uintptr_t *>(entry);
-    if (g_scoreOriginals.contains(vtable))
-        return;
+    {
+        std::scoped_lock lock(g_pinMutex);
+        if (g_scoreOriginals.contains(vtable))
+            return;
+    }
     // A class the load-time table did not name: say so, with the entry's
     // last score as a check that the slot is the scoring one.
     log::pins.debug("an AI entry class not in the table: entries like {} (last score {:.2f})", log::NameOf(entry->item),
@@ -940,7 +972,13 @@ void ProbeCombatInventory(RE::Actor *actor)
     }
     if (!g_probedFights.insert(id).second)
         return;
-    g_zeroedOnce.clear();
+    {
+        std::scoped_lock lock(g_pinMutex);
+        g_zeroedOnce.clear();
+    }
+    // Every class of entry gets its score watched; the names are built
+    // only when the log would take them.
+    const bool logging = log::Enabled(log::Level::Debug);
     std::unordered_set<const RE::TESForm *> listed;
     for (int slot = 0; slot < 7; ++slot)
     {
@@ -949,15 +987,19 @@ void ProbeCombatInventory(RE::Actor *actor)
         {
             const auto *form = entry ? entry->item : nullptr;
             listed.insert(form);
-            names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?") +
-                     HandTag(entry ? SlotHand(entry->itemSlot.equipSlot) : Hand::None);
+            if (logging)
+                names += (names.empty() ? "" : ", ") + std::string(form && form->GetName() ? form->GetName() : "?") +
+                         HandTag(entry ? SlotHand(entry->itemSlot.equipSlot) : Hand::None);
             WatchScoreOf(entry.get());
         }
-        log::pins.debug("{} combat inventory [{}]: {}", Describe(actor), slot, names.empty() ? "-" : names);
+        if (logging)
+            log::pins.debug("{} combat inventory [{}]: {}", Describe(actor), slot, names.empty() ? "-" : names);
     }
-    // Which of her spells the AI did not list, and her magicka at the
-    // moment, since a cost above the pool is the first guess at the filter
-    // that kept a pinned Chain Lightning out (03:25).
+    if (!logging)
+        return;
+    // Which of the follower's spells the AI did not list, and their
+    // magicka at the moment, since a cost above the pool is the first guess
+    // at the filter that kept a pinned Chain Lightning out (03:25).
     std::string missing;
     const auto consider = [&](RE::SpellItem *spell) {
         if (spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell && !listed.contains(spell))

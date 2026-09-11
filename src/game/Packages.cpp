@@ -157,13 +157,21 @@ struct Slot
     RE::ActorHandle target;
 
     // Set from the animation thread; read and cleared by the tick. The ONLY
-    // things the sink writes. `fired`: our spell left her hand. `stopped`: a
-    // CastStop arrived after that -- for a stream, its end. `begun`: a
-    // BeginCast event (voice or either hand), so the deadline can step back
-    // and let a cast that has started finish, whatever it takes.
+    // things the sink writes. `fired`: our spell left the follower's hand.
+    // `stopped`: a CastStop arrived after that -- for a stream, its end.
+    // `begun`: a BeginCast event (voice or either hand), so the deadline can
+    // step back and let a cast that has started finish, whatever it takes.
     std::atomic<bool> fired{false};
     std::atomic<bool> stopped{false};
     std::atomic<bool> begun{false};
+    // What the sink READS, and the only things it reads of the slot: whose
+    // the lease is, which spell the slot casts, which shout it shouts (0 for
+    // none). Set by Arm once the lease is held, cleared by Release before
+    // it goes; the lease, `spell` and `shouting` themselves are the game
+    // thread's and are reset under the sink's feet.
+    std::atomic<std::uint32_t> holder{0};
+    std::atomic<std::uint32_t> spellId{0};
+    std::atomic<std::uint32_t> shoutId{0};
     bool extended = false;
 
     [[nodiscard]] bool Busy() const noexcept
@@ -203,15 +211,8 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
 
         for (auto &slot : g_pool)
         {
-            if (!slot.Busy() || slot.lease->FormID() != who)
+            if (slot.holder.load(std::memory_order_acquire) != who)
                 continue;
-            // Every cast-related tag while a record is held, so the graph's
-            // vocabulary is on record and a missing fire event is diagnosable.
-            // Shout and Voice too, for the shout slots: which tags a power
-            // emits on its way out is being learned from this line.
-            if (right || left || strstr(tag, "Cast") || strstr(tag, "Spell") || strstr(tag, "Shout") ||
-                strstr(tag, "Voice"))
-                log::packages.debug("anim {:08X}: {}", who, tag);
             // A stream that has fired and now stops has ended, whether the
             // CastTime ran out or something interrupted it.
             if (stop && slot.fired.load(std::memory_order_relaxed))
@@ -224,7 +225,8 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
             // later, Voice_SpellFire_Event. Which of the wrapper's words the
             // engine chose, and what the voice caster holds, go in the log
             // so a shout that lands nothing can be read.
-            if (voice && slot.shouting)
+            const std::uint32_t shoutId = slot.shoutId.load(std::memory_order_relaxed);
+            if (voice && shoutId != 0)
             {
                 auto *actor = const_cast<RE::TESObjectREFR *>(ev->holder)->As<RE::Actor>();
                 const auto *process = actor ? actor->GetActorRuntimeData().currentProcess : nullptr;
@@ -233,11 +235,11 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
                     actor ? actor->GetActorRuntimeData().selectedSpells[RE::Actor::SlotTypes::kPowerOrShout] : nullptr;
                 const auto *caster =
                     actor ? actor->GetActorRuntimeData().magicCasters[RE::Actor::SlotTypes::kPowerOrShout] : nullptr;
-                const bool ourVoice = high && high->currentShout == slot.shouting;
+                const bool ourVoice = high && high->currentShout && high->currentShout->GetFormID() == shoutId;
                 log::packages.event(ourVoice ? log::Level::Info : log::Level::Debug,
                                     ourVoice ? "package.fired" : "package.otherVoice", actor,
                                     {{"slot", &slot - g_pool.data()},
-                                     {"formId", log::Id(slot.shouting->GetFormID())},
+                                     {"formId", log::Id(shoutId)},
                                      {"holderFormId", log::Id(who)},
                                      {"kind", "voice"}},
                                     "anim {:08X}: voice fired: shout {:08X} variation {} level {}, voice slot "
@@ -263,7 +265,7 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
                             .selectedSpells[right ? RE::Actor::SlotTypes::kRightHand : RE::Actor::SlotTypes::kLeftHand]
                       : nullptr;
             const std::uint32_t firedID = spell ? spell->GetFormID() : 0;
-            const bool ours = firedID == slot.spell;
+            const bool ours = firedID == slot.spellId.load(std::memory_order_relaxed);
             log::packages.event(ours ? log::Level::Info : log::Level::Debug,
                                 ours ? "package.fired" : "package.otherCast", actor,
                                 {{"slot", &slot - g_pool.data()},
@@ -280,16 +282,15 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
 };
 SpellFireSink g_fireSink;
 
-// Followers the sink is registered on. Once per actor per session; the actor
-// objects are new after a load, so ResetPackages clears this too.
-std::unordered_set<std::uint32_t> g_sinked;
-
-// Where the Spell form sits inside the package data, learned at load by
-// finding the canary rather than hardcoded: BGSPackageDataTargetSelector is
-// not mapped by CommonLibSSE, and a wrong write here corrupts a live game.
+// Where the PackageTarget sits inside a TargetSelector input's data, learned
+// at load by finding the canary rather than hardcoded:
+// BGSPackageDataTargetSelector is not mapped by CommonLibSSE, and a wrong
+// write here corrupts a live game. The form itself is then read and written
+// through CommonLibSSE's PackageTarget (target union at +08), which the
+// calibration checks the canary against.
 constexpr std::size_t kNotCalibrated = static_cast<std::size_t>(-1);
 std::size_t g_spellOuter = kNotCalibrated;
-std::size_t g_spellInner = kNotCalibrated;
+constexpr std::size_t kTargetUnionOffset = 8; // PackageTarget::target, RE/T/TESPackage.h
 
 // The vanilla records the layout is read from. Mercer's cast-at-player
 // package (TG08BMercerCombatOverrideCastAtPlayer) is authored with Spell =
@@ -415,32 +416,17 @@ RE::IPackageData *InputByUID(RE::TESCustomPackageData *data, std::int8_t uid)
     return nullptr;
 }
 
+RE::PackageTarget *TargetOfInput(RE::TESPackage *pkg, const char *inputName);
+
 // Point a named TargetSelector input -- the UseMagic template's "Spell", the
 // Shout template's "Shout" -- at a form. Both are the same kind of input, so
-// the offsets the canary found on "Spell" serve both.
+// the offset the canary found on "Spell" serves both.
 bool SetPackageInput(RE::TESPackage *pkg, const char *inputName, RE::TESForm *form)
 {
-    if (g_spellOuter == kNotCalibrated || !pkg || !form)
+    auto *target = form ? TargetOfInput(pkg, inputName) : nullptr;
+    if (!target)
         return false;
-
-    auto *custom = skyrim_cast<RE::TESCustomPackageData *>(pkg->data);
-    if (!custom)
-        return false;
-
-    std::int8_t uid = 0;
-    if (!FindInputUID(custom, inputName, uid))
-        return false;
-
-    auto *input = InputByUID(custom, uid);
-    if (!input)
-        return false;
-
-    const auto base = reinterpret_cast<std::uintptr_t>(input);
-    const std::uintptr_t target = *reinterpret_cast<std::uintptr_t *>(base + g_spellOuter);
-    if (!LooksLikePointer(target))
-        return false;
-
-    *reinterpret_cast<RE::TESForm **>(target + g_spellInner) = form;
+    target->target.object = form;
     return true;
 }
 
@@ -469,29 +455,6 @@ bool SetPackageBool(RE::TESPackage *pkg, const char *inputName, bool value)
     auto &data = static_cast<RE::BGSPackageDataBool *>(input)->data;
     data.i = value ? (data.i | 0x2u) : (data.i & ~0x2u);
     return true;
-}
-
-// Every alias the actor fills, for the log: what the record's way to them
-// is made of (PutOnStack). Read from the ACTOR: each is recorded on them as
-// ExtraAliasInstanceArray.
-void LogAliases(RE::Actor *actor)
-{
-    const auto *extra = actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
-    if (!extra)
-    {
-        log::packages.debug("{} is in NO quest alias at all", Describe(actor));
-        return;
-    }
-    for (const auto *inst : extra->aliases)
-    {
-        if (!inst || !inst->quest)
-            continue;
-        log::packages.debug(
-            "alias: quest {:08X} \"{}\" alias {} \"{}\" ({} instanced packages)", inst->quest->GetFormID(),
-            inst->quest->GetFormEditorID() ? inst->quest->GetFormEditorID() : "",
-            inst->alias ? inst->alias->aliasID : 0xFFFFFFFF, inst->alias ? inst->alias->aliasName.c_str() : "",
-            inst->instancedPackages ? inst->instancedPackages->size() : 0);
-    }
 }
 
 // The PackageTarget behind a named input, or null if the layout has not been
@@ -645,34 +608,8 @@ bool IsWrapperForm(std::uint32_t formID)
     return false;
 }
 
-// Where her weapons are, for the timing lines: the Shout procedure has been
-// measured taking 0.3 to 1.5 s to begin, and a sheathe-and-draw around the
-// shout is one candidate explanation.
-const char *WeaponStateName(const RE::Actor *actor)
-{
-    const auto *state = actor ? actor->AsActorState() : nullptr;
-    if (!state)
-        return "?";
-    switch (state->GetWeaponState())
-    {
-    case RE::WEAPON_STATE::kSheathed:
-        return "sheathed";
-    case RE::WEAPON_STATE::kWantToDraw:
-        return "wants to draw";
-    case RE::WEAPON_STATE::kDrawing:
-        return "drawing";
-    case RE::WEAPON_STATE::kDrawn:
-        return "drawn";
-    case RE::WEAPON_STATE::kWantToSheathe:
-        return "wants to sheathe";
-    case RE::WEAPON_STATE::kSheathing:
-        return "sheathing";
-    }
-    return "?";
-}
-
 // Is this actor already casting through some slot? A second request from the
-// same follower before the first resolves would put two ranks on her.
+// same follower before the first resolves would put two records on them.
 bool AlreadyCasting(const RE::Actor *actor)
 {
     for (const auto &slot : g_pool)
@@ -874,6 +811,10 @@ void Release(std::size_t i)
         g_pool[i].power->data.spellType = g_pool[i].powerType;
         g_pool[i].power = nullptr;
     }
+    // The sink stops looking before the lease goes.
+    g_pool[i].holder.store(0, std::memory_order_release);
+    g_pool[i].spellId.store(0, std::memory_order_relaxed);
+    g_pool[i].shoutId.store(0, std::memory_order_relaxed);
     g_pool[i].shouting = nullptr;
     // The lease's destructor asks the AI to re-evaluate; the record is off
     // the stack by then.
@@ -964,8 +905,6 @@ std::size_t FreeSlot(std::size_t from, std::size_t to)
 CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double window)
 {
     auto &slot = g_pool[chosen];
-    // The aliases the record's way to them is made of, for the log.
-    LogAliases(actor);
 
     slot.armedAt = TacticsSeconds();
     // The window covers the AI's start-up latency. For a stream it is
@@ -979,19 +918,23 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
     slot.begun.store(false, std::memory_order_relaxed);
     slot.extended = false;
 
-    // Registering the sink is what makes a fire event reach us at all, so it
-    // is done here and not inside the log line's arguments -- a guard put
-    // around the logging later must not be able to take casting with it.
-    if (g_sinked.insert(actor->GetFormID()).second)
-    {
-        const bool sinked = actor->AddAnimationGraphEventSink(&g_fireSink);
-        log::packages.debug("animation sink {} on {:08X}", sinked ? "added" : "REFUSED", actor->GetFormID());
-    }
+    // Registering the sink is what makes a fire event reach us at all. On
+    // every request, not once per actor: the graph is rebuilt on a cell
+    // change and a 3D reload, and a sink on the old one hears nothing; the
+    // library's AddAnimationGraphEventSink looks for the sink first and
+    // adds it only where it is missing (RE/A/Actor.cpp), so this costs a
+    // walk of the graph's sinks and nothing else.
+    if (actor->AddAnimationGraphEventSink(&g_fireSink))
+        log::packages.debug("animation sink added on {:08X}", actor->GetFormID());
 
-    // Onto her stack, then the lease points the condition at her in its
-    // constructor. From here on the record is hers until the lease is
-    // destroyed, and only that clears the condition.
+    // Onto the follower's stack, then the lease points the condition at
+    // them in its constructor. From here on the record is theirs until the
+    // lease is destroyed, and only that clears the condition.
     slot.lease.emplace(actor, slot.condition);
+    // What the sink may read, the holder last: from here the sink looks.
+    slot.spellId.store(slot.spell, std::memory_order_relaxed);
+    slot.shoutId.store(slot.shouting ? slot.shouting->GetFormID() : 0, std::memory_order_relaxed);
+    slot.holder.store(actor->GetFormID(), std::memory_order_release);
     slot.onStack = PutOnStack(actor, g_slots[chosen]) != nullptr;
     if (!slot.onStack)
         log::packages.warn("{} fills no alias with packages; the record has no way to them", Describe(actor));
@@ -1001,8 +944,8 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
     actor->EvaluatePackage(/*immediate*/ true, /*resetAI*/ false);
 
     const auto *current = actor->GetCurrentPackage();
-    log::packages.debug("current package after evaluate: {:08X} ({}); weapons {}", current ? current->GetFormID() : 0,
-                        current == g_slots[chosen] ? "OURS" : "not ours yet -- watching", WeaponStateName(actor));
+    log::packages.debug("current package after evaluate: {:08X} ({})", current ? current->GetFormID() : 0,
+                        current == g_slots[chosen] ? "OURS" : "not ours yet -- watching");
     slot.seenRunning = current == g_slots[chosen];
 
     return CastRequest::Armed;
@@ -1256,15 +1199,23 @@ void ResetPackages()
         // and are rebuilt with them on load; the record's condition is
         // false by then and the entry never passes.
         slot.onStack = false;
+        slot.holder.store(0, std::memory_order_release);
+        slot.spellId.store(0, std::memory_order_relaxed);
+        slot.shoutId.store(0, std::memory_order_relaxed);
+        slot.shouting = nullptr;
         if (slot.lease)
             slot.lease->Abandon();
         slot.lease.reset();
+        // As Release leaves a slot: no target handle outlives its lease.
+        slot.target = {};
+        SetPackageTarget(g_slots[i], nullptr);
         slot.seenRunning = false;
         slot.streaming = false;
+        slot.extended = false;
         slot.fired.store(false, std::memory_order_relaxed);
         slot.stopped.store(false, std::memory_order_relaxed);
+        slot.begun.store(false, std::memory_order_relaxed);
     }
-    g_sinked.clear();
 }
 
 void ReleaseAllLeases(const char *why)
@@ -1324,8 +1275,8 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         if (running && !slot.seenRunning)
         {
             slot.seenRunning = true;
-            log::packages.debug("{} is RUNNING slot {} (spell {:08X}) after {:.1f} s; weapons {}", name, i, slot.spell,
-                                now - slot.armedAt, WeaponStateName(actor.get()));
+            log::packages.debug("{} is RUNNING slot {} (spell {:08X}) after {:.1f} s", name, i, slot.spell,
+                                now - slot.armedAt);
         }
 
         // ONE release, with a reason. The deadline is the guarantee: a record
@@ -1350,8 +1301,8 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         {
             slot.extended = true;
             slot.until = (std::max)(slot.until, now + 3.0);
-            log::packages.debug("{} began the {} on slot {} after {:.1f} s -- deadline stepped back; weapons {}", name,
-                                slot.shouting ? "shout" : "cast", i, now - slot.armedAt, WeaponStateName(actor.get()));
+            log::packages.debug("{} began the {} on slot {} after {:.1f} s -- deadline stepped back", name,
+                                slot.shouting ? "shout" : "cast", i, now - slot.armedAt);
         }
 
         const char *why = nullptr;
@@ -1440,32 +1391,45 @@ bool Calibrate()
     log::packages.debug("probe: +00 {}", HexDump(input, 32));
     log::packages.debug("probe: +20 {}", HexDump(reinterpret_cast<const std::uint8_t *>(input) + 32, 32));
 
+    // The canary is expected behind a pointer, in the PackageTarget's union
+    // at +08. Found anywhere else -- inline in the input, or at another
+    // offset of what the pointer reaches -- the layout is not the one the
+    // writes assume, and nothing is written. (A first version accepted the
+    // canary inline and would then have written through the input's first
+    // word, its vtable pointer.)
     const auto *words = reinterpret_cast<const std::uintptr_t *>(input);
-    for (std::size_t w = 0; w < 8; ++w)
+    for (std::size_t w = 0; w < 8 && g_spellOuter == kNotCalibrated; ++w)
     {
         const std::uintptr_t value = words[w];
         const std::size_t offset = w * sizeof(std::uintptr_t);
-
         if (value == canaryAddr)
         {
-            g_spellOuter = 0;
-            g_spellInner = offset;
-            log::packages.debug("probe: FOUND canary directly at +{:02X} -- Spell is a TESForm* here", offset);
-            continue;
+            log::packages.event(log::Level::Error, "pool.unavailable",
+                                {{"reason", "Spell input holds its form inline"}},
+                                "probe: canary found inline at +{:02X}, not behind a PackageTarget -- cast rules "
+                                "stay off. Nothing will be written.",
+                                offset);
+            return false;
         }
-
         if (!LooksLikePointer(value))
             continue;
-
         const auto *inner = reinterpret_cast<const std::uintptr_t *>(value);
         for (std::size_t k = 0; k < 4; ++k)
         {
             if (inner[k] != canaryAddr)
                 continue;
+            if (k * sizeof(std::uintptr_t) != kTargetUnionOffset)
+            {
+                log::packages.event(log::Level::Error, "pool.unavailable",
+                                    {{"reason", "PackageTarget layout differs from the library's"}},
+                                    "probe: canary at +{:02X} -> +{:02X}, not +{:02X} -- cast rules stay off. "
+                                    "Nothing will be written.",
+                                    offset, k * sizeof(std::uintptr_t), kTargetUnionOffset);
+                return false;
+            }
             g_spellOuter = offset;
-            g_spellInner = k * sizeof(std::uintptr_t);
-            log::packages.debug("probe: FOUND canary at +{:02X} -> +{:02X} -- Spell is behind a pointer", offset,
-                                g_spellInner);
+            log::packages.debug("probe: FOUND canary at +{:02X} -> +{:02X} -- Spell is a PackageTarget", offset,
+                                kTargetUnionOffset);
         }
     }
 
@@ -1476,7 +1440,7 @@ bool Calibrate()
         return false;
     }
     log::packages.debug("probe: calibrated (+{:02X} -> +{:02X}); cast rules can name any spell", g_spellOuter,
-                        g_spellInner);
+                        kTargetUnionOffset);
 
     // The Target input, same outer offset, two canaries. Colette's is Self:
     // its type byte is the Self value. Mercer's is the player: its type byte
