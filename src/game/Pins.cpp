@@ -137,6 +137,56 @@ int CarriedCount(RE::Actor *actor, RE::TESBoundObject *object)
 }
 } // namespace
 
+namespace
+{
+// The item's own extra list, to hand the engine with an equip or an
+// unequip, as SKSE's EquipItemEx and UnequipItemEx do. A player's
+// enchantment and tempering live on the INSTANCE's list, not the record,
+// and an equip handed no list is the engine's to resolve; SKSE looks the
+// list up and passes it, and so does this. For an equip, the entry's
+// first list not worn anywhere (a second copy going into the other hand
+// wants the spare one); for an unequip, the list worn in that hand, or in
+// either for a thing with no hand. Null where there is none -- an item
+// with no extra data at all -- which is the plain case the engine takes
+// as before.
+RE::ExtraDataList *ListOf(RE::Actor *actor, RE::TESBoundObject *object, auto pick)
+{
+    auto *changes = actor && object ? actor->GetInventoryChanges() : nullptr;
+    if (!changes || !changes->entryList)
+        return nullptr;
+    for (auto *entry : *changes->entryList)
+    {
+        if (!entry || entry->object != object)
+            continue;
+        if (!entry->extraLists)
+            return nullptr;
+        for (auto *list : *entry->extraLists)
+        {
+            if (list && pick(*list))
+                return list;
+        }
+        return nullptr;
+    }
+    return nullptr;
+}
+
+RE::ExtraDataList *UnwornList(RE::Actor *actor, RE::TESBoundObject *object)
+{
+    return ListOf(actor, object, [](const RE::ExtraDataList &list) {
+        return !list.HasType(RE::ExtraDataType::kWorn) && !list.HasType(RE::ExtraDataType::kWornLeft);
+    });
+}
+
+RE::ExtraDataList *WornList(RE::Actor *actor, RE::TESBoundObject *object, Hand hand)
+{
+    return ListOf(actor, object, [hand](const RE::ExtraDataList &list) {
+        const bool right = list.HasType(RE::ExtraDataType::kWorn);
+        const bool left = list.HasType(RE::ExtraDataType::kWornLeft);
+        return hand == Hand::Left ? left : hand == Hand::Right ? right : (left || right);
+    });
+}
+} // namespace
+
 // The rules themselves are in core/Loadout.cpp, where they are tested.
 Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
 {
@@ -325,7 +375,9 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
     // With the engine's equip sound, at the actor, as when a follower is
     // handed armour. The watchdog's putting-back sounds too: it only acts
     // when the thing is actually off, so each sound marks a real event.
-    manager->EquipObject(actor, object, nullptr, 1, slot, !now, false, true, false);
+    // The item's own list goes with it (ListOf): a player's enchantment
+    // is on the list, not the record.
+    manager->EquipObject(actor, object, UnwornList(actor, object), 1, slot, !now, false, true, false);
 }
 
 // Take a form off.
@@ -416,7 +468,8 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now)
         if (object->Is(RE::FormType::Weapon) && (hands == Hand::Left || hands == Hand::Right))
             slot = HandSlot(hands);
         if (auto *manager = RE::ActorEquipManager::GetSingleton())
-            manager->UnequipObject(actor, object, nullptr, 1, slot, !now, false, false, false, nullptr);
+            manager->UnequipObject(actor, object, WornList(actor, object, hands), 1, slot, !now, false, false, false,
+                                   nullptr);
     }
 }
 
