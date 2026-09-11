@@ -2787,6 +2787,9 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             Im::TableNextRow(0, 0.0f);
             if (stripeIndex++ % 2 == 1)
                 Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg0, stripe, -1);
+            // A row set aside -- an effect whose conditions do not hold --
+            // is the shadowed rows' grey, with the reason on its name.
+            const DimText grey(!row.aside.empty());
             Im::TableSetColumnIndex(0);
             bool open = false;
             if (row.detail.empty())
@@ -2845,6 +2848,8 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Im::SetCursorScreenPos(Im::ImVec2(pos.x + marker, pos.y));
                 Im::Text("%s", row.label.c_str());
             }
+            if (!row.aside.empty() && Im::IsItemHovered(0))
+                Im::SetTooltip("%s", row.aside.c_str());
 
             Im::TableSetColumnIndex(1);
             if (row.form != 0 && onLink && !modifiers)
@@ -3754,24 +3759,23 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
     Im::Spacing();
     DrawSections(item.detail, false);
 
-    // The effects as a table, each opening on its conditions, in the
-    // perk page's shape; their descriptions beneath it.
-    if (!item.effectsTable.rows.empty())
-    {
-        DrawSections(
-            {item.effectsTable}, true, {}, "Active",
-            [](const SheetRow &entry, const std::string &key, float left, float right) {
-                DrawConditionDrawer(entry, key, left, right);
-            },
-            "Name", "Magnitude");
-        BulletedLines(item.effects);
-        Im::Spacing();
-    }
-    else if (!item.effects.empty())
+    // The effects as the author wrote them; then, for the curious, the
+    // record: a table in the perk page's shape, each row opening on its
+    // conditions, greyed where they do not hold.
+    if (!item.effects.empty())
     {
         CentredHeading("Effects");
         BulletedLines(item.effects);
         Im::Spacing();
+    }
+    if (!item.effectsTable.rows.empty())
+    {
+        DrawSections(
+            {item.effectsTable}, true, {}, "Hidden",
+            [](const SheetRow &entry, const std::string &key, float left, float right) {
+                DrawConditionDrawer(entry, key, left, right);
+            },
+            "Name", "Magnitude");
     }
     // The poison's effects under the Poison section's own heading, so an
     // enchanted and poisoned blade reads as two things, which it is.
@@ -4148,24 +4152,22 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
     Im::Spacing();
     DrawSections(entry.detail, false);
 
-    // The effects as a table, each opening on its conditions, in the
-    // perk page's shape; their descriptions beneath it.
-    if (!entry.effectsTable.rows.empty())
-    {
-        DrawSections(
-            {entry.effectsTable}, true, {}, "Active",
-            [](const SheetRow &line, const std::string &key, float left, float right) {
-                DrawConditionDrawer(line, key, left, right);
-            },
-            "Name", "Magnitude");
-        BulletedLines(entry.effects);
-        Im::Spacing();
-    }
-    else if (!entry.effects.empty())
+    // The effects as the author wrote them; then the record, as the item
+    // page has it.
+    if (!entry.effects.empty())
     {
         CentredHeading("Effects");
         BulletedLines(entry.effects);
         Im::Spacing();
+    }
+    if (!entry.effectsTable.rows.empty())
+    {
+        DrawSections(
+            {entry.effectsTable}, true, {}, "Hidden",
+            [](const SheetRow &line, const std::string &key, float left, float right) {
+                DrawConditionDrawer(line, key, left, right);
+            },
+            "Name", "Magnitude");
     }
     if (!entry.description.empty())
     {
@@ -4302,7 +4304,7 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Follow
     DrawSections(info, false, [&view](std::uint32_t form) { OpenSourcePage(view, form); });
     if (!effects.empty())
         DrawSections(
-            effects, true, {}, "Active",
+            effects, true, {}, "Hidden",
             [](const SheetRow &entry, const std::string &key, float left, float right) {
                 DrawConditionDrawer(entry, key, left, right);
             },
@@ -4381,11 +4383,12 @@ void DrawEffects(const FollowerView &view)
         std::snprintf(buf, sizeof(buf), "##effect%08X_%08X", row->form, row->sourceForm);
 
         Im::TableNextRow(0, 0.0f);
-        // Running but changing nothing for this follower: the row is drawn
-        // in the disabled colour, and its name hovers as "Not applied". One
-        // the game's own list hides is running and applied all the same,
-        // and reads as any other; its page says it is hidden.
-        const DimText grey(!row->applied);
+        // Running but changing nothing for this follower, or running but
+        // not acting, its conditions unmet: the row is drawn in the
+        // disabled colour, and its name hovers as which. One the game's
+        // own list hides is running and applied all the same, and reads as
+        // any other; its page says it is hidden.
+        const DimText grey(!row->applied || !row->active);
         Im::TableSetColumnIndex(0);
         const Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
@@ -4395,6 +4398,8 @@ void DrawEffects(const FollowerView &view)
         }
         if (!row->applied && Im::IsItemHovered(0))
             Im::SetTooltip("Not applied");
+        else if (!row->active && Im::IsItemHovered(0))
+            Im::SetTooltip("Inactive");
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", row->name.c_str());
 

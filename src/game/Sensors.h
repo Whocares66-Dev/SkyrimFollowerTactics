@@ -265,6 +265,10 @@ struct EffectRow
     // Fortify One-handed on a follower, which writes a value nothing on a
     // follower reads. Listed greyed, hovering as "Not applied".
     bool applied{true};
+    // False while the effect is on the list but not acting: its conditions
+    // do not hold right now (Spellbreaker's ward off the block). Listed
+    // greyed, hovering as "Inactive".
+    bool active{true};
 
     // The page: the effect's numbers as the first section, then what its
     // source does, effect by effect, each opening on its conditions -- the

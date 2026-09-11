@@ -9,6 +9,7 @@
 #include "game/Magic.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
+#include "game/Util.h"
 
 #include <algorithm>
 #include <array>
@@ -290,20 +291,41 @@ struct WornSource
     std::string name;
 };
 
+// Is `worn`, the enchantment an item carries, the one an effect came from?
+// The same form, or one made at a table from the other as its template:
+// a player's enchantment is a form of its own with the template as its
+// base, and which of the two an active effect names is not the same for
+// every item (Remiel's Silver Ruby Necklace was named right and linked
+// nowhere while the ring beside it did both, 2026-09-11).
+bool SameEnchantment(const RE::MagicItem *worn, const RE::MagicItem *magic)
+{
+    if (!worn || !magic)
+        return false;
+    if (worn == magic)
+        return true;
+    const auto *a = worn->As<RE::EnchantmentItem>();
+    const auto *b = magic->As<RE::EnchantmentItem>();
+    return (a && a->data.baseEnchantment == magic) || (b && b->data.baseEnchantment == worn);
+}
+
 WornSource WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic, const RE::TESBoundObject *from)
 {
     for (const auto &[object, entry] : actor->GetInventory())
     {
         if (!object || entry.first <= 0 || !entry.second || !entry.second->IsWorn())
             continue;
-        if (from ? object != from : entry.second->GetEnchantment() != magic)
+        if (from ? object != from : !SameEnchantment(entry.second->GetEnchantment(), magic))
             continue;
         const char *given = entry.second->GetDisplayName();
         if (given && *given)
             return {object->GetFormID(), given};
         return {object->GetFormID(), object->GetName() ? object->GetName() : ""};
     }
-    return from ? WornSourceOf(actor, magic, nullptr) : WornSource{};
+    if (from)
+        return WornSourceOf(actor, magic, nullptr);
+    log::sensors.debug("{} no worn item found for enchantment {} ({:08X}) -- its effect is named for the enchantment",
+                       Describe(actor), log::NameOf(magic), magic ? magic->GetFormID() : 0);
+    return {};
 }
 
 // The effect's description with <mag> and <dur> filled in. Skyrim.esm
@@ -490,15 +512,19 @@ bool MovesValue(const RE::EffectSetting *base)
 }
 
 // One effect of a spell, an enchantment or a potion as a row, as a perk's
-// entry is (EntryRow): what it does on the left -- the value it moves and
-// by how much, else the kind of effect, its magnitude and what it names
-// -- and on the right the engine's word for its archetype, how long it
-// runs, and "hidden" where the game's own list would not show it. Its
-// conditions open beneath, with a tick where they hold for this actor.
-// The description is the author's prose and says what they meant; this
-// is the record, and says what it does. The two parted on a Breton's
-// Spell Warding, whose text promises an absorb chance that a second,
-// hidden effect grants the player alone (2026-09-11).
+// entry is (EntryRow): the value it moves on the left, else the kind of
+// effect and what it names; the magnitude on the right, signed as the
+// engine applies it, with how long it runs; a tick in the third column
+// where the game's own list would not show it; and greyed, with the
+// reason on the name, where its conditions do not hold for this actor,
+// which open beneath. The description is the author's prose and says
+// what they meant; this is the record, and says what it does. The two
+// parted on a Breton's Spell Warding, whose text promises an absorb
+// chance that a second, hidden effect grants the player alone
+// (2026-09-11). `magnitude` is SIGNED: negative for what an effect takes
+// away, as an active effect's own magnitude is, and as EffectsOf reads a
+// record's (Spellbreaker's -5 Stamina read as +5 once, the sign applied
+// twice).
 SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnitude)
 {
     const auto *base = effect.baseEffect;
@@ -526,57 +552,82 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
 
     // The name on the left, the magnitude on the right, as a perk's entry
     // has its entry point and its value.
-    std::string name;
+    // The effect by the name the game gives it -- Scourge, Spell Warding,
+    // Fortify Health -- and beside it the amount with the value it moves:
+    // "-3 Health", "+25 Resist Magic". A scroll in Nordic Souls carries
+    // its perk bonuses as extra hidden entries of one value, and the name
+    // is what tells them apart (2026-09-11).
+    const char *called = base->GetName();
+    std::string name = called && *called ? called : TypeWord(base);
     std::string amount;
+    const auto duration = effect.effectItem.duration;
     if (MovesValue(base))
     {
-        // The record's magnitude is unsigned; a detrimental effect takes
-        // it away. A dual-value effect moves its second value by the
-        // magnitude weighted.
-        const float moved = base->IsDetrimental() ? -magnitude : magnitude;
-        name = valueName(base->data.primaryAV);
-        amount = Fmt("%+g", moved);
+        // A dual-value effect moves its second value by the magnitude
+        // weighted.
+        amount = Fmt("%+g", magnitude) + " " + valueName(base->data.primaryAV);
         if (base->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kDualValueModifier &&
             base->data.secondaryAV != RE::ActorValue::kNone)
-        {
-            name += " / " + valueName(base->data.secondaryAV);
-            amount += " / " + Fmt("%+g", moved * base->data.secondAVWeight);
-        }
+            amount +=
+                ", " + Fmt("%+g", magnitude * base->data.secondAVWeight) + " " + valueName(base->data.secondaryAV);
+        // Nothing in the record says "per second"; the engine's rule does.
+        // Health, Magicka and Stamina take a timed modifier once a second
+        // -- the "10 points per second for 5 seconds" of a potion's text
+        // -- and a constant one once, for as long as it runs. Every other
+        // value takes its modifier once either way.
+        const auto value = base->data.primaryAV;
+        const bool pool =
+            value == RE::ActorValue::kHealth || value == RE::ActorValue::kMagicka || value == RE::ActorValue::kStamina;
+        if (duration > 0)
+            amount += std::string(pool ? "/s" : "") + " for " + std::to_string(duration) + " s";
     }
     else
     {
-        name = TypeWord(base);
-        // What it names: the creature summoned, the weapon bound.
+        // The kind, and what it names: the creature summoned, the weapon
+        // bound.
+        amount = TypeWord(base);
         if (const auto *named = base->data.associatedForm; named && named->GetName() && *named->GetName())
-            name += std::string(" ") + named->GetName();
+            amount += std::string(" ") + named->GetName();
         if (magnitude != 0.0f)
-            amount = Fmt("%g", magnitude);
+            amount += " " + Fmt("%g", magnitude);
+        if (duration > 0)
+            amount += " for " + std::to_string(duration) + " s";
     }
-    if (base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
-        name += " (hidden)";
 
     SheetRow row = Row(name, amount);
-    if (effect.conditions.head)
-    {
-        row.detail = ConditionRows(actor, effect.conditions);
-        if (effect.conditions.IsTrue(actor, actor))
-            row.mark = kGlyphTick;
-    }
-    else
+    if (base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
         row.mark = kGlyphTick;
+    // Two lists gate it: the spell's own entry's, and the effect record's
+    // -- a Breton's hidden effects are gated on the record, a Nordic Souls
+    // scroll's on the entry -- and both must hold.
+    bool holds = true;
+    for (const RE::TESCondition *conditions : {&effect.conditions, &base->conditions})
+    {
+        if (!conditions->head)
+            continue;
+        const auto rows = ConditionRows(actor, *conditions);
+        row.detail.insert(row.detail.end(), rows.begin(), rows.end());
+        holds = holds && conditions->IsTrue(actor, actor);
+    }
+    if (!holds)
+        row.aside = "Conditions not met";
     return row;
 }
 
 SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
                        const std::function<float(const RE::Effect *)> &magnitude)
 {
-    SheetSection section{"Effects", {}, {}};
+    SheetSection section{"Effect Details", {}, {}};
     if (!magic)
         return section;
     for (const auto *effect : magic->effects)
     {
-        if (effect && effect->baseEffect)
-            section.rows.push_back(EffectEntryRow(actor, *effect, magnitude(effect)));
+        if (!effect || !effect->baseEffect)
+            continue;
+        // The record's magnitude is unsigned; a detrimental effect takes
+        // it away.
+        const float amount = magnitude(effect);
+        section.rows.push_back(EffectEntryRow(actor, *effect, effect->baseEffect->IsDetrimental() ? -amount : amount));
     }
     return section;
 }
@@ -615,6 +666,12 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         row.form = base->GetFormID();
         row.sourceForm = ae->spell ? ae->spell->GetFormID() : 0;
         row.applied = EffectApplies(actor, base);
+        // Running but not acting: the engine sets a flag on an effect
+        // whose conditions have stopped holding, and the conditions are
+        // asked too, for the tick between.
+        row.active = !ae->flags.any(RE::ActiveEffect::Flag::kInactive) &&
+                     (!ae->effect->conditions.head || ae->effect->conditions.IsTrue(actor, actor)) &&
+                     (!base->conditions.head || base->conditions.IsTrue(actor, actor));
         row.name = name;
         row.magnitude = ae->magnitude;
         row.duration = ae->duration;
@@ -665,19 +722,13 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         // Courage, an enemy's Fury.
         if (auto caster = ae->caster.get(); caster && caster.get() != actor && caster->GetName() && *caster->GetName())
             stats.rows.push_back(Row("Caster", caster->GetName()));
-        // A tick where the game's own list would not show it; no row
-        // where it would, as the perk page marks a hidden perk.
-        if (hidden)
-        {
-            SheetRow mark = Row("Hidden", "");
-            mark.icon = kGlyphTick;
-            stats.rows.push_back(std::move(mark));
-        }
         row.detail.push_back(std::move(stats));
         // What THIS effect does, as the perk page lists a perk's entries:
         // the record beside the author's description, its conditions
-        // beneath. Its source's other effects are the source's business,
-        // on the item's or the spell's own page.
+        // beneath, and whether the game's own list hides it. Its source's
+        // other effects are the source's business, on the item's or the
+        // spell's own page. The active effect's magnitude is the engine's,
+        // signed already.
         {
             SheetSection what{"Effects", {}, {}};
             what.rows.push_back(EffectEntryRow(actor, *ae->effect, ae->magnitude));
