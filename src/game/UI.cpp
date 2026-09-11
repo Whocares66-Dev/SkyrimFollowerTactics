@@ -50,6 +50,14 @@ namespace Im = ImGuiMCP;
 bool TakesSpell(ft::ActionKind action);
 void SlashCell();
 
+// A rule set aside for what it names keeps its text, its place and its
+// switch state, greyed, and its cells still open so the player can name
+// something else. The reasons, on the switch and on the cell concerned.
+constexpr const char *kNotAvailable = "Item or ability not available";
+constexpr const char *kFollowerAway = "Follower not available";
+bool ConditionAvailable(const ft::Rule &rule, const FollowerView &view);
+bool TargetAvailable(const ft::Rule &rule, const FollowerView &view);
+
 // The one grey for everything set aside: a shadowed row, a banned row, an
 // off rule. The theme's disabled text colour, so it follows the theme.
 Im::ImU32 DimColor()
@@ -719,11 +727,22 @@ std::vector<FollowerView::Peer> SortedPeers(const FollowerView &view)
     return peers;
 }
 
-bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view)
+bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, bool setAside)
 {
     bool changed = false;
 
+    // A condition naming a follower who is away is greyed, with the reason
+    // on it -- and still opens, so another can be named in its place. The
+    // colour is pushed round the cell alone, so the menu reads as usual;
+    // `setAside` greys it with the rest of a row set aside for its action.
+    const bool available = ConditionAvailable(rule, view);
+    if (setAside || !available)
+        Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
     CellButtonOpensPopup(id, ConditionText(rule, view));
+    if (setAside || !available)
+        Im::PopStyleColor(1);
+    if (!available && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+        Im::SetTooltip("%s", kFollowerAway);
 
     PushPopupChrome();
     if (!Im::BeginPopup(id, 0))
@@ -1235,8 +1254,6 @@ std::string FormName(std::uint32_t form)
     return name && *name ? name : "";
 }
 
-constexpr const char *kNotAvailable = "Item or ability not available";
-
 // Whether what the action names is there to be used: the potion carried,
 // the spell known, the scroll carried, the weapon in the bag. An action
 // that names nothing, or a policy, is always available here; whether it
@@ -1264,10 +1281,46 @@ bool ActionAvailable(const ft::Action &act, const FollowerView &view)
     return true;
 }
 
+bool FollowerPresent(const FollowerView &view, std::uint32_t id)
+{
+    return std::any_of(view.peers.begin(), view.peers.end(),
+                       [id](const FollowerView::Peer &peer) { return peer.id == id; });
+}
+
+// Whether the follower the condition names is with us: the subject, or
+// the party member an Attacking or Attacked by asks about. The player and
+// the follower themself always are.
+bool ConditionAvailable(const ft::Rule &rule, const FollowerView &view)
+{
+    if (rule.subject == ft::SubjectKind::Follower)
+        return FollowerPresent(view, rule.subjectForm);
+    const bool member =
+        rule.predicate == ft::PredicateKind::Attacking || rule.predicate == ft::PredicateKind::AttackedBy;
+    if (member && rule.subjectForm != 0 && rule.subjectForm != view.id)
+        return FollowerPresent(view, rule.subjectForm);
+    return true;
+}
+
+// Whether the follower the action is aimed at is with us.
+bool TargetAvailable(const ft::Rule &rule, const FollowerView &view)
+{
+    return rule.actionTarget != ft::ActionTargetKind::Follower || FollowerPresent(view, rule.actionTargetForm);
+}
+
 bool RuleAvailable(const ft::Rule &rule, const FollowerView &view)
 {
-    return std::all_of(rule.actions.begin(), rule.actions.end(),
+    return ConditionAvailable(rule, view) && TargetAvailable(rule, view) &&
+           std::all_of(rule.actions.begin(), rule.actions.end(),
                        [&](const ft::Action &act) { return ActionAvailable(act, view); });
+}
+
+// Why a rule is set aside, for its switch; null when it is not. A follower
+// away is said first: the whole rule waits on them, whatever else it names.
+const char *SetAsideReason(const ft::Rule &rule, const FollowerView &view)
+{
+    if (!ConditionAvailable(rule, view) || !TargetAvailable(rule, view))
+        return kFollowerAway;
+    return RuleAvailable(rule, view) ? nullptr : kNotAvailable;
 }
 
 std::string ActionText(const ft::Action &act, const FollowerView &view)
@@ -1750,24 +1803,27 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
 // subject, then predicate. The headings are the same cast, less those the
 // condition cannot supply: "Ally" on this side means the ally the condition
 // matched, so it is offered only when the condition is about one.
-bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *addAnother, ft::Rule &rule)
+bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *addAnother, ft::Rule &rule,
+                bool setAside)
 {
     bool changed = false;
 
-    // An action naming a thing the follower no longer has is greyed, with
-    // the reason on it -- and still opens: the potion drunk up wants
-    // choosing again, here, not deleting and writing afresh. The colour is
-    // pushed round the cell alone, so the menu it opens reads as usual.
-    const bool available = ActionAvailable(act, view);
-    if (!available)
+    // An action naming a thing the follower no longer has, or aimed at a
+    // follower who is away, is greyed, with the reason on it -- and still
+    // opens: the potion drunk up wants choosing again, here, not deleting
+    // and writing afresh. The colour is pushed round the cell alone, so
+    // the menu it opens reads as usual; `setAside` greys it with the rest
+    // of a row set aside for its condition.
+    const char *reason = !TargetAvailable(rule, view)  ? kFollowerAway
+                         : !ActionAvailable(act, view) ? kNotAvailable
+                                                       : nullptr;
+    if (setAside || reason)
         Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
     CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
-    if (!available)
-    {
+    if (setAside || reason)
         Im::PopStyleColor(1);
-        if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-            Im::SetTooltip("%s", kNotAvailable);
-    }
+    if (reason && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+        Im::SetTooltip("%s", reason);
 
     PushPopupChrome();
     if (!Im::BeginPopup(id, 0))
@@ -1927,7 +1983,7 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::TableNextRow(0, 0.0f);
 
             Im::TableSetColumnIndex(0);
-            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr, rule))
+            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr, rule, false))
                 changed = true;
 
             Im::TableSetColumnIndex(1);
@@ -2119,13 +2175,14 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         auto &rule = rules.rules[i];
         const std::string rowId = std::to_string(i);
         // A rule naming a thing the follower no longer has -- the potion
-        // drunk up, the spell forgotten, the sword sold -- is set aside:
-        // its switch slashed and dead, as an equip cell that does not apply
-        // is, the row dimmed, the reason on the switch and the action. It
-        // keeps its name, its place and its delete; the switch's own state
-        // is untouched, so the rule comes back as it was when the thing
-        // does.
-        const bool available = RuleAvailable(rule, view);
+        // drunk up, the spell forgotten, the sword sold -- or a follower
+        // who is away, is set aside: its switch slashed and dead, as an
+        // equip cell that does not apply is, the row dimmed, the reason on
+        // the switch and on the cell concerned. It keeps its text, its
+        // place and its delete; the switch's own state is untouched, so the
+        // rule comes back as it was when the thing, or the follower, does.
+        const char *setAside = SetAsideReason(rule, view);
+        const bool available = setAside == nullptr;
         Im::TableNextRow(0, 0.0f);
         if (i % 2 == 1)
             Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg0, stripe, -1);
@@ -2142,7 +2199,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 // Slashed at the end of the row, once its height is known.
                 Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
                 if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", kNotAvailable);
+                    Im::SetTooltip("%s", setAside);
             }
             else if (CellClicked(("##on" + rowId).c_str(), Im::GetFrameHeight()))
             {
@@ -2167,22 +2224,24 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // it cannot be edited without turning it on. The switch itself and
         // the order and delete controls stay live: an off rule is still in
         // the list and can still be moved or removed. A rule set aside for
-        // what it names reads the same, with one difference: its Then cell
-        // still answers, since choosing another thing there is the way out
-        // of being set aside, and deleting the rule to write it again is
-        // not (2026-09-10).
-        BeginDimmed(!rule.enabled || !available);
+        // what it names reads the same but is not disabled: its If and Then
+        // cells grey themselves and still answer, since naming something
+        // else there is the way out of being set aside, and deleting the
+        // rule to write it again is not (2026-09-10).
+        BeginDimmed(!rule.enabled);
 
         Im::TableSetColumnIndex(1);
         Im::AlignTextToFramePadding();
+        if (!available)
+            Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
         Im::Text("%zu", i + 1);
+        if (!available)
+            Im::PopStyleColor(1);
 
         Im::TableSetColumnIndex(2);
-        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view))
+        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, !available))
             changed = true;
 
-        EndDimmed();
-        BeginDimmed(!rule.enabled);
         Im::TableSetColumnIndex(3);
         // Where the Then column begins, for the drawer's border to sit on
         // it: the cell's content less its padding is the column's border.
@@ -2196,7 +2255,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // One action: edited here, in its row. Its menu offers a
             // second, and the rule then opens as a drawer.
             bool addAnother = false;
-            if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother, rule))
+            if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother, rule, !available))
                 changed = true;
             if (addAnother)
             {
@@ -2260,8 +2319,6 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             if (!available)
                 Im::PopStyleColor(1);
         }
-        EndDimmed();
-        BeginDimmed(!rule.enabled || !available);
 
         Im::TableSetColumnIndex(4);
         Im::AlignTextToFramePadding();
