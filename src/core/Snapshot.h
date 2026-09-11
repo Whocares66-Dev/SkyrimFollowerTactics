@@ -116,13 +116,10 @@ struct EnemyView
     ActorId id{0};
     Stat health{};
     float distance{0.0f};
-    bool isCasting{false};
     // Whom this enemy is going for: an id, the player's or a follower's,
     // or 0 for nobody in particular.
     ActorId attacking{0};
-    bool hasLineOfSight{false};
     ActorTraits traits{};
-    // Last, so the tests' positional initialisers above them stand.
     Stat magicka{};
     Stat stamina{};
 };
@@ -268,7 +265,6 @@ struct SpellState
 {
     std::vector<std::uint32_t> known;
     std::vector<std::uint32_t> active;
-    std::vector<std::uint32_t> equipped;
 
     // What each known spell costs HER, in magicka, with her perks and skill
     // already applied. The game computes it; core only compares it against
@@ -340,11 +336,6 @@ struct SpellState
     {
         return std::find(active.begin(), active.end(), form) != active.end();
     }
-
-    [[nodiscard]] bool IsEquipped(std::uint32_t form) const
-    {
-        return std::find(equipped.begin(), equipped.end(), form) != equipped.end();
-    }
 };
 
 struct Snapshot
@@ -379,8 +370,6 @@ struct Snapshot
     // holds -- see PredicateKind.
     bool combatBegan{false};
     bool combatEnded{false};
-    bool weaponDrawn{false};
-    bool sneaking{false};
     // Each hand's weapon: whether it takes a poison (anything but a staff;
     // false with no weapon there) and whether it carries one. The Weapon
     // poison condition reads both; an Apply rule needs a hand that takes
@@ -404,6 +393,7 @@ struct Snapshot
         {
             return enchanted && maxCharge > 0.0f && charge < costPerHit;
         }
+        // What a charge would fill: how a Charge policy sizes its gem.
         [[nodiscard]] constexpr float Missing() const noexcept
         {
             return enchanted ? maxCharge - charge : 0.0f;

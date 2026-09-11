@@ -553,11 +553,17 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
     }
 }
 
-std::uint32_t ChosenForm(const Action &a, const PotionStock &stock)
+std::uint32_t ChosenForm(const Action &a, const Snapshot &snap)
 {
+    if (IsCharge(a.kind) && a.kind != ActionKind::ChargeSoulGem)
+    {
+        // The gem for the hand in need, the right before the left.
+        const Snapshot::HandWeapon &weapon = snap.rightWeapon.ChargeNeeded() ? snap.rightWeapon : snap.leftWeapon;
+        return ChooseSoulGem(snap.soulGems, weapon.Missing(), a.kind == ActionKind::ChargeStrongestSoulGem);
+    }
     if (!IsPolicy(a.kind))
         return a.form;
-    return stock.Choose(ConsumableOf(a.kind), a.effect, IsStrongest(a.kind));
+    return snap.potions.Choose(ConsumableOf(a.kind), a.effect, IsStrongest(a.kind));
 }
 
 namespace
@@ -578,15 +584,14 @@ bool HasResource(const Action &a, const Snapshot &s)
     case ActionKind::EatWeakestIngredient:
     case ActionKind::ApplyStrongest:
     case ActionKind::ApplyWeakest:
-        return ChosenForm(a, s.potions) != 0;
+    case ActionKind::ChargeStrongestSoulGem:
+    case ActionKind::ChargeWeakestSoulGem:
+        return ChosenForm(a, s) != 0;
     case ActionKind::DrinkPotion:
     case ActionKind::EatFood:
     case ActionKind::EatIngredient:
     case ActionKind::ApplyPoison:
         return a.form != 0 && s.potions.CountOf(a.form, ConsumableOf(a.kind)) > 0;
-    case ActionKind::ChargeStrongestSoulGem:
-    case ActionKind::ChargeWeakestSoulGem:
-        return !s.soulGems.empty();
     case ActionKind::ChargeSoulGem:
         return a.form != 0 && std::any_of(s.soulGems.begin(), s.soulGems.end(),
                                           [&](const Snapshot::SoulGemView &g) { return g.form == a.form; });
@@ -870,11 +875,11 @@ bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, Ac
         if (v == Verdict::Fired)
         {
             decision.ruleIndex = ruleIndex;
-            // The step carries the bottle a policy chose, so the game side
-            // has only to consume it.
+            // The step carries the bottle or gem a policy chose, so the
+            // game side has only to consume it.
             Action resolved = a;
-            resolved.form = ChosenForm(a, snap.potions);
-            decision.steps.push_back({resolved, target});
+            resolved.form = ChosenForm(a, snap);
+            decision.step = Decision::Step{resolved, target};
             // The one cooldown there is: the ACTION goes on cooldown for as
             // long as its effect takes to show, and every rule that uses it
             // reports it. Nothing is keyed by rule or by condition.

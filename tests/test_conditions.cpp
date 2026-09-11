@@ -38,8 +38,8 @@ Snapshot Party()
     s.allies.push_back({kOtherFollower, {100.0f, 100.0f}, 300.0f});
     for (auto &a : s.allies)
         a.magicka = a.stamina = {100.0f, 100.0f};
-    s.enemies.push_back({kEnemy, {100.0f, 100.0f}, 200.0f, false, 0, true});
-    s.enemies.push_back({kFarEnemy, {100.0f, 100.0f}, 900.0f, false, 0, true});
+    s.enemies.push_back({kEnemy, {100.0f, 100.0f}, 200.0f});
+    s.enemies.push_back({kFarEnemy, {100.0f, 100.0f}, 900.0f});
     for (auto &e : s.enemies)
         e.magicka = e.stamina = {100.0f, 100.0f};
     return s;

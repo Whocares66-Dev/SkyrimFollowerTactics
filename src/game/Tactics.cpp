@@ -180,53 +180,20 @@ struct TickCost
 TickCost g_cost;
 double g_lastCostReport = -1.0e9;
 
-// --- what a follower starts with ---------------------------------------------
-
-// Nothing. Installing the mod must not change how anyone's followers fight
-// until the player has written a rule and switched that follower on: the
+// What a follower starts with: nothing. Installing the mod must not change
+// how anyone's followers fight until the player has written a rule: the
 // Phase 1 "emergency heal" rule that used to sit here surprised a fresh
-// install with a follower drinking potions on her own initiative.
-const ft::RuleSet &DefaultRuleSetImpl()
-{
-    static const ft::RuleSet rules = [] {
-        ft::RuleSet rs;
-        rs.name = "empty";
-        return rs;
-    }();
-    return rules;
-}
+// install with a follower drinking potions on their own initiative.
+const ft::RuleSet kNoRules;
 
-// Only the actions Phase 1 actually implements are advertised as supported. The
-// engine then reports Verdict::Unsupported for anything else instead of firing
-// a rule that Actions::Execute would silently drop.
+// What the runtime can do this tick. The casts need the package pool
+// (made in memory at load, game/Forms.h); without it they report
+// Unsupported, a truthful "not available here" rather than a rule that
+// silently never fires.
 ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
 {
-    ft::Capabilities caps; // all false
-    for (const auto kind :
-         {ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest, ft::ActionKind::EatStrongestFood,
-          ft::ActionKind::EatWeakestFood, ft::ActionKind::EatStrongestIngredient, ft::ActionKind::EatWeakestIngredient,
-          ft::ActionKind::ApplyStrongest, ft::ActionKind::ApplyWeakest, ft::ActionKind::ApplyPoison,
-          ft::ActionKind::ChargeStrongestSoulGem, ft::ActionKind::ChargeWeakestSoulGem, ft::ActionKind::ChargeSoulGem})
-        caps.supported[static_cast<std::size_t>(kind)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::DrinkPotion)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::EatFood)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::EatIngredient)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipWeapon)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipSpell)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipArrows)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::EquipArmor)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::Attack)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::PowerAttack)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::Bash)] = true;
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::PowerBash)] = true;
-
-    // Casting needs the ESL. Without it the action reports Unsupported and the
-    // panel greys it out, which is a truthful "not available here" rather than
-    // a rule that silently never fires.
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::CastSpell)] = PackagesAvailable();
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::UsePower)] = PackagesAvailable();
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::Shout)] = PackagesAvailable();
-    caps.supported[static_cast<std::size_t>(ft::ActionKind::UseScroll)] = PackagesAvailable();
+    ft::Capabilities caps;
+    caps.castingAvailable = PackagesAvailable();
 
     // Transient, unlike the line above: every slot mid-cast means a cast rule
     // is skipped for THIS evaluation only, with no cooldown spent, and the
@@ -333,11 +300,6 @@ void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet
     }
 }
 
-ft::Stat ReadStatFor(RE::Actor *actor, RE::ActorValue av)
-{
-    return ReadStat(actor, av); // one reading of a stat, Sensors'
-}
-
 // Level and carry weight, for the panel. Not rule inputs -- three cheap reads,
 // done on both the in-combat and idle paths so the panel does not go blank when
 // a fight ends.
@@ -400,24 +362,22 @@ void PublishIdle(RE::Actor *actor, double now, bool inCombat)
     ft::Snapshot snapshot;
     snapshot.self = actor->GetFormID();
     snapshot.now = now;
-    snapshot.health = ReadStatFor(actor, RE::ActorValue::kHealth);
-    snapshot.magicka = ReadStatFor(actor, RE::ActorValue::kMagicka);
-    snapshot.stamina = ReadStatFor(actor, RE::ActorValue::kStamina);
+    snapshot.health = ReadStat(actor, RE::ActorValue::kHealth);
+    snapshot.magicka = ReadStat(actor, RE::ActorValue::kMagicka);
+    snapshot.stamina = ReadStat(actor, RE::ActorValue::kStamina);
 
     FollowerView v;
     v.id = snapshot.self;
     v.name = DisplayNameOf(actor);
     v.snapshot = snapshot;
-    v.lastEvaluatedAt = now;
     v.evaluated = false;
     v.inCombat = inCombat;
-    v.tacticsEnabled = IsFollowerEnabled(v.id);
     FillDisplayFields(actor, v);
     PublishOne(std::move(v));
 }
 
 void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace,
-                 const ft::ActionTrace &actionTrace, const ft::Decision &decision, double now);
+                 const ft::ActionTrace &actionTrace);
 
 void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 {
@@ -474,17 +434,18 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     ft::ActionTrace actionTrace;
     const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
 
-    PublishView(actor, snapshot, trace, actionTrace, decision, now);
+    PublishView(actor, snapshot, trace, actionTrace);
 
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
     if (decision.Fired())
     {
-        // Every step, in order. A rule's list is the player's, whole.
+        // The one action of the tick; the rest of the rule's list follows,
+        // one per tick.
         const auto index = static_cast<std::size_t>(decision.ruleIndex);
         const std::string label = index < rules.rules.size() ? rules.rules[index].label : "";
-        for (const auto &step : decision.steps)
         {
+            const auto &step = *decision.step;
             const auto result = Execute(step.action, step.target, actor);
 
             log::tactics.event(log::Level::Info, "rule.fired", actor,
@@ -512,9 +473,6 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
             }
         }
 
-        // Empirical check for whether a drunk potion leaves a lingering effect
-        // we could test against, rather than relying on a fixed settle time.
-        LogActiveEffects(actor, "just after firing");
         return;
     }
 
@@ -529,7 +487,7 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 // follower every tick, whether or not a rule fired -- the debug column is most
 // useful precisely when nothing is firing.
 void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace,
-                 const ft::ActionTrace &actionTrace, const ft::Decision &decision, double now)
+                 const ft::ActionTrace &actionTrace)
 {
     FollowerView v;
     v.id = actor->GetFormID();
@@ -537,21 +495,44 @@ void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace
     v.snapshot = snapshot;
     v.trace = trace;
     v.actionTrace = actionTrace;
-    v.decision = decision;
-    v.lastEvaluatedAt = now;
     v.evaluated = true;
     // Evaluated is no longer the same as fighting: the Combat end lists
     // run on after the fight.
     v.inCombat = snapshot.inCombat;
-    v.tacticsEnabled = IsFollowerEnabled(v.id);
     FillDisplayFields(actor, v);
     PublishOne(std::move(v));
 }
 
 // --- the tick ---------------------------------------------------------------
 
-// Tick-side wrapper: same predicate, plus a line in the log when the answer
-// changes.
+// Is the world's clock stopped? Rules are gated on time running, not on
+// any menu being closed -- those are different questions, and only the
+// first is the one a tactic cares about. Firing into a frozen world is
+// how a half-written rule drank potions while it was still being edited.
+//
+// Two signals, because neither alone is enough.
+//
+//   numPausesGame    what UI::GameIsPaused() returns, and it is nothing more
+//                    than a count of registered menus carrying kPausesGame.
+//                    It covers the inventory, map, journal, settings and the
+//                    console. It CANNOT see our own panel: SKSE Menu Framework
+//                    draws from a D3D present hook and never registers an
+//                    IMenu, so it never moves that counter no matter what
+//                    FreezeTimeOnMenu says. An earlier gate checked only this
+//                    and let the panel straight through -- for a whole test
+//                    round, because it also went unlogged.
+//
+//   Main::freezeTime the clock itself, which is what the framework sets when
+//                    FreezeTimeOnMenu = true.
+//
+// Whether a pausing menu ALSO sets freezeTime is not established, so the two
+// are OR-ed rather than one being assumed to imply the other. Both are a
+// pointer dereference; there is nothing to win by guessing.
+//
+// Asking about the clock rather than about panel-is-open also gets
+// FreezeTimeOnMenu = false right for free: with the freeze off, time keeps
+// running and so do rules, so the panel shows live state rather than a still
+// frame. That is the whole point of that setting.
 //
 // Logged on change only. This runs every tick, and a gate that stays silent
 // when it works is indistinguishable from one that is not running at all --
@@ -560,21 +541,23 @@ void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace
 // narrowed later on evidence rather than on a guess.
 bool EvaluationHeld()
 {
-    const ClockState clock = ReadClock();
+    auto *ui = RE::UI::GetSingleton();
+    auto *main = RE::Main::GetSingleton();
+    const bool pausedMenu = ui && ui->GameIsPaused();
+    const bool frozenClock = main && main->GetRuntimeData().freezeTime;
 
     static int previous = -1;
-    const int state = (clock.pausedMenu ? 1 : 0) | (clock.frozenClock ? 2 : 0);
+    const int state = (pausedMenu ? 1 : 0) | (frozenClock ? 2 : 0);
     if (state != previous)
     {
         previous = state;
         if (state == 0)
             log::tactics.info("time is running -- evaluating");
         else
-            log::tactics.info("time stopped ({}{}{}) -- evaluation held", clock.pausedMenu ? "paused menu" : "",
-                              (clock.pausedMenu && clock.frozenClock) ? " + " : "",
-                              clock.frozenClock ? "frozen clock" : "");
+            log::tactics.info("time stopped ({}{}{}) -- evaluation held", pausedMenu ? "paused menu" : "",
+                              (pausedMenu && frozenClock) ? " + " : "", frozenClock ? "frozen clock" : "");
     }
-    return clock.stopped();
+    return pausedMenu || frozenClock;
 }
 
 // Pacing lives on a separate thread; the work itself runs on the game thread via
@@ -749,41 +732,11 @@ void Tick()
 
 } // namespace
 
-// Two signals, because neither alone is enough.
-//
-//   numPausesGame    what UI::GameIsPaused() returns, and it is nothing more
-//                    than a count of registered menus carrying kPausesGame.
-//                    It covers the inventory, map, journal, settings and the
-//                    console. It CANNOT see our own panel: SKSE Menu Framework
-//                    draws from a D3D present hook and never registers an
-//                    IMenu, so it never moves that counter no matter what
-//                    FreezeTimeOnMenu says. An earlier gate checked only this
-//                    and let the panel straight through -- for a whole test
-//                    round, because it also went unlogged.
-//
-//   Main::freezeTime the clock itself, which is what the framework sets when
-//                    FreezeTimeOnMenu = true.
-//
-// Whether a pausing menu ALSO sets freezeTime is not established, so the two
-// are OR-ed rather than one being assumed to imply the other. Both are a
-// pointer dereference; there is nothing to win by guessing.
-//
-// Asking about the clock rather than about panel-is-open also gets
-// FreezeTimeOnMenu = false right for free: with the freeze off, time keeps
-// running and so do rules, so the panel shows live state rather than a still
-// frame. That is the whole point of that setting.
-ClockState ReadClock()
-{
-    auto *ui = RE::UI::GetSingleton();
-    auto *main = RE::Main::GetSingleton();
-    return ClockState{ui && ui->GameIsPaused(), main && main->GetRuntimeData().freezeTime};
-}
-
 ft::RuleSet GetRules(ft::ActorId id)
 {
     std::scoped_lock lock(g_rulesMutex);
     const auto it = g_ruleSets.find(id);
-    return it == g_ruleSets.end() ? DefaultRuleSet() : it->second;
+    return it == g_ruleSets.end() ? kNoRules : it->second;
 }
 
 void PublishFollower(RE::Actor *actor)
@@ -824,20 +777,10 @@ void ForgetSession()
     }
 }
 
-const ft::RuleSet &DefaultRuleSet()
-{
-    return DefaultRuleSetImpl();
-}
-
 std::vector<FollowerView> ObserveFollowers()
 {
     std::scoped_lock lock(g_viewMutex);
     return g_view;
-}
-
-const ft::RuleSet &ActiveRuleSet()
-{
-    return DefaultRuleSet();
 }
 
 void Install()

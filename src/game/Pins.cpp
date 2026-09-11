@@ -155,8 +155,7 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
     else if (auto *spell = form->As<RE::SpellItem>())
     {
         const auto type = spell->GetSpellType();
-        if (type == RE::MagicSystem::SpellType::kPower || type == RE::MagicSystem::SpellType::kLesserPower ||
-            IsLeasedPower(spell->GetFormID()))
+        if (IsPower(spell))
         {
             thing.kind = Kind::Voice; // readied in the voice slot, no hand
             return thing;
@@ -217,6 +216,8 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form)
 
 // Is this form readied in the voice slot: a power or a shout the actor has
 // selected? Voice things have no hand; this is their "equipped".
+bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand);
+
 bool InVoice(RE::Actor *actor, RE::TESForm *form)
 {
     return actor && actor->GetActorRuntimeData().selectedPower == form;
@@ -455,70 +456,12 @@ void TakeOffEverywhere(RE::Actor *actor, RE::TESForm *form, const Holdable &desc
     UnequipForm(actor, form, described.grip == Grip::None ? Hand::None : Reach(described.grip), now);
 }
 
-// Whether a left-hand weapon pin also gives her a combat style that allows
-// dual wielding. Off: a trial of what the unmodified style does with the
-// weapon (2026-09-03).
-constexpr bool kDualWieldOnLeftPin = false;
-
-// Let her dual wield.
-//
-// csHumanMagic, Marcurio's style, and most vanilla styles do not allow it,
-// and the AI of an actor whose style forbids it takes a left-hand weapon
-// straight off again -- the loop seen with the dagger (00:26), the watchdog
-// putting it back every half second. The style is shared by every mage in
-// the game, so it is not edited in place: she gets a runtime copy with the
-// flag set, on her record and on her live combat controller if she has
-// one. Two flags are set because CommonLibSSE names the bit in two places
-// (the DATA flags and the record header) and which the engine reads is
-// unverified. Not saved: redone on every left-hand pin, gone with the
-// session, like the pins.
-[[maybe_unused]] void AllowDualWield(RE::Actor *actor)
-{
-    auto *npc = actor->GetActorBase();
-    auto *style = npc ? npc->GetCombatStyle() : nullptr;
-    if (!style)
-        return;
-    if (style->flags.all(RE::TESCombatStyle::FLAG::kAllowDualWielding))
-    {
-        log::pins.debug("{} combat style {:08X} already allows dual wielding", Describe(actor), style->GetFormID());
-        return;
-    }
-
-    auto *copy = style->CreateDuplicateForm(true, nullptr);
-    auto *ours = copy ? copy->As<RE::TESCombatStyle>() : nullptr;
-    if (!ours)
-    {
-        log::pins.warn("{} cannot be allowed to dual wield: combat style {:08X} would not duplicate", Describe(actor),
-                       style->GetFormID());
-        return;
-    }
-    // CreateDuplicateForm gives a NEW combat style at the engine's defaults
-    // -- offensive 0.24, every score 1 -- not a copy of hers (01:55, the
-    // Combat Style tab on the copy). The data is five plain structs and the
-    // flags, so it is copied by hand.
-    ours->generalData = style->generalData;
-    ours->meleeData = style->meleeData;
-    ours->closeRangeData = style->closeRangeData;
-    ours->longRangeData = style->longRangeData;
-    ours->flightData = style->flightData;
-    ours->flags = style->flags;
-    ours->flags.set(RE::TESCombatStyle::FLAG::kAllowDualWielding);
-    ours->formFlags |= RE::TESCombatStyle::RecordFlags::kAllowDualWielding;
-    npc->SetCombatStyle(ours);
-    if (auto *controller = actor->GetActorRuntimeData().combatController)
-        controller->combatStyle = ours;
-    log::pins.event(log::Level::Info, "dualWield.allowed", actor,
-                    {{"styleFormId", log::Id(style->GetFormID())}, {"copyFormId", log::Id(ours->GetFormID())}},
-                    "{} allowed to dual wield: combat style {:08X} copied as {:08X} with the flag set", Describe(actor),
-                    style->GetFormID(), ours->GetFormID());
-}
-
 // Before something new goes on, whatever it displaces is unpinned, so the
 // book and the body agree: the engine's own displacement would leave the
 // old pin in the book, and the watchdog would put it straight back over the
 // new thing. Taking it off is the engine's, in the equip that follows.
-std::vector<Displaced> ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Holdable &incoming,
-                                              Hand hands, bool dualWield)
+void ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin> &pins, const Holdable &incoming, Hand hands,
+                            bool dualWield)
 {
     // Only the book changes here. What gave way is NOT taken off: the
     // engine's equip displaces it -- a weapon or spell from the hand it
@@ -531,8 +474,7 @@ std::vector<Displaced> ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin>
     // prevent-removal flag, which refused the engine's own swap; the flag
     // went on 2026-09-04, and this went with it. The one unequip that stays
     // is the move of a follower's only weapon to the other hand, in Wear.
-    std::vector<Displaced> displaced = MakeRoom(pins, incoming, hands, dualWield);
-    for (const Displaced &gone : displaced)
+    for (const Displaced &gone : MakeRoom(pins, incoming, hands, dualWield))
     {
         auto *held = RE::TESForm::LookupByID(gone.form);
         log::pins.event(log::Level::Info, "pin.released", actor,
@@ -542,7 +484,6 @@ std::vector<Displaced> ReleaseConflictingPins(RE::Actor *actor, std::vector<Pin>
                          {"reason", "to make room"}},
                         "{} unpinning {}{} to make room", Describe(actor), log::NameOf(held), HandTag(gone.hands));
     }
-    return displaced;
 }
 
 // The watchdog: put back any pinned form the game has taken off, and forget
@@ -1119,6 +1060,11 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     std::erase_if(pins, [&](const Pin &pin) { return !present.contains(pin.thing.form); });
 }
 
+// Put a spell in a hand -- Left, Right, or None for the engine's choice --
+// unless it is there already. The engine's item equip is a no-op for an
+// item already worn; its spell equip is not, and each call plays the equip
+// sound, so the panel and the watchdog together could sound several times
+// for one pin. Returns whether anything was done.
 bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand)
 {
     auto *manager = RE::ActorEquipManager::GetSingleton();
@@ -1276,10 +1222,6 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         case WearRequest::Unban:
             Unban(g_bans[id], described.form);
             break;
-        case WearRequest::Unpin:
-        case WearRequest::TakeOff:
-            hands = LetGo(pins, described, hands);
-            break;
         }
         // The panel's word mid-fight is the new normal: the same change goes
         // into the book remembered for after the fight, so the player's pin
@@ -1359,13 +1301,6 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         log::pins.event(log::Level::Info, "pin.applied", actor,
                         {{"itemFormId", log::Id(described.form)}, {"itemName", name}, {"reason", "the player asked"}},
                         "{} told to ready {} (pinned)", Describe(actor), name);
-        // Off for now, to see what her own style does with a left-hand
-        // weapon; the copy stays available for the combat-style work.
-        if constexpr (kDualWieldOnLeftPin)
-        {
-            if (thing->Is(RE::FormType::Weapon) && hands == Hand::Left)
-                AllowDualWield(actor);
-        }
         if (moving)
             UnequipForm(actor, thing, hands == Hand::Left ? Hand::Right : Hand::Left, true);
         EquipPinned(actor, thing, hands, true);
@@ -1394,28 +1329,6 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             log::pins.debug("{} shout {} -- {}", Describe(actor), name, CasterState(actor));
             g_republish.insert(id);
         }
-        break;
-    case WearRequest::Unpin:
-        // Forgetting the pin is the whole of it, for an item as for a
-        // spell: nothing on the thing marks it pinned. (With the
-        // prevent-removal flag an item had to come off and go back on
-        // without it -- and that path once took a spell off and "put it
-        // back" with an item equip, 01:47, Chain Lightning.)
-        log::pins.event(log::Level::Info, "pin.applied", actor,
-                        {{"itemFormId", log::Id(described.form)},
-                         {"itemName", name},
-                         {"hand", HandTag(hands)},
-                         {"held", false},
-                         {"reason", "kept, but not held to it"}},
-                        "{} told to keep {}{} but not held to it", Describe(actor), name, HandTag(hands));
-        break;
-    case WearRequest::TakeOff:
-        log::pins.event(log::Level::Info, "equip.removed", actor,
-                        {{"itemFormId", log::Id(described.form)}, {"itemName", name}, {"hand", HandTag(hands)}},
-                        "{} told to put away {}{}", Describe(actor), name, HandTag(hands));
-        UnequipForm(actor, thing, hands, true);
-        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
-            g_republish.insert(id);
         break;
     }
 

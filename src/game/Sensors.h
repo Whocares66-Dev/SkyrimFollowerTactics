@@ -212,7 +212,6 @@ void ForEachSpell(RE::Actor *actor, const std::function<void(RE::SpellItem *)> &
 // Font Awesome's infinity, for a sheet row whose value is "no end": an
 // effect with no duration. The panel draws a row's icon in place of its
 // value text.
-inline constexpr unsigned kIconInfinity = 0xF534;
 
 // The two glyphs an Equipped row is made of, Font Awesome's check and
 // thumbtack: the same codepoints the panel's own Glyph table uses, so the
@@ -417,7 +416,6 @@ struct PerkPage
 [[nodiscard]] float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry);
 
 // Resolve a FormID from a rule back to the spell it names, or nullptr.
-[[nodiscard]] RE::SpellItem *FindSpell(std::uint32_t form);
 
 // Dump the actor's active magic effects to the log: source item, archetype,
 // elapsed/duration, magnitude.
@@ -431,7 +429,6 @@ struct PerkPage
 //
 // ActiveEffect carries `spell` (the AlchemyItem for a potion), `duration` and
 // `elapsedSeconds`, so the check is exact once we know it is worth making.
-void LogActiveEffects(RE::Actor *actor, const char *when);
 
 // Build the snapshot for one follower. `now` is monotonic seconds since plugin
 // load; cooldowns are measured against it. Self and player state, the

@@ -50,8 +50,6 @@ struct FollowerView
     ft::Snapshot snapshot;
     ft::Trace trace;             // per-rule verdict: the debug column
     ft::ActionTrace actionTrace; // per-action verdicts: the column's tooltip
-    ft::Decision decision;
-    double lastEvaluatedAt{0.0};
 
     // Whether this follower's rules were actually evaluated this tick.
     //
@@ -62,12 +60,6 @@ struct FollowerView
     // stale verdict or a confident zero.
     bool evaluated{false};
     bool inCombat{false};
-
-    // This follower's own on/off switch, independent of the global one and of
-    // each rule's own `enabled`. Turning a follower off must never touch the
-    // individual rules -- the player's choices there are theirs, and silently
-    // rewriting them would mean re-authoring the list after every toggle.
-    bool tacticsEnabled{true};
 
     // Display only -- not rule inputs, so they stay out of Snapshot, which is
     // the RE::-free contract the evaluator reads. All three are cheap reads and
@@ -113,7 +105,8 @@ inline constexpr std::size_t kMaxManagedFollowers = 8;
 // tactics are authored before a fight, so the panel has to show them then.
 [[nodiscard]] std::vector<FollowerView> ObserveFollowers();
 
-// This follower's rules, as a copy.
+// This follower's rules, as a copy: none until someone writes some, so a
+// fresh install changes nothing.
 //
 // Copy in, copy out. Rule sets hold a handful of rules, so copying is cheap,
 // and it removes a whole class of problem: the UI edits its own copy across as
@@ -124,10 +117,6 @@ inline constexpr std::size_t kMaxManagedFollowers = 8;
 // here without a version check.
 [[nodiscard]] ft::RuleSet GetRules(ft::ActorId id);
 void SetRules(ft::ActorId id, ft::RuleSet rules);
-
-// The rules a follower starts with, before anyone edits them: none. A fresh
-// install changes nothing until a rule is written.
-[[nodiscard]] const ft::RuleSet &DefaultRuleSet();
 
 // The rules, the switch and the player's pins live in the save, one
 // record per follower (game/Profiles.h). Edits are the session's state,
@@ -156,25 +145,6 @@ void PublishFollower(RE::Actor *actor);
 // stops with the clock the moment it opens, so what the panel shows is
 // otherwise the last tick's view. Game thread.
 void PublishAllFollowers();
-
-// Why the world's clock is stopped, if it is.
-//
-// Rules are gated on time running, not on any menu being closed -- those are
-// different questions, and only the first is the one a tactic cares about.
-// Firing into a frozen world is how a half-written rule drank potions while it
-// was still being edited. See ReadClock() for why it takes two signals.
-struct ClockState
-{
-    bool pausedMenu{false};  // inventory, map, journal, settings, console
-    bool frozenClock{false}; // our own panel, with FreezeTimeOnMenu = true
-
-    [[nodiscard]] bool stopped() const
-    {
-        return pausedMenu || frozenClock;
-    }
-};
-
-[[nodiscard]] ClockState ReadClock();
 
 // Start ticking. Safe to call once, after kDataLoaded.
 void Install();

@@ -305,7 +305,13 @@ enum class ActionKind : std::uint8_t
 [[nodiscard]] bool NamesConsumable(ActionKind action) noexcept;
 
 // One thing to do. A rule carries a list of these, in order.
-struct Action
+//
+// (The NOLINT: clang's analyzer reports "value assigned to field 'kind' is
+// garbage" here for Decision's std::optional<Step> moved out of Evaluate
+// after the call that fills it, which the analyzer does not follow. There
+// is no line of ours on that path to mark; the false positive is the
+// library's optional as the analyzer models it.)
+struct Action // NOLINT(clang-analyzer-core.uninitialized.Assign)
 {
     ActionKind kind{ActionKind::None};
 
@@ -399,8 +405,6 @@ struct Rule
 
 struct RuleSet
 {
-    int schemaVersion{1};
-    std::string name{"unnamed"};
     std::vector<Rule> rules;
 };
 
@@ -524,12 +528,13 @@ struct Extremes
 // that read Rule::damageKind as the resistance asked about.
 [[nodiscard]] bool IsResistance(PredicateKind predicate) noexcept;
 
-// Which actions the current runtime can actually perform. src/game/ fills this
-// in at startup. The UI greys out unsupported actions rather than letting
-// someone author a rule that silently never fires -- see docs/PLAN.md 3.5.
+// What the runtime can do for this evaluation. src/game/ fills it in each
+// tick. Every action is supported but the casts, which need the package
+// pool (game/Packages.h): with it unavailable a cast rule reports
+// Unsupported rather than silently never firing.
 struct Capabilities
 {
-    std::array<bool, static_cast<std::size_t>(ActionKind::COUNT)> supported{};
+    bool castingAvailable{true};
 
     // Supported in general but not available for THIS evaluation -- a resource
     // pool that is momentarily exhausted. A busy action is skipped exactly
@@ -539,19 +544,12 @@ struct Capabilities
 
     [[nodiscard]] bool Supports(ActionKind a) const noexcept
     {
-        return supported[static_cast<std::size_t>(a)];
+        return a != ActionKind::None && (castingAvailable || !IsCast(a));
     }
 
     [[nodiscard]] bool Busy(ActionKind a) const noexcept
     {
         return busy[static_cast<std::size_t>(a)];
-    }
-
-    static Capabilities All() noexcept
-    {
-        Capabilities c;
-        c.supported.fill(true);
-        return c;
     }
 };
 

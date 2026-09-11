@@ -1,15 +1,16 @@
 #pragma once
-// A follower's tactics as a file: the rules, the follower's own switch, the
-// pins, and who it is for. Written as JSON and read back leniently, so a
-// file from another version of the mod -- older or newer -- gives up only
-// what this build cannot name, and keeps the rest.
+// A follower's tactics as text: the rules, the follower's own switch, the
+// pins and bans, and who it is for. One JSON document per follower, held
+// in the SKSE co-save (game/Profiles.h) and, one day, shared as a file.
+// Read back leniently, so a document from a newer build gives up only what
+// this one cannot name, and keeps the rest.
 //
 // The reading rule, in one line: an unknown KEY is ignored, an unknown VALUE
 // drops the thing that carries it. A rule whose subject, predicate, target,
 // status, damage kind or hand this build has never heard of is dropped, with
 // a warning that says so; an action whose kind is unknown, or whose form
 // names a plugin that is not installed, is dropped alone and its rule kept.
-// Nothing here refuses a file: the next write replaces it whole, so a
+// Nothing here refuses a document: the next write replaces it whole, so a
 // dropped rule is gone for good the moment the player edits anything, and
 // that is accepted -- a profile from the future should degrade, not explode.
 //
@@ -29,12 +30,13 @@
 namespace ft
 {
 
-// The number at the top of every file. Bump it only for a change a reader of
-// the previous version could not make sense of by ignoring what it does not
-// know: a key renamed, a value's meaning changed. Adding a key, a subject, a
-// predicate or an action is NOT that -- an older reader drops what it cannot
-// name and keeps the rest, which is the whole design -- so the number is
-// expected to stay at 1 for a long time.
+// The number at the top of every document, and the co-save record's
+// version. Nothing has shipped, so it is 1 and the format is free to
+// change under it; once something has, it is bumped only for a change a
+// reader of the previous version could not make sense of by ignoring what
+// it does not know -- adding a key, a subject, a predicate or an action is
+// NOT that, since an older reader drops what it cannot name and keeps the
+// rest.
 inline constexpr int kProfileSchema = 1;
 
 // How a form crosses the wire. Core has no idea what a FormID means, and a
@@ -59,9 +61,9 @@ struct PinEntry
 
 struct Profile
 {
-    // Who the file is for, as a person reading it sees it. The game writes
-    // both from the follower the file belongs to; on the way in they are
-    // carried, not trusted -- the file's NAME says whose it is.
+    // Who the document is for, as a person reading it sees it. The game
+    // writes both from the follower it belongs to; on the way in they are
+    // carried, not trusted -- the co-save record's KEY says whose it is.
     std::string followerName;
     std::string followerForm;
     // The follower's own switch, beside the rules because it is theirs: off

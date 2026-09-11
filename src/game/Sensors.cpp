@@ -750,41 +750,6 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
     return out;
 }
 
-void LogActiveEffects(RE::Actor *actor, const char *when)
-{
-    // The whole walk exists to log, so it does not happen at all when the
-    // level would drop the lines.
-    if (!log::Enabled(log::Level::Debug))
-        return;
-
-    auto *target = actor ? actor->AsMagicTarget() : nullptr;
-    if (!target)
-        return;
-
-    auto *effects = target->GetActiveEffectList();
-    if (!effects)
-    {
-        log::sensors.debug("active effects [{}]: <none>", when);
-        return;
-    }
-
-    int count = 0;
-    for (auto *ae : *effects)
-    {
-        if (!ae || !ae->effect || !ae->effect->baseEffect)
-            continue;
-        ++count;
-
-        const auto *base = ae->effect->baseEffect;
-        const char *sourceName = ae->spell ? ae->spell->GetName() : "<none>";
-        log::sensors.debug("active effect [{}]: \"{}\" from \"{}\"  elapsed {:.1f}/{:.1f}s  mag {:.1f}", when,
-                           base->GetName(), sourceName, ae->elapsedSeconds, ae->duration, ae->magnitude);
-    }
-
-    if (count == 0)
-        log::sensors.debug("active effects [{}]: <none>", when);
-}
-
 // What an actor is in the middle of, as docs/CONDITIONS.md 2 reads it: the
 // hostile effects running on them by the kind of damage, the poison and
 // the disease by their spell type, the paralysis and the rest by the
@@ -1177,11 +1142,6 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         const float recovery = actor->GetVoiceRecoveryTime();
         s.voiceRecovery = recovery > 0.0f && recovery < 3600.0f ? recovery : 0.0f;
     }
-    if (auto *state = actor->AsActorState())
-    {
-        s.weaponDrawn = state->IsWeaponDrawn();
-        s.sneaking = state->IsSneaking();
-    }
     for (const auto kind : {ft::ActionKind::PowerAttack, ft::ActionKind::Bash, ft::ActionKind::PowerBash})
     {
         const BlowPlan plan = PlanBlow(actor, kind);
@@ -1224,10 +1184,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         enemy.distance = actor->GetPosition().GetDistance(other->GetPosition());
         if (auto theirTarget = other->GetActorRuntimeData().currentCombatTarget.get(); theirTarget)
             enemy.attacking = theirTarget->GetFormID();
-        bool losArg = false;
-        enemy.hasLineOfSight = actor->HasLineOfSight(other, losArg);
         enemy.traits = ReadTraits(other);
-        enemy.isCasting = enemy.traits.Has(ft::StatusKind::Casting);
         return enemy;
     };
     const auto allyOf = [&](RE::Actor *other) {
@@ -1406,15 +1363,6 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
                 s.spells.active.push_back(ae->spell->GetFormID());
             }
         }
-    }
-
-    // selectedSpells is indexed by Actor::SlotTypes, NOT by
-    // MagicSystem::CastingSource. The two enums start with the same two names
-    // in the same order, which makes mixing them up easy and silent.
-    for (const auto slot : {RE::Actor::SlotTypes::kLeftHand, RE::Actor::SlotTypes::kRightHand})
-    {
-        if (auto *held = actor->GetActorRuntimeData().selectedSpells[slot])
-            s.spells.equipped.push_back(held->GetFormID());
     }
 
     return s;
@@ -2951,13 +2899,6 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
     }
 
     return out;
-}
-
-RE::SpellItem *FindSpell(std::uint32_t form)
-{
-    if (form == 0)
-        return nullptr;
-    return RE::TESForm::LookupByID<RE::SpellItem>(form);
 }
 
 std::vector<SummonView> ScanSummons(RE::Actor *actor)

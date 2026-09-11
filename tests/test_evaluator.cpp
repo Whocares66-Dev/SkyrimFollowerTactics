@@ -196,7 +196,6 @@ TEST_CASE("a cooldown belongs to the action, not to the rule's position", "[eval
     s.spells.known.push_back(kHeal);
 
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0); // potion fires
 
@@ -242,7 +241,6 @@ TEST_CASE("a cooldown is as fine as the spell and the target", "[cooldown]")
     s.spells.known.push_back(kOakflesh);
 
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0); // heal self
 
@@ -262,14 +260,19 @@ TEST_CASE("a cooldown is as fine as the spell and the target", "[cooldown]")
 
 TEST_CASE("an unsupported action never fires", "[evaluator]")
 {
+    // The casts are the actions a runtime can lack: without the package
+    // pool a cast rule says so, before its condition or its spell is asked.
     RuleSet rs;
     rs.rules.push_back(HealBelow(0.5f));
+    rs.rules[0].FirstAction() = {};
+    rs.rules[0].FirstAction().kind = ActionKind::CastSpell;
+    rs.rules[0].FirstAction().form = 0x12FCD;
 
     Snapshot s = Healthy();
     s.health = {40.0f, 100.0f};
 
     EvalContext ctx;
-    ctx.caps.supported.fill(false);
+    ctx.caps.castingAvailable = false;
 
     Trace trace;
     const auto d = Evaluate(rs, s, ctx, &trace);
@@ -285,8 +288,8 @@ TEST_CASE("a group condition binds the member that best satisfies it", "[binding
 {
     Snapshot s = Healthy();
     //                   id     health          dist   casting atkPlayer LOS
-    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, false, true});
-    s.enemies.push_back({0x102, {10.0f, 100.0f}, 900.0f, false, false, true});
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x102, {10.0f, 100.0f}, 900.0f});
 
     SECTION("a health predicate binds the weakest match, not the nearest")
     {
@@ -340,8 +343,8 @@ TEST_CASE("a group condition binds the member that best satisfies it", "[binding
 TEST_CASE("the action follows the binding of the condition by default", "[binding]")
 {
     Snapshot s = Healthy();
-    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, false, true});
-    s.enemies.push_back({0x102, {10.0f, 100.0f}, 900.0f, false, false, true});
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x102, {10.0f, 100.0f}, 900.0f});
 
     RuleSet rs;
     Rule r;
@@ -389,7 +392,6 @@ TEST_CASE("the action target is its own choice, within what makes sense", "[bind
     rs.rules[0].FirstAction().kind = ActionKind::CastSpell;
     rs.rules[0].FirstAction().form = kHeal;
     s.spells.known.push_back(kHeal);
-    ctx.caps = Capabilities::All();
     d = Evaluate(rs, s, ctx);
     REQUIRE(d.Fired());
     REQUIRE(d.targetId() == kPlayerFormID);
@@ -461,7 +463,7 @@ TEST_CASE("the follower's own target is Enemy: Attacked by the follower", "[bind
     r.subjectForm = s.self;
     // Not sensed as an enemy yet: nothing to bind.
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    s.enemies.push_back({0x101, {10.0f, 100.0f}, 200.0f, false, 0, true});
+    s.enemies.push_back({0x101, {10.0f, 100.0f}, 200.0f});
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
 }
 
@@ -807,7 +809,7 @@ TEST_CASE("a rule does its actions one per tick, in order, and waits rather than
     Decision d = Evaluate(rs, s, ctx, &trace, &actions);
     // Tick one: the potion, and only the potion; the rest waits.
     REQUIRE(d.ruleIndex == 0);
-    REQUIRE(d.steps.size() == 1);
+    REQUIRE(d.step.has_value());
     REQUIRE(d.action() == ActionKind::DrinkStrongest);
     REQUIRE(trace.at(0) == Verdict::Fired);
     REQUIRE(actions.at(0) == std::vector<Verdict>{Verdict::Fired, Verdict::NotReached, Verdict::NotReached});
@@ -828,14 +830,14 @@ TEST_CASE("a rule does its actions one per tick, in order, and waits rather than
     ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = false;
     s.now += 0.5;
     d = Evaluate(rs, s, ctx, &trace, &actions);
-    REQUIRE(d.steps.size() == 1);
+    REQUIRE(d.step.has_value());
     REQUIRE(d.action() == ActionKind::CastSpell);
     REQUIRE(ctx.pending.Active());
 
     // Tick four: the hold, and the list is through.
     s.now += 0.5;
     d = Evaluate(rs, s, ctx, &trace, &actions);
-    REQUIRE(d.steps.size() == 1);
+    REQUIRE(d.step.has_value());
     REQUIRE(d.action() == ActionKind::DrinkStrongest);
     REQUIRE(actions.at(0) == std::vector<Verdict>{Verdict::NotReached, Verdict::NotReached, Verdict::Fired});
     REQUIRE_FALSE(ctx.pending.Active());
@@ -897,7 +899,7 @@ TEST_CASE("a list in progress is dropped when the fight ends", "[sequence]")
     Snapshot s = Healthy();
     s.health = {40.0f, 100.0f};
     EvalContext ctx;
-    REQUIRE(Evaluate(rs, s, ctx).steps.size() == 1);
+    REQUIRE(Evaluate(rs, s, ctx).step.has_value());
     REQUIRE(ctx.pending.Active());
 
     s.combatEnded = true;
@@ -941,7 +943,7 @@ TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[stat
     REQUIRE(EvaluateCondition(r, s).id == 0x202);
 
     // An enemy.
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, 0, true});
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
     r.subject = SubjectKind::Enemy;
     r.statusKind = StatusKind::Casting;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
@@ -980,8 +982,8 @@ TEST_CASE("armour is asked as a percent, and every measure has a lowest and a hi
     // Enemies: a mage in robes, a chief in plate. The percent binds among
     // those that pass, by the measure; Lowest and Highest bind the
     // extremes of it whatever the number.
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
-    s.enemies.push_back({0x102, {40.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x102, {40.0f, 100.0f}, 300.0f});
     s.enemies[0].traits.armor = 0.05f;
     s.enemies[1].traits.armor = 0.7f;
     r.subject = SubjectKind::Enemy;
@@ -1036,8 +1038,8 @@ TEST_CASE("resistance is asked by kind as a percent, with a lowest and a highest
     // half fire resistance. The game's value is a percent; the rule's
     // number is a fraction of it, so 50 reads as 50%.
     Snapshot s = Healthy();
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
-    s.enemies.push_back({0x102, {100.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x102, {100.0f, 100.0f}, 300.0f});
     s.enemies[0].traits.SetResist(DamageKind::Fire, 100.0f);
     s.enemies[0].traits.SetResist(DamageKind::Frost, -33.0f);
     s.enemies[1].traits.SetResist(DamageKind::Fire, 50.0f);
@@ -1106,7 +1108,7 @@ TEST_CASE("attacked by is asked by kind, and the attacker can be the target", "[
     // the Attacker target aims the action at the one doing it.
     Snapshot s = Healthy();
     s.allies.push_back({0x201, {60.0f, 100.0f}, 400.0f});
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
 
     Rule r;
     r.subject = SubjectKind::Ally;
@@ -1186,9 +1188,9 @@ TEST_CASE("a named follower is one ally asked about alone", "[follower]")
 TEST_CASE("the enemy on a member of the party, and the one a member is on", "[party]")
 {
     Snapshot s = Healthy();
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, 0, true});
-    s.enemies.push_back({0x102, {100.0f, 100.0f}, 200.0f, false, kPlayerFormID, true}); // going for the player
-    s.enemies.push_back({0x103, {100.0f, 100.0f}, 250.0f, false, 0x201, true});         // going for a follower
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x102, {100.0f, 100.0f}, 200.0f, kPlayerFormID}); // going for the player
+    s.enemies.push_back({0x103, {100.0f, 100.0f}, 250.0f, 0x201});         // going for a follower
     s.playerTarget = 0x101;
     s.allies.push_back({kPlayerFormID, {100.0f, 100.0f}, 100.0f});
     s.allies.push_back({0x201, {60.0f, 100.0f}, 300.0f});
@@ -1402,8 +1404,8 @@ TEST_CASE("a different situation is still free to draw a response", "[cooldown]"
 
     Snapshot s = Healthy();
     s.health = {40.0f, 100.0f};
-    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, false, true});
-    s.enemies.push_back({0x102, {50.0f, 100.0f}, 400.0f, false, false, true});
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x102, {50.0f, 100.0f}, 400.0f});
 
     EvalContext ctx;
 
@@ -1443,7 +1445,7 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
     rs.rules.push_back(disengage);
 
     Snapshot s = Healthy();
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
 
     EvalContext ctx;
 
@@ -1452,17 +1454,18 @@ TEST_CASE("a rule whose action is already in effect starves the rules below it",
     s.now += MinimumCooldown(ActionKind::DrinkStrongest) + 0.01;
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
 
-    // Make rule 0's action unavailable -- which is what an "already in effect"
-    // check will do -- and rule 1 gets its turn. Note the wait: rule 0's fire
-    // also blocked the condition they share, so the settle has to elapse first.
-    // Availability decides WHO acts; the cooldown decides WHEN.
-    ctx.caps.supported[static_cast<std::size_t>(ActionKind::DrinkStrongest)] = false;
+    // Make rule 0's action unavailable -- the bag runs out of stamina
+    // potions, as an "already in effect" check would do -- and rule 1 gets
+    // its turn. Note the wait: rule 0's fire also blocked the condition they
+    // share, so the settle has to elapse first. Availability decides WHO
+    // acts; the cooldown decides WHEN.
+    EmptyBag(s, kStaminaPotion);
     s.now += MinimumCooldown(ActionKind::DrinkStrongest) + 0.01;
 
     Trace trace;
     const auto d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 1);
-    REQUIRE(trace.at(0) == Verdict::Unsupported);
+    REQUIRE(trace.at(0) == Verdict::NoResource);
 }
 
 TEST_CASE("a busy action is skipped without spending a cooldown", "[capabilities]")
@@ -1493,7 +1496,6 @@ TEST_CASE("a busy action is skipped without spending a cooldown", "[capabilities
     s.spells.known.push_back(kOakflesh);
 
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
     ctx.caps.busy[static_cast<std::size_t>(ActionKind::CastSpell)] = true;
 
     Trace trace;
@@ -1537,7 +1539,6 @@ TEST_CASE("a cast she cannot afford is reported and spends no cooldown", "[resou
     s.spells.costs.push_back({kHeal, 60.0f});
 
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     // 30 magicka against a 60-point spell: the cast rule is reported, the
     // potion rule fires instead.
@@ -1560,7 +1561,6 @@ TEST_CASE("a cast she cannot afford is reported and spends no cooldown", "[resou
     t.magicka = {0.0f, 100.0f};
     t.spells.known.push_back(kHeal);
     EvalContext ctx2;
-    ctx2.caps = Capabilities::All();
     REQUIRE(Evaluate(rs, t, ctx2).ruleIndex == 0);
 }
 
@@ -1585,7 +1585,6 @@ TEST_CASE("a named potion is drunk only while carried, and cools down per potion
 
     Snapshot s = Healthy();
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     // Carries neither: both report it, nothing fires.
     Trace trace;
@@ -1625,7 +1624,6 @@ TEST_CASE("food and an ingredient are eaten only while carried, and by their own
 
     Snapshot s = Healthy();
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
@@ -1673,7 +1671,6 @@ TEST_CASE("a power is used like a cast: known, not running, not mid-cast, free o
     Snapshot s = Healthy();
     s.magicka.current = 0.0f; // a power costs nothing, so this must not matter
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
@@ -1883,7 +1880,6 @@ TEST_CASE("an equip rule pins once, reports done, and lets the rules beneath it 
 
     // A thing the AI happens to hold is not done: only a pin is.
     s.pins.clear();
-    s.spells.equipped.push_back(kFirebolt);
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
 }
 
@@ -1904,7 +1900,7 @@ TEST_CASE("a satisfied equip rule holds its hand against the rules beneath it", 
     rs.rules.push_back(Equip(ActionKind::EquipWeapon, kBow, Hand::Both));
 
     Snapshot s = Armed();
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 200.0f, false, false, true});
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 200.0f});
     EvalContext ctx;
 
     Decision d = Evaluate(rs, s, ctx);
@@ -2048,17 +2044,16 @@ Decision Tick(RuleSet &rs, Snapshot &s, EvalContext &ctx, Trace &trace, ActionTr
 {
     s.now += 0.5;
     const Decision d = Evaluate(rs, s, ctx, &trace, &actions);
-    for (const auto &step : d.steps)
-        if (IsEquip(step.action.kind) && step.action.form != 0)
-            Pinned(s, Decision{d.ruleIndex, {step}});
+    if (d.step && IsEquip(d.step->action.kind) && d.step->action.form != 0)
+        Pinned(s, d);
     return d;
 }
 
 std::vector<ActionKind> Kinds(const Decision &d)
 {
     std::vector<ActionKind> out;
-    for (const auto &step : d.steps)
-        out.push_back(step.action.kind);
+    if (d.step)
+        out.push_back(d.step->action.kind);
     return out;
 }
 
@@ -2229,8 +2224,8 @@ TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
 
     Snapshot s = Healthy();
     s.spells.known = {kA, kB};
-    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, false, true});
-    s.enemies.push_back({0x102, {80.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x102, {80.0f, 100.0f}, 300.0f});
     EvalContext ctx;
     Trace trace;
     ActionTrace actions;
@@ -2555,7 +2550,6 @@ TEST_CASE("a cast rule waits while the follower is casting a spell of their own"
     s.traits.Set(StatusKind::Casting);
 
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
     Trace trace;
     Decision d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(trace.at(0) == Verdict::Casting);
@@ -2786,7 +2780,6 @@ TEST_CASE("a summon is a condition on any actor: none or active", "[summon]")
     Snapshot s = Healthy();
     s.spells.known.push_back(0x000204C3);
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     // Nothing commanded: none holds, so the atronach is called.
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
@@ -2828,7 +2821,6 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     s.spells.known.push_back(kReanimate);
     s.spells.caps.push_back({kReanimate, 13});
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     // No corpses: nothing to bind; None holds instead.
     Trace trace;
@@ -2842,14 +2834,14 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     s.corpses.push_back({kGiant, 32, 200.0f});
     auto decision = Evaluate(rs, s, ctx);
     REQUIRE(decision.ruleIndex == 0);
-    REQUIRE(decision.steps.at(0).target == kBandit);
+    REQUIRE(decision.step->target == kBandit);
 
     // Lowest picks the rat -- that is what the player asked for.
     s.now += 10.0;
     rs.rules[0].predicate = PredicateKind::LevelLowest;
     decision = Evaluate(rs, s, ctx);
     REQUIRE(decision.ruleIndex == 0);
-    REQUIRE(decision.steps.at(0).target == kRat);
+    REQUIRE(decision.step->target == kRat);
 
     // A rule with no cap on its spell sees the giant: with only the giant
     // about, a conjuration on Self fires where a capped Reanimate would not.
@@ -2862,7 +2854,7 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     s.spells.known.push_back(0x000204C3);
     decision = Evaluate(rs, s, ctx);
     REQUIRE(decision.ruleIndex == 0);
-    REQUIRE(decision.steps.at(0).target == s.self);
+    REQUIRE(decision.step->target == s.self);
     s.now += 10.0;
     rs.rules[0].FirstAction().form = kReanimate;
     REQUIRE_FALSE(Evaluate(rs, s, ctx).Fired());
@@ -2879,7 +2871,7 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     rs.rules[0].FirstAction().form = kReanimate;
     decision = Evaluate(rs, s, ctx);
     REQUIRE(decision.ruleIndex == 0);
-    REQUIRE(decision.steps.at(0).target == s.self);
+    REQUIRE(decision.step->target == s.self);
 
     // Only a Reanimate -- a spell with a cap -- goes at a corpse: Firebolt
     // aimed at one is unsupported, as the menu never offers it.
@@ -3039,11 +3031,12 @@ TEST_CASE("a charge rule needs an enchanted weapon, and waits when none needs a 
     rs.rules.push_back(r);
 
     Snapshot s = Healthy();
-    s.soulGems = {{0xA, 1, 250.0f}};
+    s.soulGems = {{0xA, 1, 250.0f}, {0xB, 1, 60.0f}};
+    Decision last;
     const auto verdict = [&]() {
         EvalContext ctx;
         Trace trace;
-        Evaluate(rs, s, ctx, &trace);
+        last = Evaluate(rs, s, ctx, &trace);
         return trace.at(0);
     };
 
@@ -3053,9 +3046,19 @@ TEST_CASE("a charge rule needs an enchanted weapon, and waits when none needs a 
     // An enchanted sword with charge for many hits: waits.
     s.rightWeapon = {true, false, true, 80.0f, 100.0f, 20.0f};
     REQUIRE(verdict() == Verdict::EffectActive);
-    // One that cannot pay for the next hit: fires.
+    // One that cannot pay for the next hit: fires, and the step carries the
+    // gem the policy chose for what that hand is missing -- the largest
+    // that fits the 90 missing, so the game side has only to spend it.
     s.rightWeapon = {true, false, true, 10.0f, 100.0f, 20.0f};
     REQUIRE(verdict() == Verdict::Fired);
+    REQUIRE(last.step->action.form == 0xB);
+    // The left hand's need sizes the gem when the right is fine.
+    s.rightWeapon = {true, false, true, 80.0f, 100.0f, 20.0f};
+    s.leftWeapon = {true, false, true, 5.0f, 500.0f, 20.0f};
+    REQUIRE(verdict() == Verdict::Fired);
+    REQUIRE(last.step->action.form == 0xA);
+    s.leftWeapon = {};
+    s.rightWeapon = {true, false, true, 10.0f, 100.0f, 20.0f};
     // No gem carried: none in inventory.
     s.soulGems.clear();
     REQUIRE(verdict() == Verdict::NoResource);
@@ -3090,8 +3093,8 @@ TEST_CASE("a status no action could answer is not asked about the follower thems
 TEST_CASE("the enemy an action goes to, read from the condition", "[binding]")
 {
     Snapshot s = Healthy();
-    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f, false, 0, true});
-    s.enemies.push_back({0x102, {100.0f, 100.0f}, 150.0f, false, 0, true});
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x102, {100.0f, 100.0f}, 150.0f});
 
     Rule r;
     r.actionTarget = ActionTargetKind::Enemy;
@@ -3122,7 +3125,7 @@ TEST_CASE("Hit type asks what is in hand, of anyone", "[binding]")
     Snapshot s = Healthy();
     s.traits.Wield(DamageKind::Melee);
     s.traits.Wield(DamageKind::Fire); // a flaming sword
-    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, 0, true});
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f});
     s.enemies[0].traits.Wield(DamageKind::Magic);
 
     Rule r;
@@ -3210,30 +3213,30 @@ TEST_CASE("a policy chooses the bottle by its effect, strongest or weakest", "[e
     s.potions.Add(0x103, 1, ConsumableKind::Potion, {"Restore Magicka", 50.0f, 0.0f});
     s.potions.Add(0x104, 1, ConsumableKind::Potion, {"Resist Fire", 30.0f, 60.0f});
 
-    REQUIRE(ChosenForm(Drink("Restore Health"), s.potions) == 0x102);
-    REQUIRE(ChosenForm(Drink("Restore Health", false), s.potions) == 0x101);
-    REQUIRE(ChosenForm(Drink("Restore Magicka"), s.potions) == 0x103);
-    REQUIRE(ChosenForm(Drink("Resist Fire"), s.potions) == 0x104);
-    REQUIRE(ChosenForm(Drink("Restore Stamina"), s.potions) == 0);
+    REQUIRE(ChosenForm(Drink("Restore Health"), s) == 0x102);
+    REQUIRE(ChosenForm(Drink("Restore Health", false), s) == 0x101);
+    REQUIRE(ChosenForm(Drink("Restore Magicka"), s) == 0x103);
+    REQUIRE(ChosenForm(Drink("Resist Fire"), s) == 0x104);
+    REQUIRE(ChosenForm(Drink("Restore Stamina"), s) == 0);
     // A poison is not a potion, whatever its effect says.
     s.potions.Add(0x105, 1, ConsumableKind::Poison, {"Restore Health", 999.0f, 0.0f});
-    REQUIRE(ChosenForm(Drink("Restore Health"), s.potions) == 0x102);
-    REQUIRE(ChosenForm(Apply("Restore Health"), s.potions) == 0x105);
+    REQUIRE(ChosenForm(Drink("Restore Health"), s) == 0x102);
+    REQUIRE(ChosenForm(Apply("Restore Health"), s) == 0x105);
     // Food and a food-ingredient are chosen from their own kind.
     s.potions.Add(0x106, 1, ConsumableKind::Food, {"Restore Health", 2.0f, 0.0f});
     s.potions.Add(0x107, 1, ConsumableKind::Ingredient, {"Restore Health", 5.0f, 0.0f});
     Action food;
     food.kind = ActionKind::EatStrongestFood;
     food.effect = "Restore Health";
-    REQUIRE(ChosenForm(food, s.potions) == 0x106);
+    REQUIRE(ChosenForm(food, s) == 0x106);
     food.kind = ActionKind::EatWeakestIngredient;
-    REQUIRE(ChosenForm(food, s.potions) == 0x107);
-    REQUIRE(ChosenForm(Drink("Restore Health"), s.potions) == 0x102);
+    REQUIRE(ChosenForm(food, s) == 0x107);
+    REQUIRE(ChosenForm(Drink("Restore Health"), s) == 0x102);
     // A named bottle is its own form.
     Action named;
     named.kind = ActionKind::DrinkPotion;
     named.form = 0x104;
-    REQUIRE(ChosenForm(named, s.potions) == 0x104);
+    REQUIRE(ChosenForm(named, s) == 0x104);
 
     // Equal magnitudes: the longer one is the stronger. No magnitude at
     // all: the duration is the strength.
@@ -3242,9 +3245,9 @@ TEST_CASE("a policy chooses the bottle by its effect, strongest or weakest", "[e
     s.potions.Add(0x202, 1, ConsumableKind::Poison, {"Lingering Damage Health", 1.0f, 15.0f});
     s.potions.Add(0x203, 1, ConsumableKind::Poison, {"Paralysis", 0.0f, 3.0f});
     s.potions.Add(0x204, 1, ConsumableKind::Poison, {"Paralysis", 0.0f, 7.0f});
-    REQUIRE(ChosenForm(Apply("Lingering Damage Health"), s.potions) == 0x202);
-    REQUIRE(ChosenForm(Apply("Lingering Damage Health", false), s.potions) == 0x201);
-    REQUIRE(ChosenForm(Apply("Paralysis"), s.potions) == 0x204);
+    REQUIRE(ChosenForm(Apply("Lingering Damage Health"), s) == 0x202);
+    REQUIRE(ChosenForm(Apply("Lingering Damage Health", false), s) == 0x201);
+    REQUIRE(ChosenForm(Apply("Paralysis"), s) == 0x204);
 
     // The decision carries the chosen bottle, so the game side has only
     // to use it; and a rule for an effect not carried has no resource.
@@ -3258,7 +3261,7 @@ TEST_CASE("a policy chooses the bottle by its effect, strongest or weakest", "[e
     EvalContext ctx;
     const auto d = Evaluate(rs, s, ctx);
     REQUIRE(d.Fired());
-    REQUIRE(d.steps[0].action.form == 0x204);
+    REQUIRE(d.step->action.form == 0x204);
     rs.rules[0].FirstAction() = Apply("Fear");
     EvalContext ctx2;
     Trace trace;
@@ -3360,7 +3363,6 @@ TEST_CASE("a dual cast needs the perk the snapshot reports, and pays the dual co
     s.spells.costs.push_back({kBolt, 40.0f});
 
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
@@ -3378,7 +3380,7 @@ TEST_CASE("a dual cast needs the perk the snapshot reports, and pays the dual co
     const auto d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.Fired());
     REQUIRE(d.action() == ActionKind::CastSpell);
-    REQUIRE(d.steps.front().action.dual);
+    REQUIRE(d.step->action.dual);
 }
 
 TEST_CASE("a power attack needs a fight, something that swings, and the stamina it costs", "[resources]")
@@ -3392,10 +3394,9 @@ TEST_CASE("a power attack needs a fight, something that swings, and the stamina 
     rs.rules.push_back(swing);
 
     Snapshot s = Healthy();
-    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, false, true});
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f});
     s.stamina = {30.0f, 100.0f};
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     // Out of a fight, on the one pass a rule is looked at there: the
     // farewell, through a Combat end rule.
@@ -3464,12 +3465,11 @@ TEST_CASE("a bash and a power bash are blows of their own, priced apart", "[reso
 
     Snapshot s = Healthy();
     s.inCombat = true;
-    s.enemies.push_back({0x101, {50.0f, 100.0f}, 100.0f, false, false, true});
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 100.0f});
     s.stamina = {40.0f, 100.0f};
     // A sword and nothing else: a power attack, no bash.
     s.powerAttack = {true, 25.0f, 180.0f};
     EvalContext ctx;
-    ctx.caps = Capabilities::All();
 
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());

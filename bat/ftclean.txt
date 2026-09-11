@@ -20,5 +20,3 @@ restoreav health 99999
 restoreav magicka 99999
 restoreav stamina 99999
 resurrect 1
-setplayerteammate 0
-removefromfaction 0005C84E

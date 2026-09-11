@@ -20,5 +20,5 @@ player.placeatme 000387C0 1
 ;player.placeatme 001068FE 1   ; Bandit   (FormID single-sourced, verify)
 
 ; NOTE: this leaves the SPAWNED CREATURE selected, not your
-; follower. Run bat ftmarcurio or bat ftjenassa again to
-; re-select the follower before bat fthurt or bat ftstatus.
+; follower. Click the follower in the console again to
+; re-select them before bat fthurt or bat ftstatus.

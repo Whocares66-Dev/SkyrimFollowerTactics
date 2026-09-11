@@ -283,7 +283,7 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     const Type type = spell->GetSpellType();
     // A power a shout slot is leasing reads as Voice for the lease
     // (Packages.cpp); it is still a power to the tab.
-    const bool power = type == Type::kPower || type == Type::kLesserPower || IsLeasedPower(spell->GetFormID());
+    const bool power = IsPower(spell);
     if (type != Type::kSpell && !power)
         return false;
 

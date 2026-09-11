@@ -96,8 +96,9 @@ ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
 // charge, written to ExtraCharge on the worn copy; the weapon's ability
 // refreshed; the gem removed, or emptied if it is reusable (Azura's Star:
 // the routine sets the soul on its entry back to none); the recharge sound
-// played. `strongest` picks the gem when `gemForm` is 0.
-ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm, bool strongest)
+// played. The gem is the rule's: a policy's is chosen by the evaluator
+// (ChosenForm) and arrives as the step's form like a named one.
+ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
 {
     RE::TESObjectWEAP *weapon = nullptr;
     bool left = false;
@@ -118,8 +119,6 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm, bool stronges
         return ActionResult::MissingItem;
 
     const auto gems = ScanSoulGems(actor);
-    if (gemForm == 0)
-        gemForm = ft::ChooseSoulGem(gems, state.maxCharge - state.charge, strongest);
     const auto it = std::find_if(gems.begin(), gems.end(), [&](const auto &g) { return g.form == gemForm; });
     auto *gem = RE::TESForm::LookupByID<RE::TESSoulGem>(gemForm);
     if (it == gems.end() || !gem)
@@ -283,11 +282,9 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     switch (action.kind)
     {
     case ft::ActionKind::ChargeStrongestSoulGem:
-        return ChargeWeapon(actor, 0, true);
     case ft::ActionKind::ChargeWeakestSoulGem:
-        return ChargeWeapon(actor, 0, false);
     case ft::ActionKind::ChargeSoulGem:
-        return ChargeWeapon(actor, action.form, true);
+        return ChargeWeapon(actor, action.form);
     case ft::ActionKind::ApplyStrongest:
     case ft::ActionKind::ApplyWeakest:
     case ft::ActionKind::ApplyPoison: {

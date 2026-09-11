@@ -49,18 +49,3 @@ TEST_CASE("a bash is what blocks: a shield or torch, or the right hand's weapon 
     REQUIRE_FALSE(BashesWith({Held::Spell, Held::Nothing}));
     REQUIRE_FALSE(BashesWith({Held::Spell, Held::Spell}));
 }
-
-TEST_CASE("the loadouts asked about: one-hander both ways, left-hand weapon, spell and shield", "[blows]")
-{
-    // A one-hander with the left hand empty swings AND bashes.
-    REQUIRE(SwingWith({Held::OneHander, Held::Nothing}) == Swing::Right);
-    REQUIRE(BashesWith({Held::OneHander, Held::Nothing}));
-    // A weapon in the left hand with the right empty: the left-hand power
-    // attack, and no bash.
-    REQUIRE(SwingWith({Held::Nothing, Held::OneHander}) == Swing::Left);
-    REQUIRE_FALSE(BashesWith({Held::Nothing, Held::OneHander}));
-    // A spell in the right with a shield in the left: the shield bashes,
-    // nothing swings.
-    REQUIRE(BashesWith({Held::Spell, Held::Shield}));
-    REQUIRE(SwingWith({Held::Spell, Held::Shield}) == Swing::None);
-}

@@ -94,8 +94,8 @@ std::vector<Check> RunSelfCheck()
     //    the weakest rather than the nearest.
     {
         auto s = BaseSnapshot();
-        s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f, false, false, true});
-        s.enemies.push_back({0x102, {10.0f, 100.0f}, 900.0f, false, false, true});
+        s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f});
+        s.enemies.push_back({0x102, {10.0f, 100.0f}, 900.0f});
 
         ft::RuleSet rs;
         ft::Rule r;

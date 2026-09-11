@@ -1227,14 +1227,15 @@ std::string VerdictTooltip(ft::Verdict verdict, ft::ActionKind action, const Fol
     return Sentence(ft::Explain(verdict, action));
 }
 
-// "Drink strongest health potion" -> "Strongest health potion", for use under
-// a menu already headed "Potion".
-std::string DrinkSubmenuLabel(ft::ActionKind action)
+// "Charge with strongest soul gem" -> "Strongest soul gem", under the Charge
+// heading. The only policy leaf that reads its label off the display name;
+// the drink and apply leaves are worded by their effect.
+std::string ChargeSubmenuLabel(ft::ActionKind action)
 {
     std::string name(ft::DisplayName(action));
-    for (const std::string_view prefix : {"Drink ", "Apply ", "Charge with "})
-        if (name.rfind(prefix, 0) == 0)
-            name.erase(0, prefix.size());
+    constexpr std::string_view prefix = "Charge with ";
+    if (name.rfind(prefix, 0) == 0)
+        name.erase(0, prefix.size());
     if (!name.empty())
         name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
     return name;
@@ -1579,7 +1580,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // One leaf that picks a policy: the strongest of a kind, the weakest.
     const auto policy = [&](ft::ActionKind kind) {
         const bool selected = here && act.kind == kind;
-        if (CascadeItem(DrinkSubmenuLabel(kind).c_str(), selected))
+        if (CascadeItem(ChargeSubmenuLabel(kind).c_str(), selected))
         {
             act.kind = kind;
             act.form = 0;

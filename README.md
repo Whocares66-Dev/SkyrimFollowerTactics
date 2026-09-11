@@ -24,9 +24,7 @@ src/core/     the rule engine — NO RE:: types, ever. This is the tested part.
 src/game/     everything that touches Skyrim. Thin, imperative, verified by playing.
 src/plugin.cpp SKSE entry point
 tests/        Catch2. Runs with no Skyrim, no SKSE, no CommonLibSSE.
-test/         console batch files for the in-game scenario
-profiles/     JSON rule sets
-papyrus/      .psc sources (thin)
+bat/          console batch files for the in-game scenario
 ```
 
 The line between `src/core/` and `src/game/` is the most important rule in this repo.

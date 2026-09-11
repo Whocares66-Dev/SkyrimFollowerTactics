@@ -42,9 +42,7 @@ namespace ft::game
 // cast borrows the hand; the pin is what the follower fights with
 // otherwise. Armour and ammunition hold throughout.
 //
-// Equip puts it on with no promise: the AI's to change. Unpin leaves it
-// worn but hers to change again. TakeOff takes it off and forgets it; the
-// game may put it back, and what it wears by default is its business.
+// Equip puts it on with no promise: the AI's to change.
 //
 // Ban takes it off and keeps it off: the combat AI scores it zero, the
 // engine's own equips of it are refused, and the watchdog takes it off if
@@ -75,8 +73,6 @@ enum class WearRequest
 {
     Equip,
     Pin,
-    Unpin,
-    TakeOff,
     Ban,
     Unban
 };
@@ -124,13 +120,6 @@ void ForgetPins();
 // lets it take, whether the combat AI would choose it, which body slots it
 // covers. The ONLY place the pin rules meet a record.
 [[nodiscard]] Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form);
-
-// Put a spell in a hand -- Left, Right, or None for the engine's choice --
-// unless it is there already. The engine's item equip is a no-op for an
-// item already worn; its spell equip is not, and each call plays the equip
-// sound, so the panel and the watchdog together could sound several times
-// for one pin. Returns whether anything was done.
-bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand);
 
 // The tick's part. Mark the scanned items and spells that are pinned or
 // banned, and those the AI is kept from, for the panel; drop pins for

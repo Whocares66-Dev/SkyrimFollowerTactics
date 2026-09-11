@@ -107,9 +107,9 @@ using Fields = std::initializer_list<Field>;
 // read here because a clock is not something core has -- and because a test
 // that pins the envelope needs the line to be the same every run.
 //
-// There is deliberately no schema-version field. That problem belongs to the
-// co-save (PROFILES.md's `schema`), which has to keep reading old saves
-// forever; a log line has no such lifetime.
+// There is deliberately no schema-version field. That belongs to the
+// co-save (PROFILES.md's `schema`), which outlives the build that wrote it;
+// a log line has no such lifetime.
 [[nodiscard]] std::string FormatEvent(Level level, std::string_view event, std::string_view version,
                                       std::string_view timestamp, std::span<const Field> fields);
 

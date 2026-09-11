@@ -21,8 +21,10 @@
 // obviously not a key; WireName is obviously an identifier. Only WireName has a
 // parse function, so keying logic off display text does not compile.
 //
-// Renaming a WireName silently breaks every exported profile that used it, for
-// everyone, with no error message. Add freely; rename never.
+// Once profiles are out in the world, renaming a WireName silently breaks
+// every one that used it, for everyone, with no error message: add freely,
+// rename never. Until then (nothing has shipped) the names are as free to
+// change as the code.
 
 #include "Rule.h"
 

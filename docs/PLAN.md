@@ -93,7 +93,7 @@ found" rather than proof of absence.
                     └──────────────┬──────────────────────┘
                                    │ reads/writes
                     ┌──────────────▼──────────────────────┐
-   profiles/*.json ─┤  RuleSet (pure C++, no RE:: types)  │  ← unit testable
+   co-save JSON   ─┤  RuleSet (pure C++, no RE:: types)  │  ← unit testable
                     │  Rule{ subj, pred, action, target }  │
                     └──────────────┬──────────────────────┘
                                    │ evaluated against
@@ -470,10 +470,10 @@ someone writes twelve rules and concludes the mod is broken.
 
 Two separate stores, deliberately:
 
-- **Rules → JSON on disk**, `Data/SKSE/Plugins/FollowerTactics/profiles/*.json`.
-  Parsed with nlohmann/json. Shareable, diffable, hand-editable, version-stamped with a
-  schema version and a migration path from day one. Not in the save, so a profile survives
-  save-game churn and can be posted on a forum.
+- **Rules → JSON**, one document per follower, in the SKSE co-save (`docs/PROFILES.md`;
+  this section predates that decision). Parsed with nlohmann/json. Diffable and
+  hand-editable, stamped with a schema number; shareable named profiles as files are still
+  to come.
 - **Assignments and runtime state → SKSE co-save.** Which actor uses which profile, plus
   cooldown timers. Keyed by FormID and **every stored FormID must go through
   `SerializationInterface::ResolveFormID` on load** — this is the single most common cause
@@ -646,7 +646,6 @@ SkyrimFollowerTactics/
 │   ├── core/        Snapshot, Rule, RuleSet, evaluator — NO RE:: types
 │   └── game/        registry, scheduler, sensors, actions — all RE:: here
 ├── tests/           Catch2, runs without Skyrim
-├── papyrus/         .psc sources (thin)
-├── profiles/        shipped default JSON rule sets
+├── bat/             console batch files for the in-game scenario
 └── cmake/, vcpkg.json, CMakeLists.txt
 ```

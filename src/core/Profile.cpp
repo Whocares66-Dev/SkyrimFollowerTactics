@@ -391,14 +391,10 @@ ReadResult ReadProfile(std::string_view text, const FormCodec &codec)
     }
 
     Profile p;
-    if (const auto schema = Num(j, "schema"))
-    {
-        p.rules.schemaVersion = static_cast<int>(*schema);
-        if (p.rules.schemaVersion > kProfileSchema)
-            result.warnings.push_back("schema " + std::to_string(p.rules.schemaVersion) +
-                                      " is newer than this build's " + std::to_string(kProfileSchema) +
-                                      " -- reading what it understands");
-    }
+    if (const auto schema = Num(j, "schema"); schema && static_cast<int>(*schema) > kProfileSchema)
+        result.warnings.push_back("schema " + std::to_string(static_cast<int>(*schema)) +
+                                  " is newer than this build's " + std::to_string(kProfileSchema) +
+                                  " -- reading what it understands");
     if (const json *who = Obj(j, "follower"))
     {
         p.followerName = Str(*who, "name").value_or("");

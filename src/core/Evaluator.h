@@ -7,6 +7,7 @@
 #include "Rule.h"
 #include "Snapshot.h"
 
+#include <optional>
 #include <vector>
 
 namespace ft
@@ -66,11 +67,12 @@ struct Binding
     }
 };
 
-// The bottle an action takes: a named one's own form, or for a Strongest /
-// Weakest policy the one chosen from the stock by its effect -- 0 for none.
-// The Decision's steps carry the resolved form, so the game side has only
-// to consume it.
-[[nodiscard]] std::uint32_t ChosenForm(const Action &a, const PotionStock &stock);
+// The thing an action takes: a named one's own form, or for a Strongest /
+// Weakest policy the one chosen from the stock by its effect, or for a
+// Charge policy the gem sized to the weapon in need -- 0 for none. The
+// Decision's step carries the resolved form, so the game side has only to
+// consume it.
+[[nodiscard]] std::uint32_t ChosenForm(const Action &a, const Snapshot &snap);
 
 struct EvalContext
 {
@@ -133,7 +135,7 @@ struct EvalContext
         blocked.push_back({key, until});
     }
 
-    Capabilities caps{Capabilities::All()};
+    Capabilities caps;
 
     // A rule's list of actions in progress. A rule commits when its first
     // action is done; from then on an action that cannot be done yet is
@@ -170,9 +172,10 @@ struct EvalContext
     }
 };
 
-// What to do this tick: the actions of one rule that can be done now, in
-// order, each with the actor it applies to. Carried through from the rule so
-// dispatch needs only the Decision; core never resolves a form.
+// What to do this tick: one action of one rule, with the actor it applies
+// to -- a rule's list runs one action per tick (Run). Carried through from
+// the rule so dispatch needs only the Decision; the form is resolved here,
+// and the game side never chooses one.
 struct Decision
 {
     struct Step
@@ -182,29 +185,29 @@ struct Decision
     };
 
     int ruleIndex{-1};
-    std::vector<Step> steps;
+    std::optional<Step> step;
 
     [[nodiscard]] bool Fired() const noexcept
     {
-        return !steps.empty();
+        return step.has_value();
     }
 
-    // The first step's parts, for the log and the tests; None/0 with no step.
+    // The step's parts, for the log and the tests; None/0 with no step.
     [[nodiscard]] ActionKind action() const noexcept
     {
-        return steps.empty() ? ActionKind::None : steps.front().action.kind;
+        return step ? step->action.kind : ActionKind::None;
     }
     [[nodiscard]] std::uint32_t actionForm() const noexcept
     {
-        return steps.empty() ? 0 : steps.front().action.form;
+        return step ? step->action.form : 0;
     }
     [[nodiscard]] Hand hand() const noexcept
     {
-        return steps.empty() ? Hand::None : steps.front().action.hand;
+        return step ? step->action.hand : Hand::None;
     }
     [[nodiscard]] ActorId targetId() const noexcept
     {
-        return steps.empty() ? 0 : steps.front().target;
+        return step ? step->target : 0;
     }
 };
 

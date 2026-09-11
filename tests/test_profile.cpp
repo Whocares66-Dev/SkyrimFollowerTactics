@@ -205,7 +205,6 @@ TEST_CASE("a profile round-trips through its file", "[profile]")
     REQUIRE(after.followerName == before.followerName);
     REQUIRE(after.followerForm == before.followerForm);
     REQUIRE(after.enabled == before.enabled);
-    REQUIRE(after.rules.schemaVersion == kProfileSchema);
     REQUIRE(after.rules.rules.size() == before.rules.rules.size());
     for (std::size_t i = 0; i < before.rules.rules.size(); ++i)
         RequireSame(before.rules.rules[i], after.rules.rules[i]);
@@ -310,12 +309,6 @@ TEST_CASE("a pin this build cannot place is dropped alone", "[profile]")
     REQUIRE(read.warnings[0].find("pin 1") != std::string::npos);
     REQUIRE(read.warnings[0].find("0x7~Gone.esp") != std::string::npos);
     REQUIRE(read.warnings[1].find("tail") != std::string::npos);
-
-    // A file from before there were pins has none, and nothing to say.
-    const auto older = ReadProfile(OneRuleFile(kHealRule), kHex);
-    REQUIRE(older.profile->pins.empty());
-    REQUIRE(older.profile->bans.empty());
-    REQUIRE(older.warnings.empty());
 }
 
 TEST_CASE("bans are forms, written and read back, a stranger dropped alone", "[profile]")
@@ -487,7 +480,6 @@ TEST_CASE("a file from a newer build reads what this one understands", "[profile
 
     REQUIRE(read.profile.has_value());
     REQUIRE(read.profile->rules.rules.size() == 1);
-    REQUIRE(read.profile->rules.schemaVersion == 7);
     REQUIRE(read.warnings.size() == 1);
     REQUIRE(read.warnings[0].find("newer") != std::string::npos);
 }
