@@ -365,46 +365,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
 
 namespace
 {
-// One line per effect: the effect's own description with its numbers put
-// in, or its name. `magnitude` and `duration` say what numbers.
-std::string EffectLinesWith(const RE::MagicItem *magic, const std::function<float(const RE::Effect *)> &magnitude,
-                            const std::function<float(const RE::Effect *)> &duration)
-{
-    std::string out;
-    if (!magic)
-        return out;
-    for (const auto *effect : magic->effects)
-    {
-        if (!effect || !effect->baseEffect)
-            continue;
-        const char *text = effect->baseEffect->magicItemDescription.c_str();
-        std::string line = text && *text ? text : NameOf(effect->baseEffect);
-        if (line.empty())
-            continue;
-        ReplaceNoCase(line, "<mag>", Fmt("%.0f", magnitude(effect)));
-        ReplaceNoCase(line, "<dur>", Fmt("%.0f", duration(effect)));
-        ReplaceNoCase(line, "<area>", std::to_string(effect->effectItem.area));
-        if (!out.empty())
-            out += '\n';
-        out += line;
-    }
-    return out;
-}
 } // namespace
-
-std::string EffectLines(const RE::MagicItem *magic)
-{
-    return EffectLinesWith(
-        magic, [](const RE::Effect *e) { return e->effectItem.magnitude; },
-        [](const RE::Effect *e) { return static_cast<float>(e->effectItem.duration); });
-}
-
-std::string EffectLines(RE::Actor *caster, RE::MagicItem *spell)
-{
-    return EffectLinesWith(
-        spell, [&](const RE::Effect *e) { return ActualMagnitude(caster, spell, e); },
-        [&](const RE::Effect *e) { return ActualDuration(caster, spell, e); });
-}
 
 float ActualMagnitude(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect)
 {
@@ -570,7 +531,8 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
 
         // A poison on a weapon: a dose on one of the entry's extra lists,
         // hits rather than seconds, with the poison's own record behind it.
-        // Named and counted here; the effects go to their own section.
+        // The same two shapes as an enchantment: one headed row, and the
+        // effects' table.
         if (item.category == ItemCategory::Weapons && entry && entry->extraLists)
         {
             for (auto *list : *entry->extraLists)
@@ -578,11 +540,10 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
                 auto *dose = list ? list->GetByType<RE::ExtraPoison>() : nullptr;
                 if (!dose || !dose->poison)
                     continue;
-                SheetSection section{"Poison", {}, {}};
-                section.rows.push_back(Row("Name", NameOf(dose->poison)));
-                section.rows.push_back(Row("Hits left", std::to_string(dose->count)));
-                item.detail.push_back(std::move(section));
-                item.poisonEffects = EffectLines(dose->poison);
+                item.poison = SheetSection{"Poison", {Row(NameOf(dose->poison), std::to_string(dose->count))}, {}};
+                item.poisonEffects =
+                    EffectsOf(actor, dose->poison, [](const RE::Effect *e) { return e->effectItem.magnitude; });
+                item.poisonEffects.title = "Poison Effects";
                 break;
             }
         }

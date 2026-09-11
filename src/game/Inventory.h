@@ -65,10 +65,12 @@ struct InventoryItem
     // A Daedric artifact (the DaedricArtifact keyword, or the vendor one a
     // few Creation Club pieces carry instead): named in gold.
     bool artifact{false};
-    // A weapon with a poison on it: the poison's effects, one per line,
-    // for the detail page's Poison section; empty for none. The row shows
-    // a poison glyph after the name.
-    std::string poisonEffects;
+    // A poison on the weapon: one row, its name and the hits left, under
+    // headings of its own, and its effects in the enchantment's table
+    // shape. No rows for a clean weapon. The list shows a poison glyph
+    // after the name.
+    SheetSection poison;
+    SheetSection poisonEffects;
     // A thing held in a hand -- weapon, shield, torch -- as opposed to worn;
     // and one that only one particular hand takes: a shield or a torch on
     // the left, a mod's right-hand armour on the right.
@@ -120,13 +122,6 @@ struct InventoryItem
     std::string cast;
     float magnitude{0.0f};
 };
-
-// One line per effect of a spell, potion or enchantment: its description
-// with the magnitude and duration filled in, as the item card shows it.
-[[nodiscard]] std::string EffectLines(const RE::MagicItem *magic);
-// The same for a spell the actor casts: <mag> and <dur> are what THEY would
-// get, perks and Fortify effects applied, not the record's base numbers.
-[[nodiscard]] std::string EffectLines(RE::Actor *caster, RE::MagicItem *spell);
 
 // An effect's magnitude and duration as this actor casts it. The record's
 // number, put through the perk entry points the engine applies when the

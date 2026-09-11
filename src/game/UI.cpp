@@ -501,7 +501,6 @@ bool GlyphButton(const std::string &id, float size, Glyph glyph, bool painted = 
 
 bool CellClicked(const char *id, float height = 0.0f);
 void CentredHeading(const char *title);
-void BulletedLines(const std::string &text);
 
 bool DeleteButton(const std::string &id, float size)
 {
@@ -3103,31 +3102,6 @@ void DrawTickAt(Im::ImVec2 pos, Im::ImU32 ink, bool on, bool pinned, bool banned
         DrawGlyph(draw, Glyph::Pin, {left, pos.y}, {left + box, pos.y + h}, ink, kPinScale);
 }
 
-// One bullet per line of `text`, each wrapped: the effects of a spell, a
-// shout, an enchantment, a potion, which come one per line. The bullet is a
-// plain dash. ImGui's Bullet() draws a circle tessellated with a handful of
-// segments at that radius and reads as a polygon; U+2022 the framework's
-// text face does not carry (a "?"); and U+00B7 came out as a stray symbol
-// (2026-09-05). ASCII is the one thing every face has.
-void BulletedLines(const std::string &text)
-{
-    const std::string bullet = "-";
-    std::size_t start = 0;
-    while (start < text.size())
-    {
-        std::size_t end = text.find('\n', start);
-        if (end == std::string::npos)
-            end = text.size();
-        if (end > start)
-        {
-            Im::TextUnformatted(bullet.c_str(), nullptr);
-            Im::SameLine(0.0f, -1.0f);
-            Im::TextWrapped("%s", text.substr(start, end - start).c_str());
-        }
-        start = end + 1;
-    }
-}
-
 void CentredHeading(const char *title)
 {
     Im::PushStyleVar(Im::ImGuiStyleVar_SeparatorTextAlign, Im::ImVec2(0.5f, 0.5f));
@@ -3594,7 +3568,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             Im::Text("%s", name.c_str());
         // A poisoned weapon: the poison glyph after the name and count, as
         // the game's own inventory marks one.
-        if (!item->poisonEffects.empty())
+        if (!item->poison.rows.empty())
         {
             // Drawn as the pin is, at kPinScale: a font glyph fills its em
             // and reads too big beside text at full size.
@@ -3736,13 +3710,18 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
             },
             "Name", "Effect", WithDescription());
     }
-    // The poison's effects under the Poison section's own heading, so an
-    // enchanted and poisoned blade reads as two things, which it is.
-    if (!item.poisonEffects.empty())
+    // The poison as the enchantment is drawn, so an enchanted and poisoned
+    // blade reads as two things, which it is.
+    if (!item.poison.rows.empty())
+        DrawSections({item.poison}, true, {}, nullptr, {}, "Name", "Hits Left");
+    if (!item.poisonEffects.rows.empty())
     {
-        CentredHeading("Poison effects");
-        BulletedLines(item.poisonEffects);
-        Im::Spacing();
+        DrawSections(
+            {item.poisonEffects}, true, {}, nullptr,
+            [](const SheetRow &entry, const std::string &key, float left, float right) {
+                DrawConditionDrawer(entry, key, left, right);
+            },
+            "Name", "Effect", WithDescription());
     }
     if (!item.description.empty())
     {
