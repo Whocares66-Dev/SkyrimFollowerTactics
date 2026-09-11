@@ -2225,13 +2225,18 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
         if (raw > 0xFFFFFFFFu)
         {
             // The form's name; a keyword has none, only an editor ID, which
-            // its record keeps in memory; failing both, the ID.
+            // its record keeps in memory; failing both, the ID. A perk goes
+            // by its editor ID first: the ranks of one perk share a name,
+            // and a rank's own entry is conditioned on the NEXT rank not
+            // being held ("HasPerk(Augmented Frost) = 0" on Augmented
+            // Frost read as nonsense until it said AugmentedFrost60).
             const auto *form = static_cast<const RE::TESForm *>(param);
             const char *formName = form->GetName();
             const char *editorID = form->GetFormEditorID();
-            args.push_back(formName && *formName   ? formName
-                           : editorID && *editorID ? editorID
-                                                   : HexId(form->GetFormID()));
+            const bool byEditorID = form->Is(RE::FormType::Perk) || !formName || !*formName;
+            args.push_back(byEditorID && editorID && *editorID ? editorID
+                           : formName && *formName             ? formName
+                                                               : HexId(form->GetFormID()));
         }
         else if (actorValue && args.empty())
         {
