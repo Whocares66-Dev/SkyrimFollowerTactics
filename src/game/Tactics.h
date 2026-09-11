@@ -105,17 +105,9 @@ struct FollowerView
     std::vector<SheetSection> combatStyle;
 };
 
-struct CostStats
-{
-    double avgUs{0.0};
-    double maxUs{0.0};
-    std::uint64_t samples{0};
-};
-
 // Everything the UI needs, all copied. Includes followers who are NOT fighting:
 // tactics are authored before a fight, so the panel has to show them then.
 [[nodiscard]] std::vector<FollowerView> ObserveFollowers();
-[[nodiscard]] CostStats ObserveCost();
 
 // This follower's rules, as a copy.
 //
@@ -166,11 +158,7 @@ void PublishAllFollowers();
 // Rules are gated on time running, not on any menu being closed -- those are
 // different questions, and only the first is the one a tactic cares about.
 // Firing into a frozen world is how a half-written rule drank potions while it
-// was still being edited.
-//
-// Both the tick and the panel read this, so what the panel reports is by
-// construction what the tick actually did, rather than a second opinion that
-// can drift from it. See ReadClock() for why it takes two signals.
+// was still being edited. See ReadClock() for why it takes two signals.
 struct ClockState
 {
     bool pausedMenu{false};  // inventory, map, journal, settings, console

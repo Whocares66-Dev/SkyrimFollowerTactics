@@ -831,11 +831,6 @@ std::vector<FollowerView> ObserveFollowers()
     return g_view;
 }
 
-CostStats ObserveCost()
-{
-    return CostStats{g_cost.AvgUs(), g_cost.maxUs, g_cost.samples};
-}
-
 const ft::RuleSet &ActiveRuleSet()
 {
     return DefaultRuleSet();

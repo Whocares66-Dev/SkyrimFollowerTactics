@@ -4634,65 +4634,34 @@ void DrawSlot(std::size_t slot)
 
 void DrawSettings()
 {
-    bool enabled = IsEnabled();
-    if (Im::Checkbox("Tactics enabled for all followers", &enabled))
-        SetEnabled(enabled);
-
-    Im::TextWrapped("Turning this off stops every follower. Each follower also has their own "
-                    "switch, and each rule its own -- all three must be on for a rule to run.");
-    Im::TextWrapped("Rules are evaluated only while a follower is fighting. Out of combat they "
-                    "are listed but not run, and the inventory is not scanned.");
-    // Read the SAME predicate the tick gates on, so this cannot disagree with
-    // what actually happened. Saying which of the two states we are in matters:
-    // "nothing is happening because time is stopped" and "nothing is happening
-    // because something is broken" otherwise look identical from here.
-    const auto clock = ft::game::ReadClock();
-    if (clock.stopped())
-    {
-        Im::TextDisabled("%s, so nothing is being evaluated. Set FreezeTimeOnMenu = false in "
-                         "SKSEMenuFramework.ini to keep playing with this panel open and watch "
-                         "rules fire live.",
-                         clock.frozenClock ? "Time is frozen" : "The game is paused");
-    }
-    else
-    {
-        Im::TextColored(Im::ImVec4(0.95f, 0.65f, 0.35f, 1.0f), "Time is running: rules are being evaluated right now.");
-    }
+    // The title, larger than the page's text. SetWindowFontScale sets the
+    // window's scale outright rather than multiplying it, so the scale in
+    // force is measured first -- the font size at it against the size at 1 --
+    // and put back after, in case the framework sets one of its own.
+    const float fontSize = Im::GetFontSize();
+    Im::SetWindowFontScale(1.0f);
+    const float baseSize = Im::GetFontSize();
+    const float windowScale = baseSize > 0.0f ? fontSize / baseSize : 1.0f;
+    Im::SetWindowFontScale(windowScale * 1.5f);
+    Im::Text("Follower Tactics (%s)", FT_VERSION);
+    Im::SetWindowFontScale(windowScale);
 
     Im::Separator();
+    Im::Spacing();
 
-    const auto cost = ObserveCost();
-    if (cost.samples > 0)
-    {
-        // Kept visible rather than buried in a log: docs/PLAN.md 3.2 sets a
-        // budget and asks for it to be measured, not assumed.
-        Im::Text("Evaluation cost: %.0f us average, %.0f us peak, per follower", cost.avgUs, cost.maxUs);
-    }
-    else
-    {
-        Im::TextDisabled("Evaluation cost: nothing measured yet.");
-    }
-    Im::Separator();
-
-    const auto followers = ObserveFollowers();
-    if (followers.empty())
-    {
-        Im::TextWrapped("No followers. Anyone travelling with you appears here as soon as they "
-                        "are a teammate -- you do not need to be in a fight to set their rules "
-                        "up, only to watch them run.");
-        return;
-    }
-
-    Im::Text("Followers under tactics control:");
-    for (const auto &view : followers)
-    {
-        Im::BulletText("%s  %s", view.name.c_str(), view.inCombat ? "(in combat)" : "(idle)");
-        if (!view.tacticsEnabled)
-        {
-            Im::SameLine(0.0f, 8.0f);
-            Im::TextDisabled("- tactics off");
-        }
-    }
+    // The same switch as each follower's on their Tactics tab, and read
+    // live the same way.
+    const bool enabled = IsEnabled();
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    const bool toggled = GlyphButton("enabledAll", Im::GetFrameHeight(), Glyph::Tick, enabled);
+    Im::PopStyleVar(1);
+    if (toggled)
+        SetEnabled(!enabled);
+    Im::SameLine(0.0f, kCellPadX);
+    Im::AlignTextToFramePadding();
+    Im::Text("Enable for all");
+    if (Im::IsItemHovered(0))
+        Im::SetTooltip("Disabling turns off tactics for all followers");
 }
 
 void __stdcall RenderSettings()
