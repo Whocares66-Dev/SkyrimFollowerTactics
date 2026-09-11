@@ -1,30 +1,3 @@
-<#
-.SYNOPSIS
-    Build the Release plugin and zip it as an installable mod.
-
-.DESCRIPTION
-    A releasable FollowerTactics is one .dll, SKSE\Plugins\FollowerTactics.dll,
-    with SKSE\Plugins\FollowerTactics.ini beside it (log level and the events
-    file; every value is its default, so the file is optional).
-    Its .pdb stays in build\release (27 MB against a 1 MB DLL): a crash log's
-    offsets are read against it here. There is no plugin file (the forms are made
-    in memory at load, docs/MAGIC.md "Forms at runtime"), no scripts, no assets. The zip is a mod root,
-    so Mod Organizer installs it from the archive as it is, and a manual install
-    is "extract into Data".
-
-    Builds with the release preset through tools\build.ps1 -NoDeploy (the dev
-    deploy is the DEBUG build's; a release build must not overwrite it), then
-    writes out\follower-tactics-<version>.zip, the version being the CMake
-    project's. Install it in Mod Organizer from the archive; a new mod appears
-    unticked, so tick it.
-
-    Requirements at run time, none of which are in the zip: SKSE, Address
-    Library for SKSE Plugins, SKSE Menu Framework (with its ImGui Icons).
-
-.EXAMPLE
-    .\tools\package.ps1
-#>
-
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -36,14 +9,11 @@ if (-not $version) { throw "No project VERSION in CMakeLists.txt" }
 $dll = Join-Path $root 'build\release\FollowerTactics.dll'
 if (-not (Test-Path $dll)) { throw "No $dll after the build" }
 
-# The mod root, staged: SKSE\Plugins\FollowerTactics.dll and a short README.
 $stage = Join-Path $root 'build\release\package'
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 $plugins = Join-Path $stage 'SKSE\Plugins'
 New-Item -ItemType Directory -Force $plugins | Out-Null
 Copy-Item $dll $plugins
-# Settings, beside the .dll. Every value in it is the default it ships with, so
-# it is documentation as much as configuration -- deleting it changes nothing.
 Copy-Item (Join-Path $root 'assets\FollowerTactics.ini') $plugins
 
 $readme = @"
