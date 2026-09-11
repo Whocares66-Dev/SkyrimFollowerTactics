@@ -248,9 +248,14 @@ struct EffectRow
     // Fortify One-handed on a follower, which writes a value nothing on a
     // follower reads. Listed greyed, hovering as "Not applied".
     bool applied{true};
+    // One the game's own list leaves out, listed here because it moves a
+    // value the Character sheet names it for. Greyed, hovering as such.
+    bool hidden{false};
 
-    // The page: numbers as sections, and the effect's description with the
-    // magnitude and duration filled in, as the item card shows it.
+    // The page: the effect's numbers as the first section, then what its
+    // source does, effect by effect, each opening on its conditions -- the
+    // perk page's shape -- and the description with the magnitude and
+    // duration filled in, as the item card shows it.
     std::vector<SheetSection> detail;
     std::string description;
 };

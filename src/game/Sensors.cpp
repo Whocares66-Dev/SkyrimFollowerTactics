@@ -6,6 +6,7 @@
 #include "game/Hits.h"
 #include "game/Inventory.h"
 #include "game/Log.h"
+#include "game/Magic.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
 
@@ -470,6 +471,79 @@ std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
     return note;
 }
 
+std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition); // below, with the perks
+
+// Does the effect move an actor value: the kinds the Character sheet's
+// notes list by source.
+bool MovesValue(const RE::EffectSetting *base)
+{
+    using Archetype = RE::EffectArchetypes::ArchetypeID;
+    const auto archetype = base->GetArchetype();
+    return archetype == Archetype::kValueModifier || archetype == Archetype::kPeakValueModifier ||
+           archetype == Archetype::kDualValueModifier;
+}
+
+// One effect of a spell, an enchantment or a potion as a row, as a perk's
+// entry is (EntryRow): what it does on the left -- the value it moves and
+// by how much, else the kind of effect, its magnitude and what it names
+// -- and on the right the engine's word for its archetype, how long it
+// runs, and "hidden" where the game's own list would not show it. Its
+// conditions open beneath, with a tick where they hold for this actor.
+// The description is the author's prose and says what they meant; this
+// is the record, and says what it does. The two parted on a Breton's
+// Spell Warding, whose text promises an absorb chance that a second,
+// hidden effect grants the player alone (2026-09-11).
+SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect)
+{
+    const auto *base = effect.baseEffect;
+    const float magnitude = effect.effectItem.magnitude;
+    const auto valueName = [](RE::ActorValue value) -> std::string {
+        auto *list = RE::ActorValueList::GetSingleton();
+        auto *info = list ? list->GetActorValueInfo(value) : nullptr;
+        return info && info->GetFullName() && *info->GetFullName() ? info->GetFullName() : "?";
+    };
+
+    std::string what;
+    if (MovesValue(base))
+    {
+        // The record's magnitude is unsigned; a detrimental effect takes
+        // it away. A dual-value effect moves its second value by the
+        // magnitude weighted.
+        const float moved = base->IsDetrimental() ? -magnitude : magnitude;
+        what = valueName(base->data.primaryAV) + " " + Fmt("%+g", moved);
+        if (base->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kDualValueModifier &&
+            base->data.secondaryAV != RE::ActorValue::kNone)
+            what += ", " + valueName(base->data.secondaryAV) + " " + Fmt("%+g", moved * base->data.secondAVWeight);
+    }
+    else
+    {
+        what = TypeWord(base);
+        if (magnitude != 0.0f)
+            what += " " + Fmt("%g", magnitude);
+        // What it names: the creature summoned, the weapon bound.
+        if (const auto *named = base->data.associatedForm; named && named->GetName() && *named->GetName())
+            what += std::string(" ") + named->GetName();
+    }
+
+    const char *archetype = RE::EffectArchetypes::GetArchetypeName(base->GetArchetype());
+    std::string kind = archetype ? archetype : "?";
+    if (effect.effectItem.duration > 0)
+        kind += ", " + std::to_string(effect.effectItem.duration) + " s";
+    if (base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
+        kind += ", hidden";
+
+    SheetRow row = Row(what, kind);
+    if (effect.conditions.head)
+    {
+        row.detail = ConditionRows(actor, effect.conditions);
+        if (effect.conditions.IsTrue(actor, actor))
+            row.mark = kGlyphTick;
+    }
+    else
+        row.mark = kGlyphTick;
+    return row;
+}
+
 std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
 {
     std::vector<EffectRow> out;
@@ -484,8 +558,14 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             continue;
         const auto *base = ae->effect->baseEffect;
         // As the game's own Active Effects list: hidden ones stay hidden,
-        // and one that has run out is gone.
-        if (base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
+        // and one that has run out is gone -- except a hidden effect that
+        // moves a value, which the Character sheet's notes name by source
+        // and which therefore wants a page: listed greyed, as one that
+        // does not apply is. A hidden effect that moves nothing -- a
+        // script's, a race monitor's, a cloak's -- stays off the list, as
+        // there would be many and nothing to show for them.
+        const bool hidden = base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI);
+        if (hidden && (!MovesValue(base) || std::abs(ae->magnitude) < 0.05f))
             continue;
         if (ae->duration > 0.0f && ae->elapsedSeconds >= ae->duration)
             continue;
@@ -496,6 +576,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         EffectRow row;
         row.form = base->GetFormID();
         row.sourceForm = ae->spell ? ae->spell->GetFormID() : 0;
+        row.hidden = hidden;
         row.applied = EffectApplies(actor, base);
         row.name = name;
         row.magnitude = ae->magnitude;
@@ -535,6 +616,20 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         if (auto caster = ae->caster.get(); caster && caster.get() != actor && caster->GetName() && *caster->GetName())
             stats.rows.push_back(Row("Caster", caster->GetName()));
         row.detail.push_back(std::move(stats));
+        // What the source does, effect by effect, hidden ones included, as
+        // the perk page lists a perk's entries: the record beside the
+        // author's description, with each effect's conditions beneath it.
+        if (ae->spell)
+        {
+            SheetSection what{"Effects", {}, {}};
+            for (const auto *effect : ae->spell->effects)
+            {
+                if (effect && effect->baseEffect)
+                    what.rows.push_back(EffectEntryRow(actor, *effect));
+            }
+            if (!what.rows.empty())
+                row.detail.push_back(std::move(what));
+        }
         row.description = EffectDescription(base, row.magnitude, row.duration);
         // An ability's text lives on the spell, not its effect: Imperial
         // Luck's effect record says nothing, the ability says "find more

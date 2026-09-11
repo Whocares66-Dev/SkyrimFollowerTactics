@@ -4219,7 +4219,18 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state)
     Im::Text("%s", row.name.c_str());
 
     Im::Spacing();
-    DrawSections(row.detail, false);
+    // The effect's numbers; then what its source does, effect by effect,
+    // each with its conditions beneath, in the table the perk page uses
+    // for a perk's entries.
+    const auto split = row.detail.begin() + (row.detail.empty() ? 0 : 1);
+    const std::vector<SheetSection> info(row.detail.begin(), split);
+    const std::vector<SheetSection> effects(split, row.detail.end());
+    DrawSections(info, false);
+    if (!effects.empty())
+        DrawSections(effects, true, {}, "Active",
+                     [](const SheetRow &entry, const std::string &key, float left, float right) {
+                         DrawConditionDrawer(entry, key, left, right);
+                     });
 
     if (!row.description.empty())
     {
@@ -4294,9 +4305,10 @@ void DrawEffects(const FollowerView &view)
         std::snprintf(buf, sizeof(buf), "##effect%08X_%08X", row->form, row->sourceForm);
 
         Im::TableNextRow(0, 0.0f);
-        // Running but changing nothing for this follower: the row is drawn
-        // in the disabled colour, and its name hovers as "Not applied".
-        const DimText grey(!row->applied);
+        // Running but changing nothing for this follower, or one the game's
+        // own list hides: the row is drawn in the disabled colour, and its
+        // name hovers as which.
+        const DimText grey(!row->applied || row->hidden);
         Im::TableSetColumnIndex(0);
         const Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
@@ -4306,6 +4318,8 @@ void DrawEffects(const FollowerView &view)
         }
         if (!row->applied && Im::IsItemHovered(0))
             Im::SetTooltip("Not applied");
+        else if (row->hidden && Im::IsItemHovered(0))
+            Im::SetTooltip("Hidden by the game");
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", row->name.c_str());
 
