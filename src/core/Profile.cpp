@@ -34,12 +34,6 @@ using json = nlohmann::ordered_json;
     return IsResistance(p) || p == PredicateKind::HitBy || p == PredicateKind::HitType;
 }
 
-[[nodiscard]] bool UsesForm(ActionKind a) noexcept
-{
-    return IsCast(a) || a == ActionKind::DrinkPotion || a == ActionKind::EatFood || a == ActionKind::EatIngredient ||
-           IsEquip(a);
-}
-
 [[nodiscard]] bool UsesHand(ActionKind a) noexcept
 {
     return a == ActionKind::EquipWeapon || a == ActionKind::EquipSpell;
@@ -56,7 +50,7 @@ json WriteAction(const Action &a, const FormCodec &codec)
 {
     json j;
     j["action"] = WireName(a.kind);
-    if (UsesForm(a.kind) && a.form != 0)
+    if (NamesForm(a.kind) && a.form != 0)
         j["form"] = codec.encode(a.form);
     if (UsesHand(a.kind))
         j["hand"] = WireName(a.hand);

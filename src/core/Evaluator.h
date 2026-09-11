@@ -23,6 +23,7 @@ enum class Verdict : std::uint8_t
     ActionCooldown,
     NoTarget,
     NoResource,
+    NotInCombat,      // an Attack or a blow with no fight on: there is no one to be pointed at
     NothingToPoison,  // an Apply rule with no weapon in hand that takes a poison
     NothingToCharge,  // a Charge rule with no enchanted weapon in hand
     CannotAfford,     // knows the spell, cannot pay for it right now

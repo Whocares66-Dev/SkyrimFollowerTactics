@@ -112,14 +112,43 @@ Profile Everything()
         dual.form = 0x12FCD;
         dual.dual = true;
         r.actions.push_back(dual);
+        Action poison;
+        poison.kind = ActionKind::ApplyPoison;
+        poison.form = 0x73F30;
+        r.actions.push_back(poison);
+        Action gem;
+        gem.kind = ActionKind::ChargeSoulGem;
+        gem.form = 0x2E4E2;
+        r.actions.push_back(gem);
         p.rules.rules.push_back(r);
+    }
+    {
+        // A hit type, and an enemy attacking a named member of the party.
+        Rule r;
+        r.subject = SubjectKind::Ally;
+        r.predicate = PredicateKind::HitType;
+        r.damageKind = DamageKind::Ranged;
+        r.actionTarget = ActionTargetKind::Self;
+        r.FirstAction().kind = ActionKind::ApplyWeakest;
+        r.FirstAction().effect = "Damage Health";
+        p.rules.rules.push_back(r);
+        Rule peel;
+        peel.subject = SubjectKind::Enemy;
+        peel.predicate = PredicateKind::Attacking;
+        peel.subjectForm = 0x1234;
+        peel.actionTarget = ActionTargetKind::Enemy;
+        peel.FirstAction().kind = ActionKind::PowerAttack;
+        p.rules.rules.push_back(peel);
     }
     p.pins.push_back({0x13989, Hand::Both}); // a bow
     p.pins.push_back({0x12E49, Hand::None}); // a cuirass
     p.pins.push_back({0x12FCD, Hand::Left}); // a spell in one hand
+    p.bans = {0x2F3B8};
     return p;
 }
 
+// Field by field first, so a failure names the field; then the whole, so a
+// field added to the struct and forgotten here still counts.
 void RequireSame(const Action &a, const Action &b)
 {
     REQUIRE(a.kind == b.kind);
@@ -127,6 +156,8 @@ void RequireSame(const Action &a, const Action &b)
     REQUIRE(a.hand == b.hand);
     REQUIRE(a.arg == b.arg);
     REQUIRE(a.dual == b.dual);
+    REQUIRE(a.effect == b.effect);
+    REQUIRE(a == b);
 }
 
 void RequireSame(const Rule &a, const Rule &b)
@@ -137,15 +168,14 @@ void RequireSame(const Rule &a, const Rule &b)
     REQUIRE(a.subjectForm == b.subjectForm);
     REQUIRE(a.predicate == b.predicate);
     REQUIRE(a.conditionArg == b.conditionArg);
-    if (a.predicate == PredicateKind::Status)
-        REQUIRE(a.statusKind == b.statusKind);
-    if (IsResistance(a.predicate) || a.predicate == PredicateKind::HitBy)
-        REQUIRE(a.damageKind == b.damageKind);
+    REQUIRE(a.statusKind == b.statusKind);
+    REQUIRE(a.damageKind == b.damageKind);
     REQUIRE(a.actionTarget == b.actionTarget);
     REQUIRE(a.actionTargetForm == b.actionTargetForm);
     REQUIRE(a.actions.size() == b.actions.size());
     for (std::size_t i = 0; i < a.actions.size(); ++i)
         RequireSame(a.actions[i], b.actions[i]);
+    REQUIRE(a == b);
 }
 
 // A file with one rule, from the pieces a test wants to vary.
@@ -184,6 +214,42 @@ TEST_CASE("a profile round-trips through its file", "[profile]")
     {
         REQUIRE(after.pins[i].form == before.pins[i].form);
         REQUIRE(after.pins[i].hands == before.pins[i].hands);
+    }
+    REQUIRE(after.bans == before.bans);
+}
+
+TEST_CASE("every action that names a form keeps it through the file, and no other writes one", "[profile]")
+{
+    // One rule per action kind, each with a form set. The ones that name a
+    // form read it back; the rest never wrote it. A named poison and a
+    // named soul gem were lost here until 2026-09-11: the profile's own
+    // list of which actions carry a form had neither, so the rule came
+    // back with form 0 and could never fire again.
+    for (std::size_t i = 1; i < static_cast<std::size_t>(ActionKind::COUNT); ++i)
+    {
+        const auto kind = static_cast<ActionKind>(i);
+        INFO(WireName(kind));
+        Rule r;
+        r.subject = SubjectKind::Enemy;
+        r.predicate = PredicateKind::Any;
+        r.actionTarget =
+            IsActionValidFor(ActionTargetKind::Self, kind) ? ActionTargetKind::Self : ActionTargetKind::Enemy;
+        Action a;
+        a.kind = kind;
+        a.form = 0xFF00ABCD;
+        if (IsPolicy(kind))
+            a.effect = "Restore Health";
+        r.actions.push_back(a);
+        Profile p;
+        p.rules.rules.push_back(r);
+
+        const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+        REQUIRE(read.warnings.empty());
+        REQUIRE(read.profile->rules.rules.size() == 1);
+        REQUIRE(read.profile->rules.rules[0].actions.size() == 1);
+        const Action &back = read.profile->rules.rules[0].actions[0];
+        REQUIRE(back.kind == kind);
+        REQUIRE(back.form == (NamesForm(kind) ? 0xFF00ABCDu : 0u));
     }
 }
 

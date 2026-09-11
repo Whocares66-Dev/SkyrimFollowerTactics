@@ -570,6 +570,36 @@ TEST_CASE("the edges of a fight hold for one evaluation each", "[evaluator]")
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::CombatEnds));
 }
 
+TEST_CASE("a new fight starts with no cooldowns", "[edge]")
+{
+    // The heal fires, and is on cooldown for the rest of that fight. The
+    // next fight's first tick -- its begins edge -- is not the same fight,
+    // and the heal must not be held back by a potion drunk in the last one:
+    // the edge is what resets the cooldowns, not a gap in the tick's clock,
+    // which read a long bleedout as a new fight and reset them mid-fight.
+    RuleSet rs;
+    rs.rules.push_back(HealBelow(0.5f));
+    EvalContext ctx;
+    Trace trace;
+
+    Snapshot s = Healthy();
+    s.health = {40.0f, 100.0f};
+    s.combatBegan = true;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).Fired());
+
+    // A tick later, still in the fight and still hurt: the cooldown holds.
+    s.combatBegan = false;
+    s.now += 0.5;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+
+    // The fight ends, and a new one begins inside the cooldown: it fires.
+    s.now += 0.5;
+    s.combatBegan = true;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(ctx.blocked.size() == 1);
+}
+
 TEST_CASE("on its edge every Combat start rule is checked first, and their lists run in order", "[edge]")
 {
     // A standing rule ABOVE two Combat start rules, the second with two
@@ -632,33 +662,35 @@ TEST_CASE("on its edge every Combat start rule is checked first, and their lists
 
 TEST_CASE("an edge rule's list waits rather than yields, even at its first action", "[edge]")
 {
-    // The edge is not coming back: a Combat start rule whose first action is
+    // The edge is not coming back: a Combat end rule whose first action is
     // merely on cooldown waits for it, where a standing rule would yield to
-    // the rules beneath and be lost.
-    Rule onBegin;
-    onBegin.subject = SubjectKind::Self;
-    onBegin.predicate = PredicateKind::CombatBegins;
-    onBegin.actionTarget = ActionTargetKind::Self;
-    onBegin.FirstAction() = DrinkHealth();
-    Rule always = onBegin;
+    // the rules beneath and be lost. (The end edge, because the begins edge
+    // clears the cooldowns: nothing can be on one there.)
+    Rule onEnd;
+    onEnd.subject = SubjectKind::Self;
+    onEnd.predicate = PredicateKind::CombatEnds;
+    onEnd.actionTarget = ActionTargetKind::Self;
+    onEnd.FirstAction() = DrinkHealth();
+    Rule always = onEnd;
     always.predicate = PredicateKind::Any;
     always.FirstAction() = DrinkMagicka();
 
     RuleSet rs;
-    rs.rules = {onBegin, always};
+    rs.rules = {onEnd, always};
     EvalContext ctx;
     Trace trace;
     Snapshot s = Healthy();
     ctx.Block({ActionKind::DrinkStrongest, 0, s.self, "Restore Health"}, s.now + 1.0);
 
-    s.combatBegan = true;
+    s.inCombat = false;
+    s.combatEnded = true;
     Decision d = Evaluate(rs, s, ctx, &trace);
     REQUIRE_FALSE(d.Fired());
     REQUIRE(trace.at(0) == Verdict::ActionCooldown);
     REQUIRE(trace.at(1) == Verdict::NotReached);
     REQUIRE(ctx.InProgress());
 
-    s.combatBegan = false;
+    s.combatEnded = false;
     s.now += 2.0;
     d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 0);
@@ -2484,9 +2516,9 @@ TEST_CASE("target points the follower at an enemy, once, and not at anyone else"
         over.inCombat = false;
         over.combatEnded = true;
         REQUIRE_FALSE(Evaluate(ending, over, fresh, &trace).Fired());
-        REQUIRE(trace.at(0) == Verdict::NoResource);
+        REQUIRE(trace.at(0) == Verdict::NotInCombat);
     }
-    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::Attack)) == "not in a fight");
+    REQUIRE(std::string(Explain(Verdict::NotInCombat, ActionKind::Attack)) == "not in a fight");
     REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::Attack)) == "already fighting them");
 
     // Ranged is a kind of its own: a sword blow on the ally is not it.
@@ -3379,7 +3411,7 @@ TEST_CASE("a power attack needs a fight, something that swings, and the stamina 
         over.inCombat = false;
         over.combatEnded = true;
         REQUIRE_FALSE(Evaluate(ending, over, fresh, &trace).Fired());
-        REQUIRE(trace.at(0) == Verdict::NoResource); // not in a fight
+        REQUIRE(trace.at(0) == Verdict::NotInCombat);
     }
 
     trace.clear();

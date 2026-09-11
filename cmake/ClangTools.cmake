@@ -136,7 +136,7 @@ if(FT_CLANG_TIDY)
                     --extra-arg=-Wno-unused-command-line-argument
                     "${_src}"
             COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
-            DEPENDS "${_src}" ${FT_TIDY_HEADERS}
+            DEPENDS "${_src}" ${FT_TIDY_HEADERS} "${CMAKE_SOURCE_DIR}/.clang-tidy"
             COMMENT "clang-tidy ${_rel}"
             VERBATIM)
         list(APPEND FT_TIDY_STAMPS "${_stamp}")

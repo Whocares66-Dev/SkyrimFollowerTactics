@@ -40,13 +40,6 @@ constexpr double kTickInterval = 0.5;
 // "why didn't she drink" is always in the last few seconds of the file.
 constexpr double kDiagnosticInterval = 2.0;
 
-// A gap this long since we last evaluated a follower means the previous fight
-// ended and this is a new one, so the whole evaluation context is dropped: the
-// action cooldowns, and any rule caught part way down its list. A cooldown
-// exists to stop a rule thrashing *within* a fight; carrying it into the next
-// fight would silently suppress that fight's first heal.
-constexpr double kNewFightGap = 5.0;
-
 // How often to report measured tick cost.
 constexpr double kCostReportInterval = 5.0;
 
@@ -69,7 +62,6 @@ int g_lastFollowerCount = -1;
 struct FollowerState
 {
     ft::EvalContext eval;
-    double lastEvaluatedAt{-1.0e9};
     double lastDiagnosticAt{-1.0e9};
     // In combat on the last tick, for the edges: the first evaluation of a
     // fight, and the one farewell evaluation after it.
@@ -434,11 +426,6 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     const ft::ActorId id = actor->GetFormID();
     auto &state = g_followers[id];
 
-    // A long gap since the last evaluation means a different fight.
-    const bool newFight = (now - state.lastEvaluatedAt) > kNewFightGap;
-    if (newFight)
-        state.eval = {};
-    state.lastEvaluatedAt = now;
     state.eval.caps = RuntimeCapabilities(actor);
 
     const auto started = std::chrono::steady_clock::now();
@@ -446,8 +433,10 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     ft::Snapshot snapshot = BuildSnapshot(actor, now);
 
     // Who is who, once per fight, so the Ally and Enemy subjects can be
-    // read against the log.
-    if (newFight)
+    // read against the log. The fight's edge is the tick's (below); what
+    // it resets in the evaluation context -- the cooldowns, a list part
+    // way through -- the core resets on the same edge, where it is tested.
+    if (began)
     {
         const auto names = [](const auto &views) {
             std::string out;
@@ -707,14 +696,20 @@ void Tick()
         // queues run one action per tick, so evaluation goes on out of the
         // fight while one is in progress; the core decides nothing else on
         // those ticks.
+        // An edge is used up only by an evaluation. Held down or switched
+        // off through it, the follower still owes the fight its first
+        // evaluation, or the farewell one -- a heal-after-the-fight rule is
+        // exactly what someone just up from bleeding out needs.
         auto &state = g_followers[follower->GetFormID()];
         const bool began = fighting && !state.fighting;
         const bool ended = !fighting && state.fighting;
-        state.fighting = fighting;
 
         if (g_enabled.load() && (fighting || ended || state.eval.InProgress()) && !down &&
             IsFollowerEnabled(follower->GetFormID()))
+        {
+            state.fighting = fighting;
             EvaluateFollower(follower, now, began, ended);
+        }
         else
             PublishIdle(follower, now, fighting);
     }
@@ -815,6 +810,11 @@ void SetRules(ft::ActorId id, ft::RuleSet rules)
 void ForgetSession()
 {
     g_identities.clear();
+    // The fight too: a save loaded mid-fight into a quiet game would
+    // otherwise see the old fight end on its first tick and run the
+    // Combat end rules there.
+    g_followers.clear();
+    g_bleedingOut.clear();
     ForgetPins();
     {
         std::scoped_lock lock(g_rulesMutex);

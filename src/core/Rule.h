@@ -294,6 +294,16 @@ enum class ActionKind : std::uint8_t
 // power bash. Each priced in stamina and reach by the snapshot's Blow.
 [[nodiscard]] bool IsBlow(ActionKind action) noexcept;
 
+// The actions that name one thing by Action::form: the casts, the equips,
+// and the named consumables -- one potion, food, ingredient, poison or soul
+// gem. The policies choose their form at evaluation; Attack and the blows
+// name nothing. What the profile writes and reads a form for, what the
+// panel offers a picker for, and what the evaluator checks is carried: one
+// answer, so a new action cannot be named in the editor and lost by the
+// save (ApplyPoison and ChargeSoulGem were, until 2026-09-11).
+[[nodiscard]] bool NamesForm(ActionKind action) noexcept;
+[[nodiscard]] bool NamesConsumable(ActionKind action) noexcept;
+
 // One thing to do. A rule carries a list of these, in order.
 struct Action
 {
@@ -332,6 +342,8 @@ struct Action
     // so that the same rule reads any mod's potion of the effect, and so a
     // profile shares across load orders. Ignored by every other action.
     std::string effect;
+
+    [[nodiscard]] bool operator==(const Action &) const = default;
 };
 
 struct Rule
@@ -381,6 +393,8 @@ struct Rule
     // cast rule kept its 10 s), and its state was keyed by list position, so
     // reordering rules handed one rule's cooldown to another.
     std::string label; // free text, shown in the UI, ignored by the engine
+
+    [[nodiscard]] bool operator==(const Rule &) const = default;
 };
 
 struct RuleSet

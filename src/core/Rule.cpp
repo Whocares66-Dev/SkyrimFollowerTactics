@@ -160,6 +160,26 @@ bool IsBlow(ActionKind action) noexcept
     return action == ActionKind::PowerAttack || action == ActionKind::Bash || action == ActionKind::PowerBash;
 }
 
+bool NamesConsumable(ActionKind action) noexcept
+{
+    switch (action)
+    {
+    case ActionKind::DrinkPotion:
+    case ActionKind::EatFood:
+    case ActionKind::EatIngredient:
+    case ActionKind::ApplyPoison:
+    case ActionKind::ChargeSoulGem:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool NamesForm(ActionKind action) noexcept
+{
+    return IsCast(action) || IsEquip(action) || NamesConsumable(action);
+}
+
 Kind KindOf(ActionKind action) noexcept
 {
     switch (action)

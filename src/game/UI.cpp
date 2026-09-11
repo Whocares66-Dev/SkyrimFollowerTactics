@@ -162,6 +162,8 @@ Status StatusFor(ft::Verdict v, ft::ActionKind action)
                 : ft::IsEquip(action)                 ? "not carried"
                                                       : "count: 0",
                 held};
+    case ft::Verdict::NotInCombat:
+        return {"no fight", held};
     case ft::Verdict::EffectActive:
         return {ft::IsEquip(action)    ? "pinned"
                 : ft::IsApply(action)  ? "poisoned"
@@ -1153,14 +1155,6 @@ bool TakesSpell(ft::ActionKind action)
     return ft::IsCast(action) || action == ft::ActionKind::EquipSpell;
 }
 
-// Is this action one named consumable: a potion, a food, an ingredient?
-bool NamesConsumable(ft::ActionKind action)
-{
-    return action == ft::ActionKind::DrinkPotion || action == ft::ActionKind::EatFood ||
-           action == ft::ActionKind::EatIngredient || action == ft::ActionKind::ApplyPoison ||
-           action == ft::ActionKind::ChargeSoulGem;
-}
-
 // Could a thing with this grip be pinned in this hand, as the equip menu
 // asks it? Both means a two-hander, or a spell in each hand at once; one
 // weapon cannot be in both hands.
@@ -1287,7 +1281,7 @@ bool ActionAvailable(const ft::Action &act, const FollowerView &view)
 {
     if (act.form == 0)
         return true;
-    if (NamesConsumable(act.kind))
+    if (ft::NamesConsumable(act.kind))
     {
         for (const auto &option : view.consumables)
             if (option.form == act.form && option.kind == ft::ConsumableOf(act.kind))
@@ -1367,7 +1361,7 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
                std::string(ft::EffectLabel(act.effect)) + noun;
     }
 
-    if (NamesConsumable(act.kind))
+    if (ft::NamesConsumable(act.kind))
     {
         if (act.form == 0)
             return base + "...";
@@ -1950,7 +1944,7 @@ void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
 float StatusColumnWidth()
 {
     return WidestLabel({"cooldown", "no target", "count: 0", "no magicka", "invalid", "fired", "false", "pinned",
-                        "outranked", "not carried"}) +
+                        "outranked", "not carried", "no fight"}) +
            kCellPadX * 2.0f;
 }
 

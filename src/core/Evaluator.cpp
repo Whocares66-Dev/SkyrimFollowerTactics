@@ -802,7 +802,7 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         if (a.kind == ActionKind::Attack)
         {
             if (!snap.inCombat)
-                return Verdict::NoResource;
+                return Verdict::NotInCombat;
             if (target == 0 || !FindEnemy(snap, target))
                 return Verdict::NoTarget;
             if (target == snap.currentTarget)
@@ -815,7 +815,7 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
         {
             const Snapshot::Blow &blow = BlowFor(snap, a.kind);
             if (!snap.inCombat)
-                return Verdict::NoResource;
+                return Verdict::NotInCombat;
             if (!blow.possible)
                 return Verdict::NoMeleeWeapon;
             const EnemyView *enemy = target != 0 ? FindEnemy(snap, target) : nullptr;
@@ -971,6 +971,13 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
     {
         ctx.pending = {};
         ctx.queued.clear();
+        // A new fight starts with no cooldowns. A cooldown exists to stop a
+        // rule thrashing WITHIN a fight; carried into the next one it would
+        // silently suppress that fight's first heal. Here, on the edge the
+        // tick reports, rather than on a gap in the tick's own clock: a
+        // bleedout longer than the gap mid-fight was read as a new fight.
+        if (snap.combatBegan)
+            ctx.blocked.clear();
         for (std::size_t i = 0; i < rs.rules.size(); ++i)
         {
             const Rule &r = rs.rules[i];
@@ -1088,11 +1095,6 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "does not carry those arrows";
         case ActionKind::EquipArmor:
             return "does not carry that armour";
-        case ActionKind::Attack:
-        case ActionKind::PowerAttack:
-        case ActionKind::Bash:
-        case ActionKind::PowerBash:
-            return "not in a fight";
         default:
             return ToString(v);
         }
@@ -1146,6 +1148,8 @@ const char *ToString(Verdict v) noexcept
         return "no target";
     case Verdict::NoResource:
         return "none in inventory";
+    case Verdict::NotInCombat:
+        return "not in a fight";
     case Verdict::NothingToPoison:
         return "no weapon to poison";
     case Verdict::NothingToCharge:

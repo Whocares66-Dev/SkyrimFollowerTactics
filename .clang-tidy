@@ -60,6 +60,13 @@ Checks: >
 HeaderFilterRegex: 'src.(core|game)'
 FormatStyle: file
 
+# A finding fails the run. Without this clang-tidy exits 0 on warnings, the
+# build's per-file stamp is touched, and the NEXT run reports nothing while
+# the findings are still there: a clean-looking pass with work outstanding,
+# the same blind spot as the .pch one in CLAUDE.md. (The stamp also depends
+# on this file, so a check switched on here re-lints everything.)
+WarningsAsErrors: '*'
+
 CheckOptions:
   # int -> float loses nothing below 2^24, and the game's numbers are floats
   # met by our ints on every line of Sensors.cpp. Truncations the other way
