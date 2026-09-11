@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -5127,13 +5128,39 @@ void SyncFollowers()
     }
 
     // New: the first free slot, in name order, so the followers who appear
-    // together (the whole party, on a load) list alphabetically. The
-    // framework in the field exports no way to remove or reorder an entry
-    // (see above), so one recruited later goes after them.
+    // together list alphabetically. The frameworks in the field export
+    // only AddSectionItem and AddWindow (dumpbin, 2026-09-11): an entry,
+    // once added, can be neither removed nor moved, so one recruited later
+    // goes after them. A load reveals the party over a few ticks -- Serana
+    // a tick after the other three, and at the end of the list -- so the
+    // newcomers are held until nobody new has appeared for a moment, and
+    // added as one batch.
     std::vector<const FollowerView *> arriving;
-    arriving.reserve(followers.size());
-    for (const auto &view : followers)
-        arriving.push_back(&view);
+    {
+        std::scoped_lock lock(g_slotMutex);
+        for (const auto &view : followers)
+        {
+            bool known = false;
+            for (const auto &slot : g_slots)
+                known = known || slot.id == view.id;
+            if (!known)
+                arriving.push_back(&view);
+        }
+    }
+    static std::unordered_set<ft::ActorId> pending;
+    static std::chrono::steady_clock::time_point lastArrival;
+    std::unordered_set<ft::ActorId> now;
+    for (const auto *view : arriving)
+        now.insert(view->id);
+    if (now != pending)
+    {
+        pending = std::move(now);
+        lastArrival = std::chrono::steady_clock::now();
+    }
+    if (pending.empty() || std::chrono::steady_clock::now() - lastArrival < std::chrono::seconds(2))
+        return;
+    pending.clear();
+
     std::sort(arriving.begin(), arriving.end(),
               [](const FollowerView *a, const FollowerView *b) { return a->name < b->name; });
     for (const auto *viewPtr : arriving)
@@ -5142,11 +5169,6 @@ void SyncFollowers()
         std::size_t index = kSlots;
         {
             std::scoped_lock lock(g_slotMutex);
-            bool known = false;
-            for (const auto &slot : g_slots)
-                known = known || slot.id == view.id;
-            if (known)
-                continue;
             for (std::size_t i = 0; i < kSlots; ++i)
             {
                 if (g_slots[i].id == 0)
