@@ -3206,13 +3206,71 @@ void SlashCell()
                                    Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f), 1.0f);
 }
 
+// One equip cell's state: what the cell draws, and what its column sorts
+// by. The two read the SAME struct, from the same reader, so a cell cannot
+// sort otherwise than it looks -- a spell above the follower's skill was
+// drawn slashed and sorted among the unequipped once, the sort re-deriving
+// the state on its own and reading less of it (2026-09-10).
+struct EquipCell
+{
+    bool allowed{true};   // false: slashed, the cell cannot take the thing
+    bool disabled{false}; // the row is dim: set aside by a pin, or above her skill
+    bool on{false};
+    bool pinned{false};
+    bool banned{false};
+};
+
+// The readers, one per table and cell. The row's dimming is the same
+// state: disabled or banned.
+bool Disabled(const InventoryItem &item)
+{
+    return item.setAside;
+}
+EquipCell LeftCell(const InventoryItem &item)
+{
+    return {item.handItem && !item.rightOnly, Disabled(item), item.equippedLeft, item.pinnedLeft, item.banned};
+}
+EquipCell RightCell(const InventoryItem &item)
+{
+    return {item.handItem && !item.leftOnly, Disabled(item), item.equippedRight, item.pinnedRight, item.banned};
+}
+EquipCell WornCell(const InventoryItem &item)
+{
+    return {!item.handItem, Disabled(item), item.worn, item.pinned, item.banned};
+}
+
+bool VoiceEntry(const MagicEntry &entry)
+{
+    return entry.category == MagicCategory::Shouts || entry.category == MagicCategory::Powers;
+}
+// A spell above the follower's skill is disabled, and takes no hand at
+// all, as the tactics menus offer it for neither casting nor pinning: one
+// rule, not an equip-only state beside it.
+bool Disabled(const MagicEntry &entry)
+{
+    return entry.setAside || entry.aboveSkill;
+}
+EquipCell LeftCell(const MagicEntry &entry)
+{
+    return {VoiceEntry(entry) || (entry.leftAllowed && !entry.aboveSkill), Disabled(entry), entry.equippedLeft,
+            entry.pinnedLeft, entry.banned};
+}
+EquipCell RightCell(const MagicEntry &entry)
+{
+    return {VoiceEntry(entry) || (entry.rightAllowed && !entry.aboveSkill), Disabled(entry), entry.equippedRight,
+            entry.pinnedRight, entry.banned};
+}
+EquipCell VoiceCell(const MagicEntry &entry)
+{
+    return {true, Disabled(entry), entry.equipped, entry.pinned, entry.banned};
+}
+
 // A click walks the cell round: unequipped, equipped, pinned, banned, and
 // back to unequipped. Each state is one request to the game thread.
-void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, bool pinned, bool banned, Hand hand,
-            bool clickable, bool allowed = true)
+void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, const EquipCell &cell, Hand hand, bool clickable)
 {
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
-    if (!allowed)
+    if (!cell.allowed)
     {
         SlashCell();
         return;
@@ -3221,32 +3279,28 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, bool on, b
     {
         // Banned and pinned first: a pin whose thing the AI has swapped out
         // is still a pin, and a ban is a ban whatever is on.
-        const WearRequest next = banned   ? WearRequest::Unban
-                                 : pinned ? WearRequest::Ban
-                                 : on     ? WearRequest::Pin
-                                          : WearRequest::Equip;
+        const WearRequest next = cell.banned   ? WearRequest::Unban
+                                 : cell.pinned ? WearRequest::Ban
+                                 : cell.on     ? WearRequest::Pin
+                                               : WearRequest::Equip;
         if (CellClicked(id))
             RequestWear(follower, form, next, hand);
         if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", banned   ? "Banned. Click to unban."
-                                 : pinned ? "Pinned. Click to ban."
-                                 : on     ? "Equipped. Click to pin."
-                                          : "Unequipped. Click to equip.");
+            Im::SetTooltip("%s", cell.banned   ? "Banned. Click to unban."
+                                 : cell.pinned ? "Pinned. Click to ban."
+                                 : cell.on     ? "Equipped. Click to pin."
+                                               : "Unequipped. Click to equip.");
     }
-    DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), on, pinned, banned);
+    DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), cell.on, cell.pinned, cell.banned);
 }
 
 // The order of an equip cell when its column is sorted, ascending: pinned,
-// then equipped, then unequipped, then banned, then disabled -- the row
-// drawn dim because a pin sets the thing aside or the spell is above the
-// follower's skill, and the slashed cell that cannot take it at all. What
-// the follower holds to comes first, what cannot be held last. `disabled`
-// is the row's dimming and the cell's slash together, so the order agrees
-// with what is drawn: a spell above her skill sorted among the unequipped
-// once, its slash unread (2026-09-10).
-int CellRank(bool allowed, bool disabled, bool on, bool pinned, bool banned)
+// then equipped, then unequipped, then banned, then disabled -- the dim
+// row, and the slashed cell that cannot take it at all. What the follower
+// holds to comes first, what cannot be held last.
+int CellRank(const EquipCell &cell)
 {
-    return !allowed || disabled ? 4 : banned ? 3 : pinned ? 0 : on ? 1 : 2;
+    return !cell.allowed || cell.disabled ? 4 : cell.banned ? 3 : cell.pinned ? 0 : cell.on ? 1 : 2;
 }
 
 // The rows to show, in the order the table's header asks for. Sorted every
@@ -3291,16 +3345,11 @@ std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const 
         case Column::Value:
             return number(static_cast<float>(a.value), static_cast<float>(b.value));
         case Column::Equipped:
-            return rank(
-                [](const InventoryItem &i) { return CellRank(!i.handItem, i.setAside, i.worn, i.pinned, i.banned); });
+            return rank([](const InventoryItem &i) { return CellRank(WornCell(i)); });
         case Column::Left:
-            return rank([](const InventoryItem &i) {
-                return CellRank(i.handItem && !i.rightOnly, i.setAside, i.equippedLeft, i.pinnedLeft, i.banned);
-            });
+            return rank([](const InventoryItem &i) { return CellRank(LeftCell(i)); });
         case Column::Right:
-            return rank([](const InventoryItem &i) {
-                return CellRank(i.handItem && !i.leftOnly, i.setAside, i.equippedRight, i.pinnedRight, i.banned);
-            });
+            return rank([](const InventoryItem &i) { return CellRank(RightCell(i)); });
         case Column::Name:
         default:
             return a.name.compare(b.name);
@@ -3448,7 +3497,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         // hand it would take -- the whole row goes to the disabled colour.
         // Not on All, where nothing can be equipped and the dimming would
         // have no cell to explain it.
-        const bool dim = (item->setAside || item->banned) && state.category >= 0;
+        const bool dim = (Disabled(*item) || item->banned) && state.category >= 0;
         if (dim)
             Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
         Im::TableSetColumnIndex(0);
@@ -3536,26 +3585,19 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         {
             std::snprintf(buf, sizeof(buf), "##left%08X", item->form);
             Im::TableNextColumn();
-            if (item->handItem && !item->rightOnly)
-                OnCell(buf, view.id, item->form, item->equippedLeft, item->pinnedLeft, item->banned, Hand::Left, true);
-            else if (item->equipable)
-                SlashCell();
+            if (item->equipable)
+                OnCell(buf, view.id, item->form, LeftCell(*item), Hand::Left, true);
             std::snprintf(buf, sizeof(buf), "##right%08X", item->form);
             Im::TableNextColumn();
-            if (item->handItem && !item->leftOnly)
-                OnCell(buf, view.id, item->form, item->equippedRight, item->pinnedRight, item->banned, Hand::Right,
-                       true);
-            else if (item->equipable)
-                SlashCell();
+            if (item->equipable)
+                OnCell(buf, view.id, item->form, RightCell(*item), Hand::Right, true);
         }
         if (anyWorn)
         {
             std::snprintf(buf, sizeof(buf), "##wear%08X", item->form);
             Im::TableNextColumn();
-            if (item->equipable && !item->handItem)
-                OnCell(buf, view.id, item->form, item->worn, item->pinned, item->banned, Hand::None, true);
-            else if (item->equipable)
-                SlashCell();
+            if (item->equipable)
+                OnCell(buf, view.id, item->form, WornCell(*item), Hand::None, true);
         }
         if (dim)
             Im::PopStyleColor(1);
@@ -3747,22 +3789,12 @@ std::vector<const MagicEntry *> VisibleMagic(const FollowerView &view, const Mag
             return number(a.costValue, b.costValue);
         case Column::Magnitude:
             return number(a.magnitude, b.magnitude);
-        // The hand cells are slashed for a spell above the follower's skill
-        // as for a hand it cannot take, and the rank reads both the same.
         case Column::Equipped:
-            return rank([](const MagicEntry &e) {
-                return CellRank(true, e.setAside || e.aboveSkill, e.equipped, e.pinned, e.banned);
-            });
+            return rank([](const MagicEntry &e) { return CellRank(VoiceCell(e)); });
         case Column::Left:
-            return rank([](const MagicEntry &e) {
-                return CellRank(e.leftAllowed && !e.aboveSkill, e.setAside || e.aboveSkill, e.equippedLeft,
-                                e.pinnedLeft, e.banned);
-            });
+            return rank([](const MagicEntry &e) { return CellRank(LeftCell(e)); });
         case Column::Right:
-            return rank([](const MagicEntry &e) {
-                return CellRank(e.rightAllowed && !e.aboveSkill, e.setAside || e.aboveSkill, e.equippedRight,
-                                e.pinnedRight, e.banned);
-            });
+            return rank([](const MagicEntry &e) { return CellRank(RightCell(e)); });
         case Column::Name:
         default:
             return a.name.compare(b.name);
@@ -3894,7 +3926,7 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         // skill, so the AI would not choose it: the whole row is drawn in
         // the disabled colour, ticks included, since every glyph takes the
         // text colour.
-        const bool dim = (entry->setAside || entry->aboveSkill || entry->banned) && !allList;
+        const bool dim = (Disabled(*entry) || entry->banned) && !allList;
         if (dim)
             Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
         Im::TableSetColumnIndex(0);
@@ -3931,7 +3963,7 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
 
         // A power or a shout has no school, level or cost: those cells stay
         // empty rather than saying "Power" or "0".
-        const bool voice = entry->category == MagicCategory::Shouts || entry->category == MagicCategory::Powers;
+        const bool voice = VoiceEntry(*entry);
         if (allList)
         {
             Im::TableNextColumn();
@@ -3970,21 +4002,16 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         {
             std::snprintf(buf, sizeof(buf), "##voice%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view.id, entry->form, entry->equipped, entry->pinned, entry->banned, Hand::None, true, true);
+            OnCell(buf, view.id, entry->form, VoiceCell(*entry), Hand::None, true);
         }
         else
         {
             std::snprintf(buf, sizeof(buf), "##left%08X", entry->form);
             Im::TableNextColumn();
-            // A spell above the follower's skill takes no hand at all, as
-            // the tactics menus offer it for neither casting nor pinning:
-            // one rule, not an equip-only state beside it.
-            OnCell(buf, view.id, entry->form, entry->equippedLeft, entry->pinnedLeft, entry->banned, Hand::Left, !voice,
-                   voice || (entry->leftAllowed && !entry->aboveSkill));
+            OnCell(buf, view.id, entry->form, LeftCell(*entry), Hand::Left, !voice);
             std::snprintf(buf, sizeof(buf), "##right%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view.id, entry->form, entry->equippedRight, entry->pinnedRight, entry->banned, Hand::Right,
-                   !voice, voice || (entry->rightAllowed && !entry->aboveSkill));
+            OnCell(buf, view.id, entry->form, RightCell(*entry), Hand::Right, !voice);
         }
         if (dim)
             Im::PopStyleColor(1);
