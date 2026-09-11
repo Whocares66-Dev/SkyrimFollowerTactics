@@ -308,6 +308,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
             item.type = "Potion";
             item.category = ItemCategory::Potions;
         }
+        item.effectsTable = EffectsOf(actor, alch, [](const RE::Effect *e) { return e->effectItem.magnitude; });
         item.effects = EffectLines(alch);
         return;
     }
@@ -316,6 +317,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.type = "Ingredient";
         item.category = ItemCategory::Ingredients;
         item.effect = effectName(ingredient);
+        item.effectsTable = EffectsOf(actor, ingredient, [](const RE::Effect *e) { return e->effectItem.magnitude; });
         item.effects = EffectLines(ingredient);
         return;
     }
@@ -328,6 +330,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.type = "Scroll";
         item.category = ItemCategory::Scrolls;
         item.effect = effectName(scroll);
+        item.effectsTable = EffectsOf(actor, scroll, [](const RE::Effect *e) { return e->effectItem.magnitude; });
         item.effects = EffectLines(scroll);
         item.cast = CastWord(scroll->GetDelivery(), scroll->GetCastingType());
         const auto *costliest = scroll->GetCostliestEffectItem();
@@ -651,6 +654,7 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
             else if (const auto charge = entry->GetEnchantmentCharge())
                 section.rows.push_back(Row("Charge", Fmt("%.0f%%", *charge)));
             item.detail.push_back(std::move(section));
+            item.effectsTable = EffectsOf(actor, ench, [](const RE::Effect *e) { return e->effectItem.magnitude; });
             item.effects = EffectLines(ench);
         }
 

@@ -103,6 +103,10 @@ struct InventoryItem
     // with the magnitude and duration filled in as the item card does.
     std::vector<SheetSection> detail;
     std::string description;
+    // What the enchantment, the potion, the scroll does: the table of
+    // effects (EffectsOf), and beneath it each effect's description as
+    // the item card shows it.
+    SheetSection effectsTable;
     std::string effects;
     // For a potion, poison, food or ingredient: what it is for, its first
     // effect's name -- "Restore Health" -- the list's column in place of a

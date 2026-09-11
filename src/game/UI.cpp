@@ -2657,13 +2657,14 @@ void NoteTooltip(const std::string &note);
 using RowDrawer = std::function<void(const SheetRow &, const std::string &, float, float)>;
 
 // `modifiers`: a third column, headed `third`, carrying each row's
-// modifiers text or its mark glyph.
+// modifiers text or its mark glyph; `first` and `second` head the name
+// and value columns then, where the table has a header row at all.
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                   const std::function<void(std::uint32_t)> &onLink = {}, const char *third = "Modifiers",
-                  const RowDrawer &drawer = {})
+                  const RowDrawer &drawer = {}, const char *first = "", const char *second = "")
 {
-    float nameWidth = 0.0f;
-    float valueWidth = 0.0f;
+    float nameWidth = modifiers ? TextWidth(first) : 0.0f;
+    float valueWidth = modifiers ? TextWidth(second) : 0.0f;
     // A row with perks carries the disclosure marker before its name and
     // is measured with it; a row without starts its name where the marker
     // would be, so the two kinds line up on their left edge.
@@ -2747,7 +2748,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             {
                 Im::TableSetupColumn(third, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
                 if (piece == 1)
-                    PlainHeaderRow({"", "", third});
+                    PlainHeaderRow({first, second, third});
             }
             inTable = true;
             return true;
@@ -3753,7 +3754,20 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
     Im::Spacing();
     DrawSections(item.detail, false);
 
-    if (!item.effects.empty())
+    // The effects as a table, each opening on its conditions, in the
+    // perk page's shape; their descriptions beneath it.
+    if (!item.effectsTable.rows.empty())
+    {
+        DrawSections(
+            {item.effectsTable}, true, {}, "Active",
+            [](const SheetRow &entry, const std::string &key, float left, float right) {
+                DrawConditionDrawer(entry, key, left, right);
+            },
+            "Name", "Magnitude");
+        BulletedLines(item.effects);
+        Im::Spacing();
+    }
+    else if (!item.effects.empty())
     {
         CentredHeading("Effects");
         BulletedLines(item.effects);
@@ -4134,7 +4148,20 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
     Im::Spacing();
     DrawSections(entry.detail, false);
 
-    if (!entry.effects.empty())
+    // The effects as a table, each opening on its conditions, in the
+    // perk page's shape; their descriptions beneath it.
+    if (!entry.effectsTable.rows.empty())
+    {
+        DrawSections(
+            {entry.effectsTable}, true, {}, "Active",
+            [](const SheetRow &line, const std::string &key, float left, float right) {
+                DrawConditionDrawer(line, key, left, right);
+            },
+            "Name", "Magnitude");
+        BulletedLines(entry.effects);
+        Im::Spacing();
+    }
+    else if (!entry.effects.empty())
     {
         CentredHeading("Effects");
         BulletedLines(entry.effects);
@@ -4274,10 +4301,12 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Follow
                 line.form = 0;
     DrawSections(info, false, [&view](std::uint32_t form) { OpenSourcePage(view, form); });
     if (!effects.empty())
-        DrawSections(effects, true, {}, "Active",
-                     [](const SheetRow &entry, const std::string &key, float left, float right) {
-                         DrawConditionDrawer(entry, key, left, right);
-                     });
+        DrawSections(
+            effects, true, {}, "Active",
+            [](const SheetRow &entry, const std::string &key, float left, float right) {
+                DrawConditionDrawer(entry, key, left, right);
+            },
+            "Name", "Magnitude");
 
     if (!row.description.empty())
     {
@@ -4690,10 +4719,12 @@ void DrawSkills(const FollowerView &view)
             const std::vector<SheetSection> info(page->sections.begin(), split);
             const std::vector<SheetSection> effects(split, page->sections.end());
             DrawSections(info, false);
-            DrawSections(effects, true, {}, "Active",
-                         [](const SheetRow &row, const std::string &key, float left, float right) {
-                             DrawConditionDrawer(row, key, left, right);
-                         });
+            DrawSections(
+                effects, true, {}, "Active",
+                [](const SheetRow &row, const std::string &key, float left, float right) {
+                    DrawConditionDrawer(row, key, left, right);
+                },
+                "Name", "Value");
             if (!page->description.empty())
             {
                 CentredHeading("Description");

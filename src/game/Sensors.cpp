@@ -284,7 +284,13 @@ std::string RemainingText(float seconds)
 // searching by the form named the ring for the necklace's effect too
 // (2026-09-11, a Silver Ruby Ring listed twice). Without it, the first
 // worn item carrying the form.
-std::string WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic, const RE::TESBoundObject *from)
+struct WornSource
+{
+    std::uint32_t form{0};
+    std::string name;
+};
+
+WornSource WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic, const RE::TESBoundObject *from)
 {
     for (const auto &[object, entry] : actor->GetInventory())
     {
@@ -294,10 +300,10 @@ std::string WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic, const RE:
             continue;
         const char *given = entry.second->GetDisplayName();
         if (given && *given)
-            return given;
-        return object->GetName() ? object->GetName() : "";
+            return {object->GetFormID(), given};
+        return {object->GetFormID(), object->GetName() ? object->GetName() : ""};
     }
-    return from ? WornSourceOf(actor, magic, nullptr) : std::string{};
+    return from ? WornSourceOf(actor, magic, nullptr) : WornSource{};
 }
 
 // The effect's description with <mag> and <dur> filled in. Skyrim.esm
@@ -336,7 +342,7 @@ std::string SourceName(RE::Actor *actor, const RE::ActiveEffect *ae)
     if (!ae->spell)
         return source;
     if (ae->spell->As<RE::EnchantmentItem>())
-        source = WornSourceOf(actor, ae->spell, ae->source);
+        source = WornSourceOf(actor, ae->spell, ae->source).name;
     if (source.empty() && ae->spell->GetName())
         source = ae->spell->GetName();
     return source;
@@ -493,10 +499,9 @@ bool MovesValue(const RE::EffectSetting *base)
 // is the record, and says what it does. The two parted on a Breton's
 // Spell Warding, whose text promises an absorb chance that a second,
 // hidden effect grants the player alone (2026-09-11).
-SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect)
+SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnitude)
 {
     const auto *base = effect.baseEffect;
-    const float magnitude = effect.effectItem.magnitude;
     // The value's display name, where the game has one; else the Creation
     // Kit's, read as words: Ward Power, Damage Resist. Most values the
     // game never shows have no display name (Spellbreaker's ward read as
@@ -519,36 +524,38 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect)
         return words.empty() ? "?" : words;
     };
 
-    std::string what;
+    // The name on the left, the magnitude on the right, as a perk's entry
+    // has its entry point and its value.
+    std::string name;
+    std::string amount;
     if (MovesValue(base))
     {
         // The record's magnitude is unsigned; a detrimental effect takes
         // it away. A dual-value effect moves its second value by the
         // magnitude weighted.
         const float moved = base->IsDetrimental() ? -magnitude : magnitude;
-        what = valueName(base->data.primaryAV) + " " + Fmt("%+g", moved);
+        name = valueName(base->data.primaryAV);
+        amount = Fmt("%+g", moved);
         if (base->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kDualValueModifier &&
             base->data.secondaryAV != RE::ActorValue::kNone)
-            what += ", " + valueName(base->data.secondaryAV) + " " + Fmt("%+g", moved * base->data.secondAVWeight);
+        {
+            name += " / " + valueName(base->data.secondaryAV);
+            amount += " / " + Fmt("%+g", moved * base->data.secondAVWeight);
+        }
     }
     else
     {
-        what = TypeWord(base);
-        if (magnitude != 0.0f)
-            what += " " + Fmt("%g", magnitude);
+        name = TypeWord(base);
         // What it names: the creature summoned, the weapon bound.
         if (const auto *named = base->data.associatedForm; named && named->GetName() && *named->GetName())
-            what += std::string(" ") + named->GetName();
+            name += std::string(" ") + named->GetName();
+        if (magnitude != 0.0f)
+            amount = Fmt("%g", magnitude);
     }
-
-    const char *archetype = RE::EffectArchetypes::GetArchetypeName(base->GetArchetype());
-    std::string kind = archetype ? archetype : "?";
-    if (effect.effectItem.duration > 0)
-        kind += ", " + std::to_string(effect.effectItem.duration) + " s";
     if (base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
-        kind += ", hidden";
+        name += " (hidden)";
 
-    SheetRow row = Row(what, kind);
+    SheetRow row = Row(name, amount);
     if (effect.conditions.head)
     {
         row.detail = ConditionRows(actor, effect.conditions);
@@ -558,6 +565,20 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect)
     else
         row.mark = kGlyphTick;
     return row;
+}
+
+SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
+                       const std::function<float(const RE::Effect *)> &magnitude)
+{
+    SheetSection section{"Effects", {}, {}};
+    if (!magic)
+        return section;
+    for (const auto *effect : magic->effects)
+    {
+        if (effect && effect->baseEffect)
+            section.rows.push_back(EffectEntryRow(actor, *effect, magnitude(effect)));
+    }
+    return section;
 }
 
 std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
@@ -599,10 +620,19 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         row.duration = ae->duration;
         row.remaining = ae->duration > 0.0f ? ae->duration - ae->elapsedSeconds : -1.0f;
         row.remainingText = RemainingText(row.remaining);
+        // The source's name, and what it links to where it has a page: the
+        // worn item behind an enchantment -- the one the lookup named, so
+        // the link and the name cannot part -- else the spell.
         if (ae->spell)
         {
             if (ae->spell->As<RE::EnchantmentItem>())
-                row.source = WornSourceOf(actor, ae->spell, ae->source);
+            {
+                const WornSource worn = WornSourceOf(actor, ae->spell, ae->source);
+                row.source = worn.name;
+                row.linkForm = worn.form;
+            }
+            else
+                row.linkForm = row.sourceForm;
             if (row.source.empty() && ae->spell->GetName())
                 row.source = ae->spell->GetName();
         }
@@ -625,11 +655,6 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             forever.icon = kIconInfinity;
             stats.rows.push_back(std::move(forever));
         }
-        // The source's form, for the panel to make a link of where the
-        // source has a page: the worn item for an enchantment, the spell
-        // otherwise.
-        const bool enchantment = ae->spell && ae->spell->As<RE::EnchantmentItem>();
-        row.linkForm = enchantment ? (ae->source ? ae->source->GetFormID() : 0) : row.sourceForm;
         if (!row.source.empty())
         {
             SheetRow source = Row("Source", row.source);
@@ -649,19 +674,14 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             stats.rows.push_back(std::move(mark));
         }
         row.detail.push_back(std::move(stats));
-        // What the source does, effect by effect, hidden ones included, as
-        // the perk page lists a perk's entries: the record beside the
-        // author's description, with each effect's conditions beneath it.
-        if (ae->spell)
+        // What THIS effect does, as the perk page lists a perk's entries:
+        // the record beside the author's description, its conditions
+        // beneath. Its source's other effects are the source's business,
+        // on the item's or the spell's own page.
         {
             SheetSection what{"Effects", {}, {}};
-            for (const auto *effect : ae->spell->effects)
-            {
-                if (effect && effect->baseEffect)
-                    what.rows.push_back(EffectEntryRow(actor, *effect));
-            }
-            if (!what.rows.empty())
-                row.detail.push_back(std::move(what));
+            what.rows.push_back(EffectEntryRow(actor, *ae->effect, ae->magnitude));
+            row.detail.push_back(std::move(what));
         }
         row.description = EffectDescription(base, row.magnitude, row.duration);
         // An ability's text lives on the spell, not its effect: Imperial

@@ -16,7 +16,9 @@ namespace RE
 {
 class Actor;
 class AlchemyItem;
+struct Effect;
 class InventoryEntryData;
+class MagicItem;
 class SpellItem;
 class TESObjectARMO;
 class TESObjectWEAP;
@@ -227,6 +229,17 @@ struct SheetSection
     // is the heading.
     std::string group;
 };
+
+// What a spell, an enchantment or a potion does, effect by effect, as a
+// perk's page lists its entries: the value each moves and by how much,
+// else its kind and what it names; the engine's archetype, the duration,
+// "hidden" where the game's list would not show it; each row opening on
+// its conditions, with a tick where they hold for the actor. `magnitude`
+// says which number a row carries: the record's, or the caster's actual
+// one. The record beside the author's prose, which says what they meant.
+[[nodiscard]] SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
+                                     const std::function<float(const RE::Effect *)> &magnitude);
+[[nodiscard]] SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnitude);
 
 // One effect running on the follower, for the Effects tab: the effect as
 // the game names it, its magnitude, what is left of it, and where it comes
