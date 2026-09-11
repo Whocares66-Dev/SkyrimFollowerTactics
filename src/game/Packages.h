@@ -129,10 +129,16 @@ void InitPackages();
 // type ask this so the power does not vanish from them meanwhile.
 [[nodiscard]] bool IsLeasedPower(std::uint32_t formID);
 
-// Is this follower holding a record right now? The rule engine treats them
-// cast rules as busy while they are, so a second request during a cast is
-// skipped for that turn without spending a cooldown.
+// Is this follower holding a record right now? The rule engine treats
+// their cast rules as busy while they are, so a second request during a
+// cast is skipped for that turn without spending a cooldown.
 [[nodiscard]] bool IsMidCast(const RE::Actor *actor);
+
+// Is this form what a record leased to the follower casts right now: a
+// cast slot's spell, a shout slot's shout, or the wrapper and the power
+// behind it? The package's own equip of it, on its way to casting, is
+// ours, and the equip detours let it through a ban or a pinned hand.
+[[nodiscard]] bool IsOurCast(const RE::Actor *actor, std::uint32_t formID);
 
 enum class CastRequest : std::uint8_t
 {

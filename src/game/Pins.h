@@ -139,12 +139,16 @@ void KeepPins(const std::vector<RE::Actor *> &followers);
 // is computed until the AI asks, and nothing on the tick.
 void WatchCombatScores();
 
-// Once, at data load: detour the engine's equip so that an equip of ITS
-// choosing -- the best weapon on leaving combat, the outfit on a cell
-// change, a better arrow -- is refused when it would take a hand or slot a
-// pin holds. Our own equips pass. This is what holds a pin out of combat,
-// item or spell: the engine's prevent-removal flag is deliberately not
-// used (EquipPinned says why). The approach Follower Equip Control ships.
+// Once, at data load: detour the engine's three equips -- an item, a spell
+// into a hand, a shout or power into the voice -- so that an equip of ITS
+// choosing, or a script's or a package's, is refused when it names a
+// banned thing or would take a hand or slot a pin holds. Our own equips
+// pass, and so does the spell or shout a record of ours is casting. This
+// is what holds a pin and a ban out of combat and in it: the engine's
+// prevent-removal flag is deliberately not used (EquipPinned says why),
+// and the unequip is not detoured, since a refused removal cannot tell a
+// swap from an item leaving the bag, and corrupted the hands when the flag
+// tried (2026-09-04). The approach Follower Equip Control ships.
 void RefuseEquipsAgainstPins();
 
 // Republish the views owed after a spell left a hand: the Papyrus native

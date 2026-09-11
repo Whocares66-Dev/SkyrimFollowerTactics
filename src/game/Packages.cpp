@@ -857,6 +857,26 @@ bool IsMidCast(const RE::Actor *actor)
     return g_available && actor && AlreadyCasting(actor);
 }
 
+bool IsOurCast(const RE::Actor *actor, std::uint32_t formID)
+{
+    if (!g_available || !actor || formID == 0)
+        return false;
+    for (const auto &slot : g_pool)
+    {
+        if (!slot.Busy() || slot.lease->FormID() != actor->GetFormID())
+            continue;
+        if (slot.spell == formID)
+            return true;
+        if (slot.shouting && slot.shouting->GetFormID() == formID)
+            return true;
+        if (slot.wrapper && slot.wrapper->GetFormID() == formID)
+            return true;
+        if (slot.power && slot.power->GetFormID() == formID)
+            return true;
+    }
+    return false;
+}
+
 bool HasFreeSlot()
 {
     if (!g_available)

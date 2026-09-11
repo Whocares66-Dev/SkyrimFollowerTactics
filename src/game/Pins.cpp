@@ -1510,39 +1510,51 @@ namespace
 
 using EquipObjectFn = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::TESBoundObject *, RE::ExtraDataList *,
                                std::uint32_t, const RE::BGSEquipSlot *, bool, bool, bool, bool);
+using EquipSpellFn = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::SpellItem *, const RE::BGSEquipSlot *);
+using EquipShoutFn = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::TESShout *);
 EquipObjectFn g_equipObject = nullptr;
+EquipSpellFn g_equipSpell = nullptr;
+EquipShoutFn g_equipShout = nullptr;
 
-// Would this equip, which is not ours, break a pin? The rule is core's
-// (RefusesEngineEquip, tested against the simulated engine); a ban refuses
-// outright, and a bound weapon passes: it is the conjuration in progress,
-// and refusing it ends the spell they are casting (Follower Equip Control
-// found this the hard way). The score hook keeps the AI from choosing the
-// spell for a pinned hand in the first place.
-bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlot *slot)
+// Would this equip, which is not ours, break a pin or a ban? The rule is
+// core's (RefusesEngineEquip, tested against the simulated engine); a ban
+// refuses outright. Two things pass: a bound weapon, the conjuration in
+// progress, since refusing it ends the spell they are casting (Follower
+// Equip Control found this the hard way) and the score hook keeps the AI
+// from choosing the spell for a pinned hand anyway; and the spell or shout
+// a record of ours is casting, whose equip is the package's on our behalf
+// -- a rule may cast a banned spell, and a cast borrows a pinned hand.
+// One function for an item, a spell and a shout: the AI, a script and a
+// package all reach the same three engine entries, and a spell ban was a
+// fight between a mod's script and the watchdog until the spell entry was
+// detoured too (Megara's Heal Other, 2026-09-11).
+bool Refused(RE::Actor *actor, RE::TESForm *form, const RE::BGSEquipSlot *slot)
 {
+    if (IsOurCast(actor, form->GetFormID()))
+        return false;
     std::scoped_lock lock(g_pinMutex);
-    if (BannedHere(actor->GetFormID(), object->GetFormID()))
+    if (BannedHere(actor->GetFormID(), form->GetFormID()))
     {
-        if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
+        if (g_refusedLogged.insert(ReadyKey(actor, form)).second)
             log::pins.event(log::Level::Warn, "ban.refused", actor,
-                            {{"itemFormId", log::Id(object->GetFormID())},
-                             {"itemName", log::NameOf(object)},
+                            {{"itemFormId", log::Id(form->GetFormID())},
+                             {"itemName", log::NameOf(form)},
                              {"inCombat", actor->IsInCombat()}},
-                            "{} the engine would equip banned {} -- refused ({})", Describe(actor), log::NameOf(object),
+                            "{} the engine would equip banned {} -- refused ({})", Describe(actor), log::NameOf(form),
                             actor->IsInCombat() ? "in combat" : "out of combat");
         return true;
     }
     const auto it = g_pins.find(actor->GetFormID());
     if (it == g_pins.end() || it->second.empty())
         return false;
-    if (const auto *weapon = object->As<RE::TESObjectWEAP>(); weapon && weapon->IsBound())
+    if (const auto *weapon = form->As<RE::TESObjectWEAP>(); weapon && weapon->IsBound())
         return false;
-    const Holdable thing = DescribeHoldable(actor, object);
+    const Holdable thing = DescribeHoldable(actor, form);
     const Hand into = SlotHand(slot);
     const Refusal refusal = RefusesEngineEquip(it->second, thing, into, DualWieldAllowed(actor));
     if (!refusal)
         return false;
-    if (g_refusedLogged.insert(ReadyKey(actor, object)).second)
+    if (g_refusedLogged.insert(ReadyKey(actor, form)).second)
     {
         const auto *held = RE::TESForm::LookupByID(refusal.pin->thing.form);
         const char *why = refusal.why == Refusal::Why::OneCopy    ? "one copy cannot fill both hands"
@@ -1552,12 +1564,12 @@ bool Refused(RE::Actor *actor, RE::TESBoundObject *object, const RE::BGSEquipSlo
                         {{"itemFormId", log::Id(refusal.pin->thing.form)},
                          {"itemName", log::NameOf(held)},
                          {"hand", HandTag(refusal.pin->hands)},
-                         {"refusedFormId", log::Id(object->GetFormID())},
-                         {"refusedName", log::NameOf(object)},
+                         {"refusedFormId", log::Id(form->GetFormID())},
+                         {"refusedName", log::NameOf(form)},
                          {"reason", why},
                          {"inCombat", actor->IsInCombat()}},
                         "{} the engine would equip {}{} over pinned {}{} -- refused: {} ({})", Describe(actor),
-                        log::NameOf(object), HandTag(HandsFor(thing.grip, into)), log::NameOf(held),
+                        log::NameOf(form), HandTag(HandsFor(thing.grip, into)), log::NameOf(held),
                         HandTag(refusal.pin->hands), why, actor->IsInCombat() ? "in combat" : "out of combat");
     }
     return true;
@@ -1572,31 +1584,51 @@ void EquipObjectHook(RE::ActorEquipManager *self, RE::Actor *actor, RE::TESBound
     g_equipObject(self, actor, object, extra, count, slot, queue, force, sounds, applyNow);
 }
 
+void EquipSpellHook(RE::ActorEquipManager *self, RE::Actor *actor, RE::SpellItem *spell, const RE::BGSEquipSlot *slot)
+{
+    if (g_ownEquipDepth == 0 && actor && spell && Refused(actor, spell, slot))
+        return;
+    g_equipSpell(self, actor, spell, slot);
+}
+
+void EquipShoutHook(RE::ActorEquipManager *self, RE::Actor *actor, RE::TESShout *shout)
+{
+    if (g_ownEquipDepth == 0 && actor && shout && Refused(actor, shout, nullptr))
+        return;
+    g_equipShout(self, actor, shout);
+}
+
+// One detour, by address-library id: the same pair the library's own
+// wrapper resolves. Says so at error level when it cannot be placed.
+template <typename Fn> bool Detour(const char *what, REL::RelocationID id, Fn &original, Fn hook)
+{
+    const REL::Relocation<std::uintptr_t> target{id};
+    original = reinterpret_cast<Fn>(target.address());
+    DetourTransactionBegin();
+    DetourUpdateThread(GetCurrentThread());
+    DetourAttach(&reinterpret_cast<PVOID &>(original), reinterpret_cast<PVOID>(hook));
+    const LONG result = DetourTransactionCommit();
+    if (result != NO_ERROR)
+    {
+        log::pins.event(log::Level::Error, "install.failed", {{"what", what}, {"detoursError", result}},
+                        "could not detour {} (Detours error {}) -- the engine's equips of that kind will not be "
+                        "refused against the pins and bans",
+                        what, result);
+        return false;
+    }
+    log::pins.info("{} at {:X} detoured -- refused against the pins and bans", what, target.address());
+    return true;
+}
+
 } // namespace
 
 void RefuseEquipsAgainstPins()
 {
-    // The engine's EquipObject, by address-library id (SE 37938, AE 38894): the
-    // same pair the library's own wrapper resolves.
-    const REL::Relocation<std::uintptr_t> target{RELOCATION_ID(37938, 38894)};
-    g_equipObject = reinterpret_cast<EquipObjectFn>(target.address());
-
-    DetourTransactionBegin();
-    DetourUpdateThread(GetCurrentThread());
-    DetourAttach(&reinterpret_cast<PVOID &>(g_equipObject), reinterpret_cast<PVOID>(&EquipObjectHook));
-    const LONG result = DetourTransactionCommit();
-    if (result != NO_ERROR)
-    {
-        log::pins.event(log::Level::Error, "install.failed",
-                        {{"what", "ActorEquipManager::EquipObject detour"}, {"detoursError", result}},
-                        "could not detour ActorEquipManager::EquipObject (Detours error {}) -- the engine's "
-                        "equips will not be refused against the pins",
-                        result);
-        return;
-    }
-    log::pins.info("ActorEquipManager::EquipObject at {:X} detoured -- the engine's equips are refused against "
-                   "the pins",
-                   target.address());
+    // The engine's three equip entries (SE / AE ids): an item, a spell into
+    // a hand, a shout or power into the voice.
+    Detour("ActorEquipManager::EquipObject", RELOCATION_ID(37938, 38894), g_equipObject, &EquipObjectHook);
+    Detour("ActorEquipManager::EquipSpell", RELOCATION_ID(37939, 38895), g_equipSpell, &EquipSpellHook);
+    Detour("ActorEquipManager::EquipShout", RELOCATION_ID(37941, 38897), g_equipShout, &EquipShoutHook);
 }
 
 } // namespace ft::game
