@@ -25,6 +25,12 @@ std::string NameOr(const RE::TESForm *form, const char *fallback)
     return form && form->GetName() && *form->GetName() ? form->GetName() : fallback;
 }
 
+std::string NameOr(RE::TESObjectREFR *ref, const char *fallback)
+{
+    const char *name = ref ? ref->GetDisplayFullName() : nullptr;
+    return name && *name ? name : fallback;
+}
+
 SheetRow EquippedRow(bool pinned)
 {
     SheetRow row;

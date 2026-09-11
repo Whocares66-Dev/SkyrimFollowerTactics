@@ -10,7 +10,8 @@
 namespace RE
 {
 class TESForm;
-}
+class TESObjectREFR;
+} // namespace RE
 
 namespace ft::game
 {
@@ -21,8 +22,12 @@ namespace ft::game
 // A row of a sheet: its label and its value, nothing else set.
 [[nodiscard]] SheetRow Row(std::string label, std::string value);
 
-// A form's name, or `fallback` for a null form or a nameless one.
+// A form's name, or `fallback` for a null form or a nameless one. A
+// reference -- an actor -- is named as the game shows it, a renamed
+// follower by the name given: TESForm's own GetName does not answer for a
+// reference, and Serana's sheet read "?" until this overload (2026-09-11).
 [[nodiscard]] std::string NameOr(const RE::TESForm *form, const char *fallback);
+[[nodiscard]] std::string NameOr(RE::TESObjectREFR *ref, const char *fallback);
 
 // A form's name, or nothing.
 [[nodiscard]] inline std::string NameOf(const RE::TESForm *form)
