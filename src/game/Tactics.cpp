@@ -345,6 +345,18 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     v.effects = ScanActiveEffects(actor);
     MarkPins(actor, v.inventory, v.magic);
     v.combatStyle = BuildCombatStyleSheet(actor);
+
+    v.holdings.self = v.id;
+    for (const auto &peer : v.peers)
+        v.holdings.peers.push_back(peer.id);
+    for (const auto &option : v.consumables)
+        v.holdings.consumables.push_back({option.form, option.kind, option.effects});
+    for (const auto &option : v.spells)
+        v.holdings.castable.push_back(option.form);
+    for (const auto &item : v.inventory)
+        v.holdings.things.push_back(item.form);
+    for (const auto &entry : v.magic)
+        v.holdings.things.push_back(entry.form);
 }
 
 void PublishOne(FollowerView v)

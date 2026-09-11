@@ -1,0 +1,130 @@
+// The editor's questions of a rule: what the follower no longer has sets
+// the rule aside, and a follower away sets it aside first. No Skyrim.
+
+#include <catch2/catch_test_macros.hpp>
+
+#include "Build.h"
+#include "core/Editor.h"
+
+using namespace ft;
+using namespace ft::test;
+
+namespace
+{
+
+constexpr std::uint32_t kFirebolt = 0x12FCD;
+constexpr std::uint32_t kSword = 0x13989;
+constexpr std::uint32_t kOtherFollower = 0x201;
+constexpr std::uint32_t kAway = 0x202;
+
+Holdings Bag()
+{
+    Holdings has;
+    has.self = 0xA2C94;
+    has.peers = {kOtherFollower};
+    has.consumables.push_back({kHealthPotion, ConsumableKind::Potion, {"Restore Health"}});
+    has.consumables.push_back({0x64B33, ConsumableKind::Food, {"Restore Stamina"}});
+    has.castable = {kFirebolt};
+    has.things = {kSword, kFirebolt};
+    return has;
+}
+
+Rule With(Action action)
+{
+    Rule r = HealBelow(0.5f);
+    r.actions = {std::move(action)};
+    return r;
+}
+
+} // namespace
+
+TEST_CASE("a policy is had while something carried of its kind has its effect", "[editor]")
+{
+    const Holdings has = Bag();
+    Action drink;
+    drink.kind = ActionKind::DrinkStrongest;
+    drink.effect = "Restore Health";
+    REQUIRE(ActionHad(drink, has));
+    // The right effect on the wrong kind is not it: food restoring stamina
+    // is no stamina potion.
+    drink.effect = "Restore Stamina";
+    REQUIRE_FALSE(ActionHad(drink, has));
+    Action eat;
+    eat.kind = ActionKind::EatWeakestFood;
+    eat.effect = "Restore Stamina";
+    REQUIRE(ActionHad(eat, has));
+    // Nothing carried with the effect: the potion drunk up.
+    drink.effect = "Fortify Destruction Power";
+    REQUIRE_FALSE(ActionHad(drink, has));
+    REQUIRE(RuleSetAside(With(drink), has) == Aside::NotHad);
+}
+
+TEST_CASE("a named thing is had by form and kind; a form of none always is", "[editor]")
+{
+    const Holdings has = Bag();
+    Action potion;
+    potion.kind = ActionKind::DrinkPotion;
+    potion.form = kHealthPotion;
+    REQUIRE(ActionHad(potion, has));
+    potion.form = 0x3EAE1;
+    REQUIRE_FALSE(ActionHad(potion, has));
+    // The health potion under eat-food: the wrong kind, not had.
+    Action food;
+    food.kind = ActionKind::EatFood;
+    food.form = kHealthPotion;
+    REQUIRE_FALSE(ActionHad(food, has));
+
+    Action cast;
+    cast.kind = ActionKind::CastSpell;
+    cast.form = kFirebolt;
+    REQUIRE(ActionHad(cast, has));
+    cast.form = 0x2F3B8;
+    REQUIRE_FALSE(ActionHad(cast, has));
+
+    Action equip;
+    equip.kind = ActionKind::EquipWeapon;
+    equip.form = kSword;
+    REQUIRE(ActionHad(equip, has));
+    equip.form = 0x13990;
+    REQUIRE_FALSE(ActionHad(equip, has));
+    equip.form = 0; // let go of every weapon pin: names nothing
+    REQUIRE(ActionHad(equip, has));
+
+    Action attack;
+    attack.kind = ActionKind::Attack;
+    REQUIRE(ActionHad(attack, has));
+}
+
+TEST_CASE("a follower away sets the rule aside, and is said before what is not had", "[editor]")
+{
+    const Holdings has = Bag();
+    Rule r = HealBelow(0.5f);
+    REQUIRE(RuleSetAside(r, has) == Aside::None);
+
+    r.subject = SubjectKind::Follower;
+    r.subjectForm = kOtherFollower;
+    REQUIRE(ConditionHad(r, has));
+    r.subjectForm = kAway;
+    REQUIRE_FALSE(ConditionHad(r, has));
+    REQUIRE(RuleSetAside(r, has) == Aside::FollowerAway);
+
+    // The party member of Attacking: the player and the follower themself
+    // are always with us; another follower has to be.
+    r.subject = SubjectKind::Enemy;
+    r.predicate = PredicateKind::Attacking;
+    r.subjectForm = 0;
+    REQUIRE(ConditionHad(r, has));
+    r.subjectForm = has.self;
+    REQUIRE(ConditionHad(r, has));
+    r.subjectForm = kAway;
+    REQUIRE_FALSE(ConditionHad(r, has));
+
+    Rule aimed = HealBelow(0.5f);
+    aimed.actionTarget = ActionTargetKind::Follower;
+    aimed.actionTargetForm = kOtherFollower;
+    REQUIRE(TargetHad(aimed, has));
+    aimed.actionTargetForm = kAway;
+    REQUIRE_FALSE(TargetHad(aimed, has));
+    aimed.FirstAction().effect = "Fortify Destruction Power"; // not had either
+    REQUIRE(RuleSetAside(aimed, has) == Aside::FollowerAway);
+}

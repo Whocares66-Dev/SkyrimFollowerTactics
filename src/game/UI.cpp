@@ -1138,69 +1138,36 @@ std::string FormName(std::uint32_t form)
 // the spell known, the scroll carried, the weapon in the bag. An action
 // that names nothing, or a policy, is always available here; whether it
 // can fire is the evaluator's question.
+// The editor's questions of a rule are core's (core/Editor.h), asked of
+// what the tick found the follower to have; the words are the panel's.
 bool ActionAvailable(const ft::Action &act, const FollowerView &view)
 {
-    if (act.form == 0)
-        return true;
-    if (ft::NamesConsumable(act.kind))
-    {
-        for (const auto &option : view.consumables)
-            if (option.form == act.form && option.kind == ft::ConsumableOf(act.kind))
-                return true;
-        return false;
-    }
-    if (ft::IsEquip(act.kind))
-        return !EquipTargetName(act, view).empty();
-    if (TakesSpell(act.kind))
-    {
-        for (const auto &option : view.spells)
-            if (option.form == act.form)
-                return true;
-        return false;
-    }
-    return true;
+    return ft::ActionHad(act, view.holdings);
 }
 
-bool FollowerPresent(const FollowerView &view, std::uint32_t id)
-{
-    return std::any_of(view.peers.begin(), view.peers.end(),
-                       [id](const FollowerView::Peer &peer) { return peer.id == id; });
-}
-
-// Whether the follower the condition names is with us: the subject, or
-// the party member an Attacking or Attacked by asks about. The player and
-// the follower themself always are.
 bool ConditionAvailable(const ft::Rule &rule, const FollowerView &view)
 {
-    if (rule.subject == ft::SubjectKind::Follower)
-        return FollowerPresent(view, rule.subjectForm);
-    const bool member =
-        rule.predicate == ft::PredicateKind::Attacking || rule.predicate == ft::PredicateKind::AttackedBy;
-    if (member && rule.subjectForm != 0 && rule.subjectForm != view.id)
-        return FollowerPresent(view, rule.subjectForm);
-    return true;
+    return ft::ConditionHad(rule, view.holdings);
 }
 
-// Whether the follower the action is aimed at is with us.
 bool TargetAvailable(const ft::Rule &rule, const FollowerView &view)
 {
-    return rule.actionTarget != ft::ActionTargetKind::Follower || FollowerPresent(view, rule.actionTargetForm);
+    return ft::TargetHad(rule, view.holdings);
 }
 
-bool RuleAvailable(const ft::Rule &rule, const FollowerView &view)
-{
-    return ConditionAvailable(rule, view) && TargetAvailable(rule, view) &&
-           std::all_of(rule.actions.begin(), rule.actions.end(),
-                       [&](const ft::Action &act) { return ActionAvailable(act, view); });
-}
-
-// Why a rule is set aside, for its switch; null when it is not. A follower
-// away is said first: the whole rule waits on them, whatever else it names.
+// Why a rule is set aside, for its switch; null when it is not.
 const char *SetAsideReason(const ft::Rule &rule, const FollowerView &view)
 {
-    if (!ConditionAvailable(rule, view) || !TargetAvailable(rule, view))
+    switch (ft::RuleSetAside(rule, view.holdings))
+    {
+    case ft::Aside::FollowerAway:
         return kFollowerAway;
-    return RuleAvailable(rule, view) ? nullptr : kNotAvailable;
+    case ft::Aside::NotHad:
+        return kNotAvailable;
+    case ft::Aside::None:
+        break;
+    }
+    return nullptr;
 }
 
 std::string ActionText(const ft::Action &act, const FollowerView &view)

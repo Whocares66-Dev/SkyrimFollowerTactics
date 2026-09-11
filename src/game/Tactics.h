@@ -6,6 +6,7 @@
 // retire one risk -- whether an NPC can be made to reliably consume a
 // potion.
 
+#include "core/Editor.h"
 #include "core/Evaluator.h"
 #include "game/Inventory.h"
 #include "game/Magic.h"
@@ -91,6 +92,9 @@ struct FollowerView
     std::vector<EffectRow> effects;
     // The Tactics tab's Combat Style section.
     std::vector<SheetSection> combatStyle;
+    // What the editor greys a rule by (core/Editor.h), from the same scans
+    // as the menus above.
+    ft::Holdings holdings;
 };
 
 // How many followers the tick manages at once, and so how many entries the
