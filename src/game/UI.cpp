@@ -1754,7 +1754,20 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
 {
     bool changed = false;
 
+    // An action naming a thing the follower no longer has is greyed, with
+    // the reason on it -- and still opens: the potion drunk up wants
+    // choosing again, here, not deleting and writing afresh. The colour is
+    // pushed round the cell alone, so the menu it opens reads as usual.
+    const bool available = ActionAvailable(act, view);
+    if (!available)
+        Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
     CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
+    if (!available)
+    {
+        Im::PopStyleColor(1);
+        if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+            Im::SetTooltip("%s", kNotAvailable);
+    }
 
     PushPopupChrome();
     if (!Im::BeginPopup(id, 0))
@@ -1916,8 +1929,6 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::TableSetColumnIndex(0);
             if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr, rule))
                 changed = true;
-            if (!ActionAvailable(rule.actions[a], view) && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-                Im::SetTooltip("%s", kNotAvailable);
 
             Im::TableSetColumnIndex(1);
             Im::AlignTextToFramePadding();
@@ -2182,8 +2193,6 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             bool addAnother = false;
             if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother, rule))
                 changed = true;
-            if (!available && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-                Im::SetTooltip("%s", kNotAvailable);
             if (addAnother)
             {
                 rule.actions.emplace_back();
