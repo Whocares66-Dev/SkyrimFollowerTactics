@@ -2476,7 +2476,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 // right click, both of which promise something the sheet does not offer. A
 // row flagged as a header gets the header background; plain text on it gets
 // the look without the behaviour.
-void PlainHeaderRow(std::initializer_list<const char *> labels)
+void PlainHeaderRow(const std::vector<const char *> &labels)
 {
     Im::TableNextRow(Im::ImGuiTableRowFlags_Headers, 0.0f);
     int column = 0;
@@ -2660,15 +2660,18 @@ using RowDrawer = std::function<void(const SheetRow &, const std::string &, floa
 // modifiers text or its mark glyph; `first` and `second` head the name
 // and value columns then, where the table has a header row at all; and
 // `fourth`, when given, a column between the value and the last, headed
-// so, carrying each row's `extra` -- an effect's duration.
+// so, carrying each row's `extra` -- an effect's duration; and `fifth`,
+// when given, a column after the last, headed so, carrying each row's
+// `link` -- an effect's source, lit as a link to the row's form.
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                   const std::function<void(std::uint32_t)> &onLink = {}, const char *third = "Modifiers",
                   const RowDrawer &drawer = {}, const char *first = "", const char *second = "",
-                  const char *fourth = nullptr)
+                  const char *fourth = nullptr, const char *fifth = nullptr)
 {
     float nameWidth = modifiers ? TextWidth(first) : 0.0f;
     float valueWidth = modifiers ? TextWidth(second) : 0.0f;
     float extraWidth = fourth ? TextWidth(fourth) : 0.0f;
+    float thirdWidth = fifth ? TextWidth(third) : 0.0f;
     // A row with perks carries the disclosure marker before its name and
     // is measured with it; a row without starts its name where the marker
     // would be, so the two kinds line up on their left edge.
@@ -2740,7 +2743,8 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
         const auto beginPiece = [&]() {
             const std::string id = section.title + "##" + std::to_string(piece++);
             const auto flags = Im::ImGuiTableFlags_Borders;
-            if (!Im::BeginTable(id.c_str(), modifiers ? lastColumn + 1 : 2, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+            if (!Im::BeginTable(id.c_str(), modifiers ? lastColumn + 1 + (fifth ? 1 : 0) : 2, flags,
+                                Im::ImVec2(0.0f, 0.0f), 0.0f))
                 return false;
             Im::TableSetupColumn("##name", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
             // The value column takes the rest of the table when nothing
@@ -2754,11 +2758,26 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             {
                 if (fourth)
                     Im::TableSetupColumn("##extra", Im::ImGuiTableColumnFlags_WidthFixed, extraWidth + pad, 0);
-                Im::TableSetupColumn(third, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-                if (piece == 1 && fourth)
-                    PlainHeaderRow({first, second, fourth, third});
-                else if (piece == 1)
-                    PlainHeaderRow({first, second, third});
+                // The last column takes the rest of the table: the third,
+                // or the fifth when there is one, the third then as wide
+                // as its heading and its glyph.
+                if (fifth)
+                {
+                    Im::TableSetupColumn(third, Im::ImGuiTableColumnFlags_WidthFixed, thirdWidth + pad, 0);
+                    Im::TableSetupColumn(fifth, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+                }
+                else
+                    Im::TableSetupColumn(third, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+                if (piece == 1)
+                {
+                    std::vector<const char *> labels{first, second};
+                    if (fourth)
+                        labels.push_back(fourth);
+                    labels.push_back(third);
+                    if (fifth)
+                        labels.push_back(fifth);
+                    PlainHeaderRow(labels);
+                }
             }
             inTable = true;
             return true;
@@ -2910,6 +2929,20 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 }
                 if (!row.note.empty() && Im::IsItemHovered(0))
                     NoteTooltip(row.note);
+                if (fifth)
+                {
+                    // The source, a link to its page where the row has
+                    // one, as the value cell is elsewhere.
+                    Im::TableSetColumnIndex(lastColumn + 1);
+                    if (row.form != 0 && onLink)
+                    {
+                        const Im::ImVec2 at = Im::GetCursorScreenPos();
+                        if (CellClicked(("##link" + section.title + "/" + row.label).c_str()))
+                            onLink(row.form);
+                        Im::SetCursorScreenPos(at);
+                    }
+                    Im::Text("%s", row.link.c_str());
+                }
             }
             if (!open)
                 continue;
@@ -3790,7 +3823,7 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
             [](const SheetRow &entry, const std::string &key, float left, float right) {
                 DrawConditionDrawer(entry, key, left, right);
             },
-            "Name", "Magnitude", "Duration");
+            "Name", "Effect", "Duration");
     }
     // The poison's effects under the Poison section's own heading, so an
     // enchanted and poisoned blade reads as two things, which it is.
@@ -4182,7 +4215,7 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
             [](const SheetRow &line, const std::string &key, float left, float right) {
                 DrawConditionDrawer(line, key, left, right);
             },
-            "Name", "Magnitude", "Duration");
+            "Name", "Effect", "Duration");
     }
     if (!entry.description.empty())
     {
@@ -4302,28 +4335,23 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Follow
     Im::Text("%s", row.name.c_str());
 
     Im::Spacing();
-    // The effect's numbers; then what its source does, effect by effect,
-    // each with its conditions beneath, in the table the perk page uses
-    // for a perk's entries.
-    const auto split = row.detail.begin() + (row.detail.empty() ? 0 : 1);
-    std::vector<SheetSection> info(row.detail.begin(), split);
-    const std::vector<SheetSection> effects(split, row.detail.end());
-
+    // One row, in the table the item page lists its effects in, with the
+    // source as a last column: what the effect does, for how long, whether
+    // the game hides it, and where it comes from, its conditions beneath.
     // The source is a link to its page where it has one (SourcePage); a
     // source with none loses its link here rather than lighting a cell
     // that would go nowhere.
-    for (auto &section : info)
+    std::vector<SheetSection> sections = row.detail;
+    for (auto &section : sections)
         for (auto &line : section.rows)
             if (SourcePage(view, line.form) == Tab::None)
                 line.form = 0;
-    DrawSections(info, false, [&view](std::uint32_t form) { OpenSourcePage(view, form); });
-    if (!effects.empty())
-        DrawSections(
-            effects, true, {}, "Hidden",
-            [](const SheetRow &entry, const std::string &key, float left, float right) {
-                DrawConditionDrawer(entry, key, left, right);
-            },
-            "Name", "Magnitude", "Duration");
+    DrawSections(
+        sections, true, [&view](std::uint32_t form) { OpenSourcePage(view, form); }, "Hidden",
+        [](const SheetRow &entry, const std::string &key, float left, float right) {
+            DrawConditionDrawer(entry, key, left, right);
+        },
+        "Name", "Effect", "Duration", "Source");
 
     if (!row.description.empty())
     {

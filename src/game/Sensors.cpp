@@ -550,8 +550,6 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
         return words.empty() ? "?" : words;
     };
 
-    // The name on the left, the magnitude on the right, as a perk's entry
-    // has its entry point and its value.
     // The effect by the name the game gives it -- Scourge, Spell Warding,
     // Fortify Health -- and beside it the amount with the value it moves:
     // "-3 Health", "+25 Resist Magic". A scroll in Nordic Souls carries
@@ -568,8 +566,12 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
         amount = Fmt("%+g", magnitude) + " " + valueName(base->data.primaryAV);
         if (base->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kDualValueModifier &&
             base->data.secondaryAV != RE::ActorValue::kNone)
-            amount +=
-                ", " + Fmt("%+g", magnitude * base->data.secondAVWeight) + " " + valueName(base->data.secondaryAV);
+        {
+            // Two values, one per line, each with the dash the effect
+            // descriptions carry.
+            amount = "- " + amount + "\n- " + Fmt("%+g", magnitude * base->data.secondAVWeight) + " " +
+                     valueName(base->data.secondaryAV);
+        }
         // Nothing in the record says "per second"; the engine's rule does.
         // Health, Magicka and Stamina take a timed modifier once a second
         // -- the "10 points per second for 5 seconds" of a potion's text
@@ -696,45 +698,27 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
                 row.source = ae->spell->GetName();
         }
 
-        // The page.
-        SheetSection stats{"Effect Details", {}, {}};
-        char num[32];
-        std::snprintf(num, sizeof(num), "%.0f", row.magnitude);
-        if (row.magnitude != 0.0f)
-            stats.rows.push_back(Row("Magnitude", num));
-        if (ae->duration > 0.0f)
+        // The page: one row, in the table the item page lists its effects
+        // in, with the source as a last column -- what THIS effect does,
+        // for how long, whether the game's list hides it, where it comes
+        // from, its conditions beneath. Its source's other effects are the
+        // source's business, on the item's or the spell's own page. The
+        // active effect's magnitude is the engine's, signed already; its
+        // duration reads as what is left of what there was.
         {
-            stats.rows.push_back(Row("Duration", RemainingText(ae->duration)));
-            stats.rows.push_back(Row("Remaining", row.remainingText));
-        }
-        else
-        {
-            // No end to it: the infinity, and no Remaining row.
-            SheetRow forever = Row("Duration", "");
-            forever.icon = kIconInfinity;
-            stats.rows.push_back(std::move(forever));
-        }
-        if (!row.source.empty())
-        {
-            SheetRow source = Row("Source", row.source);
-            source.form = row.linkForm;
-            stats.rows.push_back(std::move(source));
-        }
-        // Whoever cast it, when it was not the follower: the player's
-        // Courage, an enemy's Fury.
-        if (auto caster = ae->caster.get(); caster && caster.get() != actor && caster->GetName() && *caster->GetName())
-            stats.rows.push_back(Row("Caster", caster->GetName()));
-        row.detail.push_back(std::move(stats));
-        // What THIS effect does, as the perk page lists a perk's entries:
-        // the record beside the author's description, its conditions
-        // beneath, and whether the game's own list hides it. Its source's
-        // other effects are the source's business, on the item's or the
-        // spell's own page. The active effect's magnitude is the engine's,
-        // signed already.
-        {
-            SheetSection what{"Effects", {}, {}};
-            what.rows.push_back(EffectEntryRow(actor, *ae->effect, ae->magnitude));
-            row.detail.push_back(std::move(what));
+            SheetSection page{"Effect", {}, {}};
+            SheetRow line = EffectEntryRow(actor, *ae->effect, ae->magnitude);
+            if (ae->duration > 0.0f)
+                line.extra = row.remainingText + " of " + RemainingText(ae->duration);
+            line.link = row.source;
+            // Whoever cast it, when it was not the follower: the player's
+            // Courage, an enemy's Fury.
+            if (auto caster = ae->caster.get();
+                caster && caster.get() != actor && caster->GetName() && *caster->GetName())
+                line.link += std::string(" (") + caster->GetName() + ")";
+            line.form = row.linkForm;
+            page.rows.push_back(std::move(line));
+            row.detail.push_back(std::move(page));
         }
         row.description = EffectDescription(base, row.magnitude, row.duration);
         // An ability's text lives on the spell, not its effect: Imperial
