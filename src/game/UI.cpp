@@ -4285,9 +4285,14 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
 // the effect's page, as on the Inventory and Magic tabs.
 struct EffectsTabState
 {
-    // The row open in detail, by effect and source; 0 for the list.
+    // The row open in detail, by effect, source and the worn item behind
+    // the source; 0 for the list. The item is part of it because two
+    // pieces enchanted alike share one enchantment form, and their rows
+    // were one row to the panel: the necklace's clicks went to the ring's
+    // (Remiel's Silver Ruby pair, 2026-09-11).
     std::uint32_t detailForm{0};
     std::uint32_t detailSource{0};
+    std::uint32_t detailLink{0};
 };
 
 std::unordered_map<ft::ActorId, EffectsTabState> g_effectsTabs;
@@ -4423,7 +4428,8 @@ void DrawEffects(const FollowerView &view)
     {
         for (const auto &row : view.effects)
         {
-            if (row.form == state.detailForm && row.sourceForm == state.detailSource)
+            if (row.form == state.detailForm && row.sourceForm == state.detailSource &&
+                row.linkForm == state.detailLink)
             {
                 DrawEffectDetail(row, state, view);
                 return;
@@ -4477,8 +4483,8 @@ void DrawEffects(const FollowerView &view)
 
     for (const EffectRow *row : VisibleEffects(view))
     {
-        char buf[48];
-        std::snprintf(buf, sizeof(buf), "##effect%08X_%08X", row->form, row->sourceForm);
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "##effect%08X_%08X_%08X", row->form, row->sourceForm, row->linkForm);
 
         Im::TableNextRow(0, 0.0f);
         // Running but changing nothing for this follower, or running but
@@ -4493,6 +4499,7 @@ void DrawEffects(const FollowerView &view)
         {
             state.detailForm = row->form;
             state.detailSource = row->sourceForm;
+            state.detailLink = row->linkForm;
         }
         if (!row->applied && Im::IsItemHovered(0))
             Im::SetTooltip("Not applied");
