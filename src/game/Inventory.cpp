@@ -574,6 +574,10 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
                 charge = Fmt("%.0f%%", *left);
             item.enchantment = SheetSection{"Enchantment", {Row(name.empty() ? "(unnamed)" : name, charge)}, {}};
             item.effectsTable = EffectsOf(actor, ench, [](const RE::Effect *e) { return e->effectItem.magnitude; });
+            // Named for the enchantment, as a poison's are for the poison:
+            // a bare "Effects" under an "Enchantment" heading read as a
+            // second thing.
+            item.effectsTable.title = "Enchantment Effects";
         }
 
         out.push_back(std::move(item));
