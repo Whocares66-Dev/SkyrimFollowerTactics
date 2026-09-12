@@ -1960,6 +1960,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     float drawerTop = 0.0f;
     bool drawerOpen = false;
 
+    bool changed = false;
     const auto beginPiece = [&]() {
         const std::string id = "rules##" + std::to_string(piece++);
         if (!Im::BeginTable(id.c_str(), 6, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
@@ -1975,7 +1976,34 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::TableSetupColumn("Status", Im::ImGuiTableColumnFlags_WidthFixed, statusWidth, 0);
         Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
         if (piece == 1)
-            Im::TableHeadersRow();
+        {
+            // Plain headings (PlainHeaderRow says why), but On is a switch
+            // for the whole list: off for all while any rule is on, on for
+            // all otherwise. Every rule, the set-aside ones too: a rule's
+            // own switch is the player's, kept across the setting-aside.
+            Im::TableNextRow(Im::ImGuiTableRowFlags_Headers, 0.0f);
+            Im::TableSetColumnIndex(0);
+            const bool anyOn =
+                std::any_of(rules.rules.begin(), rules.rules.end(), [](const ft::Rule &rule) { return rule.enabled; });
+            const Im::ImVec2 pos = Im::GetCursorScreenPos();
+            if (CellClicked("##onAll"))
+            {
+                for (ft::Rule &rule : rules.rules)
+                    rule.enabled = !anyOn;
+                if (!rules.rules.empty())
+                    changed = true;
+            }
+            if (Im::IsItemHovered(0))
+                Im::SetTooltip(anyOn ? "Click to disable all" : "Click to enable all");
+            Im::SetCursorScreenPos(pos);
+            Im::Text("On");
+            int column = 1;
+            for (const char *label : {"#", "Condition", "Action", "Status", "Order"})
+            {
+                Im::TableSetColumnIndex(column++);
+                Im::Text("%s", label);
+            }
+        }
         inTable = true;
         return true;
     };
@@ -2002,7 +2030,6 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         return false;
     }
 
-    bool changed = false;
     int moveFrom = -1;
     int moveTo = -1;
     int removeAt = -1;
@@ -4559,23 +4586,18 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
     const bool toggled = GlyphButton("enabled", Im::GetFrameHeight(), Glyph::Tick, followerEnabled);
     Im::PopStyleVar(1);
+    // On the switch, not the word, as on the Settings page. A disabled item
+    // reports no hover unless asked, and the greyed switch is exactly when
+    // the hover has something to say.
+    if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+        Im::SetTooltip("%s", !all              ? "Disabled for all in Settings"
+                             : followerEnabled ? "Click to turn off tactics"
+                                               : "Click to turn on tactics");
     if (toggled && all)
         SetFollowerEnabled(view.id, !followerEnabled);
-    // The switch and the word alike: a disabled item reports no hover
-    // unless asked, and the greyed switch is exactly when the hover has
-    // something to say.
-    const auto tip = [&]() {
-        if (!Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-            return;
-        Im::SetTooltip("%s", !all              ? "Disabled for all in Settings"
-                             : followerEnabled ? "Click to disable all"
-                                               : "Click to enable all");
-    };
-    tip();
     Im::SameLine(0.0f, kCellPadX);
     Im::AlignTextToFramePadding();
     Im::Text("Enabled");
-    tip();
     EndDimmed();
 
     // Space, but no rule: the table's own border already reads as the boundary,
@@ -4826,13 +4848,17 @@ void DrawSettings()
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
     const bool toggled = GlyphButton("enabledAll", Im::GetFrameHeight(), Glyph::Tick, enabled);
     Im::PopStyleVar(1);
+    // On the switch, not the word: the hover says what a click does, and
+    // the switch is what is clicked. Read before the toggle, so the text
+    // matches the tick shown this frame.
+    if (Im::IsItemHovered(0))
+        Im::SetTooltip(enabled ? "Click to turn off tactics for all followers"
+                               : "Click to turn on tactics for all followers");
     if (toggled)
         SetEnabled(!enabled);
     Im::SameLine(0.0f, kCellPadX);
     Im::AlignTextToFramePadding();
     Im::Text("Enable for all");
-    if (Im::IsItemHovered(0))
-        Im::SetTooltip("Disabling turns off tactics for all followers");
 }
 
 void __stdcall RenderSettings()
