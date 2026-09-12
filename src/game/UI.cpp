@@ -2214,23 +2214,27 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 Im::SetCursorPosX(Im::GetCursorPosX() + (cell - group) * 0.5f);
         }
         Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-        // Arrows from the icon font, like every other glyph on the row.
-        Im::BeginDisabled(i == 0);
+        // Arrows from the icon font, like every other glyph on the row. The
+        // first row's up and the last row's down are greyed the panel's
+        // way, not ImGui's: the table sits in a BeginDimmed whose disabled
+        // alpha is 1, so a plain BeginDisabled took no clicks but looked
+        // exactly like its neighbours.
+        BeginDimmed(i == 0);
         if (GlyphButton("up" + rowId, row, Glyph::Up))
         {
             moveFrom = static_cast<int>(i);
             moveTo = static_cast<int>(i) - 1;
         }
-        Im::EndDisabled();
+        EndDimmed();
 
         Im::SameLine(0.0f, kOrderGap);
-        Im::BeginDisabled(i + 1 >= rules.rules.size());
+        BeginDimmed(i + 1 >= rules.rules.size());
         if (GlyphButton("dn" + rowId, row, Glyph::Down))
         {
             moveFrom = static_cast<int>(i);
             moveTo = static_cast<int>(i) + 1;
         }
-        Im::EndDisabled();
+        EndDimmed();
 
         Im::SameLine(0.0f, kOrderGap);
         if (DeleteButton("rm" + rowId, row))
