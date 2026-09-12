@@ -442,6 +442,7 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 
 float DamageReduction(RE::Actor *actor); // below, with the armour readings
 float HiddenArmor(RE::Actor *actor);
+float ArmorValue(RE::Actor *actor);
 float EffectiveArmor(RE::Actor *actor);
 
 std::string ArmorNote(RE::Actor *actor)
@@ -488,9 +489,6 @@ std::string ArmorNote(RE::Actor *actor)
     // Whatever the engine's figure has that the pieces, the effects and
     // the bonus do not (a formula mod, a rounding): last, as a remainder,
     // so the list sums to the row and a gap is seen rather than hidden.
-    // Against the engine's live recomputation, as the row is, not the
-    // DamageResist actor value, which is written at equip time and can
-    // trail the skill.
     float sum = 0.0f;
     for (const Contribution &c : parts)
         sum += c.amount;
@@ -513,9 +511,15 @@ float HiddenArmor(RE::Actor *actor)
     return actor && scale > 0.0f ? actor->GetArmorBaseFactorSum() / scale : 0.0f;
 }
 
+float ArmorValue(RE::Actor *actor)
+{
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    return owner ? owner->GetActorValue(RE::ActorValue::kDamageResist) : 0.0f;
+}
+
 float EffectiveArmor(RE::Actor *actor)
 {
-    return actor ? actor->CalcArmorRating() + HiddenArmor(actor) : 0.0f;
+    return actor ? ArmorValue(actor) + HiddenArmor(actor) : 0.0f;
 }
 
 std::string SourceLines(std::vector<Contribution> sources, int decimals, const char *unit, float scale)
@@ -811,12 +815,20 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
 // the disease by their spell type, the paralysis and the rest by the
 // actor's own flags. One walk of the effect list, a handful of flag reads.
 // The share of a blow the actor's armour turns away, from the engine's own
-// two numbers rather than a recount of the slots: CalcArmorRating is the
-// rating as the engine applies it, perks included, and GetArmorBaseFactorSum
-// the hidden bonus for the pieces worn -- fArmorBaseFactor (0.03) per piece,
-// which is the "25 armour per piece" of the wikis in the engine's own
-// terms. Combined as the vanilla damage code does: rating x
-// fArmorScalingFactor / 100 + the hidden sum, capped at fMaxArmorRating.
+// two numbers rather than a recount of the slots: the DamageResist actor
+// value is the rating as the engine applies it -- the pieces worn, with
+// tempering, skill and perks, plus every effect running on the value: a
+// Fortify Armor Rating enchantment, a potion, a flesh spell -- and
+// GetArmorBaseFactorSum the hidden bonus for the pieces worn --
+// fArmorBaseFactor (0.03) per piece, which is the "25 armour per piece"
+// of the wikis in the engine's own terms. Not CalcArmorRating, which is
+// the pieces alone: Frea in Nordic Carved with a +100 Fortify Armor
+// Rating helmet read 392.5 on the value and 292.5 there (2026-09-11), and
+// the sheet's tooltip listed the enchantment against a total without it.
+// The value is written when the pieces change and can trail a skill
+// gained since; the effects are worth more than that. Combined as the
+// vanilla damage code does: rating x fArmorScalingFactor / 100 + the
+// hidden sum, capped at fMaxArmorRating.
 // The combination is the one thing not read from the engine -- it is inline
 // in the damage code, so a mod that hooks the FORMULA (Armor Rating
 // Rescaled, Armor Rating Redux) is not reflected; one that changes the
@@ -829,9 +841,8 @@ float DamageReduction(RE::Actor *actor)
         return 0.0f;
     const float scale = ArmorScale();
     static const float cap = GameSetting("fMaxArmorRating", 80.0f) / 100.0f;
-    const float rating = actor->CalcArmorRating();
     const float hidden = actor->GetArmorBaseFactorSum();
-    return (std::min)(cap, (std::max)(0.0f, rating * scale + hidden));
+    return (std::min)(cap, (std::max)(0.0f, ArmorValue(actor) * scale + hidden));
 }
 
 // For the log, once per actor per session: the engine's armour numbers

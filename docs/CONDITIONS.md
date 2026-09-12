@@ -64,7 +64,7 @@ Snapshot: a `status` bit set per actor view.
 
 ## 3. Armor
 
-Damage reduction = min(fMaxArmorRating 80%, rating x fArmorScalingFactor 0.12 / 100 + pieces x fArmorBaseFactor 0.03). The cap is reached at a displayed 567 with four pieces. `kDamageResist` is the displayed figure, worn armour with tempering and skill included. Since 2026-09-04 the two inputs come from the engine's own accessors, `Actor::CalcArmorRating()` and `Actor::GetArmorBaseFactorSum()`, rather than a recount of the worn slots; only the combination is ours, because the engine does it inline in the damage code. A mod that changes the settings or the ratings is reflected; one that hooks the formula itself (Armor Rating Rescaled, Armor Rating Redux) is not. The snapshot carries the reduction as a fraction, not the displayed number, so the condition means the same thing on a bandit in fur and a chief in plate.
+Damage reduction = min(fMaxArmorRating 80%, rating x fArmorScalingFactor 0.12 / 100 + pieces x fArmorBaseFactor 0.03). The cap is reached at a displayed 567 with four pieces. The rating is the `kDamageResist` actor value, the displayed figure: the worn armour with tempering, skill and perks, plus every effect running on the value, a Fortify Armor Rating enchantment, a potion, a flesh spell. Not `Actor::CalcArmorRating()`, which is the pieces alone and was the input from 2026-09-04 to 2026-09-11: Frea in Nordic Carved with a +100 Fortify Armor Rating helmet read 392.5 on the value and 292.5 there, and the sheet listed the enchantment in its tooltip against a total without it. The value is written when the pieces change and can trail a skill gained since, which is accepted. The hidden bonus is `Actor::GetArmorBaseFactorSum()`. Only the combination is ours, because the engine does it inline in the damage code. A mod that changes the settings or the ratings is reflected; one that hooks the formula itself (Armor Rating Rescaled, Armor Rating Redux) is not. The snapshot carries the reduction as a fraction, not the displayed number, so the condition means the same thing on a bandit in fur and a chief in plate.
 
 Creature skins all rate 0; a dragon or a giant reads as Low, which is what
 a rule about armour should say about them.
@@ -176,11 +176,7 @@ form, listed by name in the menu after the player.
   and how often.
 - The walk's list against the player's combat group `targets`, once, in
   the log; and how soon a dead or fled enemy drops out.
-- The `armor ...:` line the sensors log once per actor: that
-  `GetArmorBaseFactorSum` reads as pieces x 0.03 (0.06 for robes and boots)
-  and `CalcArmorRating` as the displayed rating, so the reduction in the
-  sheet's Armor row matches the 6% / 10% seen with the old slot count. And
-  the logged values for a fight's enemies, to replace the estimated tiers.
+- The `armor ...:` line the sensors log once per actor, at vanilla settings: that `GetArmorBaseFactorSum` reads as pieces x 0.03 (0.06 for robes and boots), so the reduction in the sheet's Armor row matches the 6% / 10% seen with the old slot count. Read in Nordic Souls on 2026-09-11, where fArmorBaseFactor is 0: the sum was 0.000 over 3 pieces, `CalcArmorRating` 292.5 was the pieces alone, and the `kDamageResist` value 392.5 the pieces plus a +100 Fortify Armor Rating enchantment, which is why the value is the rating now. The line keeps `CalcArmorRating` beside the value as the cross-check. And the logged values for a fight's enemies, to replace the estimated tiers.
 
 ## Sources
 
