@@ -4594,7 +4594,7 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // reports no hover unless asked, and the greyed switch is exactly when
     // the hover has something to say.
     if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Im::SetTooltip("%s", !all              ? "Disabled for all in Settings"
+        Im::SetTooltip("%s", !all              ? "Tactics are turned off for all followers in Settings"
                              : followerEnabled ? "Click to turn off tactics"
                                                : "Click to turn on tactics");
     if (toggled && all)
