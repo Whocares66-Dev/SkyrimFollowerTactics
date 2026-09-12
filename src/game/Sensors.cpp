@@ -404,22 +404,30 @@ std::string SourceName(RE::Actor *actor, const RE::ActiveEffect *ae)
     return source;
 }
 
+// Whether a running effect moves this actor value: a value modifier on
+// it, or a dual modifier with it as either half.
+bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
+{
+    using Archetype = RE::EffectArchetypes::ArchetypeID;
+    const auto *base = ae.effect->baseEffect;
+    const auto archetype = base->GetArchetype();
+    const bool moves = archetype == Archetype::kValueModifier || archetype == Archetype::kPeakValueModifier ||
+                       archetype == Archetype::kDualValueModifier;
+    if (!moves)
+        return false;
+    const bool primary = base->data.primaryAV == value;
+    const bool secondary = archetype == Archetype::kDualValueModifier && base->data.secondaryAV == value;
+    return primary || secondary;
+}
+
 std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 {
     std::vector<Contribution> out;
-    using Archetype = RE::EffectArchetypes::ArchetypeID;
     ForEachActiveEffect(actor, [&](RE::ActiveEffect &effect) {
         auto *ae = &effect;
+        if (!ModifiesValue(effect, value))
+            return;
         const auto *base = ae->effect->baseEffect;
-        const auto archetype = base->GetArchetype();
-        const bool moves = archetype == Archetype::kValueModifier || archetype == Archetype::kPeakValueModifier ||
-                           archetype == Archetype::kDualValueModifier;
-        if (!moves)
-            return;
-        const bool primary = base->data.primaryAV == value;
-        const bool secondary = archetype == Archetype::kDualValueModifier && base->data.secondaryAV == value;
-        if (!primary && !secondary)
-            return;
         std::string source = SourceName(actor, ae);
         if (source.empty())
             source = NameOr(base, "?");
@@ -546,13 +554,47 @@ std::string ValueNote(float base, std::vector<Contribution> sources, float perks
     return note;
 }
 
+// For the log, once per actor and value: the running effects on a value
+// whose sum is not in the value. Seen with an enchanted piece equipped from
+// the panel while the clock is frozen: the effect is in the list at once,
+// the value moves on the actor's next update (Pins.cpp, the equip path),
+// and the sheet's hover text ran ahead of its row (2026-09-11). What an
+// effect not yet applied looks like -- a flag, an elapsed time of zero --
+// is what this is to find out, so the hover text can say so.
+std::unordered_set<std::uint64_t> g_unappliedLogged;
+void LogUnappliedSources(RE::Actor *actor, RE::ActorValue value, float listed, float actual)
+{
+    if (!log::Enabled(log::Level::Debug))
+        return;
+    const auto key = (static_cast<std::uint64_t>(actor->GetFormID()) << 32) | static_cast<std::uint32_t>(value);
+    if (!g_unappliedLogged.insert(key).second)
+        return;
+    std::string lines;
+    ForEachActiveEffect(actor, [&](RE::ActiveEffect &ae) {
+        if (!ModifiesValue(ae, value))
+            return;
+        lines += fmt::format("\n    {} {:+.1f}: flags {:#010x}, elapsed {:.2f}s, duration {:.1f}s, source {}",
+                             NameOr(ae.effect->baseEffect, "?"), ae.magnitude, ae.flags.underlying(), ae.elapsedSeconds,
+                             ae.duration, SourceName(actor, &ae));
+    });
+    log::sensors.debug("value {} on {}: reads {:.1f}, the listed sources make {:.1f} -- the effects on it:{}",
+                       static_cast<int>(value), NameOr(actor, "?"), actual, listed, lines);
+}
+
 std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
 {
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     if (!owner)
         return {};
     const float base = owner->GetBaseActorValue(value);
-    return ValueNote(base, Contributions(actor, value), owner->GetPermanentActorValue(value) - base, 0, unit);
+    const float perks = owner->GetPermanentActorValue(value) - base;
+    std::vector<Contribution> sources = Contributions(actor, value);
+    float listed = base + perks;
+    for (const Contribution &c : sources)
+        listed += c.amount;
+    if (const float actual = owner->GetActorValue(value); std::abs(actual - listed) >= 0.5f)
+        LogUnappliedSources(actor, value, listed, actual);
+    return ValueNote(base, std::move(sources), perks, 0, unit);
 }
 
 // The conditions of one tab, a row each: the call, the comparison, and a
