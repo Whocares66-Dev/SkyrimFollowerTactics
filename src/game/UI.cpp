@@ -1307,9 +1307,12 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         const ItemCategory category =
             action == ft::ActionKind::EquipArrows ? ItemCategory::Arrows : ItemCategory::Armor;
         bool separated = false;
+        // A form once, though the list may have a row per copy: the action
+        // names the form, and the engine picks among its copies.
+        std::unordered_set<std::uint32_t> listed;
         for (const auto &item : view.inventory)
         {
-            if (item.category != category)
+            if (item.category != category || !listed.insert(item.form).second)
                 continue;
             if (!separated)
             {
@@ -1351,9 +1354,11 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         }
         else
         {
+            std::unordered_set<std::uint32_t> listed;
             for (const auto &item : view.inventory)
             {
-                if (item.category != ItemCategory::Weapons || !Fits(item.grip, hand, false))
+                if (item.category != ItemCategory::Weapons || !Fits(item.grip, hand, false) ||
+                    !listed.insert(item.form).second)
                     continue;
                 if (EquipLeaf(act, action, item.form, item.name, hand))
                     changed = true;
@@ -2906,7 +2911,7 @@ enum class Tab
 
 struct InventoryTabState
 {
-    std::uint32_t detail{0};        // the item open in detail; 0 for the list
+    std::uint64_t detail{0};        // the row open in detail, by InventoryItem::Key; 0 for the list
     int category{-1};               // an ItemCategory, or -1 for all of them
     Tab openedFrom{Tab::Inventory}; // where the detail page returns to
     Tab select{Tab::None};          // a tab to switch to on the next frame
@@ -3526,8 +3531,11 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
     const std::vector<const InventoryItem *> rows = VisibleItems(view, state);
     for (const InventoryItem *item : rows)
     {
+        // Ids by the row's key, not the form: the plain stack and an
+        // enchanted copy share the form.
+        const auto key = static_cast<unsigned long long>(item->Key());
         char buf[32];
-        std::snprintf(buf, sizeof(buf), "##item%08X", item->form);
+        std::snprintf(buf, sizeof(buf), "##item%016llX", key);
 
         Im::TableNextRow(0, 0.0f);
         // Set aside -- kept from the combat AI while a pinned spell holds a
@@ -3544,7 +3552,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
         {
-            state.detail = item->form;
+            state.detail = item->Key();
             state.openedFrom = Tab::Inventory;
         }
         // Over the whole cell: the Selectable is the last item here. The
@@ -3619,18 +3627,18 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
         // be equipped nowhere (a potion) is left blank.
         if (anyHand)
         {
-            std::snprintf(buf, sizeof(buf), "##left%08X", item->form);
+            std::snprintf(buf, sizeof(buf), "##left%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
                 OnCell(buf, view.id, item->form, LeftCell(*item), Hand::Left, true);
-            std::snprintf(buf, sizeof(buf), "##right%08X", item->form);
+            std::snprintf(buf, sizeof(buf), "##right%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
                 OnCell(buf, view.id, item->form, RightCell(*item), Hand::Right, true);
         }
         if (anyWorn)
         {
-            std::snprintf(buf, sizeof(buf), "##wear%08X", item->form);
+            std::snprintf(buf, sizeof(buf), "##wear%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
                 OnCell(buf, view.id, item->form, WornCell(*item), Hand::None, true);
@@ -3741,7 +3749,7 @@ void DrawInventory(const FollowerView &view)
     {
         for (const auto &item : view.inventory)
         {
-            if (item.form == state.detail)
+            if (item.Key() == state.detail)
             {
                 DrawItemDetail(item, state);
                 return;
@@ -4557,7 +4565,15 @@ void DrawCharacter(const FollowerView &view)
             state.select = Tab::Magic;
             return;
         }
-        state.detail = form;
+        // Of the form's rows, the worn one: what the sheet names is the
+        // copy in hand, and a row of the form that is not worn is a spare.
+        const InventoryItem *page = nullptr;
+        for (const auto &item : view.inventory)
+        {
+            if (item.form == form && (!page || (item.worn && !page->worn)))
+                page = &item;
+        }
+        state.detail = page ? page->Key() : form;
         state.openedFrom = Tab::Character;
         state.select = Tab::Inventory;
     });

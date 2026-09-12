@@ -432,6 +432,156 @@ const char *DisplayName(ItemCategory category)
     }
 }
 
+namespace
+{
+
+// A copy that is its own row rather than one of the plain stack: what the
+// game's own menu splits an entry on. Worn, outfit and count are not on
+// the list: a worn plain sword stacks with its spare, as in the menu.
+bool StandsApart(const RE::ExtraDataList &list)
+{
+    using T = RE::ExtraDataType;
+    return list.HasType(T::kEnchantment) || list.HasType(T::kTextDisplayData) || list.HasType(T::kHealth) ||
+           list.HasType(T::kCharge) || list.HasType(T::kPoison) || list.HasType(T::kSoul);
+}
+
+// One row: `count` copies of `object` described by `entry`, which holds
+// only this row's extra lists.
+void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryData *entry, std::int32_t count,
+                   std::uint32_t stack, std::vector<InventoryItem> &out)
+{
+    InventoryItem item;
+    item.form = object->GetFormID();
+    item.stack = stack;
+    item.name = entry && entry->GetDisplayName() ? entry->GetDisplayName() : NameOf(object);
+    if (!IsListed(object, item.name))
+        return;
+
+    item.count = static_cast<int>(count);
+    // -1 is the engine's "this kind has no weight record" -- ammunition
+    // in Special Edition -- and it means weightless, not a debt.
+    item.weight = (std::max)(0.0f, object->GetWeight());
+    // The engine's own figure: enchantment and soul included, as the
+    // trade menu prices it.
+    item.value = entry ? entry->GetValue() : object->GetGoldValue();
+    item.worn = entry && entry->IsWorn();
+    if (auto *keyworded = object->As<RE::BGSKeywordForm>())
+    {
+        static auto *artifact = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000A8668);
+        static auto *vendor = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000917E8);
+        item.artifact = (artifact && keyworded->HasKeyword(artifact)) || (vendor && keyworded->HasKeyword(vendor));
+    }
+    // In hand, and this row's: the hand holds the form, and a row of it
+    // that is not worn is the spare.
+    item.equippedLeft = item.worn && actor->GetEquippedObject(true) == object;
+    item.equippedRight = item.worn && actor->GetEquippedObject(false) == object;
+
+    SheetSection stats{"Stats", {}, {}};
+    {
+        // The FormID first, as the spell page has it: what the console
+        // and the log call the thing.
+        char id[16];
+        std::snprintf(id, sizeof(id), "%08X", object->GetFormID());
+        stats.rows.push_back(Row("Base ID", id));
+    }
+    stats.rows.push_back(Row("Type", ""));
+    Classify(actor, object, entry, item, stats);
+    stats.rows[1].value = item.type;
+    if (item.count > 1)
+    {
+        stats.rows.push_back(Row("Count", std::to_string(item.count)));
+        stats.rows.push_back(Row("Weight", Fmt("%.1f", item.weight) + " each, " +
+                                               Fmt("%.1f", item.weight * static_cast<float>(item.count)) + " in all"));
+        stats.rows.push_back(
+            Row("Value", std::to_string(item.value) + " each, " + std::to_string(item.value * item.count) + " in all"));
+    }
+    else
+    {
+        stats.rows.push_back(Row("Weight", Fmt("%.1f", item.weight)));
+        stats.rows.push_back(Row("Value", std::to_string(item.value)));
+    }
+    // An outfit piece: added by the actor's Outfit record when they
+    // loaded and marked on its entry, which is what the trade menu hides
+    // it by. A tick when it is; no row when it is not.
+    if (entry && entry->extraLists)
+    {
+        bool outfit = false;
+        for (auto *list : *entry->extraLists)
+            outfit = outfit || (list && list->GetByType<RE::ExtraOutfitItem>() != nullptr);
+        if (outfit)
+        {
+            SheetRow row;
+            row.label = "Outfit";
+            row.icon = kGlyphTick;
+            stats.rows.push_back(std::move(row));
+        }
+    }
+    if (item.worn)
+    {
+        // The pin glyph beside the tick is added by MarkPins, which runs
+        // after this scan and is the one that knows the pins.
+        SheetRow equipped;
+        equipped.label = "Equipped";
+        equipped.icon = kGlyphTick;
+        stats.rows.push_back(std::move(equipped));
+    }
+    item.detail.push_back(std::move(stats));
+
+    // A poison on a weapon: a dose on one of the entry's extra lists,
+    // hits rather than seconds, with the poison's own record behind it.
+    // The same two shapes as an enchantment: one headed row, and the
+    // effects' table.
+    if (item.category == ItemCategory::Weapons && entry && entry->extraLists)
+    {
+        for (auto *list : *entry->extraLists)
+        {
+            auto *dose = list ? list->GetByType<RE::ExtraPoison>() : nullptr;
+            if (!dose || !dose->poison)
+                continue;
+            item.poison = SheetSection{"Poison", {Row(NameOf(dose->poison), std::to_string(dose->count))}, {}};
+            item.poisonEffects =
+                EffectsOf(actor, dose->poison, [](const RE::Effect *e) { return e->effectItem.magnitude; });
+            item.poisonEffects.title = "Poison Effects";
+            break;
+        }
+    }
+
+    // An enchantment, whether the record's or one put on at an arcane
+    // enchanter: the entry answers for both.
+    if (RE::EnchantmentItem *ench = entry ? entry->GetEnchantment() : nullptr)
+    {
+        item.enchanted = true;
+        // One row: the name, and what is left of the charge over the
+        // full amount, as numbers and as the share: "89 / 100 (89%)". A
+        // weapon never used has no ExtraCharge and is full.
+        const std::string name = NameOf(ench);
+        std::string charge;
+        if (auto *weapon = object->As<RE::TESObjectWEAP>())
+        {
+            const WeaponCharge c = ChargeOf(actor, weapon, Hand::None);
+            if (c.enchanted && c.maxCharge > 0.0f)
+            {
+                char text[64];
+                std::snprintf(text, sizeof(text), "%.0f / %.0f (%.0f%%)", static_cast<double>(c.charge),
+                              static_cast<double>(c.maxCharge), static_cast<double>(100.0f * c.charge / c.maxCharge));
+                charge = text;
+            }
+        }
+        else if (const auto left = entry->GetEnchantmentCharge())
+            charge = Fmt("%.0f%%", *left);
+        item.enchantment = SheetSection{"Enchantment", {Row(name.empty() ? "(unnamed)" : name, charge)}, {}};
+        item.effectsTable = EffectsOf(actor, ench, [](const RE::Effect *e) { return e->effectItem.magnitude; });
+        // Named for the enchantment, as a poison's are for the poison:
+        // a bare "Effects" under an "Enchantment" heading read as a
+        // second thing.
+        item.effectsTable.title = "Enchantment Effects";
+    }
+
+    out.push_back(std::move(item));
+}
+
+} // namespace
+
 std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
 {
     std::vector<InventoryItem> out;
@@ -454,136 +604,50 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
         if (object->Is(RE::FormType::LeveledItem))
             continue;
 
-        InventoryItem item;
-        item.form = object->GetFormID();
-        item.name = entry && entry->GetDisplayName() ? entry->GetDisplayName() : NameOf(object);
-        if (!IsListed(object, item.name))
-            continue;
-
-        item.count = static_cast<int>(count);
-        // -1 is the engine's "this kind has no weight record" -- ammunition
-        // in Special Edition -- and it means weightless, not a debt.
-        item.weight = (std::max)(0.0f, object->GetWeight());
-        // The engine's own figure: enchantment and soul included, as the
-        // trade menu prices it.
-        item.value = entry ? entry->GetValue() : object->GetGoldValue();
-        item.worn = entry && entry->IsWorn();
-        if (auto *keyworded = object->As<RE::BGSKeywordForm>())
-        {
-            static auto *artifact = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000A8668);
-            static auto *vendor = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000917E8);
-            item.artifact = (artifact && keyworded->HasKeyword(artifact)) || (vendor && keyworded->HasKeyword(vendor));
-        }
-        item.equippedLeft = actor->GetEquippedObject(true) == object;
-        item.equippedRight = actor->GetEquippedObject(false) == object;
-
-        SheetSection stats{"Stats", {}, {}};
-        {
-            // The FormID first, as the spell page has it: what the console
-            // and the log call the thing.
-            char id[16];
-            std::snprintf(id, sizeof(id), "%08X", object->GetFormID());
-            stats.rows.push_back(Row("Base ID", id));
-        }
-        stats.rows.push_back(Row("Type", ""));
-        Classify(actor, object, entry, item, stats);
-        stats.rows[1].value = item.type;
-        if (item.count > 1)
-        {
-            stats.rows.push_back(Row("Count", std::to_string(item.count)));
-            stats.rows.push_back(Row("Weight", Fmt("%.1f", item.weight) + " each, " +
-                                                   Fmt("%.1f", item.weight * static_cast<float>(item.count)) +
-                                                   " in all"));
-            stats.rows.push_back(Row("Value", std::to_string(item.value) + " each, " +
-                                                  std::to_string(item.value * item.count) + " in all"));
-        }
-        else
-        {
-            stats.rows.push_back(Row("Weight", Fmt("%.1f", item.weight)));
-            stats.rows.push_back(Row("Value", std::to_string(item.value)));
-        }
-        // An outfit piece: added by the actor's Outfit record when they
-        // loaded and marked on its entry, which is what the trade menu hides
-        // it by. A tick when it is; no row when it is not.
+        // The bag keeps one entry per form, and the entry's accessors (the
+        // name, the value, the enchantment, worn) answer from whichever of
+        // its extra lists they meet first, which mixes the copies: Frea's
+        // outfit Nordic Carved Armor and the enchanted one they were given
+        // read as one row of two, the plain one's rating and the enchanted
+        // one's price (2026-09-11). So the copies that stand apart are each
+        // described from an entry of their own holding just their list --
+        // what the game's menu does per stack -- and the rest from one
+        // holding the remainder. A temporary entry owns only its list
+        // container; the lists themselves stay the bag's.
+        auto plainCount = static_cast<std::int32_t>(count);
+        RE::InventoryEntryData plain(object, 0);
+        std::uint32_t stack = 0;
         if (entry && entry->extraLists)
         {
-            bool outfit = false;
-            for (auto *list : *entry->extraLists)
-                outfit = outfit || (list && list->GetByType<RE::ExtraOutfitItem>() != nullptr);
-            if (outfit)
-            {
-                SheetRow row;
-                row.label = "Outfit";
-                row.icon = kGlyphTick;
-                stats.rows.push_back(std::move(row));
-            }
-        }
-        if (item.worn)
-        {
-            // The pin glyph beside the tick is added by MarkPins, which runs
-            // after this scan and is the one that knows the pins.
-            SheetRow equipped;
-            equipped.label = "Equipped";
-            equipped.icon = kGlyphTick;
-            stats.rows.push_back(std::move(equipped));
-        }
-        item.detail.push_back(std::move(stats));
-
-        // A poison on a weapon: a dose on one of the entry's extra lists,
-        // hits rather than seconds, with the poison's own record behind it.
-        // The same two shapes as an enchantment: one headed row, and the
-        // effects' table.
-        if (item.category == ItemCategory::Weapons && entry && entry->extraLists)
-        {
             for (auto *list : *entry->extraLists)
             {
-                auto *dose = list ? list->GetByType<RE::ExtraPoison>() : nullptr;
-                if (!dose || !dose->poison)
+                if (!list)
                     continue;
-                item.poison = SheetSection{"Poison", {Row(NameOf(dose->poison), std::to_string(dose->count))}, {}};
-                item.poisonEffects =
-                    EffectsOf(actor, dose->poison, [](const RE::Effect *e) { return e->effectItem.magnitude; });
-                item.poisonEffects.title = "Poison Effects";
-                break;
-            }
-        }
-
-        // An enchantment, whether the record's or one put on at an arcane
-        // enchanter: the entry answers for both.
-        if (RE::EnchantmentItem *ench = entry ? entry->GetEnchantment() : nullptr)
-        {
-            item.enchanted = true;
-            // One row: the name, and what is left of the charge over the
-            // full amount, as numbers and as the share: "89 / 100 (89%)". A
-            // weapon never used has no ExtraCharge and is full.
-            const std::string name = NameOf(ench);
-            std::string charge;
-            if (auto *weapon = object->As<RE::TESObjectWEAP>())
-            {
-                const WeaponCharge c = ChargeOf(actor, weapon, Hand::None);
-                if (c.enchanted && c.maxCharge > 0.0f)
+                if (!StandsApart(*list))
                 {
-                    char text[64];
-                    std::snprintf(text, sizeof(text), "%.0f / %.0f (%.0f%%)", static_cast<double>(c.charge),
-                                  static_cast<double>(c.maxCharge),
-                                  static_cast<double>(100.0f * c.charge / c.maxCharge));
-                    charge = text;
+                    plain.AddExtraList(list);
+                    continue;
                 }
+                const std::int32_t copies = list->GetCount();
+                RE::InventoryEntryData one(object, copies);
+                one.AddExtraList(list);
+                plainCount -= copies;
+                DescribeStack(actor, object, &one, copies, ++stack, out);
             }
-            else if (const auto left = entry->GetEnchantmentCharge())
-                charge = Fmt("%.0f%%", *left);
-            item.enchantment = SheetSection{"Enchantment", {Row(name.empty() ? "(unnamed)" : name, charge)}, {}};
-            item.effectsTable = EffectsOf(actor, ench, [](const RE::Effect *e) { return e->effectItem.magnitude; });
-            // Named for the enchantment, as a poison's are for the poison:
-            // a bare "Effects" under an "Enchantment" heading read as a
-            // second thing.
-            item.effectsTable.title = "Enchantment Effects";
         }
-
-        out.push_back(std::move(item));
+        if (plainCount > 0)
+        {
+            plain.countDelta = plainCount;
+            DescribeStack(actor, object, &plain, plainCount, 0, out);
+        }
     }
 
-    std::sort(out.begin(), out.end(), [](const InventoryItem &a, const InventoryItem &b) { return a.name < b.name; });
+    // Ties by key, or two rows of one name -- the plain stack and the
+    // enchanted copy -- would swap places from one scan to the next.
+    std::sort(out.begin(), out.end(), [](const InventoryItem &a, const InventoryItem &b) {
+        const int byName = a.name.compare(b.name);
+        return byName != 0 ? byName < 0 : a.Key() < b.Key();
+    });
     return out;
 }
 

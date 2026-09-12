@@ -49,6 +49,18 @@ enum class ItemCategory : std::uint8_t
 struct InventoryItem
 {
     std::uint32_t form{0};
+    // Which of the form's copies this row is. The bag keeps one entry per
+    // form; the copies that stand apart from the rest -- enchanted at an
+    // enchanter, renamed, tempered, poisoned, charged, holding a soul -- are
+    // each a row of their own, as the game's menu shows them, numbered from
+    // 1 in the entry's order. 0 is the plain stack. So the form repeats
+    // across rows, and a row is named by Key(); a pin, a ban and a rule's
+    // equip are by form, and go for every row of it.
+    std::uint32_t stack{0};
+    [[nodiscard]] std::uint64_t Key() const
+    {
+        return (static_cast<std::uint64_t>(stack) << 32) | form;
+    }
     // As the game would show it: a renamed or player-enchanted piece keeps its
     // given name rather than reverting to the record's.
     std::string name;
