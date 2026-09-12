@@ -432,7 +432,7 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         // Aura carries a zero here) is not a source.
         if (std::abs(ae->magnitude) < 0.05f)
             return;
-        out.push_back({std::move(source), ae->magnitude});
+        out.push_back({std::move(source), NameOr(base, ""), ae->magnitude});
     });
     // Smallest first: the weaknesses, then the boons, the largest last.
     std::stable_sort(out.begin(), out.end(),
@@ -463,10 +463,17 @@ std::string ArmorNote(RE::Actor *actor)
         if (rating <= 0.0f)
             continue;
         const char *name = entry->GetDisplayName() ? entry->GetDisplayName() : armor->GetName();
-        parts.push_back({name ? name : "?", rating});
+        parts.push_back({name ? name : "?", {}, rating});
     }
+    // Named for the effect as well as its source: the source of a Fortify
+    // Armor enchantment is the piece, which is already a line above, and
+    // a helmet listed twice at two figures read as a mistake (2026-09-11).
     for (Contribution &c : Contributions(actor, RE::ActorValue::kDamageResist))
+    {
+        if (!c.effect.empty() && c.effect != c.source)
+            c.source += " (" + c.effect + ")";
         parts.push_back(std::move(c));
+    }
     // And the engine's hidden bonus per piece worn (fArmorBaseFactor, 0.03
     // of a blow each), in the rating's own units -- 25 a piece at the
     // vanilla settings, the "25 armour per piece" of the wikis. The list
@@ -476,7 +483,7 @@ std::string ArmorNote(RE::Actor *actor)
     if (hidden > 0.0f && perPiece > 0.0f)
     {
         const int pieces = static_cast<int>(std::lround(actor->GetArmorBaseFactorSum() / perPiece));
-        parts.push_back({"Hidden bonus (x" + std::to_string(pieces) + ")", hidden});
+        parts.push_back({"Hidden bonus (x" + std::to_string(pieces) + ")", {}, hidden});
     }
     // Whatever the engine's figure has that the pieces, the effects and
     // the bonus do not (a formula mod, a rounding): last, as a remainder,

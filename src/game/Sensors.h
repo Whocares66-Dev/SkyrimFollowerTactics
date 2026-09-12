@@ -379,6 +379,7 @@ struct SummonView
 struct Contribution
 {
     std::string source; // the worn item, the potion, the spell
+    std::string effect; // the magic effect's own name, "Fortify Armor Rating"
     float amount{0.0f}; // signed: a detrimental effect takes away
 };
 [[nodiscard]] std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value);
