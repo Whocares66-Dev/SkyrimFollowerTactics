@@ -159,7 +159,12 @@ bool NamesConsumable(ActionKind action) noexcept
 
 bool NamesForm(ActionKind action) noexcept
 {
-    return IsCast(action) || IsEquip(action) || NamesConsumable(action);
+    return IsCast(action) || (IsEquip(action) && !IsArrowsPolicy(action)) || NamesConsumable(action);
+}
+
+bool IsArrowsPolicy(ActionKind action) noexcept
+{
+    return action == ActionKind::EquipStrongestArrows || action == ActionKind::EquipWeakestArrows;
 }
 
 Kind KindOf(ActionKind action) noexcept
@@ -171,6 +176,8 @@ Kind KindOf(ActionKind action) noexcept
     case ActionKind::EquipSpell:
         return Kind::Spell;
     case ActionKind::EquipArrows:
+    case ActionKind::EquipStrongestArrows:
+    case ActionKind::EquipWeakestArrows:
         return Kind::Ammo;
     case ActionKind::EquipArmor:
         return Kind::Armor;

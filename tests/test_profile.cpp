@@ -529,6 +529,36 @@ TEST_CASE("a rule naming a value this build does not know is dropped, and the re
     REQUIRE(read.warnings[4].find("horse") != std::string::npos);
 }
 
+TEST_CASE("an arrow policy and a none by hand round-trip", "[profile]")
+{
+    Profile p;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Any;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction().kind = ActionKind::EquipStrongestArrows;
+    Action none;
+    none.kind = ActionKind::EquipWeapon;
+    none.hand = Hand::Left;
+    r.actions.push_back(none);
+    p.rules.rules.push_back(r);
+    const auto j = nlohmann::json::parse(WriteProfile(p, kHex));
+    const auto &steps = j["rules"][0]["then"]["do"];
+    REQUIRE(steps[0]["action"] == "equip-strongest-arrows");
+    REQUIRE_FALSE(steps[0].contains("form")); // chosen at evaluation, never written
+    REQUIRE(steps[1]["action"] == "equip-weapon");
+    REQUIRE_FALSE(steps[1].contains("form"));
+    REQUIRE(steps[1]["hand"] == "left");
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.warnings.empty());
+    const auto &back = read.profile->rules.rules[0].actions;
+    REQUIRE(back.size() == 2);
+    REQUIRE(back[0].kind == ActionKind::EquipStrongestArrows);
+    REQUIRE(back[1].kind == ActionKind::EquipWeapon);
+    REQUIRE(back[1].form == 0);
+    REQUIRE(back[1].hand == Hand::Left);
+}
+
 TEST_CASE("a type condition writes its kind and reads it back", "[profile]")
 {
     Profile p;

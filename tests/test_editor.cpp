@@ -27,7 +27,9 @@ Holdings Bag()
     has.castable = {kFirebolt};
     ItemVariant tempered;
     tempered.tempering = 1.2f;
-    has.things = {{kSword, ItemVariant{}}, {kFirebolt, std::nullopt}, {kSword, tempered}};
+    has.things = {{kSword, ItemVariant{}, Kind::Weapon},
+                  {kFirebolt, std::nullopt, Kind::Spell},
+                  {kSword, tempered, Kind::Weapon}};
     return has;
 }
 

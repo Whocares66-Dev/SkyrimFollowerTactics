@@ -354,9 +354,15 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     for (const auto &option : v.spells)
         v.holdings.castable.push_back(option.form);
     for (const auto &item : v.inventory)
-        v.holdings.things.push_back({item.form, item.variant});
+    {
+        const ft::Kind kind = item.category == ItemCategory::Arrows    ? ft::Kind::Ammo
+                              : item.category == ItemCategory::Weapons ? ft::Kind::Weapon
+                              : item.category == ItemCategory::Armor   ? ft::Kind::Armor
+                                                                       : ft::Kind::Other;
+        v.holdings.things.push_back({item.form, item.variant, kind});
+    }
     for (const auto &entry : v.magic)
-        v.holdings.things.push_back({entry.form, {}});
+        v.holdings.things.push_back({entry.form, {}, ft::Kind::Spell});
 
     // A rule reads as the thing it names is called now, and keeps that
     // name while the thing is away (Action::name): the current name is

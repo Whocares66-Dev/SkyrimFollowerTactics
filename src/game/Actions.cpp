@@ -409,15 +409,18 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     case ft::ActionKind::EquipWeapon:
     case ft::ActionKind::EquipSpell:
     case ft::ActionKind::EquipArrows:
+    case ft::ActionKind::EquipStrongestArrows:
+    case ft::ActionKind::EquipWeakestArrows:
     case ft::ActionKind::EquipArmor:
         // A pin, in the same book as the panel's. Naming nothing lets go of
-        // every pin of the kind and takes those things off, so the AI
-        // decides again. The evaluator only fires this when the snapshot
-        // says they have the thing, so a miss here is a form that left them
-        // between snapshot and dispatch.
+        // every pin of the kind -- in the hand named, for a weapon or a
+        // spell -- and takes those things off, so the AI decides again. An
+        // arrow policy arrives with the form it chose. The evaluator only
+        // fires this when the snapshot says they have the thing, so a miss
+        // here is a form that left them between snapshot and dispatch.
         if (action.form == 0)
         {
-            ReleaseKind(actor, ft::KindOf(action.kind));
+            ReleaseKind(actor, ft::KindOf(action.kind), ft::TakesHand(action.kind) ? action.hand : Hand::None);
             return ActionResult::Performed;
         }
         return PinNow(actor, action.form, action.hand, action.variant) ? ActionResult::Performed

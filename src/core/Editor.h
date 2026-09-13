@@ -44,6 +44,7 @@ struct Holdings
     {
         std::uint32_t form{0};
         std::optional<ItemVariant> variant; // none: the form, as a spell is
+        Kind kind{Kind::Other};             // what an arrow policy asks by: any ammunition at all
     };
     std::vector<Thing> things;
 };

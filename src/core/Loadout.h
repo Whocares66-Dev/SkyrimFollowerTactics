@@ -221,6 +221,9 @@ struct Holdable
     // has no second copy for the other, and the engine, asked for one,
     // shows the same object in both hands (the doubled dagger).
     int count{1};
+    // Ammunition's damage, the record's: what the strongest-arrows and
+    // weakest-arrows policies choose by. 0 for everything else.
+    float damage{0.0f};
 
     [[nodiscard]] constexpr bool IsAmmo() const noexcept
     {

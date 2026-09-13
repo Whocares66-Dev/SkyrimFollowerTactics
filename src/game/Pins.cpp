@@ -222,9 +222,10 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form, const std::option
         thing.kind = Kind::Weapon;
         thing.grip = Grip::LeftOnly;
     }
-    else if (form->Is(RE::FormType::Ammo))
+    else if (auto *ammo = form->As<RE::TESAmmo>())
     {
         thing.kind = Kind::Ammo;
+        thing.damage = ammo->GetRuntimeData().data.damage;
     }
     else if (form->Is(RE::FormType::Shout))
     {
@@ -1659,12 +1660,14 @@ bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand, const std::optional
     return true;
 }
 
-void ReleaseKind(RE::Actor *actor, Kind kind)
+void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
 {
     if (!actor)
         return;
-    // The pins of that kind, taken out of the book first so the watchdog
-    // and the score hook see them gone, then taken off.
+    // The pins of that kind -- in those hands, when hands are named --
+    // taken out of the book first so the watchdog and the score hook see
+    // them gone, then taken off. A two-hander's pin holds both hands and
+    // goes with either.
     std::vector<Pin> released;
     {
         std::scoped_lock lock(g_pinMutex);
@@ -1672,7 +1675,7 @@ void ReleaseKind(RE::Actor *actor, Kind kind)
         if (it == g_pins.end())
             return;
         std::erase_if(it->second, [&](const Pin &pin) {
-            if (pin.thing.kind != kind)
+            if (pin.thing.kind != kind || (hands != Hand::None && !Overlap(pin.hands, hands)))
                 return false;
             released.push_back(pin);
             return true;

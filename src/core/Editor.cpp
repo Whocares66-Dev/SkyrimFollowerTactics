@@ -28,6 +28,10 @@ bool ActionHad(const Action &action, const Holdings &has)
             return c.kind == kind && std::find(c.effects.begin(), c.effects.end(), action.effect) != c.effects.end();
         });
     }
+    // An arrow policy has what it would choose: any ammunition carried.
+    if (IsArrowsPolicy(action.kind))
+        return std::any_of(has.things.begin(), has.things.end(),
+                           [](const Holdings::Thing &t) { return t.kind == Kind::Ammo; });
     if (action.form == 0)
         return true;
     if (NamesConsumable(action.kind))

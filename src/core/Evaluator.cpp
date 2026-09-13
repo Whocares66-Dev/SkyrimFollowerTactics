@@ -236,15 +236,37 @@ Hand HandsWanted(const Action &a)
 }
 
 // A "none" action: an equip naming nothing, which lets go of every pin of
-// its kind.
+// its kind, in the hand it names for a weapon or a spell. An arrow policy
+// names nothing in the rule and chooses at evaluation; it is not a none.
 bool LetsGo(const Action &a)
 {
-    return IsEquip(a.kind) && a.form == 0;
+    return IsEquip(a.kind) && !IsArrowsPolicy(a.kind) && a.form == 0;
 }
 
-bool AnyPinOf(const std::vector<Pin> &pins, Kind kind)
+// A pin of the kind, in those hands when hands are named: a none for the
+// right hand is done when no weapon pin holds the right.
+bool AnyPinOf(const std::vector<Pin> &pins, Kind kind, Hand hands = Hand::None)
 {
-    return std::any_of(pins.begin(), pins.end(), [kind](const Pin &p) { return p.thing.kind == kind; });
+    return std::any_of(pins.begin(), pins.end(), [kind, hands](const Pin &p) {
+        return p.thing.kind == kind && (hands == Hand::None || Overlap(p.hands, hands));
+    });
+}
+
+// The arrows a policy takes: of the ammunition carried, the hardest-hitting
+// or the weakest by the record's damage, the first of a tie in the bag's
+// order. The form, whichever variant: arrows are not tempered or renamed,
+// and the loadout's form-level entry is the one the pin goes on.
+std::uint32_t ChooseArrows(const std::vector<Holdable> &loadout, bool strongest)
+{
+    const Holdable *pick = nullptr;
+    for (const Holdable &thing : loadout)
+    {
+        if (!thing.IsAmmo() || thing.variant || thing.count <= 0)
+            continue;
+        if (!pick || (strongest ? thing.damage > pick->damage : thing.damage < pick->damage))
+            pick = &thing;
+    }
+    return pick ? pick->form : 0;
 }
 
 // The follower themself: the common questions, the fight's edges, and
@@ -407,6 +429,8 @@ std::uint32_t ChosenForm(const Action &a, const Snapshot &snap)
         const Snapshot::HandWeapon &weapon = snap.rightWeapon.ChargeNeeded() ? snap.rightWeapon : snap.leftWeapon;
         return ChooseSoulGem(snap.soulGems, weapon.Missing(), a.kind == ActionKind::ChargeStrongestSoulGem);
     }
+    if (IsArrowsPolicy(a.kind))
+        return ChooseArrows(snap.loadout, a.kind == ActionKind::EquipStrongestArrows);
     if (!IsPolicy(a.kind))
         return a.form;
     return snap.potions.Choose(ConsumableOf(a.kind), a.effect, IsStrongest(a.kind));
@@ -421,7 +445,8 @@ namespace
 bool HasResource(const Action &a, const Snapshot &s)
 {
     // A policy has what it chooses, or nothing.
-    if (IsPolicy(a.kind) || a.kind == ActionKind::ChargeStrongestSoulGem || a.kind == ActionKind::ChargeWeakestSoulGem)
+    if (IsPolicy(a.kind) || IsArrowsPolicy(a.kind) || a.kind == ActionKind::ChargeStrongestSoulGem ||
+        a.kind == ActionKind::ChargeWeakestSoulGem)
         return ChosenForm(a, s) != 0;
     if (a.kind == ActionKind::ChargeSoulGem)
         return a.form != 0 && std::any_of(s.soulGems.begin(), s.soulGems.end(),
@@ -488,8 +513,11 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
         // thing the AI happens to be holding is not yet kept. "None" is done
         // when there is nothing of its kind to let go of.
         if (LetsGo(a))
-            return !AnyPinOf(s.pins, KindOf(a.kind));
-        const Pin *pin = FindPin(s.pins, a.form, a.variant);
+            return !AnyPinOf(s.pins, KindOf(a.kind), TakesHand(a.kind) ? HandsWanted(a) : Hand::None);
+        // An arrow policy is done while the arrows it would choose are the
+        // ones pinned: with those gone, the next kind is a new pin.
+        const std::uint32_t form = IsArrowsPolicy(a.kind) ? ChosenForm(a, s) : a.form;
+        const Pin *pin = FindPin(s.pins, form, a.variant);
         return pin && Covers(pin->hands, HandsWanted(a));
     }
     return false;
@@ -502,7 +530,8 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
 // swapped straight out.
 Verdict EquipAvailability(const Action &a, const Snapshot &snap, const std::vector<Pin> &heldAbove)
 {
-    const Holdable *thing = LetsGo(a) ? nullptr : FindHoldable(snap.loadout, a.form, a.variant);
+    const std::uint32_t form = IsArrowsPolicy(a.kind) ? ChosenForm(a, snap) : a.form;
+    const Holdable *thing = LetsGo(a) ? nullptr : FindHoldable(snap.loadout, form, a.variant);
     if (thing && thing->unusable)
         return Verdict::AboveSkill;
     const Hand hands = HandsWanted(a);
@@ -908,6 +937,9 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "does not carry that weapon";
         case ActionKind::EquipArrows:
             return "does not carry those arrows";
+        case ActionKind::EquipStrongestArrows:
+        case ActionKind::EquipWeakestArrows:
+            return "carries no arrows";
         case ActionKind::EquipArmor:
             return "does not carry that armour";
         default:

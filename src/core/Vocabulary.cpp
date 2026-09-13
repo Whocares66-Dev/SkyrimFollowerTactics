@@ -114,7 +114,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 28> kActions{{
+constexpr std::array<Entry<ActionKind>, 30> kActions{{
     // The consumable slugs name the SELECTION POLICY, not just the item
     // type, because that is part of the behaviour a profile is asking for:
     // "drink-weakest" -- don't burn a strong potion on a scratch -- beside
@@ -126,6 +126,8 @@ constexpr std::array<Entry<ActionKind>, 28> kActions{{
     {ActionKind::PowerBash, "power-bash", "Power Bash"},
     {ActionKind::EquipWeapon, "equip-weapon", "Equip weapon"},
     {ActionKind::EquipArrows, "equip-arrows", "Equip arrows"},
+    {ActionKind::EquipStrongestArrows, "equip-strongest-arrows", "Equip strongest arrows"},
+    {ActionKind::EquipWeakestArrows, "equip-weakest-arrows", "Equip weakest arrows"},
     {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
     {ActionKind::EquipArmor, "equip-armor", "Equip armor"},
     {ActionKind::ChargeStrongestSoulGem, "charge-strongest-soul-gem", "Charge with strongest soul gem"},
@@ -461,6 +463,10 @@ std::string_view Noun(ActionKind v) noexcept
         return "weapon";
     case ActionKind::EquipArrows:
         return "arrows";
+    case ActionKind::EquipStrongestArrows:
+        return "strongest arrows";
+    case ActionKind::EquipWeakestArrows:
+        return "weakest arrows";
     case ActionKind::EquipSpell:
         return "spell";
     case ActionKind::EquipArmor:
@@ -526,6 +532,10 @@ std::string_view Describe(ActionKind v) noexcept
         return "Ready this spell in that hand until another rule or the Magic tab lets go.";
     case ActionKind::EquipArrows:
         return "Use this ammunition until another rule or the Inventory tab lets go.";
+    case ActionKind::EquipStrongestArrows:
+        return "Use the hardest-hitting arrows.";
+    case ActionKind::EquipWeakestArrows:
+        return "Use the weakest arrows.";
     case ActionKind::EquipArmor:
         return "Wear this until another rule or the Inventory tab lets go.";
     case ActionKind::Attack:

@@ -1337,10 +1337,14 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
         return name.empty() ? base : verb + name;
     }
 
+    if (ft::IsArrowsPolicy(act.kind))
+        return "Equip " + std::string(ft::Noun(act.kind));
     if (ft::IsEquip(act.kind))
     {
         if (act.form == 0)
-            return "Unequip " + std::string(ft::Noun(act.kind));
+            return "Unequip " + std::string(ft::Noun(act.kind)) +
+                   (ft::TakesHand(act.kind) && act.hand != Hand::None ? " (" + Lower(ft::DisplayName(act.hand)) + ")"
+                                                                      : "");
         // Carried or known, else the name it was last seen with: the row
         // set aside.
         std::string name = EquipTargetName(act, view);
@@ -1469,14 +1473,19 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 {
     bool changed = false;
 
-    const bool none = act.kind == action && act.form == 0;
-    if (CascadeItem("None", none))
-    {
-        act.kind = action;
-        act.form = 0;
-        act.hand = Hand::None;
-        changed = true;
-    }
+    // None: let go of every pin of the kind, and the AI decides again. For
+    // a weapon or a spell it is the first leaf of each hand's menu, the hand
+    // being the thing let go of; for arrows and armour it heads the menu.
+    const auto none = [&](Hand hand) {
+        const bool selected = act.kind == action && act.form == 0 && act.hand == hand;
+        if (CascadeItem("None", selected))
+        {
+            act.kind = action;
+            act.form = 0;
+            act.hand = hand;
+            changed = true;
+        }
+    };
 
     // What is not there is not listed: no greyed "(carries none)" lines,
     // an empty kind simply offers None and nothing beneath it.
@@ -1484,6 +1493,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
     const bool handed = spell || action == ft::ActionKind::EquipWeapon;
     if (!handed)
     {
+        none(Hand::None);
         const ItemCategory category =
             action == ft::ActionKind::EquipArrows ? ItemCategory::Arrows : ItemCategory::Armor;
         // The Inventory tab's rows, a leaf each, the plain stack among
@@ -1492,6 +1502,26 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         for (const auto &item : view.inventory)
             if (item.category == category)
                 rows.push_back(&item);
+        // The arrows' two policies before the named kinds, as the potions
+        // have theirs: the hardest-hitting carried, or the weakest.
+        if (action == ft::ActionKind::EquipArrows && !rows.empty())
+        {
+            Im::Separator();
+            for (const auto [label, kind] : {std::pair{"Strongest", ft::ActionKind::EquipStrongestArrows},
+                                             std::pair{"Weakest", ft::ActionKind::EquipWeakestArrows}})
+            {
+                if (CascadeItem(label, act.kind == kind))
+                {
+                    act.kind = kind;
+                    act.form = 0;
+                    act.hand = Hand::None;
+                    act.name.clear();
+                    changed = true;
+                }
+                if (Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+            }
+        }
         if (!rows.empty())
             Im::Separator();
         for (const InventoryItem *item : rows)
@@ -1502,11 +1532,14 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         }
         return changed;
     }
-    Im::Separator();
 
     for (const Hand hand : {Hand::Right, Hand::Left, Hand::Both})
     {
         const std::string label(ft::DisplayName(hand));
+        if (!BeginCascade(label.c_str()))
+            continue;
+        // None first: let go of that hand's pin. Both lets go of both.
+        none(hand);
         bool any = false;
         if (spell)
         {
@@ -1518,8 +1551,8 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             for (const auto &item : view.inventory)
                 any = any || (item.category == ItemCategory::Weapons && Fits(item.grip, hand, false));
         }
-        if (!any || !BeginCascade(label.c_str()))
-            continue;
+        if (any)
+            Im::Separator();
         if (spell)
         {
             for (const auto &entry : view.magic)

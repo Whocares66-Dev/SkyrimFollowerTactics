@@ -2085,6 +2085,90 @@ TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI wo
     REQUIRE(trace.at(0) == Verdict::EffectActive);
 }
 
+TEST_CASE("the arrow policies choose by damage, pin what they chose, and follow the quiver", "[evaluator]")
+{
+    Snapshot s = Armed();
+    // Iron arrows in the loadout already, damage 8; steel arrows beside
+    // them, damage 10, and a handful of Daedric ones, damage 24.
+    constexpr std::uint32_t kSteelArrows = 0x1397F;
+    constexpr std::uint32_t kDaedricArrows = 0x139C0;
+    for (Holdable &thing : s.loadout)
+        if (thing.form == kArrows)
+            thing.damage = 8.0f;
+    Holdable steel = Held(kSteelArrows, Kind::Ammo, Grip::None);
+    steel.damage = 10.0f;
+    steel.count = 40;
+    Holdable daedric = Held(kDaedricArrows, Kind::Ammo, Grip::None);
+    daedric.damage = 24.0f;
+    daedric.count = 5;
+    s.loadout.push_back(steel);
+    s.loadout.push_back(daedric);
+
+    // Strongest: the Daedric, resolved onto the step for the game side.
+    RuleSet rs;
+    rs.rules.push_back(Equip(ActionKind::EquipStrongestArrows, 0));
+    EvalContext ctx;
+    Trace trace;
+    Decision d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.actionForm() == kDaedricArrows);
+    // Pinned, the rule is done; the Daedric ones gone, the steel are the
+    // strongest and the rule fires again for them.
+    AddPin(s.pins, daedric, Hand::None, false);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    std::erase_if(s.loadout, [](const Holdable &t) { return t.form == kDaedricArrows; });
+    s.pins.clear();
+    s.now += 5.0;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.actionForm() == kSteelArrows);
+
+    // Weakest: the iron.
+    rs.rules[0] = Equip(ActionKind::EquipWeakestArrows, 0);
+    s.now += 5.0;
+    d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.actionForm() == kArrows);
+
+    // No arrows at all: nothing to choose, and the rule says so.
+    std::erase_if(s.loadout, [](const Holdable &t) { return t.IsAmmo(); });
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+
+    // A policy names no form and takes no hand; a none it is not.
+    REQUIRE_FALSE(NamesForm(ActionKind::EquipStrongestArrows));
+    REQUIRE_FALSE(TakesHand(ActionKind::EquipWeakestArrows));
+    REQUIRE(IsEquip(ActionKind::EquipStrongestArrows));
+    REQUIRE(KindOf(ActionKind::EquipWeakestArrows) == Kind::Ammo);
+}
+
+TEST_CASE("a weapon none lets go of the hand it names, and is done when that hand holds no pin", "[evaluator]")
+{
+    Snapshot s = Armed();
+    AddPin(s.pins, s.loadout[0], Hand::Right, false); // the sword, right
+    RuleSet rs;
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, 0, Hand::Left));
+    EvalContext ctx;
+    Trace trace;
+    // The left holds no weapon pin: nothing to let go of there.
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    // The right does, and Both covers it too.
+    rs.rules[0] = Equip(ActionKind::EquipWeapon, 0, Hand::Right);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+    rs.rules[0] = Equip(ActionKind::EquipWeapon, 0, Hand::Both);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+    // A none with no hand, as an old profile might carry: any weapon pin.
+    rs.rules[0] = Equip(ActionKind::EquipWeapon, 0, Hand::None);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+}
+
 // ---------------------------------------------------------------------------
 // A rule's list of actions: ordering and timing.
 // ---------------------------------------------------------------------------

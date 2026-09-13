@@ -208,10 +208,15 @@ enum class ActionKind : std::uint8_t
     // hold on its own schedule, so a sword put in their hand without a pin
     // lasts until its next decision, which may be the same second. Each
     // names a thing by actionForm, and Weapon and Spell a hand as well; a
-    // form of 0 is "none": let go of every pin of that kind and take those
-    // things off, so the AI decides again.
+    // form of 0 is "none": let go of every pin of that kind -- in that hand,
+    // for a weapon or a spell -- and take those things off, so the AI
+    // decides again. The arrows have two policies beside the named kinds:
+    // the hardest-hitting arrows carried, or the weakest, chosen fresh each
+    // time the rule fires, so the pin follows the quiver as kinds run out.
     EquipWeapon,
     EquipArrows,
+    EquipStrongestArrows,
+    EquipWeakestArrows,
     EquipSpell,
     EquipArmor,
     // Charge: a soul gem into the weapon in hand that cannot pay for its
@@ -282,6 +287,9 @@ enum class ActionKind : std::uint8_t
 // the Then cascade groups under Weapon.
 [[nodiscard]] bool IsApply(ActionKind action) noexcept;
 [[nodiscard]] bool IsCharge(ActionKind action) noexcept;
+// The two arrow policies: equips that choose their form by damage rather
+// than name one, so they pin like an equip and resolve like a policy.
+[[nodiscard]] bool IsArrowsPolicy(ActionKind action) noexcept;
 [[nodiscard]] ConsumableKind ConsumableOf(ActionKind action) noexcept;
 
 // The four actions that fire through the package pool: a spell and a
