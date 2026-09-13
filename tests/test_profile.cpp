@@ -169,6 +169,7 @@ void RequireSame(const Rule &a, const Rule &b)
     REQUIRE(a.predicate == b.predicate);
     REQUIRE(a.conditionArg == b.conditionArg);
     REQUIRE(a.statusKind == b.statusKind);
+    REQUIRE(a.typeKind == b.typeKind);
     REQUIRE(a.damageKind == b.damageKind);
     REQUIRE(a.actionTarget == b.actionTarget);
     REQUIRE(a.actionTargetForm == b.actionTargetForm);
@@ -503,24 +504,49 @@ TEST_CASE("a rule naming a value this build does not know is dropped, and the re
         "if": { "subject": "self", "predicate": "status", "status": "hungry" },
         "then": { "target": "self", "do": [] }
     })";
+    const std::string unknownType = R"({
+        "if": { "subject": "enemy", "predicate": "type", "type": "sload" },
+        "then": { "target": "self", "do": [] }
+    })";
     const std::string unknownTarget = R"({
         "if": { "subject": "self", "predicate": "any" },
         "then": { "target": "horse", "do": [] }
     })";
     const std::string file = R"({ "schema": 1, "rules": [ )" + unknownPredicate + "," + kHealRule + "," +
-                             unknownSubject + "," + unknownStatus + "," + unknownTarget + " ] }";
+                             unknownSubject + "," + unknownStatus + "," + unknownType + "," + unknownTarget + " ] }";
     const auto read = ReadProfile(file, kHex);
 
     REQUIRE(read.profile.has_value());
     REQUIRE(read.profile->rules.rules.size() == 1);
     REQUIRE(read.profile->rules.rules[0].label == "heal");
 
-    REQUIRE(read.warnings.size() == 4);
+    REQUIRE(read.warnings.size() == 5);
     REQUIRE(read.warnings[0].find("rule 0 \"future\"") != std::string::npos);
     REQUIRE(read.warnings[0].find("distance-to-player-above") != std::string::npos);
     REQUIRE(read.warnings[1].find("horse") != std::string::npos);
     REQUIRE(read.warnings[2].find("hungry") != std::string::npos);
-    REQUIRE(read.warnings[3].find("horse") != std::string::npos);
+    REQUIRE(read.warnings[3].find("sload") != std::string::npos);
+    REQUIRE(read.warnings[4].find("horse") != std::string::npos);
+}
+
+TEST_CASE("a type condition writes its kind and reads it back", "[profile]")
+{
+    Profile p;
+    Rule r;
+    r.subject = SubjectKind::Enemy;
+    r.predicate = PredicateKind::Type;
+    r.typeKind = TypeKind::DarkElf;
+    r.actionTarget = ActionTargetKind::Enemy;
+    r.FirstAction().kind = ActionKind::PowerAttack;
+    p.rules.rules.push_back(r);
+    const auto j = nlohmann::json::parse(WriteProfile(p, kHex));
+    REQUIRE(j["rules"][0]["if"]["predicate"] == "type");
+    REQUIRE(j["rules"][0]["if"]["type"] == "dark-elf");
+    REQUIRE_FALSE(j["rules"][0]["if"].contains("status"));
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules.size() == 1);
+    REQUIRE(read.profile->rules.rules[0].typeKind == TypeKind::DarkElf);
 }
 
 TEST_CASE("an unknown action is dropped alone and its rule kept", "[profile]")

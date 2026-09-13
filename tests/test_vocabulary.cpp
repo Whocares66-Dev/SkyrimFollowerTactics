@@ -278,6 +278,14 @@ TEST_CASE("every wire name round-trips", "[vocabulary]")
         REQUIRE(StatusFromWireName(WireName(v)) == v);
         REQUIRE(DisplayName(v).size() > 0);
     }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(TypeKind::COUNT); ++i)
+    {
+        const auto v = static_cast<TypeKind>(i);
+        REQUIRE(Str(WireName(v)) != "Unknown");
+        REQUIRE(IsWireName(WireName(v)));
+        REQUIRE(TypeFromWireName(WireName(v)) == v);
+        REQUIRE(DisplayName(v).size() > 0);
+    }
 }
 
 TEST_CASE("every wire name is a slug, and no display name is", "[vocabulary]")

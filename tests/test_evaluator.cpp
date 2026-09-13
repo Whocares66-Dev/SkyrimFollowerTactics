@@ -875,6 +875,79 @@ TEST_CASE("a list in progress is dropped when the fight ends", "[sequence]")
     REQUIRE_FALSE(ctx.pending.Active());
 }
 
+TEST_CASE("a kind of being is asked of any subject: a member answers for its group, and the groups overlap", "[type]")
+{
+    // The four groups: a head is any member; a member is itself. The game
+    // side sets what it reads, and a being may be of several kinds at once.
+    ActorTraits nord;
+    nord.SetType(TypeKind::Nord);
+    REQUIRE(nord.Is(TypeKind::Nord));
+    REQUIRE(nord.Is(TypeKind::Man));
+    REQUIRE_FALSE(nord.Is(TypeKind::Breton));
+    REQUIRE_FALSE(nord.Is(TypeKind::Elf));
+    REQUIRE_FALSE(nord.Is(TypeKind::Creature));
+    // A vampire Nord is a Nord still, and a Vampire, Undead and a Creature.
+    ActorTraits vampire = nord;
+    vampire.SetType(TypeKind::Vampire);
+    vampire.SetType(TypeKind::Undead);
+    REQUIRE(vampire.Is(TypeKind::Nord));
+    REQUIRE(vampire.Is(TypeKind::Man));
+    REQUIRE(vampire.Is(TypeKind::Vampire));
+    REQUIRE(vampire.Is(TypeKind::Undead));
+    REQUIRE(vampire.Is(TypeKind::Creature));
+    // A ghost of a Nord is Undead alone: the game side sets no people.
+    ActorTraits ghost;
+    ghost.SetType(TypeKind::Undead);
+    REQUIRE(ghost.Is(TypeKind::Creature));
+    REQUIRE_FALSE(ghost.Is(TypeKind::Man));
+    // A Falmer is an Elf and a Creature both; a hagraven a Creature and
+    // nothing finer; the Elder race a Man and no particular one.
+    ActorTraits falmer;
+    falmer.SetType(TypeKind::Falmer);
+    falmer.SetType(TypeKind::Creature);
+    REQUIRE(falmer.Is(TypeKind::Elf));
+    REQUIRE(falmer.Is(TypeKind::Creature));
+    REQUIRE_FALSE(falmer.Is(TypeKind::HighElf));
+    ActorTraits hagraven;
+    hagraven.SetType(TypeKind::Creature);
+    REQUIRE(hagraven.Is(TypeKind::Creature));
+    REQUIRE_FALSE(hagraven.Is(TypeKind::Animal));
+    ActorTraits elder;
+    elder.SetType(TypeKind::Man);
+    REQUIRE(elder.Is(TypeKind::Man));
+    REQUIRE_FALSE(elder.Is(TypeKind::Nord));
+
+    // The groups are what the enum says they are.
+    REQUIRE(GroupOf(TypeKind::Redguard) == TypeKind::Man);
+    REQUIRE(GroupOf(TypeKind::WoodElf) == TypeKind::Elf);
+    REQUIRE(GroupOf(TypeKind::Orc) == TypeKind::Beast);
+    REQUIRE(GroupOf(TypeKind::Werewolf) == TypeKind::Creature);
+    REQUIRE(IsGroupHead(TypeKind::Creature));
+    REQUIRE_FALSE(IsGroupHead(TypeKind::Troll));
+
+    // As a condition: of an enemy, binding the one of the kind.
+    Rule r;
+    r.subject = SubjectKind::Enemy;
+    r.predicate = PredicateKind::Type;
+    r.typeKind = TypeKind::Undead;
+    Snapshot s = Healthy();
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 300.0f});
+    s.enemies.push_back({0x102, {100.0f, 100.0f}, 200.0f});
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    s.enemies[0].traits.SetType(TypeKind::Undead);
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+    r.typeKind = TypeKind::Creature;
+    REQUIRE(EvaluateCondition(r, s).id == 0x101);
+    r.typeKind = TypeKind::Dragon;
+    REQUIRE_FALSE(EvaluateCondition(r, s).ok);
+    // Of the follower themself and the player too: no subject is barred.
+    for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
+    {
+        const auto subject = static_cast<SubjectKind>(i);
+        REQUIRE(IsPredicateValidFor(subject, PredicateKind::Type) == (subject != SubjectKind::Corpse));
+    }
+}
+
 TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[status]")
 {
     Rule r;

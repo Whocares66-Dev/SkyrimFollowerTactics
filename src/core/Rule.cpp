@@ -381,13 +381,14 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
                                 predicate == PredicateKind::LevelLowest;
     if (subject == SubjectKind::Corpse || corpseQuestion)
         return subject == SubjectKind::Corpse && corpseQuestion;
-    // A status, the armour, the resistances, the hands, the hits and the
-    // summons are read off every actor the snapshot carries, so they are
-    // answerable about any of them. The extremes are of a group.
-    if (predicate == PredicateKind::Status || predicate == PredicateKind::ArmorPctBelow ||
-        predicate == PredicateKind::ResistancePctBelow || predicate == PredicateKind::HitType ||
-        predicate == PredicateKind::HitBy || predicate == PredicateKind::SummonNone ||
-        predicate == PredicateKind::SummonActive)
+    // A status, the kind of being, the armour, the resistances, the hands,
+    // the hits and the summons are read off every actor the snapshot
+    // carries, so they are answerable about any of them. The extremes are
+    // of a group.
+    if (predicate == PredicateKind::Status || predicate == PredicateKind::Type ||
+        predicate == PredicateKind::ArmorPctBelow || predicate == PredicateKind::ResistancePctBelow ||
+        predicate == PredicateKind::HitType || predicate == PredicateKind::HitBy ||
+        predicate == PredicateKind::SummonNone || predicate == PredicateKind::SummonActive)
         return true;
     if (IsExtreme(predicate))
         return subject == SubjectKind::Ally || subject == SubjectKind::Enemy;

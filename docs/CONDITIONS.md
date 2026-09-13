@@ -15,6 +15,7 @@ conditions take a *kind* as well as, or instead of, a number:
 
 | Condition | Kind | Number |
 |---|---|---|
+| Type | man: Breton, Imperial, Nord, Redguard; elf: Dark Elf, Falmer, High Elf, Snow Elf, Wood Elf; beast: Argonian, Khajiit, Orc; creature: Animal, Automaton, Daedra, Dragon, Giant, Spriggan, Troll, Undead, Vampire, Werewolf; or any of a group (see 2a) | none |
 | Status | poisoned, burning, frostbitten, shocked, paralyzed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking (not all about everyone, see 9) | none |
 | Resistance | fire, frost, shock, magic, poison | a percent, below or above (0 included, see 4); or lowest / highest |
 | Hit by | any; melee, ranged, magic; fire, frost, shock, poison | none |
@@ -61,6 +62,26 @@ direct reads above are what they read, so they are kept as a debugging
 cross-check, not the hot path.
 
 Snapshot: a `status` bit set per actor view.
+
+## 2a. Type: what kind of being (built 2026-09-12)
+
+Four groups in the menu, alphabetical, each opening on Any (the group) and its members by name. A rule names one kind; the snapshot carries a bit per kind, and a group's Any is any member's bit or the group's own.
+
+The engine has two layers, both on the race record (read with houseCARL, 2026-09-12). The `ActorType` keywords are the coarse class its own conditions use: the sun spells and Turn Undead gate on `HasKeyword ActorTypeUndead` and nothing else. The race is the fine class. A vampire is a third thing: a vampire Nord is `NordRaceVampire`, named "Nord", with the NPC keyword plus `Vampire` and `Undead`.
+
+| kind | read from | notes |
+|---|---|---|
+| the peoples: Breton, Imperial, Nord, Redguard, Dark Elf, High Elf, Wood Elf, Snow Elf, Argonian, Khajiit, Orc | the race record's editor id contains the vanilla name (`NordRace`), which the vampire, child and DLC variants do (`NordRaceVampire`, `DLC1NordRace`) | a vampire Nord is a Nord. A ghost is not: a ghost carries `ActorTypeGhost` on the base over a living race, and answers to Undead alone |
+| Man (Any) | any of its four, or the Elder race | |
+| Falmer | race id contains `Falmer` | `ActorTypeCreature` to the engine, no elf keyword; Wuuthrad's "Elf Slayer" perk is `GetIsRace` over the three elven races and Falmer, so it is an Elf here and a Creature both |
+| Animal, Daedra, Dragon, Troll, Undead, Vampire | the keyword of that name on the actor (`ActorTypeAnimal`, `ActorTypeDaedra`, `ActorTypeDragon`, `ActorTypeTroll`, `ActorTypeUndead`, `Vampire`) | trolls are Animal and Troll; death hounds Undead, not Animal; dremora Daedra and NPC; atronachs Daedra and Creature |
+| Automaton | `ActorTypeDwarven`, less `DLC2AshSpawnKeyword` | Ash Spawn carry the Dwarven keyword, an oddity of Dragonborn |
+| Giant | `ActorTypeGiant` on the actor, or race id contains `Giant` and not `Lurker` | the Lurker's race is named Giant |
+| Spriggan | race id contains `Spriggan` | no keyword of its own |
+| Werewolf | race id contains `WerewolfBeast` or `WerebearBeast` | no keyword of its own |
+| Creature (Any) | `ActorTypeCreature`, or any member | hagravens, wisps, ice wraiths, gargoyles, rieklings answer to this and nothing finer |
+
+Left out: Ghost folds into Undead; hagraven, wisp, ice wraith, gargoyle, riekling and chaurus are single races and one line each to add. Bound weapons are not actors; there is no keyword for a quest item.
 
 ## 3. Armor
 

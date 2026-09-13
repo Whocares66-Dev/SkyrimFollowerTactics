@@ -336,10 +336,16 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view)
     // the two halves from having to agree grammatically.
     std::string text = SubjectText(r, view);
     text += ": ";
-    // A status reads as the status: "Self Poisoned", not "Self Status".
+    // A status reads as the status: "Self Poisoned", not "Self Status";
+    // a kind of being as the kind: "Enemy: Undead", "Enemy: Nord".
     if (r.predicate == ft::PredicateKind::Status)
     {
         text += ft::DisplayName(r.statusKind);
+        return text;
+    }
+    if (r.predicate == ft::PredicateKind::Type)
+    {
+        text += ft::DisplayName(r.typeKind);
         return text;
     }
     // A resistance reads as "Resistance Fire", then lowest, highest or the
@@ -716,13 +722,15 @@ int ConditionGroup(ft::PredicateKind p)
     case ft::PredicateKind::HitType:
     case ft::PredicateKind::HitBy:
         return 4;
-    case ft::PredicateKind::Status:
+    case ft::PredicateKind::Type:
         return 5;
+    case ft::PredicateKind::Status:
+        return 6;
     case ft::PredicateKind::SummonNone:
     case ft::PredicateKind::SummonActive:
-        return 7;
+        return 8;
     default:
-        return 6;
+        return 7;
     }
 }
 
@@ -810,14 +818,15 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             std::optional<float> arg;
             std::optional<ft::DamageKind> damage;
             std::optional<ft::StatusKind> status;
+            std::optional<ft::TypeKind> type;
             std::optional<std::uint32_t> member;
         };
         const auto pick = [&](const char *label, ft::PredicateKind which, const Extras &x = {}) {
             const std::uint32_t subjectForm = x.member.value_or(form);
-            const bool selected = rule.subject == subject && rule.subjectForm == subjectForm &&
-                                  rule.predicate == which && (!x.damage || rule.damageKind == *x.damage) &&
-                                  (!x.status || rule.statusKind == *x.status) &&
-                                  (!x.arg || std::abs(rule.conditionArg - *x.arg) < 0.001f);
+            const bool selected =
+                rule.subject == subject && rule.subjectForm == subjectForm && rule.predicate == which &&
+                (!x.damage || rule.damageKind == *x.damage) && (!x.status || rule.statusKind == *x.status) &&
+                (!x.type || rule.typeKind == *x.type) && (!x.arg || std::abs(rule.conditionArg - *x.arg) < 0.001f);
             if (CascadeItem(label, selected))
             {
                 rule.subject = subject;
@@ -827,6 +836,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     rule.damageKind = *x.damage;
                 if (x.status)
                     rule.statusKind = *x.status;
+                if (x.type)
+                    rule.typeKind = *x.type;
                 if (x.arg)
                     rule.conditionArg = *x.arg;
                 changed = true;
@@ -1005,6 +1016,47 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     Im::Separator();
                     for (const auto &peer : peers)
                         member(peer.id, peer.name);
+                }
+                Im::EndMenu();
+                continue;
+            }
+
+            // A kind of being: four groups under "Type", each a menu of Any
+            // -- the group itself -- and its members by name. Groups and
+            // members both by name, not by the enum.
+            if (predicate == ft::PredicateKind::Type)
+            {
+                if (!BeginCascade(predicateName.c_str()))
+                    continue;
+                std::vector<ft::TypeKind> heads;
+                for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::TypeKind::COUNT); ++ki)
+                    if (ft::IsGroupHead(static_cast<ft::TypeKind>(ki)))
+                        heads.push_back(static_cast<ft::TypeKind>(ki));
+                const auto byName = [](ft::TypeKind a, ft::TypeKind b) {
+                    return ft::DisplayName(a) < ft::DisplayName(b);
+                };
+                std::sort(heads.begin(), heads.end(), byName);
+                for (const ft::TypeKind head : heads)
+                {
+                    if (!BeginCascade(std::string(ft::DisplayName(head)).c_str()))
+                        continue;
+                    Extras any;
+                    any.type = head;
+                    pick("Any", predicate, any);
+                    Im::Separator();
+                    std::vector<ft::TypeKind> members;
+                    for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::TypeKind::COUNT); ++ki)
+                        if (const auto kind = static_cast<ft::TypeKind>(ki);
+                            ft::GroupOf(kind) == head && !ft::IsGroupHead(kind))
+                            members.push_back(kind);
+                    std::sort(members.begin(), members.end(), byName);
+                    for (const ft::TypeKind kind : members)
+                    {
+                        Extras x;
+                        x.type = kind;
+                        pick(std::string(ft::DisplayName(kind)).c_str(), predicate, x);
+                    }
+                    Im::EndMenu();
                 }
                 Im::EndMenu();
                 continue;

@@ -42,6 +42,7 @@ namespace ft
 [[nodiscard]] std::string_view WireName(ActionKind v) noexcept;
 [[nodiscard]] std::string_view WireName(Hand v) noexcept;
 [[nodiscard]] std::string_view WireName(StatusKind v) noexcept;
+[[nodiscard]] std::string_view WireName(TypeKind v) noexcept;
 [[nodiscard]] std::string_view WireName(DamageKind v) noexcept;
 
 // Parsing is fallible on purpose. A profile written by a NEWER version of the
@@ -54,6 +55,7 @@ namespace ft
 [[nodiscard]] std::optional<ActionKind> ActionFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<Hand> HandFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<StatusKind> StatusFromWireName(std::string_view s) noexcept;
+[[nodiscard]] std::optional<TypeKind> TypeFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept;
 
 // A slug: lowercase ASCII letters and digits, hyphen-separated, no leading,
@@ -71,6 +73,7 @@ namespace ft
 [[nodiscard]] std::string_view DisplayName(ActionKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(Hand v) noexcept;
 [[nodiscard]] std::string_view DisplayName(StatusKind v) noexcept;
+[[nodiscard]] std::string_view DisplayName(TypeKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(DamageKind v) noexcept;
 
 // One line of help, for a tooltip. Kept beside the names so a new predicate

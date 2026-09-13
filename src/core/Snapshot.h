@@ -110,6 +110,23 @@ struct ActorTraits
     {
         status |= Bit(kind);
     }
+
+    // What kind of being the actor is, a bit per TypeKind, set by the game
+    // side from the race and the actor's keywords. The Type condition.
+    std::uint32_t kinds{0};
+
+    // Of this kind: the kind's own bit, or for a group's head any member's.
+    [[nodiscard]] constexpr bool Is(TypeKind kind) const noexcept
+    {
+        if ((kinds & Bit(kind)) != 0)
+            return true;
+        return IsGroupHead(kind) && (kinds & GroupBits(kind)) != 0;
+    }
+
+    constexpr void SetType(TypeKind kind) noexcept
+    {
+        kinds |= Bit(kind);
+    }
 };
 
 // Another actor as a condition reads them: an ally (the player among

@@ -1129,6 +1129,85 @@ void ReadHands(RE::Actor *actor, ft::ActorTraits &traits)
         traits.Wield(ft::DamageKind::Melee);
 }
 
+// The kind of being, for the Type condition (docs/CONDITIONS.md 2a). The
+// engine's own classes are keywords on the race and the actor base, asked
+// of the actor as its conditions ask them (HasKeyword: the sun spells gate
+// on ActorTypeUndead this way, and a ghost carries it on the base over a
+// living race). The races the classes do not split -- the ten peoples,
+// Falmer, giants, spriggans, the were-beasts -- go by the race record's
+// editor id, which the vampire, child and DLC variants of a race contain
+// (NordRaceVampire, DLC1NordRace). A vampire Nord is a Nord; a ghost of a
+// Nord is Undead and not a Nord.
+void ReadKinds(RE::Actor *actor, ft::ActorTraits &traits)
+{
+    struct Keywords
+    {
+        RE::BGSKeyword *creature, *animal, *daedra, *dragon, *dwarven, *undead, *ghost, *troll, *giant, *vampire,
+            *ashSpawn;
+    };
+    static const Keywords k = [] {
+        const auto by = [](const char *id) { return RE::TESForm::LookupByEditorID<RE::BGSKeyword>(id); };
+        return Keywords{by("ActorTypeCreature"), by("ActorTypeAnimal"), by("ActorTypeDaedra"),    by("ActorTypeDragon"),
+                        by("ActorTypeDwarven"),  by("ActorTypeUndead"), by("ActorTypeGhost"),     by("ActorTypeTroll"),
+                        by("ActorTypeGiant"),    by("Vampire"),         by("DLC2AshSpawnKeyword")};
+    }();
+    using ft::TypeKind;
+    const auto has = [&](const RE::BGSKeyword *keyword) { return keyword && actor->HasKeyword(keyword); };
+    if (has(k.creature))
+        traits.SetType(TypeKind::Creature);
+    if (has(k.animal))
+        traits.SetType(TypeKind::Animal);
+    // Ash Spawn carry the Dwarven keyword, an oddity of Dragonborn; they
+    // are not automatons to a player.
+    if (has(k.dwarven) && !has(k.ashSpawn))
+        traits.SetType(TypeKind::Automaton);
+    if (has(k.daedra))
+        traits.SetType(TypeKind::Daedra);
+    if (has(k.dragon))
+        traits.SetType(TypeKind::Dragon);
+    if (has(k.giant))
+        traits.SetType(TypeKind::Giant);
+    if (has(k.troll))
+        traits.SetType(TypeKind::Troll);
+    if (has(k.undead))
+        traits.SetType(TypeKind::Undead);
+    if (has(k.vampire))
+        traits.SetType(TypeKind::Vampire);
+
+    const RE::TESRace *race = actor->GetRace();
+    std::string id = race && race->GetFormEditorID() ? race->GetFormEditorID() : "";
+    for (char &c : id)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const auto in = [&](const char *token) { return id.find(token) != std::string::npos; };
+    if (in("werewolfbeast") || in("werebearbeast"))
+        traits.SetType(TypeKind::Werewolf);
+    if (in("spriggan"))
+        traits.SetType(TypeKind::Spriggan);
+    // The Lurker's race is named Giant; it is not one.
+    if (in("giant") && !in("lurker"))
+        traits.SetType(TypeKind::Giant);
+    // A creature to the engine and an elf to Wuuthrad's perk, which lists
+    // the race with the three elven ones: both here.
+    if (in("falmer"))
+        traits.SetType(TypeKind::Falmer);
+    if (has(k.ghost))
+        return;
+    struct People
+    {
+        const char *token;
+        TypeKind kind;
+    };
+    static constexpr People kPeoples[] = {
+        {"bretonrace", TypeKind::Breton},     {"imperialrace", TypeKind::Imperial}, {"nordrace", TypeKind::Nord},
+        {"redguardrace", TypeKind::Redguard}, {"elderrace", TypeKind::Man},         {"darkelfrace", TypeKind::DarkElf},
+        {"highelfrace", TypeKind::HighElf},   {"woodelfrace", TypeKind::WoodElf},   {"snowelfrace", TypeKind::SnowElf},
+        {"argonianrace", TypeKind::Argonian}, {"khajiitrace", TypeKind::Khajiit},   {"orcrace", TypeKind::Orc},
+    };
+    for (const People &people : kPeoples)
+        if (in(people.token))
+            traits.SetType(people.kind);
+}
+
 ft::ActorTraits ReadTraits(RE::Actor *actor)
 {
     ft::ActorTraits traits;
@@ -1144,6 +1223,7 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     const Attacked attacked = AttackedLately(actor->GetFormID());
     traits.hitBy = attacked.kinds;
     traits.attacker = attacked.attacker;
+    ReadKinds(actor, traits);
     if (auto *owner = actor->AsActorValueOwner())
     {
         for (const auto kind : {ft::DamageKind::Magic, ft::DamageKind::Fire, ft::DamageKind::Frost,

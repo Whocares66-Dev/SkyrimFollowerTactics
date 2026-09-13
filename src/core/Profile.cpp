@@ -29,6 +29,11 @@ using json = nlohmann::ordered_json;
     return p == PredicateKind::Status;
 }
 
+[[nodiscard]] bool UsesType(PredicateKind p) noexcept
+{
+    return p == PredicateKind::Type;
+}
+
 [[nodiscard]] bool UsesDamage(PredicateKind p) noexcept
 {
     return IsResistance(p) || p == PredicateKind::HitBy || p == PredicateKind::HitType;
@@ -115,6 +120,8 @@ json WriteRule(const Rule &r, const FormCodec &codec)
         cond["arg"] = r.conditionArg;
     if (UsesStatus(r.predicate))
         cond["status"] = WireName(r.statusKind);
+    if (UsesType(r.predicate))
+        cond["type"] = WireName(r.typeKind);
     if (UsesDamage(r.predicate))
         cond["damage"] = WireName(r.damageKind);
     j["if"] = std::move(cond);
@@ -370,6 +377,13 @@ struct FormField
             r.statusKind = *s;
         else
             return drop("unknown status \"" + *status + "\"");
+    }
+    if (const auto type = Str(*cond, "type"))
+    {
+        if (const auto t = TypeFromWireName(*type))
+            r.typeKind = *t;
+        else
+            return drop("unknown type \"" + *type + "\"");
     }
     if (const auto damage = Str(*cond, "damage"))
     {

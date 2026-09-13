@@ -64,13 +64,14 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 36> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 37> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
     {PredicateKind::MagickaPctBelow, "magicka-pct-below", "Magicka"},
     {PredicateKind::CombatBegins, "combat-begins", "Combat start"},
     {PredicateKind::CombatEnds, "combat-ends", "Combat end"},
+    {PredicateKind::Type, "type", "Type"},
     {PredicateKind::Status, "status", "Status"},
     {PredicateKind::ArmorPctBelow, "armor-pct-below", "Armor"},
     {PredicateKind::ResistancePctBelow, "resistance-pct-below", "Resistance"},
@@ -174,6 +175,37 @@ constexpr std::array<Entry<StatusKind>, 13> kStatuses{{
     {StatusKind::Sneaking, "sneaking", "Sneaking"},
 }};
 
+// A kind of being, as the rule names it and as the menu shows it. A group's
+// head reads as the group: "Enemy: Man".
+constexpr std::array<Entry<TypeKind>, 26> kTypes{{
+    {TypeKind::Man, "man", "Man"},
+    {TypeKind::Breton, "breton", "Breton"},
+    {TypeKind::Imperial, "imperial", "Imperial"},
+    {TypeKind::Nord, "nord", "Nord"},
+    {TypeKind::Redguard, "redguard", "Redguard"},
+    {TypeKind::Elf, "elf", "Elf"},
+    {TypeKind::DarkElf, "dark-elf", "Dark Elf"},
+    {TypeKind::Falmer, "falmer", "Falmer"},
+    {TypeKind::HighElf, "high-elf", "High Elf"},
+    {TypeKind::SnowElf, "snow-elf", "Snow Elf"},
+    {TypeKind::WoodElf, "wood-elf", "Wood Elf"},
+    {TypeKind::Beast, "beast", "Beast"},
+    {TypeKind::Argonian, "argonian", "Argonian"},
+    {TypeKind::Khajiit, "khajiit", "Khajiit"},
+    {TypeKind::Orc, "orc", "Orc"},
+    {TypeKind::Creature, "creature", "Creature"},
+    {TypeKind::Animal, "animal", "Animal"},
+    {TypeKind::Automaton, "automaton", "Automaton"},
+    {TypeKind::Daedra, "daedra", "Daedra"},
+    {TypeKind::Dragon, "dragon", "Dragon"},
+    {TypeKind::Giant, "giant", "Giant"},
+    {TypeKind::Spriggan, "spriggan", "Spriggan"},
+    {TypeKind::Troll, "troll", "Troll"},
+    {TypeKind::Undead, "undead", "Undead"},
+    {TypeKind::Vampire, "vampire", "Vampire"},
+    {TypeKind::Werewolf, "werewolf", "Werewolf"},
+}};
+
 constexpr std::array<Entry<DamageKind>, 8> kDamageKinds{{
     {DamageKind::Melee, "melee", "Melee"},
     {DamageKind::Ranged, "ranged", "Ranged"},
@@ -192,6 +224,7 @@ static_assert(kPredicates.size() == static_cast<std::size_t>(PredicateKind::COUN
 static_assert(kActionTargets.size() == static_cast<std::size_t>(ActionTargetKind::COUNT));
 static_assert(kActions.size() == static_cast<std::size_t>(ActionKind::COUNT));
 static_assert(kStatuses.size() == static_cast<std::size_t>(StatusKind::COUNT));
+static_assert(kTypes.size() == static_cast<std::size_t>(TypeKind::COUNT));
 static_assert(kDamageKinds.size() == static_cast<std::size_t>(DamageKind::COUNT));
 
 } // namespace
@@ -219,6 +252,10 @@ std::string_view WireName(Hand v) noexcept
 std::string_view WireName(StatusKind v) noexcept
 {
     return LookupWire(kStatuses, v);
+}
+std::string_view WireName(TypeKind v) noexcept
+{
+    return LookupWire(kTypes, v);
 }
 std::string_view WireName(DamageKind v) noexcept
 {
@@ -248,6 +285,10 @@ std::optional<Hand> HandFromWireName(std::string_view s) noexcept
 std::optional<StatusKind> StatusFromWireName(std::string_view s) noexcept
 {
     return Parse(kStatuses, s);
+}
+std::optional<TypeKind> TypeFromWireName(std::string_view s) noexcept
+{
+    return Parse(kTypes, s);
 }
 std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept
 {
@@ -312,6 +353,10 @@ std::string_view DisplayName(StatusKind v) noexcept
 {
     return LookupDisplay(kStatuses, v);
 }
+std::string_view DisplayName(TypeKind v) noexcept
+{
+    return LookupDisplay(kTypes, v);
+}
 std::string_view DisplayName(DamageKind v) noexcept
 {
     return LookupDisplay(kDamageKinds, v);
@@ -347,6 +392,8 @@ std::string_view Describe(PredicateKind v) noexcept
         return "A fight has just begun.";
     case PredicateKind::CombatEnds:
         return "A fight has just ended; no other condition holds on that pass.";
+    case PredicateKind::Type:
+        return "This kind of being: a people by race, a creature by what the game calls it.";
     case PredicateKind::Status:
         return "In this state right now.";
     case PredicateKind::ArmorPctBelow:

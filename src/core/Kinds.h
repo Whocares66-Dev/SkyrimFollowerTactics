@@ -34,6 +34,79 @@ enum class StatusKind : std::uint8_t
     return 1u << static_cast<std::uint32_t>(kind);
 }
 
+// What kind of being an actor is, for the Type condition: four groups, each
+// with a head that means any of its members, the members contiguous after
+// it. The peoples by race; the creatures by the engine's own actor-type
+// keywords where it has one and by race where it does not (docs/CONDITIONS.md
+// 2a). One bit each in ActorTraits::kinds; the game side sets the bits it
+// reads, a head's own bit included where a being is of the group and of no
+// member (the Elder race is a man; a hagraven is a creature). Overlap is by
+// design: a vampire Nord is a Nord, a Vampire and Undead; a Falmer is an
+// Elf and a Creature, as it is to the engine and to Wuuthrad both.
+enum class TypeKind : std::uint8_t
+{
+    Man,
+    Breton,
+    Imperial,
+    Nord,
+    Redguard,
+    Elf,
+    DarkElf,
+    Falmer,
+    HighElf,
+    SnowElf,
+    WoodElf,
+    Beast,
+    Argonian,
+    Khajiit,
+    Orc,
+    Creature,
+    Animal,
+    Automaton,
+    Daedra,
+    Dragon,
+    Giant,
+    Spriggan,
+    Troll,
+    Undead,
+    Vampire,
+    Werewolf,
+
+    COUNT
+};
+
+[[nodiscard]] constexpr std::uint32_t Bit(TypeKind kind) noexcept
+{
+    return 1u << static_cast<std::uint32_t>(kind);
+}
+
+// The head of the group a kind belongs to; a head is its own.
+[[nodiscard]] constexpr TypeKind GroupOf(TypeKind kind) noexcept
+{
+    if (kind >= TypeKind::Creature)
+        return TypeKind::Creature;
+    if (kind >= TypeKind::Beast)
+        return TypeKind::Beast;
+    if (kind >= TypeKind::Elf)
+        return TypeKind::Elf;
+    return TypeKind::Man;
+}
+
+[[nodiscard]] constexpr bool IsGroupHead(TypeKind kind) noexcept
+{
+    return GroupOf(kind) == kind;
+}
+
+// The bits of a head's members, the head's own included.
+[[nodiscard]] constexpr std::uint32_t GroupBits(TypeKind head) noexcept
+{
+    std::uint32_t bits = 0;
+    for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(TypeKind::COUNT); ++i)
+        if (GroupOf(static_cast<TypeKind>(i)) == head)
+            bits |= 1u << i;
+    return bits;
+}
+
 // A kind of damage: what a resistance is against, what an attack was made
 // with. How it arrived first -- a blow, an arrow or bolt, a spell of any
 // kind -- then what a spell was. A Fire hit is Magic as well; an arrow is

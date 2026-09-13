@@ -87,6 +87,10 @@ enum class PredicateKind : std::uint8_t
     // seconds. Any subject. Listed here, between the fight's edges and
     // Status, as the editor's menu groups them.
     HitBy,
+    // The subject is the kind of being Rule::typeKind names: a Nord, an
+    // elf of any kind, undead, a dragon ... Any subject. Above Status, as
+    // the editor's menu has it.
+    Type,
     // The subject is in the status Rule::statusKind names: poisoned,
     // burning, fleeing ... Any subject; a few kinds are not asked about
     // the follower themself (IsStatusValidFor).
@@ -373,6 +377,9 @@ struct Rule
     // Which status, for PredicateKind::Status. Ignored by every other
     // predicate.
     StatusKind statusKind{StatusKind::Poisoned};
+    // Which kind of being, for PredicateKind::Type. Ignored by every other
+    // predicate.
+    TypeKind typeKind{TypeKind::Man};
     // Which kind of damage, for the Resistance predicates, Hit type and
     // Hit by. Ignored by every other predicate.
     DamageKind damageKind{DamageKind::Fire};
@@ -522,8 +529,8 @@ void Reconcile(Rule &rule) noexcept;
 // asked: below or above the rule's number, or the group's lowest or
 // highest. Every function beneath reads the grid, so widening it -- a
 // sixth measure -- is one row per predicate here and nothing else. A
-// predicate off the grid (Any, the edges, Status, the corpse questions)
-// has no measure and no side.
+// predicate off the grid (Any, the edges, Type, Status, the corpse
+// questions) has no measure and no side.
 enum class Measure : std::uint8_t
 {
     None,
