@@ -22,9 +22,19 @@ And the "is it available, is it hooked up" question answers itself at that level
 
 When the engine prices a swing or a cast it starts from the base quantity, applies the skill curve, then hands the number to the entry point (`BGSEntryPoint::HandleEntryPoint`). That walks the perk owner's entries registered on that entry point (`Actor::ForEachPerkEntry`, a virtual, so the player and an NPC walk different storage), evaluates each entry's condition tabs against the call's arguments (tab one the perk owner, tab two the weapon or spell, tab three the target where there is one), and applies each surviving entry's function to the running value: set, add, multiply, add a range, or one of the actor-value forms. There is no actor value in the pipeline.
 
-**The order is not yet known.** The functions do not commute (add after multiply is not multiply after add), so the order the entries are applied in decides the number. The Creation Kit wiki says an entry's Priority "controls the order of operations when two perk entries affect the same value" and that "a higher priority takes precedence", which does not say whether higher runs first or last, nor whether the sort happens for an NPC at all or only in the player's per-entry-point arrays. To find out: disassemble `Actor::ForEachPerkEntry` (vtable slot 0x100) and `PlayerCharacter`'s override, and `BGSEntryPointPerkEntry::ApplyPerkEntry`, which is where a sorted insert would be (`tools/disasm.py`, `docs/CLAUDE.md` "Reading the executable"). Until then the honest presentation is a product in engine order, not a sum, and the self-check below catches a wrong guess.
+**The order, read from the running game (2026-09-13).** The Creation Kit wiki says an entry's Priority "controls the order of operations" and "a higher priority takes precedence", which does not say which runs first. The executable does, read with `tools/livedisasm.py` from the live Nordic Souls process:
 
-**Where an NPC's perks live.** On the actor base (`TESNPC`'s perk rank array), which is also where SPID puts a distributed perk, and which `Actor::HasPerk` reads. The player's are on the player character in its own arrays.
+- **The handler does no ordering.** `HandleEntryPoint` (id 23526) copies its arguments, asks the actor whether it has any entries for the point (vtable slot 0xFF, id 37701) and hands a visitor to the actor's walk (slot 0x100, id 37702). The player's vtable names the same walk on disk; in the running Nordic Souls process another plugin has hooked that slot for the player, and the perk entry's apply, remove and condition-check slots too. Which plugin, not known.
+- **The entries live on the actor's process, one sorted array per entry point.** The walk goes through the actor's middle-high process's perk data (`MiddleHighProcessData::perkData`, 0x288: an `AIPerkData`, one `BSTArray<BGSPerkEntry*>` per entry point, 0x5C of them) and visits the array front to back (id 40025), stopping when a visitor says stop. An actor without a process, unloaded, has no entries and the handler applies nothing.
+- **The array is kept sorted on insert.** The entry's apply (id 23806) calls the actor's add (37699, then 40022 on the process), which binary-searches the array with a comparison (id 23821) and inserts at the position found. The comparison reads the entry's priority byte (offset 9) and then its rank byte (offset 8): **higher priority sorts earlier; among equal priorities lower rank sorts earlier; a full tie lands wherever the binary search stops.** So the walk, and the application, run **highest priority first**. Only entry-point entries with an entry point below 0x5C are inserted. The perk data itself is made on the first add (0x8A0 bytes), so an actor gets it on the first perk applied.
+- **How each function applies** (the visitor's Visit at rva 0x3860b0 checks the entry's conditions with the perk owner as tab one and the call's arguments after it, then dispatches on the function through a table of sixteen handlers, id 23528). Read for the ones a damage or cost figure meets, with `value` the running number:
+  - Set, Add, Multiply: one-value data, the float at data+8. `value = v`, `value += v`, `value *= v`.
+  - Add Range: two-value data, low at +8, high at +0xC. `value += low + (high - low) * random`, a fresh roll each call. Not reproducible; show as the range.
+  - Add Actor Value Mult: two-value data, the actor value's index at +8 (stored as a float), the multiplier at +0xC. `value += owner.GetActorValue(av) * mult`, the owner's CURRENT value, temporary modifiers in, read through the owner's value interface; the owner must be an Actor (form type 0x3E) or the entry is skipped.
+  - Multiply One Plus Actor Value Mult, the hidden skill-boost perks' form: same data. `value *= 1 + owner.GetActorValue(av) * mult`.
+  - Set To / Multiply Actor Value Mult: same data, `value = av * mult` and `value *= av * mult`; not read line by line, inferred from their neighbours.
+
+So the reproduction the strategy below asks for is well defined: the actor's entries for the point in array order, each entry's conditions against the same arguments, each surviving function applied as above. The one irreducible term is Add Range.
 
 ## Strategy: total from the engine, provenance from our own walk, and a check between them
 
@@ -35,7 +45,7 @@ When the engine prices a swing or a cast it starts from the base quantity, appli
 5. **Presentation.** On the skill row, the total change from normal. Beneath it one line per source, in engine order: "Armsman (rank 3): x 1.6", "Fortify One-handed, through Perk Skill Boosts: x 1.25", and under that line the value's own sources, the gauntlets and the potion, from the existing contributions. A conditional entry reads as its condition: "Against undead: x 1.5".
 6. **Spell cost is per spell.** Its second argument is the spell, and conditions look at it (Bard Song's magnitude doubling is conditioned on the spell being Bard Song). So cost provenance belongs on the spell's hover in the Magic tab, where the cost already comes from the engine's cost call and so already includes every entry. The school row can carry only what applies to every spell of the school.
 
-**To verify before building:** where an entry stores the actor value its actor-value functions read. The one-value function data holds a single float; the "multiply by one plus a share of the value" form needs both a value and a multiplier, so it is either a two-value record or the value is elsewhere. Check the headers, then a live entry.
+**Verified 2026-09-13 (above):** the actor-value functions carry their value's index and the multiplier in two-value data, and read the perk owner's current value.
 
 ## Worked example: Adamant's Bard in Nordic Souls
 
@@ -53,6 +63,7 @@ The fix is to drop the hand multiply: the entry point includes the value when th
 
 ## Open questions
 
-- The order the engine applies entries in, for the player and for an NPC (above).
-- Whether `ForEachPerkEntry` on an NPC visits perks SPID added at runtime the same as authored ones. Expected yes, since both sit on the base; measure it.
+- Whether the player's walk, hooked in the Nordic Souls process, is the same as on disk there too, and by which plugin. Not needed for followers.
+- Whether a perk SPID adds at runtime reaches the process's arrays the same as an authored one. Expected yes: both go through the entry's apply when the process takes the base's perks; the Bard perk's page showing its entries as met says the entries at least evaluate. Measure by comparing our walk's factors with the engine's figure for a SPID-only perk.
+- How full ties (same priority and rank) order, if a mod ever ships two that interact. The binary search decides; the self-check will show it.
 - Which entry points matter for the sheet beyond attack damage and spell cost: armor rating (already asked of the engine), incoming damage, incoming spell magnitude, power attack stamina, bash damage.
