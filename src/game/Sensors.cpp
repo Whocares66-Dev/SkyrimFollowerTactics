@@ -3191,6 +3191,46 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
     }
 }
 
+namespace
+{
+// A perk held that the skill trees' walk does not find, with its rank.
+struct HeldPerk
+{
+    RE::BGSPerk *perk;
+    int rank;
+};
+
+// The perks outside the trees. An NPC's are on the base record's list,
+// where a distributor puts them too. The player's taken in play are on the
+// player, not the record, in an array whose offset CommonLib marks as
+// guessed on this runtime; so for the player every perk in the load order
+// is asked of the engine instead, a few thousand lookups. Hidden perks stay
+// out: the skill-boost perks every actor carries.
+std::vector<HeldPerk> PerksOutsideTrees(RE::Actor *actor)
+{
+    std::vector<HeldPerk> out;
+    const auto held = [actor](RE::BGSPerk *perk) { return perk && !perk->data.hidden && actor->HasPerk(perk); };
+    if (actor->IsPlayerRef())
+    {
+        auto *handler = RE::TESDataHandler::GetSingleton();
+        if (!handler)
+            return out;
+        for (auto *perk : handler->GetFormArray<RE::BGSPerk>())
+        {
+            // One row per chain, at the highest rank held, as the trees do.
+            if (held(perk) && !(perk->nextPerk && actor->HasPerk(perk->nextPerk)))
+                out.push_back({perk, 1});
+        }
+        return out;
+    }
+    if (const auto *base = actor->GetActorBase(); base && base->perks)
+        for (std::uint32_t i = 0; i < base->perkCount; ++i)
+            if (held(base->perks[i].perk))
+                out.push_back({base->perks[i].perk, base->perks[i].currentRank});
+    return out;
+}
+} // namespace
+
 std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
 {
     std::vector<PerkPage> out;
@@ -3320,10 +3360,8 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
             }
         }
     }
-    if (const auto *base = actor->GetActorBase(); base && base->perks)
-        for (std::uint32_t i = 0; i < base->perkCount; ++i)
-            if (auto *perk = base->perks[i].perk; perk && !perk->data.hidden && actor->HasPerk(perk))
-                page(perk, base->perks[i].currentRank, 1, "");
+    for (const HeldPerk &held : PerksOutsideTrees(actor))
+        page(held.perk, held.rank, 1, "");
     return out;
 }
 
@@ -3544,36 +3582,29 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             out.push_back(std::move(s));
     }
 
-    // The perks the follower holds that sit in no skill's tree: a mod's
-    // loose perk, a race's, a quest's. Read off the base record's perk
-    // list; the hidden ones (the two boost perks every actor carries) and
-    // the unnamed stay out.
+    // The perks held that sit in no skill's tree: a mod's loose perk, a
+    // race's, a quest's. The unnamed stay out.
     {
         std::unordered_set<const RE::BGSPerk *> inTrees;
         for (const Found &f : found)
             for (const TreePerk &entry : TreePerks(f.value))
                 inTrees.insert(entry.perk);
         SheetSection s{"Other Perks", {}, {}};
-        if (const auto *base = actor->GetActorBase(); base && base->perks)
+        for (const HeldPerk &held : PerksOutsideTrees(actor))
         {
-            for (std::uint32_t i = 0; i < base->perkCount; ++i)
-            {
-                auto *perk = base->perks[i].perk;
-                if (!perk || perk->data.hidden || inTrees.contains(perk) || !actor->HasPerk(perk))
-                    continue;
-                const std::string name = PerkName(perk);
-                if (name.empty())
-                    continue;
-                RE::BSString text;
-                perk->GetDescription(text, perk);
-                SheetRow row = Row(name, base->perks[i].currentRank > 1 ? std::to_string(base->perks[i].currentRank)
-                                                                        : std::string());
-                row.modifiers = text.c_str() ? text.c_str() : "";
-                row.form = perk->GetFormID();
-                if (const char *aside = PerkAside(actor, perk))
-                    row.aside = aside;
-                s.rows.push_back(std::move(row));
-            }
+            if (inTrees.contains(held.perk))
+                continue;
+            const std::string name = PerkName(held.perk);
+            if (name.empty())
+                continue;
+            RE::BSString text;
+            held.perk->GetDescription(text, held.perk);
+            SheetRow row = Row(name, held.rank > 1 ? std::to_string(held.rank) : std::string());
+            row.modifiers = text.c_str() ? text.c_str() : "";
+            row.form = held.perk->GetFormID();
+            if (const char *aside = PerkAside(actor, held.perk))
+                row.aside = aside;
+            s.rows.push_back(std::move(row));
         }
         std::sort(s.rows.begin(), s.rows.end(), [](const SheetRow &a, const SheetRow &b) { return a.label < b.label; });
         if (!s.rows.empty())
