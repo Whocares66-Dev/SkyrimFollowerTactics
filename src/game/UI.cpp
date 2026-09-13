@@ -3081,19 +3081,19 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     {
                         // Each figure hovers apart: the damage over the
                         // damage, the cost over the cost.
-                        bool first = true;
-                        for (const auto &piece : row.modifierParts)
+                        bool separate = false;
+                        for (const auto &part : row.modifierParts)
                         {
-                            if (!first)
+                            if (separate)
                             {
                                 Im::SameLine(0.0f, 0.0f);
                                 Im::Text("%s", ", ");
                                 Im::SameLine(0.0f, 0.0f);
                             }
-                            first = false;
-                            Im::Text("%s", piece.text.c_str());
-                            if (!piece.breakdown.empty() && Im::IsItemHovered(0))
-                                BreakdownTooltip(piece.breakdown);
+                            separate = true;
+                            Im::Text("%s", part.text.c_str());
+                            if (!part.breakdown.empty() && Im::IsItemHovered(0))
+                                BreakdownTooltip(part.breakdown);
                         }
                     }
                     else
