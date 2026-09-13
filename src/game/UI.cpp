@@ -1451,7 +1451,7 @@ bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const
     if (row && Badged(*row))
         DrawNameBadges(Im::GetWindowDrawList(), *row, {pos.x + TextWidth(text) + kBadgeGap, pos.y}, banned);
     if (banned && Im::IsItemHovered(0))
-        Im::SetTooltip("%s", "Banned. A rule may still name it.");
+        Im::SetTooltip("%s", "Banned");
     if (!clicked)
         return false;
     act.kind = action;
