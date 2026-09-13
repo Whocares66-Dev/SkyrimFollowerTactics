@@ -172,10 +172,13 @@ std::string SkillName(RE::ActorValue skill)
 // What the container menu would leave out. Armour and weapons carry their
 // own non-playable flag, and the engine's GetPlayable honours it for both;
 // for every other kind the base record flag is not a reliable answer, so
-// only the name is checked.
-bool IsListed(RE::TESBoundObject *object, const std::string &name)
+// only the name is checked. The record's own name, not the copy's display
+// name: the engine dresses a nameless record as "<Missing Name>", and the
+// Unarmed weapon (Skyrim.esm 0x1F4), not flagged non-playable, was listed
+// under it once a script put it in the player's bag (2026-09-13).
+bool IsListed(RE::TESBoundObject *object)
 {
-    if (name.empty())
+    if (NameOf(object).empty())
         return false;
     if (object->Is(RE::FormType::Armor) || object->Is(RE::FormType::Weapon))
         return object->GetPlayable();
@@ -464,7 +467,7 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
     item.stack = stack;
     item.variant = variant;
     item.name = entry && entry->GetDisplayName() ? entry->GetDisplayName() : NameOf(object);
-    if (!IsListed(object, item.name))
+    if (!IsListed(object))
         return;
 
     item.count = static_cast<int>(count);
