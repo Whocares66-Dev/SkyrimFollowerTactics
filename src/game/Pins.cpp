@@ -365,7 +365,7 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
         if (worn)
             return;
         list = variant ? UnwornVariantList(actor, object, *variant) : UnwornList(actor, object);
-        if (list && variant && variant->IsPlain() && RowOfItsOwn(object, list) && HasListlessCopy(actor, object))
+        if (list && variant && variant->IsPlain() && RowOfItsOwn(list) && HasListlessCopy(actor, object))
         {
             list = nullptr;
             listless = true;
@@ -1784,7 +1784,7 @@ std::vector<VariantInBag> VariantsInBag(RE::Actor *actor, RE::TESBoundObject *ob
         {
             if (!list)
                 continue;
-            const bool isDistinct = DistinctToEngine(list);
+            const bool isDistinct = RowOfItsOwn(list);
             if (isDistinct)
                 distinct += list->GetCount();
             listed.push_back({VariantOf(object, list), !isDistinct, ListWorn(list, Hand::None)});

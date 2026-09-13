@@ -85,18 +85,17 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
 // left hand or no hand is any mark, and the right hand is none.
 [[nodiscard]] bool WornIn(const RE::TESBoundObject *object, const RE::ExtraDataList *list, Hand hands);
 // Is the copy on this list a row of its own on the Inventory tab, rather
-// than one of the plain stack: what the game's own menu splits an entry
-// on. The engine keeps two arriving copies apart when their lists differ
-// in anything but the count and the favourites hotkey (its comparison,
-// 11594, read 2026-09-12), and its menu folds a worn copy into its stack
-// and ignores ownership as such (measured 2026-09-12: a gift carries the
-// player's ownership and stacks with the follower's own); so a list is a
-// row when it holds any entry other than those, or is stolen by the
-// variant's reading. A poisoned or tempered dagger is its own row and
-// rejoins the stack when the dose or the list is gone, as in the menu; a
-// worn plain sword stacks with its spare. Not the engine's
-// IsInventoryStackable, whose table is the equip's. False for no list.
-[[nodiscard]] bool RowOfItsOwn(RE::TESBoundObject *object, const RE::ExtraDataList *list);
+// than one of the plain stack: the engine's own answer, IsInventoryStackable
+// (11598), which InventoryChanges::GetInventoryItemAt asks of each list as
+// it numbers an inventory's items, and which the engine's equip asks before
+// it reaches for "a plain copy". Its table, read from the running game
+// 2026-09-13: tempering, a charge, a poison, a custom name, an enchantment
+// and a soul keep a copy apart; ownership, a unique id, a reference handle,
+// a scale, a torch's time left, the outfit and alias marks, the count and
+// the hotkey fold it into the stack; worn marks are ignored. A poisoned
+// dagger is its own row and rejoins the stack when the dose is gone. False
+// for no list.
+[[nodiscard]] bool RowOfItsOwn(const RE::ExtraDataList *list);
 // The bag's list at this address, or null: a token from an earlier scan
 // made safe to use, since the copy may have left and the address be
 // another's or nobody's.
@@ -112,14 +111,7 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
 // the player's ownership and is nobody's theft. Plain for a list with
 // none of them, and for no list.
 [[nodiscard]] ft::ItemVariant VariantOf(RE::TESBoundObject *object, const RE::ExtraDataList *list);
-// Is the copy on this list a distinct one to the engine's own equip: does
-// its list carry an entry the engine's table counts (an outfit mark, an
-// enchantment, a soul, a count ...), rather than only worn marks or
-// extras the table calls indifferent (tempering, charge, a poison, a
-// name)? The engine's IsInventoryStackable, asked of the engine itself:
-// what decides whether its first step, "a plain copy", reaches for the
-// copy (docs/UNIQUE.md). False for no list.
-[[nodiscard]] bool DistinctToEngine(const RE::ExtraDataList *list);
+
 // How many copies of the variant the bag holds: its rows summed, the
 // listless remainder counting as plain; of the form, with no variant. What
 // the one-copy rule asks.

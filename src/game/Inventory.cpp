@@ -649,21 +649,18 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
                 if (!list)
                     continue;
                 const ft::ItemVariant variant = VariantOf(object, list);
-                const bool apart = RowOfItsOwn(object, list);
-                // What the lists carry decides what stands apart and what
-                // the variant reads, and which of it the game's own menu
-                // splits on is only partly read; said once per shape per
-                // bag, at debug, with the engine's own stackable verdict
-                // beside ours, so the log has it when our rows and the
-                // game's menu disagree.
+                const bool apart = RowOfItsOwn(list);
+                // Which entries a list carries and whether that kept it
+                // apart, said once per shape per bag at debug, so a row that
+                // reads wrong against the game's menu has its list in the
+                // log.
                 static std::unordered_set<std::string> seen;
                 const std::string shape = ListEntries(list);
                 if (seen.insert(
                             fmt::format("{:08X}:{:08X}:{}:{}", actor->GetFormID(), object->GetFormID(), shape, apart))
                         .second)
-                    log::sensors.debug("{} {} list [{}] x{}: {}; {} to the engine", Describe(actor), NameOf(object),
-                                       shape, list->GetCount(), apart ? "a row of its own" : "folded into the stack",
-                                       DistinctToEngine(list) ? "distinct" : "stackable");
+                    log::sensors.debug("{} {} list [{}] x{}: {}", Describe(actor), NameOf(object), shape,
+                                       list->GetCount(), apart ? "a row of its own" : "folded into the stack");
                 if (!apart)
                 {
                     plain.AddExtraList(list);

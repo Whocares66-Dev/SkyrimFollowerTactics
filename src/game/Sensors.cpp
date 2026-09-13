@@ -3836,19 +3836,6 @@ RE::ExtraDataList *WornList(RE::Actor *actor, RE::TESBoundObject *object, Hand h
     return ListOf(actor, object, [object, hand](const RE::ExtraDataList &list) { return WornIn(object, &list, hand); });
 }
 
-bool DistinctToEngine(const RE::ExtraDataList *list)
-{
-    // The engine's own question (11598 in 1.6.1170, IsInventoryStackable):
-    // does the list hold nothing its table counts, worn marks aside? The
-    // call its equip makes when it counts the plain copies, so no table of
-    // ours to drift from it. Its table calls tempering, charge, a poison
-    // and a name indifferent: to the equip's first step a tempered dagger
-    // with no id is a plain one. That is the equip's rule, not the menu's,
-    // which is why the row split (Inventory.cpp, StandsApart) does not use
-    // this.
-    return list && !list->IsInventoryStackable(true);
-}
-
 ft::ItemVariant VariantOf(RE::TESBoundObject *object, const RE::ExtraDataList *list)
 {
     ft::ItemVariant variant;
@@ -3927,7 +3914,7 @@ RE::ExtraDataList *WornVariantList(RE::Actor *actor, RE::TESBoundObject *object,
 RE::ExtraDataList *UnwornVariantList(RE::Actor *actor, RE::TESBoundObject *object, const ft::ItemVariant &variant)
 {
     if (RE::ExtraDataList *stack = ListOf(actor, object, [&](const RE::ExtraDataList &list) {
-            return !ListWorn(&list, Hand::None) && !RowOfItsOwn(object, &list) &&
+            return !ListWorn(&list, Hand::None) && !RowOfItsOwn(&list) &&
                    ft::SameVariant(VariantOf(object, &list), variant);
         }))
         return stack;
@@ -3938,31 +3925,19 @@ RE::ExtraDataList *UnwornVariantList(RE::Actor *actor, RE::TESBoundObject *objec
 
 RE::ExtraDataList *WornStackList(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
 {
-    return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
-        return WornIn(object, &list, hands) && !RowOfItsOwn(object, &list);
-    });
+    return ListOf(actor, object,
+                  [&](const RE::ExtraDataList &list) { return WornIn(object, &list, hands) && !RowOfItsOwn(&list); });
 }
 
 RE::ExtraDataList *UnwornStackList(RE::Actor *actor, RE::TESBoundObject *object)
 {
-    return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
-        return !ListWorn(&list, Hand::None) && !RowOfItsOwn(object, &list);
-    });
+    return ListOf(actor, object,
+                  [&](const RE::ExtraDataList &list) { return !ListWorn(&list, Hand::None) && !RowOfItsOwn(&list); });
 }
 
-bool RowOfItsOwn(RE::TESBoundObject *object, const RE::ExtraDataList *list)
+bool RowOfItsOwn(const RE::ExtraDataList *list)
 {
-    if (!list)
-        return false;
-    using T = RE::ExtraDataType;
-    for (const auto &extra : *list)
-    {
-        const T type = extra.GetType();
-        if (type != T::kCount && type != T::kHotkey && type != T::kWorn && type != T::kWornLeft &&
-            type != T::kOwnership)
-            return true;
-    }
-    return VariantOf(object, list).stolen;
+    return list && !list->IsInventoryStackable(true);
 }
 
 RE::ExtraDataList *ListOfAddress(RE::Actor *actor, RE::TESBoundObject *object, const RE::ExtraDataList *address)
@@ -3983,7 +3958,7 @@ std::vector<ft::ItemVariant> RowsOf(RE::Actor *actor, RE::TESBoundObject *object
     {
         for (const auto *list : *carried.entry->extraLists)
         {
-            if (!list || !RowOfItsOwn(object, list))
+            if (!list || !RowOfItsOwn(list))
                 continue;
             apart += list->GetCount();
             rows.push_back(VariantOf(object, list));

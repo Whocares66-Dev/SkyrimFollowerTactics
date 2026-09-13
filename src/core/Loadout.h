@@ -484,9 +484,9 @@ enum class Shadow : std::uint8_t
 struct VariantInBag
 {
     ItemVariant variant;
-    // Nothing on its list that the engine's table counts: what the
-    // engine's first step reaches for. The listless remainder, a list
-    // with worn marks alone, one with only tempering.
+    // Nothing on its list that the engine's table keeps apart: what the
+    // engine's first step reaches for. The listless remainder, and a list
+    // of worn marks, ownership or an id alone; not one with tempering.
     bool plainToEngine{false};
     bool worn{false};
 };
