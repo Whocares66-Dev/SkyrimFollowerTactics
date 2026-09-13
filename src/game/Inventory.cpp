@@ -6,7 +6,9 @@
 
 #include "game/Sensors.h"
 
+#include "game/Log.h"
 #include "game/Pins.h"
+#include "game/Util.h"
 
 #include <algorithm>
 #include <cctype>
@@ -14,6 +16,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 namespace ft::game
 {
@@ -435,24 +438,16 @@ const char *DisplayName(ItemCategory category)
 namespace
 {
 
-// A copy that is its own row rather than one of the plain stack: what the
-// game's own menu splits an entry on. Worn, outfit and count are not on
-// the list: a worn plain sword stacks with its spare, as in the menu.
-bool StandsApart(const RE::ExtraDataList &list)
-{
-    using T = RE::ExtraDataType;
-    return list.HasType(T::kEnchantment) || list.HasType(T::kTextDisplayData) || list.HasType(T::kHealth) ||
-           list.HasType(T::kCharge) || list.HasType(T::kPoison) || list.HasType(T::kSoul);
-}
-
 // One row: `count` copies of `object` described by `entry`, which holds
-// only this row's extra lists.
+// only this row's extra lists; `variant` is the row's, plain for the plain
+// stack.
 void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryData *entry, std::int32_t count,
-                   std::uint32_t stack, std::vector<InventoryItem> &out)
+                   std::uint32_t stack, const ft::ItemVariant &variant, std::vector<InventoryItem> &out)
 {
     InventoryItem item;
     item.form = object->GetFormID();
     item.stack = stack;
+    item.variant = variant;
     item.name = entry && entry->GetDisplayName() ? entry->GetDisplayName() : NameOf(object);
     if (!IsListed(object, item.name))
         return;
@@ -471,11 +466,6 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
         static auto *vendor = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000917E8);
         item.artifact = (artifact && keyworded->HasKeyword(artifact)) || (vendor && keyworded->HasKeyword(vendor));
     }
-    // In hand, and this row's: the hand holds the form, and a row of it
-    // that is not worn is the spare.
-    item.equippedLeft = item.worn && actor->GetEquippedObject(true) == object;
-    item.equippedRight = item.worn && actor->GetEquippedObject(false) == object;
-
     SheetSection stats{"Stats", {}, {}};
     {
         // The FormID first, as the spell page has it: what the console
@@ -484,9 +474,24 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
         std::snprintf(id, sizeof(id), "%08X", object->GetFormID());
         stats.rows.push_back(Row("Base ID", id));
     }
+    // The Type row's index: after the id.
+    const std::size_t typeRow = stats.rows.size();
     stats.rows.push_back(Row("Type", ""));
     Classify(actor, object, entry, item, stats);
-    stats.rows[1].value = item.type;
+    // In hand, by this row's own lists: with the plain dagger in one hand
+    // and the tempered one in the other, the form is in both hands and
+    // each row is in one. A worn copy always has a list, with the mark for
+    // the hand it is in; a shield or a torch carries the one Worn mark and
+    // is the left hand's by its kind (WornIn).
+    if (item.handItem && entry && entry->extraLists)
+    {
+        for (const auto *list : *entry->extraLists)
+        {
+            item.equippedLeft = item.equippedLeft || WornIn(object, list, Hand::Left);
+            item.equippedRight = item.equippedRight || WornIn(object, list, Hand::Right);
+        }
+    }
+    stats.rows[typeRow].value = item.type;
     if (item.count > 1)
     {
         stats.rows.push_back(Row("Count", std::to_string(item.count)));
@@ -623,7 +628,23 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
             {
                 if (!list)
                     continue;
-                if (!StandsApart(*list))
+                const ft::ItemVariant variant = VariantOf(object, list);
+                const bool apart = RowOfItsOwn(object, list);
+                // What the lists carry decides what stands apart and what
+                // the variant reads, and which of it the game's own menu
+                // splits on is only partly read; said once per shape per
+                // bag, at debug, with the engine's own stackable verdict
+                // beside ours, so the log has it when our rows and the
+                // game's menu disagree.
+                static std::unordered_set<std::string> seen;
+                const std::string shape = ListEntries(list);
+                if (seen.insert(
+                            fmt::format("{:08X}:{:08X}:{}:{}", actor->GetFormID(), object->GetFormID(), shape, apart))
+                        .second)
+                    log::sensors.debug("{} {} list [{}] x{}: {}; {} to the engine", Describe(actor), NameOf(object),
+                                       shape, list->GetCount(), apart ? "a row of its own" : "folded into the stack",
+                                       DistinctToEngine(list) ? "distinct" : "stackable");
+                if (!apart)
                 {
                     plain.AddExtraList(list);
                     continue;
@@ -632,13 +653,16 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
                 RE::InventoryEntryData one(object, copies);
                 one.AddExtraList(list);
                 plainCount -= copies;
-                DescribeStack(actor, object, &one, copies, ++stack, out);
+                const std::size_t before = out.size();
+                DescribeStack(actor, object, &one, copies, ++stack, variant, out);
+                if (out.size() > before)
+                    out.back().row = list;
             }
         }
         if (plainCount > 0)
         {
             plain.countDelta = plainCount;
-            DescribeStack(actor, object, &plain, plainCount, 0, out);
+            DescribeStack(actor, object, &plain, plainCount, 0, ft::ItemVariant{}, out);
         }
     }
 

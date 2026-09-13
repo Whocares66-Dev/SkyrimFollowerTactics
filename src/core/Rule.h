@@ -318,6 +318,21 @@ struct Action // NOLINT(clang-analyzer-core.uninitialized.Assign)
     // above 0xFFFFFF would silently round to a different form.
     std::uint32_t form{0};
 
+    // Which variant of the form, for the equip actions: the row picked, as
+    // the Inventory tab has them, so a rule can say the smithed dagger and
+    // not the plain one; none for the form, whichever variant. A variant
+    // cannot be reissued to another kind of copy, so the rule is available
+    // whenever a row of it is in the bag, and set aside as not carried
+    // while none is.
+    std::optional<ItemVariant> variant;
+    // The thing's name as the panel last saw it, for any action that names
+    // a form: "Iron Dagger (+4)", "Potion of Minor Healing", "Firebolt".
+    // What the rule reads while the thing is away -- drunk, handed over,
+    // a copy whose id nothing holds -- and refreshed by the game whenever
+    // it is there, so it is always the current name of what the rule
+    // names now. For display only; nothing is matched by it.
+    std::string name;
+
     // Which hand, for EquipWeapon and EquipSpell: Left, Right, or Both for a
     // two-hander, a bow, a master spell -- or an either-hand spell in each
     // hand at once. Ignored by every other action.

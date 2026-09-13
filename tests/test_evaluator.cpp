@@ -1952,6 +1952,40 @@ TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI wo
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
     REQUIRE(trace.at(0) == Verdict::AboveSkill);
 
+    // Two variants of the sword, the plain one and the smithed one: a rule
+    // naming the smithed one has it, one naming a tempering not carried
+    // has nothing, and one naming the form alone has whichever. With the
+    // plain one pinned in the hand asked, the rule for the smithed one is
+    // not done: they are two things.
+    {
+        Snapshot two = Armed();
+        Holdable smithed = two.loadout[0];
+        smithed.variant.emplace().tempering = 1.2f;
+        two.loadout.push_back(smithed);
+        RuleSet copies;
+        copies.rules.push_back(Equip(ActionKind::EquipWeapon, kSword, Hand::Right));
+        copies.rules[0].FirstAction().variant = smithed.variant;
+        EvalContext fresh;
+        REQUIRE(Evaluate(copies, two, fresh, &trace).ruleIndex == 0);
+        copies.rules[0].FirstAction().variant->tempering = 1.5f;
+        REQUIRE(Evaluate(copies, two, fresh, &trace).ruleIndex < 0);
+        REQUIRE(trace.at(0) == Verdict::NoResource);
+        copies.rules[0].FirstAction().variant = std::nullopt;
+        two.now += 5.0; // past the first firing's cooldown, which keys on the form
+        REQUIRE(Evaluate(copies, two, fresh, &trace).ruleIndex == 0);
+        copies.rules[0].FirstAction().variant = smithed.variant;
+        Holdable plainSword = two.loadout[0];
+        plainSword.variant = ItemVariant{};
+        AddPin(two.pins, plainSword, Hand::Right, false);
+        two.now += 5.0;
+        REQUIRE(Evaluate(copies, two, fresh, &trace).ruleIndex == 0);
+        two.pins.clear();
+        AddPin(two.pins, smithed, Hand::Right, false);
+        two.now += 5.0;
+        REQUIRE(Evaluate(copies, two, fresh, &trace).ruleIndex < 0);
+        REQUIRE(trace.at(0) == Verdict::EffectActive);
+    }
+
     // A spell they can use, in both hands at once.
     rs.rules[0] = Equip(ActionKind::EquipSpell, kFirebolt, Hand::Both);
     Decision d = Evaluate(rs, s, ctx, &trace);

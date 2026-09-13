@@ -57,6 +57,15 @@ struct InventoryItem
     // across rows, and a row is named by Key(); a pin, a ban and a rule's
     // equip are by form, and go for every row of it.
     std::uint32_t stack{0};
+    // The row's variant: what a pin, a ban or a rule on this row names.
+    // Coarser than the row: the poisoned dagger and the clean stack are one
+    // variant.
+    ft::ItemVariant variant;
+    // The list this row is, for a row that stands apart from the plain
+    // stack; null for the stack. Not to be read outside the game thread:
+    // it is a token handed back with a click, and checked against the
+    // bag's lists before it is used, since the copy may have left.
+    RE::ExtraDataList *row{nullptr};
     [[nodiscard]] std::uint64_t Key() const
     {
         return (static_cast<std::uint64_t>(stack) << 32) | form;

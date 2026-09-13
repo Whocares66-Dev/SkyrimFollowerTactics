@@ -37,7 +37,9 @@ bool ActionHad(const Action &action, const Holdings &has)
                            [&](const Holdings::Consumable &c) { return c.form == action.form && c.kind == kind; });
     }
     if (IsEquip(action.kind))
-        return Has(has.things, action.form);
+        return std::any_of(has.things.begin(), has.things.end(), [&](const Holdings::Thing &t) {
+            return t.form == action.form && SameVariant(t.variant, action.variant);
+        });
     if (IsCast(action.kind))
         return Has(has.castable, action.form);
     return true;

@@ -29,14 +29,10 @@
 ;  broken. A selection made BEFORE the batch is stable state,
 ;  which is why the second form is safe and prid is not.
 ;
-;  POTIONS, weak then strong. Two tiers on purpose: the engine
-;  drinks the STRONGEST carried, so watching which count falls
-;  proves it chose correctly rather than merely drinking.
-;    0003EADD / 0003EADE   Minor Healing / Healing
-;    0003EAE0 / 0003EAE1   Minor Magicka / Magicka
-;    0003EAE5 / 00039BE8   Minor Stamina / Stamina
-;  All six read off the running game. Stamina breaks the
-;  adjacent-pair pattern the other two follow.
+;  POTIONS: three each of one tier, read off the running game.
+;    0003EADE   Healing
+;    0003EAE1   Magicka
+;    00039BE8   Stamina
 ;
 ;  SPELLS. Two, because they test different things.
 ;
@@ -113,9 +109,12 @@
 ;  is what the pin watchdog is being watched for.
 ;    00012E49   Iron Armor    body, heavy -- displaces the robes
 ;    00012EB6   Iron Shield   left hand -- contests a spell there
-;    0001397E   Iron Sword    one-handed -- either hand
+;    0001397E   Iron Dagger   one-handed, either hand; THREE, for the
+;               copy tests (docs/UNIQUE.md): pin one, smith another
 ;    0003B562   Long Bow      two-handed -- the pinned-bow case, and
 ;    0001397D   Iron Arrow    the arrows it needs to be listed at all
+;    0005ACE4   Iron Ingot    three, to smith a dagger at a grindstone
+;               and get a copy that stands apart
 ;
 ;  Check with a SEPARATE `bat ftstatus` -- a check inside this
 ;  file could run before the thing it checks.
@@ -123,230 +122,13 @@
 
 setrelationshiprank player 4
 
-; Every vanilla potion, three of each, so the Potion menu's Strongest and
-; Weakest list every effect (docs/ACTIONS.md): the restores, the
-; fortifies, the regenerations, the resistances, the skills, invisibility,
-; waterbreathing, cure poison; the Thieves Guild blends; the fortify
-; health / magicka / stamina lines. Quest bottles and drinks are left out.
-; Restore Health
-additem 0003EADD 3
+; Three potions, three each: one tier of health, magicka and stamina. The
+; Potion menu's Strongest and Weakest need one effect each to list, and the
+; bag stays small enough to read at a glance. The full vanilla set is in
+; git history (before 2026-09-12) if a menu needs every effect again.
 additem 0003EADE 3
-additem 0003EADF 3
-additem 0003EAE3 3
-additem 00039BE4 3
-additem 00039BE5 3
-; Restore Magicka
-additem 0003EAE0 3
 additem 0003EAE1 3
-additem 0003EAE2 3
-additem 0003EAE4 3
-additem 00039BE6 3
-additem 00039BE7 3
-; Restore Stamina
-additem 0003EAE5 3
 additem 00039BE8 3
-additem 0003EAE7 3
-additem 0003EAE8 3
-additem 0003EAE6 3
-additem 00039CF3 3
-; Fortify Health
-additem 0003EAF2 3
-additem 0003EAF4 3
-additem 0003EAF6 3
-additem 0003EAF5 3
-additem 000FF9FC 3
-; Fortify Magicka
-additem 0003EAF7 3
-additem 0003EAFA 3
-additem 0003EAFB 3
-additem 0003EAFC 3
-additem 000FF9FD 3
-; Fortify Stamina
-additem 0003EAFD 3
-additem 0003EB00 3
-additem 0003EAFE 3
-additem 0003EAFF 3
-additem 000FFA01 3
-additem 0005566A 3
-; Regenerate Health
-additem 0003EB09 3
-additem 0003EB0A 3
-additem 0003EB0B 3
-additem 0003EB0C 3
-additem 000FF9FF 3
-; Regenerate Magicka
-additem 0003EB0D 3
-additem 0003EB0E 3
-additem 0003EB0F 3
-additem 0003EB10 3
-additem 000FFA00 3
-; Regenerate Stamina
-additem 0003EB11 3
-additem 0003EB12 3
-additem 00039B0C 3
-additem 0003EB14 3
-additem 000FFA02 3
-; Resist Fire
-additem 00039B4A 3
-additem 0003EAE9 3
-additem 00039B4B 3
-additem 0003EAEF 3
-; Resist Frost
-additem 00039B8A 3
-additem 0003EAED 3
-additem 00039BDF 3
-additem 0003EAF0 3
-additem 000F9642 3
-; Resist Shock
-additem 00039BE1 3
-additem 0003EAEE 3
-additem 00039BE3 3
-additem 0003EAF1 3
-; Resist Magic
-additem 00039E52 3
-additem 00039E53 3
-additem 00039E54 3
-additem 00039E55 3
-; Fortify One-handed
-additem 0003EB2A 3
-additem 00039954 3
-additem 00039955 3
-additem 00039956 3
-; Fortify Two-handed
-additem 0003EB2B 3
-additem 00039974 3
-additem 00039980 3
-additem 00039AA6 3
-; Fortify Archery
-additem 0003EB2C 3
-additem 00039949 3
-additem 0003994B 3
-additem 0003994E 3
-; Fortify Block
-additem 0003EB32 3
-additem 0003989B 3
-additem 000398AB 3
-additem 000398AC 3
-; Fortify Heavy Armor
-additem 0003EB2F 3
-additem 000398F4 3
-additem 000398F5 3
-additem 000398F6 3
-; Fortify Light Armor
-additem 0003EB30 3
-additem 000398FD 3
-additem 00039903 3
-additem 00039904 3
-; Fortify Sneak
-additem 0003EB33 3
-additem 00039968 3
-additem 00039969 3
-additem 0003996F 3
-; Fortify Alteration
-additem 0003EB36 3
-additem 0003988E 3
-additem 00039899 3
-additem 0003989A 3
-; Fortify Conjuration
-additem 0003EB37 3
-additem 000398AD 3
-additem 000398EC 3
-additem 000398ED 3
-; Fortify Destruction
-additem 0003EB38 3
-additem 000398EE 3
-additem 000398F1 3
-additem 000398F3 3
-; Fortify Illusion
-additem 0003EB39 3
-additem 0003994F 3
-additem 00039950 3
-additem 00039951 3
-; Fortify Restoration
-additem 0003EB3A 3
-additem 0003995A 3
-additem 0003995B 3
-additem 0003995C 3
-; Invisibility
-additem 0003EB3E 3
-additem 0003EB40 3
-additem 0003EB3F 3
-additem 0003EB41 3
-; Cure Poison, Cure Disease
-additem 00065A64 3
-additem 000AE723 3
-; Waterbreathing
-additem 0003AC2E 3
-additem 0003AC2F 3
-additem 0003AC30 3
-additem 0003AC31 3
-; Fortify Carry Weight
-additem 0003EB02 3
-additem 0003EB05 3
-additem 0003EB03 3
-additem 0003EB04 3
-additem 000FF9FE 3
-; Fortify Barter
-additem 0003EB35 3
-additem 00039970 3
-additem 00039971 3
-additem 00039973 3
-; Fortify Lockpicking
-additem 00039930 3
-additem 00039945 3
-additem 00039946 3
-additem 00039948 3
-; Fortify Pickpocket
-additem 0003EB31 3
-additem 00039957 3
-additem 00039959 3
-additem 00039958 3
-; Fortify Persuasion
-additem 000D6948 3
-additem 000D6949 3
-additem 000D697F 3
-additem 000D6980 3
-; Fortify Smithing
-additem 0003EB2E 3
-additem 0003995D 3
-additem 00039962 3
-additem 00039967 3
-; Fortify Enchanting
-additem 00039CFB 3
-additem 00039D02 3
-additem 00039D0A 3
-additem 00039D12 3
-; Thieves Guild: Plunder, Conflict, Larceny, Keenshot, Escape
-additem 000F84C1 3
-additem 000F84C2 3
-additem 000F84C3 3
-additem 000F84C4 3
-additem 000F84C5 3
-additem 000F84C6 3
-additem 000F84B5 3
-additem 000F84B6 3
-additem 000F84B7 3
-additem 000F84B8 3
-additem 000F84B9 3
-additem 000F84BA 3
-additem 000F84A7 3
-additem 000F84A8 3
-additem 000F84A9 3
-additem 000F84AA 3
-additem 000F84AB 3
-additem 000F84AC 3
-additem 000F84BB 3
-additem 000F84BC 3
-additem 000F84BD 3
-additem 000F84BE 3
-additem 000F84BF 3
-additem 000F84C0 3
-additem 000F84AE 3
-additem 000F84AF 3
-additem 000F84B0 3
-additem 000F84B1 3
-additem 000F84B2 3
-additem 000F84B3 3
 
 ; Every vanilla poison, three of each, for the Poison menu's Strongest and
 ; Weakest: the damages, the lingering ones, the regen ones, the
@@ -482,6 +264,7 @@ additem 000727DE 2
 
 additem 00012E49 1
 additem 00012EB6 1
-additem 0001397E 1
+additem 0001397E 3
+additem 0005ACE4 3
 additem 0003B562 1
 additem 0001397D 20

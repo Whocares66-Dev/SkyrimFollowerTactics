@@ -354,9 +354,56 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     for (const auto &option : v.spells)
         v.holdings.castable.push_back(option.form);
     for (const auto &item : v.inventory)
-        v.holdings.things.push_back(item.form);
+        v.holdings.things.push_back({item.form, item.variant});
     for (const auto &entry : v.magic)
-        v.holdings.things.push_back(entry.form);
+        v.holdings.things.push_back({entry.form, {}});
+
+    // A rule reads as the thing it names is called now, and keeps that
+    // name while the thing is away (Action::name): the current name is
+    // taken from the row for it each time the bag is read. For a copy, the
+    // row is whatever holds the id now -- the engine hands an id out again
+    // after its copy leaves -- and the rule says so, which is the contract.
+    const auto currentName = [&](const ft::Action &action) -> std::string {
+        if (ft::IsEquip(action.kind))
+        {
+            for (const auto &entry : v.magic)
+                if (entry.form == action.form)
+                    return entry.name;
+            for (const auto &item : v.inventory)
+                if (item.form == action.form && ft::SameVariant(item.variant, action.variant))
+                    return item.name;
+            return {};
+        }
+        if (ft::NamesConsumable(action.kind))
+        {
+            for (const auto &option : v.consumables)
+                if (option.form == action.form && option.kind == ft::ConsumableOf(action.kind))
+                    return option.name;
+            return {};
+        }
+        for (const auto &option : v.spells)
+            if (option.form == action.form)
+                return option.name;
+        return {};
+    };
+    ft::RuleSet rules = GetRules(v.id);
+    bool renamed = false;
+    for (ft::Rule &rule : rules.rules)
+    {
+        for (ft::Action &action : rule.actions)
+        {
+            if (!ft::NamesForm(action.kind) || action.form == 0)
+                continue;
+            const std::string now = currentName(action);
+            if (!now.empty() && now != action.name)
+            {
+                action.name = now;
+                renamed = true;
+            }
+        }
+    }
+    if (renamed)
+        SetRules(v.id, std::move(rules));
 }
 
 void PublishOne(FollowerView v)

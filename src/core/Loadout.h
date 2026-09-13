@@ -24,7 +24,10 @@
 // prevent-removal flag once doubled the first for items; it lives on the
 // worn item in the save and outlived the mod, so it is no longer set.)
 
+#include <cmath>
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace ft
@@ -106,10 +109,104 @@ enum class Kind : std::uint8_t
     Voice
 };
 
+// One effect of an enchantment put on a copy: the effect's record, and the
+// strength the enchanter set. An enchantment made at the table is a form
+// the game mints in the save, one per distinct recipe, and finds again by
+// these fields (Effect::IsMatch); the form's number is the save's, not
+// any plugin's, so the recipe is what tells enchantments apart here, not
+// the number. Two effects of one kind at two magnitudes -- fire
+// resistance 25% and 50% -- are two enchantments.
+struct EnchantEffect
+{
+    std::uint32_t effect{0}; // the magic effect, a form
+    float magnitude{0.0f};
+    std::uint32_t duration{0};
+    std::uint32_t area{0};
+
+    [[nodiscard]] bool operator==(const EnchantEffect &) const noexcept = default;
+};
+
+// Two effects the enchanter would call one: the same record at the same
+// strength. Magnitude goes to the save as a number and comes back within
+// a hair.
+[[nodiscard]] inline bool SameEffect(const EnchantEffect &a, const EnchantEffect &b) noexcept
+{
+    return a.effect == b.effect && a.duration == b.duration && a.area == b.area &&
+           std::fabs(a.magnitude - b.magnitude) < 1e-3f;
+}
+
+// One variant of a form: what tells a row of the Inventory tab from the
+// other rows of the same form, made of the parts of the copy's extra-data
+// list that only the player's own hand changes (docs/UNIQUE.md, "The
+// variant"). The plain variant has every part empty. Charge, a poison
+// dose, worn marks and the engine's per-bag id are not part of it: they
+// change on their own, or the engine ignores them itself. Wherever a
+// variant is held it is optional: no value is the form, whichever
+// variant -- the combat AI's own list of options holds forms, and a rule
+// may name a form without picking a row. A spell or a shout has no
+// variants.
+struct ItemVariant
+{
+    std::vector<EnchantEffect> enchantment; // the enchantment put on it, as its effects; empty for none
+    bool stolen{false};                     // owned by someone else, by the engine's own rule from the player's side
+    float tempering{0.0f};                  // the grindstone's multiplier; 0 for none
+    std::string label;                      // a custom name, given at an enchanter
+
+    // Part for part, exactly: for a rule compared with another rule. The
+    // planner's question is SameVariant.
+    [[nodiscard]] bool operator==(const ItemVariant &) const noexcept = default;
+
+    [[nodiscard]] bool IsPlain() const noexcept
+    {
+        return enchantment.empty() && !stolen && tempering == 0.0f && label.empty();
+    }
+};
+
+// The same enchantment: the same effects, each at the same strength, in
+// any order. An enchantment is at most a few effects, so the match is a
+// plain search each way, and nothing is sorted.
+[[nodiscard]] inline bool SameEnchantment(const std::vector<EnchantEffect> &a,
+                                          const std::vector<EnchantEffect> &b) noexcept
+{
+    if (a.size() != b.size())
+        return false;
+    const auto covered = [](const std::vector<EnchantEffect> &from, const std::vector<EnchantEffect> &in) {
+        for (const EnchantEffect &e : from)
+        {
+            bool found = false;
+            for (const EnchantEffect &f : in)
+                found = found || SameEffect(e, f);
+            if (!found)
+                return false;
+        }
+        return true;
+    };
+    return covered(a, b) && covered(b, a);
+}
+
+// The same variant, part for part. Tempering is a float read off the list
+// and written to the save as a number, so it is compared within a hair
+// rather than exactly.
+[[nodiscard]] inline bool SameVariant(const ItemVariant &a, const ItemVariant &b) noexcept
+{
+    return SameEnchantment(a.enchantment, b.enchantment) && a.stolen == b.stolen &&
+           std::fabs(a.tempering - b.tempering) < 1e-4f && a.label == b.label;
+}
+
+// The planner's question: the same variant, or the form -- no variant --
+// on either side, which every variant of the form answers to.
+[[nodiscard]] inline bool SameVariant(const std::optional<ItemVariant> &a, const std::optional<ItemVariant> &b) noexcept
+{
+    if (!a || !b)
+        return true;
+    return SameVariant(*a, *b);
+}
+
 // One thing they have, as the planner sees it.
 struct Holdable
 {
     std::uint32_t form{0};
+    std::optional<ItemVariant> variant;
     Kind kind{Kind::Other};
     Grip grip{Grip::None};
     // A spell above their skill. The combat AI will not choose it on its own,
@@ -135,7 +232,17 @@ struct Holdable
     }
 };
 
+// Are these the same thing: one form, and the same variant, or the form
+// itself on either side?
+[[nodiscard]] inline bool SameThing(const Holdable &a, const Holdable &b) noexcept
+{
+    return a.form == b.form && SameVariant(a.variant, b.variant);
+}
+
 [[nodiscard]] const Holdable *FindHoldable(const std::vector<Holdable> &things, std::uint32_t form) noexcept;
+// The variant, when one is; none is the form, whichever copy.
+[[nodiscard]] const Holdable *FindHoldable(const std::vector<Holdable> &things, std::uint32_t form,
+                                           const std::optional<ItemVariant> &variant) noexcept;
 
 // Does a pin in `pinned` hold every hand in `wanted`? None is held by
 // anything: a thing with no hand asks for no hand.
@@ -153,11 +260,22 @@ struct Pin
     Hand hands{Hand::None};
 };
 
-// The forms the follower must never use (the bans, below).
-using Bans = std::vector<std::uint32_t>;
+// The things the follower must never use (the bans, below): a form and a
+// variant; no variant for every copy of the form.
+struct Banned
+{
+    std::uint32_t form{0};
+    std::optional<ItemVariant> variant;
+};
+using Bans = std::vector<Banned>;
 
-[[nodiscard]] Pin *FindPin(std::vector<Pin> &pins, std::uint32_t form) noexcept;
+// The pin on this thing (SameThing), if any; or on a form, whichever
+// copy.
+[[nodiscard]] Pin *FindPin(std::vector<Pin> &pins, const Holdable &thing) noexcept;
+[[nodiscard]] const Pin *FindPin(const std::vector<Pin> &pins, const Holdable &thing) noexcept;
 [[nodiscard]] const Pin *FindPin(const std::vector<Pin> &pins, std::uint32_t form) noexcept;
+[[nodiscard]] const Pin *FindPin(const std::vector<Pin> &pins, std::uint32_t form,
+                                 const std::optional<ItemVariant> &variant);
 
 // The hands a thing takes when pinned, given the hand asked for. A thing
 // that takes one particular hand, or both, takes that whatever was asked;
@@ -215,6 +333,7 @@ using Bans = std::vector<std::uint32_t>;
 struct Displaced
 {
     std::uint32_t form{0};
+    std::optional<ItemVariant> variant;
     Hand hands{Hand::None};
 };
 [[nodiscard]] std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, Hand hands,
@@ -311,10 +430,42 @@ enum class PinRequest : std::uint8_t
 // player's own instruction and wins for as long as it lasts; the watchdog
 // leaves a pinned thing alone whatever the bans say.
 
-[[nodiscard]] bool IsBanned(const Bans &bans, std::uint32_t form) noexcept;
-// Each returns whether the book changed.
-bool Ban(Bans &bans, std::uint32_t form);
-bool Unban(Bans &bans, std::uint32_t form);
+// Is this thing banned: by a ban on its variant, or on every copy of its
+// form? A thing with no variant is banned by any ban on the form.
+[[nodiscard]] bool IsBanned(const Bans &bans, const Holdable &thing) noexcept;
+// Each returns whether the book changed. A ban is one entry per form and
+// variant; banning every copy (no variant) replaces the bans on its
+// variants.
+bool Ban(Bans &bans, std::uint32_t form, const std::optional<ItemVariant> &variant = std::nullopt);
+bool Unban(Bans &bans, std::uint32_t form, const std::optional<ItemVariant> &variant = std::nullopt);
+
+// ---- The engine's own pick, minus the banned copies.
+//
+// An equip that names no list -- every one the combat AI makes -- leaves
+// the copy to the engine, whose rule is known (docs/UNIQUE.md, "Which copy
+// the engine takes for a null list"): a plain copy first, else the first
+// copy in the entry's order that is not already worn. A ban on one copy
+// is kept by walking the same pool in the same order with the banned
+// copies left out, and handing the engine the copy it would itself have
+// reached. Not a tie-break of ours: the engine's order, less the bans.
+
+// One copy of a form as the engine's equip sees the bag, in the entry's
+// order; the listless remainder is one of these too, first.
+struct VariantInBag
+{
+    ItemVariant variant;
+    // Nothing on its list that the engine's table counts: what the
+    // engine's first step reaches for. The listless remainder, a list
+    // with worn marks alone, one with only tempering.
+    bool plainToEngine{false};
+    bool worn{false};
+};
+
+// The index of the copy the engine would take with the banned ones
+// removed from its pool, or none: every copy it would consider is banned
+// or worn, and the request goes to the engine as it came.
+[[nodiscard]] std::optional<std::size_t> EnginePick(const std::vector<VariantInBag> &copies, const Bans &bans,
+                                                    std::uint32_t form);
 
 // ---- The watchdog's decision, each tick, for one pin.
 //
@@ -341,6 +492,7 @@ bool Unban(Bans &bans, std::uint32_t form);
 struct Released
 {
     std::uint32_t form{0};
+    std::optional<ItemVariant> variant;
     Hand hands{Hand::None};
     bool takeOff{false};
 };

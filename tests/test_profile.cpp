@@ -1,6 +1,7 @@
 // The profile file: what a follower's tactics look like on disk, and how
 // leniently they come back. No Skyrim here; forms pass through as hex.
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
 
@@ -17,6 +18,10 @@ namespace
 {
 
 const FormCodec kHex = FormCodec::Hex();
+
+// Resist Fire 25% with Fortify Health 30: one enchantment made at the
+// table, as its recipe.
+const std::vector<EnchantEffect> kWardens{{0x581F7, 25.0f, 0, 0}, {0x49507, 30.0f, 0, 0}};
 
 // One rule of every shape the file has to carry: a named follower on both
 // sides, a status, a damage kind, an equip with a hand, a cast with an
@@ -129,10 +134,16 @@ Profile Everything()
         peel.FirstAction().kind = ActionKind::PowerAttack;
         p.rules.rules.push_back(peel);
     }
-    p.pins.push_back({0x13989, Hand::Both}); // a bow
-    p.pins.push_back({0x12E49, Hand::None}); // a cuirass
-    p.pins.push_back({0x12FCD, Hand::Left}); // a spell in one hand
-    p.bans = {0x2F3B8};
+    p.pins.push_back({0x13989, ItemVariant{}, Hand::Both}); // a bow, the plain one
+    ItemVariant enchanted;
+    enchanted.enchantment = kWardens;
+    enchanted.label = "Warden";
+    p.pins.push_back({0x12E49, enchanted, Hand::None}); // a cuirass: the enchanted copy, renamed
+    p.pins.push_back({0x12FCD, {}, Hand::Left});        // a spell in one hand
+    ItemVariant tempered;
+    tempered.tempering = 1.2f;
+    tempered.stolen = true;
+    p.bans = {{0x2F3B8, {}}, {0x12E49, tempered}};
     return p;
 }
 
@@ -201,9 +212,17 @@ TEST_CASE("a profile round-trips through its file", "[profile]")
     for (std::size_t i = 0; i < before.pins.size(); ++i)
     {
         REQUIRE(after.pins[i].form == before.pins[i].form);
+        REQUIRE(after.pins[i].variant.has_value() == before.pins[i].variant.has_value());
+        REQUIRE(SameVariant(after.pins[i].variant, before.pins[i].variant));
         REQUIRE(after.pins[i].hands == before.pins[i].hands);
     }
-    REQUIRE(after.bans == before.bans);
+    REQUIRE(after.bans.size() == before.bans.size());
+    for (std::size_t i = 0; i < before.bans.size(); ++i)
+    {
+        REQUIRE(after.bans[i].form == before.bans[i].form);
+        REQUIRE(after.bans[i].variant.has_value() == before.bans[i].variant.has_value());
+        REQUIRE(SameVariant(after.bans[i].variant, before.bans[i].variant));
+    }
 }
 
 TEST_CASE("every action that names a form keeps it through the file, and no other writes one", "[profile]")
@@ -300,30 +319,127 @@ TEST_CASE("a pin this build cannot place is dropped alone", "[profile]")
     REQUIRE(read.warnings[1].find("tail") != std::string::npos);
 }
 
-TEST_CASE("bans are forms, written and read back, a stranger dropped alone", "[profile]")
+TEST_CASE("bans are a form and a variant, written and read back, a stranger dropped alone", "[profile]")
 {
     Profile profile;
-    profile.bans = {0x13989, 0x2F3B8};
+    ItemVariant tempered;
+    tempered.tempering = 1.2f;
+    profile.bans = {{0x13989, std::nullopt}, {0x2F3B8, tempered}};
     const auto j = nlohmann::json::parse(WriteProfile(profile, kHex));
     REQUIRE(j["bans"].size() == 2);
-    REQUIRE(j["bans"][0] == "0x13989");
-    REQUIRE(j["bans"][1] == "0x2F3B8");
+    REQUIRE(j["bans"][0]["form"] == "0x13989");
+    REQUIRE_FALSE(j["bans"][0].contains("variant")); // the form, whichever: nothing to say
+    REQUIRE(j["bans"][1]["form"] == "0x2F3B8");
+    REQUIRE(j["bans"][1]["variant"]["tempering"].get<double>() == Catch::Approx(1.2));
 
     FormCodec installed = kHex;
     installed.decode = [](std::string_view s) -> std::optional<std::uint32_t> {
         if (s == "0x13989~Skyrim.esm")
             return 0x13989;
+        if (s == "0x581F7~Skyrim.esm")
+            return 0x581F7;
         return std::nullopt;
     };
+    // A bare form is a ban on every variant of it; a variant with an effect
+    // this load order cannot name is dropped alone; a part of the wrong
+    // shape reads as absent, and a variant of the wrong shape as none.
     const std::string file = R"({ "schema": 1, "rules": [], "bans": [
-        "0x13989~Skyrim.esm", "0x7~Gone.esp", 7, { "form": "0x13989~Skyrim.esm" }
+        { "form": "0x13989~Skyrim.esm", "variant": { "tempering": 1.2 } }, { "form": "0x7~Gone.esp" }, 7,
+        "0x13989~Skyrim.esm",
+        { "form": "0x13989~Skyrim.esm", "variant": { "enchant": [ { "effect": "0x9~Gone.esp", "mag": 10 } ] } },
+        { "form": "0x13989~Skyrim.esm", "variant": { "enchant": [ { "effect": "0x581F7~Skyrim.esm", "mag": 25, "dur": 3 } ], "label": "Fang" } },
+        { "form": "0x13989~Skyrim.esm", "variant": { "tempering": "fine", "enchant": "0x581F7~Skyrim.esm" } },
+        { "form": "0x13989~Skyrim.esm" },
+        { "form": "0x13989~Skyrim.esm", "variant": "fine" }
     ] })";
     const auto read = ReadProfile(file, installed);
-    REQUIRE(read.profile->bans.size() == 1);
-    REQUIRE(read.profile->bans[0] == 0x13989);
-    REQUIRE(read.warnings.size() == 3);
+    REQUIRE(read.profile->bans.size() == 5);
+    REQUIRE(read.profile->bans[0].form == 0x13989);
+    REQUIRE(read.profile->bans[0].variant->tempering == Catch::Approx(1.2f));
+    REQUIRE(read.profile->bans[1].variant->enchantment.size() == 1);
+    REQUIRE(read.profile->bans[1].variant->enchantment[0].effect == 0x581F7);
+    REQUIRE(read.profile->bans[1].variant->enchantment[0].magnitude == Catch::Approx(25.0f));
+    REQUIRE(read.profile->bans[1].variant->enchantment[0].duration == 3);
+    REQUIRE(read.profile->bans[1].variant->label == "Fang");
+    REQUIRE(read.profile->bans[2].variant->IsPlain()); // parts of the wrong shape read as absent
+    REQUIRE_FALSE(read.profile->bans[3].variant.has_value());
+    REQUIRE_FALSE(read.profile->bans[4].variant.has_value());
+    REQUIRE(read.warnings.size() == 4);
     REQUIRE(read.warnings[0].find("ban 1") != std::string::npos);
     REQUIRE(read.warnings[0].find("0x7~Gone.esp") != std::string::npos);
+    REQUIRE(read.warnings[3].find("0x9~Gone.esp") != std::string::npos);
+}
+
+TEST_CASE("an action names its variant on the wire only when it has one, and its thing's last name", "[profile]")
+{
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Any;
+    r.actionTarget = ActionTargetKind::Self;
+    Action plain;
+    plain.kind = ActionKind::EquipWeapon;
+    plain.form = 0x13989;
+    plain.hand = Hand::Right;
+    Action smithed = plain;
+    smithed.variant.emplace().tempering = 1.2f;
+    smithed.name = "Iron Dagger (Fine)";
+    Action drink;
+    drink.kind = ActionKind::DrinkPotion;
+    drink.form = 0x3EADE;
+    drink.variant.emplace().tempering = 5.0f; // not an equip: never written
+    drink.name = "Potion of Minor Healing";
+    r.actions = {plain, smithed, drink};
+    Profile p;
+    p.rules.rules.push_back(r);
+    const auto j = nlohmann::json::parse(WriteProfile(p, kHex));
+    const auto &steps = j["rules"][0]["then"]["do"];
+    REQUIRE(steps.size() == 3);
+    REQUIRE_FALSE(steps[0].contains("variant"));
+    REQUIRE_FALSE(steps[0].contains("name")); // no name seen yet: nothing to keep
+    REQUIRE(steps[1]["variant"]["tempering"].get<double>() == Catch::Approx(1.2));
+    REQUIRE(steps[1]["name"] == "Iron Dagger (Fine)");
+    REQUIRE_FALSE(steps[2].contains("variant"));
+    REQUIRE(steps[2]["name"] == "Potion of Minor Healing");
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.warnings.empty());
+    const auto &back = read.profile->rules.rules[0].actions;
+    REQUIRE(back.size() == 3);
+    REQUIRE_FALSE(back[0].variant.has_value());
+    REQUIRE(back[1].variant->tempering == Catch::Approx(1.2f));
+    REQUIRE(back[1].name == "Iron Dagger (Fine)");
+    REQUIRE_FALSE(back[2].variant.has_value());
+    REQUIRE(back[2].name == "Potion of Minor Healing");
+}
+
+TEST_CASE("a pin writes its variant as one object, with only the parts it has; the form alone writes none", "[profile]")
+{
+    Profile profile;
+    ItemVariant enchanted;
+    enchanted.enchantment = kWardens;
+    profile.pins = {
+        {0x12E49, std::nullopt, Hand::None}, {0x12E49, enchanted, Hand::None}, {0x12E49, ItemVariant{}, Hand::None}};
+    const auto j = nlohmann::json::parse(WriteProfile(profile, kHex));
+    REQUIRE(j["pins"].size() == 3);
+    REQUIRE_FALSE(j["pins"][0].contains("variant"));
+    // Each effect: its form, its magnitude, and a duration or area only
+    // when it has one.
+    const auto &v = j["pins"][1]["variant"];
+    REQUIRE(v["enchant"].size() == 2);
+    REQUIRE(v["enchant"][0]["effect"] == "0x581F7");
+    REQUIRE(v["enchant"][0]["mag"] == 25.0);
+    REQUIRE_FALSE(v["enchant"][0].contains("dur"));
+    REQUIRE(v["enchant"][1]["effect"] == "0x49507");
+    REQUIRE_FALSE(v.contains("tempering"));
+    // The plain variant is an object with nothing in it: a row, not the form.
+    REQUIRE(j["pins"][2]["variant"].is_object());
+    REQUIRE(j["pins"][2]["variant"].empty());
+    const auto read = ReadProfile(WriteProfile(profile, kHex), kHex);
+    REQUIRE(read.profile->pins.size() == 3);
+    REQUIRE_FALSE(read.profile->pins[0].variant.has_value());
+    REQUIRE(read.profile->pins[1].variant.has_value());
+    REQUIRE(SameVariant(*read.profile->pins[1].variant, enchanted));
+    REQUIRE(read.profile->pins[2].variant.has_value());
+    REQUIRE(read.profile->pins[2].variant->IsPlain());
 }
 
 TEST_CASE("the file carries only the fields a rule reads", "[profile]")

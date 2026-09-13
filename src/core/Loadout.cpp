@@ -47,23 +47,43 @@ bool WouldDualWield(const Holdable &thing, const Holdable *inOtherHand) noexcept
     return true;
 }
 
-bool IsBanned(const Bans &bans, std::uint32_t form) noexcept
+bool IsBanned(const Bans &bans, const Holdable &thing) noexcept
 {
-    return std::find(bans.begin(), bans.end(), form) != bans.end();
+    return std::any_of(bans.begin(), bans.end(),
+                       [&](const Banned &b) { return b.form == thing.form && SameVariant(b.variant, thing.variant); });
 }
 
-bool Ban(Bans &bans, std::uint32_t form)
+namespace
 {
-    if (form == 0 || IsBanned(bans, form))
+// The same entry exactly: the form's own ban is its own entry here, not a
+// wildcard.
+bool SameBan(const Banned &a, std::uint32_t form, const std::optional<ItemVariant> &variant) noexcept
+{
+    return a.form == form && a.variant.has_value() == variant.has_value() && SameVariant(a.variant, variant);
+}
+} // namespace
+
+bool Ban(Bans &bans, std::uint32_t form, const std::optional<ItemVariant> &variant)
+{
+    if (form == 0)
         return false;
-    bans.push_back(form);
+    if (std::any_of(bans.begin(), bans.end(), [&](const Banned &b) { return SameBan(b, form, variant); }))
+        return false;
+    if (!variant)
+        std::erase_if(bans, [form](const Banned &b) { return b.form == form; });
+    else if (std::any_of(bans.begin(), bans.end(), [&](const Banned &b) { return b.form == form && !b.variant; }))
+        return false; // every copy is banned already, this one with them
+    bans.push_back({form, variant});
     return true;
 }
 
-bool Unban(Bans &bans, std::uint32_t form)
+bool Unban(Bans &bans, std::uint32_t form, const std::optional<ItemVariant> &variant)
 {
     const auto before = bans.size();
-    std::erase(bans, form);
+    if (!variant)
+        std::erase_if(bans, [form](const Banned &b) { return b.form == form; });
+    else
+        std::erase_if(bans, [&](const Banned &b) { return SameBan(b, form, variant); });
     return bans.size() != before;
 }
 
@@ -108,16 +128,44 @@ const Holdable *FindHoldable(const std::vector<Holdable> &things, std::uint32_t 
     return it == things.end() ? nullptr : &*it;
 }
 
-Pin *FindPin(std::vector<Pin> &pins, std::uint32_t form) noexcept
+const Holdable *FindHoldable(const std::vector<Holdable> &things, std::uint32_t form,
+                             const std::optional<ItemVariant> &variant) noexcept
 {
-    const auto it = std::find_if(pins.begin(), pins.end(), [form](const Pin &p) { return p.thing.form == form; });
+    if (!variant)
+        return FindHoldable(things, form);
+    const auto it = std::find_if(things.begin(), things.end(), [&](const Holdable &t) {
+        return t.form == form && t.variant && SameVariant(t.variant, variant);
+    });
+    return it == things.end() ? nullptr : &*it;
+}
+
+Pin *FindPin(std::vector<Pin> &pins, const Holdable &thing) noexcept
+{
+    const auto it =
+        std::find_if(pins.begin(), pins.end(), [&thing](const Pin &p) { return SameThing(p.thing, thing); });
+    return it == pins.end() ? nullptr : &*it;
+}
+
+const Pin *FindPin(const std::vector<Pin> &pins, const Holdable &thing) noexcept
+{
+    const auto it =
+        std::find_if(pins.begin(), pins.end(), [&thing](const Pin &p) { return SameThing(p.thing, thing); });
     return it == pins.end() ? nullptr : &*it;
 }
 
 const Pin *FindPin(const std::vector<Pin> &pins, std::uint32_t form) noexcept
 {
-    const auto it = std::find_if(pins.begin(), pins.end(), [form](const Pin &p) { return p.thing.form == form; });
-    return it == pins.end() ? nullptr : &*it;
+    Holdable any;
+    any.form = form;
+    return FindPin(pins, any);
+}
+
+const Pin *FindPin(const std::vector<Pin> &pins, std::uint32_t form, const std::optional<ItemVariant> &variant)
+{
+    Holdable named;
+    named.form = form;
+    named.variant = variant;
+    return FindPin(pins, named);
 }
 
 std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool dualWield)
@@ -125,7 +173,7 @@ std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, H
     std::vector<Displaced> out;
     for (auto it = pins.begin(); it != pins.end();)
     {
-        if (it->thing.form == thing.form || !Conflicts(thing, hands, it->thing, it->hands, dualWield))
+        if (SameThing(it->thing, thing) || !Conflicts(thing, hands, it->thing, it->hands, dualWield))
         {
             ++it;
             continue;
@@ -134,12 +182,12 @@ std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, H
         const bool partly = it->thing.grip == Grip::Either && taken != Hand::None && taken != it->hands;
         if (partly)
         {
-            out.push_back({it->thing.form, taken});
+            out.push_back({it->thing.form, it->thing.variant, taken});
             it->hands = Without(it->hands, taken);
             ++it;
             continue;
         }
-        out.push_back({it->thing.form, it->hands});
+        out.push_back({it->thing.form, it->thing.variant, it->hands});
         it = pins.erase(it);
     }
     return out;
@@ -147,9 +195,13 @@ std::vector<Displaced> MakeRoom(std::vector<Pin> &pins, const Holdable &thing, H
 
 void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool moving)
 {
-    if (Pin *pin = FindPin(pins, thing.form))
+    if (Pin *pin = FindPin(pins, thing))
     {
         pin->hands = thing.grip == Grip::Either && !moving ? pin->hands | hands : hands;
+        // A pin on the form, whichever copy, narrowed to the variant now
+        // given.
+        if (!pin->thing.variant && thing.variant)
+            pin->thing.variant = thing.variant;
         return;
     }
     pins.push_back({thing, hands});
@@ -157,7 +209,7 @@ void AddPin(std::vector<Pin> &pins, const Holdable &thing, Hand hands, bool movi
 
 Hand LetGo(std::vector<Pin> &pins, const Holdable &thing, Hand hands)
 {
-    Pin *pin = FindPin(pins, thing.form);
+    Pin *pin = FindPin(pins, thing);
     if (!pin)
         return hands;
     if (hands == Hand::None)
@@ -182,7 +234,7 @@ Hand PinnedHands(const std::vector<Pin> &pins) noexcept
 
 bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) noexcept
 {
-    const Pin *pin = FindPin(pins, thing.form);
+    const Pin *pin = FindPin(pins, thing);
     // The voice: the AI's shout entries carry no hand, and one is kept from
     // it while another power or shout is pinned there.
     if (thing.IsVoice())
@@ -206,13 +258,20 @@ bool KeptFromAI(const std::vector<Pin> &pins, const Holdable &thing, Hand slot) 
 Refusal RefusesEngineEquip(const std::vector<Pin> &pins, const Bans &bans, const Holdable &thing, Hand into,
                            bool dualWield) noexcept
 {
-    if (IsBanned(bans, thing.form))
+    if (IsBanned(bans, thing))
         return {Refusal::Why::Banned, nullptr};
     if (pins.empty())
         return {};
-    if (const Pin *own = FindPin(pins, thing.form))
+    if (const Pin *own = FindPin(pins, thing))
     {
-        if (into == Hand::None || own->hands == Hand::None || !KeptFromAI(pins, thing, into))
+        if (into == Hand::None || own->hands == Hand::None)
+            return {};
+        // The pinned variant itself into a hand its pin does not hold, with
+        // no second copy of the variant for it: one copy cannot be in two
+        // hands. Another variant of the form is another thing, below.
+        if (thing.variant && own->thing.variant && thing.count < 2 && !Overlap(into, own->hands))
+            return {Refusal::Why::OneCopy, own};
+        if (!KeptFromAI(pins, thing, into))
             return {};
         return {thing.count < 2 ? Refusal::Why::OneCopy : Refusal::Why::OtherPin, own};
     }
@@ -256,7 +315,7 @@ std::vector<Displaced> ApplyRequest(std::vector<Pin> &pins, PinRequest request, 
 // they share, the quiver, or the voice.
 bool HoldsPlaceOf(const Pin &pin, const Holdable &thing) noexcept
 {
-    if (pin.thing.form == thing.form)
+    if (SameThing(pin.thing, thing))
         return false;
     return (pin.thing.slots & thing.slots) != 0 || (pin.thing.IsAmmo() && thing.IsAmmo()) ||
            (pin.thing.IsVoice() && thing.IsVoice());
@@ -288,7 +347,7 @@ std::vector<Pin> Shadowing(const std::vector<Pin> &pins, const Holdable &thing)
     const Hand reach = Reach(thing.grip);
     for (const Pin &pin : pins)
     {
-        if (pin.thing.form == thing.form)
+        if (SameThing(pin.thing, thing))
             continue;
         if (const Hand taken = Common(pin.hands, reach); taken != Hand::None)
             out.push_back({pin.thing, taken});
@@ -302,7 +361,8 @@ namespace
 {
 bool SamePin(const Pin &a, const Pin &b) noexcept
 {
-    return a.thing.form == b.thing.form && a.hands == b.hands;
+    return a.thing.form == b.thing.form && a.thing.variant.has_value() == b.thing.variant.has_value() &&
+           SameVariant(a.thing.variant, b.thing.variant) && a.hands == b.hands;
 }
 
 bool Holds(const std::vector<Pin> &pins, const Pin &pin) noexcept
@@ -310,6 +370,23 @@ bool Holds(const std::vector<Pin> &pins, const Pin &pin) noexcept
     return std::any_of(pins.begin(), pins.end(), [&](const Pin &p) { return SamePin(p, pin); });
 }
 } // namespace
+
+std::optional<std::size_t> EnginePick(const std::vector<VariantInBag> &copies, const Bans &bans, std::uint32_t form)
+{
+    Holdable thing;
+    thing.form = form;
+    const auto allowed = [&](const VariantInBag &c) {
+        thing.variant = c.variant;
+        return !c.worn && !IsBanned(bans, thing);
+    };
+    for (std::size_t i = 0; i < copies.size(); ++i)
+        if (copies[i].plainToEngine && allowed(copies[i]))
+            return i;
+    for (std::size_t i = 0; i < copies.size(); ++i)
+        if (allowed(copies[i]))
+            return i;
+    return std::nullopt;
+}
 
 bool PutBackNow(const Pin &pin, bool on, bool fighting, bool castInProgress) noexcept
 {
@@ -328,9 +405,9 @@ AfterFight SettleAfterFight(const std::vector<Pin> &now, const std::vector<Pin> 
         if (Holds(before, pin))
             continue;
         const bool displaced = std::any_of(before.begin(), before.end(), [&](const Pin &saved) {
-            return saved.thing.form != pin.thing.form && Conflicts(pin.thing, pin.hands, saved.thing, saved.hands);
+            return !SameThing(saved.thing, pin.thing) && Conflicts(pin.thing, pin.hands, saved.thing, saved.hands);
         });
-        out.released.push_back({pin.thing.form, pin.hands, displaced});
+        out.released.push_back({pin.thing.form, pin.thing.variant, pin.hands, displaced});
     }
     for (const Pin &pin : before)
     {

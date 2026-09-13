@@ -136,7 +136,7 @@ bat ftclean        <- restore and un-follow. Non-destructive; safe on a real NPC
 
 | Script | Acts on | Does |
 |---|---|---|
-| `ftmake` | selection | teammate, faction, and two tiers each of health, magicka and stamina potions. Contains **no `prid`** — that is the point |
+| `ftmake` | selection | the relationship rank, three each of a health, magicka and stamina potion, the poisons, food, soul gems, spells, and gear including three iron daggers and three iron ingots for the copy tests. Contains **no `prid`** — that is the point |
 | `ftspawn` | player | one draugr, feeble on purpose: keeps a follower in combat without threatening them |
 | `ftbear` | player | one cave bear (`00023A8B`) — hits hard enough to cross a threshold through real damage |
 | `ftman` | player | one level-1 Nord bandit (`0003DE8A`) — a human enemy, so Voice of the Emperor's calm has someone to land on; a bear shows nothing |

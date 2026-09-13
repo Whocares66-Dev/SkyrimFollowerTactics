@@ -38,8 +38,14 @@ struct Holdings
     // The spells, powers, shouts and scrolls the cast menu offers (a spell
     // above the follower's skill is not among them).
     std::vector<std::uint32_t> castable;
-    // The items carried and the spells known, as the equip menus offer them.
-    std::vector<std::uint32_t> things;
+    // The items carried and the spells known, as the equip menus offer
+    // them: a row each, by form and variant (none for a spell).
+    struct Thing
+    {
+        std::uint32_t form{0};
+        std::optional<ItemVariant> variant; // none: the form, as a spell is
+    };
+    std::vector<Thing> things;
 };
 
 // Does the follower have what the action names? A drink or eat policy

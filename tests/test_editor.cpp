@@ -25,7 +25,9 @@ Holdings Bag()
     has.consumables.push_back({kHealthPotion, ConsumableKind::Potion, {"Restore Health"}});
     has.consumables.push_back({0x64B33, ConsumableKind::Food, {"Restore Stamina"}});
     has.castable = {kFirebolt};
-    has.things = {kSword, kFirebolt};
+    ItemVariant tempered;
+    tempered.tempering = 1.2f;
+    has.things = {{kSword, ItemVariant{}}, {kFirebolt, std::nullopt}, {kSword, tempered}};
     return has;
 }
 
@@ -88,6 +90,17 @@ TEST_CASE("a named thing is had by form and kind; a form of none always is", "[e
     equip.form = 0x13990;
     REQUIRE_FALSE(ActionHad(equip, has));
     equip.form = 0; // let go of every weapon pin: names nothing
+    REQUIRE(ActionHad(equip, has));
+    // A variant named is had while a row of it is: the smithed sword and
+    // not a tempering nobody carries; the form alone, by any row.
+    equip.form = kSword;
+    equip.variant.emplace().tempering = 1.2f;
+    REQUIRE(ActionHad(equip, has));
+    equip.variant->tempering = 1.5f;
+    REQUIRE_FALSE(ActionHad(equip, has));
+    equip.variant = ItemVariant{}; // the plain stack is a row of its own
+    REQUIRE(ActionHad(equip, has));
+    equip.variant = std::nullopt; // the form: whichever
     REQUIRE(ActionHad(equip, has));
 
     Action attack;

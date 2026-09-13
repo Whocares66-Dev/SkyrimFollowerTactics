@@ -5,6 +5,9 @@
 
 #include "core/Loadout.h"
 
+// Frost Damage 20 points: an enchantment made at the table, as its recipe.
+const std::vector<ft::EnchantEffect> kFrost{{0x3A9AD, 20.0f, 1, 0}};
+
 using namespace ft;
 
 namespace
@@ -761,15 +764,302 @@ TEST_CASE("a voice pin: one power or shout readied, the rest set aside", "[pins]
 TEST_CASE("a ban is a set of forms, once each", "[loadout]")
 {
     Bans bans;
-    REQUIRE_FALSE(IsBanned(bans, 0x13989));
+    const Holdable sword = Thing(0x13989, Grip::Either);
+    REQUIRE_FALSE(IsBanned(bans, sword));
     REQUIRE(Ban(bans, 0x13989));
     REQUIRE_FALSE(Ban(bans, 0x13989)); // already
     REQUIRE_FALSE(Ban(bans, 0));       // nothing is not a thing
-    REQUIRE(IsBanned(bans, 0x13989));
+    REQUIRE(IsBanned(bans, sword));
     REQUIRE(bans.size() == 1);
     REQUIRE(Unban(bans, 0x13989));
     REQUIRE_FALSE(Unban(bans, 0x13989));
     REQUIRE(bans.empty());
+}
+
+TEST_CASE("a ban on one variant of a form leaves the other variants alone", "[loadout]")
+{
+    // Two Nordic Carved Armors: the plain one the outfit gave, the
+    // enchanted one the player did. Two names under one form.
+    Bans bans;
+    Holdable plain = Armour(kIronArmor, 0x4);
+    plain.variant = ItemVariant{};
+    Holdable enchanted = plain;
+    enchanted.variant->enchantment = kFrost;
+    Holdable whichever = plain;
+    whichever.variant = std::nullopt;
+
+    REQUIRE(Ban(bans, kIronArmor, enchanted.variant));
+    CHECK(IsBanned(bans, enchanted));
+    CHECK_FALSE(IsBanned(bans, plain));
+    // A thing whose name is not known -- the combat AI's list is by form
+    // -- is banned by any ban on the form.
+    CHECK(IsBanned(bans, whichever));
+    // The same name once; the plain one beside it.
+    REQUIRE_FALSE(Ban(bans, kIronArmor, enchanted.variant));
+    REQUIRE(Ban(bans, kIronArmor, plain.variant));
+    REQUIRE(bans.size() == 2);
+    // Unbanning one name leaves the other banned.
+    REQUIRE(Unban(bans, kIronArmor, plain.variant));
+    CHECK_FALSE(IsBanned(bans, plain));
+    CHECK(IsBanned(bans, enchanted));
+    // Banning every copy folds the names' bans into one; a name's ban
+    // beside it is then nothing new, and unbanning every copy clears all.
+    REQUIRE(Ban(bans, kIronArmor, std::nullopt));
+    REQUIRE(bans.size() == 1);
+    REQUIRE_FALSE(Ban(bans, kIronArmor, enchanted.variant));
+    CHECK(IsBanned(bans, plain));
+    REQUIRE(Unban(bans, kIronArmor, std::nullopt));
+    REQUIRE(bans.empty());
+    REQUIRE_FALSE(Unban(bans, kIronArmor, enchanted.variant));
+}
+
+TEST_CASE("a pin names one variant of a form, and the other variants are other things", "[pins]")
+{
+    Holdable plain = Armour(kIronArmor, 0x4);
+    plain.variant = ItemVariant{};
+    Holdable enchanted = plain;
+    enchanted.variant->enchantment = kFrost;
+    Holdable whichever = plain;
+    whichever.variant = std::nullopt;
+
+    // Pinning the enchanted one: the plain one is not pinned, is set
+    // aside for the slot it shares, and the pin is named as why.
+    std::vector<Pin> pins;
+    CHECK(ApplyRequest(pins, PinRequest::Pin, enchanted, Hand::None, false, true).empty());
+    REQUIRE(pins.size() == 1);
+    CHECK(FindPin(pins, enchanted) != nullptr);
+    CHECK(FindPin(pins, plain) == nullptr);
+    CHECK(FindPin(pins, whichever) != nullptr); // by form, whichever copy: the pinned one answers
+    CHECK(SetAside(pins, plain));
+    CHECK_FALSE(SetAside(pins, enchanted));
+    const auto why = Shadowing(pins, plain);
+    REQUIRE(why.size() == 1);
+    CHECK(why[0].thing.variant->enchantment == kFrost);
+
+    // The engine's equip of the plain one into the slot is refused for the
+    // pin; of the enchanted one, passes; of the form with no name -- the
+    // AI's entry -- passes as the pinned thing.
+    CHECK(RefusesEngineEquip(pins, {}, plain, Hand::None, true).why == Refusal::Why::Conflict);
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, enchanted, Hand::None, true));
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, whichever, Hand::None, true));
+
+    // Pinning the plain one instead displaces the enchanted one's pin,
+    // and the displacement names what gave way.
+    const auto displaced = ApplyRequest(pins, PinRequest::Pin, plain, Hand::None, false, true);
+    REQUIRE(displaced.size() == 1);
+    CHECK(displaced[0].form == kIronArmor);
+    CHECK(displaced[0].variant->enchantment == kFrost);
+    REQUIRE(pins.size() == 1);
+    CHECK(pins[0].thing.variant->IsPlain());
+
+    // A pin on the form, whichever copy; the panel then pinning a name
+    // narrows it rather than standing a second pin beside it.
+    pins.clear();
+    (void)ApplyRequest(pins, PinRequest::Pin, whichever, Hand::None, false, true);
+    (void)ApplyRequest(pins, PinRequest::Pin, enchanted, Hand::None, false, true);
+    REQUIRE(pins.size() == 1);
+    CHECK(pins[0].thing.variant->enchantment == kFrost);
+
+    // Letting go names the name: the plain one's release leaves the
+    // enchanted one's pin standing.
+    pins = {{plain, Hand::None}, {enchanted, Hand::None}};
+    CHECK(LetGo(pins, plain, Hand::None) == Hand::None);
+    REQUIRE(pins.size() == 1);
+    CHECK(pins[0].thing.variant->enchantment == kFrost);
+}
+
+TEST_CASE("a variant is what the player chose: tempering, an enchantment, a label, a theft", "[pins]")
+{
+    Holdable plain = Thing(kSteelDagger, Grip::Either);
+    plain.kind = Kind::Weapon;
+    plain.variant = ItemVariant{};
+    Holdable tempered = plain;
+    tempered.variant->tempering = 1.2f;
+    Holdable renamed = plain;
+    renamed.variant->label = "Fang";
+    Holdable stolen = plain;
+    stolen.variant->stolen = true;
+    Holdable whichever = plain;
+    whichever.variant = std::nullopt;
+
+    // Each part makes another name; the parts together are one name.
+    CHECK_FALSE(SameThing(plain, tempered));
+    CHECK_FALSE(SameThing(plain, renamed));
+    CHECK_FALSE(SameThing(plain, stolen));
+    CHECK_FALSE(SameThing(tempered, renamed));
+    CHECK(SameThing(whichever, plain));
+    CHECK(SameThing(whichever, tempered));
+    // Tempering read off a list and written to a save as a number comes
+    // back within a hair, and is the same name.
+    Holdable again = tempered;
+    again.variant->tempering = 1.2000001f;
+    CHECK(SameThing(tempered, again));
+    Holdable more = tempered;
+    more.variant->tempering = 1.3f;
+    CHECK_FALSE(SameThing(tempered, more));
+
+    // A pin on the tempered one: the plain one into its hand is another
+    // thing and refused; a ban on the plain name leaves it alone.
+    const std::vector<Pin> pins{{tempered, Hand::Right}};
+    CHECK(RefusesEngineEquip(pins, {}, plain, Hand::Right, true).why == Refusal::Why::Conflict);
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, tempered, Hand::Right, true));
+    Bans bans;
+    REQUIRE(Ban(bans, kSteelDagger, plain.variant));
+    CHECK(IsBanned(bans, plain));
+    CHECK_FALSE(IsBanned(bans, tempered));
+    CHECK(IsBanned(bans, whichever));
+}
+
+TEST_CASE("an enchantment is its effects at their strengths, in any order", "[pins]")
+{
+    // Resist Fire 25% and Resist Fire 50% are two enchantments the game
+    // mints as two forms; the forms are the save's, so the name holds the
+    // recipe instead, and reads the strength the enchanter set.
+    constexpr std::uint32_t kResistFire = 0x581F7;
+    constexpr std::uint32_t kFortifyHealth = 0x49507;
+    ItemVariant weak;
+    weak.enchantment = {{kResistFire, 25.0f, 0, 0}};
+    ItemVariant strong;
+    strong.enchantment = {{kResistFire, 50.0f, 0, 0}};
+    CHECK_FALSE(SameVariant(weak, strong));
+    CHECK(SameVariant(weak, weak));
+    // Within a hair of the number the save wrote is the same strength.
+    ItemVariant back = weak;
+    back.enchantment[0].magnitude = 25.0001f;
+    CHECK(SameVariant(weak, back));
+
+    // Two effects are one enchantment whichever is written first, and one
+    // of them alone is another.
+    ItemVariant both;
+    both.enchantment = {{kResistFire, 25.0f, 0, 0}, {kFortifyHealth, 30.0f, 0, 0}};
+    ItemVariant swapped;
+    swapped.enchantment = {{kFortifyHealth, 30.0f, 0, 0}, {kResistFire, 25.0f, 0, 0}};
+    CHECK(SameVariant(both, swapped));
+    CHECK_FALSE(SameVariant(both, weak));
+    CHECK_FALSE(SameVariant(weak, both));
+    // The same effect at two strengths is not the pair at one.
+    ItemVariant doubled;
+    doubled.enchantment = {{kResistFire, 25.0f, 0, 0}, {kResistFire, 50.0f, 0, 0}};
+    CHECK_FALSE(SameVariant(doubled, both));
+    // Duration tells a Soul Trap of five seconds from one of ten.
+    ItemVariant brief;
+    brief.enchantment = {{0x5B451, 0.0f, 5, 0}};
+    ItemVariant lasting;
+    lasting.enchantment = {{0x5B451, 0.0f, 10, 0}};
+    CHECK_FALSE(SameVariant(brief, lasting));
+
+    // A pin on the weak one refuses the strong one into its hand; a ban on
+    // the strong one leaves the weak one alone.
+    Holdable weakSword = Thing(kSteelDagger, Grip::Either);
+    weakSword.kind = Kind::Weapon;
+    weakSword.variant = weak;
+    Holdable strongSword = weakSword;
+    strongSword.variant = strong;
+    const std::vector<Pin> pins{{weakSword, Hand::Right}};
+    CHECK(RefusesEngineEquip(pins, {}, strongSword, Hand::Right, true).why == Refusal::Why::Conflict);
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, weakSword, Hand::Right, true));
+    Bans bans;
+    REQUIRE(Ban(bans, kSteelDagger, strong));
+    CHECK(IsBanned(bans, strongSword));
+    CHECK_FALSE(IsBanned(bans, weakSword));
+}
+
+TEST_CASE("an equip naming no list takes the engine's pick, minus the banned variants", "[pins]")
+{
+    // Frea's bag, in the entry's order: an outfit dagger on a list with
+    // only a worn mark (plain to the engine, and worn), the listless spare,
+    // the dagger they were handed, poisoned (plain by name: the dose is not
+    // part of it, though the engine's table calls its list distinct), the
+    // tempered one.
+    constexpr std::uint32_t kDaggerForm = 0x1397E;
+    ItemVariant plain;
+    ItemVariant tempered;
+    tempered.tempering = 1.2f;
+    const std::vector<VariantInBag> bag{
+        {plain, true, true},      // 0: the outfit's, worn
+        {plain, true, false},     // 1: the listless spare
+        {plain, false, false},    // 2: poisoned, handed over
+        {tempered, false, false}, // 3: tempered
+    };
+    Bans bans;
+
+    // Nothing banned: the engine's own first choice, a plain copy that is
+    // not worn.
+    REQUIRE(EnginePick(bag, bans, kDaggerForm) == 1);
+    // The plain name banned: every plain row goes, poisoned or not; the
+    // tempered one is what is left.
+    REQUIRE(Ban(bans, kDaggerForm, plain));
+    REQUIRE(EnginePick(bag, bans, kDaggerForm) == 3);
+    // And the tempered name too: nothing to hand over.
+    REQUIRE(Ban(bans, kDaggerForm, tempered));
+    REQUIRE_FALSE(EnginePick(bag, bans, kDaggerForm).has_value());
+    // A ban on the form is every copy at once.
+    bans.clear();
+    REQUIRE(Ban(bans, kDaggerForm, std::nullopt));
+    REQUIRE_FALSE(EnginePick(bag, bans, kDaggerForm).has_value());
+
+    // No plain copy: the entry's order decides, and a worn copy is passed
+    // over -- it is in a hand already, and the engine does the same.
+    bans.clear();
+    ItemVariant enchanted;
+    enchanted.enchantment = kFrost;
+    const std::vector<VariantInBag> named{{tempered, false, true}, {enchanted, false, false}, {tempered, false, false}};
+    REQUIRE(EnginePick(named, bans, kDaggerForm) == 1);
+    REQUIRE(Ban(bans, kDaggerForm, enchanted));
+    REQUIRE(EnginePick(named, bans, kDaggerForm) == 2);
+    // All worn but the banned one: the request goes on as it came.
+    const std::vector<VariantInBag> held{{tempered, false, true}, {enchanted, false, false}};
+    REQUIRE_FALSE(EnginePick(held, bans, kDaggerForm).has_value());
+    // A ban on another form is nobody's business here.
+    bans.clear();
+    REQUIRE(Ban(bans, 0x13989, enchanted));
+    REQUIRE(EnginePick(named, bans, kDaggerForm) == 1);
+}
+
+TEST_CASE("two variants of one weapon are two pins, one in each hand", "[pins]")
+{
+    // A plain steel dagger and a tempered one: pinned left and right,
+    // they are two things, and each hand's pin stands on its own.
+    Holdable plain = Thing(kSteelDagger, Grip::Either);
+    plain.kind = Kind::Weapon;
+    plain.variant = ItemVariant{};
+    plain.count = 1; // one copy of each VARIANT
+    Holdable tempered = plain;
+    tempered.variant->tempering = 1.2f;
+
+    std::vector<Pin> pins;
+    (void)ApplyRequest(pins, PinRequest::Pin, plain, Hand::Left, false, true);
+    (void)ApplyRequest(pins, PinRequest::Pin, tempered, Hand::Right, false, true);
+    REQUIRE(pins.size() == 2);
+    CHECK(pins[0].hands == Hand::Left);
+    CHECK(pins[1].hands == Hand::Right);
+    // Each is refused the other's hand: one copy of the name cannot be in
+    // two hands, and the other hand's pin is another name.
+    CHECK(RefusesEngineEquip(pins, {}, plain, Hand::Right, true).why == Refusal::Why::OneCopy);
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, plain, Hand::Left, true));
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, tempered, Hand::Right, true));
+    CHECK(RefusesEngineEquip(pins, {}, tempered, Hand::Left, true).why == Refusal::Why::OneCopy);
+
+    // The plain dagger alone pinned right, and two of the name in the bag:
+    // the second may go left, the tempered one may go left, and the AI's
+    // entry, by form with no name, passes too.
+    pins = {{plain, Hand::Right}};
+    Holdable spare = plain;
+    spare.count = 2;
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, spare, Hand::Left, true));
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, tempered, Hand::Left, true));
+    CHECK(RefusesEngineEquip(pins, {}, plain, Hand::Left, true).why == Refusal::Why::OneCopy);
+    Holdable whichever = spare;
+    whichever.variant = std::nullopt;
+    CHECK_FALSE(RefusesEngineEquip(pins, {}, whichever, Hand::Left, true));
+
+    // After the fight, a pin on the other name is not the pin from before.
+    const AfterFight settle = SettleAfterFight({{tempered, Hand::Left}}, {{plain, Hand::Left}});
+    REQUIRE(settle.released.size() == 1);
+    CHECK(settle.released[0].variant->tempering == 1.2f);
+    CHECK(settle.released[0].takeOff);
+    REQUIRE(settle.restored.size() == 1);
+    CHECK(settle.restored[0].thing.variant->IsPlain());
 }
 
 TEST_CASE("the engine's equip is refused by one rule, with the reason", "[pins]")
@@ -853,7 +1143,7 @@ TEST_CASE("the engine's spell and shout equips are refused as an item's are; our
 
     // A banned spell is refused into any hand, pins or none, with the
     // reason; the same spell cast by a rule of ours still goes.
-    w.bans = {kFirebolt};
+    w.bans = {{kFirebolt, {}}};
     CHECK_FALSE(w.EngineEquip(firebolt, Hand::Right));
     CHECK(RefusesEngineEquip({}, w.bans, firebolt, Hand::Right, true).why == Refusal::Why::Banned);
     CHECK(RefusesEngineEquip({}, w.bans, firebolt, Hand::None, true).why == Refusal::Why::Banned);
@@ -868,7 +1158,7 @@ TEST_CASE("the engine's spell and shout equips are refused as an item's are; our
     Holdable unrelentingForce;
     unrelentingForce.form = 0x00013E07;
     unrelentingForce.kind = Kind::Voice;
-    const Bans banned{unrelentingForce.form};
+    const Bans banned{{unrelentingForce.form, {}}};
     CHECK(RefusesEngineEquip({}, banned, unrelentingForce, Hand::None, true).why == Refusal::Why::Banned);
     CHECK_FALSE(RefusesEngineEquip({}, banned, battleCry, Hand::None, true));
     const std::vector<Pin> voicePin{{battleCry, Hand::None}};

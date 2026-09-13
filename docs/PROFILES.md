@@ -40,10 +40,10 @@ Nothing is written on a panel close or by the tick. Close the game without savin
     }
   ],
   "pins": [
-    { "form": "0x13989~Skyrim.esm", "hand": "both" },
-    { "form": "0x12E49~Skyrim.esm" }
+    { "form": "0x13989~Skyrim.esm", "variant": {}, "hand": "both" },
+    { "form": "0x12E49~Skyrim.esm", "variant": { "enchant": [ { "effect": "0x581F7~Skyrim.esm", "mag": 25 } ], "label": "Warden" } }
   ],
-  "bans": [ "0x12EB7~Skyrim.esm" ]
+  "bans": [ { "form": "0x12EB7~Skyrim.esm", "variant": { "tempering": 1.2 } }, { "form": "0x2F3B8~Skyrim.esm" } ]
 }
 ```
 
@@ -65,12 +65,19 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 | `then.do[]` | the actions, in order; each is done on its own availability (`core/Rule.h`) |
 | `do[].action` | the action's wire name |
 | `do[].form` | the spell, potion, weapon, arrows or armour it names, when it names one. Absent means none, which for the equips means "let go of every pin of that kind" |
+| `do[].variant` | only under the equips: the row the rule means, as a pin's `variant` (below). Absent is the form, whichever row |
+| `do[].name` | the thing's name as the panel last saw it, for any action that names a form: what the rule reads while the thing is away, and refreshed while it is there. Display only; nothing is matched by it |
 | `do[].hand` | only for `equip-weapon` and `equip-spell`: `left`, `right`, `both` |
 | `do[].arg` | only for `cast-spell`, and only when set: the sustain time of a concentration spell, in seconds |
 | `pins[]` | the player's pins, as the panel left them: in a fight, the book remembered for after it, not the rules' fight-time pins |
 | `pins[].form` | the thing pinned |
+| `pins[].variant` | which row of the form (`docs/UNIQUE.md`, "The variant"): an object holding the parts the row has, each only when present, so the plain row is `{}`. Absent is the form, whichever row, which a rule's pin can be and the panel's never is |
+| `variant.enchant` | the enchantment as its effects, each `{ "effect": form, "mag": number, "dur": seconds, "area": feet }`, `dur` and `area` only when not zero. The effects, not the enchantment's form: one made at the enchanting table is a form the save mints, which no plugin can name |
+| `variant.tempering` | the grindstone's multiplier |
+| `variant.label` | the name the player gave the copy |
+| `variant.stolen` | `true` for a copy owned by someone else, by the engine's own ownership rule asked from the player's side |
 | `pins[].hand` | `left`, `right`, `both`; absent for armour and ammunition, which have no hand |
-| `bans[]` | the player's bans: forms the follower must never use. A ban is off and kept off, whichever hand |
+| `bans[].form`, `bans[].variant` | the player's bans: forms the follower must never use, and which row, as a pin's `variant`; absent bans every row of the form. A ban is off and kept off, whichever hand |
 
 The record carries only the fields a rule reads, so a status is written only under the `status` predicate and a hand only under the equips that take one. Absent fields read as the defaults.
 
@@ -84,7 +91,9 @@ The record carries only the fields a rule reads, so a status is written only und
 
 A pin is a promise about what is worn, and a load re-dresses nobody. So a saved pin is taken back only if, when the follower is first seen, they still have the thing **on**, in those hands (worn, for armour and ammunition), and it is still pinnable. Otherwise it is forgotten with an `info` line: the thing is gone, or the save was played on without the mod and the game re-dressed them in the meantime. Nothing is equipped on load.
 
-A ban is a promise about what is **not** worn, which a load can keep for anything that still exists: a saved ban is taken back whole, and the watchdog's first pass takes the thing off if the follower has it on. A ban whose form is not in this load order is forgotten the same way.
+A ban is a promise about what is **not** worn, which a load can keep for anything that still exists: a saved ban is taken back whole, and the watchdog's first pass takes the thing off if the follower has it on. A ban whose form is not in this load order is forgotten the same way, and so is a ban on a variant no row of which is carried.
+
+**Which copy.** A pin, a ban and an equip action name one row of a form by its **variant**, one object under `variant`: the enchantment (as its effects), the tempering, the custom label and whether it is stolen, each written only when present, so the plain row is an empty object. No `variant` at all is the form, whichever row: a rule that picked no row, or a ban on the form. Why those parts and not the engine's unique id, and what follows for a pin or ban whose variant has no row left in the bag, is `docs/UNIQUE.md`.
 
 Removing the mod: SKSE drops our co-save block on the next save, the follower keeps whatever they had on, and a later reinstall starts with no tactics. Nothing is written onto a pinned item either. The engine's prevent-removal flag was set on pins until 2026-09-04, and it outlived the mod: it does not lift on its own, and it left the engine's equip-best swap half done, with the old and the new weapon both marked equipped. Pins are now kept entirely by the mod's own equip detour, score hook and watchdog, which go away with the DLL. A save made with a build older than that still carries the flag on whatever was pinned then; unpin those in the panel once, or take the item off, and it is gone.
 
@@ -97,8 +106,8 @@ Reading is lenient by design, so a record from another version of the mod, older
 - An unknown **key** is ignored.
 - A rule naming an unknown **subject, predicate, target, status, damage kind or hand** is dropped, with a warning naming it.
 - An action of unknown **kind**, or naming a **form whose plugin is not loaded**, is dropped alone and its rule kept.
-- A pin naming a **form whose plugin is not loaded**, or an unknown hand, is dropped alone. A record with no `pins` key has none.
-- A ban that is not a form string, or names a form whose plugin is not loaded, is dropped alone. A record with no `bans` key has none.
+- A pin naming a **form whose plugin is not loaded**, or an unknown hand, is dropped alone. A record with no `pins` key has none. A `variant` of the wrong shape reads as absent, and so does a part of the wrong shape inside it; a variant with an effect whose form is not in this load order drops the pin, ban or rule alone.
+- A ban that is not an object, or names a form whose plugin is not loaded, is dropped alone. A record with no `bans` key has none.
 - A field of the wrong shape (`"arg": "half"`) reads as absent.
 - A record that is not JSON, or not an object, reads as no record, and the log says so.
 - A `schema` newer than this build's is read anyway, with a warning. So is a co-save record of a type this build does not know: skipped, with a warning.

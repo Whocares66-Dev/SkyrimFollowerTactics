@@ -910,16 +910,15 @@ void LogArmorReadings(RE::Actor *actor)
                        DamageReduction(actor) * 100.0f);
 }
 
-// The enchantment on a weapon the actor carries: a player-made one on the
-// entry (ExtraEnchantment), else the record's. The same reading as
-// ChargeOf.
-RE::EnchantmentItem *EnchantmentOn(RE::Actor *actor, RE::TESObjectWEAP *weapon)
+// The enchantment on the weapon in that hand: a player-made one on the
+// worn copy's list (ExtraEnchantment), else the record's. The hand's own
+// copy, as ChargeOf reads it: two copies of one sword enchanted
+// differently are two lists, and the first found is not the one held.
+RE::EnchantmentItem *EnchantmentOn(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand)
 {
-    const Carried carried = CarriedOf(actor, weapon);
-    if (carried.entry && carried.entry->extraLists)
-        for (auto *list : *carried.entry->extraLists)
-            if (auto *xEnch = list ? list->GetByType<RE::ExtraEnchantment>() : nullptr; xEnch && xEnch->enchantment)
-                return xEnch->enchantment;
+    if (const RE::ExtraDataList *worn = WornList(actor, weapon, hand))
+        if (const auto *xEnch = worn->GetByType<RE::ExtraEnchantment>(); xEnch && xEnch->enchantment)
+            return xEnch->enchantment;
     return weapon->formEnchanting;
 }
 
@@ -1115,7 +1114,7 @@ void ReadHands(RE::Actor *actor, ft::ActorTraits &traits)
                 traits.Wield(ft::DamageKind::Ranged);
             else
                 traits.Wield(ft::DamageKind::Melee);
-            effectsOf(EnchantmentOn(actor, weapon));
+            effectsOf(EnchantmentOn(actor, weapon, left ? Hand::Left : Hand::Right));
             if (WeaponPoisoned(actor, weapon, left ? Hand::Left : Hand::Right))
                 traits.Wield(ft::DamageKind::Poison);
         }
@@ -1407,7 +1406,32 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         if (!(object->Is(RE::FormType::Weapon) || object->Is(RE::FormType::Armor) || object->Is(RE::FormType::Ammo) ||
               object->Is(RE::FormType::Light)))
             continue;
+        // The form, whichever variant; and each variant the bag holds once,
+        // for a rule that names one (Action::variant). A variant's count is
+        // summed over its rows.
         s.loadout.push_back(DescribeHoldable(actor, object));
+        std::vector<ft::ItemVariant> variants;
+        const auto noted = [&](const ft::ItemVariant &variant) {
+            return std::any_of(variants.begin(), variants.end(),
+                               [&](const ft::ItemVariant &had) { return ft::SameVariant(had, variant); });
+        };
+        std::int32_t listed = 0;
+        auto *lists = entry.second ? entry.second->extraLists : nullptr;
+        if (lists)
+        {
+            for (const auto *list : *lists)
+            {
+                if (!list)
+                    continue;
+                listed += list->GetCount();
+                if (ft::ItemVariant variant = VariantOf(object, list); !noted(variant))
+                    variants.push_back(std::move(variant));
+            }
+        }
+        if (entry.first > listed && !noted(ft::ItemVariant{}))
+            variants.emplace_back();
+        for (const ft::ItemVariant &variant : variants)
+            s.loadout.push_back(DescribeHoldable(actor, object, variant));
     }
     s.pins = PinsOf(s.self);
 
@@ -3001,11 +3025,195 @@ RE::ExtraDataList *UnwornList(RE::Actor *actor, RE::TESBoundObject *object)
 
 RE::ExtraDataList *WornList(RE::Actor *actor, RE::TESBoundObject *object, Hand hand)
 {
-    return ListOf(actor, object, [hand](const RE::ExtraDataList &list) {
-        const bool right = list.HasType(RE::ExtraDataType::kWorn);
-        const bool left = list.HasType(RE::ExtraDataType::kWornLeft);
-        return hand == Hand::Left ? left : hand == Hand::Right ? right : (left || right);
+    return ListOf(actor, object, [object, hand](const RE::ExtraDataList &list) { return WornIn(object, &list, hand); });
+}
+
+bool DistinctToEngine(const RE::ExtraDataList *list)
+{
+    // The engine's own question (11598 in 1.6.1170, IsInventoryStackable):
+    // does the list hold nothing its table counts, worn marks aside? The
+    // call its equip makes when it counts the plain copies, so no table of
+    // ours to drift from it. Its table calls tempering, charge, a poison
+    // and a name indifferent: to the equip's first step a tempered dagger
+    // with no id is a plain one. That is the equip's rule, not the menu's,
+    // which is why the row split (Inventory.cpp, StandsApart) does not use
+    // this.
+    return list && !list->IsInventoryStackable(true);
+}
+
+ft::ItemVariant VariantOf(RE::TESBoundObject *object, const RE::ExtraDataList *list)
+{
+    ft::ItemVariant variant;
+    if (!list)
+        return variant;
+    using T = RE::ExtraDataType;
+    // The enchantment as its recipe, not its form: one made at the table is
+    // a form the save mints, found again by these same fields
+    // (Effect::IsMatch), and no plugin names it.
+    if (const auto *ench = static_cast<const RE::ExtraEnchantment *>(list->GetByType(T::kEnchantment));
+        ench && ench->enchantment)
+    {
+        for (const RE::Effect *effect : ench->enchantment->effects)
+        {
+            if (!effect || !effect->baseEffect)
+                continue;
+            variant.enchantment.push_back({effect->baseEffect->GetFormID(), effect->effectItem.magnitude,
+                                           effect->effectItem.duration, effect->effectItem.area});
+        }
+    }
+    // Stolen, by the engine's own ownership rule (IsOwnedBy, which knows
+    // factions and the player's own hand), never by the owner's identity:
+    // every copy handed to a follower carries the player's ownership, and
+    // the game's own menu stacks it with the follower's own copies.
+    if (const auto *owner = static_cast<const RE::ExtraOwnership *>(list->GetByType(T::kOwnership));
+        owner && owner->owner && object)
+    {
+        auto *player = RE::PlayerCharacter::GetSingleton();
+        RE::InventoryEntryData probe(object, 0);
+        variant.stolen = player && !probe.IsOwnedBy(player, owner->owner, true);
+    }
+    if (const auto *health = static_cast<const RE::ExtraHealth *>(list->GetByType(T::kHealth)); health)
+        variant.tempering = health->health;
+    // Only a variant the player gave: the engine adds a text entry of its own
+    // to a tempered item the first time it draws it, with no text in it.
+    if (const auto *text = static_cast<const RE::ExtraTextDisplayData *>(list->GetByType(T::kTextDisplayData));
+        text && text->IsPlayerSet() && text->displayName.c_str())
+        variant.label = text->displayName.c_str();
+    return variant;
+}
+
+std::int32_t CountVariant(RE::Actor *actor, RE::TESBoundObject *object, const std::optional<ft::ItemVariant> &variant)
+{
+    const Carried carried = CarriedOf(actor, object);
+    if (carried.count <= 0)
+        return 0;
+    if (!variant)
+        return carried.count;
+    std::int32_t named = 0;
+    std::int32_t listed = 0;
+    if (carried.entry && carried.entry->extraLists)
+    {
+        for (const auto *list : *carried.entry->extraLists)
+        {
+            if (!list)
+                continue;
+            listed += list->GetCount();
+            if (ft::SameVariant(VariantOf(object, list), *variant))
+                named += list->GetCount();
+        }
+    }
+    // The listless remainder is plain.
+    if (variant->IsPlain())
+        named += (std::max)(0, carried.count - listed);
+    return named;
+}
+
+RE::ExtraDataList *WornVariantList(RE::Actor *actor, RE::TESBoundObject *object, const ft::ItemVariant &variant,
+                                   Hand hands)
+{
+    return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
+        return WornIn(object, &list, hands) && ft::SameVariant(VariantOf(object, &list), variant);
     });
+}
+
+RE::ExtraDataList *UnwornVariantList(RE::Actor *actor, RE::TESBoundObject *object, const ft::ItemVariant &variant)
+{
+    if (RE::ExtraDataList *stack = ListOf(actor, object, [&](const RE::ExtraDataList &list) {
+            return !ListWorn(&list, Hand::None) && !RowOfItsOwn(object, &list) &&
+                   ft::SameVariant(VariantOf(object, &list), variant);
+        }))
+        return stack;
+    return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
+        return !ListWorn(&list, Hand::None) && ft::SameVariant(VariantOf(object, &list), variant);
+    });
+}
+
+RE::ExtraDataList *WornStackList(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
+{
+    return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
+        return WornIn(object, &list, hands) && !RowOfItsOwn(object, &list);
+    });
+}
+
+RE::ExtraDataList *UnwornStackList(RE::Actor *actor, RE::TESBoundObject *object)
+{
+    return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
+        return !ListWorn(&list, Hand::None) && !RowOfItsOwn(object, &list);
+    });
+}
+
+bool RowOfItsOwn(RE::TESBoundObject *object, const RE::ExtraDataList *list)
+{
+    if (!list)
+        return false;
+    using T = RE::ExtraDataType;
+    for (const auto &extra : *list)
+    {
+        const T type = extra.GetType();
+        if (type != T::kCount && type != T::kHotkey && type != T::kWorn && type != T::kWornLeft &&
+            type != T::kOwnership)
+            return true;
+    }
+    return VariantOf(object, list).stolen;
+}
+
+RE::ExtraDataList *ListOfAddress(RE::Actor *actor, RE::TESBoundObject *object, const RE::ExtraDataList *address)
+{
+    if (!address)
+        return nullptr;
+    return ListOf(actor, object, [address](const RE::ExtraDataList &list) { return &list == address; });
+}
+
+bool HasListlessCopy(RE::Actor *actor, RE::TESBoundObject *object)
+{
+    const Carried carried = CarriedOf(actor, object);
+    if (carried.count <= 0)
+        return false;
+    std::int32_t listed = 0;
+    if (carried.entry && carried.entry->extraLists)
+        for (const auto *list : *carried.entry->extraLists)
+            if (list)
+                listed += list->GetCount();
+    return carried.count > listed;
+}
+
+std::string ListEntries(const RE::ExtraDataList *list)
+{
+    if (!list)
+        return "-";
+    std::string out;
+    for (const auto &extra : *list)
+    {
+        char buf[8];
+        std::snprintf(buf, sizeof buf, "%s%02X", out.empty() ? "" : " ", static_cast<unsigned>(extra.GetType()));
+        out += buf;
+    }
+    return out.empty() ? "empty" : out;
+}
+
+bool ListWorn(const RE::ExtraDataList *list, Hand hands)
+{
+    if (!list)
+        return false;
+    const bool right = list->HasType(RE::ExtraDataType::kWorn);
+    const bool left = list->HasType(RE::ExtraDataType::kWornLeft);
+    switch (hands)
+    {
+    case Hand::Left:
+        return left;
+    case Hand::Right:
+    case Hand::Both: // a two-hander sits in the right
+        return right;
+    default:
+        return left || right;
+    }
+}
+
+bool WornIn(const RE::TESBoundObject *object, const RE::ExtraDataList *list, Hand hands)
+{
+    if (object && !object->IsWeapon())
+        return hands == Hand::Right ? false : ListWorn(list, Hand::None);
+    return ListWorn(list, hands);
 }
 
 RE::TESObjectWEAP *PoisonableWeaponIn(RE::Actor *actor, bool left)

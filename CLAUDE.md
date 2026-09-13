@@ -6,6 +6,8 @@ A Dragon Age: Origins-style tactics system for Skyrim SE/AE followers: an ordere
 Read `docs/PLAN.md` first. `docs/RESEARCH.md` has the sourced findings behind it, with
 explicit uncertainty flags. `docs/MAGIC.md` is how casting works and what does not;
 `docs/PROFILES.md` is how tactics live in the save (format, when, versioning);
+`docs/UNIQUE.md` is how one copy of an item is told from another (the engine's
+unique id, what a pin, a ban and a rule name, what is still to verify);
 `docs/LOGGING.md` is the log design (levels, structured events, the JSON-lines sidecar);
 `docs/TODO.md` is what is still to do.
 
@@ -305,8 +307,11 @@ The first is prose to read while playing, the second the same events as one JSON
 SkyrimSE.exe; `--vtable <id>` dumps a vtable, `--lookup <rva>` names the
 function an address falls in. The installed exe is SteamStub-encrypted and
 reads as noise: point `SKYRIM_EXE` at a copy unpacked with Steamless (never
-the installed file). `docs/MAGIC.md` "Forms at runtime" is what has been
-read with it so far.
+the installed file). While the game is running, `tools/livedisasm.py` reads
+the decrypted code out of the live process instead, with the same modes plus
+`--callers <id>` (every call into a function) and `--bytes`. `docs/MAGIC.md`
+"Forms at runtime" and `docs/UNIQUE.md` are what has been read with them so
+far.
 
 ## Fetching UESP / Nexus pages
 

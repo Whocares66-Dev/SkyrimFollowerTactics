@@ -441,7 +441,7 @@ bool HasResource(const Action &a, const Snapshot &s)
         // spell under equip-weapon, and that is a rule that can never work.
         if (LetsGo(a))
             return true;
-        const Holdable *thing = FindHoldable(s.loadout, a.form);
+        const Holdable *thing = FindHoldable(s.loadout, a.form, a.variant);
         return thing && thing->kind == KindOf(a.kind);
     }
     return true; // Attack and the blows cost nothing from inventory
@@ -487,7 +487,7 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
         // when there is nothing of its kind to let go of.
         if (LetsGo(a))
             return !AnyPinOf(s.pins, KindOf(a.kind));
-        const Pin *pin = FindPin(s.pins, a.form);
+        const Pin *pin = FindPin(s.pins, a.form, a.variant);
         return pin && Covers(pin->hands, HandsWanted(a));
     }
     return false;
@@ -500,7 +500,7 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
 // swapped straight out.
 Verdict EquipAvailability(const Action &a, const Snapshot &snap, const std::vector<Pin> &heldAbove)
 {
-    const Holdable *thing = LetsGo(a) ? nullptr : FindHoldable(snap.loadout, a.form);
+    const Holdable *thing = LetsGo(a) ? nullptr : FindHoldable(snap.loadout, a.form, a.variant);
     if (thing && thing->unusable)
         return Verdict::AboveSkill;
     const Hand hands = HandsWanted(a);
@@ -640,7 +640,7 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
     if (EffectAlreadyActive(a, snap, target))
     {
         if (IsEquip(a.kind) && !LetsGo(a))
-            if (const Pin *pin = FindPin(snap.pins, a.form))
+            if (const Pin *pin = FindPin(snap.pins, a.form, a.variant))
                 heldAbove.push_back(*pin);
         return Verdict::EffectActive;
     }

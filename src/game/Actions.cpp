@@ -420,7 +420,8 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             ReleaseKind(actor, ft::KindOf(action.kind));
             return ActionResult::Performed;
         }
-        return PinNow(actor, action.form, action.hand) ? ActionResult::Performed : ActionResult::MissingItem;
+        return PinNow(actor, action.form, action.hand, action.variant) ? ActionResult::Performed
+                                                                       : ActionResult::MissingItem;
 
     case ft::ActionKind::Attack:
         return PointAt(actor, target);

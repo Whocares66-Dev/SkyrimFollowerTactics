@@ -1058,11 +1058,23 @@ std::string EquipTargetName(const ft::Action &act, const FollowerView &view)
                 return entry.name;
         return {};
     }
+    // The row under the copy named, whatever it holds now; the form
+    // alone, any row of it. With nothing under the copy, the name it was
+    // last seen with, so a rule keeps reading "Equip Iron Dagger (+4)"
+    // while that dagger is away.
     for (const auto &item : view.inventory)
-        if (item.form == act.form)
+        if (item.form == act.form && ft::SameVariant(item.variant, act.variant))
             return item.name;
-    return {};
+    return act.name;
 }
+
+// The colour an item's name is drawn in wherever it appears -- the
+// Inventory tab's rows and pages, the rule pickers' leaves -- so two rows
+// of one name read apart the same way everywhere: gold for a Daedric
+// artifact, the enchanted tint for an enchanted copy, null for the plain
+// text colour. Two copies alike in name and colour are told apart by
+// their order alone, which is stable.
+const Im::ImVec4 *NameTint(const InventoryItem &item);
 
 std::string Lower(std::string_view text)
 {
@@ -1134,6 +1146,13 @@ std::string FormName(std::uint32_t form)
     return name && *name ? name : "";
 }
 
+// What a rule calls a thing that is not there to be asked: the name it
+// was last seen with (Action::name), else the record's.
+std::string LastName(const ft::Action &act)
+{
+    return act.name.empty() ? FormName(act.form) : act.name;
+}
+
 // Whether what the action names is there to be used: the potion carried,
 // the spell known, the scroll carried, the weapon in the bag. An action
 // that names nothing, or a policy, is always available here; whether it
@@ -1200,8 +1219,8 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
         for (const auto &option : view.consumables)
             if (option.form == act.form && option.kind == ft::ConsumableOf(act.kind))
                 return verb + option.name;
-        // Not carried: the name from the record, the row set aside.
-        const std::string name = FormName(act.form);
+        // Not carried: the name it was last seen with, the row set aside.
+        const std::string name = LastName(act);
         return name.empty() ? base : verb + name;
     }
 
@@ -1209,7 +1228,8 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     {
         if (act.form == 0)
             return "Unequip " + std::string(ft::Noun(act.kind));
-        // Carried or known, else the name from the record: the row set aside.
+        // Carried or known, else the name it was last seen with: the row
+        // set aside.
         std::string name = EquipTargetName(act, view);
         if (name.empty())
             name = FormName(act.form);
@@ -1243,8 +1263,8 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     }
 
     // Named a spell this follower does not know, or a scroll not carried:
-    // the name from the record, the row set aside.
-    const std::string name = FormName(act.form);
+    // the name it was last seen with, the row set aside.
+    const std::string name = LastName(act);
     if (name.empty())
         return base;
     return (act.kind == ft::ActionKind::UsePower    ? "Use "
@@ -1267,13 +1287,26 @@ bool Offered(const MagicEntry &entry, Hand hand)
 
 // One leaf of an equip menu: a thing the follower has, pinned in `hand`
 // when chosen.
-bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const std::string &name, Hand hand)
+// `label` is the leaf's text; `rowName` the row's own name, kept on the
+// action (Action::name); `tint` the row's colour (NameTint), on the leaf
+// too.
+bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const std::string &label, Hand hand,
+               const std::optional<ft::ItemVariant> &variant, const std::string &rowName,
+               const Im::ImVec4 *tint = nullptr)
 {
-    const bool selected = act.kind == action && act.form == form && act.hand == hand;
-    if (!CascadeItem(name.c_str(), selected))
+    const bool selected = act.kind == action && act.form == form && act.variant.has_value() == variant.has_value() &&
+                          ft::SameVariant(act.variant, variant) && act.hand == hand;
+    if (tint)
+        Im::PushStyleColor(Im::ImGuiCol_Text, *tint);
+    const bool clicked = CascadeItem(label.c_str(), selected);
+    if (tint)
+        Im::PopStyleColor(1);
+    if (!clicked)
         return false;
     act.kind = action;
     act.form = form;
+    act.variant = variant;
+    act.name = rowName;
     act.hand = hand;
     return true;
 }
@@ -1306,20 +1339,17 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
     {
         const ItemCategory category =
             action == ft::ActionKind::EquipArrows ? ItemCategory::Arrows : ItemCategory::Armor;
-        bool separated = false;
-        // A form once, though the list may have a row per copy: the action
-        // names the form, and the engine picks among its copies.
-        std::unordered_set<std::uint32_t> listed;
+        // The Inventory tab's rows, a leaf each, the plain stack among
+        // them: every leaf names a row's variant, none the form alone.
+        std::vector<const InventoryItem *> rows;
         for (const auto &item : view.inventory)
+            if (item.category == category)
+                rows.push_back(&item);
+        if (!rows.empty())
+            Im::Separator();
+        for (const InventoryItem *item : rows)
         {
-            if (item.category != category || !listed.insert(item.form).second)
-                continue;
-            if (!separated)
-            {
-                Im::Separator();
-                separated = true;
-            }
-            if (EquipLeaf(act, action, item.form, item.name, Hand::None))
+            if (EquipLeaf(act, action, item->form, item->name, Hand::None, item->variant, item->name, NameTint(*item)))
                 changed = true;
         }
         return changed;
@@ -1348,19 +1378,19 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             {
                 if (!Offered(entry, hand))
                     continue;
-                if (EquipLeaf(act, action, entry.form, entry.name, hand))
+                if (EquipLeaf(act, action, entry.form, entry.name, hand, {}, entry.name))
                     changed = true;
             }
         }
         else
         {
-            std::unordered_set<std::uint32_t> listed;
+            std::vector<const InventoryItem *> rows;
             for (const auto &item : view.inventory)
+                if (item.category == ItemCategory::Weapons && Fits(item.grip, hand, false))
+                    rows.push_back(&item);
+            for (const InventoryItem *item : rows)
             {
-                if (item.category != ItemCategory::Weapons || !Fits(item.grip, hand, false) ||
-                    !listed.insert(item.form).second)
-                    continue;
-                if (EquipLeaf(act, action, item.form, item.name, hand))
+                if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, NameTint(*item)))
                     changed = true;
             }
         }
@@ -1435,6 +1465,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             {
                 act.kind = kind;
                 act.form = option.form;
+                act.name = option.name;
                 choose();
             }
         }
@@ -1582,6 +1613,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             {
                 act.kind = action;
                 act.form = option->form;
+                act.name = option->name;
                 act.dual = menu.dual;
                 choose();
             }
@@ -2961,6 +2993,11 @@ constexpr Im::ImVec4 kEnchanted{0.70f, 0.75f, 1.00f, 1.0f};
 // A Daedric artifact: light gold, over the enchanted blue.
 constexpr Im::ImVec4 kArtifact{0.95f, 0.85f, 0.55f, 1.0f};
 
+const Im::ImVec4 *NameTint(const InventoryItem &item)
+{
+    return item.artifact ? &kArtifact : item.enchanted ? &kEnchanted : nullptr;
+}
+
 // The name filter the list tabs share: a box with "Filter name" for its
 // hint, and a cross inside its right end to clear it, shown only while
 // there is something to clear. Returns whether the text changed.
@@ -3309,7 +3346,8 @@ EquipCell VoiceCell(const MagicEntry &entry)
 
 // A click walks the cell round: unequipped, equipped, pinned, banned, and
 // back to unequipped. Each state is one request to the game thread.
-void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, const EquipCell &cell, Hand hand, bool clickable)
+void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, const EquipCell &cell, Hand hand, bool clickable,
+            const std::optional<ft::ItemVariant> &variant = std::nullopt, RE::ExtraDataList *row = nullptr)
 {
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
     if (!cell.allowed)
@@ -3326,7 +3364,7 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, const Equi
                                  : cell.on     ? WearRequest::Pin
                                                : WearRequest::Equip;
         if (CellClicked(id))
-            RequestWear(follower, form, next, hand);
+            RequestWear(follower, form, next, hand, variant, row);
         if (Im::IsItemHovered(0))
             Im::SetTooltip("%s", cell.banned   ? "Banned. Click to unban."
                                  : cell.pinned ? "Pinned. Click to ban."
@@ -3566,10 +3604,8 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             name += " (" + std::to_string(item->count) + ")";
         // The enchanted tint would override the disabled colour a set-aside
         // row was pushed: dimmed wins, or the row does not read as greyed.
-        if (item->artifact && !dim)
-            Im::TextColored(kArtifact, "%s", name.c_str());
-        else if (item->enchanted && !dim)
-            Im::TextColored(kEnchanted, "%s", name.c_str());
+        if (const Im::ImVec4 *tint = dim ? nullptr : NameTint(*item))
+            Im::TextColored(*tint, "%s", name.c_str());
         else
             Im::Text("%s", name.c_str());
         // A poisoned weapon: the poison glyph after the name and count, as
@@ -3630,18 +3666,18 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             std::snprintf(buf, sizeof(buf), "##left%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
-                OnCell(buf, view.id, item->form, LeftCell(*item), Hand::Left, true);
+                OnCell(buf, view.id, item->form, LeftCell(*item), Hand::Left, true, item->variant, item->row);
             std::snprintf(buf, sizeof(buf), "##right%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
-                OnCell(buf, view.id, item->form, RightCell(*item), Hand::Right, true);
+                OnCell(buf, view.id, item->form, RightCell(*item), Hand::Right, true, item->variant, item->row);
         }
         if (anyWorn)
         {
             std::snprintf(buf, sizeof(buf), "##wear%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
-                OnCell(buf, view.id, item->form, WornCell(*item), Hand::None, true);
+                OnCell(buf, view.id, item->form, WornCell(*item), Hand::None, true, item->variant, item->row);
         }
     }
     Im::EndTable();
@@ -3689,10 +3725,8 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
 
     Im::SameLine(0.0f, kCellPadX);
     Im::AlignTextToFramePadding();
-    if (item.artifact)
-        Im::TextColored(kArtifact, "%s", item.name.c_str());
-    else if (item.enchanted)
-        Im::TextColored(kEnchanted, "%s", item.name.c_str());
+    if (const Im::ImVec4 *tint = NameTint(item))
+        Im::TextColored(*tint, "%s", item.name.c_str());
     else
         Im::Text("%s", item.name.c_str());
     Im::SameLine(0.0f, kCellPadX * 2.0f);
@@ -4204,6 +4238,20 @@ Tab SourcePage(const FollowerView &view, std::uint32_t form)
     return Tab::None;
 }
 
+// The page a link to a form opens on the Inventory tab: of the form's
+// rows, the worn one, else the first; an enchanted piece is a row of its
+// own, so the form alone (the plain stack's key) would open nothing.
+std::uint64_t ItemPageOf(const FollowerView &view, std::uint32_t form)
+{
+    const InventoryItem *page = nullptr;
+    for (const auto &item : view.inventory)
+    {
+        if (item.form == form && (!page || (item.worn && !page->worn)))
+            page = &item;
+    }
+    return page ? page->Key() : form;
+}
+
 // Open it, with the back arrow returning to the Effects tab.
 void OpenSourcePage(const FollowerView &view, std::uint32_t form)
 {
@@ -4211,7 +4259,7 @@ void OpenSourcePage(const FollowerView &view, std::uint32_t form)
     switch (SourcePage(view, form))
     {
     case Tab::Inventory:
-        inventory.detail = form;
+        inventory.detail = ItemPageOf(view, form);
         inventory.openedFrom = Tab::Effects;
         inventory.select = Tab::Inventory;
         break;
@@ -4567,13 +4615,7 @@ void DrawCharacter(const FollowerView &view)
         }
         // Of the form's rows, the worn one: what the sheet names is the
         // copy in hand, and a row of the form that is not worn is a spare.
-        const InventoryItem *page = nullptr;
-        for (const auto &item : view.inventory)
-        {
-            if (item.form == form && (!page || (item.worn && !page->worn)))
-                page = &item;
-        }
-        state.detail = page ? page->Key() : form;
+        state.detail = ItemPageOf(view, form);
         state.openedFrom = Tab::Character;
         state.select = Tab::Inventory;
     });

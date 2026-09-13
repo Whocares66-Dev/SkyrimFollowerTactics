@@ -75,6 +75,73 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
 // which the engine takes as the plain case.
 [[nodiscard]] RE::ExtraDataList *WornList(RE::Actor *actor, RE::TESBoundObject *object, Hand hand);
 [[nodiscard]] RE::ExtraDataList *UnwornList(RE::Actor *actor, RE::TESBoundObject *object);
+// Is the copy on this list worn in those hands: the right and armour are
+// Worn, the left is WornLeft, None asks for either. False for no list.
+[[nodiscard]] bool ListWorn(const RE::ExtraDataList *list, Hand hands);
+// The same asked of a copy of this object: the worn marks by hand are a
+// weapon's. A shield or a torch in the left hand carries the one Worn
+// mark, as every piece of armour does, so for anything but a weapon the
+// left hand or no hand is any mark, and the right hand is none.
+[[nodiscard]] bool WornIn(const RE::TESBoundObject *object, const RE::ExtraDataList *list, Hand hands);
+// Is the copy on this list a row of its own on the Inventory tab, rather
+// than one of the plain stack: what the game's own menu splits an entry
+// on. The engine keeps two arriving copies apart when their lists differ
+// in anything but the count and the favourites hotkey (its comparison,
+// 11594, read 2026-09-12), and its menu folds a worn copy into its stack
+// and ignores ownership as such (measured 2026-09-12: a gift carries the
+// player's ownership and stacks with the follower's own); so a list is a
+// row when it holds any entry other than those, or is stolen by the
+// variant's reading. A poisoned or tempered dagger is its own row and
+// rejoins the stack when the dose or the list is gone, as in the menu; a
+// worn plain sword stacks with its spare. Not the engine's
+// IsInventoryStackable, whose table is the equip's. False for no list.
+[[nodiscard]] bool RowOfItsOwn(RE::TESBoundObject *object, const RE::ExtraDataList *list);
+// The bag's list at this address, or null: a token from an earlier scan
+// made safe to use, since the copy may have left and the address be
+// another's or nobody's.
+[[nodiscard]] RE::ExtraDataList *ListOfAddress(RE::Actor *actor, RE::TESBoundObject *object,
+                                               const RE::ExtraDataList *address);
+// The entries on a list as their type numbers, "16 3E" (ExtraDataType,
+// hex), for a log line about which copy is which; "-" for no list.
+[[nodiscard]] std::string ListEntries(const RE::ExtraDataList *list);
+// The variant of the copy of `object` on this list (docs/UNIQUE.md "The
+// variant"): its enchantment, tempering, custom name, and whether it is
+// stolen -- owned by someone else, by the engine's own ownership rule
+// asked from the player's side, not by who the owner is: a gift carries
+// the player's ownership and is nobody's theft. Plain for a list with
+// none of them, and for no list.
+[[nodiscard]] ft::ItemVariant VariantOf(RE::TESBoundObject *object, const RE::ExtraDataList *list);
+// Is the copy on this list a distinct one to the engine's own equip: does
+// its list carry an entry the engine's table counts (an outfit mark, an
+// enchantment, a soul, a count ...), rather than only worn marks or
+// extras the table calls indifferent (tempering, charge, a poison, a
+// name)? The engine's IsInventoryStackable, asked of the engine itself:
+// what decides whether its first step, "a plain copy", reaches for the
+// copy (docs/UNIQUE.md). False for no list.
+[[nodiscard]] bool DistinctToEngine(const RE::ExtraDataList *list);
+// How many copies of the variant the bag holds: its rows summed, the
+// listless remainder counting as plain; of the form, with no variant. What
+// the one-copy rule asks.
+[[nodiscard]] std::int32_t CountVariant(RE::Actor *actor, RE::TESBoundObject *object,
+                                        const std::optional<ft::ItemVariant> &variant);
+// A list of the variant, worn in those hands (None: worn at all) or not
+// worn at all; null for none. Of the unworn, one of the plain stack before
+// a row of its own: the poisoned dagger is the plain variant, but a click
+// on the plain stack or a pin on it means a clean one while any is there.
+// The plain variant may have no list to give: a listless copy is the
+// engine's to resolve from a null list.
+[[nodiscard]] RE::ExtraDataList *WornVariantList(RE::Actor *actor, RE::TESBoundObject *object,
+                                                 const ft::ItemVariant &variant, Hand hands);
+[[nodiscard]] RE::ExtraDataList *UnwornVariantList(RE::Actor *actor, RE::TESBoundObject *object,
+                                                   const ft::ItemVariant &variant);
+// A list of the plain stack -- one that is not a row of its own -- worn in
+// those hands (None: worn at all), or not worn at all; null for none. The
+// panel's click on the stack means one of these, or a listless copy.
+[[nodiscard]] RE::ExtraDataList *WornStackList(RE::Actor *actor, RE::TESBoundObject *object, Hand hands);
+[[nodiscard]] RE::ExtraDataList *UnwornStackList(RE::Actor *actor, RE::TESBoundObject *object);
+// Are there plain copies on no list at all, which only a null list can
+// reach?
+[[nodiscard]] bool HasListlessCopy(RE::Actor *actor, RE::TESBoundObject *object);
 
 // The weapon in a hand, if it takes a poison (anything but a staff). Null
 // for no weapon there, or a staff.

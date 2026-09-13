@@ -41,12 +41,49 @@ using json = nlohmann::ordered_json;
 
 // --- writing ---------------------------------------------------------------
 
+// The variant on the wire: one object under "variant", each part in it
+// only when present, so the plain variant is an empty object; no variant
+// -- the form, whichever -- writes no key (docs/UNIQUE.md, "The variant").
+void WriteVariant(json &j, const std::optional<ItemVariant> &variant, const FormCodec &codec)
+{
+    if (!variant)
+        return;
+    json v = json::object();
+    if (!variant->enchantment.empty())
+    {
+        json effects = json::array();
+        for (const EnchantEffect &e : variant->enchantment)
+        {
+            json one;
+            one["effect"] = codec.encode(e.effect);
+            one["mag"] = e.magnitude;
+            if (e.duration != 0)
+                one["dur"] = e.duration;
+            if (e.area != 0)
+                one["area"] = e.area;
+            effects.push_back(std::move(one));
+        }
+        v["enchant"] = std::move(effects);
+    }
+    if (variant->stolen)
+        v["stolen"] = true;
+    if (variant->tempering != 0.0f)
+        v["tempering"] = variant->tempering;
+    if (!variant->label.empty())
+        v["label"] = variant->label;
+    j["variant"] = std::move(v);
+}
+
 json WriteAction(const Action &a, const FormCodec &codec)
 {
     json j;
     j["action"] = WireName(a.kind);
     if (NamesForm(a.kind) && a.form != 0)
         j["form"] = codec.encode(a.form);
+    if (IsEquip(a.kind))
+        WriteVariant(j, a.variant, codec);
+    if (NamesForm(a.kind) && a.form != 0 && !a.name.empty())
+        j["name"] = a.name;
     if (TakesHand(a.kind))
         j["hand"] = WireName(a.hand);
     if (UsesArg(a.kind) && a.arg != 0.0f)
@@ -107,12 +144,66 @@ json WriteRule(const Rule &r, const FormCodec &codec)
     return it->get<std::string>();
 }
 
+// The variant read back: no "variant" key, or one of the wrong shape, is
+// the form, whichever variant; within it, absent parts are plain and a
+// part of the wrong shape reads as absent; a form whose plugin is not
+// loaded is reported as such so the record can be dropped (an effect
+// that is not in this game is not a variant this game can match).
+struct VariantField
+{
+    std::optional<ItemVariant> variant;
+    std::string missing; // the form text this load order cannot name, or empty
+};
+[[nodiscard]] VariantField ReadVariant(const json &j, const FormCodec &codec);
+
+[[nodiscard]] const json *Obj(const json &j, const char *key);
+[[nodiscard]] std::optional<bool> Bool(const json &j, const char *key);
+
 [[nodiscard]] std::optional<double> Num(const json &j, const char *key)
 {
     const auto it = j.find(key);
     if (it == j.end() || !it->is_number())
         return std::nullopt;
     return it->get<double>();
+}
+
+VariantField ReadVariant(const json &j, const FormCodec &codec)
+{
+    VariantField out;
+    const json *v = Obj(j, "variant");
+    if (!v)
+        return out;
+    ItemVariant &variant = out.variant.emplace();
+    // The enchantment is its effects; one whose effect this load order
+    // cannot name is a whole the game cannot match, and the entry goes.
+    if (const auto effects = v->find("enchant"); effects != v->end() && effects->is_array())
+    {
+        for (const json &one : *effects)
+        {
+            if (!one.is_object())
+                continue;
+            const auto text = Str(one, "effect");
+            if (!text)
+                continue;
+            const auto form = codec.decode(*text);
+            if (!form)
+            {
+                out.missing = *text;
+                return out;
+            }
+            EnchantEffect e;
+            e.effect = *form;
+            e.magnitude = static_cast<float>(Num(one, "mag").value_or(0.0));
+            e.duration = static_cast<std::uint32_t>(Num(one, "dur").value_or(0.0));
+            e.area = static_cast<std::uint32_t>(Num(one, "area").value_or(0.0));
+            variant.enchantment.push_back(e);
+        }
+    }
+    variant.stolen = Bool(*v, "stolen").value_or(false);
+    if (const auto tempering = Num(*v, "tempering"))
+        variant.tempering = static_cast<float>(*tempering);
+    variant.label = Str(*v, "label").value_or("");
+    return out;
 }
 
 [[nodiscard]] std::optional<bool> Bool(const json &j, const char *key)
@@ -189,6 +280,18 @@ struct FormField
         return std::nullopt;
     }
     a.form = form.id;
+    if (IsEquip(a.kind))
+    {
+        const VariantField named = ReadVariant(j, codec);
+        if (!named.missing.empty())
+        {
+            why = "form \"" + named.missing + "\" is not in this load order";
+            return std::nullopt;
+        }
+        a.variant = named.variant;
+    }
+    if (NamesForm(a.kind) && a.form != 0)
+        a.name = Str(j, "name").value_or("");
     if (const auto hand = Str(j, "hand"))
     {
         const auto h = HandFromWireName(*hand);
@@ -356,14 +459,20 @@ std::string WriteProfile(const Profile &profile, const FormCodec &codec)
     {
         json p;
         p["form"] = codec.encode(pin.form);
+        WriteVariant(p, pin.variant, codec);
         if (pin.hands != Hand::None)
             p["hand"] = WireName(pin.hands);
         pins.push_back(std::move(p));
     }
     j["pins"] = std::move(pins);
     json bans = json::array();
-    for (const std::uint32_t form : profile.bans)
-        bans.push_back(codec.encode(form));
+    for (const Banned &ban : profile.bans)
+    {
+        json b;
+        b["form"] = codec.encode(ban.form);
+        WriteVariant(b, ban.variant, codec);
+        bans.push_back(std::move(b));
+    }
     j["bans"] = std::move(bans);
     return j.dump(2) + "\n";
 }
@@ -448,6 +557,14 @@ ReadResult ReadProfile(std::string_view text, const FormCodec &codec)
             }
             PinEntry pin;
             pin.form = *form;
+            const VariantField named = ReadVariant(entry, codec);
+            if (!named.missing.empty())
+            {
+                result.warnings.push_back(where + ": form \"" + named.missing +
+                                          "\" is not in this load order -- pin dropped");
+                continue;
+            }
+            pin.variant = named.variant;
             if (const auto hand = Str(entry, "hand"))
             {
                 const auto h = HandFromWireName(*hand);
@@ -462,27 +579,40 @@ ReadResult ReadProfile(std::string_view text, const FormCodec &codec)
         }
     }
 
-    // Bans: absent is none. A form each; one this load order cannot name
-    // is dropped alone.
+    // Bans: absent is none. A form and a variant each; one this load order
+    // cannot name is dropped alone.
     if (const auto bans = j.find("bans"); bans != j.end() && bans->is_array())
     {
         std::size_t index = 0;
         for (const json &entry : *bans)
         {
             const std::string where = "ban " + std::to_string(index++);
-            if (!entry.is_string())
+            if (!entry.is_object())
             {
-                result.warnings.push_back(where + ": not a form -- ban dropped");
+                result.warnings.push_back(where + ": not an object -- ban dropped");
                 continue;
             }
-            const auto form = codec.decode(entry.get<std::string>());
+            const auto formText = Str(entry, "form");
+            if (!formText)
+            {
+                result.warnings.push_back(where + ": no form -- ban dropped");
+                continue;
+            }
+            const auto form = codec.decode(*formText);
             if (!form)
             {
-                result.warnings.push_back(where + ": form \"" + entry.get<std::string>() +
+                result.warnings.push_back(where + ": form \"" + *formText +
                                           "\" is not in this load order -- ban dropped");
                 continue;
             }
-            p.bans.push_back(*form);
+            const VariantField named = ReadVariant(entry, codec);
+            if (!named.missing.empty())
+            {
+                result.warnings.push_back(where + ": form \"" + named.missing +
+                                          "\" is not in this load order -- ban dropped");
+                continue;
+            }
+            p.bans.push_back({*form, named.variant});
         }
     }
 

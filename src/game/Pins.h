@@ -63,6 +63,25 @@ namespace ft::game
 // the player's pins are pinned again and put back on. A pin the player
 // makes in the panel mid-fight counts as the new normal and survives.
 //
+// A pin or a ban names one VARIANT of an item where the bag holds several
+// rows of a form (Holdable::variant; docs/UNIQUE.md "The variant"), so the
+// enchanted armour is pinned and the outfit one is not; a rule's pin may
+// name the form alone, whichever variant. The three means see it unevenly,
+// and none of them chooses a copy: ours is to gatekeep the pins and the
+// bans, and the engine's tie-breaks are left to it. The equip detour
+// judges an equip that names a list by that list's variant -- a banned
+// one, or another variant into a pinned hand or slot, is refused; a copy
+// of a pinned variant already worn there is the incumbent, and a no-list
+// equip or another copy of the same variant aimed at it is refused too --
+// and gives one that names no list (the combat AI's) the row the engine
+// would itself have reached with the banned variants left out of its
+// pool: the engine's order, less the bans (core's EnginePick). The combat
+// AI's list is by form, so the score hook shadows by form for a pin, and
+// zeroes a form for a ban only when every row carried is banned. The
+// watchdog finds a worn row of the pinned variant and, with none, dresses
+// one by the same pick; takes off a banned row found on; and drops a pin
+// or ban whose variant has no row left in the bag.
+//
 // Independent of tactics: pins are enforced whether the tactics switch is on
 // or off, on the same half-second clock, by a watchdog that looks only at the
 // pinned items and does nothing at all when nothing is pinned.
@@ -77,7 +96,13 @@ enum class WearRequest
     Unban
 };
 
-void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None);
+// `variant` is which row of the form; none for the form itself. `row` is
+// the clicked row's own list (InventoryItem::row) when it has one: the
+// pin or ban is on the variant, and the equip goes to that row, so a click
+// on the poisoned dagger readies the poisoned dagger and not the clean
+// one beside it, which is the same variant.
+void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None,
+                 std::optional<ft::ItemVariant> variant = std::nullopt, RE::ExtraDataList *row = nullptr);
 
 // The rules' side of the same book, on the game thread, from the tick. A
 // rule's pin is the panel's pin: it goes in the same book, shows in the
@@ -85,7 +110,8 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
 // Both for an either-hand spell is once in each hand -- and returns whether
 // the form was found. Release lets go of every pin of `kind` and takes
 // those things off, so the AI decides again.
-bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand);
+bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand,
+            const std::optional<ft::ItemVariant> &variant = std::nullopt);
 void ReleaseKind(RE::Actor *actor, Kind kind);
 
 // This follower's pins, as the planner and the snapshot take them.
@@ -118,8 +144,10 @@ void ForgetPins();
 
 // The planner's description of a form: what it is, which hands its record
 // lets it take, whether the combat AI would choose it, which body slots it
-// covers. The ONLY place the pin rules meet a record.
-[[nodiscard]] Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form);
+// covers; and of one variant of it, or the form with none. The count is
+// the variant's. The ONLY place the pin rules meet a record.
+[[nodiscard]] Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form,
+                                        const std::optional<ft::ItemVariant> &variant = std::nullopt);
 
 // The tick's part. Mark the scanned items and spells that are pinned or
 // banned, and those the AI is kept from, for the panel; drop pins for
