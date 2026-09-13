@@ -489,9 +489,9 @@ std::string_view Describe(ActionKind v) noexcept
     case ActionKind::None:
         return "Nothing.";
     case ActionKind::DrinkStrongest:
-        return "Drink the strongest potion carried with this effect.";
+        return "Drink the strongest potion with this effect.";
     case ActionKind::DrinkWeakest:
-        return "Drink the weakest potion carried with this effect: the cheap ones first, the strong ones kept.";
+        return "Drink the weakest potion with this effect.";
     case ActionKind::ChargeStrongestSoulGem:
         return "Recharge the weapon in hand that needs it with the largest soul gem that would not overfill it.";
     case ActionKind::ChargeWeakestSoulGem:
@@ -499,21 +499,21 @@ std::string_view Describe(ActionKind v) noexcept
     case ActionKind::ChargeSoulGem:
         return "Recharge the weapon in hand that needs it with this soul gem.";
     case ActionKind::ApplyStrongest:
-        return "Put the strongest poison carried with this effect on the weapon in hand.";
+        return "Put the strongest poison with this effect on the weapon in hand.";
     case ActionKind::ApplyWeakest:
-        return "Put the weakest poison carried with this effect on the weapon in hand: the cheap ones first.";
+        return "Put the weakest poison with this effect on the weapon in hand.";
     case ActionKind::ApplyPoison:
         return "Put this poison on the weapon in hand.";
     case ActionKind::DrinkPotion:
         return "Drink this potion.";
     case ActionKind::EatStrongestFood:
-        return "Eat the strongest food carried with this effect.";
+        return "Eat the strongest food with this effect.";
     case ActionKind::EatWeakestFood:
-        return "Eat the weakest food carried with this effect: the cheap ones first, the strong ones kept.";
+        return "Eat the weakest food with this effect.";
     case ActionKind::EatStrongestIngredient:
-        return "Eat the strongest ingredient carried with this effect; only those that are food are offered.";
+        return "Eat the strongest ingredient with this effect.";
     case ActionKind::EatWeakestIngredient:
-        return "Eat the weakest ingredient carried with this effect; only those that are food are offered.";
+        return "Eat the weakest ingredient with this effect.";
     case ActionKind::EatFood:
         return "Eat this food.";
     case ActionKind::EatIngredient:
