@@ -8,6 +8,8 @@ explicit uncertainty flags. `docs/MAGIC.md` is how casting works and what does n
 `docs/PROFILES.md` is how tactics live in the save (format, when, versioning);
 `docs/UNIQUE.md` is how one copy of an item is told from another (the engine's
 unique id, what a pin, a ban and a rule name, what is still to verify);
+`docs/GAME_MODEL.md` is the plan for a model of the engine the item logic can be
+tested against without Skyrim (not yet built; what is known, what to measure first);
 `docs/LOGGING.md` is the log design (levels, structured events, the JSON-lines sidecar);
 `docs/TODO.md` is what is still to do.
 
