@@ -48,6 +48,18 @@ TEST_CASE("Other carries what the lines do not explain, and only when it would s
     REQUIRE(d.lines.size() == 2);
 }
 
+TEST_CASE("an amount is visible from half of the last printed digit", "[breakdown]")
+{
+    Breakdown whole;
+    REQUIRE_FALSE(Visible(whole, 0.42));
+    REQUIRE(Visible(whole, 0.5));
+    REQUIRE(Visible(whole, -0.6));
+    Breakdown hundredths;
+    hundredths.decimals = 2;
+    REQUIRE_FALSE(Visible(hundredths, 0.004));
+    REQUIRE(Visible(hundredths, 0.006));
+}
+
 TEST_CASE("amounts print as the reader adds them: signed adds, bare starts, factors without zeros", "[breakdown]")
 {
     Breakdown b;

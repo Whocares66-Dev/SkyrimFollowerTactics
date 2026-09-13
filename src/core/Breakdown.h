@@ -67,9 +67,13 @@ struct Breakdown
 // With no Start the calculation begins at zero.
 [[nodiscard]] double Evaluate(const Breakdown &b);
 
+// Whether an added amount prints as anything but zero at the breakdown's
+// decimals: half of the last printed digit or more. A difference the reader
+// could not see is not a line.
+[[nodiscard]] bool Visible(const Breakdown &b, double amount);
+
 // Add the Other line where the lines do not make the total: the gap,
-// when it is half a printed unit or more. Called once the lines are
-// complete and the total set.
+// when it is Visible. Called once the lines are complete and the total set.
 void Close(Breakdown &b);
 
 // One amount as printed: "408", "+50", "-17%", "x 1.6". A factor is

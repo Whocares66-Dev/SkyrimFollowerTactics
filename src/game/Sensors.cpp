@@ -2563,7 +2563,10 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     if (const float up = std::ceil(rating) - rating; up > 0.0f)
     {
         rating += up;
-        ft::Add(b, "Rounded up", up);
+        // A line only where it prints as more than zero: a shield's 0.42
+        // read "Rounded up 0" beside a total that had it (2026-09-13).
+        if (ft::Visible(b, up))
+            ft::Add(b, "Rounding", up);
     }
 
     // Perks: Juggernaut, Agile Defender and their kin, through the engine's

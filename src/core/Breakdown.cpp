@@ -64,13 +64,14 @@ double Evaluate(const Breakdown &b)
     return value;
 }
 
+bool Visible(const Breakdown &b, double amount)
+{
+    return std::abs(amount) >= 0.5 / std::pow(10.0, b.decimals);
+}
+
 void Close(Breakdown &b)
 {
-    const double gap = b.total - Evaluate(b);
-    // Half of the last printed digit: a difference the reader could not
-    // see is not a discrepancy.
-    const double visible = 0.5 / std::pow(10.0, b.decimals);
-    if (std::abs(gap) >= visible)
+    if (const double gap = b.total - Evaluate(b); Visible(b, gap))
         Add(b, "Other", gap);
 }
 
