@@ -8,9 +8,11 @@
 //
 // Only what applies is in it: a perk entry whose conditions fail, or one
 // that multiplies by one, is not a line. The lines are ours; the total is
-// the engine's. When the lines do not make the total, the renderer adds an
-// Other line for the gap, so a rounding or a formula we have wrong is seen
-// rather than hidden. Nothing is logged: the tooltip is the report.
+// the engine's. Amounts print with the decimals they have, so every step the
+// formula takes is on the page, a rounding included; when the lines still
+// do not make the total, an Other line carries the gap, and Other means the
+// formula as written misses something. Nothing is logged: the tooltip is
+// the report.
 //
 // No RE:: types: this is the arithmetic and the wording, testable without
 // the game. The panel draws it (game/UI.cpp); the sensors fill it.
@@ -53,7 +55,7 @@ struct Breakdown
 {
     std::vector<BreakdownLine> lines;
     double total{0.0};
-    int decimals{0};  // how a Start, Add or Other amount is printed
+    int decimals{0};  // the fewest decimals an amount or the total prints with; more where it has them, two at most
     std::string unit; // "%", " s"; appended to every amount but a factor
     std::string totalLabel{"Total"};
 
@@ -67,17 +69,19 @@ struct Breakdown
 // With no Start the calculation begins at zero.
 [[nodiscard]] double Evaluate(const Breakdown &b);
 
-// Whether an added amount prints as anything but zero at the breakdown's
-// decimals: half of the last printed digit or more. A difference the reader
-// could not see is not a line.
+// Whether an amount prints as anything but zero: half of the last digit
+// printed or more, the second decimal at most. Below that it is
+// floating-point noise, not a line.
 [[nodiscard]] bool Visible(const Breakdown &b, double amount);
 
-// Add the Other line where the lines do not make the total: the gap,
-// when it is Visible. Called once the lines are complete and the total set.
+// Add the Other line where the lines do not make the total: the gap, when
+// it is Visible, which is something the formula as written does not take
+// into account. Called once the lines are complete and the total set.
 void Close(Breakdown &b);
 
-// One amount as printed: "408", "+50", "-17%", "x 1.6". A factor is
-// printed with up to two decimals and no trailing zeros.
+// One amount as printed: "408", "+50", "+4.16", "-17%", "x 1.6". Every
+// amount, a factor included, prints with up to two decimals and no trailing
+// zeros past the breakdown's own decimals.
 [[nodiscard]] std::string AmountText(const Breakdown &b, const BreakdownLine &line);
 [[nodiscard]] std::string TotalText(const Breakdown &b);
 

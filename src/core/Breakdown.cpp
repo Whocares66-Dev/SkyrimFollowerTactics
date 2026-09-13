@@ -1,5 +1,6 @@
 #include "core/Breakdown.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -7,12 +8,26 @@ namespace ft
 {
 namespace
 {
+// The most decimals an amount prints with: enough for a tempering bonus of
+// 4.16 and a rounding of 0.42 to show, and no further.
+constexpr int kMostDecimals = 2;
+
+// As many decimals as the amount has, never fewer than `decimals` and never
+// more than kMostDecimals: 32, +4.16, +0.42, and 3.00% where two are asked.
 std::string Number(double value, int decimals, bool signed_)
 {
     char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), signed_ ? "%+.*f" : "%.*f", decimals, value);
-    // "-0" reads as a mistake; a zero has no sign.
+    std::snprintf(buffer, sizeof(buffer), signed_ ? "%+.*f" : "%.*f", (std::max)(decimals, kMostDecimals), value);
     std::string text = buffer;
+    if (const auto dot = text.find('.'); dot != std::string::npos)
+    {
+        const std::size_t keep = dot + 1 + static_cast<std::size_t>(decimals);
+        while (text.size() > keep && text.back() == '0')
+            text.pop_back();
+        if (text.back() == '.')
+            text.pop_back();
+    }
+    // "-0" reads as a mistake; a zero has no sign.
     bool zero = true;
     for (const char c : text)
         if (c >= '1' && c <= '9')
@@ -66,7 +81,7 @@ double Evaluate(const Breakdown &b)
 
 bool Visible(const Breakdown &b, double amount)
 {
-    return std::abs(amount) >= 0.5 / std::pow(10.0, b.decimals);
+    return std::abs(amount) >= 0.5 / std::pow(10.0, (std::max)(b.decimals, kMostDecimals));
 }
 
 void Close(Breakdown &b)

@@ -439,8 +439,8 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         // weakness as +50% beside a total that had subtracted it
         // (2026-09-08).
         // An effect on the value with nothing to add (a vampire's Blood
-        // Aura carries a zero here) is not a source.
-        if (std::abs(ae->magnitude) < 0.05f)
+        // Aura carries a zero here) is not a source; one too small to print, below half a hundredth, is noise.
+        if (std::abs(ae->magnitude) < 0.005f)
             return;
         out.push_back({std::move(source), NameOr(base, ""), ae->magnitude});
     });
@@ -546,8 +546,9 @@ ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, floa
     b.unit = unit;
     ft::Start(b, "Base", base);
     AddSourceLines(b, std::move(sources), scale);
-    // Half a unit or more: a rounding of the permanent value is not perks.
-    if (std::abs(perks * scale) >= 0.5f / std::pow(10.0f, static_cast<float>(decimals)))
+    // Below what prints, it is floating-point noise in the permanent value,
+    // not perks.
+    if (ft::Visible(b, perks * scale))
         ft::Add(b, "Perks and race", perks * scale);
     b.total = total;
     // An effect on the list but not yet in the value is an Other line:
@@ -2563,8 +2564,8 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     if (const float up = std::ceil(rating) - rating; up > 0.0f)
     {
         rating += up;
-        // A line only where it prints as more than zero: a shield's 0.42
-        // read "Rounded up 0" beside a total that had it (2026-09-13).
+        // Its own line, with its decimals: hidden below one printed digit,
+        // it came back as Other wherever a perk multiplied it afterwards.
         if (ft::Visible(b, up))
             ft::Add(b, "Rounding", up);
     }
@@ -3403,7 +3404,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                     ft::Add(piece.breakdown, c.source, mod->sign * c.amount);
                     explained += c.amount;
                 }
-                if (const float rest = amount - explained; std::abs(rest) > 0.05f)
+                if (const float rest = amount - explained; ft::Visible(piece.breakdown, rest))
                     ft::Add(piece.breakdown, "Perks", mod->sign * rest);
             }
             piece.breakdown.total = total;

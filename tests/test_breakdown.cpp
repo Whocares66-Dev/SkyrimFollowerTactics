@@ -32,12 +32,17 @@ TEST_CASE("Other carries what the lines do not explain, and only when it would s
     REQUIRE(b.lines.back().amount == 12.0);
     REQUIRE(Evaluate(b) == 470.0);
 
-    // A gap below half a printed unit is a rounding, not a line.
+    // Floating-point noise is not a line; a gap of a few tenths is, since
+    // every step the formula takes is a line of its own.
     Breakdown c;
     Start(c, "Base", 100.0);
-    c.total = 100.4;
+    c.total = 100.004;
     Close(c);
     REQUIRE(c.lines.size() == 1);
+    c.total = 100.4;
+    Close(c);
+    REQUIRE(c.lines.size() == 2);
+    REQUIRE(AmountText(c, c.lines.back()) == "+0.4");
 
     // With two decimals printed, the same gap shows.
     Breakdown d;
@@ -48,12 +53,13 @@ TEST_CASE("Other carries what the lines do not explain, and only when it would s
     REQUIRE(d.lines.size() == 2);
 }
 
-TEST_CASE("an amount is visible from half of the last printed digit", "[breakdown]")
+TEST_CASE("an amount is visible from half of the second decimal, whatever the breakdown's own decimals", "[breakdown]")
 {
     Breakdown whole;
-    REQUIRE_FALSE(Visible(whole, 0.42));
-    REQUIRE(Visible(whole, 0.5));
-    REQUIRE(Visible(whole, -0.6));
+    REQUIRE(Visible(whole, 0.42));
+    REQUIRE(Visible(whole, -0.006));
+    REQUIRE_FALSE(Visible(whole, 0.004));
+    REQUIRE_FALSE(Visible(whole, 1e-6));
     Breakdown hundredths;
     hundredths.decimals = 2;
     REQUIRE_FALSE(Visible(hundredths, 0.004));
@@ -78,6 +84,20 @@ TEST_CASE("amounts print as the reader adds them: signed adds, bare starts, fact
     REQUIRE(AmountText(b, times) == "x 1.6");
     REQUIRE(AmountText(b, twice) == "x 2");
     REQUIRE(AmountText(b, quarter) == "x 1.25");
+    // A fraction prints with the decimals it has, two at most: a tempering
+    // bonus read as +4 beside a total that had 4.16.
+    const BreakdownLine tempering{Op::Add, "Tempering", static_cast<double>(4.16f)};
+    const BreakdownLine rounding{Op::Add, "Rounding", 0.416};
+    const BreakdownLine half{Op::Add, "Half", 2.5};
+    const BreakdownLine subtotal{Op::Start, "Base", static_cast<double>(36.16f)};
+    REQUIRE(AmountText(b, tempering) == "+4.16%");
+    REQUIRE(AmountText(b, rounding) == "+0.42%");
+    REQUIRE(AmountText(b, half) == "+2.5%");
+    REQUIRE(AmountText(b, subtotal) == "36.16%");
+    b.total = 48.75;
+    REQUIRE(TotalText(b) == "48.75%");
+    b.total = 42.0;
+    REQUIRE(TotalText(b) == "42%");
     b.decimals = 2;
     REQUIRE(AmountText(b, start) == "3.00%");
     REQUIRE(AmountText(b, plus) == "+50.00%");
