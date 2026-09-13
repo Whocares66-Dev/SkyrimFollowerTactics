@@ -1177,6 +1177,20 @@ std::string EquipTargetName(const ft::Action &act, const FollowerView &view)
     return act.name;
 }
 
+// Has the player banned this form? A spell, shout or power by its entry;
+// a scroll by its rows, any row of the form banned. For the Cast menus,
+// whose options carry the form alone.
+bool BannedForm(const FollowerView &view, std::uint32_t form)
+{
+    for (const auto &entry : view.magic)
+        if (entry.form == form && entry.banned)
+            return true;
+    for (const auto &item : view.inventory)
+        if (item.form == form && item.banned)
+            return true;
+    return false;
+}
+
 // The colour an item's name is drawn in wherever it appears -- the
 // Inventory tab's rows and pages, the rule pickers' leaves -- so two rows
 // of one name read apart the same way everywhere: gold for a Daedric
@@ -1405,13 +1419,14 @@ bool Offered(const MagicEntry &entry, Hand hand)
 // One leaf of an equip menu: a thing the follower has, pinned in `hand`
 // when chosen.
 // `label` is the leaf's text; `rowName` the row's own name, kept on the
-// action (Action::name); `tint` the row's colour (NameTint), on the leaf
-// too; `row` the inventory row behind it, for the count, the marks after
-// the name and the banned dimming (null for a spell, which has none of
-// them). An item's leaf reads as the Inventory tab's row does, so two rows
-// of one form tell apart in the picker as they do there.
+// action (Action::name); `banned` whether the player has banned it, which
+// dims the leaf; `tint` the row's colour (NameTint), on the leaf too;
+// `row` the inventory row behind it, for the count and the marks after
+// the name (null for a spell, which has neither). An item's leaf reads as
+// the Inventory tab's row does, so two rows of one form tell apart in the
+// picker as they do there.
 bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const std::string &label, Hand hand,
-               const std::optional<ft::ItemVariant> &variant, const std::string &rowName,
+               const std::optional<ft::ItemVariant> &variant, const std::string &rowName, bool banned,
                const Im::ImVec4 *tint = nullptr, const InventoryItem *row = nullptr)
 {
     const bool selected = act.kind == action && act.form == form && act.variant.has_value() == variant.has_value() &&
@@ -1439,10 +1454,10 @@ bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const
         std::snprintf(key, sizeof key, "##%016llX", static_cast<unsigned long long>(row->Key()));
         id += key;
     }
-    // Banned: dimmed, as the Inventory tab dims it, but still a choice. The
-    // rules are the player's voice and a ban is the AI's leash; a rule that
-    // names a banned thing is deliberate, and the leaf only says so.
-    const bool banned = row && row->banned;
+    // Banned: dimmed, as the Inventory and Magic tabs dim it, but still a
+    // choice. The rules are the player's voice and a ban is the AI's leash;
+    // a rule that names a banned thing is deliberate, and the leaf only
+    // says so.
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
     const Im::ImVec4 *colour = banned ? &Im::GetStyle()->Colors[Im::ImGuiCol_TextDisabled] : tint;
     const bool clicked = CascadeItem(id.c_str(), selected, colour);
@@ -1529,8 +1544,8 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             Im::Separator();
         for (const InventoryItem *item : rows)
         {
-            if (EquipLeaf(act, action, item->form, item->name, Hand::None, item->variant, item->name, NameTint(*item),
-                          item))
+            if (EquipLeaf(act, action, item->form, item->name, Hand::None, item->variant, item->name, item->banned,
+                          NameTint(*item), item))
                 changed = true;
         }
         return changed;
@@ -1562,7 +1577,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             {
                 if (!Offered(entry, hand))
                     continue;
-                if (EquipLeaf(act, action, entry.form, entry.name, hand, {}, entry.name))
+                if (EquipLeaf(act, action, entry.form, entry.name, hand, {}, entry.name, entry.banned))
                     changed = true;
             }
         }
@@ -1574,8 +1589,8 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
                     rows.push_back(&item);
             for (const InventoryItem *item : rows)
             {
-                if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, NameTint(*item),
-                              item))
+                if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, item->banned,
+                              NameTint(*item), item))
                     changed = true;
             }
         }
@@ -1794,7 +1809,11 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         for (const auto *option : suited)
         {
             const bool selected = here && act.kind == action && act.form == option->form && act.dual == menu.dual;
-            if (CascadeItem(option->name.c_str(), selected))
+            // Banned: dimmed as the equip leaves are, and still a choice,
+            // for the reason EquipLeaf gives.
+            const bool banned = BannedForm(view, option->form);
+            if (CascadeItem(option->name.c_str(), selected,
+                            banned ? &Im::GetStyle()->Colors[Im::ImGuiCol_TextDisabled] : nullptr))
             {
                 act.kind = action;
                 act.form = option->form;
@@ -1802,6 +1821,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                 act.dual = menu.dual;
                 choose();
             }
+            if (banned && Im::IsItemHovered(0))
+                Im::SetTooltip("%s", "Banned");
         }
         Im::EndMenu();
     }
