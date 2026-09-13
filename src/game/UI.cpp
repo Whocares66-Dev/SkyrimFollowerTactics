@@ -180,6 +180,9 @@ constexpr float kOrderGap = 2.0f;
 // row and the number column, which is not what those want. So the padding
 // stays, and the two button cells opt out of it themselves.
 constexpr float kCellPadX = 6.0f;
+// The gap between an item's name and its first mark, and between marks:
+// tighter than a cell's padding, since the marks belong to the name.
+constexpr float kBadgeGap = 3.0f;
 // Vertical padding of the inventory and magic tables' cells.
 constexpr float kCellPadY = 4.0f;
 // A drawer's or a sheet's inner tables sit this far inside their cell.
@@ -462,8 +465,39 @@ std::string Utf8(unsigned codepoint)
 // and fits at 1, as do buttons, whose frame is taller than the glyph.
 constexpr float kPinScale = 0.75f;
 
+// Where a glyph's ink lies within its em, at that scale, relative to the
+// pen: the font's own glyph rectangle. A glyph is centred in its em by its
+// advance and line height, and the ink of a crown sits high in the em where
+// a bolt fills it; a mark laid beside text is centred on its ink instead,
+// or the crown rides above the line the bolt sits on. Zero when the font
+// has no such glyph.
+struct InkBox
+{
+    float x0{0.0f}, y0{0.0f}, x1{0.0f}, y1{0.0f};
+    [[nodiscard]] bool Empty() const noexcept
+    {
+        return x1 <= x0 || y1 <= y0;
+    }
+};
+
+InkBox InkOf(unsigned codepoint, float scale)
+{
+    FontAwesome::PushSolid();
+    Im::ImFont *font = Im::GetFont();
+    const float s = font && font->FontSize > 0.0f ? Im::GetFontSize() * scale / font->FontSize : 0.0f;
+    const Im::ImFontGlyph *glyph =
+        font && codepoint <= 0xFFFF ? Im::ImFontManger::FindGlyph(font, static_cast<Im::ImWchar>(codepoint)) : nullptr;
+    FontAwesome::Pop();
+    if (!glyph || s <= 0.0f)
+        return {};
+    return {glyph->X0 * s, glyph->Y0 * s, glyph->X1 * s, glyph->Y1 * s};
+}
+
+// `onInk` centres the glyph's ink in the box rather than its em: for a mark
+// beside text. The buttons and cells keep the em, where every glyph of a
+// kind lands the same and a tick and a cross line up.
 void DrawCodepoint(Im::ImDrawList *draw, unsigned codepoint, Im::ImVec2 lo, Im::ImVec2 hi, Im::ImU32 ink,
-                   float scale = 1.0f)
+                   float scale = 1.0f, bool onInk = false)
 {
     const std::string text = Utf8(codepoint);
     FontAwesome::PushSolid();
@@ -475,8 +509,25 @@ void DrawCodepoint(Im::ImDrawList *draw, unsigned codepoint, Im::ImVec2 lo, Im::
         return;
     extent.x *= scale;
     extent.y *= scale;
-    const Im::ImVec2 at{(lo.x + hi.x - extent.x) * 0.5f, (lo.y + hi.y - extent.y) * 0.5f};
+    Im::ImVec2 at{(lo.x + hi.x - extent.x) * 0.5f, (lo.y + hi.y - extent.y) * 0.5f};
+    if (const InkBox box = onInk ? InkOf(codepoint, scale) : InkBox{}; !box.Empty())
+        at = {(lo.x + hi.x) * 0.5f - (box.x0 + box.x1) * 0.5f, (lo.y + hi.y) * 0.5f - (box.y0 + box.y1) * 0.5f};
     Im::ImDrawListManager::AddText(draw, font, fontSize, at, ink, text.c_str());
+}
+
+// The width a codepoint's ink takes at that scale: what a mark laid beside
+// text needs, where a box the font's em wide would leave a margin either
+// side of a narrow glyph like the bolt. The advance, for a glyph the font
+// does not have.
+float CodepointWidth(unsigned codepoint, float scale)
+{
+    if (const InkBox box = InkOf(codepoint, scale); !box.Empty())
+        return box.x1 - box.x0;
+    const std::string text = Utf8(codepoint);
+    FontAwesome::PushSolid();
+    const float width = Im::CalcTextSize(text.c_str(), nullptr, false, -1.0f).x;
+    FontAwesome::Pop();
+    return width * scale;
 }
 
 void DrawGlyph(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 lo, Im::ImVec2 hi, Im::ImU32 ink, float scale = 1.0f)
@@ -623,12 +674,18 @@ bool BeginCascade(const char *label)
     return open;
 }
 
-bool CascadeItem(const char *label, bool selected)
+// `textColour` tints the label and nothing else: the tick at the right is
+// the menu's, not the item's, and keeps the plain colour.
+bool CascadeItem(const char *label, bool selected, const Im::ImVec4 *textColour = nullptr)
 {
     auto *draw = Im::GetWindowDrawList();
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
     const float right = CascadeIconRight();
+    if (textColour)
+        Im::PushStyleColor(Im::ImGuiCol_Text, *textColour);
     const bool clicked = Im::MenuItem(label, nullptr, false, true);
+    if (textColour)
+        Im::PopStyleColor(1);
     if (selected)
         CascadeIcon(draw, Glyph::Tick, pos, right);
     return clicked;
@@ -1075,6 +1132,10 @@ std::string EquipTargetName(const ft::Action &act, const FollowerView &view)
 // text colour. Two copies alike in name and colour are told apart by
 // their order alone, which is stable.
 const Im::ImVec4 *NameTint(const InventoryItem &item);
+// The marks after an item's name: a crown, a bolt, a skull (defined with
+// the tints, below).
+bool Badged(const InventoryItem &item);
+float DrawNameBadges(Im::ImDrawList *draw, const InventoryItem &item, Im::ImVec2 at, bool dim);
 
 std::string Lower(std::string_view text)
 {
@@ -1289,18 +1350,52 @@ bool Offered(const MagicEntry &entry, Hand hand)
 // when chosen.
 // `label` is the leaf's text; `rowName` the row's own name, kept on the
 // action (Action::name); `tint` the row's colour (NameTint), on the leaf
-// too.
+// too; `row` the inventory row behind it, for the count, the marks after
+// the name and the banned dimming (null for a spell, which has none of
+// them). An item's leaf reads as the Inventory tab's row does, so two rows
+// of one form tell apart in the picker as they do there.
 bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const std::string &label, Hand hand,
                const std::optional<ft::ItemVariant> &variant, const std::string &rowName,
-               const Im::ImVec4 *tint = nullptr)
+               const Im::ImVec4 *tint = nullptr, const InventoryItem *row = nullptr)
 {
     const bool selected = act.kind == action && act.form == form && act.variant.has_value() == variant.has_value() &&
                           ft::SameVariant(act.variant, variant) && act.hand == hand;
-    if (tint)
-        Im::PushStyleColor(Im::ImGuiCol_Text, *tint);
-    const bool clicked = CascadeItem(label.c_str(), selected);
-    if (tint)
-        Im::PopStyleColor(1);
+    // The text as the Inventory tab shows it, the count after the name; and
+    // an id of its own past the ##, since two rows of a form may read the
+    // same (the plain stack and the poisoned dagger) and ImGui tells menu
+    // items apart by their label.
+    std::string text = label;
+    if (row && row->count > 1)
+        text += " (" + std::to_string(row->count) + ")";
+    std::string id = text;
+    // Room for the marks after the text: spaces their width on the label
+    // itself, so the menu sizes to text and marks together and no more. The
+    // tick has the column ImGui keeps for a menu item's own check mark.
+    if (row && Badged(*row))
+    {
+        const float need = kBadgeGap + DrawNameBadges(nullptr, *row, {}, false);
+        const float space = TextWidth(" ");
+        id.append(space > 0.0f ? static_cast<std::size_t>(std::ceil(need / space)) : 0, ' ');
+    }
+    if (row)
+    {
+        char key[24];
+        std::snprintf(key, sizeof key, "##%016llX", static_cast<unsigned long long>(row->Key()));
+        id += key;
+    }
+    // Banned: dimmed, as the Inventory tab dims it, but still a choice. The
+    // rules are the player's voice and a ban is the AI's leash; a rule that
+    // names a banned thing is deliberate, and the leaf only says so.
+    const bool banned = row && row->banned;
+    const Im::ImVec2 pos = Im::GetCursorScreenPos();
+    const Im::ImVec4 *colour = banned ? &Im::GetStyle()->Colors[Im::ImGuiCol_TextDisabled] : tint;
+    const bool clicked = CascadeItem(id.c_str(), selected, colour);
+    // The menu item draws its label at the row's left edge; the marks go
+    // after the label's width, laid out by hand since the item owns the row.
+    if (row && Badged(*row))
+        DrawNameBadges(Im::GetWindowDrawList(), *row, {pos.x + TextWidth(text) + kBadgeGap, pos.y}, banned);
+    if (banned && Im::IsItemHovered(0))
+        Im::SetTooltip("%s", "Banned. A rule may still name it.");
     if (!clicked)
         return false;
     act.kind = action;
@@ -1349,7 +1444,8 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             Im::Separator();
         for (const InventoryItem *item : rows)
         {
-            if (EquipLeaf(act, action, item->form, item->name, Hand::None, item->variant, item->name, NameTint(*item)))
+            if (EquipLeaf(act, action, item->form, item->name, Hand::None, item->variant, item->name, NameTint(*item),
+                          item))
                 changed = true;
         }
         return changed;
@@ -1390,7 +1486,8 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
                     rows.push_back(&item);
             for (const InventoryItem *item : rows)
             {
-                if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, NameTint(*item)))
+                if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, NameTint(*item),
+                              item))
                     changed = true;
             }
         }
@@ -2990,12 +3087,74 @@ unsigned IconFor(ItemCategory category)
 }
 
 constexpr Im::ImVec4 kEnchanted{0.70f, 0.75f, 1.00f, 1.0f};
-// A Daedric artifact: light gold, over the enchanted blue.
+// A Daedric artifact: light gold, over the enchanted blue; every artifact
+// is enchanted, and the colour says which kind of enchanted it is. Red was
+// tried on 2026-09-12 and read as a warning.
 constexpr Im::ImVec4 kArtifact{0.95f, 0.85f, 0.55f, 1.0f};
+// A poison on a weapon: green, as the bottle is.
+constexpr Im::ImVec4 kPoison{0.55f, 0.85f, 0.45f, 1.0f};
 
 const Im::ImVec4 *NameTint(const InventoryItem &item)
 {
     return item.artifact ? &kArtifact : item.enchanted ? &kEnchanted : nullptr;
+}
+
+// The marks after an item's name, wherever the name is drawn: a crown for a
+// Daedric artifact, else a bolt for an enchanted piece (an artifact is
+// always enchanted, and the crown says so), then a skull for a poison on
+// it. Each in its own colour -- the crown and the bolt the name's tint, the
+// skull green -- or the row's disabled colour when the row is dimmed, or
+// the marks would light up a greyed row. Drawn at kPinScale like the pin: a
+// font glyph fills its em and reads too big beside text at full size.
+// Returns the width drawn, so a caller laying the marks out by hand (a menu
+// leaf) can advance past them.
+bool Badged(const InventoryItem &item)
+{
+    return item.artifact || item.enchanted || !item.poison.rows.empty();
+}
+
+// With no draw list, measures only: the width the marks would take.
+float DrawNameBadges(Im::ImDrawList *draw, const InventoryItem &item, Im::ImVec2 at, bool dim)
+{
+    const float h = Im::GetTextLineHeight();
+    float x = at.x;
+    const auto ink = [dim](const Im::ImVec4 &colour) {
+        Im::PushStyleColor(Im::ImGuiCol_Text, dim ? Im::GetStyle()->Colors[Im::ImGuiCol_TextDisabled] : colour);
+        const Im::ImU32 u32 = Im::GetColorU32(Im::ImGuiCol_Text, 1.0f);
+        Im::PopStyleColor(1);
+        return u32;
+    };
+    const auto badge = [&](unsigned codepoint, const Im::ImVec4 &colour) {
+        // A box the glyph's own width, so the mark sits where the text ends
+        // and not a margin past it.
+        const float box = CodepointWidth(codepoint, kPinScale);
+        if (draw)
+            DrawCodepoint(draw, codepoint, {x, at.y}, {x + box, at.y + h}, ink(colour), kPinScale, true);
+        x += box + kBadgeGap;
+    };
+    if (item.artifact)
+        badge(0xF521, kArtifact); // crown
+    else if (item.enchanted)
+        badge(0xF0E7, kEnchanted); // bolt
+    if (!item.poison.rows.empty())
+        badge(0xF714, kPoison); // skull-crossbones
+    return x - at.x;
+}
+
+// The marks after the name just drawn, on the same line. `framed` for a
+// name drawn with AlignTextToFramePadding beside a button, as the item
+// page's heading is: the text sits a frame padding below the line's top,
+// and the marks go down with it, or they ride high beside it.
+void NameBadges(const InventoryItem &item, bool dim, bool framed = false)
+{
+    if (!Badged(item))
+        return;
+    Im::SameLine(0.0f, kBadgeGap);
+    Im::ImVec2 at = Im::GetCursorScreenPos();
+    if (framed)
+        at.y += Im::GetStyle()->FramePadding.y;
+    const float width = DrawNameBadges(Im::GetWindowDrawList(), item, at, dim);
+    Im::Dummy({width, framed ? Im::GetFrameHeight() : Im::GetTextLineHeight()});
 }
 
 // The name filter the list tabs share: a box with "Filter name" for its
@@ -3608,20 +3767,7 @@ void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
             Im::TextColored(*tint, "%s", name.c_str());
         else
             Im::Text("%s", name.c_str());
-        // A poisoned weapon: the poison glyph after the name and count, as
-        // the game's own inventory marks one.
-        if (!item->poison.rows.empty())
-        {
-            // Drawn as the pin is, at kPinScale: a font glyph fills its em
-            // and reads too big beside text at full size.
-            Im::SameLine(0.0f, kCellPadX);
-            const Im::ImVec2 at = Im::GetCursorScreenPos();
-            const float box = Im::GetFontSize();
-            const float h = Im::GetTextLineHeight();
-            DrawCodepoint(Im::GetWindowDrawList(), 0xF714, at, {at.x + box, at.y + h},
-                          Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), kPinScale); // skull-crossbones
-            Im::Dummy({box, h});
-        }
+        NameBadges(*item, dim);
 
         Im::TableNextColumn();
         Im::Text("%s", typeText(*item).c_str());
@@ -3729,6 +3875,7 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
         Im::TextColored(*tint, "%s", item.name.c_str());
     else
         Im::Text("%s", item.name.c_str());
+    NameBadges(item, false, true);
     Im::SameLine(0.0f, kCellPadX * 2.0f);
     Im::AlignTextToFramePadding();
     Im::TextDisabled("%s", item.type.c_str());

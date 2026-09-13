@@ -84,7 +84,7 @@ struct InventoryItem
     bool worn{false};
     bool enchanted{false};
     // A Daedric artifact (the DaedricArtifact keyword, or the vendor one a
-    // few Creation Club pieces carry instead): named in gold.
+    // few Creation Club pieces carry instead): named in gold, with a crown.
     bool artifact{false};
     // A poison on the weapon: one row, its name and the hits left, under
     // headings of its own, and its effects in the enchantment's table
