@@ -393,7 +393,7 @@ std::string_view Describe(PredicateKind v) noexcept
     case PredicateKind::CombatEnds:
         return "A fight has just ended; no other condition holds on that pass.";
     case PredicateKind::Type:
-        return "This kind of being: a people by race, a creature by what the game calls it.";
+        return ""; // the kind's own name says it; no tooltip
     case PredicateKind::Status:
         return "In this state right now.";
     case PredicateKind::ArmorPctBelow:

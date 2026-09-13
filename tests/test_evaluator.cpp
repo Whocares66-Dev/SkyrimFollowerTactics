@@ -940,12 +940,14 @@ TEST_CASE("a kind of being is asked of any subject: a member answers for its gro
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
     r.typeKind = TypeKind::Dragon;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    // Of the follower themself and the player too: no subject is barred.
-    for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
-    {
-        const auto subject = static_cast<SubjectKind>(i);
-        REQUIRE(IsPredicateValidFor(subject, PredicateKind::Type) == (subject != SubjectKind::Corpse));
-    }
+    // Of the others only: the follower and the player are each one being,
+    // and a rule about what they are would be true always or never.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Type));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Type));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::Type));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Type));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Type));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Corpse, PredicateKind::Type));
 }
 
 TEST_CASE("a status is asked of any subject, and binds whoever is in it", "[status]")
