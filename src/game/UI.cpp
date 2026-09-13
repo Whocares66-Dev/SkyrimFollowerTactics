@@ -1,6 +1,7 @@
 // The in-game panel, drawn with ImGui via SKSE Menu Framework: the rule
 // editor, with the status column beside every rule, and the character
-// sheet -- inventory, magic, effects, summons, character, skills.
+// sheet -- inventory, magic, effects, summons, character, skills -- of a
+// follower and of the player.
 //
 // The status column came first, before editing, and the reason is worth
 // restating (docs/PLAN.md 3.7): authoring rules against an opaque engine
@@ -4002,18 +4003,18 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
             std::snprintf(buf, sizeof(buf), "##left%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
-                OnCell(buf, view.id, item->form, LeftCell(*item), Hand::Left, true, item->variant, item->row);
+                OnCell(buf, view.id, item->form, LeftCell(*item), Hand::Left, !view.player, item->variant, item->row);
             std::snprintf(buf, sizeof(buf), "##right%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
-                OnCell(buf, view.id, item->form, RightCell(*item), Hand::Right, true, item->variant, item->row);
+                OnCell(buf, view.id, item->form, RightCell(*item), Hand::Right, !view.player, item->variant, item->row);
         }
         if (anyWorn)
         {
             std::snprintf(buf, sizeof(buf), "##wear%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
-                OnCell(buf, view.id, item->form, WornCell(*item), Hand::None, true, item->variant, item->row);
+                OnCell(buf, view.id, item->form, WornCell(*item), Hand::None, !view.player, item->variant, item->row);
         }
     }
     Im::EndTable();
@@ -4437,16 +4438,16 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
         {
             std::snprintf(buf, sizeof(buf), "##voice%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view.id, entry->form, VoiceCell(*entry), Hand::None, true);
+            OnCell(buf, view.id, entry->form, VoiceCell(*entry), Hand::None, !view.player);
         }
         else
         {
             std::snprintf(buf, sizeof(buf), "##left%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view.id, entry->form, LeftCell(*entry), Hand::Left, !voice);
+            OnCell(buf, view.id, entry->form, LeftCell(*entry), Hand::Left, !voice && !view.player);
             std::snprintf(buf, sizeof(buf), "##right%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view.id, entry->form, RightCell(*entry), Hand::Right, !voice);
+            OnCell(buf, view.id, entry->form, RightCell(*entry), Hand::Right, !voice && !view.player);
         }
     }
     Im::EndTable();
@@ -4683,7 +4684,7 @@ void DrawEffects(const CharacterView &view)
     if (view.effects.empty())
     {
         Im::SetCursorPosX(Im::GetCursorPosX() + kCellPadX);
-        Im::TextDisabled("Nothing is running on this follower.");
+        Im::TextDisabled("No active effects.");
         return;
     }
 
@@ -5107,25 +5108,12 @@ void DrawSkills(const CharacterView &view)
     }
 }
 
-// Whether any follower's page has been drawn yet. The first page to open
-// lands on Tactics, which is what the mod is for; from then on the tab bar
-// keeps whatever was last chosen, as tab bars do. Render thread only.
-bool g_pageOpened = false;
-
-// One page per follower, six tabs, reading left to right as who they are,
-// what they can do, what they carry, what they can cast, how their combat
-// AI is tuned, and what they have been told to do. ONE tab bar id for
-// every follower, so the chosen tab carries across pages: the Skills of
-// one, then of the next, without choosing Skills again each time.
-void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
+// The sheet's tabs, inside the caller's tab bar, reading left to right as
+// who they are, what they carry, what they can cast, what they command,
+// what is running on them and what they can do: a follower's page and the
+// player's alike.
+void DrawSheetTabs(const CharacterView &view)
 {
-    if (!Im::BeginTabBar("follower##tabs"))
-        return;
-
-    const bool firstOpen = !g_pageOpened;
-    g_pageOpened = true;
-    const Im::ImGuiTabItemFlags tacticsFlags = firstOpen ? Im::ImGuiTabItemFlags_SetSelected : 0;
-
     // A pending switch, from a link on the sheet or the back arrow on an
     // item page; consumed here so it acts for one frame only.
     auto &inventoryState = g_inventoryTabs[view.id];
@@ -5163,6 +5151,27 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
         DrawSkills(view);
         Im::EndTabItem();
     }
+}
+
+// Whether any follower's page has been drawn yet. The first page to open
+// lands on Tactics, which is what the mod is for; from then on the tab bar
+// keeps whatever was last chosen, as tab bars do. Render thread only.
+bool g_pageOpened = false;
+
+// One page per follower: the sheet's tabs, then how their combat AI is
+// tuned and what they have been told to do. ONE tab bar id for every
+// follower, so the chosen tab carries across pages: the Skills of one,
+// then of the next, without choosing Skills again each time.
+void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
+{
+    if (!Im::BeginTabBar("follower##tabs"))
+        return;
+
+    const bool firstOpen = !g_pageOpened;
+    g_pageOpened = true;
+    const Im::ImGuiTabItemFlags tacticsFlags = firstOpen ? Im::ImGuiTabItemFlags_SetSelected : 0;
+
+    DrawSheetTabs(view);
     // What the combat AI is tuned by, before what it is told: a rule works
     // with, or against, these numbers.
     if (Im::BeginTabItem("Combat Style"))
@@ -5275,18 +5284,33 @@ void __stdcall RenderSettings()
     DrawSettings();
 }
 
+// The player's page: the sheet's tabs alone, in a tab bar of its own, apart
+// from the followers' bar, whose first open lands on Tactics.
+void __stdcall RenderPlayer()
+{
+    // Nothing until the open's task has read the player: a frame.
+    const auto view = ObservePlayer();
+    if (!view || !Im::BeginTabBar("player##tabs"))
+        return;
+    DrawSheetTabs(*view);
+    Im::EndTabBar();
+}
+
 // The framework's own open event. The views behind every page are the
 // tick's, and the tick stops with the clock the moment the panel opens,
 // so what a page shows is otherwise whatever the last tick saw -- up to
 // half a second old, or older after a paused menu held the tick. One
-// fresh publish of every follower on the game thread, at the open, so the
-// charge a fight just drew down reads right away.
+// fresh publish of every follower and of the player on the game thread,
+// at the open, so the charge a fight just drew down reads right away.
 void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
 {
     if (type != SKSEMenuFramework::Model::EventType::kOpenMenu)
         return;
     if (auto *task = SKSE::GetTaskInterface())
-        task->AddTask([]() { PublishAllFollowers(); });
+        task->AddTask([]() {
+            PublishAllFollowers();
+            PublishPlayer();
+        });
 }
 
 // One trampoline per slot: a render callback takes no argument, so the
@@ -5424,6 +5448,9 @@ void Install()
 
     SKSEMenuFramework::SetSection("Follower Tactics");
     SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
+    // Before the Followers subsection the tick fills as followers are
+    // recruited: an entry cannot be moved once added.
+    SKSEMenuFramework::AddSectionItem("Player", RenderPlayer);
     // Kept for the life of the process; the framework unregisters on
     // destruction, which never comes.
     static auto *const openEvent = SKSEMenuFramework::AddEvent(OnMenuEvent, 0.0f);

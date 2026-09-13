@@ -836,6 +836,37 @@ void PublishAllFollowers()
     log::tactics.debug("panel opened -- {} follower view(s) refreshed", followers.size());
 }
 
+namespace
+{
+// The player's page. Guarded by the views' lock.
+std::optional<CharacterView> g_playerView;
+} // namespace
+
+void PublishPlayer()
+{
+    auto *player = RE::PlayerCharacter::GetSingleton();
+    if (!player)
+        return;
+    const auto started = std::chrono::steady_clock::now();
+    CharacterView v;
+    FillCharacterView(player, v);
+    v.player = true;
+    v.inCombat = player->IsInCombat();
+    // A follower's scans, over a bag often many times the size of theirs,
+    // on the frame the panel opens: measured, so a hitch there has a number.
+    log::tactics.debug("player page built in {:.1f} ms: {} items, {} spells, {} effects",
+                       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count(),
+                       v.inventory.size(), v.magic.size(), v.effects.size());
+    std::scoped_lock lock(g_viewMutex);
+    g_playerView = std::move(v);
+}
+
+std::optional<CharacterView> ObservePlayer()
+{
+    std::scoped_lock lock(g_viewMutex);
+    return g_playerView;
+}
+
 void SetRules(ft::ActorId id, ft::RuleSet rules)
 {
     std::scoped_lock lock(g_rulesMutex);

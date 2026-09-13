@@ -35,6 +35,10 @@ struct CharacterView
     // in the log, where Describe() still emits it -- on screen it is noise the
     // player can get from the console if they ever need it.
     std::string name;
+    // The player's own page. Their equip cells show and take no click: a
+    // pin and a ban are a leash on the combat AI, and nothing is choosing
+    // for the player.
+    bool player{false};
     bool inCombat{false};
 
     std::uint16_t level{0};
@@ -160,6 +164,13 @@ void PublishFollower(RE::Actor *actor);
 // stops with the clock the moment it opens, so what the panel shows is
 // otherwise the last tick's view. Game thread.
 void PublishAllFollowers();
+
+// The player's page, the same sheet as a follower's: read when the panel
+// opens, on the game thread, and not on the tick, since the page is only
+// read with the panel up and the player's bag is the largest there is.
+// None before the first open.
+void PublishPlayer();
+[[nodiscard]] std::optional<CharacterView> ObservePlayer();
 
 // Start ticking. Safe to call once, after kDataLoaded.
 void Install();
