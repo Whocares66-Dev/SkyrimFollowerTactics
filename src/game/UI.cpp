@@ -5147,6 +5147,14 @@ struct SkillsTabState
     std::uint32_t detail{0}; // the perk open in detail; 0 for the skills
 };
 std::unordered_map<ft::ActorId, SkillsTabState> g_skillsTabs;
+// The Other Perks table's filter, one for every page as the list tabs' are.
+char g_perksFilter[64]{};
+
+// Does a perk's row hold the filter's text: its name, rank or description?
+bool PerkShown(const SheetRow &row)
+{
+    return AnyContains({row.label, row.value, row.modifiers}, g_perksFilter);
+}
 
 void DrawSkills(const CharacterView &view)
 {
@@ -5210,8 +5218,18 @@ void DrawSkills(const CharacterView &view)
     if (other)
     {
         CentredHeading("Other Perks");
+        // The perks outside the trees run long in a large load order.
+        FilterRow(
+            "##perksfilter", g_perksFilter, sizeof(g_perksFilter),
+            [&] { return static_cast<std::size_t>(std::count_if(other->rows.begin(), other->rows.end(), PerkShown)); },
+            other->rows.size(), "perks");
+        Im::Spacing();
+        std::vector<SheetRow> rows;
+        for (const SheetRow &row : other->rows)
+            if (PerkShown(row))
+                rows.push_back(row);
         Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, 4.0f));
-        DrawPerkTable("perks##other", other->rows, 0.0f, open);
+        DrawPerkTable("perks##other", rows, 0.0f, open);
         Im::PopStyleVar(1);
         Im::Spacing();
         Im::Spacing();
