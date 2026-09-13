@@ -2625,13 +2625,11 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // sheet and the rules cannot disagree. Robes and boots alone read
         // 50 (6%): two pieces' hidden bonus and no rating.
         const float resistCap = GameSetting("fPlayerMaxResistance", 85.0f);
-        // The share of a blow turned away, as the resistances are shown:
-        // what the rating makes, and in brackets the cap where it is past
-        // it -- "87% (75%)" in a list that caps at 75.
-        static const float armorCap = GameSetting("fMaxArmorRating", 80.0f);
-        const float turned = (std::max)(0.0f, ArmorValue(actor) * ArmorScale() + actor->GetArmorBaseFactorSum());
-        SheetRow armorRow =
-            Row("Armor", Fmt("%.0f", EffectiveArmor(actor)) + " (" + CappedPercent(turned * 100.0f, armorCap) + ")");
+        // The share of a blow turned away, clamped at the cap: one
+        // percent, the one that applies -- "582 (75%)" in a list that caps
+        // at 75.
+        SheetRow armorRow = Row("Armor", Fmt("%.0f", EffectiveArmor(actor)) + " (" +
+                                             Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")");
         armorRow.breakdown = ArmorBreakdown(actor);
         s.rows.push_back(std::move(armorRow));
         // Each resistance with where it comes from as its hover text: the
