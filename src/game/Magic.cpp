@@ -358,7 +358,8 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     if (power)
         AddTimeSection(actor, {spell}, entry);
 
-    entry.effectsTable = EffectsOf(actor, spell, [&](const RE::Effect *e) { return ActualMagnitude(actor, spell, e); });
+    entry.effectTables.push_back(
+        EffectsOf(actor, spell, [&](const RE::Effect *e) { return ActualMagnitude(actor, spell, e); }));
     entry.description = DescriptionFor(actor, spell, *spell);
     return true;
 }
@@ -412,9 +413,21 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
         AddTimeSection(actor, words, entry);
     }
 
-    if (auto *firstWord = shout->variations[0].spell)
-        entry.effectsTable =
-            EffectsOf(actor, firstWord, [&](const RE::Effect *e) { return ActualMagnitude(actor, firstWord, e); });
+    // A table per word, under one heading: Soul Tear's later words carry
+    // effects its first does not.
+    for (std::uint32_t i = 0; i < RE::TESShout::VariationIDs::kTotal; ++i)
+    {
+        auto *spell = shout->variations[i].spell;
+        if (!shout->variations[i].word || !spell)
+            continue;
+        SheetSection table =
+            EffectsOf(actor, spell, [&](const RE::Effect *e) { return ActualMagnitude(actor, spell, e); });
+        if (table.rows.empty())
+            continue;
+        table.group = table.title;
+        table.title = "Word " + std::to_string(i + 1);
+        entry.effectTables.push_back(std::move(table));
+    }
     // A shout's description is its own record's; its numbers, when it has
     // any, are the first word's spell's.
     entry.description = DescriptionFor(actor, shout->variations[0].spell, *shout);

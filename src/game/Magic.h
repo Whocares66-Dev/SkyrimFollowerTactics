@@ -107,9 +107,11 @@ struct MagicEntry
     // The page: numbers as sections, then the effect lines and the record's
     // description, as the Inventory tab's pages are laid out.
     std::vector<SheetSection> detail;
-    // What the spell does: the table of effects (EffectsOf), at the
-    // follower's own magnitudes, each row's description in its last column.
-    SheetSection effectsTable;
+    // What it does: the table of effects (EffectsOf), at their own
+    // magnitudes, each row's description in its last column. A shout has a
+    // table per word: each word is a spell of its own, and a later word's
+    // carries effects the first word's does not.
+    std::vector<SheetSection> effectTables;
     std::string description;
 };
 

@@ -4490,10 +4490,10 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
 
     // The effects, as the item page has them: the record with the author's
     // text wrapped in the last column.
-    if (!entry.effectsTable.rows.empty())
+    if (!entry.effectTables.empty())
     {
         DrawSections(
-            {entry.effectsTable}, true, {}, nullptr,
+            entry.effectTables, true, {}, nullptr,
             [](const SheetRow &line, const std::string &key, float left, float right) {
                 DrawConditionDrawer(line, key, left, right);
             },
