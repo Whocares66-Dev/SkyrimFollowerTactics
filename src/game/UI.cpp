@@ -3696,8 +3696,9 @@ EquipCell VoiceCell(const MagicEntry &entry)
 
 // A click walks the cell round: unequipped, equipped, pinned, banned, and
 // back to unequipped. Each state is one request to the game thread.
-void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, const EquipCell &cell, Hand hand, bool clickable,
-            const std::optional<ft::ItemVariant> &variant = std::nullopt, RE::ExtraDataList *row = nullptr)
+void OnCell(const char *id, const CharacterView &view, std::uint32_t form, const EquipCell &cell, Hand hand,
+            bool clickable, const std::optional<ft::ItemVariant> &variant = std::nullopt,
+            RE::ExtraDataList *row = nullptr)
 {
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
     if (!cell.allowed)
@@ -3708,18 +3709,22 @@ void OnCell(const char *id, ft::ActorId follower, std::uint32_t form, const Equi
     if (clickable)
     {
         // Banned and pinned first: a pin whose thing the AI has swapped out
-        // is still a pin, and a ban is a ban whatever is on.
-        const WearRequest next = cell.banned   ? WearRequest::Unban
+        // is still a pin, and a ban is a ban whatever is on. The player's
+        // cell only equips and unequips: the pin and the ban are a leash on
+        // the combat AI, and nothing chooses for the player.
+        const WearRequest next = view.player   ? (cell.on ? WearRequest::Unequip : WearRequest::Equip)
+                                 : cell.banned ? WearRequest::Unban
                                  : cell.pinned ? WearRequest::Ban
                                  : cell.on     ? WearRequest::Pin
                                                : WearRequest::Equip;
         if (CellClicked(id))
-            RequestWear(follower, form, next, hand, variant, row);
+            RequestWear(view.id, form, next, hand, variant, row);
         if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", cell.banned   ? "Banned. Click to unban."
-                                 : cell.pinned ? "Pinned. Click to ban."
-                                 : cell.on     ? "Equipped. Click to pin."
-                                               : "Unequipped. Click to equip.");
+            Im::SetTooltip("%s", cell.banned              ? "Banned. Click to unban."
+                                 : cell.pinned            ? "Pinned. Click to ban."
+                                 : cell.on && view.player ? "Equipped. Click to unequip."
+                                 : cell.on                ? "Equipped. Click to pin."
+                                                          : "Unequipped. Click to equip.");
     }
     DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), cell.on, cell.pinned, cell.banned);
 }
@@ -4003,18 +4008,18 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
             std::snprintf(buf, sizeof(buf), "##left%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
-                OnCell(buf, view.id, item->form, LeftCell(*item), Hand::Left, !view.player, item->variant, item->row);
+                OnCell(buf, view, item->form, LeftCell(*item), Hand::Left, true, item->variant, item->row);
             std::snprintf(buf, sizeof(buf), "##right%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
-                OnCell(buf, view.id, item->form, RightCell(*item), Hand::Right, !view.player, item->variant, item->row);
+                OnCell(buf, view, item->form, RightCell(*item), Hand::Right, true, item->variant, item->row);
         }
         if (anyWorn)
         {
             std::snprintf(buf, sizeof(buf), "##wear%016llX", key);
             Im::TableNextColumn();
             if (item->equipable)
-                OnCell(buf, view.id, item->form, WornCell(*item), Hand::None, !view.player, item->variant, item->row);
+                OnCell(buf, view, item->form, WornCell(*item), Hand::None, true, item->variant, item->row);
         }
     }
     Im::EndTable();
@@ -4438,16 +4443,16 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
         {
             std::snprintf(buf, sizeof(buf), "##voice%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view.id, entry->form, VoiceCell(*entry), Hand::None, !view.player);
+            OnCell(buf, view, entry->form, VoiceCell(*entry), Hand::None, true);
         }
         else
         {
             std::snprintf(buf, sizeof(buf), "##left%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view.id, entry->form, LeftCell(*entry), Hand::Left, !voice && !view.player);
+            OnCell(buf, view, entry->form, LeftCell(*entry), Hand::Left, !voice);
             std::snprintf(buf, sizeof(buf), "##right%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view.id, entry->form, RightCell(*entry), Hand::Right, !voice && !view.player);
+            OnCell(buf, view, entry->form, RightCell(*entry), Hand::Right, !voice);
         }
     }
     Im::EndTable();

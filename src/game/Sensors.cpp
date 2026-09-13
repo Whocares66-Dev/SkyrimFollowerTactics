@@ -2734,6 +2734,9 @@ RE::TESCombatStyle *LiveCombatStyle(RE::Actor *actor)
 
 bool DualWieldAllowed(RE::Actor *actor)
 {
+    // The style tunes the combat AI; the player holds what they like.
+    if (actor && actor->IsPlayerRef())
+        return true;
     auto *style = LiveCombatStyle(actor);
     return !style || style->flags.all(RE::TESCombatStyle::FLAG::kAllowDualWielding);
 }

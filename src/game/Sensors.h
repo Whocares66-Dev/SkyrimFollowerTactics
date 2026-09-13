@@ -552,7 +552,7 @@ struct PerkPage
 [[nodiscard]] RE::TESCombatStyle *LiveCombatStyle(RE::Actor *actor);
 
 // May the actor hold a one-handed weapon in each hand? The combat style's
-// flag; an actor with no style may. The panel's cells, and a request, read
+// flag; an actor with no style may, and so may the player. The panel's cells, and a request, read
 // it (core/Loadout.h WouldDualWield).
 [[nodiscard]] bool DualWieldAllowed(RE::Actor *actor);
 

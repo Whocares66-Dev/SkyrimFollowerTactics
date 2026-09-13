@@ -35,9 +35,9 @@ struct CharacterView
     // in the log, where Describe() still emits it -- on screen it is noise the
     // player can get from the console if they ever need it.
     std::string name;
-    // The player's own page. Their equip cells show and take no click: a
-    // pin and a ban are a leash on the combat AI, and nothing is choosing
-    // for the player.
+    // The player's own page. Their equip cells equip and unequip and no
+    // more: a pin and a ban are a leash on the combat AI, and nothing is
+    // choosing for the player.
     bool player{false};
     bool inCombat{false};
 
@@ -166,9 +166,9 @@ void PublishFollower(RE::Actor *actor);
 void PublishAllFollowers();
 
 // The player's page, the same sheet as a follower's: read when the panel
-// opens, on the game thread, and not on the tick, since the page is only
-// read with the panel up and the player's bag is the largest there is.
-// None before the first open.
+// opens and after a click on it, on the game thread, and not on the tick,
+// since the page is only read with the panel up and the player's bag is
+// the largest there is. None before the first open.
 void PublishPlayer();
 [[nodiscard]] std::optional<CharacterView> ObservePlayer();
 

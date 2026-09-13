@@ -44,6 +44,10 @@ namespace ft::game
 //
 // Equip puts it on with no promise: the AI's to change.
 //
+// Unequip takes it off and touches neither pins nor bans: the player's
+// page, whose cells only equip and unequip, since nothing chooses for the
+// player. A follower's pinned thing taken off so would come back.
+//
 // Ban takes it off and keeps it off: the combat AI scores it zero, the
 // engine's own equips of it are refused, and the watchdog takes it off if
 // it is found on. A ban lets go of any pin on the thing. Unban forgets
@@ -91,6 +95,7 @@ namespace ft::game
 enum class WearRequest
 {
     Equip,
+    Unequip,
     Pin,
     Ban,
     Unban

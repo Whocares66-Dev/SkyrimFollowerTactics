@@ -86,6 +86,7 @@ There is deliberately no log-schema-version field. That problem belongs to the c
 | `ban.applied` / `ban.released` / `ban.enforced` | pins | `itemFormId`, `itemName` |
 | `ban.refused` | pins | `itemFormId`, `inCombat` — **warn** |
 | `equip.applied` / `equip.removed` | pins | `itemFormId`, `hand`, `pinned` |
+| `unequip.applied` | pins | `itemFormId`, `itemName`, `hand` — the player's page, which touches no pin or ban |
 | `dualWield.allowed` | pins | `styleFormId`, `copyFormId` |
 | `package.armed` | packages | `slot`, `formId`, `holderFormId`, `kind`, `targetFormId`, `durationS` |
 | `package.fired` | packages | `slot`, `formId`, `holderFormId`, `kind` |

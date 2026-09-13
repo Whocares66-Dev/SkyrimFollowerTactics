@@ -1274,6 +1274,18 @@ void WatchCombatScores()
     }
 }
 
+namespace
+{
+// Their page, fresh: the player's, or a follower's.
+void Republish(RE::Actor *actor)
+{
+    if (actor->IsPlayerRef())
+        PublishPlayer();
+    else
+        PublishFollower(actor);
+}
+} // namespace
+
 void RepublishOwed()
 {
     // Views owed after a spell unequip: the
@@ -1284,7 +1296,7 @@ void RepublishOwed()
         if (auto *actor = RE::TESForm::LookupByID<RE::Actor>(id))
         {
             log::pins.debug("{} time running again -- {}", Describe(actor), CasterState(actor));
-            PublishFollower(actor);
+            Republish(actor);
         }
     }
     g_republish.clear();
@@ -1361,7 +1373,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         const auto bookRequest = request == WearRequest::Pin     ? PinRequest::Pin
                                  : request == WearRequest::Equip ? PinRequest::Equip
                                                                  : PinRequest::Ban;
-        if (request != WearRequest::Unban)
+        if (request != WearRequest::Unban && request != WearRequest::Unequip)
         {
             ApplyToBook(actor, pins, bookRequest, described, hands, moving, dualWield);
             if (fromPanel && g_fighting.contains(id)) [[maybe_unused]]
@@ -1406,6 +1418,14 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         if (moving)
             UnequipForm(actor, thing, Without(Hand::Both, hands), true, variant);
         EquipPinned(actor, thing, hands, true, variant, row, fromPanel);
+        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
+            g_republish.insert(id);
+        break;
+    case WearRequest::Unequip:
+        log::pins.event(log::Level::Info, "unequip.applied", actor,
+                        {{"itemFormId", log::Id(described.form)}, {"itemName", name}, {"hand", HandTag(hands)}},
+                        "{} told to put away {}{}", Describe(actor), name, HandTag(hands));
+        UnequipForm(actor, thing, hands, true, variant);
         if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
             g_republish.insert(id);
         break;
@@ -1490,7 +1510,7 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         if (!actor || !thing)
             return;
         Wear(actor, thing, request, hand, true, variant, row);
-        PublishFollower(actor);
+        Republish(actor);
     });
 }
 
