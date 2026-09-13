@@ -961,12 +961,17 @@ bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor, const char 
     std::vector<Pin> pins;
     {
         std::scoped_lock lock(g_pinMutex);
-        if (FormBannedHere(actor, entry->item))
+        const auto it = g_pins.find(actor->GetFormID());
+        // A ban yields to a pin in the score as it does in the watchdog: a
+        // rule that pins a banned dagger for the fight means the follower
+        // to fight with it, and a weapon the AI scores at zero is one it
+        // stands holding and never swings (2026-09-12).
+        const bool pinned = it != g_pins.end() && FindPin(it->second, entry->item->GetFormID()) != nullptr;
+        if (!pinned && FormBannedHere(actor, entry->item))
         {
             why = "banned";
             return true;
         }
-        const auto it = g_pins.find(actor->GetFormID());
         if (it == g_pins.end() || it->second.empty())
             return false;
         pins = it->second;
