@@ -166,6 +166,7 @@ bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base)
     return true;
 }
 float GameSetting(const char *name, float vanilla);
+std::int32_t GameSetting(const char *name, std::int32_t vanilla);
 
 } // namespace
 
@@ -1609,23 +1610,37 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
 namespace
 {
 
-// A float game setting, or the vanilla value if the collection has no such
-// entry. The fallbacks are vanilla's numbers so a missing setting degrades to
-// "what the unmodded game does", not to a zero that reads as a broken sheet
-// -- and the miss is said once, at warn, since a misspelt name would
-// otherwise be a vanilla number that looks right. Asked on every use, never
-// kept: a mod that changes a parameter mid-session (an MCM slider) changes
-// the sheet with it, and the lookup is a hash of the name.
-float GameSetting(const char *name, float vanilla)
+// The setting of that name in the game's collection, asked on every use and
+// never kept: a mod that changes a parameter mid-session (an MCM slider)
+// changes the sheet with it, and the lookup is a hash of the name. A missing
+// name is said once, at warn, since a misspelt one would otherwise be a
+// vanilla number that looks right. CommonLib's "name"_gs literal is the same
+// lookup but keeps the setting in a static and says nothing of a miss.
+template <class T> const RE::Setting *FindSetting(const char *name, T vanilla)
 {
     auto *collection = RE::GameSettingCollection::GetSingleton();
-    auto *setting = collection ? collection->GetSetting(name) : nullptr;
-    if (setting)
-        return setting->GetFloat();
+    if (const auto *setting = collection ? collection->GetSetting(name) : nullptr)
+        return setting;
     static std::unordered_set<std::string> missing;
     if (missing.insert(name).second)
         log::sensors.warn("game setting {} not found -- using vanilla's {}", name, vanilla);
-    return vanilla;
+    return nullptr;
+}
+
+// A float game setting ("f" names), or the vanilla value where the collection
+// has none. The fallbacks are vanilla's numbers so a missing setting degrades
+// to what the unmodded game does, not to a zero that reads as a broken sheet.
+float GameSetting(const char *name, float vanilla)
+{
+    const auto *setting = FindSetting(name, vanilla);
+    return setting ? setting->GetFloat() : vanilla;
+}
+
+// An integer game setting ("i" names), the same way.
+std::int32_t GameSetting(const char *name, std::int32_t vanilla)
+{
+    const auto *setting = FindSetting(name, vanilla);
+    return setting ? setting->GetInteger() : vanilla;
 }
 
 // "83%", or past the engine's cap "110% (85%)": what the gear adds up to
@@ -3963,37 +3978,23 @@ WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand)
 
 float SoulCharge(RE::SOUL_LEVEL level)
 {
-    const char *setting = nullptr;
+    // The fallbacks are the executable's own defaults, read from its static
+    // data: Skyrim.esm carries no record for these settings.
     switch (level)
     {
     case RE::SOUL_LEVEL::kPetty:
-        setting = "iSoulLevelValuePetty";
-        break;
+        return static_cast<float>(GameSetting("iSoulLevelValuePetty", 250));
     case RE::SOUL_LEVEL::kLesser:
-        setting = "iSoulLevelValueLesser";
-        break;
+        return static_cast<float>(GameSetting("iSoulLevelValueLesser", 500));
     case RE::SOUL_LEVEL::kCommon:
-        setting = "iSoulLevelValueCommon";
-        break;
+        return static_cast<float>(GameSetting("iSoulLevelValueCommon", 1000));
     case RE::SOUL_LEVEL::kGreater:
-        setting = "iSoulLevelValueGreater";
-        break;
+        return static_cast<float>(GameSetting("iSoulLevelValueGreater", 2000));
     case RE::SOUL_LEVEL::kGrand:
-        setting = "iSoulLevelValueGrand";
-        break;
+        return static_cast<float>(GameSetting("iSoulLevelValueGrand", 3000));
     default:
         return 0.0f;
     }
-    auto *settings = RE::GameSettingCollection::GetSingleton();
-    auto *value = settings ? settings->GetSetting(setting) : nullptr;
-    if (value)
-        return static_cast<float>(value->GetInteger());
-    // A zero drops every gem of that level from the snapshot, silently;
-    // say so once.
-    static std::unordered_set<std::string> missing;
-    if (missing.insert(setting).second)
-        log::sensors.warn("game setting {} not found -- soul gems of that level count for nothing", setting);
-    return 0.0f;
 }
 
 std::vector<ft::Snapshot::SoulGemView> ScanSoulGems(RE::Actor *actor)
