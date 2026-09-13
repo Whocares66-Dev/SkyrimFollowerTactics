@@ -2907,11 +2907,6 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
 // in the Creation Kit's words: "Mod Attack Damage", "Mod Spell Cost".
 #include "game/ConditionNames.inc"
 
-// A condition's call, as the Creation Kit shows it: "HasSpell(Whirlwind
-// Cloak)", "GetActorValue(Alteration)". A parameter is a form or a number
-// and nothing says which; a heap pointer is above the 32-bit line and a
-// number is not, so that is the test. Trailing zero parameters are dropped,
-// as a function with no parameters holds zeros there.
 std::string HexId(std::uint32_t id)
 {
     char text[16];
@@ -2919,21 +2914,110 @@ std::string HexId(std::uint32_t id)
     return text;
 }
 
+// The engine's own entry for a condition function, which says what each
+// parameter is: the script command table, indexed by the function's id.
+// Null past the table's end, or where the entry's name is not ours for the
+// id, which would mean the table is not laid out as assumed: said once per
+// id, and the parameters are then not read as anything.
+const RE::SCRIPT_FUNCTION *ConditionCommand(std::size_t id, const char *name)
+{
+    auto *first = RE::SCRIPT_FUNCTION::GetFirstScriptCommand();
+    if (!first || id >= RE::SCRIPT_FUNCTION::Commands::kScriptCommandsEnd)
+        return nullptr;
+    const RE::SCRIPT_FUNCTION &command = first[id];
+    if (name && command.functionName && _stricmp(command.functionName, name) == 0)
+        return &command;
+    static std::unordered_set<std::size_t> said;
+    if (said.insert(id).second)
+        log::sensors.warn(
+            "condition function {}: the engine's table names it {}, ours {} -- its parameters are not read", id,
+            command.functionName ? command.functionName : "nothing", name ? name : "nothing");
+    return nullptr;
+}
+
+// Does a parameter of this type hold a form, a record or a reference? The
+// types that certainly do; every other -- a number, an actor value, a
+// script variable's name, a runtime object -- is never read as one.
+bool HoldsForm(RE::SCRIPT_PARAM_TYPE type)
+{
+    using T = RE::SCRIPT_PARAM_TYPE;
+    switch (type)
+    {
+    case T::kInventoryObject:
+    case T::kObjectRef:
+    case T::kActor:
+    case T::kSpellItem:
+    case T::kCell:
+    case T::kMagicItem:
+    case T::kSound:
+    case T::kTopic:
+    case T::kQuest:
+    case T::kRace:
+    case T::kClass:
+    case T::kFaction:
+    case T::kGlobal:
+    case T::kFurnitureOrFormList:
+    case T::kObject:
+    case T::kMapMarker:
+    case T::kActorBase:
+    case T::kContainerRef:
+    case T::kWorldOrList:
+    case T::kPackage:
+    case T::kCombatStyle:
+    case T::kMagicEffect:
+    case T::kWeather:
+    case T::kNPC:
+    case T::kOwner:
+    case T::kShaderEffect:
+    case T::kFormList:
+    case T::kPerk:
+    case T::kImagespaceMod:
+    case T::kImagespace:
+    case T::kVoiceType:
+    case T::kEncounterZone:
+    case T::kIdleForm:
+    case T::kMessage:
+    case T::kInvObjectOrFormList:
+    case T::kEquipType:
+    case T::kObjectOrFormList:
+    case T::kMusic:
+    case T::kKeyword:
+    case T::kRefType:
+    case T::kLocation:
+    case T::kForm:
+    case T::kShout:
+    case T::kWordOfPower:
+    case T::kBGSScene:
+    case T::kAssociationType:
+    case T::kKnowableForm:
+    case T::kRegion:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// A condition's call, as the Creation Kit shows it: "HasSpell(Whirlwind
+// Cloak)", "GetActorValue(Alteration)". What a parameter is comes from the
+// engine's table: guessed from the value, any pointer taken for a form, it
+// crashed the game on a player's spell whose condition held a pointer to
+// something else (2026-09-13). Trailing zero parameters are dropped, as a
+// function with no parameters holds zeros there.
 std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
 {
     const auto id = static_cast<std::size_t>(data.functionData.function.get());
     const char *name = id < kConditionNames.size() && *kConditionNames[id] ? kConditionNames[id] : nullptr;
     std::string call = name ? name : "Function " + std::to_string(id);
 
-    using Fn = RE::FUNCTION_DATA::FunctionID;
-    const auto fn = data.functionData.function.get();
-    const bool actorValue = fn == Fn::kGetActorValue || fn == Fn::kGetBaseActorValue ||
-                            fn == Fn::kGetPermanentActorValue || fn == Fn::kGetActorValuePercent;
+    const RE::SCRIPT_FUNCTION *command = ConditionCommand(id, name);
     std::vector<std::string> args;
-    for (const void *param : data.functionData.params)
+    for (std::size_t i = 0; i < std::size(data.functionData.params); ++i)
     {
+        const void *param = data.functionData.params[i];
         const auto raw = reinterpret_cast<std::uintptr_t>(param);
-        if (raw > 0xFFFFFFFFu)
+        const bool typed = command && command->params && i < command->numParams;
+        const RE::SCRIPT_PARAM_TYPE type = typed ? command->params[i].paramType.get() : RE::SCRIPT_PARAM_TYPE::kInt;
+        if (typed && HoldsForm(type) && param)
         {
             // The form's name; a keyword has none, only an editor ID, which
             // its record keeps in memory; failing both, the ID. A perk goes
@@ -2949,7 +3033,7 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
                            : formName && *formName             ? formName
                                                                : HexId(form->GetFormID()));
         }
-        else if (actorValue && args.empty())
+        else if (typed && type == RE::SCRIPT_PARAM_TYPE::kActorValue)
         {
             auto *list = RE::ActorValueList::GetSingleton();
             auto *info = list ? list->GetActorValueInfo(static_cast<RE::ActorValue>(raw)) : nullptr;
@@ -2957,7 +3041,10 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
                                                                                : std::to_string(raw));
         }
         else
-            args.push_back(std::to_string(raw));
+        {
+            // A pointer to what is not a form has nothing safe to print.
+            args.push_back(raw > 0xFFFFFFFFu ? "?" : std::to_string(raw));
+        }
     }
     while (!args.empty() && args.back() == "0")
         args.pop_back();
