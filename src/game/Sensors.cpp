@@ -1738,6 +1738,8 @@ const std::vector<TreePerk> &TreePerks(RE::ActorValue skill)
 // entries could fire: an entry-point entry with no owner conditions or
 // with them met, or an ability or quest entry; and a perk with no entries
 // at all, a marker for conditions elsewhere, counts as active.
+const std::vector<std::string> &PerkReaders(const RE::BGSPerk *perk); // below
+
 bool PerkActive(RE::Actor *actor, RE::BGSPerk *perk)
 {
     if (!actor || !perk)
@@ -1754,7 +1756,23 @@ bool PerkActive(RE::Actor *actor, RE::BGSPerk *perk)
         if (point->conditions.size() == 0 || !point->conditions[0] || point->conditions[0].IsTrue(actor, actor))
             return true;
     }
-    return !anyEntry;
+    // A perk with no entries is a marker for conditions elsewhere -- Skald,
+    // which the Bard's perks and spells ask for -- or a stub nothing asks
+    // for: Adamant leaves the vanilla third rank of Armsman with its name
+    // and its "60% more damage" and no entries, and an NPC authored with
+    // it holds a perk that does nothing (Teldryn Sero, 2026-09-13). The
+    // load order tells the two apart.
+    return !anyEntry && !PerkReaders(perk).empty();
+}
+
+// Why a perk held is set aside, for the row's grey: nothing, "Inactive"
+// for one whose entries' conditions fail, "Does nothing" for one with no
+// entries that nothing reads.
+const char *PerkAside(RE::Actor *actor, RE::BGSPerk *perk)
+{
+    if (PerkActive(actor, perk))
+        return nullptr;
+    return perk && perk->perkEntries.empty() ? "Does nothing" : "Inactive";
 }
 
 // The perks this follower holds in one skill's tree, one row per perk at
@@ -1778,6 +1796,64 @@ std::string PerkName(const RE::BGSPerk *perk)
 }
 } // namespace
 
+// The records whose conditions ask HasPerk of a perk -- other perks'
+// entries on any tab, spells' effects, magic effects -- by name, so a
+// perk with no entries can say who reads it, or that nobody does. The
+// whole load order once, on first use: a few thousand records, a few
+// milliseconds, and the answer does not change while the game runs.
+const std::vector<std::string> &PerkReaders(const RE::BGSPerk *perk)
+{
+    static const std::unordered_map<RE::FormID, std::vector<std::string>> readers = [] {
+        std::unordered_map<RE::FormID, std::vector<std::string>> out;
+        auto *handler = RE::TESDataHandler::GetSingleton();
+        if (!handler)
+            return out;
+        const auto note = [&out](const RE::TESCondition &condition, const std::string &who) {
+            for (const auto *item = condition.head; item; item = item->next)
+            {
+                if (item->data.functionData.function.get() != RE::FUNCTION_DATA::FunctionID::kHasPerk)
+                    continue;
+                const auto *asked = static_cast<const RE::BGSPerk *>(item->data.functionData.params[0]);
+                if (!asked || who.empty())
+                    continue;
+                auto &names = out[asked->GetFormID()];
+                if (std::find(names.begin(), names.end(), who) == names.end())
+                    names.push_back(who);
+            }
+        };
+        for (const auto *other : handler->GetFormArray<RE::BGSPerk>())
+        {
+            if (!other)
+                continue;
+            for (const auto *entry : other->perkEntries)
+            {
+                if (!entry || entry->GetType() != RE::PERK_ENTRY_TYPE::kEntryPoint)
+                    continue;
+                const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
+                for (std::uint32_t tab = 0; tab < point->conditions.size(); ++tab)
+                    note(point->conditions[tab], PerkName(other));
+            }
+        }
+        for (const auto *spell : handler->GetFormArray<RE::SpellItem>())
+        {
+            if (!spell)
+                continue;
+            for (const auto *effect : spell->effects)
+                if (effect)
+                    note(effect->conditions, NameOr(spell, ""));
+        }
+        for (const auto *effect : handler->GetFormArray<RE::EffectSetting>())
+            if (effect)
+                note(effect->conditions, NameOr(effect, ""));
+        return out;
+    }();
+    static const std::vector<std::string> none;
+    if (!perk)
+        return none;
+    const auto found = readers.find(perk->GetFormID());
+    return found == readers.end() ? none : found->second;
+}
+
 std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
 {
     std::vector<SheetRow> rows;
@@ -1796,8 +1872,8 @@ std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
         SheetRow row = Row(std::move(label), rank);
         row.modifiers = entry.description;
         row.form = entry.perk->GetFormID(); // the name opens the perk's page
-        if (!PerkActive(actor, entry.perk))
-            row.aside = "Inactive";
+        if (const char *aside = PerkAside(actor, entry.perk))
+            row.aside = aside;
         rows.push_back(std::move(row));
     }
     return rows;
@@ -3085,6 +3161,18 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
             active.icon = kGlyphTick;
             info.rows.push_back(std::move(active));
         }
+        // Who asks for it, for a marker; and for a perk with no entries
+        // that nobody asks for, that it does nothing, and whose record
+        // left it so -- the last plugin to touch it.
+        if (const auto &readers = PerkReaders(perk); !readers.empty())
+        {
+            std::string who;
+            for (std::size_t i = 0; i < readers.size() && i < 4; ++i)
+                who += (who.empty() ? "" : ", ") + readers[i];
+            if (readers.size() > 4)
+                who += ", +" + std::to_string(readers.size() - 4);
+            info.rows.push_back(Row("Read by", who));
+        }
         p.sections.push_back(std::move(info));
 
         // The effects: an entry each, with the conditions that gate it on
@@ -3130,8 +3218,19 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         // keep their order, the weaker first as a rule.
         std::stable_sort(effects.rows.begin(), effects.rows.end(),
                          [](const SheetRow &a, const SheetRow &b) { return a.label < b.label; });
-        if (!effects.rows.empty())
-            p.sections.push_back(std::move(effects));
+        // A perk with no entries shows the table all the same, one row of
+        // N/A beside the description below it, so a description promising
+        // 60% over an effect of nothing is seen as the mismatch it is
+        // (Adamant's stub of Armsman's third rank, 2026-09-13); the hover
+        // names the plugin that last changed the record.
+        if (effects.rows.empty())
+        {
+            SheetRow row = Row("Effect", "N/A");
+            if (const auto *file = perk->GetFile(); file && !file->GetFilename().empty())
+                row.note = "Record last changed by " + std::string(file->GetFilename());
+            effects.rows.push_back(std::move(row));
+        }
+        p.sections.push_back(std::move(effects));
         out.push_back(std::move(p));
     };
 
@@ -3388,8 +3487,8 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                                                                         : std::string());
                 row.modifiers = text.c_str() ? text.c_str() : "";
                 row.form = perk->GetFormID();
-                if (!PerkActive(actor, perk))
-                    row.aside = "Inactive";
+                if (const char *aside = PerkAside(actor, perk))
+                    row.aside = aside;
                 s.rows.push_back(std::move(row));
             }
         }
