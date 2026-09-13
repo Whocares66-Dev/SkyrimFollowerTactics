@@ -256,14 +256,23 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         const RE::ActorValue skill = effect ? effect->GetMagickSkill() : RE::ActorValue::kNone;
         entry.category = SchoolOf(skill);
         if (entry.category == MagicCategory::COUNT)
-            return false;
-        entry.school = DisplayName(entry.category);
-        entry.levelValue = effect ? effect->GetMinimumSkillLevel() : 0;
-        entry.level = LevelWord(entry.levelValue);
-        if (auto *owner = actor->AsActorValueOwner())
         {
-            entry.skill = static_cast<int>(owner->GetActorValue(skill));
-            entry.aboveSkill = entry.levelValue > entry.skill;
+            // No school: Serana's Drain Life, a Vampire's Drain. Listed
+            // under Other, with no school word, no level and no skill gate
+            // -- there is no skill to be below (2026-09-13; the tactics
+            // menu offered it and the tab did not).
+            entry.category = MagicCategory::Other;
+        }
+        else
+        {
+            entry.school = DisplayName(entry.category);
+            entry.levelValue = effect ? effect->GetMinimumSkillLevel() : 0;
+            entry.level = LevelWord(entry.levelValue);
+            if (auto *owner = actor->AsActorValueOwner())
+            {
+                entry.skill = static_cast<int>(owner->GetActorValue(skill));
+                entry.aboveSkill = entry.levelValue > entry.skill;
+            }
         }
         entry.costValue = spell->CalculateMagickaCost(actor);
         const bool stream = spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
@@ -311,7 +320,7 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         std::snprintf(id, sizeof(id), "%08X", spell->GetFormID());
         stats.rows.push_back(Row("Base ID", id));
     }
-    if (!power)
+    if (!power && !entry.school.empty())
         stats.rows.push_back(Row("School", entry.school));
     if (!entry.type.empty())
         stats.rows.push_back(Row("Type", entry.type));
@@ -427,6 +436,8 @@ const char *DisplayName(MagicCategory category)
         return "Illusion";
     case MagicCategory::Restoration:
         return "Restoration";
+    case MagicCategory::Other:
+        return "Other";
     case MagicCategory::Shouts:
         return "Shouts";
     case MagicCategory::Powers:

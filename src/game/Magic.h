@@ -26,6 +26,10 @@ enum class MagicCategory : std::uint8_t
     Destruction,
     Illusion,
     Restoration,
+    // A spell of no school: a vampire's Drain Life, a race's ability cast
+    // as a spell. The combat AI casts them and a rule may name them, so the
+    // tab lists them; the level and the skill gate mean nothing for them.
+    Other,
     Shouts,
     Powers,
     COUNT

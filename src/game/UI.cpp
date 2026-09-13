@@ -4149,6 +4149,8 @@ unsigned IconFor(MagicCategory category)
         return 0xF72B; // wand-sparkles
     case MagicCategory::Restoration:
         return 0xE4FB; // hands-holding-circle
+    case MagicCategory::Other:
+        return 0xF043; // droplet, for the drain that put the chip here
     case MagicCategory::Shouts:
         return 0xF72E; // wind
     case MagicCategory::Powers:
