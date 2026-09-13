@@ -2476,20 +2476,38 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     float rating = armor->GetArmorRating();
     ft::Start(b, "Base", rating);
 
-    // Tempering is flat points, the same for a helmet and a cuirass at
-    // one item health: one plus the health's place between the first and
-    // last health steps, times the armour smithing maximum less one; no
-    // bonus below the first step, which is where an untempered piece
-    // sits. (A flag the engine reads doubles it for a keyword the piece
-    // may carry; not read here, and Other would show it.)
+    // Tempering is flat points: one plus the item health's place between
+    // the first and last health steps, times the armour smithing maximum
+    // less one, floored at zero, so an untempered piece at health 1.0 gets
+    // nothing. Doubled, before the floor, for a piece carrying the default
+    // object Keyword Cuirass: Serana's tempered Vampire Armor rated 82 on
+    // our sheet and 106 in the engine, the whole of an Other +24
+    // (measured 2026-09-13, docs/MODIFIERS.md).
     static const float healthLow = GameSetting("fHealthDataValue1", 1.1f);
     static const float healthHigh = GameSetting("fHealthDataValue6", 1.6f);
     static const float smithingMax = GameSetting("fSmithingArmorMax", 10.0f);
-    if (const float health = Tempering(entry); health > healthLow && healthHigh > healthLow)
+    if (healthHigh > healthLow)
     {
-        const float bonus = 1.0f + (health - healthLow) / (healthHigh - healthLow) * (smithingMax - 1.0f);
-        rating += bonus;
-        ft::Add(b, "Tempering", bonus);
+        float bonus = 1.0f + (Tempering(entry) - healthLow) / (healthHigh - healthLow) * (smithingMax - 1.0f);
+        auto *defaults = RE::BGSDefaultObjectManager::GetSingleton();
+        // wingdi.h's GetObject macro reaches this file through the
+        // precompiled header, after CommonLib's declaration, and renames
+        // the member at the call.
+#pragma push_macro("GetObject")
+#undef GetObject
+        auto **slot = defaults && defaults->IsObjectInitialized(RE::DefaultObjectID::kKeywordCuirass)
+                          ? defaults->GetObject<RE::BGSKeyword>(RE::DefaultObjectID::kKeywordCuirass)
+                          : nullptr;
+#pragma pop_macro("GetObject")
+        const RE::BGSKeyword *cuirass = slot ? *slot : nullptr;
+        const bool body = cuirass && static_cast<const RE::BGSKeywordForm *>(armor)->HasKeyword(cuirass);
+        if (body)
+            bonus *= 2.0f;
+        if (bonus > 0.0f)
+        {
+            rating += bonus;
+            ft::Add(b, body ? "Tempering (body, doubled)" : "Tempering", bonus);
+        }
     }
 
     using AV = RE::ActorValue;
