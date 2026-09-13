@@ -442,6 +442,33 @@ enum class PinRequest : std::uint8_t
 bool Ban(Bans &bans, std::uint32_t form, const std::optional<ItemVariant> &variant = std::nullopt);
 bool Unban(Bans &bans, std::uint32_t form, const std::optional<ItemVariant> &variant = std::nullopt);
 
+// ---- The combat AI's score: what its entry for a thing is kept from it by.
+//
+// The AI lists what it could hold, an entry per thing per hand, and asks
+// the score of each; an entry shadowed here is answered zero, and the AI
+// never chooses it. A ban shadows the whole form when every row of it is
+// banned and no pin holds the form: a rule's pin is the fight-time override
+// of a ban, in the score as in the watchdog, or the AI stands holding a
+// pinned weapon it will not swing (2026-09-12). One copy of a weapon already
+// in the other hand cannot fill this hand too. And a pin on another thing
+// that holds the entry's hand keeps it out (KeptFromAI). `rows` are the
+// form's rows in the bag, by variant, as the Inventory tab splits them;
+// none for a spell. `heldInOtherHand` is the game side's reading of the
+// hands.
+enum class Shadow : std::uint8_t
+{
+    None,
+    Banned,
+    OnlyOneInOtherHand,
+    PinnedAgainst
+};
+[[nodiscard]] Shadow ShadowOf(const std::vector<Pin> &pins, const Bans &bans, const Holdable &thing, Hand slot,
+                              const std::vector<ItemVariant> &rows, bool heldInOtherHand);
+// Is every row of the form banned: a ban on the form itself, or one on each
+// row's variant? A thing with no rows -- a spell -- is banned by a ban on
+// the form alone.
+[[nodiscard]] bool AllRowsBanned(const Bans &bans, std::uint32_t form, const std::vector<ItemVariant> &rows);
+
 // ---- The engine's own pick, minus the banned copies.
 //
 // An equip that names no list -- every one the combat AI makes -- leaves

@@ -139,6 +139,10 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
 // panel's click on the stack means one of these, or a listless copy.
 [[nodiscard]] RE::ExtraDataList *WornStackList(RE::Actor *actor, RE::TESBoundObject *object, Hand hands);
 [[nodiscard]] RE::ExtraDataList *UnwornStackList(RE::Actor *actor, RE::TESBoundObject *object);
+// The form's rows in the bag as the Inventory tab splits them, by variant:
+// one per list that is a row of its own, and the plain stack once when any
+// copy is in it. What the core's whole-form questions take.
+[[nodiscard]] std::vector<ft::ItemVariant> RowsOf(RE::Actor *actor, RE::TESBoundObject *object);
 // Are there plain copies on no list at all, which only a null list can
 // reach?
 [[nodiscard]] bool HasListlessCopy(RE::Actor *actor, RE::TESBoundObject *object);

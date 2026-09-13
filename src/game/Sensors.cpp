@@ -3244,6 +3244,28 @@ RE::ExtraDataList *ListOfAddress(RE::Actor *actor, RE::TESBoundObject *object, c
     return ListOf(actor, object, [address](const RE::ExtraDataList &list) { return &list == address; });
 }
 
+std::vector<ft::ItemVariant> RowsOf(RE::Actor *actor, RE::TESBoundObject *object)
+{
+    std::vector<ft::ItemVariant> rows;
+    const Carried carried = CarriedOf(actor, object);
+    if (carried.count <= 0)
+        return rows;
+    std::int32_t apart = 0;
+    if (carried.entry && carried.entry->extraLists)
+    {
+        for (const auto *list : *carried.entry->extraLists)
+        {
+            if (!list || !RowOfItsOwn(object, list))
+                continue;
+            apart += list->GetCount();
+            rows.push_back(VariantOf(object, list));
+        }
+    }
+    if (carried.count > apart)
+        rows.emplace_back(); // the plain stack: the listless copies and the folded lists
+    return rows;
+}
+
 bool HasListlessCopy(RE::Actor *actor, RE::TESBoundObject *object)
 {
     const Carried carried = CarriedOf(actor, object);

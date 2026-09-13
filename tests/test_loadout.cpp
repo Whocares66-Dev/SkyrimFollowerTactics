@@ -964,6 +964,61 @@ TEST_CASE("an enchantment is its effects at their strengths, in any order", "[pi
     CHECK_FALSE(IsBanned(bans, weakSword));
 }
 
+TEST_CASE("the combat AI's score: a ban zeroes the form unless a pin holds it; one row allowed keeps the score",
+          "[pins]")
+{
+    // The AI's entry is by form, whichever variant; the bag has the plain
+    // stack, three copies.
+    Holdable dagger = Thing(kSteelDagger, Grip::Either);
+    dagger.kind = Kind::Weapon;
+    dagger.count = 3;
+    const ItemVariant plain;
+    ItemVariant tempered;
+    tempered.tempering = 1.2f;
+    const std::vector<ItemVariant> plainOnly{plain};
+
+    // Banned by its one row: zeroed.
+    Bans bans;
+    REQUIRE(Ban(bans, kSteelDagger, plain));
+    REQUIRE(ShadowOf({}, bans, dagger, Hand::Right, plainOnly, false) == Shadow::Banned);
+    // A tempered row beside it that no ban names: the form keeps its
+    // score, and the detour picks the row.
+    REQUIRE(ShadowOf({}, bans, dagger, Hand::Right, {plain, tempered}, false) == Shadow::None);
+    // A ban on the form: every row, whatever rows there are.
+    Bans whole;
+    REQUIRE(Ban(whole, kSteelDagger));
+    REQUIRE(ShadowOf({}, whole, dagger, Hand::Right, {plain, tempered}, false) == Shadow::Banned);
+    // A spell has no rows: a ban on it is a ban on the form.
+    Holdable flames = Thing(kFlames, Grip::Either);
+    flames.kind = Kind::Spell;
+    flames.count = 2;
+    Bans spellBan;
+    REQUIRE(Ban(spellBan, kFlames));
+    REQUIRE(ShadowOf({}, spellBan, flames, Hand::Left, {}, false) == Shadow::Banned);
+    REQUIRE(ShadowOf({}, bans, flames, Hand::Left, {}, false) == Shadow::None);
+
+    // A rule pins the banned dagger for the fight: the pin is the override,
+    // and the dagger is scored as any weapon -- or the follower stands
+    // holding it and never swings (2026-09-12).
+    Holdable pinnedDagger = dagger;
+    pinnedDagger.variant = plain;
+    const std::vector<Pin> pins{{pinnedDagger, Hand::Right}};
+    REQUIRE(ShadowOf(pins, bans, dagger, Hand::Right, plainOnly, false) == Shadow::None);
+    REQUIRE(ShadowOf(pins, whole, dagger, Hand::Right, plainOnly, false) == Shadow::None);
+    // The pinned hand's own entry passes; the other hand's entry for the
+    // only copy, already in the pinned hand, cannot be honoured.
+    Holdable one = dagger;
+    one.count = 1;
+    REQUIRE(ShadowOf(pins, {}, one, Hand::Left, plainOnly, true) == Shadow::OnlyOneInOtherHand);
+    REQUIRE(ShadowOf(pins, {}, dagger, Hand::Left, plainOnly, true) == Shadow::None);
+    // A pin on another thing holding the entry's hand keeps the entry out.
+    Holdable sword = Thing(kIronSword, Grip::Either);
+    sword.kind = Kind::Weapon;
+    const std::vector<Pin> swordPin{{sword, Hand::Right}};
+    REQUIRE(ShadowOf(swordPin, {}, dagger, Hand::Right, plainOnly, false) == Shadow::PinnedAgainst);
+    REQUIRE(ShadowOf(swordPin, {}, dagger, Hand::Left, plainOnly, false) == Shadow::None);
+}
+
 TEST_CASE("an equip naming no list takes the engine's pick, minus the banned variants", "[pins]")
 {
     // Frea's bag, in the entry's order: an outfit dagger on a list with

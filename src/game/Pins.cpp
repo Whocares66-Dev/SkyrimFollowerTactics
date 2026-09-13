@@ -45,51 +45,6 @@ std::unordered_map<ft::ActorId, std::vector<Pin>> g_pins;
 // What the panel has banned on each follower. Same lock, same thread.
 std::unordered_map<ft::ActorId, Bans> g_bans;
 
-// Is the FORM kept from the combat AI by the bans: a ban on every copy of
-// it, or every copy the actor carries banned? The AI's list is by form,
-// so this is all the score hook can ask, and all the equip detour asks
-// of an equip that names no copy (Refused); with one copy allowed the
-// form keeps its score. A thing that is no item -- a spell, a shout --
-// has the one copy. Under g_pinMutex.
-bool FormBannedHere(RE::Actor *actor, RE::TESForm *form)
-{
-    const auto it = g_bans.find(actor->GetFormID());
-    if (it == g_bans.end() || it->second.empty())
-        return false;
-    const Bans &bans = it->second;
-    Holdable any;
-    any.form = form->GetFormID();
-    if (!IsBanned(bans, any))
-        return false;
-    if (std::any_of(bans.begin(), bans.end(), [&](const Banned &b) { return b.form == any.form && !b.variant; }))
-        return true;
-    auto *object = form->As<RE::TESBoundObject>();
-    if (!object)
-        return true;
-    // Every row: the listed ones by their variants, and the listless remainder
-    // as plain.
-    const Carried carried = CarriedOf(actor, object);
-    std::int32_t listed = 0;
-    if (carried.entry && carried.entry->extraLists)
-    {
-        for (const auto *list : *carried.entry->extraLists)
-        {
-            if (!list)
-                continue;
-            listed += list->GetCount();
-            Holdable row = any;
-            row.variant = VariantOf(object, list);
-            if (!IsBanned(bans, row))
-                return false;
-        }
-    }
-    if (carried.count <= listed)
-        return true;
-    Holdable plain = any;
-    plain.variant = ItemVariant{};
-    return IsBanned(bans, plain);
-}
-
 // Above zero while an equip is OURS. The engine's equips and ours reach the
 // same hook (RefuseEquipsAgainstPins), and only the engine's are ever
 // refused. Per thread: an equip is synchronous, and the counter must not
@@ -959,40 +914,41 @@ bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor, const char 
     if (!entry || !entry->item || !actor)
         return false;
     std::vector<Pin> pins;
+    Bans bans;
     {
         std::scoped_lock lock(g_pinMutex);
-        const auto it = g_pins.find(actor->GetFormID());
-        // A ban yields to a pin in the score as it does in the watchdog: a
-        // rule that pins a banned dagger for the fight means the follower
-        // to fight with it, and a weapon the AI scores at zero is one it
-        // stands holding and never swings (2026-09-12).
-        const bool pinned = it != g_pins.end() && FindPin(it->second, entry->item->GetFormID()) != nullptr;
-        if (!pinned && FormBannedHere(actor, entry->item))
-        {
-            why = "banned";
-            return true;
-        }
-        if (it == g_pins.end() || it->second.empty())
-            return false;
-        pins = it->second;
+        if (const auto it = g_pins.find(actor->GetFormID()); it != g_pins.end())
+            pins = it->second;
+        if (const auto it = g_bans.find(actor->GetFormID()); it != g_bans.end())
+            bans = it->second;
     }
+    if (pins.empty() && bans.empty())
+        return false;
+    // The rule is core's (ShadowOf, tested); this reads what it asks for.
+    // The other hand is read here because the AI's entry for a staff --
+    // a weapon it handles as magic, listed per hand as a spell is, with no
+    // count behind it -- would otherwise put Jenassa's one Staff of Flames
+    // in both hands (18:56).
     const Holdable thing = DescribeHoldable(actor, entry->item);
     const Hand slot = SlotHand(entry->itemSlot.equipSlot);
-    // One copy of a weapon, already in the other hand: the entry for this
-    // hand cannot be honoured, and the engine, asked anyway, shows the one
-    // object in both hands. A sword never reaches this -- the melee AI
-    // fills the left hand only under the dual-wield rules -- but a staff
-    // is a weapon the AI handles as magic, listed and equipped per hand as
-    // a spell is, with no count behind it (Jenassa's one Staff of Flames
-    // in both hands, 18:56).
-    if (thing.kind == Kind::Weapon && thing.count < 2 && (slot == Hand::Left || slot == Hand::Right) &&
-        actor->GetEquippedObject(slot != Hand::Left) == entry->item)
+    auto *object = entry->item->As<RE::TESBoundObject>();
+    const std::vector<ItemVariant> rows = object ? RowsOf(actor, object) : std::vector<ItemVariant>{};
+    const bool heldInOtherHand =
+        (slot == Hand::Left || slot == Hand::Right) && actor->GetEquippedObject(slot != Hand::Left) == entry->item;
+    switch (ShadowOf(pins, bans, thing, slot, rows, heldInOtherHand))
     {
+    case Shadow::Banned:
+        why = "banned";
+        return true;
+    case Shadow::OnlyOneInOtherHand:
         why = "the only one, in the other hand";
         return true;
+    case Shadow::PinnedAgainst:
+        why = "pinned against";
+        return true;
+    default:
+        return false;
     }
-    why = "pinned against";
-    return KeptFromAI(pins, thing, slot);
 }
 
 // The originals are looked up and the once-set touched under the pin

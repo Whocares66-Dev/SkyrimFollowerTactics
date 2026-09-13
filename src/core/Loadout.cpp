@@ -371,6 +371,36 @@ bool Holds(const std::vector<Pin> &pins, const Pin &pin) noexcept
 }
 } // namespace
 
+bool AllRowsBanned(const Bans &bans, std::uint32_t form, const std::vector<ItemVariant> &rows)
+{
+    Holdable any;
+    any.form = form;
+    if (!IsBanned(bans, any))
+        return false;
+    if (std::any_of(bans.begin(), bans.end(), [form](const Banned &b) { return b.form == form && !b.variant; }))
+        return true;
+    if (rows.empty())
+        return false; // bans on variants of a form with no rows in the bag ban nothing that is there
+    return std::all_of(rows.begin(), rows.end(), [&](const ItemVariant &variant) {
+        Holdable row;
+        row.form = form;
+        row.variant = variant;
+        return IsBanned(bans, row);
+    });
+}
+
+Shadow ShadowOf(const std::vector<Pin> &pins, const Bans &bans, const Holdable &thing, Hand slot,
+                const std::vector<ItemVariant> &rows, bool heldInOtherHand)
+{
+    // A pin on the form is the override: the thing is scored as if unbanned.
+    const bool pinned = FindPin(pins, thing.form) != nullptr;
+    if (!pinned && AllRowsBanned(bans, thing.form, rows))
+        return Shadow::Banned;
+    if (thing.kind == Kind::Weapon && thing.count < 2 && (slot == Hand::Left || slot == Hand::Right) && heldInOtherHand)
+        return Shadow::OnlyOneInOtherHand;
+    return KeptFromAI(pins, thing, slot) ? Shadow::PinnedAgainst : Shadow::None;
+}
+
 std::optional<std::size_t> EnginePick(const std::vector<VariantInBag> &copies, const Bans &bans, std::uint32_t form)
 {
     Holdable thing;
