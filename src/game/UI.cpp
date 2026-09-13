@@ -1154,7 +1154,7 @@ bool Fits(ft::Grip grip, Hand hand, bool spell)
     }
 }
 
-// "Equip weapon" -> "weapon", for "Unequip weapon" and the None tooltip.
+// "Equip weapon" -> "weapon", for "Unequip weapon" and the heading.
 
 // The name of the thing an equip rule names, as they carry or know it;
 // empty if they do not.
@@ -1464,21 +1464,24 @@ bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const
 
 // The Equip weapon / Equip spell / Equip arrows / Equip armor cascades.
 //
-// None first, in a section by itself: let go of every pin of this kind, and
-// the AI chooses again. Then, for the two that take a hand, Right, Left and
-// Both -- the weapon hand first, as a player thinks of them -- each listing
-// what fits that hand; for arrows and armour, the things themselves. Every list is theirs, so a rule cannot name a
+// Unequip first: let go of every pin of this kind, and the AI chooses
+// again. For the two that take a hand it heads each hand's menu instead,
+// Right, Left and Both -- the weapon hand first, as a player thinks of them
+// -- each listing what fits that hand; for arrows and armour, the things
+// themselves. Every list is theirs, so a rule cannot name a
 // thing they do not have.
 bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 {
     bool changed = false;
 
-    // None: let go of every pin of the kind, and the AI decides again. For
-    // a weapon or a spell it is the first leaf of each hand's menu, the hand
-    // being the thing let go of; for arrows and armour it heads the menu.
+    // Unequip: let go of every pin of the kind and take those things off,
+    // and the AI decides again -- not "None", which would promise a hand
+    // kept empty, and nothing does that. For a weapon or a spell it is the
+    // first leaf of each hand's menu, the hand being the thing let go of;
+    // for arrows and armour it heads the menu.
     const auto none = [&](Hand hand) {
         const bool selected = act.kind == action && act.form == 0 && act.hand == hand;
-        if (CascadeItem("None", selected))
+        if (CascadeItem("Unequip", selected))
         {
             act.kind = action;
             act.form = 0;
@@ -1538,7 +1541,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         const std::string label(ft::DisplayName(hand));
         if (!BeginCascade(label.c_str()))
             continue;
-        // None first: let go of that hand's pin. Both lets go of both.
+        // Unequip first: let go of that hand's pin. Both lets go of both.
         none(hand);
         bool any = false;
         if (spell)
