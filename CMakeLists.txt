@@ -103,6 +103,7 @@ include(ClangTools)
 # ---------------------------------------------------------------------------
 add_library(ft_core STATIC
     src/core/Blows.cpp
+    src/core/Breakdown.cpp
     src/core/Editor.cpp
     src/core/Effects.cpp
     src/core/Evaluator.cpp
