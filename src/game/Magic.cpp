@@ -11,6 +11,8 @@
 #include "game/Inventory.h"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cstdio>
 #include <string>
 
@@ -58,6 +60,27 @@ void AddTimeSection(RE::Actor *actor, const std::vector<const RE::MagicItem *> &
 
     if (!time.rows.empty())
         entry.detail.push_back(std::move(time));
+}
+
+// A word of power in the Latin alphabet. Its name is written for the game's
+// dragon-script font, where a digit is one of the nine runes for a pair of
+// letters: D4 is Dah, V1z Vaaz. The digits are UESP's Dragon Alphabet table,
+// checked against Skyrim.esm's words beside their editor IDs (Nir N7, Mey
+// M9, Zoor Z8r, Feim F2m).
+std::string DragonLatin(const std::string &name)
+{
+    static constexpr std::array<const char *, 10> kPairs{"", "aa", "ei", "ii", "ah", "uu", "ur", "ir", "oo", "ey"};
+    std::string out;
+    for (const char c : name)
+    {
+        if (c >= '1' && c <= '9')
+            out += kPairs[static_cast<std::size_t>(c - '0')];
+        else
+            out += c;
+    }
+    if (!out.empty())
+        out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+    return out;
 }
 
 // The magic menu's level word for an effect's minimum skill.
@@ -391,7 +414,7 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
         const auto &variation = shout->variations[i];
         if (!variation.word)
             continue;
-        std::string word = NameOf(variation.word);
+        std::string word = DragonLatin(NameOf(variation.word));
         if (word.empty())
             word = "?";
         // The word's recovery as it applies to them, their shout recovery
