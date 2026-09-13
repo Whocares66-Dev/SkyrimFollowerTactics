@@ -1461,10 +1461,10 @@ bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const
 // The Equip weapon / Equip spell / Equip arrows / Equip armor cascades.
 //
 // None first, in a section by itself: let go of every pin of this kind, and
-// the AI chooses again. Then, for the two that take a hand, Left, Right and
-// Both, each listing what fits that hand; for arrows and armour, the things
-// themselves. Every list is theirs, so a rule cannot name a thing they do
-// not have.
+// the AI chooses again. Then, for the two that take a hand, Right, Left and
+// Both -- the weapon hand first, as a player thinks of them -- each listing
+// what fits that hand; for arrows and armour, the things themselves. Every list is theirs, so a rule cannot name a
+// thing they do not have.
 bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 {
     bool changed = false;
@@ -1504,7 +1504,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
     }
     Im::Separator();
 
-    for (const Hand hand : {Hand::Left, Hand::Right, Hand::Both})
+    for (const Hand hand : {Hand::Right, Hand::Left, Hand::Both})
     {
         const std::string label(ft::DisplayName(hand));
         bool any = false;
