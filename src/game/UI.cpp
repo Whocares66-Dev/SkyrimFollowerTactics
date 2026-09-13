@@ -2332,8 +2332,12 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         Im::TableSetColumnIndex(3);
         // Where the Then column begins, for the drawer's border to sit on
-        // it: the cell's content less its padding is the column's border.
-        const float thenLeft = Im::GetCursorScreenPos().x - kCellPadX;
+        // it: the cell's content less the cell padding and less the half
+        // item spacing ImGui puts before a cell's content, which this table
+        // pushes to kCellPadX -- read from the style, not assumed. Without
+        // the spacing the drawer sat three pixels right of the column's
+        // border (2026-09-12).
+        const float thenLeft = Im::GetCursorScreenPos().x - kCellPadX - std::floor(style->ItemSpacing.x * 0.5f);
         if (rule.actions.empty())
             rule.actions.emplace_back();
         const std::string key = RuleKey(view.id, i);
