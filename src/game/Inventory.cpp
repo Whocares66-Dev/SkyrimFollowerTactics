@@ -239,8 +239,11 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         }
         if (armor->GetArmorType() != RE::BGSBipedObjectForm::ArmorType::kClothing)
         {
-            item.armor = ArmorRating(actor, armor, entry);
-            stats.rows.push_back(Row("Armor", Fmt("%.0f", item.armor)));
+            SheetRow row;
+            item.armor = ArmorRating(actor, armor, entry, &row.breakdown);
+            row.label = "Armor";
+            row.value = Fmt("%.0f", item.armor);
+            stats.rows.push_back(std::move(row));
             stats.rows.push_back(Row("Base Armor", Fmt("%.0f", armor->GetArmorRating())));
         }
         item.description = DescriptionOf(armor);
