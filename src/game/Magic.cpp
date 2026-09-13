@@ -271,7 +271,9 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
             if (auto *owner = actor->AsActorValueOwner())
             {
                 entry.skill = static_cast<int>(owner->GetActorValue(skill));
-                entry.aboveSkill = entry.levelValue > entry.skill;
+                // The combat AI's gate: the player casts any spell they
+                // know, at any skill.
+                entry.aboveSkill = !actor->IsPlayerRef() && entry.levelValue > entry.skill;
             }
         }
         entry.costValue = spell->CalculateMagickaCost(actor);

@@ -72,6 +72,7 @@ struct MagicEntry
     // will not choose it (Chain Lightning, Adept, against Destruction 39).
     // The package could make them cast it regardless, but by our rule it is
     // neither cast nor pinned, and the hand cells take no click for it.
+    // Never the player's: no combat AI chooses for them.
     bool aboveSkill{false};
     int castValue{0};      // the delivery behind the word, for sorting
     float costValue{0.0f}; // magicka, for sorting; 0 for powers and shouts
