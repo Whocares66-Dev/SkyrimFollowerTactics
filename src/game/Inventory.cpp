@@ -500,10 +500,15 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
     // is the left hand's by its kind (WornIn).
     if (item.handItem && entry && entry->extraLists)
     {
+        // A two-hander's worn copy carries the right hand's mark alone and
+        // holds both hands, as the engine reports it: the left cell read
+        // empty beside a crossbow once the ticks came from the marks.
+        const bool twoHanded = TwoHanded(object->As<RE::TESObjectWEAP>());
         for (const auto *list : *entry->extraLists)
         {
-            item.equippedLeft = item.equippedLeft || WornIn(object, list, Hand::Left);
-            item.equippedRight = item.equippedRight || WornIn(object, list, Hand::Right);
+            const bool right = WornIn(object, list, Hand::Right);
+            item.equippedLeft = item.equippedLeft || WornIn(object, list, Hand::Left) || (twoHanded && right);
+            item.equippedRight = item.equippedRight || right;
         }
     }
     stats.rows[typeRow].value = item.type;
