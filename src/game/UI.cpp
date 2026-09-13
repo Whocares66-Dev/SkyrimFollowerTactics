@@ -2727,7 +2727,7 @@ void NoteTooltip(const std::string &note);
 // A number written out as the calculation that made it: the lines in
 // two columns, the amounts right-aligned, a rule, then the total -- the
 // same shape everywhere a value has sources, so the eye can check the
-// arithmetic. A line's detail sits indented and dimmed beneath it.
+// arithmetic. A line's detail sits indented beneath it.
 void BreakdownTooltip(const ft::Breakdown &b);
 
 // A run of headed sections, each a bordered table in the style of the rule
@@ -3408,32 +3408,33 @@ void BreakdownTooltip(const ft::Breakdown &b)
             {
                 Im::TableNextRow(0, 0.0f);
                 Im::TableSetColumnIndex(0);
-                const bool dim = depth > 0;
-                if (dim)
-                    Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
+                // Detail is indented and nothing more: dimmed, it read as
+                // inactive, which is what dimming means on the perk page.
                 std::string label(static_cast<std::size_t>(depth) * 3, ' ');
                 label += line.label;
                 Im::Text("%s", label.c_str());
                 Im::TableSetColumnIndex(1);
                 TextRightInCell(ft::AmountText(b, line));
-                if (dim)
-                    Im::PopStyleColor(1);
                 self(self, line.detail, depth + 1);
             }
         };
         lines(lines, b.lines, 0);
         // The rule under the last line, then the total: the sum as a
-        // schoolbook writes it.
-        Im::TableNextRow(0, 0.0f);
-        Im::TableSetColumnIndex(0);
-        Im::Separator();
-        Im::TableSetColumnIndex(1);
-        Im::Separator();
-        Im::TableNextRow(0, 0.0f);
-        Im::TableSetColumnIndex(0);
-        Im::Text("%s", b.totalLabel.c_str());
-        Im::TableSetColumnIndex(1);
-        TextRightInCell(ft::TotalText(b));
+        // schoolbook writes it. Not for a base alone, which is the sum.
+        const bool onlyBase = b.lines.size() == 1 && b.lines.front().op == ft::Op::Start;
+        if (!onlyBase)
+        {
+            Im::TableNextRow(0, 0.0f);
+            Im::TableSetColumnIndex(0);
+            Im::Separator();
+            Im::TableSetColumnIndex(1);
+            Im::Separator();
+            Im::TableNextRow(0, 0.0f);
+            Im::TableSetColumnIndex(0);
+            Im::Text("%s", b.totalLabel.c_str());
+            Im::TableSetColumnIndex(1);
+            TextRightInCell(ft::TotalText(b));
+        }
         Im::EndTable();
     }
     Im::EndTooltip();

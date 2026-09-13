@@ -2053,13 +2053,33 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
         const auto av = two ? static_cast<RE::ActorValue>(static_cast<int>(two[0])) : RE::ActorValue::kNone;
         const float value = two && owner ? owner->GetActorValue(av) : 0.0f;
         const float mult = two ? two[1] : 0.0f;
-        // A perk that reads a value opens on the value's own sources: the
-        // gauntlets and the potion behind a Fortify dial.
-        const auto withValue = [&] {
-            line.label += " (" + ValueName(av) + ")";
-            ft::Breakdown sources;
-            AddSourceLines(sources, Contributions(actor, av));
-            line.detail = std::move(sources.lines);
+        // A perk that reads a value is named for the value's sources, not
+        // for itself: "Deathbrand Gauntlets x 1.25", not the controller
+        // perk that turned the gauntlets' +25 into a factor. One line per
+        // source, each with its own share, and one for what the sources
+        // do not explain (perks and race on the value). Two sources'
+        // factors miss their product by the cross term, an Other line;
+        // one source, the common case, is exact.
+        std::vector<ft::BreakdownLine> bySource;
+        const auto withValue = [&](bool multiply, bool onePlus) {
+            std::vector<Contribution> sources = Contributions(actor, av);
+            std::stable_sort(sources.begin(), sources.end(),
+                             [](const Contribution &x, const Contribution &y) { return x.amount < y.amount; });
+            float explained = 0.0f;
+            const auto push = [&](std::string label, float amount) {
+                ft::BreakdownLine each;
+                each.op = multiply ? ft::Op::Multiply : ft::Op::Add;
+                each.label = std::move(label);
+                each.amount = (onePlus ? 1.0 : 0.0) + static_cast<double>(amount) * mult;
+                bySource.push_back(std::move(each));
+            };
+            for (Contribution &c : sources)
+            {
+                explained += c.amount;
+                push(std::move(c.source), c.amount);
+            }
+            if (const float rest = value - explained; std::abs(rest) > 0.05f)
+                push(ValueName(av) + " (perks and race)", rest);
         };
         switch (entry->entryData.function.get())
         {
@@ -2087,22 +2107,20 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
         case Fn::kAddActorValueMult:
             line.op = ft::Op::Add;
             line.amount = value * mult;
-            withValue();
+            withValue(false, false);
             break;
         case Fn::kSetToActorValueMult:
             line.op = ft::Op::Start;
             line.amount = value * mult;
-            withValue();
             break;
         case Fn::kMultiplyActorValueMult:
             line.op = ft::Op::Multiply;
             line.amount = value * mult;
-            withValue();
             break;
         case Fn::kMultiplyOnePlusActorValueMult:
             line.op = ft::Op::Multiply;
             line.amount = 1.0 + value * mult;
-            withValue();
+            withValue(true, true);
             break;
         default:
             // Nothing a number can carry: a leveled list, a text.
@@ -2113,6 +2131,12 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
         if ((line.op == ft::Op::Multiply && std::abs(line.amount - 1.0) < 1e-6) ||
             (line.op == ft::Op::Add && std::abs(line.amount) < 1e-6))
             continue;
+        if (!bySource.empty())
+        {
+            for (ft::BreakdownLine &each : bySource)
+                b.lines.push_back(std::move(each));
+            continue;
+        }
         b.lines.push_back(std::move(line));
     }
 }
@@ -2125,7 +2149,7 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     ft::Breakdown &b = out ? *out : local;
     b = {};
     float damage = weapon->GetAttackDamage();
-    ft::Start(b, "Base damage", damage);
+    ft::Start(b, "Base", damage);
     if (const float tempering = Tempering(entry); tempering != 1.0f)
     {
         damage *= tempering;
@@ -2178,7 +2202,7 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     const float hi = player ? pcMax : npcMax;
     const float curve = lo + (hi - lo) * skillLevel / 100.0f;
     damage *= curve;
-    ft::Multiply(b, "Skill (" + ValueName(skill) + " " + Fmt("%.0f", skillLevel) + ")", curve);
+    ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve);
 
     // Perks, through the engine's own entry point, so Armsman and the rest
     // count exactly as they do in a swing. The entry point wants a target,
@@ -2234,7 +2258,7 @@ float WeaponSpeed(RE::Actor *actor, const RE::TESObjectWEAP *weapon, bool left, 
     b = {};
     b.decimals = 2;
     float speed = weapon->GetSpeed();
-    ft::Start(b, "Weapon", speed);
+    ft::Start(b, "Base", speed);
     // The hand's multiplier: 0 means none (the value's default), and any
     // other number multiplies -- the engine's rule as the speed-fix mods
     // describe it, and the reason two boosts stack wrongly in vanilla. Not
@@ -2264,7 +2288,7 @@ float CritChance(RE::Actor *actor, RE::TESObjectWEAP *weapon, ft::Breakdown *out
     b.unit = "%";
     auto *owner = actor->AsActorValueOwner();
     float chance = owner ? owner->GetActorValue(RE::ActorValue::kCriticalChance) : 0.0f;
-    ft::Start(b, "Critical Chance", chance);
+    ft::Start(b, "Base", chance);
     // Bladesman and its kin set or add to it here. The entry point takes
     // the weapon and a target; they stand in for the target, as for
     // damage. Where the engine starts its own figure from is not yet read
@@ -2283,7 +2307,7 @@ float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out)
     ft::Breakdown &b = out ? *out : local;
     b = {};
     b.unit = " s";
-    ft::Start(b, "Word", recovery);
+    ft::Start(b, "Base", recovery);
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     if (const float mult = owner ? owner->GetActorValue(RE::ActorValue::kShoutRecoveryMult) : 1.0f;
         mult > 0.0f && mult != 1.0f)
@@ -2314,7 +2338,7 @@ ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
     const bool power = type == RE::MagicSystem::SpellType::kPower || type == RE::MagicSystem::SpellType::kLesserPower;
     const RE::Effect *costliest = spell->GetCostliestEffectItem();
     if (spell->data.flags.any(RE::SpellItem::SpellFlag::kCostOverride))
-        ft::Start(b, "Cost", static_cast<float>(spell->data.costOverride));
+        ft::Start(b, "Base", static_cast<float>(spell->data.costOverride));
     else
     {
         for (const auto *effect : spell->effects)
@@ -2349,7 +2373,7 @@ ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
         const float level = (std::max)(0.0f, owner->GetActorValue(skill));
         const float factor = player ? pcMult * (1.0f - std::pow(pcBase * level, pcScale))
                                     : npcMult * (1.0f - std::pow(npcBase * level, npcScale));
-        ft::Multiply(b, "Skill (" + ValueName(skill) + " " + Fmt("%.0f", level) + ")", factor);
+        ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", level) + ")", factor);
         AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kModSpellCost,
                            {const_cast<RE::SpellItem *>(spell)});
     }
@@ -2370,7 +2394,7 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     if (armorClass == Class::kClothing)
         return 0.0f;
     float rating = armor->GetArmorRating();
-    ft::Start(b, "Base rating", rating);
+    ft::Start(b, "Base", rating);
     if (const float tempering = Tempering(entry); tempering != 1.0f)
     {
         rating *= tempering;
@@ -2403,7 +2427,7 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     {
         const float curve = owner->GetArmorRatingSkillMultiplier(skillLevel);
         rating *= curve;
-        ft::Multiply(b, "Skill (" + ValueName(skill) + " " + Fmt("%.0f", skillLevel) + ")", curve);
+        ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve);
     }
 
     // Perks: Juggernaut, Agile Defender and their kin, through the engine's
@@ -2964,6 +2988,15 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
         const float one = dataType == DataType::kOneValue
                               ? static_cast<const RE::BGSEntryPointFunctionDataOneValue *>(data)->data
                               : 0.0f;
+        // The two-value record: a range's ends, or for the actor-value
+        // functions the value read and its multiplier -- named, so the
+        // page and the breakdown that reads the same entry agree on what
+        // "One Handed Power Mod x 0.01" is (2026-09-13).
+        const float *two =
+            dataType == DataType::kTwoValue ? reinterpret_cast<const TwoValueData *>(data)->data : nullptr;
+        const std::string share =
+            two ? Fmt("%g", two[1]) + " x " + ValueName(static_cast<RE::ActorValue>(static_cast<int>(two[0])))
+                : std::string("a share of an actor value");
         std::string value;
         switch (point->entryData.function.get())
         {
@@ -2977,10 +3010,10 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
             value = "x " + Fmt("%g", one);
             break;
         case Function::kAddRangeToValue:
-            value = "+ a range";
+            value = two ? "+ " + Fmt("%g", two[0]) + " to " + Fmt("%g", two[1]) : "+ a range";
             break;
         case Function::kAddActorValueMult:
-            value = "+ a share of an actor value";
+            value = "+ " + share;
             break;
         case Function::kAddLeveledList:
             value = "a leveled list";
@@ -2989,13 +3022,13 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
             value = "an activate choice";
             break;
         case Function::kSetToActorValueMult:
-            value = "= a share of an actor value";
+            value = "= " + share;
             break;
         case Function::kMultiplyActorValueMult:
-            value = "x a share of an actor value";
+            value = "x " + share;
             break;
         case Function::kMultiplyOnePlusActorValueMult:
-            value = "x (1 + a share of an actor value)";
+            value = "x (1 + " + share + ")";
             break;
         case Function::kSetText:
             value = "a text";

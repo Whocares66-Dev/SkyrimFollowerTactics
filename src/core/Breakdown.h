@@ -16,6 +16,7 @@
 // the game. The panel draws it (game/UI.cpp); the sensors fill it.
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,9 @@ struct BreakdownLine
     Op op{Op::Add};
     std::string label;
     double amount{0.0};
+    // The line's own unit, where it differs from the breakdown's: the
+    // sources behind a value a perk read are in the value's units.
+    std::optional<std::string> unit;
     // The line opened out: the sources behind a value a perk read (the
     // gauntlets and the potion behind a Fortify dial). Rendered indented
     // beneath the line; not part of the arithmetic, which the line's own

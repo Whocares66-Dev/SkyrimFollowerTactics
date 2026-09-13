@@ -103,4 +103,10 @@ TEST_CASE("a line's detail is indented beneath it and stays out of the arithmeti
     const std::string text = ToText(b);
     REQUIRE(text.find("  Gauntlets") != std::string::npos);
     REQUIRE(text.find("Other") == std::string::npos);
+
+    // A detail line may carry the value's own unit where the figure has
+    // none: the gauntlets' +15 is a percent of damage, the damage is not.
+    dial.detail.front().unit = "%";
+    REQUIRE(AmountText(b, dial.detail.front()) == "+15.0%");
+    REQUIRE(AmountText(b, dial.detail.back()) == "+10.0");
 }

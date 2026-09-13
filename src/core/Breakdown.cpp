@@ -76,12 +76,13 @@ void Close(Breakdown &b)
 
 std::string AmountText(const Breakdown &b, const BreakdownLine &line)
 {
+    const std::string &unit = line.unit ? *line.unit : b.unit;
     switch (line.op)
     {
     case Op::Start:
-        return Number(line.amount, b.decimals, false) + b.unit;
+        return Number(line.amount, b.decimals, false) + unit;
     case Op::Add:
-        return Number(line.amount, b.decimals, true) + b.unit;
+        return Number(line.amount, b.decimals, true) + unit;
     case Op::Multiply:
         return "x " + Factor(line.amount);
     }
