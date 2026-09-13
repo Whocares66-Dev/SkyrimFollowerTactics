@@ -104,13 +104,10 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
 // The entries on a list as their type numbers, "16 3E" (ExtraDataType,
 // hex), for a log line about which copy is which; "-" for no list.
 [[nodiscard]] std::string ListEntries(const RE::ExtraDataList *list);
-// The variant of the copy of `object` on this list (docs/UNIQUE.md "The
-// variant"): its enchantment, tempering, custom name, and whether it is
-// stolen -- owned by someone else, by the engine's own ownership rule
-// asked from the player's side, not by who the owner is: a gift carries
-// the player's ownership and is nobody's theft. Plain for a list with
-// none of them, and for no list.
-[[nodiscard]] ft::ItemVariant VariantOf(RE::TESBoundObject *object, const RE::ExtraDataList *list);
+// The variant of the copy on this list (docs/UNIQUE.md "The variant"): its
+// enchantment, tempering and custom name. Plain for a list with none of
+// them, and for no list.
+[[nodiscard]] ft::ItemVariant VariantOf(const RE::ExtraDataList *list);
 
 // How many copies of the variant the bag holds: its rows summed, the
 // listless remainder counting as plain; of the form, with no variant. What

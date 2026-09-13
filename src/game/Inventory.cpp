@@ -648,7 +648,7 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
             {
                 if (!list)
                     continue;
-                const ft::ItemVariant variant = VariantOf(object, list);
+                const ft::ItemVariant variant = VariantOf(list);
                 const bool apart = RowOfItsOwn(list);
                 // Which entries a list carries and whether that kept it
                 // apart, said once per shape per bag at debug, so a row that

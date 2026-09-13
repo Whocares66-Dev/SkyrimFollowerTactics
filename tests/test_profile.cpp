@@ -142,7 +142,6 @@ Profile Everything()
     p.pins.push_back({0x12FCD, {}, Hand::Left});        // a spell in one hand
     ItemVariant tempered;
     tempered.tempering = 1.2f;
-    tempered.stolen = true;
     p.bans = {{0x2F3B8, {}}, {0x12E49, tempered}};
     return p;
 }

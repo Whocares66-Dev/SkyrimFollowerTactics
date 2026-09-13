@@ -148,7 +148,6 @@ struct EnchantEffect
 struct ItemVariant
 {
     std::vector<EnchantEffect> enchantment; // the enchantment put on it, as its effects; empty for none
-    bool stolen{false};                     // owned by someone else, by the engine's own rule from the player's side
     float tempering{0.0f};                  // the grindstone's multiplier; 0 for none
     std::string label;                      // a custom name, given at an enchanter
 
@@ -158,7 +157,7 @@ struct ItemVariant
 
     [[nodiscard]] bool IsPlain() const noexcept
     {
-        return enchantment.empty() && !stolen && tempering == 0.0f && label.empty();
+        return enchantment.empty() && tempering == 0.0f && label.empty();
     }
 };
 
@@ -189,8 +188,8 @@ struct ItemVariant
 // rather than exactly.
 [[nodiscard]] inline bool SameVariant(const ItemVariant &a, const ItemVariant &b) noexcept
 {
-    return SameEnchantment(a.enchantment, b.enchantment) && a.stolen == b.stolen &&
-           std::fabs(a.tempering - b.tempering) < 1e-4f && a.label == b.label;
+    return SameEnchantment(a.enchantment, b.enchantment) && std::fabs(a.tempering - b.tempering) < 1e-4f &&
+           a.label == b.label;
 }
 
 // The planner's question: the same variant, or the form -- no variant --

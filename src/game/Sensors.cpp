@@ -1518,7 +1518,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
                 if (!list)
                     continue;
                 listed += list->GetCount();
-                if (ft::ItemVariant variant = VariantOf(object, list); !noted(variant))
+                if (ft::ItemVariant variant = VariantOf(list); !noted(variant))
                     variants.push_back(std::move(variant));
             }
         }
@@ -3836,7 +3836,7 @@ RE::ExtraDataList *WornList(RE::Actor *actor, RE::TESBoundObject *object, Hand h
     return ListOf(actor, object, [object, hand](const RE::ExtraDataList &list) { return WornIn(object, &list, hand); });
 }
 
-ft::ItemVariant VariantOf(RE::TESBoundObject *object, const RE::ExtraDataList *list)
+ft::ItemVariant VariantOf(const RE::ExtraDataList *list)
 {
     ft::ItemVariant variant;
     if (!list)
@@ -3855,17 +3855,6 @@ ft::ItemVariant VariantOf(RE::TESBoundObject *object, const RE::ExtraDataList *l
             variant.enchantment.push_back({effect->baseEffect->GetFormID(), effect->effectItem.magnitude,
                                            effect->effectItem.duration, effect->effectItem.area});
         }
-    }
-    // Stolen, by the engine's own ownership rule (IsOwnedBy, which knows
-    // factions and the player's own hand), never by the owner's identity:
-    // every copy handed to a follower carries the player's ownership, and
-    // the game's own menu stacks it with the follower's own copies.
-    if (const auto *owner = static_cast<const RE::ExtraOwnership *>(list->GetByType(T::kOwnership));
-        owner && owner->owner && object)
-    {
-        auto *player = RE::PlayerCharacter::GetSingleton();
-        RE::InventoryEntryData probe(object, 0);
-        variant.stolen = player && !probe.IsOwnedBy(player, owner->owner, true);
     }
     if (const auto *health = static_cast<const RE::ExtraHealth *>(list->GetByType(T::kHealth)); health)
         variant.tempering = health->health;
@@ -3893,7 +3882,7 @@ std::int32_t CountVariant(RE::Actor *actor, RE::TESBoundObject *object, const st
             if (!list)
                 continue;
             listed += list->GetCount();
-            if (ft::SameVariant(VariantOf(object, list), *variant))
+            if (ft::SameVariant(VariantOf(list), *variant))
                 named += list->GetCount();
         }
     }
@@ -3907,19 +3896,18 @@ RE::ExtraDataList *WornVariantList(RE::Actor *actor, RE::TESBoundObject *object,
                                    Hand hands)
 {
     return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
-        return WornIn(object, &list, hands) && ft::SameVariant(VariantOf(object, &list), variant);
+        return WornIn(object, &list, hands) && ft::SameVariant(VariantOf(&list), variant);
     });
 }
 
 RE::ExtraDataList *UnwornVariantList(RE::Actor *actor, RE::TESBoundObject *object, const ft::ItemVariant &variant)
 {
     if (RE::ExtraDataList *stack = ListOf(actor, object, [&](const RE::ExtraDataList &list) {
-            return !ListWorn(&list, Hand::None) && !RowOfItsOwn(&list) &&
-                   ft::SameVariant(VariantOf(object, &list), variant);
+            return !ListWorn(&list, Hand::None) && !RowOfItsOwn(&list) && ft::SameVariant(VariantOf(&list), variant);
         }))
         return stack;
     return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
-        return !ListWorn(&list, Hand::None) && ft::SameVariant(VariantOf(object, &list), variant);
+        return !ListWorn(&list, Hand::None) && ft::SameVariant(VariantOf(&list), variant);
     });
 }
 
@@ -3961,7 +3949,7 @@ std::vector<ft::ItemVariant> RowsOf(RE::Actor *actor, RE::TESBoundObject *object
             if (!list || !RowOfItsOwn(list))
                 continue;
             apart += list->GetCount();
-            rows.push_back(VariantOf(object, list));
+            rows.push_back(VariantOf(list));
         }
     }
     if (carried.count > apart)

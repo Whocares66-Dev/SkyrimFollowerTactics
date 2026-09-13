@@ -1787,7 +1787,7 @@ std::vector<VariantInBag> VariantsInBag(RE::Actor *actor, RE::TESBoundObject *ob
             const bool isDistinct = RowOfItsOwn(list);
             if (isDistinct)
                 distinct += list->GetCount();
-            listed.push_back({VariantOf(object, list), !isDistinct, ListWorn(list, Hand::None)});
+            listed.push_back({VariantOf(list), !isDistinct, ListWorn(list, Hand::None)});
             lists.push_back(list);
         }
     }
@@ -1827,7 +1827,7 @@ bool Refused(RE::Actor *actor, RE::TESForm *form, RE::ExtraDataList *&extra, con
     // list, the form, whichever variant. A spell or a shout has none.
     const bool equipment = form->IsWeapon() || form->IsArmor() || form->IsAmmo() || form->Is(RE::FormType::Light);
     auto *object = equipment ? form->As<RE::TESBoundObject>() : nullptr;
-    Holdable thing = DescribeHoldable(actor, form, extra ? std::optional(VariantOf(object, extra)) : std::nullopt);
+    Holdable thing = DescribeHoldable(actor, form, extra ? std::optional(VariantOf(extra)) : std::nullopt);
     const Hand into = SlotHand(slot);
     log::pins.debug("{} the engine equips {}{}{}", Describe(actor), log::NameOf(form), HandTag(into),
                     extra ? "" : " (no list named)");
@@ -1856,7 +1856,7 @@ bool Refused(RE::Actor *actor, RE::TESForm *form, RE::ExtraDataList *&extra, con
                 continue;
             if (extra == incumbent)
                 return false;
-            if (!extra || SameVariant(VariantOf(object, extra), pin.thing.variant))
+            if (!extra || SameVariant(VariantOf(extra), pin.thing.variant))
             {
                 log::pins.debug("{} the engine equips {}{} over its pinned incumbent -- kept in place", Describe(actor),
                                 log::NameOf(form), HandTag(into));

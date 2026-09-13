@@ -70,8 +70,6 @@ void WriteVariant(json &j, const std::optional<ItemVariant> &variant, const Form
         }
         v["enchant"] = std::move(effects);
     }
-    if (variant->stolen)
-        v["stolen"] = true;
     if (variant->tempering != 0.0f)
         v["tempering"] = variant->tempering;
     if (!variant->label.empty())
@@ -206,7 +204,6 @@ VariantField ReadVariant(const json &j, const FormCodec &codec)
             variant.enchantment.push_back(e);
         }
     }
-    variant.stolen = Bool(*v, "stolen").value_or(false);
     if (const auto tempering = Num(*v, "tempering"))
         variant.tempering = static_cast<float>(*tempering);
     variant.label = Str(*v, "label").value_or("");

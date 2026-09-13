@@ -75,7 +75,6 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 | `variant.enchant` | the enchantment as its effects, each `{ "effect": form, "mag": number, "dur": seconds, "area": feet }`, `dur` and `area` only when not zero. The effects, not the enchantment's form: one made at the enchanting table is a form the save mints, which no plugin can name |
 | `variant.tempering` | the grindstone's multiplier |
 | `variant.label` | the name the player gave the copy |
-| `variant.stolen` | `true` for a copy owned by someone else, by the engine's own ownership rule asked from the player's side |
 | `pins[].hand` | `left`, `right`, `both`; absent for armour and ammunition, which have no hand |
 | `bans[].form`, `bans[].variant` | the player's bans: forms the follower must never use, and which row, as a pin's `variant`; absent bans every row of the form. A ban is off and kept off, whichever hand |
 
@@ -93,7 +92,7 @@ A pin is a promise about what is worn, and a load re-dresses nobody. So a saved 
 
 A ban is a promise about what is **not** worn, which a load can keep for anything that still exists: a saved ban is taken back whole, and the watchdog's first pass takes the thing off if the follower has it on. A ban whose form is not in this load order is forgotten the same way, and so is a ban on a variant no row of which is carried.
 
-**Which copy.** A pin, a ban and an equip action name one row of a form by its **variant**, one object under `variant`: the enchantment (as its effects), the tempering, the custom label and whether it is stolen, each written only when present, so the plain row is an empty object. No `variant` at all is the form, whichever row: a rule that picked no row, or a ban on the form. Why those parts and not the engine's unique id, and what follows for a pin or ban whose variant has no row left in the bag, is `docs/UNIQUE.md`.
+**Which copy.** A pin, a ban and an equip action name one row of a form by its **variant**, one object under `variant`: the enchantment (as its effects), the tempering and the custom label, each written only when present, so the plain row is an empty object. No `variant` at all is the form, whichever row: a rule that picked no row, or a ban on the form. Why those parts and not the engine's unique id, and what follows for a pin or ban whose variant has no row left in the bag, is `docs/UNIQUE.md`.
 
 Removing the mod: SKSE drops our co-save block on the next save, the follower keeps whatever they had on, and a later reinstall starts with no tactics. Nothing is written onto a pinned item either. The engine's prevent-removal flag was set on pins until 2026-09-04, and it outlived the mod: it does not lift on its own, and it left the engine's equip-best swap half done, with the old and the new weapon both marked equipped. Pins are now kept entirely by the mod's own equip detour, score hook and watchdog, which go away with the DLL. A save made with a build older than that still carries the flag on whatever was pinned then; unpin those in the panel once, or take the item off, and it is gone.
 

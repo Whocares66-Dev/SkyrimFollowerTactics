@@ -868,7 +868,7 @@ TEST_CASE("a pin names one variant of a form, and the other variants are other t
     CHECK(pins[0].thing.variant->enchantment == kFrost);
 }
 
-TEST_CASE("a variant is what the player chose: tempering, an enchantment, a label, a theft", "[pins]")
+TEST_CASE("a variant is what the player chose: tempering, an enchantment, a label", "[pins]")
 {
     Holdable plain = Thing(kSteelDagger, Grip::Either);
     plain.kind = Kind::Weapon;
@@ -877,15 +877,12 @@ TEST_CASE("a variant is what the player chose: tempering, an enchantment, a labe
     tempered.variant->tempering = 1.2f;
     Holdable renamed = plain;
     renamed.variant->label = "Fang";
-    Holdable stolen = plain;
-    stolen.variant->stolen = true;
     Holdable whichever = plain;
     whichever.variant = std::nullopt;
 
     // Each part makes another name; the parts together are one name.
     CHECK_FALSE(SameThing(plain, tempered));
     CHECK_FALSE(SameThing(plain, renamed));
-    CHECK_FALSE(SameThing(plain, stolen));
     CHECK_FALSE(SameThing(tempered, renamed));
     CHECK(SameThing(whichever, plain));
     CHECK(SameThing(whichever, tempered));
