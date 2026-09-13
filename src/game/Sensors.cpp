@@ -2344,9 +2344,15 @@ ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
     // the constants (2026-09-13). Applied per effect by the engine; here
     // as one factor from the costliest effect's school, so a spell of two
     // schools shows the rest as Other.
-    if (!power && owner && costliest && costliest->baseEffect)
+    // Only for an effect of a school: the engine checks the skill is one
+    // of the eighteen before reading it, and so must we -- asking the
+    // value owner for None crashed inside another plugin's hook on
+    // Serana's Drain Life, whose effect has no school (2026-09-13).
+    const RE::ActorValue skill =
+        costliest && costliest->baseEffect ? costliest->baseEffect->GetMagickSkill() : RE::ActorValue::kNone;
+    const bool schooled = skill >= RE::ActorValue::kOneHanded && skill <= RE::ActorValue::kEnchanting;
+    if (!power && owner && schooled)
     {
-        const RE::ActorValue skill = costliest->baseEffect->GetMagickSkill();
         const bool player = actor->IsPlayerRef();
         static const float npcBase = GameSetting("fMagicCasterSkillCostBase", 0.005f);
         static const float npcScale = GameSetting("fMagicSkillCostScale", 0.5f);
