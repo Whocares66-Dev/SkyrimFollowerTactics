@@ -65,7 +65,7 @@ Snapshot: a `status` bit set per actor view.
 
 ## 2a. Type: what kind of being (built 2026-09-12)
 
-Four groups in the menu, alphabetical, each opening on Any (the group) and its members by name. A rule names one kind; the snapshot carries a bit per kind, and a group's Any is any member's bit or the group's own. Asked of an enemy, an ally or a named follower only: the follower themself and the player are each one being, and a rule about what they are would be true always or never.
+Four groups in the menu, alphabetical, each opening on Any (the group) and its members by name. A rule names one kind; the snapshot carries a bit per kind, and a group's Any is any member's bit or the group's own. Asked of an enemy or an ally only, the subjects that are a group: the follower themself, the player and a named follower are each one being, and a rule about what they are would be true always or never.
 
 The engine has two layers, both on the race record (read with houseCARL, 2026-09-12). The `ActorType` keywords are the coarse class its own conditions use: the sun spells and Turn Undead gate on `HasKeyword ActorTypeUndead` and nothing else. The race is the fine class. A vampire is a third thing: a vampire Nord is `NordRaceVampire`, named "Nord", with the NPC keyword plus `Vampire` and `Undead`.
 

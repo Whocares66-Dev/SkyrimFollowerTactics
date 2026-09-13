@@ -940,11 +940,12 @@ TEST_CASE("a kind of being is asked of any subject: a member answers for its gro
     REQUIRE(EvaluateCondition(r, s).id == 0x101);
     r.typeKind = TypeKind::Dragon;
     REQUIRE_FALSE(EvaluateCondition(r, s).ok);
-    // Of the others only: the follower and the player are each one being,
-    // and a rule about what they are would be true always or never.
+    // Of a group only: the follower, the player and a named follower are
+    // each one being, and a rule about what they are would be true always
+    // or never.
     REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Type));
     REQUIRE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::Type));
-    REQUIRE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::Type));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::Type));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Type));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Type));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Corpse, PredicateKind::Type));

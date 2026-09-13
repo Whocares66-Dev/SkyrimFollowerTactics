@@ -381,11 +381,12 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
                                 predicate == PredicateKind::LevelLowest;
     if (subject == SubjectKind::Corpse || corpseQuestion)
         return subject == SubjectKind::Corpse && corpseQuestion;
-    // The kind of being is a question about the others: the follower and
-    // the player are each one being, and a rule about what they are would
-    // be true always or never. An ally may be anyone, an enemy anything.
+    // The kind of being is a question about a group: an enemy may be
+    // anything, an ally anyone. The follower, the player and a named
+    // follower are each one being, and a rule about what they are would be
+    // true always or never.
     if (predicate == PredicateKind::Type)
-        return subject == SubjectKind::Ally || subject == SubjectKind::Enemy || subject == SubjectKind::Follower;
+        return subject == SubjectKind::Ally || subject == SubjectKind::Enemy;
     // A status, the armour, the resistances, the hands, the hits and the
     // summons are read off every actor the snapshot carries, so they are
     // answerable about any of them. The extremes are of a group.

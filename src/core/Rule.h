@@ -88,9 +88,10 @@ enum class PredicateKind : std::uint8_t
     // Status, as the editor's menu groups them.
     HitBy,
     // The subject is the kind of being Rule::typeKind names: a Nord, an
-    // elf of any kind, undead, a dragon ... Asked of an enemy, an ally or a
-    // named follower, not of the follower themself or the player, who are
-    // each one being. Above Status, as the editor's menu has it.
+    // elf of any kind, undead, a dragon ... Asked of an enemy or an ally,
+    // the subjects that are a group; the follower, the player and a named
+    // follower are each one being. Above Status, as the editor's menu has
+    // it.
     Type,
     // The subject is in the status Rule::statusKind names: poisoned,
     // burning, fleeing ... Any subject; a few kinds are not asked about
