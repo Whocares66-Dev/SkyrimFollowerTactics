@@ -465,6 +465,10 @@ struct Contribution
     std::string source; // the worn item, the potion, the spell
     std::string effect; // the magic effect's own name, "Fortify Armor Rating"
     float amount{0.0f}; // signed: a detrimental effect takes away
+    // Written by the engine into the permanent value, where perks and race
+    // are, rather than the temporary one: some of the player's effects, never
+    // an NPC's. A source line, and so not counted as perks too.
+    bool permanent{false};
 };
 [[nodiscard]] std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value);
 
@@ -475,10 +479,10 @@ struct Contribution
 void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources, float scale = 1.0f);
 
 // A value written out: "Base: 3", the sources, then "Perks and race: +2"
-// when they add anything -- what is permanent beyond the base, which is
-// perks and race, not effects (temporary) and not damage (below the base)
-// -- and the total the row shows, with an Other line where the lines do
-// not make it.
+// when they add anything -- what is permanent beyond the base less the
+// sources the engine wrote there (Contribution::permanent), which is perks
+// and race, and not damage (below the base) -- and the total the row shows,
+// with an Other line where the lines do not make it.
 [[nodiscard]] ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, float perks, float total,
                                            int decimals, const char *unit, float scale = 1.0f);
 // The same read off an actor value, its running effects as the sources,

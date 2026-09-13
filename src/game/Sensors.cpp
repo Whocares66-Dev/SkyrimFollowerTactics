@@ -221,7 +221,8 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
         return {};
     // Current is the damaged value. The maximum is the permanent value --
     // base plus the permanent modifiers, perks and race -- plus the
-    // TEMPORARY modifier, where a Fortify enchantment or potion lands: a
+    // TEMPORARY modifier, where a follower's Fortify enchantment or potion
+    // lands (the player's goes in the permanent one, WritesPermanent): a
     // circlet of +50 magicka raises what the bar can show, and reading the
     // permanent value alone put 346 over 246 (2026-09-09). Their ratio is
     // what the rules read, so both are logged in Tactics.cpp to make a
@@ -422,6 +423,37 @@ bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
     return primary || secondary;
 }
 
+namespace
+{
+// Whether the engine wrote this effect's amount into the permanent modifier,
+// where perks and race are, rather than the temporary one. Read off
+// ValueModifierEffect::ModifyActorValue (id 35086) in the running game,
+// 2026-09-13: for the player alone, an effect whose base recovers and that
+// has no conditions, from an ability, a constant-effect enchantment, or a
+// potion that is not a poison on Health, Magicka or Stamina. Every NPC's,
+// and every other of the player's, goes to the temporary modifier.
+bool WritesPermanent(RE::Actor *actor, const RE::ActiveEffect &ae, RE::ActorValue value)
+{
+    using Type = RE::MagicSystem::SpellType;
+    if (!actor->IsPlayerRef() || !ae.spell ||
+        !ae.effect->baseEffect->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kRecover) ||
+        ae.flags.any(RE::ActiveEffect::Flag::kHasConditions))
+        return false;
+    switch (ae.spell->GetSpellType())
+    {
+    case Type::kAbility:
+        return true;
+    case Type::kEnchantment:
+        return ae.spell->GetCastingType() == RE::MagicSystem::CastingType::kConstantEffect;
+    case Type::kPotion:
+        return !ae.spell->IsPoison() && (value == RE::ActorValue::kHealth || value == RE::ActorValue::kMagicka ||
+                                         value == RE::ActorValue::kStamina);
+    default:
+        return false;
+    }
+}
+} // namespace
+
 std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 {
     std::vector<Contribution> out;
@@ -442,7 +474,7 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         // Aura carries a zero here) is not a source; one too small to print, below half a hundredth, is noise.
         if (std::abs(ae->magnitude) < 0.005f)
             return;
-        out.push_back({std::move(source), NameOr(base, ""), ae->magnitude});
+        out.push_back({std::move(source), NameOr(base, ""), ae->magnitude, WritesPermanent(actor, effect, value)});
     });
     // Smallest first: the weaknesses, then the boons, the largest last.
     std::stable_sort(out.begin(), out.end(),
@@ -545,6 +577,11 @@ ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, floa
     b.decimals = decimals;
     b.unit = unit;
     ft::Start(b, "Base", base);
+    // A source the engine wrote into the permanent value is a line of its
+    // own, and not perks as well.
+    for (const Contribution &c : sources)
+        if (c.permanent)
+            perks -= c.amount;
     AddSourceLines(b, std::move(sources), scale);
     // Below what prints, it is floating-point noise in the permanent value,
     // not perks.
