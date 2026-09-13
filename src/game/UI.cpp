@@ -5240,10 +5240,19 @@ void DrawSkills(const CharacterView &view)
 // tabs stay in place when the page scrolls. By actor: each page keeps its own
 // place in its list. EndChild whether or not the region is visible, as ImGui
 // asks.
+//
+// A borderless child gets no padding, so a table as wide as the region put
+// its right border on the clip edge and lost it, scrollbar or not. A couple
+// of pixels either side keeps the border inside; none top or bottom, where
+// nothing is clipped. Popped before drawing, so the tab's own popups and
+// tooltips keep the style's padding.
 void TabBody(const char *name, ft::ActorId actor, const std::function<void()> &draw)
 {
     const std::string id = std::string("##tab/") + name + "/" + std::to_string(actor);
-    if (Im::BeginChild(id.c_str(), Im::ImVec2(0.0f, 0.0f), Im::ImGuiChildFlags_None, 0))
+    Im::PushStyleVar(Im::ImGuiStyleVar_WindowPadding, Im::ImVec2(2.0f, 0.0f));
+    const bool open = Im::BeginChild(id.c_str(), Im::ImVec2(0.0f, 0.0f), Im::ImGuiChildFlags_AlwaysUseWindowPadding, 0);
+    Im::PopStyleVar(1);
+    if (open)
         draw();
     Im::EndChild();
 }
