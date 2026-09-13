@@ -20,6 +20,7 @@
 #include "core/Vocabulary.h"
 #include "game/Log.h"
 #include "game/Pins.h"
+#include "game/Sheet.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
 
@@ -3310,9 +3311,9 @@ void NameBadges(const InventoryItem &item, bool dim, bool framed = false)
     Im::Dummy({width, framed ? Im::GetFrameHeight() : Im::GetTextLineHeight()});
 }
 
-// The name filter the list tabs share: a box with "Filter name" for its
-// hint, and a cross inside its right end to clear it, shown only while
-// there is something to clear. Returns whether the text changed.
+// The filter the list tabs share: a box with "Filter" for its hint, and a
+// cross inside its right end to clear it, shown only while there is
+// something to clear. Returns whether the text changed.
 bool FilterBox(const char *id, char *buffer, std::size_t size)
 {
     const float width = Im::GetFontSize() * 9.0f;
@@ -3321,7 +3322,7 @@ bool FilterBox(const char *id, char *buffer, std::size_t size)
     // hover to the item drawn first unless it allows overlap: without this
     // the cross could be seen but never clicked.
     Im::SetNextItemAllowOverlap();
-    bool changed = Im::InputTextWithHint(id, "Filter name", buffer, size);
+    bool changed = Im::InputTextWithHint(id, "Filter", buffer, size);
     if (buffer[0] == '\0')
         return changed;
 
@@ -3357,6 +3358,15 @@ bool ContainsNoCase(const std::string &text, const char *needle)
     };
     const std::string_view n(needle);
     return n.empty() || std::search(text.begin(), text.end(), n.begin(), n.end(), same) != text.end();
+}
+
+// Does any of a row's cells, as its table shows them, hold the filter's
+// text? A filter on the name alone missed what the other columns are for:
+// "Fire" among the spells, "Heavy" among the armour.
+bool AnyContains(const std::vector<std::string> &cells, const char *needle)
+{
+    return std::any_of(cells.begin(), cells.end(),
+                       [needle](const std::string &cell) { return ContainsNoCase(cell, needle); });
 }
 
 // Text flush with the right edge of the current table cell, for a column of
@@ -3742,6 +3752,48 @@ int CellRank(const EquipCell &cell)
     return !cell.allowed || cell.disabled ? 4 : cell.banned ? 3 : cell.pinned ? 0 : cell.on ? 1 : 2;
 }
 
+// Which columns an inventory list shows, by its category: the table lays
+// them out by these, and the filter searches the cells they show.
+struct ItemColumns
+{
+    bool weapons{false};     // a damage column
+    bool armour{false};      // an armour column
+    bool scrolls{false};     // cast and magnitude columns
+    bool consumables{false}; // the second column says what the thing does, not its type
+};
+
+ItemColumns ColumnsOf(const InventoryTabState &state)
+{
+    const auto is = [&state](ItemCategory category) { return state.category == static_cast<int>(category); };
+    ItemColumns columns;
+    columns.weapons = is(ItemCategory::Weapons) || is(ItemCategory::Arrows);
+    columns.armour = is(ItemCategory::Armor);
+    columns.scrolls = is(ItemCategory::Scrolls);
+    columns.consumables = columns.scrolls || is(ItemCategory::Potions) || is(ItemCategory::Poisons) ||
+                          is(ItemCategory::Food) || is(ItemCategory::Ingredients);
+    return columns;
+}
+
+// Is the row on the list: in its category, with the filter's text in a cell
+// the list shows for it, the numbers as they print.
+bool ItemShown(const InventoryItem &item, const InventoryTabState &state)
+{
+    if (state.category >= 0 && static_cast<int>(item.category) != state.category)
+        return false;
+    const ItemColumns columns = ColumnsOf(state);
+    std::vector<std::string> cells{item.name, columns.consumables ? item.effect : item.type, Fmt("%.1f", item.weight),
+                                   std::to_string(item.value)};
+    if (const float stat = columns.weapons ? item.damage : columns.armour ? item.armor : 0.0f; stat > 0.0f)
+        cells.push_back(Fmt("%.0f", stat));
+    if (columns.scrolls)
+    {
+        cells.push_back(item.cast);
+        if (item.magnitude > 0.0f)
+            cells.push_back(Fmt("%.0f", item.magnitude));
+    }
+    return AnyContains(cells, g_inventoryFilter);
+}
+
 // The rows to show, in the order the table's header asks for. Sorted every
 // frame rather than on change: a hundred pointers is nothing, and the set
 // itself changes with the filter and with what they pick up.
@@ -3750,11 +3802,8 @@ std::vector<const InventoryItem *> VisibleItems(const CharacterView &view, const
     std::vector<const InventoryItem *> rows;
     for (const auto &item : view.inventory)
     {
-        if (state.category >= 0 && static_cast<int>(item.category) != state.category)
-            continue;
-        if (!ContainsNoCase(item.name, g_inventoryFilter))
-            continue;
-        rows.push_back(&item);
+        if (ItemShown(item, state))
+            rows.push_back(&item);
     }
 
     const auto *specs = Im::TableGetSortSpecs();
@@ -3818,9 +3867,9 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
     // something -- damage for weapons, rating for armour -- and an Equipped
     // column only where something can be equipped. SkyUI's lists differ the
     // same way.
-    const bool weapons = state.category == static_cast<int>(ItemCategory::Weapons) ||
-                         state.category == static_cast<int>(ItemCategory::Arrows);
-    const bool armour = state.category == static_cast<int>(ItemCategory::Armor);
+    const ItemColumns columns = ColumnsOf(state);
+    const bool weapons = columns.weapons;
+    const bool armour = columns.armour;
     // Hand columns where something is held in a hand; an Equipped column
     // where something is worn. A cell that does not apply to its row -- a
     // right hand for a shield, a hand for a cuirass -- is slashed. Not on
@@ -3840,11 +3889,8 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
     const float gutter = kCellPadX * 2.0f;
     // A consumable list's second column is what the thing does, not a Type
     // that would only repeat the heading.
-    const bool scrolls = state.category == static_cast<int>(ItemCategory::Scrolls);
-    const bool consumables = state.category == static_cast<int>(ItemCategory::Potions) ||
-                             state.category == static_cast<int>(ItemCategory::Poisons) ||
-                             state.category == static_cast<int>(ItemCategory::Food) ||
-                             state.category == static_cast<int>(ItemCategory::Ingredients) || scrolls;
+    const bool scrolls = columns.scrolls;
+    const bool consumables = columns.consumables;
     const auto typeText = [consumables](const InventoryItem &item) -> const std::string & {
         return consumables ? item.effect : item.type;
     };
@@ -4191,16 +4237,41 @@ constexpr unsigned kIconMagicAll = 0xF6E8; // hat-wizard
 constexpr unsigned kIconSummoned = 0xF6D5; // dragon
 constexpr unsigned kIconRaised = 0xF54C;   // skull
 
+// A list of powers or shouts, which are readied rather than held: no school,
+// level or cost columns, and one Equipped cell.
+bool VoiceList(const MagicTabState &state)
+{
+    return state.category == static_cast<int>(MagicCategory::Shouts) ||
+           state.category == static_cast<int>(MagicCategory::Powers);
+}
+
+// Is the entry on the list: in its category, with the filter's text in a
+// cell the list shows for it.
+bool MagicShown(const MagicEntry &entry, const MagicTabState &state)
+{
+    if (state.category >= 0 && static_cast<int>(entry.category) != state.category)
+        return false;
+    const bool voice = VoiceEntry(entry);
+    std::vector<std::string> cells{entry.name, entry.type, entry.cast};
+    if (state.category < 0 && !voice)
+        cells.push_back(entry.school);
+    if (!VoiceList(state) && !voice)
+    {
+        cells.push_back(entry.level);
+        cells.push_back(entry.cost);
+    }
+    if (entry.magnitude > 0.0f)
+        cells.push_back(Fmt("%.0f", entry.magnitude));
+    return AnyContains(cells, g_magicFilter);
+}
+
 std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const MagicTabState &state)
 {
     std::vector<const MagicEntry *> rows;
     for (const auto &entry : view.magic)
     {
-        if (state.category >= 0 && static_cast<int>(entry.category) != state.category)
-            continue;
-        if (!ContainsNoCase(entry.name, g_magicFilter))
-            continue;
-        rows.push_back(&entry);
+        if (MagicShown(entry, state))
+            rows.push_back(&entry);
     }
 
     const auto *specs = Im::TableGetSortSpecs();
@@ -4277,8 +4348,7 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
     // Equipped cell for the voice slot, clicked like a hand cell: ready
     // it, pin it, put it away. One voice pin sets every other power and
     // shout aside, as a pinned quiver does the arrows.
-    const bool voiceList = state.category == static_cast<int>(MagicCategory::Shouts) ||
-                           state.category == static_cast<int>(MagicCategory::Powers);
+    const bool voiceList = VoiceList(state);
 
     constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg | Im::ImGuiTableFlags_Sortable;
     const float gutter = kCellPadX * 2.0f;
@@ -4531,15 +4601,23 @@ struct EffectsTabState
 std::unordered_map<ft::ActorId, EffectsTabState> g_effectsTabs;
 char g_effectsFilter[64]{};
 
+// Does the row hold the filter's text in a cell the table shows?
+bool EffectShown(const EffectRow &row)
+{
+    std::vector<std::string> cells{row.name, row.remainingText, row.source};
+    if (row.magnitude != 0.0f)
+        cells.push_back(Fmt("%.0f", row.magnitude));
+    return AnyContains(cells, g_effectsFilter);
+}
+
 // The rows that pass the filter, in the order the header asks for.
 std::vector<const EffectRow *> VisibleEffects(const CharacterView &view)
 {
     std::vector<const EffectRow *> rows;
     for (const auto &row : view.effects)
     {
-        if (!ContainsNoCase(row.name, g_effectsFilter))
-            continue;
-        rows.push_back(&row);
+        if (EffectShown(row))
+            rows.push_back(&row);
     }
 
     const auto *specs = Im::TableGetSortSpecs();
