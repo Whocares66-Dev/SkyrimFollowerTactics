@@ -1202,7 +1202,7 @@ bool BannedForm(const FollowerView &view, std::uint32_t form)
 // text colour. Two copies alike in name and colour are told apart by
 // their order alone, which is stable.
 const Im::ImVec4 *NameTint(const InventoryItem &item);
-// The marks after an item's name: a crown, a bolt, a skull (defined with
+// The marks after an item's name: a crown, a bolt, a skull, a hand (defined with
 // the tints, below).
 bool Badged(const InventoryItem &item);
 float DrawNameBadges(Im::ImDrawList *draw, const InventoryItem &item, Im::ImVec2 at, bool dim);
@@ -3242,6 +3242,8 @@ constexpr Im::ImVec4 kEnchanted{0.70f, 0.75f, 1.00f, 1.0f};
 constexpr Im::ImVec4 kArtifact{0.95f, 0.85f, 0.55f, 1.0f};
 // A poison on a weapon: green, as the bottle is.
 constexpr Im::ImVec4 kPoison{0.55f, 0.85f, 0.45f, 1.0f};
+// A stolen copy: red.
+constexpr Im::ImVec4 kStolen{0.90f, 0.35f, 0.30f, 1.0f};
 
 const Im::ImVec4 *NameTint(const InventoryItem &item)
 {
@@ -3251,15 +3253,15 @@ const Im::ImVec4 *NameTint(const InventoryItem &item)
 // The marks after an item's name, wherever the name is drawn: a crown for a
 // Daedric artifact, else a bolt for an enchanted piece (an artifact is
 // always enchanted, and the crown says so), then a skull for a poison on
-// it. Each in its own colour -- the crown and the bolt the name's tint, the
-// skull green -- or the row's disabled colour when the row is dimmed, or
+// it, then a hand for a stolen copy. Each in its own colour -- the crown and
+// the bolt the name's tint, the skull green, the hand red -- or the row's disabled colour when the row is dimmed, or
 // the marks would light up a greyed row. Drawn at kPinScale like the pin: a
 // font glyph fills its em and reads too big beside text at full size.
 // Returns the width drawn, so a caller laying the marks out by hand (a menu
 // leaf) can advance past them.
 bool Badged(const InventoryItem &item)
 {
-    return item.artifact || item.enchanted || !item.poison.rows.empty();
+    return item.artifact || item.enchanted || !item.poison.rows.empty() || item.stolen;
 }
 
 // With no draw list, measures only: the width the marks would take.
@@ -3287,6 +3289,8 @@ float DrawNameBadges(Im::ImDrawList *draw, const InventoryItem &item, Im::ImVec2
         badge(0xF0E7, kEnchanted); // bolt
     if (!item.poison.rows.empty())
         badge(0xF714, kPoison); // skull-crossbones
+    if (item.stolen)
+        badge(0xF256, kStolen); // hand
     return x - at.x;
 }
 

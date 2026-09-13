@@ -86,6 +86,10 @@ struct InventoryItem
     // A Daedric artifact (the DaedricArtifact keyword, or the vendor one a
     // few Creation Club pieces carry instead): named in gold, with a crown.
     bool artifact{false};
+    // A copy on the row is stolen: a red hand after the name. The row's mark
+    // only, never a part of the variant: a rule's "equip Iron Dagger (+7)"
+    // takes a stolen one (docs/UNIQUE.md).
+    bool stolen{false};
     // A poison on the weapon: one row, its name and the hits left, under
     // headings of its own, and its effects in the enchantment's table
     // shape. No rows for a clean weapon. The list shows a poison glyph

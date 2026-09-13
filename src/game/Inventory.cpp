@@ -475,6 +475,18 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
     // trade menu prices it.
     item.value = entry ? entry->GetValue() : object->GetGoldValue();
     item.worn = entry && entry->IsWorn();
+    // Stolen when a copy on the row is, by the engine's own ownership rule
+    // asked from the player's side, not by who the owner is: a gift carries
+    // the player's ownership and is nobody's theft. The engine stacks owners,
+    // so one row can hold stolen and honest copies, and marks the row.
+    if (auto *player = RE::PlayerCharacter::GetSingleton(); player && entry && entry->extraLists)
+    {
+        for (auto *list : *entry->extraLists)
+        {
+            auto *owner = list ? list->GetOwner() : nullptr;
+            item.stolen = item.stolen || (owner && !entry->IsOwnedBy(player, owner, true));
+        }
+    }
     if (auto *keyworded = object->As<RE::BGSKeywordForm>())
     {
         static auto *artifact = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000A8668);
