@@ -675,15 +675,15 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
             amount +=
                 "\n" + Fmt("%+g", magnitude * base->data.secondAVWeight) + " " + valueName(base->data.secondaryAV);
         }
-        // Nothing in the record says "per second"; the engine's rule does.
-        // Health, Magicka and Stamina take a timed modifier once a second
-        // -- the "10 points per second for 5 seconds" of a potion's text
-        // -- and a constant one once, for as long as it runs. Every other
-        // value takes its modifier once either way.
-        const auto value = base->data.primaryAV;
-        const bool pool =
-            value == RE::ActorValue::kHealth || value == RE::ActorValue::kMagicka || value == RE::ActorValue::kStamina;
-        if (duration > 0 && pool)
+        // The Recover flag is what says "per second". Set, the modifier
+        // moves the value once and puts it back when the effect expires:
+        // a fortify, "+100 Magicka" for an hour. Clear, it moves the value
+        // every second and leaves it there: a heal or a poison, "10 points
+        // per second for 5 seconds". A guess from the value alone read
+        // Nordic Souls' Bard Song, a hidden Peak Value Modifier of Magicka
+        // with Recover set, as "+100 Magicka/s" (2026-09-13).
+        const bool recovers = base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kRecover);
+        if (duration > 0 && !recovers)
             amount += "/s";
     }
     else
