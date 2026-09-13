@@ -20,19 +20,55 @@
 namespace ft::game
 {
 
-// A copy of what the engine last decided about one follower.
+// What the sheet tabs show of one actor -- Character, Inventory, Magic,
+// Summons, Effects, Skills -- worded on the game thread. A follower's view
+// is this and their tactics; the player's page is this alone.
 //
 // The UI renders on the render thread while the tick runs on the game thread,
 // so nothing hands out a pointer into live state -- callers get a snapshot they
 // own. Copying a handful of small vectors once per UI frame is far cheaper than
 // the alternative of holding a lock across rendering.
-struct FollowerView
+struct CharacterView
 {
     ft::ActorId id{0};
     // Plain display name, no FormID. The ID is a debugging detail and belongs
     // in the log, where Describe() still emits it -- on screen it is noise the
     // player can get from the console if they ever need it.
     std::string name;
+    bool inCombat{false};
+
+    std::uint16_t level{0};
+    ft::Stat health{};
+    ft::Stat stamina{};
+    ft::Stat magicka{};
+    float carriedWeight{0.0f};
+    float carryCapacity{0.0f};
+    // The three bars' maxima and the carry weight written out -- the base,
+    // each effect by name, the perks and race -- as hover text on the bars
+    // and on the Carrying figure.
+    ft::Breakdown healthBreakdown;
+    ft::Breakdown staminaBreakdown;
+    ft::Breakdown magickaBreakdown;
+    ft::Breakdown carryBreakdown;
+    // The Character and Skills tabs' sections, worded on the game thread.
+    std::vector<SheetSection> sheet;
+    std::vector<SheetSection> skills;
+    // A page per perk held, for the Skills tab's perk page.
+    std::vector<PerkPage> perks;
+    // What they command right now, for the Summons tab.
+    std::vector<SummonView> summons;
+    // The Inventory tab: everything they carry, sorted by name.
+    std::vector<InventoryItem> inventory;
+    // The Magic tab: spells, powers and shouts, sorted by name.
+    std::vector<MagicEntry> magic;
+    // The Effects tab: what is running on them, sorted by name.
+    std::vector<EffectRow> effects;
+};
+
+// A copy of what the engine last decided about one follower, over their
+// sheet.
+struct FollowerView : CharacterView
+{
     // Seconds of voice recovery left, for the status tooltip of a shout or
     // power rule waiting on it: "Shout on cooldown (12 s)".
     float voiceRecovery{0.0f};
@@ -56,11 +92,7 @@ struct FollowerView
     // counts are meaningless then, and the UI says so rather than showing a
     // stale verdict or a confident zero.
     bool evaluated{false};
-    bool inCombat{false};
 
-    // Display only -- not rule inputs, so they stay out of Snapshot, which is
-    // the RE::-free contract the evaluator reads. All three are cheap reads and
-    // are filled in and out of combat alike.
     // The spells this follower can be told to cast or equip, sorted by name.
     // Lives on the view rather than in Snapshot because it is menu content, not
     // a rule input -- the evaluator only ever compares FormIDs.
@@ -68,30 +100,6 @@ struct FollowerView
     // The potions, food and ingredients they carry, for the Consume menu.
     // Same reasoning.
     std::vector<ConsumableOption> consumables;
-
-    std::uint16_t level{0};
-    float carriedWeight{0.0f};
-    float carryCapacity{0.0f};
-    // The three bars' maxima and the carry weight written out -- the base,
-    // each effect by name, the perks and race -- as hover text on the bars
-    // and on the Carrying figure.
-    ft::Breakdown healthBreakdown;
-    ft::Breakdown staminaBreakdown;
-    ft::Breakdown magickaBreakdown;
-    ft::Breakdown carryBreakdown;
-    // The Character and Skills tabs' sections, worded on the game thread.
-    std::vector<SheetSection> sheet;
-    std::vector<SheetSection> skills;
-    // A page per perk held, for the Skills tab's perk page.
-    std::vector<PerkPage> perks;
-    // What they command right now, for the Summons tab.
-    std::vector<SummonView> summons;
-    // The Inventory tab: everything they carry, sorted by name.
-    std::vector<InventoryItem> inventory;
-    // The Magic tab: spells, powers and shouts, sorted by name.
-    std::vector<MagicEntry> magic;
-    // The Effects tab: what is running on the follower, sorted by name.
-    std::vector<EffectRow> effects;
     // The Tactics tab's Combat Style section.
     std::vector<SheetSection> combatStyle;
     // What the editor greys a rule by (core/Editor.h), from the same scans

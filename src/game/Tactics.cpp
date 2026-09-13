@@ -310,12 +310,17 @@ void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet
     }
 }
 
-// Level and carry weight, for the panel. Not rule inputs -- three cheap reads,
-// done on both the in-combat and idle paths so the panel does not go blank when
-// a fight ends.
-void FillDisplayFields(RE::Actor *actor, FollowerView &v)
+// Every sheet tab's content, read off the actor. Not rule inputs, so done on
+// both the in-combat and idle paths: the panel does not go blank when a fight
+// ends.
+void FillCharacterView(RE::Actor *actor, CharacterView &v)
 {
+    v.id = actor->GetFormID();
+    v.name = DisplayNameOf(actor);
     v.level = actor->GetLevel();
+    v.health = ReadStat(actor, RE::ActorValue::kHealth);
+    v.stamina = ReadStat(actor, RE::ActorValue::kStamina);
+    v.magicka = ReadStat(actor, RE::ActorValue::kMagicka);
     v.carriedWeight = actor->GetWeightInContainer();
     v.healthBreakdown = ValueBreakdown(actor, RE::ActorValue::kHealth, "");
     v.staminaBreakdown = ValueBreakdown(actor, RE::ActorValue::kStamina, "");
@@ -323,6 +328,19 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     if (auto *owner = actor->AsActorValueOwner())
         v.carryCapacity = owner->GetActorValue(RE::ActorValue::kCarryWeight);
     v.carryBreakdown = ValueBreakdown(actor, RE::ActorValue::kCarryWeight, "");
+    v.sheet = BuildCharacterSheet(actor);
+    v.skills = BuildSkillSheet(actor);
+    v.perks = BuildPerkPages(actor);
+    v.summons = ScanSummons(actor);
+    v.inventory = ScanInventory(actor);
+    v.magic = ScanMagic(actor);
+    v.effects = ScanActiveEffects(actor);
+}
+
+// The sheet, and what the rule editor and its menus read beside it.
+void FillDisplayFields(RE::Actor *actor, FollowerView &v)
+{
+    FillCharacterView(actor, v);
 
     // Scanned on the idle path too, so the spell menu is populated while rules
     // are being written -- which is the only time anyone opens it. A follower's
@@ -337,13 +355,6 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
         if (other && other != actor)
             v.peers.push_back({other->GetFormID(), DisplayNameOf(other)});
     }
-    v.sheet = BuildCharacterSheet(actor);
-    v.skills = BuildSkillSheet(actor);
-    v.perks = BuildPerkPages(actor);
-    v.summons = ScanSummons(actor);
-    v.inventory = ScanInventory(actor);
-    v.magic = ScanMagic(actor);
-    v.effects = ScanActiveEffects(actor);
     MarkPins(actor, v.inventory, v.magic);
     v.combatStyle = BuildCombatStyleSheet(actor);
 
@@ -442,8 +453,6 @@ void PublishIdle(RE::Actor *actor, double now, bool inCombat)
     snapshot.stamina = ReadStat(actor, RE::ActorValue::kStamina);
 
     FollowerView v;
-    v.id = snapshot.self;
-    v.name = DisplayNameOf(actor);
     v.snapshot = snapshot;
     v.evaluated = false;
     v.inCombat = inCombat;
@@ -567,8 +576,6 @@ void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace
                  const ft::ActionTrace &actionTrace)
 {
     FollowerView v;
-    v.id = actor->GetFormID();
-    v.name = DisplayNameOf(actor);
     v.snapshot = snapshot;
     v.trace = trace;
     v.actionTrace = actionTrace;

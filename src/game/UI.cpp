@@ -3561,7 +3561,7 @@ void DrawChips(const std::vector<Chip> &chips, int &selected)
 // SkyUI's tab strip: All, then every category they have something in. Empty
 // categories are left out, as SkyUI leaves them out -- a tab promising
 // nothing is noise.
-void DrawCategoryRow(const FollowerView &view, InventoryTabState &state)
+void DrawCategoryRow(const CharacterView &view, InventoryTabState &state)
 {
     std::array<int, static_cast<std::size_t>(ItemCategory::COUNT)> counts{};
     for (const auto &item : view.inventory)
@@ -3735,7 +3735,7 @@ int CellRank(const EquipCell &cell)
 // The rows to show, in the order the table's header asks for. Sorted every
 // frame rather than on change: a hundred pointers is nothing, and the set
 // itself changes with the filter and with what they pick up.
-std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const InventoryTabState &state)
+std::vector<const InventoryItem *> VisibleItems(const CharacterView &view, const InventoryTabState &state)
 {
     std::vector<const InventoryItem *> rows;
     for (const auto &item : view.inventory)
@@ -3795,7 +3795,7 @@ std::vector<const InventoryItem *> VisibleItems(const FollowerView &view, const 
 
 // The list: SkyUI's columns, sortable by clicking a heading, one row per
 // kind of item with the count in brackets. Clicking a row opens it.
-void DrawInventoryList(const FollowerView &view, InventoryTabState &state)
+void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
 {
     Im::Spacing();
     DrawCategoryRow(view, state);
@@ -4112,7 +4112,7 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
 // takes the item's place rather than opening beside it, because the panel is
 // not wide enough for two columns of text at this font size, and a back
 // arrow is a gesture everyone already knows.
-void DrawInventory(const FollowerView &view)
+void DrawInventory(const CharacterView &view)
 {
     InventoryTabState &state = g_inventoryTabs[view.id];
 
@@ -4181,7 +4181,7 @@ constexpr unsigned kIconMagicAll = 0xF6E8; // hat-wizard
 constexpr unsigned kIconSummoned = 0xF6D5; // dragon
 constexpr unsigned kIconRaised = 0xF54C;   // skull
 
-std::vector<const MagicEntry *> VisibleMagic(const FollowerView &view, const MagicTabState &state)
+std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const MagicTabState &state)
 {
     std::vector<const MagicEntry *> rows;
     for (const auto &entry : view.magic)
@@ -4237,7 +4237,7 @@ std::vector<const MagicEntry *> VisibleMagic(const FollowerView &view, const Mag
     return rows;
 }
 
-void DrawMagicList(const FollowerView &view, MagicTabState &state)
+void DrawMagicList(const CharacterView &view, MagicTabState &state)
 {
     Im::Spacing();
     {
@@ -4522,7 +4522,7 @@ std::unordered_map<ft::ActorId, EffectsTabState> g_effectsTabs;
 char g_effectsFilter[64]{};
 
 // The rows that pass the filter, in the order the header asks for.
-std::vector<const EffectRow *> VisibleEffects(const FollowerView &view)
+std::vector<const EffectRow *> VisibleEffects(const CharacterView &view)
 {
     std::vector<const EffectRow *> rows;
     for (const auto &row : view.effects)
@@ -4569,7 +4569,7 @@ std::vector<const EffectRow *> VisibleEffects(const FollowerView &view)
 // Inventory tab, the spell on the Magic tab; None for a source with no
 // page of its own -- a racial ability, a potion drunk up. The tabs' own
 // lists are the rule for what has a page.
-Tab SourcePage(const FollowerView &view, std::uint32_t form)
+Tab SourcePage(const CharacterView &view, std::uint32_t form)
 {
     if (form == 0)
         return Tab::None;
@@ -4585,7 +4585,7 @@ Tab SourcePage(const FollowerView &view, std::uint32_t form)
 // The page a link to a form opens on the Inventory tab: of the form's
 // rows, the worn one, else the first; an enchanted piece is a row of its
 // own, so the form alone (the plain stack's key) would open nothing.
-std::uint64_t ItemPageOf(const FollowerView &view, std::uint32_t form)
+std::uint64_t ItemPageOf(const CharacterView &view, std::uint32_t form)
 {
     const InventoryItem *page = nullptr;
     for (const auto &item : view.inventory)
@@ -4597,7 +4597,7 @@ std::uint64_t ItemPageOf(const FollowerView &view, std::uint32_t form)
 }
 
 // Open it, with the back arrow returning to the Effects tab.
-void OpenSourcePage(const FollowerView &view, std::uint32_t form)
+void OpenSourcePage(const CharacterView &view, std::uint32_t form)
 {
     auto &inventory = g_inventoryTabs[view.id];
     switch (SourcePage(view, form))
@@ -4617,7 +4617,7 @@ void OpenSourcePage(const FollowerView &view, std::uint32_t form)
     }
 }
 
-void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const FollowerView &view)
+void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const CharacterView &view)
 {
     Im::Spacing();
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
@@ -4658,7 +4658,7 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Follow
     }
 }
 
-void DrawEffects(const FollowerView &view)
+void DrawEffects(const CharacterView &view)
 {
     auto &state = g_effectsTabs[view.id];
     if (state.detailForm != 0)
@@ -4772,7 +4772,7 @@ void DrawEffects(const FollowerView &view)
     Im::PopStyleVar(1);
 }
 
-void DrawMagic(const FollowerView &view)
+void DrawMagic(const CharacterView &view)
 {
     MagicTabState &state = g_magicTabs[view.id];
 
@@ -4851,7 +4851,7 @@ void DrawSummon(const SummonView &summon)
 // since the chip is where its name is.
 std::unordered_map<ft::ActorId, int> g_summonTabs;
 
-void DrawSummons(const FollowerView &view)
+void DrawSummons(const CharacterView &view)
 {
     if (view.summons.empty())
     {
@@ -4876,7 +4876,7 @@ void DrawSummons(const FollowerView &view)
 // The character sheet: what they are, as opposed to what they have been told to
 // do. Everything here is display only and already on the view, so it costs
 // the game thread nothing extra to show.
-void DrawCharacter(const FollowerView &view)
+void DrawCharacter(const CharacterView &view)
 {
     // Breathing room at the top -- the first bar sat flush against the panel
     // border.
@@ -4913,11 +4913,11 @@ void DrawCharacter(const FollowerView &view)
     geo.statLabelRight = geo.valueLeft - 12.0f;
 
     DrawStatRow(
-        geo, "Health", view.snapshot.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
+        geo, "Health", view.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
         [&] { Im::Text("%s", levelText.c_str()); }, view.healthBreakdown);
 
     DrawStatRow(
-        geo, "Stamina", view.snapshot.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Status",
+        geo, "Stamina", view.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Status",
         [&] {
             if (view.inCombat)
                 Im::TextColored(Im::ImVec4(0.95f, 0.65f, 0.35f, 1.0f), "%s", statusText.c_str());
@@ -4927,7 +4927,7 @@ void DrawCharacter(const FollowerView &view)
         view.staminaBreakdown);
 
     DrawStatRow(
-        geo, "Magicka", view.snapshot.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Carrying",
+        geo, "Magicka", view.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Carrying",
         [&] {
             // Over capacity is worth seeing: an overencumbered follower
             // cannot fight properly, and otherwise you would only notice
@@ -5037,7 +5037,7 @@ struct SkillsTabState
 };
 std::unordered_map<ft::ActorId, SkillsTabState> g_skillsTabs;
 
-void DrawSkills(const FollowerView &view)
+void DrawSkills(const CharacterView &view)
 {
     SkillsTabState &state = g_skillsTabs[view.id];
     if (state.detail != 0)
