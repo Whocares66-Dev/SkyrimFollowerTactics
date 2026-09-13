@@ -76,6 +76,8 @@ void Close(Breakdown &b)
 
 std::string AmountText(const Breakdown &b, const BreakdownLine &line)
 {
+    if (line.amountText)
+        return *line.amountText;
     const std::string &unit = line.unit ? *line.unit : b.unit;
     switch (line.op)
     {

@@ -2513,25 +2513,16 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     const float skillLevel = owner ? owner->GetActorValue(skill) : 0.0f;
     if (owner)
     {
-        // The Armor Perks value is added to the skill multiplier, one
-        // factor of the two: written as two lines all the same, the skill
-        // as the factor and the perks' share as the points it adds, which
-        // is the same number and reads as two things, as they are.
+        // The Armor Perks value is added to the skill multiplier: one
+        // factor, written as the sum it is, "x (1.35 + 0.20)". What set
+        // the value is on the Skills tab, on the armour skill's row.
         const float curve = owner->GetArmorRatingSkillMultiplier(skillLevel);
         const float perks = owner->GetActorValue(AV::kArmorPerks);
-        const float before = rating;
-        rating *= curve;
-        ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve);
+        rating *= curve + perks;
+        ft::BreakdownLine &line =
+            ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve + perks);
         if (perks != 0.0f)
-        {
-            rating += before * perks;
-            ft::BreakdownLine &line = ft::Add(b, "Armor Perks (" + Fmt("%g", perks) + ")", before * perks);
-            ft::Breakdown sources;
-            AddSourceLines(sources, Contributions(actor, AV::kArmorPerks));
-            for (ft::BreakdownLine &source : sources.lines)
-                source.unit = "";
-            line.detail = std::move(sources.lines);
-        }
+            line.amountText = "x (" + Fmt("%.2f", curve) + " + " + Fmt("%.2f", perks) + ")";
     }
     // Rounded up to whole points before the perks.
     if (const float up = std::ceil(rating) - rating; up > 0.0f)
@@ -2634,8 +2625,13 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // sheet and the rules cannot disagree. Robes and boots alone read
         // 50 (6%): two pieces' hidden bonus and no rating.
         const float resistCap = GameSetting("fPlayerMaxResistance", 85.0f);
-        SheetRow armorRow = Row("Armor", Fmt("%.0f", EffectiveArmor(actor)) + " (" +
-                                             Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")");
+        // The share of a blow turned away, as the resistances are shown:
+        // what the rating makes, and in brackets the cap where it is past
+        // it -- "87% (75%)" in a list that caps at 75.
+        static const float armorCap = GameSetting("fMaxArmorRating", 80.0f);
+        const float turned = (std::max)(0.0f, ArmorValue(actor) * ArmorScale() + actor->GetArmorBaseFactorSum());
+        SheetRow armorRow =
+            Row("Armor", Fmt("%.0f", EffectiveArmor(actor)) + " (" + CappedPercent(turned * 100.0f, armorCap) + ")");
         armorRow.breakdown = ArmorBreakdown(actor);
         s.rows.push_back(std::move(armorRow));
         // Each resistance with where it comes from as its hover text: the
@@ -3396,6 +3392,22 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                 part(Fmt("%+.0f%% ", k.power.sign * p) + k.power.effect, {{&k.power, p}}, k.power.sign * p);
             if (m != 0.0f)
                 part(Fmt("%+.0f%% ", k.mod.sign * m) + k.mod.effect, {{&k.mod, m}}, k.mod.sign * m);
+        }
+
+        // The Armor Perks value, which the engine adds to either armour
+        // skill's multiplier for every piece worn (docs/MODIFIERS.md): on
+        // both rows, with what set it on hover.
+        if (k.value == AV::kHeavyArmor || k.value == AV::kLightArmor)
+        {
+            if (const float perks = av(AV::kArmorPerks); perks != 0.0f)
+            {
+                SheetRow::ModifierPart piece;
+                piece.text = Fmt("%+.2f", perks) + " skill multiplier";
+                piece.breakdown = ValueBreakdown(actor, AV::kArmorPerks, "");
+                piece.breakdown.decimals = 2;
+                row.modifiers += (row.modifiers.empty() ? "" : ", ") + piece.text;
+                row.modifierParts.push_back(std::move(piece));
+            }
         }
 
         row.detail = OwnedPerks(actor, k.value);

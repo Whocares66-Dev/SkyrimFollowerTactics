@@ -38,6 +38,10 @@ struct BreakdownLine
     // The line's own unit, where it differs from the breakdown's: the
     // sources behind a value a perk read are in the value's units.
     std::optional<std::string> unit;
+    // The amount as written, where the number alone would hide its shape:
+    // "x (1.35 + 0.20)" for a factor the engine builds as a sum. The
+    // arithmetic still uses `amount`.
+    std::optional<std::string> amountText;
     // The line opened out: the sources behind a value a perk read (the
     // gauntlets and the potion behind a Fortify dial). Rendered indented
     // beneath the line; not part of the arithmetic, which the line's own
