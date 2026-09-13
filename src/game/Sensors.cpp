@@ -2513,16 +2513,25 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     const float skillLevel = owner ? owner->GetActorValue(skill) : 0.0f;
     if (owner)
     {
-        // The Armor Perks value is added to the skill multiplier, not
-        // multiplied after it: one factor of the two, named for both when
-        // the value is off zero.
+        // The Armor Perks value is added to the skill multiplier, one
+        // factor of the two: written as two lines all the same, the skill
+        // as the factor and the perks' share as the points it adds, which
+        // is the same number and reads as two things, as they are.
         const float curve = owner->GetArmorRatingSkillMultiplier(skillLevel);
         const float perks = owner->GetActorValue(AV::kArmorPerks);
-        std::string label = ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")";
+        const float before = rating;
+        rating *= curve;
+        ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve);
         if (perks != 0.0f)
-            label += " + Armor Perks " + Fmt("%g", perks);
-        rating *= curve + perks;
-        ft::Multiply(b, label, curve + perks);
+        {
+            rating += before * perks;
+            ft::BreakdownLine &line = ft::Add(b, "Armor Perks (" + Fmt("%g", perks) + ")", before * perks);
+            ft::Breakdown sources;
+            AddSourceLines(sources, Contributions(actor, AV::kArmorPerks));
+            for (ft::BreakdownLine &source : sources.lines)
+                source.unit = "";
+            line.detail = std::move(sources.lines);
+        }
     }
     // Rounded up to whole points before the perks.
     if (const float up = std::ceil(rating) - rating; up > 0.0f)
