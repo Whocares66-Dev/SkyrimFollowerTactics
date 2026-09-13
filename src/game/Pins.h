@@ -112,9 +112,11 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
 // those things off, so the AI decides again.
 bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand,
             const std::optional<ft::ItemVariant> &variant = std::nullopt);
-// Let go of every pin of the kind, and take those things off, so the AI
-// decides again; `hands` narrows a weapon's or a spell's release to one
-// hand (None: every hand).
+// Let go of every pin of the kind, and take off whatever of the kind is on,
+// pinned or not -- a weapon or spell in the hands named, the arrows in the
+// quiver, every piece of armour worn -- so the AI decides again from empty;
+// `hands` narrows a weapon's or a spell's release to one hand (None: every
+// hand).
 void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands = Hand::None);
 
 // This follower's pins, as the planner and the snapshot take them.

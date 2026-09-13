@@ -208,9 +208,9 @@ enum class ActionKind : std::uint8_t
     // hold on its own schedule, so a sword put in their hand without a pin
     // lasts until its next decision, which may be the same second. Each
     // names a thing by actionForm, and Weapon and Spell a hand as well; a
-    // form of 0 is "none": let go of every pin of that kind -- in that hand,
-    // for a weapon or a spell -- and take those things off, so the AI
-    // decides again. The arrows have two policies beside the named kinds:
+    // form of 0 is Unequip: let go of every pin of that kind -- in that
+    // hand, for a weapon or a spell -- and take off whatever of the kind is
+    // on, pinned or not, so the AI decides again from empty. The arrows have two policies beside the named kinds:
     // the hardest-hitting arrows carried, or the weakest, chosen fresh each
     // time the rule fires, so the pin follows the quiver as kinds run out.
     EquipWeapon,

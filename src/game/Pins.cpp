@@ -1698,7 +1698,50 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
         if (thing->Is(RE::FormType::Spell))
             g_republish.insert(actor->GetFormID());
     }
-    if (!released.empty())
+    // And whatever of the kind is on, pinned or not: an unequip is an
+    // unequip. The AI decides again from empty, as it does after the pins.
+    // A weapon or a spell by the hands named; the arrows in the quiver;
+    // every piece of armour worn.
+    bool bared = false;
+    const auto off = [&](RE::TESForm *thing, Hand hand) {
+        if (!thing)
+            return;
+        UnequipForm(actor, thing, hand, true);
+        if (thing->Is(RE::FormType::Spell))
+            g_republish.insert(actor->GetFormID());
+        bared = true;
+    };
+    switch (kind)
+    {
+    case Kind::Weapon:
+    case Kind::Spell:
+        for (const Hand hand : {Hand::Left, Hand::Right})
+        {
+            if (hands != Hand::None && !Overlap(hands, hand))
+                continue;
+            RE::TESForm *held = actor->GetEquippedObject(hand == Hand::Left);
+            if (held && held->Is(RE::FormType::Spell) == (kind == Kind::Spell))
+                off(held, hand);
+        }
+        break;
+    case Kind::Ammo:
+        off(actor->GetCurrentAmmo(), Hand::None);
+        break;
+    case Kind::Armor:
+        if (auto *changes = actor->GetInventoryChanges(); changes && changes->entryList)
+        {
+            std::vector<RE::TESForm *> worn;
+            for (auto *entry : *changes->entryList)
+                if (entry && entry->object && entry->object->IsArmor() && entry->IsWorn())
+                    worn.push_back(entry->object);
+            for (RE::TESForm *piece : worn)
+                off(piece, Hand::None);
+        }
+        break;
+    default:
+        break;
+    }
+    if (!released.empty() || bared)
         actor->Update3DModel();
 }
 
