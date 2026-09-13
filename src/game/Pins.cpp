@@ -488,7 +488,7 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
         RE::ExtraDataList *list =
             variant ? WornVariantList(actor, object, *variant, hands) : WornList(actor, object, hands);
         if (auto *manager = RE::ActorEquipManager::GetSingleton())
-            manager->UnequipObject(actor, object, list, 1, slot, !now, false, false, false, nullptr);
+            manager->UnequipObject(actor, object, list, 1, slot, !now, false, true, false, nullptr);
     }
 }
 
