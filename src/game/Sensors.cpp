@@ -489,7 +489,7 @@ ft::Breakdown ArmorBreakdown(RE::Actor *actor)
     // of a blow each), in the rating's own units -- 25 a piece at the
     // vanilla settings, the "25 armour per piece" of the wikis. The list
     // sums to the row's number, EffectiveArmor.
-    static const float perPiece = GameSetting("fArmorBaseFactor", 0.03f);
+    const float perPiece = GameSetting("fArmorBaseFactor", 0.03f);
     const float hidden = HiddenArmor(actor);
     if (hidden > 0.0f && perPiece > 0.0f)
     {
@@ -508,7 +508,7 @@ ft::Breakdown ArmorBreakdown(RE::Actor *actor)
 // fArmorScalingFactor over 100: what a point of armour rating turns away.
 float ArmorScale()
 {
-    static const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
+    const float scale = GameSetting("fArmorScalingFactor", 0.12f) / 100.0f;
     return scale;
 }
 
@@ -842,7 +842,7 @@ float DamageReduction(RE::Actor *actor)
     if (!actor)
         return 0.0f;
     const float scale = ArmorScale();
-    static const float cap = GameSetting("fMaxArmorRating", 80.0f) / 100.0f;
+    const float cap = GameSetting("fMaxArmorRating", 80.0f) / 100.0f;
     const float hidden = actor->GetArmorBaseFactorSum();
     return (std::min)(cap, (std::max)(0.0f, ArmorValue(actor) * scale + hidden));
 }
@@ -1613,7 +1613,9 @@ namespace
 // entry. The fallbacks are vanilla's numbers so a missing setting degrades to
 // "what the unmodded game does", not to a zero that reads as a broken sheet
 // -- and the miss is said once, at warn, since a misspelt name would
-// otherwise be a vanilla number that looks right.
+// otherwise be a vanilla number that looks right. Asked on every use, never
+// kept: a mod that changes a parameter mid-session (an MCM slider) changes
+// the sheet with it, and the lookup is a hash of the name.
 float GameSetting(const char *name, float vanilla)
 {
     auto *collection = RE::GameSettingCollection::GetSingleton();
@@ -2260,11 +2262,11 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     // branches on IsPlayerOwner; the damage pair is named the same way).
     // The wikis' "1 + skill / 200" is the player's pair. Logged once, so a
     // mod that retunes them is visible.
-    static const float npcMin = GameSetting("fDamageSkillMin", 1.0f);
-    static const float npcMax = GameSetting("fDamageSkillMax", 1.5f);
-    static const float pcMin = GameSetting("fDamagePCSkillMin", 1.0f);
-    static const float pcMax = GameSetting("fDamagePCSkillMax", 1.5f);
-    static const bool logged = [] {
+    const float npcMin = GameSetting("fDamageSkillMin", 1.0f);
+    const float npcMax = GameSetting("fDamageSkillMax", 1.5f);
+    const float pcMin = GameSetting("fDamagePCSkillMin", 1.0f);
+    const float pcMax = GameSetting("fDamagePCSkillMax", 1.5f);
+    static const bool logged = [&] {
         log::sensors.debug("damage: skill curve NPC {:.2f} to {:.2f}, player {:.2f} to {:.2f} over skill 0 to 100",
                            npcMin, npcMax, pcMin, pcMax);
         return true;
@@ -2440,12 +2442,12 @@ ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
     if (!power && owner && schooled)
     {
         const bool player = actor->IsPlayerRef();
-        static const float npcBase = GameSetting("fMagicCasterSkillCostBase", 0.005f);
-        static const float npcScale = GameSetting("fMagicSkillCostScale", 0.5f);
-        static const float npcMult = GameSetting("fMagicCasterSkillCostMult", 0.5f);
-        static const float pcBase = GameSetting("fMagicCasterPCSkillCostBase", 0.0034f);
-        static const float pcScale = GameSetting("fMagicPCSkillCostScale", 0.65f);
-        static const float pcMult = GameSetting("fMagicCasterPCSkillCostMult", 1.0f);
+        const float npcBase = GameSetting("fMagicCasterSkillCostBase", 0.005f);
+        const float npcScale = GameSetting("fMagicSkillCostScale", 0.5f);
+        const float npcMult = GameSetting("fMagicCasterSkillCostMult", 0.5f);
+        const float pcBase = GameSetting("fMagicCasterPCSkillCostBase", 0.0034f);
+        const float pcScale = GameSetting("fMagicPCSkillCostScale", 0.65f);
+        const float pcMult = GameSetting("fMagicCasterPCSkillCostMult", 1.0f);
         const float level = (std::max)(0.0f, owner->GetActorValue(skill));
         const float factor = player ? pcMult * (1.0f - std::pow(pcBase * level, pcScale))
                                     : npcMult * (1.0f - std::pow(npcBase * level, npcScale));
@@ -2483,9 +2485,9 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     // object Keyword Cuirass: Serana's tempered Vampire Armor rated 82 on
     // our sheet and 106 in the engine, the whole of an Other +24
     // (measured 2026-09-13, docs/MODIFIERS.md).
-    static const float healthLow = GameSetting("fHealthDataValue1", 1.1f);
-    static const float healthHigh = GameSetting("fHealthDataValue6", 1.6f);
-    static const float smithingMax = GameSetting("fSmithingArmorMax", 10.0f);
+    const float healthLow = GameSetting("fHealthDataValue1", 1.1f);
+    const float healthHigh = GameSetting("fHealthDataValue6", 1.6f);
+    const float smithingMax = GameSetting("fSmithingArmorMax", 10.0f);
     if (healthHigh > healthLow)
     {
         float bonus = 1.0f + (Tempering(entry) - healthLow) / (healthHigh - healthLow) * (smithingMax - 1.0f);
