@@ -5117,6 +5117,18 @@ void DrawSkills(const CharacterView &view)
     }
 }
 
+// A tab's content in a scrolling region of its own under the tab bar, so the
+// tabs stay in place when the page scrolls. By actor: each page keeps its own
+// place in its list. EndChild whether or not the region is visible, as ImGui
+// asks.
+void TabBody(const char *name, ft::ActorId actor, const std::function<void()> &draw)
+{
+    const std::string id = std::string("##tab/") + name + "/" + std::to_string(actor);
+    if (Im::BeginChild(id.c_str(), Im::ImVec2(0.0f, 0.0f), Im::ImGuiChildFlags_None, 0))
+        draw();
+    Im::EndChild();
+}
+
 // The sheet's tabs, inside the caller's tab bar, reading left to right as
 // who they are, what they carry, what they can cast, what they command,
 // what is running on them and what they can do: a follower's page and the
@@ -5131,33 +5143,35 @@ void DrawSheetTabs(const CharacterView &view)
 
     if (Im::BeginTabItem("Character", nullptr, select == Tab::Character ? Im::ImGuiTabItemFlags_SetSelected : 0))
     {
-        DrawCharacter(view);
+        TabBody("character", view.id, [&] { DrawCharacter(view); });
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Inventory", nullptr, select == Tab::Inventory ? Im::ImGuiTabItemFlags_SetSelected : 0))
     {
-        DrawInventory(view);
+        TabBody("inventory", view.id, [&] { DrawInventory(view); });
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Magic", nullptr, select == Tab::Magic ? Im::ImGuiTabItemFlags_SetSelected : 0))
     {
-        DrawMagic(view);
+        TabBody("magic", view.id, [&] { DrawMagic(view); });
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Summons"))
     {
-        DrawSummons(view);
+        TabBody("summons", view.id, [&] { DrawSummons(view); });
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Effects", nullptr, select == Tab::Effects ? Im::ImGuiTabItemFlags_SetSelected : 0))
     {
-        DrawEffects(view);
+        TabBody("effects", view.id, [&] { DrawEffects(view); });
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Skills"))
     {
-        Im::Spacing();
-        DrawSkills(view);
+        TabBody("skills", view.id, [&] {
+            Im::Spacing();
+            DrawSkills(view);
+        });
         Im::EndTabItem();
     }
 }
@@ -5185,13 +5199,15 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     // with, or against, these numbers.
     if (Im::BeginTabItem("Combat Style"))
     {
-        Im::Spacing();
-        DrawSections(view.combatStyle, false);
+        TabBody("combatstyle", view.id, [&] {
+            Im::Spacing();
+            DrawSections(view.combatStyle, false);
+        });
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Tactics", nullptr, tacticsFlags))
     {
-        DrawTactics(rules, view);
+        TabBody("tactics", view.id, [&] { DrawTactics(rules, view); });
         Im::EndTabItem();
     }
 
