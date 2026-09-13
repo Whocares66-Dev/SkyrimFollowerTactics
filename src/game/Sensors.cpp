@@ -453,13 +453,14 @@ float HiddenArmor(RE::Actor *actor);
 float ArmorValue(RE::Actor *actor);
 float EffectiveArmor(RE::Actor *actor);
 
-std::string ArmorNote(RE::Actor *actor)
+ft::Breakdown ArmorBreakdown(RE::Actor *actor)
 {
     // Each piece worn with its rating as the follower wears it, then the
     // spells and enchantments on the armour value itself (Oakflesh, a
     // Fortify Armor), smallest first as the resistances list theirs.
+    ft::Breakdown b;
     if (!actor)
-        return {};
+        return b;
     std::vector<Contribution> parts;
     auto inventory = actor->GetInventory([](RE::TESBoundObject &o) { return o.Is(RE::FormType::Armor); });
     for (auto &[object, slot] : inventory)
@@ -495,15 +496,12 @@ std::string ArmorNote(RE::Actor *actor)
         parts.push_back({"Hidden bonus (x" + std::to_string(pieces) + ")", {}, hidden});
     }
     // Whatever the engine's figure has that the pieces, the effects and
-    // the bonus do not (a formula mod, a rounding): last, as a remainder,
-    // so the list sums to the row and a gap is seen rather than hidden.
-    float sum = 0.0f;
-    for (const Contribution &c : parts)
-        sum += c.amount;
-    std::string note = SourceLines(std::move(parts), 0, "");
-    if (const float gap = EffectiveArmor(actor) - sum; std::abs(gap) >= 1.0f)
-        note += (note.empty() ? "" : "\n") + std::string("Other: ") + Fmt("%+.0f", gap);
-    return note;
+    // the bonus do not (a formula mod, a rounding) is the Other line, so
+    // the list sums to the row and a gap is seen rather than hidden.
+    AddSourceLines(b, std::move(parts));
+    b.total = EffectiveArmor(actor);
+    ft::Close(b);
+    return b;
 }
 
 // fArmorScalingFactor over 100: what a point of armour rating turns away.
@@ -530,71 +528,49 @@ float EffectiveArmor(RE::Actor *actor)
     return actor ? ArmorValue(actor) + HiddenArmor(actor) : 0.0f;
 }
 
-std::string SourceLines(std::vector<Contribution> sources, int decimals, const char *unit, float scale)
+void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources, float scale)
 {
     std::stable_sort(sources.begin(), sources.end(),
                      [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
-    const std::string fmt = "%+." + std::to_string(decimals) + "f";
-    std::string lines;
-    for (const Contribution &c : sources)
-        lines += (lines.empty() ? "" : "\n") + c.source + ": " + Fmt(fmt.c_str(), c.amount * scale) + unit;
-    return lines;
+    for (Contribution &c : sources)
+        ft::Add(b, std::move(c.source), c.amount * scale);
 }
 
-std::string ValueNote(float base, std::vector<Contribution> sources, float perks, int decimals, const char *unit,
-                      float scale)
+ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, float perks, float total, int decimals,
+                             const char *unit, float scale)
 {
-    const std::string fmt = "%." + std::to_string(decimals) + "f";
-    std::string note = "Base: " + Fmt(fmt.c_str(), base) + unit;
-    if (const std::string lines = SourceLines(std::move(sources), decimals, unit, scale); !lines.empty())
-        note += "\n" + lines;
+    ft::Breakdown b;
+    b.decimals = decimals;
+    b.unit = unit;
+    ft::Start(b, "Base", base);
+    AddSourceLines(b, std::move(sources), scale);
     // Half a unit or more: a rounding of the permanent value is not perks.
     if (std::abs(perks * scale) >= 0.5f / std::pow(10.0f, static_cast<float>(decimals)))
-        note += "\nPerks and race: " + Fmt(("%+." + std::to_string(decimals) + "f").c_str(), perks * scale) + unit;
-    return note;
+        ft::Add(b, "Perks and race", perks * scale);
+    b.total = total;
+    // An effect on the list but not yet in the value is an Other line:
+    // seen with an enchanted piece equipped from the panel while the clock
+    // is frozen, when the effect is listed at once and the value moves on
+    // the actor's next update (2026-09-11).
+    ft::Close(b);
+    return b;
 }
 
-// For the log, once per actor and value: the running effects on a value
-// whose sum is not in the value. Seen with an enchanted piece equipped from
-// the panel while the clock is frozen: the effect is in the list at once,
-// the value moves on the actor's next update (Pins.cpp, the equip path),
-// and the sheet's hover text ran ahead of its row (2026-09-11). What an
-// effect not yet applied looks like -- a flag, an elapsed time of zero --
-// is what this is to find out, so the hover text can say so.
-std::unordered_set<std::uint64_t> g_unappliedLogged;
-void LogUnappliedSources(RE::Actor *actor, RE::ActorValue value, float listed, float actual)
-{
-    if (!log::Enabled(log::Level::Debug))
-        return;
-    const auto key = (static_cast<std::uint64_t>(actor->GetFormID()) << 32) | static_cast<std::uint32_t>(value);
-    if (!g_unappliedLogged.insert(key).second)
-        return;
-    std::string lines;
-    ForEachActiveEffect(actor, [&](RE::ActiveEffect &ae) {
-        if (!ModifiesValue(ae, value))
-            return;
-        lines += fmt::format("\n    {} {:+.1f}: flags {:#010x}, elapsed {:.2f}s, duration {:.1f}s, source {}",
-                             NameOr(ae.effect->baseEffect, "?"), ae.magnitude, ae.flags.underlying(), ae.elapsedSeconds,
-                             ae.duration, SourceName(actor, &ae));
-    });
-    log::sensors.debug("value {} on {}: reads {:.1f}, the listed sources make {:.1f} -- the effects on it:{}",
-                       static_cast<int>(value), NameOr(actor, "?"), actual, listed, lines);
-}
-
-std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
+ft::Breakdown ValueBreakdown(RE::Actor *actor, RE::ActorValue value, const char *unit)
 {
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     if (!owner)
         return {};
     const float base = owner->GetBaseActorValue(value);
-    const float perks = owner->GetPermanentActorValue(value) - base;
-    std::vector<Contribution> sources = Contributions(actor, value);
-    float listed = base + perks;
-    for (const Contribution &c : sources)
-        listed += c.amount;
-    if (const float actual = owner->GetActorValue(value); std::abs(actual - listed) >= 0.5f)
-        LogUnappliedSources(actor, value, listed, actual);
-    return ValueNote(base, std::move(sources), perks, 0, unit);
+    const float permanent = owner->GetPermanentActorValue(value);
+    // A pool's maximum is the permanent value plus what effects add for
+    // now; the damage taken is below it and is not a source. Every other
+    // value is what it reads.
+    const bool pool =
+        value == RE::ActorValue::kHealth || value == RE::ActorValue::kMagicka || value == RE::ActorValue::kStamina;
+    const float total = pool ? permanent + actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, value)
+                             : owner->GetActorValue(value);
+    return ValueBreakdown(base, Contributions(actor, value), permanent - base, total, 0, unit);
 }
 
 // The conditions of one tab, a row each: the call, the comparison, and a
@@ -603,6 +579,9 @@ std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit)
 // listed, not evaluated.
 std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition,
                                     const char *on = nullptr); // below, with the perks
+// The value's display name, where the game has one; else the Creation
+// Kit's, read as words. Below, with the perk entry points.
+std::string ValueName(RE::ActorValue value);
 
 // Does the effect move an actor value: the kinds the Character sheet's
 // notes list by source.
@@ -631,27 +610,7 @@ bool MovesValue(const RE::EffectSetting *base)
 SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnitude)
 {
     const auto *base = effect.baseEffect;
-    // The value's display name, where the game has one; else the Creation
-    // Kit's, read as words: Ward Power, Damage Resist. Most values the
-    // game never shows have no display name (Spellbreaker's ward read as
-    // "? +100", 2026-09-11).
-    const auto valueName = [](RE::ActorValue value) -> std::string {
-        auto *list = RE::ActorValueList::GetSingleton();
-        auto *info = list ? list->GetActorValueInfo(value) : nullptr;
-        if (!info)
-            return "?";
-        if (info->GetFullName() && *info->GetFullName())
-            return info->GetFullName();
-        std::string words;
-        for (const char *c = info->enumName ? info->enumName : ""; *c; ++c)
-        {
-            if (std::isupper(static_cast<unsigned char>(*c)) && !words.empty() &&
-                !std::isupper(static_cast<unsigned char>(words.back())))
-                words += ' ';
-            words += *c;
-        }
-        return words.empty() ? "?" : words;
-    };
+    const auto valueName = ValueName;
 
     // The effect by the name the game gives it -- Scourge, Spell Warding,
     // Fortify Health -- and beside it the amount with the value it moves:
@@ -1862,12 +1821,32 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
         }
         rows.push_back(Row("Weapon", NameOr(weapon, "?")));
         rows.back().form = weapon->GetFormID();
-        // In their hands: the carried item, for its tempering.
+        // In their hands: the carried item, for its tempering. Each figure
+        // as it applies now, written out on hover.
         const Carried carried = CarriedOf(actor, weapon);
-        rows.push_back(Row("Damage", Fmt("%.0f", WeaponDamage(actor, weapon, carried.entry.get()))));
-        rows.push_back(Row("Speed", Fmt("%.2f", weapon->GetSpeed())));
+        {
+            SheetRow row;
+            const float damage = WeaponDamage(actor, weapon, carried.entry.get(), &row.breakdown);
+            row.label = "Damage";
+            row.value = Fmt("%.0f", damage);
+            rows.push_back(std::move(row));
+        }
+        {
+            SheetRow row;
+            const float speed = WeaponSpeed(actor, weapon, left, &row.breakdown);
+            row.label = "Speed";
+            row.value = Fmt("%.2f", speed);
+            rows.push_back(std::move(row));
+        }
         rows.push_back(Row("Reach", Fmt("%.2f", weapon->GetReach())));
         rows.push_back(Row("Stagger", Fmt("%.2f", weapon->GetStagger())));
+        {
+            SheetRow row;
+            const float chance = CritChance(actor, weapon, &row.breakdown);
+            row.label = "Crit Chance";
+            row.value = Fmt("%.0f%%", chance);
+            rows.push_back(std::move(row));
+        }
         if (weapon->IsBow() || weapon->IsCrossbow())
         {
             if (auto *ammo = actor->GetCurrentAmmo())
@@ -1888,7 +1867,11 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
     {
         rows.push_back(Row("Spell", NameOr(spell, "?")));
         rows.back().form = spell->GetFormID();
-        rows.push_back(Row("Cost", Fmt("%.0f", spell->CalculateMagickaCost(actor))));
+        {
+            SheetRow row = Row("Cost", Fmt("%.0f", spell->CalculateMagickaCost(actor)));
+            row.breakdown = SpellCostBreakdown(actor, spell);
+            rows.push_back(std::move(row));
+        }
         if (const auto *effect = spell->GetCostliestEffectItem(); effect && effect->baseEffect)
         {
             std::string what = NameOr(effect->baseEffect, "?");
@@ -1906,7 +1889,11 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
         rows.push_back(Row(shield ? "Shield" : "Held", NameOr(armor, "?")));
         rows.back().form = armor->GetFormID();
         const Carried carried = CarriedOf(actor, armor);
-        rows.push_back(Row("Armor", Fmt("%.0f", ArmorRating(actor, armor, carried.entry.get()))));
+        SheetRow row;
+        const float rating = ArmorRating(actor, armor, carried.entry.get(), &row.breakdown);
+        row.label = "Armor";
+        row.value = Fmt("%.0f", rating);
+        rows.push_back(std::move(row));
         return;
     }
 
@@ -1964,11 +1951,200 @@ bool ReadsSkillPowerMods(const RE::Actor *actor)
 }
 } // namespace
 
-float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry)
+// --- perk entry points -------------------------------------------------------
+
+// The value's display name, where the game has one; else the Creation
+// Kit's, read as words: Ward Power, Damage Resist. Most values the game
+// never shows have no display name (Spellbreaker's ward read as "? +100",
+// 2026-09-11).
+std::string ValueName(RE::ActorValue value)
+{
+    auto *list = RE::ActorValueList::GetSingleton();
+    auto *info = list ? list->GetActorValueInfo(value) : nullptr;
+    if (!info)
+        return "?";
+    if (info->GetFullName() && *info->GetFullName())
+        return info->GetFullName();
+    std::string words;
+    for (const char *c = info->enumName ? info->enumName : ""; *c; ++c)
+    {
+        if (std::isupper(static_cast<unsigned char>(*c)) && !words.empty() &&
+            !std::isupper(static_cast<unsigned char>(words.back())))
+            words += ' ';
+        words += *c;
+    }
+    return words.empty() ? "?" : words;
+}
+
+std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data); // below, with the perks
+
+namespace
+{
+// The entries the actor holds on one entry point, in the order the
+// engine visits them: the arrays on the actor's process, kept sorted by
+// priority (docs/MODIFIERS.md).
+struct EntryCollector : RE::PerkEntryVisitor
+{
+    // A virtual destructor after Visit keeps Visit in the slot the engine
+    // calls; the engine never destroys one, this stack frame does.
+    virtual ~EntryCollector() = default;
+    std::vector<RE::BGSEntryPointPerkEntry *> entries;
+    RE::BSContainer::ForEachResult Visit(RE::BGSPerkEntry *entry) override
+    {
+        if (entry && entry->GetType() == RE::PERK_ENTRY_TYPE::kEntryPoint)
+            entries.push_back(static_cast<RE::BGSEntryPointPerkEntry *>(entry));
+        return RE::BSContainer::ForEachResult::kContinue;
+    }
+};
+
+// The two floats of a two-value function record, read where the engine's
+// handlers read them (docs/MODIFIERS.md): the first is an actor value's
+// index for the actor-value functions, the second the multiplier.
+struct TwoValueData
+{
+    void *vtable;
+    float data[2];
+};
+} // namespace
+
+void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::ENTRY_POINT point,
+                        const std::vector<void *> &args)
+{
+    if (!actor)
+        return;
+    EntryCollector collector;
+    actor->ForEachPerkEntry(point, collector);
+    // The condition arguments as the engine hands them to an entry: the
+    // perk owner first, then the call's own.
+    std::vector<void *> argv;
+    argv.push_back(actor);
+    argv.insert(argv.end(), args.begin(), args.end());
+    auto *owner = actor->AsActorValueOwner();
+
+    using Fn = RE::BGSEntryPointFunction::ENTRY_POINT_FUNCTION;
+    using DataType = RE::BGSEntryPointFunctionData::ENTRY_POINT_FUNCTION_DATA;
+    for (RE::BGSEntryPointPerkEntry *entry : collector.entries)
+    {
+        const auto *data = entry->functionData;
+        const auto dataType = data ? data->GetType() : DataType::kInvalid;
+        const float one = dataType == DataType::kOneValue
+                              ? static_cast<const RE::BGSEntryPointFunctionDataOneValue *>(data)->data
+                              : 0.0f;
+        const float *two =
+            dataType == DataType::kTwoValue ? reinterpret_cast<const TwoValueData *>(data)->data : nullptr;
+        // The engine takes the argument list as one untyped pointer.
+        const bool applied = entry->CheckConditionFilters(
+            static_cast<std::uint32_t>(argv.size()),
+            reinterpret_cast<void *>(argv.data())); // NOLINT(bugprone-multi-level-implicit-pointer-conversion)
+
+        // The perk's name, trimmed: the records are not (" Magic
+        // Resistance", Skyrim.esm).
+        std::string label = NameOr(entry->perk, "");
+        if (const auto first = label.find_first_not_of(' '); first != std::string::npos)
+            label = label.substr(first, label.find_last_not_of(' ') - first + 1);
+        else
+            label = "?";
+        ft::BreakdownLine line;
+        line.label = label;
+        line.applied = applied;
+        const auto av = two ? static_cast<RE::ActorValue>(static_cast<int>(two[0])) : RE::ActorValue::kNone;
+        const float value = two && owner ? owner->GetActorValue(av) : 0.0f;
+        const float mult = two ? two[1] : 0.0f;
+        // A perk that reads a value opens on the value's own sources: the
+        // gauntlets and the potion behind a Fortify dial.
+        const auto withValue = [&] {
+            line.label += " (" + ValueName(av) + ")";
+            ft::Breakdown sources;
+            AddSourceLines(sources, Contributions(actor, av));
+            line.detail = std::move(sources.lines);
+        };
+        switch (entry->entryData.function.get())
+        {
+        case Fn::kSetValue:
+            line.op = ft::Op::Start;
+            line.label += " (set)";
+            line.amount = one;
+            break;
+        case Fn::kAddValue:
+            line.op = ft::Op::Add;
+            line.amount = one;
+            break;
+        case Fn::kMultiplyValue:
+            line.op = ft::Op::Multiply;
+            line.amount = one;
+            break;
+        case Fn::kAddRangeToValue:
+            // A fresh roll each call; the low end is listed and the roll
+            // is the Other line's.
+            line.op = ft::Op::Add;
+            line.amount = two ? two[0] : 0.0f;
+            if (two)
+                line.label += " (" + Fmt("%g", two[0]) + " to " + Fmt("%g", two[1]) + ")";
+            break;
+        case Fn::kAddActorValueMult:
+            line.op = ft::Op::Add;
+            line.amount = value * mult;
+            withValue();
+            break;
+        case Fn::kSetToActorValueMult:
+            line.op = ft::Op::Start;
+            line.amount = value * mult;
+            withValue();
+            break;
+        case Fn::kMultiplyActorValueMult:
+            line.op = ft::Op::Multiply;
+            line.amount = value * mult;
+            withValue();
+            break;
+        case Fn::kMultiplyOnePlusActorValueMult:
+            line.op = ft::Op::Multiply;
+            line.amount = 1.0 + value * mult;
+            withValue();
+            break;
+        default:
+            // Nothing a number can carry: a leveled list, a text.
+            continue;
+        }
+        if (!applied)
+        {
+            // The conditions that stopped it, in the perk page's words:
+            // the first three, the rest as a count.
+            std::string why;
+            int listed = 0;
+            for (std::uint32_t tab = 0; tab < entry->conditions.size(); ++tab)
+            {
+                const auto &condition = entry->conditions[tab];
+                for (const auto *item = condition.head; item; item = item->next)
+                {
+                    if (++listed > 3)
+                        continue;
+                    why += (why.empty() ? "" : ", ") + ConditionCall(item->data);
+                    if (tab > 0)
+                        why += " on argument " + std::to_string(tab + 1);
+                }
+            }
+            if (listed > 3)
+                why += ", +" + std::to_string(listed - 3);
+            line.why = why.empty() ? "not met" : "not met: " + why;
+        }
+        b.lines.push_back(std::move(line));
+    }
+}
+
+float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry, ft::Breakdown *out)
 {
     if (!actor || !weapon)
         return 0.0f;
-    float damage = weapon->GetAttackDamage() * Tempering(entry);
+    ft::Breakdown local;
+    ft::Breakdown &b = out ? *out : local;
+    b = {};
+    float damage = weapon->GetAttackDamage();
+    ft::Start(b, "Base damage", damage);
+    if (const float tempering = Tempering(entry); tempering != 1.0f)
+    {
+        damage *= tempering;
+        ft::Multiply(b, "Tempering", tempering);
+    }
 
     // The skill curve: UESP gives it as (1 + skill / 200), which is what the
     // fallbacks below encode. The settings are read by the names the engine
@@ -2014,39 +2190,200 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     const bool player = actor->IsPlayerRef();
     const float lo = player ? pcMin : npcMin;
     const float hi = player ? pcMax : npcMax;
-    damage *= lo + (hi - lo) * skillLevel / 100.0f;
+    const float curve = lo + (hi - lo) * skillLevel / 100.0f;
+    damage *= curve;
+    ft::Multiply(b, "Skill (" + ValueName(skill) + " " + Fmt("%.0f", skillLevel) + ")", curve);
 
     // Perks, through the engine's own entry point, so Armsman and the rest
     // count exactly as they do in a swing. The entry point wants a target,
     // and there is none outside a fight; they stand in for it themself. A
     // perk that reads the target (against undead, say) evaluates against
     // them and so stays out of the figure -- the same figure the player's
-    // own inventory menu shows, which has no target either.
+    // own inventory menu shows, which has no target either. Fortify
+    // One-handed and its kin count here too, for whoever holds the hidden
+    // perk that reads them (every NPC in Nordic Souls; no follower in
+    // vanilla): multiplying the value in by hand as well doubled it
+    // (docs/MODIFIERS.md, 2026-09-13).
+    (void)fortify;
+    (void)fortifyPower;
+    AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, {weapon, actor});
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, actor, weapon, actor,
                                         &damage);
 
-    // Fortify One-handed and its kin: enchantments on the first value,
-    // potions on the second, both in percent -- for an actor with the perk
-    // that reads them, which a follower is not.
+    // The multiplier on every physical hit (a Vampire Lord's, a mod's), 1
+    // for plain, and flat points on the weapon's listed damage: both per
+    // UESP's account of what the listed damage carries, not yet read off
+    // the executable (docs/MODIFIERS.md).
     if (owner)
     {
-        const float mods = (ReadsSkillMods(actor) ? owner->GetActorValue(fortify) : 0.0f) +
-                           (ReadsSkillPowerMods(actor) ? owner->GetActorValue(fortifyPower) : 0.0f);
-        damage *= 1.0f + mods / 100.0f;
+        if (const float mult = owner->GetActorValue(AV::kAttackDamageMult); mult > 0.0f && mult != 1.0f)
+        {
+            damage *= mult;
+            ft::BreakdownLine &line = ft::Multiply(b, "Attack Damage Mult", mult);
+            ft::Breakdown sources;
+            AddSourceLines(sources, Contributions(actor, AV::kAttackDamageMult));
+            line.detail = std::move(sources.lines);
+        }
+        if (const float flat = owner->GetActorValue(AV::kMeleeDamage); flat != 0.0f)
+        {
+            damage += flat;
+            ft::BreakdownLine &line = ft::Add(b, "Melee Damage", flat);
+            ft::Breakdown sources;
+            AddSourceLines(sources, Contributions(actor, AV::kMeleeDamage));
+            line.detail = std::move(sources.lines);
+        }
     }
 
+    b.total = damage;
+    ft::Close(b);
     return damage;
 }
 
-float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry)
+float WeaponSpeed(RE::Actor *actor, const RE::TESObjectWEAP *weapon, bool left, ft::Breakdown *out)
+{
+    if (!weapon)
+        return 0.0f;
+    ft::Breakdown local;
+    ft::Breakdown &b = out ? *out : local;
+    b = {};
+    b.decimals = 2;
+    float speed = weapon->GetSpeed();
+    ft::Start(b, "Weapon", speed);
+    // The hand's multiplier: 0 means none (the value's default), and any
+    // other number multiplies -- the engine's rule as the speed-fix mods
+    // describe it, and the reason two boosts stack wrongly in vanilla. Not
+    // read off the executable.
+    const auto value = left ? RE::ActorValue::kLeftWeaponSpeedMultiply : RE::ActorValue::kWeaponSpeedMult;
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    if (const float mult = owner ? owner->GetActorValue(value) : 0.0f; mult > 0.0f && mult != 1.0f)
+    {
+        speed *= mult;
+        ft::BreakdownLine &line = ft::Multiply(b, "Weapon Speed Mult", mult);
+        ft::Breakdown sources;
+        AddSourceLines(sources, Contributions(actor, value));
+        line.detail = std::move(sources.lines);
+    }
+    b.total = speed;
+    ft::Close(b);
+    return speed;
+}
+
+float CritChance(RE::Actor *actor, RE::TESObjectWEAP *weapon, ft::Breakdown *out)
+{
+    if (!actor || !weapon)
+        return 0.0f;
+    ft::Breakdown local;
+    ft::Breakdown &b = out ? *out : local;
+    b = {};
+    b.unit = "%";
+    auto *owner = actor->AsActorValueOwner();
+    float chance = owner ? owner->GetActorValue(RE::ActorValue::kCriticalChance) : 0.0f;
+    ft::Start(b, "Critical Chance", chance);
+    // Bladesman and its kin set or add to it here. The entry point takes
+    // the weapon and a target; they stand in for the target, as for
+    // damage. Where the engine starts its own figure from is not yet read
+    // off the executable (docs/MODIFIERS.md).
+    AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kCalculateMyCriticalHitChance, {weapon, actor});
+    RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kCalculateMyCriticalHitChance, actor, weapon,
+                                        actor, &chance);
+    b.total = chance;
+    ft::Close(b);
+    return chance;
+}
+
+float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out)
+{
+    ft::Breakdown local;
+    ft::Breakdown &b = out ? *out : local;
+    b = {};
+    b.unit = " s";
+    ft::Start(b, "Word", recovery);
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    if (const float mult = owner ? owner->GetActorValue(RE::ActorValue::kShoutRecoveryMult) : 1.0f;
+        mult > 0.0f && mult != 1.0f)
+    {
+        recovery *= mult;
+        ft::BreakdownLine &line = ft::Multiply(b, "Shout Recovery Mult", mult);
+        ft::Breakdown sources;
+        AddSourceLines(sources, Contributions(actor, RE::ActorValue::kShoutRecoveryMult));
+        line.detail = std::move(sources.lines);
+    }
+    b.total = recovery;
+    ft::Close(b);
+    return recovery;
+}
+
+ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
+{
+    // The engine's own cost, read off the executable (docs/MODIFIERS.md):
+    // the sum of each effect's cost, each scaled by the caster's skill in
+    // the effect's school, then the Mod Spell Cost entries, then clamped
+    // at zero. A power gets none of it: the caster is dropped and the sum
+    // is the cost.
+    ft::Breakdown b;
+    if (!actor || !spell)
+        return b;
+    auto *owner = actor->AsActorValueOwner();
+    const auto type = spell->GetSpellType();
+    const bool power = type == RE::MagicSystem::SpellType::kPower || type == RE::MagicSystem::SpellType::kLesserPower;
+    const RE::Effect *costliest = spell->GetCostliestEffectItem();
+    if (spell->data.flags.any(RE::SpellItem::SpellFlag::kCostOverride))
+        ft::Start(b, "Cost", static_cast<float>(spell->data.costOverride));
+    else
+    {
+        for (const auto *effect : spell->effects)
+        {
+            if (!effect || !effect->baseEffect)
+                continue;
+            ft::Add(b, NameOr(effect->baseEffect, "?"), effect->cost);
+        }
+    }
+    // The skill curve: cost times mult times (1 - (base * level)^scale),
+    // one triple of settings for the player and another for everyone
+    // else, matched to their names by reading the setting objects behind
+    // the constants (2026-09-13). Applied per effect by the engine; here
+    // as one factor from the costliest effect's school, so a spell of two
+    // schools shows the rest as Other.
+    if (!power && owner && costliest && costliest->baseEffect)
+    {
+        const RE::ActorValue skill = costliest->baseEffect->GetMagickSkill();
+        const bool player = actor->IsPlayerRef();
+        static const float npcBase = GameSetting("fMagicCasterSkillCostBase", 0.005f);
+        static const float npcScale = GameSetting("fMagicSkillCostScale", 0.5f);
+        static const float npcMult = GameSetting("fMagicCasterSkillCostMult", 0.5f);
+        static const float pcBase = GameSetting("fMagicCasterPCSkillCostBase", 0.0034f);
+        static const float pcScale = GameSetting("fMagicPCSkillCostScale", 0.65f);
+        static const float pcMult = GameSetting("fMagicCasterPCSkillCostMult", 1.0f);
+        const float level = (std::max)(0.0f, owner->GetActorValue(skill));
+        const float factor = player ? pcMult * (1.0f - std::pow(pcBase * level, pcScale))
+                                    : npcMult * (1.0f - std::pow(npcBase * level, npcScale));
+        ft::Multiply(b, "Skill (" + ValueName(skill) + " " + Fmt("%.0f", level) + ")", factor);
+        AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kModSpellCost,
+                           {const_cast<RE::SpellItem *>(spell)});
+    }
+    b.total = spell->CalculateMagickaCost(actor);
+    ft::Close(b);
+    return b;
+}
+
+float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry, ft::Breakdown *out)
 {
     if (!actor || !armor)
         return 0.0f;
+    ft::Breakdown local;
+    ft::Breakdown &b = out ? *out : local;
+    b = {};
     using Class = RE::BGSBipedObjectForm::ArmorType;
     const Class armorClass = armor->GetArmorType();
     if (armorClass == Class::kClothing)
         return 0.0f;
-    float rating = armor->GetArmorRating() * Tempering(entry);
+    float rating = armor->GetArmorRating();
+    ft::Start(b, "Base rating", rating);
+    if (const float tempering = Tempering(entry); tempering != 1.0f)
+    {
+        rating *= tempering;
+        ft::Multiply(b, "Tempering", tempering);
+    }
 
     // The skill curve. UESP gives displayed armour as base * (1 + 0.4 *
     // skill / 100), which the fallbacks encode; the names are the engine's,
@@ -2054,8 +2391,6 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     using AV = RE::ActorValue;
     const bool heavy = armorClass == Class::kHeavyArmor;
     const AV skill = heavy ? AV::kHeavyArmor : AV::kLightArmor;
-    const AV fortify = heavy ? AV::kHeavyArmorModifier : AV::kLightArmorModifier;
-    const AV fortifyPower = heavy ? AV::kHeavyArmorPowerModifier : AV::kLightArmorPowerModifier;
 
     // The skill curve is the engine's own: fArmorRatingBase to
     // fArmorRatingMax over skill 0 to 100 for an NPC, the PC pair for the
@@ -2073,18 +2408,21 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     auto *owner = actor->AsActorValueOwner();
     const float skillLevel = owner ? owner->GetActorValue(skill) : 0.0f;
     if (owner)
-        rating *= owner->GetArmorRatingSkillMultiplier(skillLevel);
+    {
+        const float curve = owner->GetArmorRatingSkillMultiplier(skillLevel);
+        rating *= curve;
+        ft::Multiply(b, "Skill (" + ValueName(skill) + " " + Fmt("%.0f", skillLevel) + ")", curve);
+    }
 
     // Perks: Juggernaut, Agile Defender and their kin, through the engine's
-    // entry point for armour, which takes the piece and the value.
+    // entry point for armour, which takes the piece and the value. A
+    // Fortify Heavy Armor value is not multiplied in: the hidden perk that
+    // reads it cuts incoming damage, not the rating (docs/RESEARCH.md 6),
+    // and vanilla writes the skill itself.
+    AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kModArmorRating, {armor});
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModArmorRating, actor, armor, &rating);
-
-    if (owner)
-    {
-        const float mods = (ReadsSkillMods(actor) ? owner->GetActorValue(fortify) : 0.0f) +
-                           (ReadsSkillPowerMods(actor) ? owner->GetActorValue(fortifyPower) : 0.0f);
-        rating *= 1.0f + mods / 100.0f;
-    }
+    b.total = rating;
+    ft::Close(b);
     return rating;
 }
 
@@ -2126,7 +2464,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // text, as for the regen rates.
         {
             SheetRow row = Row("Speed", Fmt("%.0f%%", av(RE::ActorValue::kSpeedMult)));
-            row.note = ValueNote(actor, RE::ActorValue::kSpeedMult, "%");
+            row.breakdown = ValueBreakdown(actor, RE::ActorValue::kSpeedMult, "%");
             s.rows.push_back(std::move(row));
         }
         s.rows.push_back(Row("Noise", Fmt("%.0f%%", av(RE::ActorValue::kMovementNoiseMult) * 100.0)));
@@ -2172,18 +2510,23 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         const float resistCap = GameSetting("fPlayerMaxResistance", 85.0f);
         SheetRow armorRow = Row("Armor", Fmt("%.0f", EffectiveArmor(actor)) + " (" +
                                              Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")");
-        armorRow.note = ArmorNote(actor);
+        armorRow.breakdown = ArmorBreakdown(actor);
         s.rows.push_back(std::move(armorRow));
         // Each resistance with where it comes from as its hover text: the
         // ring, the potion, the race.
         const auto resist = [&](const char *label, RE::ActorValue value, bool capped) {
             SheetRow row = Row(label, capped ? CappedPercent(av(value), resistCap) : Fmt("%.0f%%", av(value)));
-            row.note = ValueNote(actor, value, "%");
+            row.breakdown = ValueBreakdown(actor, value, "%");
             s.rows.push_back(std::move(row));
         };
-        // Magic first, then the elements, then poison; disease last, the one
-        // that matters to the player alone.
+        // The chance to reflect a blow back, after the rating it did not
+        // turn away.
+        resist("Reflect", RE::ActorValue::kReflectDamage, false);
+        // Magic first, with the chance to absorb a spell outright beside
+        // it, then the elements, then poison; disease last, the one that
+        // matters to the player alone.
         resist("Magic", RE::ActorValue::kResistMagic, true);
+        resist("Spell Absorb", RE::ActorValue::kAbsorbChance, false);
         resist("Fire", RE::ActorValue::kResistFire, true);
         resist("Frost", RE::ActorValue::kResistFrost, true);
         resist("Shock", RE::ActorValue::kResistShock, true);
@@ -2206,9 +2549,9 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
             // The base rate, then what speeds it up and by whom.
             // Each as the rate it adds, not the speed it multiplies by:
             // "+3.00%" for robes that double a 3% base reads straight off.
-            row.note =
-                ValueNote(base, Contributions(actor, mult),
-                          owner->GetPermanentActorValue(mult) - owner->GetBaseActorValue(mult), 2, "%", base / 100.0f);
+            row.breakdown = ValueBreakdown(base, Contributions(actor, mult),
+                                           owner->GetPermanentActorValue(mult) - owner->GetBaseActorValue(mult),
+                                           base * factor, 2, "%", base / 100.0f);
             s.rows.push_back(std::move(row));
         };
         regen("Health Rate", RE::ActorValue::kHealRate, RE::ActorValue::kHealRateMult);
@@ -2874,23 +3217,32 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         }
 
         // Each modifier by its source: the gauntlets, the potion, and what
-        // is left to perks. A line per source, "+20% damage" each.
+        // is left to perks. A line per source, "+20%" each, the quantity
+        // it moves on the line where the two differ.
+        row.breakdown.unit = "%";
+        const bool oneQuantity = k.mod.effect && k.power.effect && std::string_view(k.mod.effect) == k.power.effect;
         const auto bySource = [&](const Modifier &mod, float total) {
             if (!mod.effect || total == 0.0f)
                 return;
+            const std::string what = oneQuantity ? std::string() : std::string(" ") + mod.effect;
             float explained = 0.0f;
             for (const Contribution &c : Contributions(actor, mod.value))
             {
-                row.note += (row.note.empty() ? "" : "\n") + c.source + ": " + Fmt("%+.0f%% ", mod.sign * c.amount) +
-                            mod.effect;
+                ft::Add(row.breakdown, c.source + what, mod.sign * c.amount);
                 explained += c.amount;
             }
             if (const float rest = total - explained; std::abs(rest) > 0.05f)
-                row.note += (row.note.empty() ? "" : "\n") + std::string("Perks: ") + Fmt("%+.0f%% ", mod.sign * rest) +
-                            mod.effect;
+                ft::Add(row.breakdown, "Perks" + what, mod.sign * rest);
         };
         bySource(k.mod, m);
         bySource(k.power, p);
+        // The column's number: for one quantity the two factors' product,
+        // which the sources' sum misses by their cross term, an Other line.
+        row.breakdown.total = oneQuantity
+                                  ? ((1.0 + k.mod.sign * m / 100.0) * (1.0 + k.power.sign * p / 100.0) - 1.0) * 100.0
+                                  : k.mod.sign * m + k.power.sign * p;
+        if (!row.breakdown.empty())
+            ft::Close(row.breakdown);
 
         row.detail = OwnedPerks(actor, k.value);
         // A skill at zero with no perk in it -- Vampire Lord on a mortal --

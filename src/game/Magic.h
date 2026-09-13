@@ -71,6 +71,9 @@ struct MagicEntry
     bool aboveSkill{false};
     int castValue{0};      // the delivery behind the word, for sorting
     float costValue{0.0f}; // magicka, for sorting; 0 for powers and shouts
+    // The cost written out -- the effects, the skill curve, each perk
+    // entry -- as hover text on the cost cell; empty for a power or shout.
+    ft::Breakdown costBreakdown;
     // In a hand -- and which -- or, for a power or shout, selected.
     bool equipped{false};
     bool equippedLeft{false};

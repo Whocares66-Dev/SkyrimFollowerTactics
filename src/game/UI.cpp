@@ -14,6 +14,7 @@
 
 #include "game/UI.h"
 
+#include "core/Breakdown.h"
 #include "core/Effects.h"
 #include "core/Vocabulary.h"
 #include "game/Log.h"
@@ -226,15 +227,14 @@ struct RowGeometry
     float valueLeft{0.0f};
 };
 
+void BreakdownTooltip(const ft::Breakdown &b); // below, with the sheets
+
 void DrawStatRow(const RowGeometry &g, const char *barLabel, const ft::Stat &stat, Im::ImVec4 barColour,
-                 const char *statLabel, const std::function<void()> &drawValue, const std::string &note = {})
+                 const char *statLabel, const std::function<void()> &drawValue, const ft::Breakdown &breakdown = {})
 {
     Im::SetCursorPosX((std::max)(0.0f, g.barLabelRight - Im::CalcTextSize(barLabel).x));
     Im::AlignTextToFramePadding();
     Im::Text("%s", barLabel);
-    // Where the maximum comes from, on the label, as the sheets' rows have it.
-    if (!note.empty() && Im::IsItemHovered(0))
-        Im::SetTooltip("%s", note.c_str());
 
     Im::SameLine(g.barLeft, -1.0f);
     Im::PushStyleColor(Im::ImGuiCol_PlotHistogram, barColour);
@@ -243,6 +243,9 @@ void DrawStatRow(const RowGeometry &g, const char *barLabel, const ft::Stat &sta
     // three bars' numbers did not line up.
     Im::ProgressBar(stat.Pct(), Im::ImVec2(g.barWidth, 0.0f), "");
     Im::PopStyleColor(1);
+    // Where the maximum comes from, on the bar, beside the number.
+    if (!breakdown.empty() && Im::IsItemHovered(0))
+        BreakdownTooltip(breakdown);
     const std::string overlay =
         std::to_string(static_cast<int>(stat.current)) + " / " + std::to_string(static_cast<int>(stat.max));
     if (auto *draw = Im::GetWindowDrawList())
@@ -2721,6 +2724,12 @@ void DrawPerkDrawer(const SheetRow &row, float left, float right, const std::fun
 }
 
 void NoteTooltip(const std::string &note);
+// A number written out as the calculation that made it: the lines in
+// two columns, the amounts right-aligned, a rule, then the total -- the
+// same shape everywhere a value has sources, so the eye can check the
+// arithmetic. A line that did not apply is dimmed with its reason; a
+// line's detail sits indented and dimmed beneath it.
+void BreakdownTooltip(const ft::Breakdown &b);
 
 // A run of headed sections, each a bordered table in the style of the rule
 // table. The name and value columns are FIXED, measured across every section
@@ -2972,10 +2981,6 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     Im::SetCursorScreenPos(pos);
                 }
                 Im::Text("%s", row.label.c_str());
-                // A row's note is hover text on its label, where there is no
-                // Modifiers column to carry it.
-                if (!modifiers && !row.note.empty() && Im::IsItemHovered(0))
-                    NoteTooltip(row.note);
             }
             else
             {
@@ -3048,6 +3053,19 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             {
                 Im::Text("%s", row.value.c_str());
             }
+            // What made the value is hover text on the value itself, beside
+            // the number it explains; on the Modifiers cell where the row
+            // has one, since that is the number it explains there.
+            const auto explain = [&] {
+                if (!Im::IsItemHovered(0))
+                    return;
+                if (!row.breakdown.empty())
+                    BreakdownTooltip(row.breakdown);
+                else if (!row.note.empty())
+                    NoteTooltip(row.note);
+            };
+            if (!modifiers)
+                explain();
             if (modifiers)
             {
                 int index = 2;
@@ -3064,8 +3082,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     {
                         Im::Text("%s", row.modifiers.c_str());
                     }
-                    if (!row.note.empty() && Im::IsItemHovered(0))
-                        NoteTooltip(row.note);
+                    explain();
                 }
                 for (const auto &column : extras)
                 {
@@ -3358,6 +3375,49 @@ void NoteTooltip(const std::string &note)
             Im::TableSetColumnIndex(1);
             TextRightInCell(line.substr(colon + 2));
         }
+        Im::EndTable();
+    }
+    Im::EndTooltip();
+}
+
+void BreakdownTooltip(const ft::Breakdown &b)
+{
+    Im::BeginTooltip();
+    if (Im::BeginTable("breakdown", 2, Im::ImGuiTableFlags_SizingFixedFit, Im::ImVec2(0.0f, 0.0f), 0.0f))
+    {
+        const auto lines = [&](const auto &self, const std::vector<ft::BreakdownLine> &list, int depth) -> void {
+            for (const ft::BreakdownLine &line : list)
+            {
+                Im::TableNextRow(0, 0.0f);
+                Im::TableSetColumnIndex(0);
+                const bool dim = !line.applied || depth > 0;
+                if (dim)
+                    Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
+                std::string label(static_cast<std::size_t>(depth) * 3, ' ');
+                label += line.label;
+                if (!line.applied && !line.why.empty())
+                    label += " (" + line.why + ")";
+                Im::Text("%s", label.c_str());
+                Im::TableSetColumnIndex(1);
+                TextRightInCell(ft::AmountText(b, line));
+                if (dim)
+                    Im::PopStyleColor(1);
+                self(self, line.detail, depth + 1);
+            }
+        };
+        lines(lines, b.lines, 0);
+        // The rule under the last line, then the total: the sum as a
+        // schoolbook writes it.
+        Im::TableNextRow(0, 0.0f);
+        Im::TableSetColumnIndex(0);
+        Im::Separator();
+        Im::TableSetColumnIndex(1);
+        Im::Separator();
+        Im::TableNextRow(0, 0.0f);
+        Im::TableSetColumnIndex(0);
+        Im::Text("%s", b.totalLabel.c_str());
+        Im::TableSetColumnIndex(1);
+        TextRightInCell(ft::TotalText(b));
         Im::EndTable();
     }
     Im::EndTooltip();
@@ -4340,7 +4400,12 @@ void DrawMagicList(const FollowerView &view, MagicTabState &state)
         {
             Im::TableNextColumn();
             if (!voice)
+            {
                 TextRightInCell(entry->cost);
+                // What the follower pays and why, on the number.
+                if (!entry->costBreakdown.empty() && Im::IsItemHovered(0))
+                    BreakdownTooltip(entry->costBreakdown);
+            }
         }
         Im::TableNextColumn();
         Im::Text("%s", entry->cast.c_str());
@@ -4830,7 +4895,7 @@ void DrawCharacter(const FollowerView &view)
 
     DrawStatRow(
         geo, "Health", view.snapshot.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
-        [&] { Im::Text("%s", levelText.c_str()); }, view.healthNote);
+        [&] { Im::Text("%s", levelText.c_str()); }, view.healthBreakdown);
 
     DrawStatRow(
         geo, "Stamina", view.snapshot.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Status",
@@ -4840,7 +4905,7 @@ void DrawCharacter(const FollowerView &view)
             else
                 Im::TextDisabled("%s", statusText.c_str());
         },
-        view.staminaNote);
+        view.staminaBreakdown);
 
     DrawStatRow(
         geo, "Magicka", view.snapshot.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Carrying",
@@ -4852,8 +4917,11 @@ void DrawCharacter(const FollowerView &view)
                 Im::TextColored(kAlarm, "%s", carriedText.c_str());
             else
                 Im::Text("%s", carriedText.c_str());
+            // Where the capacity comes from, on the figure.
+            if (!view.carryBreakdown.empty() && Im::IsItemHovered(0))
+                BreakdownTooltip(view.carryBreakdown);
         },
-        view.magickaNote);
+        view.magickaBreakdown);
 
     Im::Spacing();
 

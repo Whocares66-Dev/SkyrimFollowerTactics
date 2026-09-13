@@ -5,6 +5,7 @@
 // RE::-free and unit tested; everything below is imperative Skyrim code that
 // can only be verified by playing. Keep this file thin and obvious.
 
+#include "core/Breakdown.h"
 #include "core/Rule.h"
 #include "core/Snapshot.h"
 
@@ -332,7 +333,11 @@ struct SheetRow
     unsigned icon{0};      // a Font Awesome codepoint drawn instead of the value, when set
     unsigned icon2{0};     // a second glyph after the first: the pin beside the tick
     std::string modifiers; // Skills tab only: "+35% damage, -17% cost"
-    std::string note;      // tooltip on the modifiers; empty for none
+    std::string note;      // plain hover text on the value; empty for none
+    // The value written out as the calculation that made it, hover text
+    // on the value (on the modifiers, where the row has them). Drawn in
+    // place of `note` when it has lines.
+    ft::Breakdown breakdown;
     // The columns an effect's row may carry after its value, each drawn
     // only where some row has it: the duration, what is left of it, and
     // the source, a link to `form` where that has a page. Hidden is the
@@ -455,26 +460,44 @@ struct Contribution
 };
 [[nodiscard]] std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value);
 
-// A note's lines, one per source, smallest first -- the weaknesses, then
-// the boons, the largest last: "Silver Ruby Ring: +50%". `decimals` and
-// `unit` shape each number; `scale` turns an amount into the line's
-// number where the two differ (a regen multiplier's sources read as the
-// rate they add).
-[[nodiscard]] std::string SourceLines(std::vector<Contribution> sources, int decimals, const char *unit,
-                                      float scale = 1.0f);
+// The sources as lines added to a breakdown, smallest first -- the
+// weaknesses, then the boons, the largest last: "Silver Ruby Ring: +50%".
+// `scale` turns an amount into the line's number where the two differ (a
+// regen multiplier's sources read as the rate they add).
+void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources, float scale = 1.0f);
 
-// The hover text for a value: "Base: 3", the sources, then "Perks and
-// race: +2" when they add anything -- what is permanent beyond the base,
-// which is perks and race, not effects (temporary) and not damage (below
-// the base).
-[[nodiscard]] std::string ValueNote(float base, std::vector<Contribution> sources, float perks, int decimals,
-                                    const char *unit, float scale = 1.0f);
-// The same read off an actor value, its running effects as the sources.
-[[nodiscard]] std::string ValueNote(RE::Actor *actor, RE::ActorValue value, const char *unit);
+// A value written out: "Base: 3", the sources, then "Perks and race: +2"
+// when they add anything -- what is permanent beyond the base, which is
+// perks and race, not effects (temporary) and not damage (below the base)
+// -- and the total the row shows, with an Other line where the lines do
+// not make it.
+[[nodiscard]] ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, float perks, float total,
+                                           int decimals, const char *unit, float scale = 1.0f);
+// The same read off an actor value, its running effects as the sources,
+// and the value as it reads now as the total. For a pool (Health, Magicka,
+// Stamina) the total is the maximum, not what is left of it.
+[[nodiscard]] ft::Breakdown ValueBreakdown(RE::Actor *actor, RE::ActorValue value, const char *unit);
 
-// The armour rating's sources: each piece worn with its rating, and the
-// spells and enchantments on the armour value, smallest first.
-[[nodiscard]] std::string ArmorNote(RE::Actor *actor);
+// The armour rating's sources: each piece worn with its rating, the
+// spells and enchantments on the armour value, the engine's hidden bonus
+// per piece, and the rating they make.
+[[nodiscard]] ft::Breakdown ArmorBreakdown(RE::Actor *actor);
+
+// The perk entries an actor holds on one entry point, as lines: each
+// entry in the order the engine applies them (highest priority first, the
+// arrays on the actor's process being kept sorted -- docs/MODIFIERS.md),
+// named for its perk, its function applied as the engine applies it; an
+// entry whose conditions fail against `args` listed dimmed with the
+// condition that stopped it. `args` are the call's arguments after the
+// perk owner, as the engine's own call takes them: the weapon and the
+// target for attack damage, the spell for cost, the piece for armour.
+void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::ENTRY_POINT point,
+                        const std::vector<void *> &args);
+
+// The cost of a spell as the caster pays it, written out: the effects'
+// costs, the skill curve, each Mod Spell Cost entry, and the engine's
+// figure as the total.
+[[nodiscard]] ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell);
 // The engine's hidden per-piece bonus in the rating's own units, and the
 // rating with it added: what the Armor row shows, and what its sources sum
 // to.
@@ -526,15 +549,33 @@ struct PerkPage
 [[nodiscard]] bool DualWieldAllowed(RE::Actor *actor);
 
 // The damage a weapon does in their hands, as the inventory menu would show
-// it: base, times tempering, times the skill curve, through their perks, times
-// any Fortify effect on the skill. `entry` may be null, in which case the
-// weapon is taken as untempered.
-[[nodiscard]] float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry);
+// it: base, times tempering, times the skill curve, through their perks
+// (which is where a Fortify effect on the skill counts, read by the hidden
+// skill-boost perk for whoever holds it), times the attack damage
+// multiplier, plus flat melee damage. `entry` may be null, in which case
+// the weapon is taken as untempered. `out`, when given, is the figure
+// written out.
+[[nodiscard]] float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry,
+                                 ft::Breakdown *out = nullptr);
 
 // The armour rating a piece gives them, the same way: base, times tempering,
-// times the armour skill's curve, through their perks, times any Fortify
-// effect on the skill. Clothing rates 0.
-[[nodiscard]] float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry);
+// times the armour skill's curve, through their perks. Clothing rates 0.
+[[nodiscard]] float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry,
+                                ft::Breakdown *out = nullptr);
+
+// The speed a weapon swings at in one of their hands: the record's, times
+// the hand's weapon speed multiplier where one is set (0 on the value
+// means none, a quirk of the engine's: docs/MODIFIERS.md).
+[[nodiscard]] float WeaponSpeed(RE::Actor *actor, const RE::TESObjectWEAP *weapon, bool left,
+                                ft::Breakdown *out = nullptr);
+
+// Their chance of a critical hit with a weapon, in percent: the critical
+// chance value, through the perks on the critical hit chance entry point.
+[[nodiscard]] float CritChance(RE::Actor *actor, RE::TESObjectWEAP *weapon, ft::Breakdown *out = nullptr);
+
+// A shout word's recovery as it applies to them: the word's own time,
+// times their shout recovery multiplier.
+[[nodiscard]] float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out = nullptr);
 
 // Resolve a FormID from a rule back to the spell it names, or nullptr.
 

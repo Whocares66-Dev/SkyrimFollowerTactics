@@ -317,11 +317,12 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
 {
     v.level = actor->GetLevel();
     v.carriedWeight = actor->GetWeightInContainer();
-    v.healthNote = ValueNote(actor, RE::ActorValue::kHealth, "");
-    v.staminaNote = ValueNote(actor, RE::ActorValue::kStamina, "");
-    v.magickaNote = ValueNote(actor, RE::ActorValue::kMagicka, "");
+    v.healthBreakdown = ValueBreakdown(actor, RE::ActorValue::kHealth, "");
+    v.staminaBreakdown = ValueBreakdown(actor, RE::ActorValue::kStamina, "");
+    v.magickaBreakdown = ValueBreakdown(actor, RE::ActorValue::kMagicka, "");
     if (auto *owner = actor->AsActorValueOwner())
         v.carryCapacity = owner->GetActorValue(RE::ActorValue::kCarryWeight);
+    v.carryBreakdown = ValueBreakdown(actor, RE::ActorValue::kCarryWeight, "");
 
     // Scanned on the idle path too, so the spell menu is populated while rules
     // are being written -- which is the only time anyone opens it. A follower's

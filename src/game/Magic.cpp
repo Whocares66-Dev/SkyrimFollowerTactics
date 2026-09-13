@@ -268,6 +268,9 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         entry.costValue = spell->CalculateMagickaCost(actor);
         const bool stream = spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
         entry.cost = Fmt("%.0f", entry.costValue) + (stream ? "/s" : "");
+        entry.costBreakdown = SpellCostBreakdown(actor, spell);
+        if (stream)
+            entry.costBreakdown.unit = "/s";
     }
     entry.type = TypeWord(effect);
     entry.cast = CastWord(spell->GetDelivery(), spell->GetCastingType());
@@ -332,7 +335,11 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     if (const float charge = spell->GetChargeTime(); charge > 0.0f)
         stats.rows.push_back(Row("Charge Time", Fmt("%.1f s", charge)));
     if (!entry.cost.empty())
-        stats.rows.push_back(Row("Cost", entry.cost));
+    {
+        SheetRow row = Row("Cost", entry.cost);
+        row.breakdown = entry.costBreakdown;
+        stats.rows.push_back(std::move(row));
+    }
     // The list's word, so the page and the list agree.
     stats.rows.push_back(Row("Cast", entry.cast));
     if (entry.equipped)
@@ -376,8 +383,13 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
         std::string word = NameOf(variation.word);
         if (word.empty())
             word = "?";
-        stats.rows.push_back(
-            Row("Word " + std::to_string(i + 1), word + "  (" + Fmt("%.0f", variation.recoveryTime) + " s)"));
+        // The word's recovery as it applies to them, their shout recovery
+        // multiplier in, written out on hover.
+        SheetRow row;
+        const float recovery = WordRecovery(actor, variation.recoveryTime, &row.breakdown);
+        row.label = "Word " + std::to_string(i + 1);
+        row.value = word + "  (" + Fmt("%.0f", recovery) + " s)";
+        stats.rows.push_back(std::move(row));
     }
     if (entry.equipped)
         stats.rows.push_back(EquippedRow(false));

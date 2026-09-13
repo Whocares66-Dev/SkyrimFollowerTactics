@@ -72,11 +72,13 @@ struct FollowerView
     std::uint16_t level{0};
     float carriedWeight{0.0f};
     float carryCapacity{0.0f};
-    // The sources of the three bars' maxima -- the base, each effect by
-    // name, the perks and race -- as hover text on the bars.
-    std::string healthNote;
-    std::string staminaNote;
-    std::string magickaNote;
+    // The three bars' maxima and the carry weight written out -- the base,
+    // each effect by name, the perks and race -- as hover text on the bars
+    // and on the Carrying figure.
+    ft::Breakdown healthBreakdown;
+    ft::Breakdown staminaBreakdown;
+    ft::Breakdown magickaBreakdown;
+    ft::Breakdown carryBreakdown;
     // The Character and Skills tabs' sections, worded on the game thread.
     std::vector<SheetSection> sheet;
     std::vector<SheetSection> skills;
