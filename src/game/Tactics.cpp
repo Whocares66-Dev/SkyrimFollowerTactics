@@ -325,9 +325,8 @@ void FillCharacterView(RE::Actor *actor, CharacterView &v)
     v.healthBreakdown = ValueBreakdown(actor, RE::ActorValue::kHealth, "");
     v.staminaBreakdown = ValueBreakdown(actor, RE::ActorValue::kStamina, "");
     v.magickaBreakdown = ValueBreakdown(actor, RE::ActorValue::kMagicka, "");
-    if (auto *owner = actor->AsActorValueOwner())
-        v.carryCapacity = owner->GetActorValue(RE::ActorValue::kCarryWeight);
-    v.carryBreakdown = ValueBreakdown(actor, RE::ActorValue::kCarryWeight, "");
+    v.carryCapacity = actor->GetTotalCarryWeight();
+    v.carryBreakdown = CarryWeightBreakdown(actor);
     v.sheet = BuildCharacterSheet(actor);
     v.skills = BuildSkillSheet(actor);
     v.perks = BuildPerkPages(actor);

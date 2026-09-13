@@ -490,6 +490,11 @@ void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources, float s
 // Stamina) the total is the maximum, not what is left of it.
 [[nodiscard]] ft::Breakdown ValueBreakdown(RE::Actor *actor, RE::ActorValue value, const char *unit);
 
+// The carry weight the engine holds them to: the Carry Weight value written
+// out, then each Get Max Carry Weight perk entry, and the engine's own
+// figure as the total.
+[[nodiscard]] ft::Breakdown CarryWeightBreakdown(RE::Actor *actor);
+
 // The armour rating's sources: each piece worn with its rating, the
 // spells and enchantments on the armour value, the engine's hidden bonus
 // per piece, and the rating they make.

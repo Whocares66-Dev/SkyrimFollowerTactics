@@ -613,6 +613,21 @@ ft::Breakdown ValueBreakdown(RE::Actor *actor, RE::ActorValue value, const char 
     return ValueBreakdown(base, Contributions(actor, value), permanent - base, total, 0, unit);
 }
 
+ft::Breakdown CarryWeightBreakdown(RE::Actor *actor)
+{
+    // The limit is not the value: GetTotalCarryWeight (id 37452, read
+    // 2026-09-13) puts it through the Get Max Carry Weight entry point, and
+    // a mod's "carry weight x10" perk there left the sheet at the value's
+    // 400.
+    ft::Breakdown b = ValueBreakdown(actor, RE::ActorValue::kCarryWeight, "");
+    if (!actor)
+        return b;
+    AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kGetMaxCarryWeight, {});
+    b.total = actor->GetTotalCarryWeight();
+    ft::Close(b);
+    return b;
+}
+
 // The conditions of one tab, a row each: the call, the comparison, and a
 // tick where it holds for the actor. `on` names the entry's argument the
 // tab is on, for a tab other than the first (the perk's owner): those are
