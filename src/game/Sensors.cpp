@@ -2460,6 +2460,10 @@ ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
 
 float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry, ft::Breakdown *out)
 {
+    // The engine's own per-piece figure, read off its armour rating walk
+    // (2026-09-13, docs/MODIFIERS.md): the record's rating plus the
+    // tempering bonus in points, times the skill multiplier plus the Armor
+    // Perks value, rounded up, then the Mod Armor Rating entries.
     if (!actor || !armor)
         return 0.0f;
     ft::Breakdown local;
@@ -2471,15 +2475,23 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
         return 0.0f;
     float rating = armor->GetArmorRating();
     ft::Start(b, "Base", rating);
-    if (const float tempering = Tempering(entry); tempering != 1.0f)
+
+    // Tempering is flat points, the same for a helmet and a cuirass at
+    // one item health: one plus the health's place between the first and
+    // last health steps, times the armour smithing maximum less one; no
+    // bonus below the first step, which is where an untempered piece
+    // sits. (A flag the engine reads doubles it for a keyword the piece
+    // may carry; not read here, and Other would show it.)
+    static const float healthLow = GameSetting("fHealthDataValue1", 1.1f);
+    static const float healthHigh = GameSetting("fHealthDataValue6", 1.6f);
+    static const float smithingMax = GameSetting("fSmithingArmorMax", 10.0f);
+    if (const float health = Tempering(entry); health > healthLow && healthHigh > healthLow)
     {
-        rating *= tempering;
-        ft::Multiply(b, "Tempering", tempering);
+        const float bonus = 1.0f + (health - healthLow) / (healthHigh - healthLow) * (smithingMax - 1.0f);
+        rating += bonus;
+        ft::Add(b, "Tempering", bonus);
     }
 
-    // The skill curve. UESP gives displayed armour as base * (1 + 0.4 *
-    // skill / 100), which the fallbacks encode; the names are the engine's,
-    // logged once, as for damage.
     using AV = RE::ActorValue;
     const bool heavy = armorClass == Class::kHeavyArmor;
     const AV skill = heavy ? AV::kHeavyArmor : AV::kLightArmor;
@@ -2501,9 +2513,22 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     const float skillLevel = owner ? owner->GetActorValue(skill) : 0.0f;
     if (owner)
     {
+        // The Armor Perks value is added to the skill multiplier, not
+        // multiplied after it: one factor of the two, named for both when
+        // the value is off zero.
         const float curve = owner->GetArmorRatingSkillMultiplier(skillLevel);
-        rating *= curve;
-        ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve);
+        const float perks = owner->GetActorValue(AV::kArmorPerks);
+        std::string label = ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")";
+        if (perks != 0.0f)
+            label += " + Armor Perks " + Fmt("%g", perks);
+        rating *= curve + perks;
+        ft::Multiply(b, label, curve + perks);
+    }
+    // Rounded up to whole points before the perks.
+    if (const float up = std::ceil(rating) - rating; up > 0.0f)
+    {
+        rating += up;
+        ft::Add(b, "Rounded up", up);
     }
 
     // Perks: Juggernaut, Agile Defender and their kin, through the engine's
