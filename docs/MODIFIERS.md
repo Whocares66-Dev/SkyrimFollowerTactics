@@ -95,13 +95,32 @@ From UESP's actor value index (164 values, `Skyrim_Mod:Actor_Value_Indices`, rea
 
 **Where to show them: decided 2026-09-13.** The rule is one sentence. *Wherever a relevant value is shown, it is the value as it applies to the follower at that moment, and hovering the value or its label shows the breakdown of what makes it: base, equipment, enchantments, potions, effects, perks, whatever.* No Other Skills section; each value joins the figure it feeds.
 
-- **Attack.** A General table before Right Hand and Left Hand, with Attack Damage Mult and Melee Damage as they apply to every hit, and the overall shout cooldown modifier (Shout Recovery Mult). Weapon Speed Mult and Left Weapon Speed Mult go into each hand's Speed, which then reads the speed as swung, with the weapon's own speed and the multiplier in the hover. Crit Chance is per hand and per weapon: it goes in the hand table, and the weapon's page, which has Critical Damage and no chance, gets a Critical Chance row.
-- **Shouts.** The shout's page has a Cooldown row from the voice's live recovery; its hover gets the breakdown, the word's recovery and the Shout Recovery Mult that scales it. The Mod Shout OK entry point, if any perk uses it, shows there too.
+- **Attack.** No General table: Attack Damage Mult and Melee Damage are aggregates other things feed, exactly as spell cost is, and the same treatment holds for both. Neither is its own row; each is a line in the breakdown of the figure it feeds, the hands' Damage. Weapon Speed Mult and Left Weapon Speed Mult go into each hand's Speed, which then reads the speed as swung, with the weapon's own speed and the multiplier in the hover. Crit Chance is per hand and per weapon: it goes in the hand table, and the weapon's page, which has Critical Damage and no chance, gets a Critical Chance row.
+- **Shouts.** The shout's page has a Cooldown row from the voice's live recovery; its hover gets the breakdown, the word's recovery and the Shout Recovery Mult that scales it, again a line in the breakdown and not a row of its own. The Mod Shout OK entry point, if any perk uses it, shows there too.
 - **Defense.** Spell Absorb after Magic. Reflect after Armor. Mass stays off: it is the stagger comparison's hidden weight and says nothing a player reads.
 - **General.** Carrying is already shown; its hover gets the breakdown of Carry Weight, base and effects, against Inventory Weight.
 - **Regen and status** stay in their sections on the Character page; nothing moves.
 - **Magic.** The cost column and the spell page's Cost row already come from the engine's per-actor cost call, so they are what the follower pays, perks in. The hover on the cost cell gets the breakdown: base cost, the skill curve, each Mod Spell Cost entry that applied (the hidden perk's dial with its sources, a song, a school perk). The Mage rows' Modifiers column stays as the dial with its sources.
 - **The hands' Damage** likewise: the row is the engine's figure and the hover lists the skill curve, tempering, each Mod Attack Damage entry that applied in engine order, and Attack Damage Mult.
+
+## The breakdown: one type, one renderer
+
+Decided 2026-09-13. Every hover that explains a number is the same thing, a sum or product written out like a school calculation, and today it is built as a string of "label: amount" lines in three or four places (`ValueNote`, `ArmorNote`, the regen and skill notes) and rendered by two (the rows' `NoteTooltip`, a two-column table that right-aligns the amounts, and the pool bars' plain-text tooltip, which does not, which is why Health's hover is ragged and Armor's is not). The fix is one type and one renderer.
+
+```
+Base:                     408
+Ancient Dwarven Armor:    +50
+Silver Ruby Necklace:     +50
+Armsman (rank 3):        x1.6
+-----------------------------
+Total:                    608
+```
+
+- **The type.** A breakdown is a list of lines, each a label and an amount with its operator (a starting value, a plus or minus, a times), and a total. Amounts are numbers with a decimals count and a unit, formatted by the renderer, not strings formatted at the call site. A line may carry its own sub-breakdown (the Fortify dial's line opens into the gauntlets and the potion), and a line that did not apply carries the condition it failed, greyed.
+- **The renderer.** One function draws it: a two-column table, labels left, amounts right-aligned, a rule under the last line, then Total. The same function serves the rows, the pool bars, the hands, the cost cell, the Carrying label. The math reads down the column and the eye checks it.
+- **The sanity check is built in.** The total the renderer prints is the figure the row shows, from the engine; the lines are ours. When the lines do not make the total, the breakdown says so on a last line ("unexplained: +12") and the mismatch is logged once, as the value note does today. That is the self-check from the strategy above, in the place the player sees.
+- **On the value, not the label.** Hover text moves from the label to the value cell, and for the pools to the bar, so the breakdown sits beside the number it explains. The rows' label hover exists today only because the Modifiers column had nowhere else to put it.
+- **Builders, not formatters, at the call sites.** A value's breakdown comes from one builder: base, then the contributions from active effects with their sources, then the unexplained permanent remainder. An entry-point figure's from another: the base, the skill curve, each entry that applied in engine order (named by its perk, with a dial expanding), the actor-value multipliers, the total from the engine. The call sites choose which and pass the actor; no call site formats a number.
 
 ## Open questions
 
