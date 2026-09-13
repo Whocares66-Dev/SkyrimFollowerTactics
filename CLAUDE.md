@@ -11,6 +11,8 @@ unique id, what a pin, a ban and a rule name, what is still to verify);
 `docs/GAME_MODEL.md` is the plan for a model of the engine the item logic can be
 tested against without Skyrim (not yet built; what is known, what to measure first);
 `docs/LOGGING.md` is the log design (levels, structured events, the JSON-lines sidecar);
+`docs/MODIFIERS.md` is where a follower's bonuses come from and how to total them (perk
+entry points over actor values; research and thoughts, with the open questions);
 `docs/TODO.md` is what is still to do.
 
 ## The one architectural rule
