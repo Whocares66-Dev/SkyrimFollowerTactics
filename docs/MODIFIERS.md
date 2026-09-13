@@ -61,6 +61,40 @@ Nordic Souls hands every NPC Perk Skill Boosts (0xCF788): Apothecary's and Thaum
 
 The fix is to drop the hand multiply: the entry point includes the value when the perk is there, and the value is inert when it is not. Confirm first by logging both figures for that follower. The Modifiers column on the skill row is a separate calculation and reads the values directly; it is right as a statement of the dial, and becomes a line under the entry-point total once the strategy above is built.
 
+## Which actor values matter for a follower
+
+From UESP's actor value index (164 values, `Skyrim_Mod:Actor_Value_Indices`, read 2026-09-13) against what the sheet shows today. "Read by" is UESP's account plus what this project has already measured; a value marked *verify* has not been checked against the executable.
+
+**Already on the sheet.** The eighteen skills (Skills tab, with their Modifier and Power Modifier dials in the Modifiers column, shown only for an actor with the hidden perk that reads them). Health, Magicka, Stamina. Heal, Magicka and Stamina Rate with their Mults (Regen). Speed Mult and Movement Noise Mult (General). Damage Resist as Armor, and the six resistances (Defense). Unarmed Damage. Right and Left Item Charge (the hands). Carry Weight is in the snapshot for the rules but not on the sheet.
+
+**Read by the engine directly, relevant to a follower, not yet shown.** These are the real gap, and none of them is a skill:
+
+| Value | What it does | Where it belongs |
+|---|---|---|
+| Attack Damage Mult (154) | multiplies every physical hit: weapons, fists, bash. Default 1. Vampire Lord, werewolf, and mods write it | the hands' damage figure; *verify* whether the hit path reads it inside or beside the Mod Attack Damage entry point |
+| Melee Damage (34) | flat points on weapon damage. Rare in vanilla | the hands' damage figure |
+| Weapon Speed Mult (85), Left Weapon Speed Mult (132) | attack and draw speed; Elemental Fury, perks in the overhauls. Default 0 and yet a multiplier, so 0 and 1 both mean normal (UESP) | the hands |
+| Crit Chance (33) | chance of a critical hit with a weapon | the hands |
+| Armor Perks (65) | armor rating multiplier, 0.25 for +25%. *Verify* that the Armor figure, which asks the engine's rating entry point, already includes it | Defense |
+| Absorb Chance (83) | chance to negate an incoming spell and take its cost as magicka; the Atronach stone, a Breton's Spell Warding (the hidden effect the sheet met on 2026-09-11) | Defense |
+| Reflect Damage (163) | chance to reflect incoming melee damage; Reflect Blows | Defense |
+| Mass (36) | stagger; hidden | Defense, if at all |
+| Shout Recovery Mult (86) | scales the voice cooldown the Shout action waits on | Attack, when the follower has a shout |
+| Carry Weight (32), Inventory Weight (31) | an overloaded follower walks | General |
+| Combat Health Regen Mult (134) | whether health regenerates in a fight. The player's own ability sets 0.7; *verify* what an NPC has, since it decides what the Regen row means in combat | Regen |
+| Bow Stagger Bonus (87) | bow stagger chance; *verify* who reads it for an NPC | the hands, for an archer |
+| Ward Power (63) | live only while a ward is up | nowhere; transient |
+
+**Statuses, not modifiers.** Paralysis, Invisibility, Water Breathing, Water Walking, Blindness, Telekinesis, Grabbed, Waiting For Player. Conditions read these; the sheet's status line is where they show, not a modifier list. Waiting For Player is a follower's own value and could feed a condition.
+
+**Behaviour, relevant but not modifiers.** Aggression, Confidence, Assistance, Morality decide whether a follower fights, flees or helps. They belong with the combat style, not with the numbers. Energy and Mood do nothing that matters here.
+
+**Player-only or dead.** Bow Speed Bonus (zoom), Dragon Souls, Dragonrend, the two vendor bypasses, the favor values, Fame, Infamy, Voice Points and Rate, the seven limb Condition values, Night Eye, Detect Life Range, Ignore Crippled Limbs, Jumping Bonus, Shield Perks, Ward Deflection, Grab Actor Offset, the eighteen Skill Advance values, the deprecated slot. Werewolf Perks and Vampire Perks only for a transformed actor. Variable01 to Variable10 are mod-defined and mean whatever the mod says; nothing general can be shown for them.
+
+**Entry points that matter, which are not values at all.** Of the engine's 92, the ones a follower's figures meet: Mod Attack Damage, Mod Power Attack Damage, Mod Bashing Damage, Mod Power Attack Stamina, Calculate My Critical Hit Chance and Damage, Mod Sneak Attack Mult, Mod Target Damage Resistance (armor piercing); Mod Armor Rating, Mod Incoming Damage, Mod Percent Blocked, Mod Shield Deflect Arrow Chance, Mod Incoming Stagger, Mod Target Stagger; Mod Spell Cost, Magnitude and Duration, Mod Incoming Spell Magnitude and Duration, Mod Ward Magicka Absorption Pct, Mod Recovered Health (heals and potions), Mod Shout OK, Mod Poison Dose Count; and the spell-applying ones, Apply Combat Hit Spell, Apply Bashing Spell, Apply Weapon Swing Spell. The rest are the player's: prices, lockpicking, pickpocketing, alchemy, enchanting, telekinesis, activation, bow zoom.
+
+**Where to show them.** The proposal on the table is an Other Skills section on the Skills tab, after Warrior, Mage and Thief and before Other Perks. The alternative this research points to: none of these is a skill, and each is a factor on a figure the Character tab already has, so the provenance belongs under that figure. The hands' damage row gets its factor list (skill curve, Armsman, the Fortify dial through the hidden perk, Attack Damage Mult, a song). Armor gets its. A spell's cost gets its on the Magic tab, where the engine's number already sits. The values above then join the section their figure is in, Attack, Defense, Regen, General, and the Skills tab keeps the Modifiers column as what it is, the dials with their sources. Spell cost by school is the one figure with no single home, because its entry point takes the spell; the Mage rows can carry only the entries whose spell-tab conditions do not name a spell. Not decided.
+
 ## Open questions
 
 - Whether the player's walk, hooked in the Nordic Souls process, is the same as on disk there too, and by which plugin. Not needed for followers.
