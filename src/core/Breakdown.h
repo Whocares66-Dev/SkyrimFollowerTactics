@@ -6,10 +6,11 @@
 // (the record, tempering, the skill curve, each perk entry in priority
 // order) and a spell's cost.
 //
-// The lines are ours; the total is the engine's. When the lines do not
-// make the total, the renderer adds an Other line for the gap, so a
-// rounding or a formula we have wrong is seen rather than hidden. Nothing
-// is logged: the tooltip is the report.
+// Only what applies is in it: a perk entry whose conditions fail, or one
+// that multiplies by one, is not a line. The lines are ours; the total is
+// the engine's. When the lines do not make the total, the renderer adds an
+// Other line for the gap, so a rounding or a formula we have wrong is seen
+// rather than hidden. Nothing is logged: the tooltip is the report.
 //
 // No RE:: types: this is the arithmetic and the wording, testable without
 // the game. The panel draws it (game/UI.cpp); the sensors fill it.
@@ -33,11 +34,6 @@ struct BreakdownLine
     Op op{Op::Add};
     std::string label;
     double amount{0.0};
-    // False for a line that did not apply, with `why` saying what stopped
-    // it: a perk entry whose conditions failed. Listed dimmed, its amount
-    // shown but not counted.
-    bool applied{true};
-    std::string why;
     // The line opened out: the sources behind a value a perk read (the
     // gauntlets and the potion behind a Fortify dial). Rendered indented
     // beneath the line; not part of the arithmetic, which the line's own
@@ -59,9 +55,8 @@ struct Breakdown
     }
 };
 
-// The amounts applied in order: Start sets, Add adds, Multiply multiplies,
-// a line that did not apply is skipped. With no Start the calculation
-// begins at zero.
+// The amounts applied in order: Start sets, Add adds, Multiply multiplies.
+// With no Start the calculation begins at zero.
 [[nodiscard]] double Evaluate(const Breakdown &b);
 
 // Add the Other line where the lines do not make the total: the gap,

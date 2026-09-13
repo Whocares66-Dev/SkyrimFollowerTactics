@@ -48,8 +48,6 @@ double Evaluate(const Breakdown &b)
     double value = 0.0;
     for (const BreakdownLine &line : b.lines)
     {
-        if (!line.applied)
-            continue;
         switch (line.op)
         {
         case Op::Start:
@@ -108,8 +106,6 @@ std::string ToText(const Breakdown &b)
         {
             std::string label(static_cast<std::size_t>(depth) * 2, ' ');
             label += line.label;
-            if (!line.applied && !line.why.empty())
-                label += " (" + line.why + ")";
             rows.push_back({std::move(label), AmountText(b, line)});
             self(self, line.detail, depth + 1);
         }

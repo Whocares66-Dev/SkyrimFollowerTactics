@@ -20,19 +20,6 @@ TEST_CASE("the lines apply in order, so a multiply after an add is not an add af
     REQUIRE(Evaluate(c) == 250.0);
 }
 
-TEST_CASE("a line that did not apply is listed but not counted", "[breakdown]")
-{
-    Breakdown b;
-    Start(b, "Base", 10.0);
-    BreakdownLine &line = Multiply(b, "Against undead", 1.5);
-    line.applied = false;
-    line.why = "no target";
-    REQUIRE(Evaluate(b) == 10.0);
-    const std::string text = ToText(b);
-    REQUIRE(text.find("Against undead (no target)") != std::string::npos);
-    REQUIRE(text.find("x 1.5") != std::string::npos);
-}
-
 TEST_CASE("Other carries what the lines do not explain, and only when it would show", "[breakdown]")
 {
     Breakdown b;

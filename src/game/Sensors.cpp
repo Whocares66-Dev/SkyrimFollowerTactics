@@ -18,6 +18,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -1874,10 +1875,13 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
         }
         if (const auto *effect = spell->GetCostliestEffectItem(); effect && effect->baseEffect)
         {
+            // As they cast it -- perks and Fortify effects in -- which is
+            // what the Effects table shows; the record's 8 beside the
+            // table's 12 read as a mistake (Blood Aura, 2026-09-13).
             std::string what = NameOr(effect->baseEffect, "?");
-            what += " " + Fmt("%.0f", effect->effectItem.magnitude);
-            if (effect->effectItem.duration > 0)
-                what += " for " + std::to_string(effect->effectItem.duration) + " s";
+            what += " " + Fmt("%.0f", ActualMagnitude(actor, spell, effect));
+            if (const float duration = ActualDuration(actor, spell, effect); duration > 0.0f)
+                what += " for " + Fmt("%.0f", duration) + " s";
             rows.push_back(Row("Effect", what));
         }
         return;
@@ -1976,8 +1980,6 @@ std::string ValueName(RE::ActorValue value)
     return words.empty() ? "?" : words;
 }
 
-std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data); // below, with the perks
-
 namespace
 {
 // The entries the actor holds on one entry point, in the order the
@@ -2032,10 +2034,12 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
                               : 0.0f;
         const float *two =
             dataType == DataType::kTwoValue ? reinterpret_cast<const TwoValueData *>(data)->data : nullptr;
-        // The engine takes the argument list as one untyped pointer.
-        const bool applied = entry->CheckConditionFilters(
-            static_cast<std::uint32_t>(argv.size()),
-            reinterpret_cast<void *>(argv.data())); // NOLINT(bugprone-multi-level-implicit-pointer-conversion)
+        // The engine takes the argument list as one untyped pointer. An
+        // entry whose conditions fail is not a line: only what applies.
+        if (!entry->CheckConditionFilters(
+                static_cast<std::uint32_t>(argv.size()),
+                reinterpret_cast<void *>(argv.data()))) // NOLINT(bugprone-multi-level-implicit-pointer-conversion)
+            continue;
 
         // The perk's name, trimmed: the records are not (" Magic
         // Resistance", Skyrim.esm).
@@ -2046,7 +2050,6 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
             label = "?";
         ft::BreakdownLine line;
         line.label = label;
-        line.applied = applied;
         const auto av = two ? static_cast<RE::ActorValue>(static_cast<int>(two[0])) : RE::ActorValue::kNone;
         const float value = two && owner ? owner->GetActorValue(av) : 0.0f;
         const float mult = two ? two[1] : 0.0f;
@@ -2105,28 +2108,11 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
             // Nothing a number can carry: a leveled list, a text.
             continue;
         }
-        if (!applied)
-        {
-            // The conditions that stopped it, in the perk page's words:
-            // the first three, the rest as a count.
-            std::string why;
-            int listed = 0;
-            for (std::uint32_t tab = 0; tab < entry->conditions.size(); ++tab)
-            {
-                const auto &condition = entry->conditions[tab];
-                for (const auto *item = condition.head; item; item = item->next)
-                {
-                    if (++listed > 3)
-                        continue;
-                    why += (why.empty() ? "" : ", ") + ConditionCall(item->data);
-                    if (tab > 0)
-                        why += " on argument " + std::to_string(tab + 1);
-                }
-            }
-            if (listed > 3)
-                why += ", +" + std::to_string(listed - 3);
-            line.why = why.empty() ? "not met" : "not met: " + why;
-        }
+        // An entry that applies and changes nothing -- a controller perk's
+        // multiply by one -- is not a line either.
+        if ((line.op == ft::Op::Multiply && std::abs(line.amount - 1.0) < 1e-6) ||
+            (line.op == ft::Op::Add && std::abs(line.amount) < 1e-6))
+            continue;
         b.lines.push_back(std::move(line));
     }
 }
@@ -3201,54 +3187,50 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         const float p = k.power.effect && ReadsSkillPowerMods(actor) ? av(k.power.value) : 0.0f;
 
         // Every modifier is a signed change from normal: "+90% damage",
-        // "-17% cost". Power first, then the other, as the two read best.
-        const auto add = [&row](const std::string &text) {
+        // "-17% cost", each its own figure with its own breakdown: the
+        // sources by name -- the gauntlets, the potion -- and what is left
+        // to perks. Power first, then the other, as the two read best.
+        const auto part = [&](const std::string &text, std::initializer_list<std::pair<const Modifier *, float>> from,
+                              double total) {
+            SheetRow::ModifierPart piece;
+            piece.text = text;
+            piece.breakdown.unit = "%";
+            for (const auto &[mod, amount] : from)
+            {
+                if (amount == 0.0f)
+                    continue;
+                float explained = 0.0f;
+                for (const Contribution &c : Contributions(actor, mod->value))
+                {
+                    ft::Add(piece.breakdown, c.source, mod->sign * c.amount);
+                    explained += c.amount;
+                }
+                if (const float rest = amount - explained; std::abs(rest) > 0.05f)
+                    ft::Add(piece.breakdown, "Perks", mod->sign * rest);
+            }
+            piece.breakdown.total = total;
+            ft::Close(piece.breakdown);
             row.modifiers += (row.modifiers.empty() ? "" : ", ") + text;
+            row.modifierParts.push_back(std::move(piece));
         };
         if (k.mod.effect && k.power.effect && std::string_view(k.mod.effect) == k.power.effect)
         {
             // One quantity, two factors: multiply them and show the change.
+            // The sources' sum misses the product by their cross term, an
+            // Other line.
             if (m != 0.0f || p != 0.0f)
             {
-                const double factor = (1.0 + k.mod.sign * m / 100.0) * (1.0 + k.power.sign * p / 100.0);
-                add(Fmt("%+.0f%% ", (factor - 1.0) * 100.0) + k.mod.effect);
+                const double change = ((1.0 + k.mod.sign * m / 100.0) * (1.0 + k.power.sign * p / 100.0) - 1.0) * 100.0;
+                part(Fmt("%+.0f%% ", change) + k.mod.effect, {{&k.power, p}, {&k.mod, m}}, change);
             }
         }
         else
         {
             if (p != 0.0f)
-                add(Fmt("%+.0f%% ", k.power.sign * p) + k.power.effect);
+                part(Fmt("%+.0f%% ", k.power.sign * p) + k.power.effect, {{&k.power, p}}, k.power.sign * p);
             if (m != 0.0f)
-                add(Fmt("%+.0f%% ", k.mod.sign * m) + k.mod.effect);
+                part(Fmt("%+.0f%% ", k.mod.sign * m) + k.mod.effect, {{&k.mod, m}}, k.mod.sign * m);
         }
-
-        // Each modifier by its source: the gauntlets, the potion, and what
-        // is left to perks. A line per source, "+20%" each, the quantity
-        // it moves on the line where the two differ.
-        row.breakdown.unit = "%";
-        const bool oneQuantity = k.mod.effect && k.power.effect && std::string_view(k.mod.effect) == k.power.effect;
-        const auto bySource = [&](const Modifier &mod, float total) {
-            if (!mod.effect || total == 0.0f)
-                return;
-            const std::string what = oneQuantity ? std::string() : std::string(" ") + mod.effect;
-            float explained = 0.0f;
-            for (const Contribution &c : Contributions(actor, mod.value))
-            {
-                ft::Add(row.breakdown, c.source + what, mod.sign * c.amount);
-                explained += c.amount;
-            }
-            if (const float rest = total - explained; std::abs(rest) > 0.05f)
-                ft::Add(row.breakdown, "Perks" + what, mod.sign * rest);
-        };
-        bySource(k.mod, m);
-        bySource(k.power, p);
-        // The column's number: for one quantity the two factors' product,
-        // which the sources' sum misses by their cross term, an Other line.
-        row.breakdown.total = oneQuantity
-                                  ? ((1.0 + k.mod.sign * m / 100.0) * (1.0 + k.power.sign * p / 100.0) - 1.0) * 100.0
-                                  : k.mod.sign * m + k.power.sign * p;
-        if (!row.breakdown.empty())
-            ft::Close(row.breakdown);
 
         row.detail = OwnedPerks(actor, k.value);
         // A skill at zero with no perk in it -- Vampire Lord on a mortal --

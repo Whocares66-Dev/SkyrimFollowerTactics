@@ -335,9 +335,17 @@ struct SheetRow
     std::string modifiers; // Skills tab only: "+35% damage, -17% cost"
     std::string note;      // plain hover text on the value; empty for none
     // The value written out as the calculation that made it, hover text
-    // on the value (on the modifiers, where the row has them). Drawn in
-    // place of `note` when it has lines.
+    // on the value. Drawn in place of `note` when it has lines.
     ft::Breakdown breakdown;
+    // The Modifiers cell in pieces, each with its own breakdown: "+50%
+    // damage" and "-50% cost" are two figures and hover apart. Drawn in
+    // place of `modifiers` when not empty.
+    struct ModifierPart
+    {
+        std::string text;
+        ft::Breakdown breakdown;
+    };
+    std::vector<ModifierPart> modifierParts;
     // The columns an effect's row may carry after its value, each drawn
     // only where some row has it: the duration, what is left of it, and
     // the source, a link to `form` where that has a page. Hidden is the

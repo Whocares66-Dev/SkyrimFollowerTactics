@@ -2727,8 +2727,7 @@ void NoteTooltip(const std::string &note);
 // A number written out as the calculation that made it: the lines in
 // two columns, the amounts right-aligned, a rule, then the total -- the
 // same shape everywhere a value has sources, so the eye can check the
-// arithmetic. A line that did not apply is dimmed with its reason; a
-// line's detail sits indented and dimmed beneath it.
+// arithmetic. A line's detail sits indented and dimmed beneath it.
 void BreakdownTooltip(const ft::Breakdown &b);
 
 // A run of headed sections, each a bordered table in the style of the rule
@@ -3078,11 +3077,30 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                         Im::Text("%s", Utf8(row.mark).c_str());
                         FontAwesome::Pop();
                     }
+                    else if (!row.modifierParts.empty())
+                    {
+                        // Each figure hovers apart: the damage over the
+                        // damage, the cost over the cost.
+                        bool first = true;
+                        for (const auto &piece : row.modifierParts)
+                        {
+                            if (!first)
+                            {
+                                Im::SameLine(0.0f, 0.0f);
+                                Im::Text("%s", ", ");
+                                Im::SameLine(0.0f, 0.0f);
+                            }
+                            first = false;
+                            Im::Text("%s", piece.text.c_str());
+                            if (!piece.breakdown.empty() && Im::IsItemHovered(0))
+                                BreakdownTooltip(piece.breakdown);
+                        }
+                    }
                     else
                     {
                         Im::Text("%s", row.modifiers.c_str());
+                        explain();
                     }
-                    explain();
                 }
                 for (const auto &column : extras)
                 {
@@ -3390,13 +3408,11 @@ void BreakdownTooltip(const ft::Breakdown &b)
             {
                 Im::TableNextRow(0, 0.0f);
                 Im::TableSetColumnIndex(0);
-                const bool dim = !line.applied || depth > 0;
+                const bool dim = depth > 0;
                 if (dim)
                     Im::PushStyleColor(Im::ImGuiCol_Text, DimColor());
                 std::string label(static_cast<std::size_t>(depth) * 3, ' ');
                 label += line.label;
-                if (!line.applied && !line.why.empty())
-                    label += " (" + line.why + ")";
                 Im::Text("%s", label.c_str());
                 Im::TableSetColumnIndex(1);
                 TextRightInCell(ft::AmountText(b, line));
