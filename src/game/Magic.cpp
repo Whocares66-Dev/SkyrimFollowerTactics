@@ -324,16 +324,14 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         stats.rows.push_back(Row("School", entry.school));
     if (!entry.type.empty())
         stats.rows.push_back(Row("Type", entry.type));
-    stats.rows.push_back(Row("Hand", entry.hand));
     if (!entry.level.empty())
     {
         stats.rows.push_back(Row("Level", entry.level));
-        // "51 (needs 100)": the follower's skill, and the spell's bar when
-        // it is above them. That the AI will not choose it goes without
-        // saying.
-        stats.rows.push_back(
-            Row("Skill", std::to_string(entry.skill) +
-                             (entry.aboveSkill ? " (needs " + std::to_string(entry.levelValue) + ")" : "")));
+        // The skill the spell asks for, and in brackets what the follower
+        // has when it is short: "75 (has 51)". That the AI will not choose
+        // it then goes without saying.
+        stats.rows.push_back(Row("Skill", std::to_string(entry.levelValue) +
+                                              (entry.aboveSkill ? " (has " + std::to_string(entry.skill) + ")" : "")));
     }
     if (costliest)
     {
@@ -341,8 +339,6 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         if (const float duration = ActualDuration(actor, spell, costliest); duration > 0.0f)
             stats.rows.push_back(Row("Duration", Fmt("%.0f", duration) + " s"));
     }
-    if (const float charge = spell->GetChargeTime(); charge > 0.0f)
-        stats.rows.push_back(Row("Charge Time", Fmt("%.1f s", charge)));
     if (!entry.cost.empty())
     {
         SheetRow row = Row("Cost", entry.cost);
@@ -351,6 +347,9 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     }
     // The list's word, so the page and the list agree.
     stats.rows.push_back(Row("Cast", entry.cast));
+    if (const float charge = spell->GetChargeTime(); charge > 0.0f)
+        stats.rows.push_back(Row("Charge Time", Fmt("%.1f s", charge)));
+    stats.rows.push_back(Row("Hand", entry.hand));
     if (entry.equipped)
         stats.rows.push_back(EquippedRow(false)); // the pin glyph is added by MarkPins, which knows
     entry.detail.push_back(std::move(stats));
