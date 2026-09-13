@@ -3360,6 +3360,23 @@ bool ContainsNoCase(const std::string &text, const char *needle)
     return n.empty() || std::search(text.begin(), text.end(), n.begin(), n.end(), same) != text.end();
 }
 
+// A list's filter box, and on its line against the right edge how many of
+// the list's rows the filter leaves: "12 items", "3 of 12 items". Above the
+// table, not under it, where a long list pushed the count out of sight;
+// counted after the box, so the number answers this frame's text.
+void FilterRow(const char *id, char *buffer, std::size_t size, const std::function<std::size_t()> &shown,
+               std::size_t total, const char *noun)
+{
+    const float right = Im::GetCursorPosX() + Im::GetContentRegionAvail().x - Im::GetStyle()->ItemSpacing.x;
+    FilterBox(id, buffer, size);
+    const std::size_t count = shown();
+    const std::string text =
+        (count == total ? std::to_string(total) : std::to_string(count) + " of " + std::to_string(total)) + " " + noun;
+    Im::SameLine((std::max)(0.0f, right - TextWidth(text)), -1.0f);
+    Im::AlignTextToFramePadding();
+    Im::TextDisabled("%s", text.c_str());
+}
+
 // Does any of a row's cells, as its table shows them, hold the filter's
 // text? A filter on the name alone missed what the other columns are for:
 // "Fire" among the spells, "Heavy" among the armour.
@@ -3860,7 +3877,19 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
     DrawCategoryRow(view, state);
     Im::Spacing();
 
-    FilterBox("##invfilter", g_inventoryFilter, sizeof(g_inventoryFilter));
+    // Counted against the category, not the whole bag: on Weapons, "3 of
+    // 3" until the filter box takes some away. Only All counts everything.
+    std::size_t inCategory = 0;
+    for (const auto &item : view.inventory)
+        inCategory += (state.category < 0 || static_cast<int>(item.category) == state.category) ? 1 : 0;
+    FilterRow(
+        "##invfilter", g_inventoryFilter, sizeof(g_inventoryFilter),
+        [&] {
+            return static_cast<std::size_t>(
+                std::count_if(view.inventory.begin(), view.inventory.end(),
+                              [&](const InventoryItem &item) { return ItemShown(item, state); }));
+        },
+        inCategory, "items");
     Im::Spacing();
 
     // Which columns this list has. A stat column only where the stat means
@@ -4075,25 +4104,15 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
     Im::EndTable();
     Im::PopStyleVar(1);
 
-    // What the list came to, and what it weighs: the reason to look in a
-    // follower's bag is usually to decide whether they can carry more.
+    // What it weighs, under the list: the reason to look in a follower's bag
+    // is usually to decide whether they can carry more.
     Im::Spacing();
-    // Counted against the category, not the whole bag: on Weapons, "3 of
-    // 3" until the filter box takes some away. Only All counts everything.
-    std::size_t inCategory = 0;
-    for (const auto &item : view.inventory)
-        inCategory += (state.category < 0 || static_cast<int>(item.category) == state.category) ? 1 : 0;
-    const std::string shown = rows.size() == inCategory
-                                  ? std::to_string(rows.size()) + " items"
-                                  : std::to_string(rows.size()) + " of " + std::to_string(inCategory) + " items";
-    Im::TextDisabled("%s", shown.c_str());
-
     char carried[64];
     std::snprintf(carried, sizeof(carried), "Carrying %.0f / %.0f", view.carriedWeight, view.carryCapacity);
     const auto *style = Im::GetStyle();
     const float inset = style->ItemSpacing.x;
     const float rightEdge = Im::GetCursorPosX() + Im::GetContentRegionAvail().x - inset;
-    Im::SameLine((std::max)(0.0f, rightEdge - TextWidth(carried)), -1.0f);
+    Im::SetCursorPosX((std::max)(Im::GetCursorPosX(), rightEdge - TextWidth(carried)));
     if (view.carryCapacity > 0.0f && view.carriedWeight > view.carryCapacity)
         Im::TextColored(kAlarm, "%s", carried);
     else
@@ -4339,7 +4358,19 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
     }
     Im::Spacing();
 
-    FilterBox("##magicfilter", g_magicFilter, sizeof(g_magicFilter));
+    // Counted against the category, as the Inventory tab counts: on
+    // Destruction, "3 of 3" until the filter box takes some away.
+    std::size_t inCategory = 0;
+    for (const auto &entry : view.magic)
+        inCategory += (state.category < 0 || static_cast<int>(entry.category) == state.category) ? 1 : 0;
+    FilterRow(
+        "##magicfilter", g_magicFilter, sizeof(g_magicFilter),
+        [&] {
+            return static_cast<std::size_t>(
+                std::count_if(view.magic.begin(), view.magic.end(),
+                              [&](const MagicEntry &entry) { return MagicShown(entry, state); }));
+        },
+        inCategory, "spells");
     Im::Spacing();
 
     // Which columns. Only the All list has a School column; every list has
@@ -4531,17 +4562,6 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
     }
     Im::EndTable();
     Im::PopStyleVar(1);
-
-    Im::Spacing();
-    // Counted against the category, as the Inventory tab counts: on
-    // Destruction, "3 of 3" until the filter box takes some away.
-    std::size_t inCategory = 0;
-    for (const auto &entry : view.magic)
-        inCategory += (state.category < 0 || static_cast<int>(entry.category) == state.category) ? 1 : 0;
-    const std::string shown = rows.size() == inCategory
-                                  ? std::to_string(rows.size()) + " spells"
-                                  : std::to_string(rows.size()) + " of " + std::to_string(inCategory) + " spells";
-    Im::TextDisabled("%s", shown.c_str());
 }
 
 void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
@@ -4765,7 +4785,10 @@ void DrawEffects(const CharacterView &view)
     }
 
     Im::Spacing();
-    FilterBox("##effectsfilter", g_effectsFilter, sizeof(g_effectsFilter));
+    FilterRow(
+        "##effectsfilter", g_effectsFilter, sizeof(g_effectsFilter),
+        [&] { return static_cast<std::size_t>(std::count_if(view.effects.begin(), view.effects.end(), EffectShown)); },
+        view.effects.size(), "effects");
     Im::Spacing();
 
     if (view.effects.empty())
