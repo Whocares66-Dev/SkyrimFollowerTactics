@@ -9,6 +9,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <optional>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <string>
@@ -35,6 +36,12 @@ std::shared_ptr<spdlog::logger> g_events;
 // own.
 std::atomic<std::uint64_t> g_proseBytes{0};
 std::atomic<std::uint64_t> g_eventBytes{0};
+
+// The last game events, for the panel. Pushed from whichever thread emitted,
+// copied out by the render thread: guarded, the lock held only for the push
+// or the copy.
+std::mutex g_recentMutex;
+EventRing g_recent{kRecentEvents};
 
 // A session's two files, and the ending each keeps in the archive.
 constexpr std::array<std::pair<std::string_view, std::string_view>, 2> kSessionFiles{{
@@ -287,6 +294,12 @@ bool EventsOn() noexcept
     return g_events != nullptr;
 }
 
+std::vector<LoggedEvent> RecentEvents(std::uint64_t after)
+{
+    std::scoped_lock lock(g_recentMutex);
+    return g_recent.Since(after);
+}
+
 std::uint32_t IdOf(RE::Actor *actor) noexcept
 {
     return actor ? actor->GetFormID() : 0;
@@ -336,6 +349,22 @@ void Emit(Level level, std::string_view event, RE::Actor *who, std::span<const F
     if (Enabled(level))
         Write(level, module, prose);
 
+    const std::string stamp = Timestamp();
+    const std::uint32_t followerId = IdOf(who);
+    const std::string followerName = who ? NameOf(who) : std::string{};
+    {
+        LoggedEvent kept{0,
+                         stamp,
+                         level,
+                         std::string(event),
+                         followerId,
+                         followerName,
+                         std::string(prose),
+                         {fields.begin(), fields.end()}};
+        std::scoped_lock lock(g_recentMutex);
+        g_recent.Push(std::move(kept));
+    }
+
     if (!g_events)
         return;
 
@@ -345,13 +374,13 @@ void Emit(Level level, std::string_view event, RE::Actor *who, std::span<const F
     all.reserve(fields.size() + 2);
     if (who)
     {
-        all.emplace_back("followerId", Id(IdOf(who)));
-        all.emplace_back("followerName", NameOf(who));
+        all.emplace_back("followerId", Id(followerId));
+        all.emplace_back("followerName", followerName);
     }
     for (const auto &field : fields)
         all.push_back(field);
 
-    const std::string line = FormatEvent(level, event, FT_VERSION, Timestamp(), all);
+    const std::string line = FormatEvent(level, event, FT_VERSION, stamp, all);
     const std::uint64_t bytes = line.size() + 2;
     switch (RoomFor(g_eventBytes.fetch_add(bytes), bytes, kCeilingBytes))
     {

@@ -23,6 +23,7 @@ add_executable(ft_tests
     test_conditions.cpp
     test_editor.cpp
     test_evaluator.cpp
+    test_eventring.cpp
     test_hits.cpp
     test_loadout.cpp
     test_logevent.cpp

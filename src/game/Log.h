@@ -19,8 +19,10 @@
 // so `grep '\[packages\]'` is a thing you can do. Call it as
 // `ft::log::packages.info(...)`, never `logger::info("packages: ...")`.
 
+#include "core/EventRing.h"
 #include "core/LogEvent.h"
 
+#include <cstdint>
 #include <fmt/format.h>
 #include <span>
 #include <string>
@@ -47,6 +49,10 @@ void Init();
 // Whether the events file is open: `events = true` in the ini, and the file
 // could be made.
 [[nodiscard]] bool EventsOn() noexcept;
+
+// The game events held in memory with a sequence number above `after`, oldest
+// first, copied out under the lock: for the panel, which draws from the copy.
+[[nodiscard]] std::vector<LoggedEvent> RecentEvents(std::uint64_t after);
 
 // An actor's id and name, as an event carries them: the id is what a query
 // keys on, the name is for the human reading the query's output and is never
@@ -93,7 +99,8 @@ class Module
     // catalogue, `fields` what that row says it carries beyond the envelope,
     // and the trailing format string is how the same fact reads in prose.
     // The level filters the prose line only: turning the log down must not
-    // erase the record of a fight.
+    // erase the record of a fight, and the event is kept in memory whatever
+    // the ini says, so it is always formatted.
     //
     //   ft::log::tactics.event(Level::Info, "rule.fired", actor,
     //       {{"ruleIndex", i}, {"ruleName", rule.label}, {"healthPct", pct}},
@@ -102,8 +109,6 @@ class Module
     void event(Level level, std::string_view name, RE::Actor *who, std::span<const Field> fields,
                fmt::format_string<Args...> f, Args &&...args) const
     {
-        if (!Enabled(level) && !EventsOn())
-            return;
         const auto prose = fmt::format(std::move(f), std::forward<Args>(args)...);
         Emit(level, name, who, fields, name_, prose);
     }

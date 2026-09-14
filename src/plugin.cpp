@@ -61,7 +61,14 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
             // records load.)
             if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
                 message->type == SKSE::MessagingInterface::kNewGame)
+            {
+                // A break in the game's own timeline: the events before it
+                // stay in memory and in the file, and this marks where they end.
+                const bool fresh = message->type == SKSE::MessagingInterface::kNewGame;
+                ft::log::plugin.event(ft::log::Level::Info, "game.loaded", {{"newGame", fresh}}, "{}",
+                                      fresh ? "a new game begins" : "a save is loaded");
                 ft::game::ResetPackages();
+            }
 
             // Sent before the engine writes the save (SKSE's SaveGame hook
             // dispatches it, then calls the original). A follower mid-cast is
