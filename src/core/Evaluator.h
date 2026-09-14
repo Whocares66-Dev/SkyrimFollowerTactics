@@ -260,4 +260,15 @@ const char *ToString(Verdict v) noexcept;
 // the log misdirects exactly when it is being read most carefully.
 [[nodiscard]] const char *Explain(Verdict v, ActionKind action) noexcept;
 
+// The verdict as the events log names it: "condition-false", "no-resource".
+// A key a query is written against, so it never follows a change of wording.
+[[nodiscard]] const char *WireName(Verdict v) noexcept;
+
+// Which rules to report after an evaluation, given the verdicts last
+// reported, which it updates. Not reached says nothing and keeps the last
+// word; a fire updates it silently, since rule.fired says so; any other
+// verdict that differs is reported. A list of another length -- the rules
+// changed -- starts again.
+[[nodiscard]] std::vector<std::size_t> VerdictChanges(Trace &reported, const Trace &now);
+
 } // namespace ft

@@ -2447,6 +2447,28 @@ TEST_CASE("a decision names whom its condition bound", "[sequence]")
     }
 }
 
+TEST_CASE("a rule's verdict is reported when it changes", "[verdicts]")
+{
+    using V = Verdict;
+    using Indices = std::vector<std::size_t>;
+    Trace reported;
+
+    // The first evaluation gives each rule's word once; not reached says
+    // nothing, and a fire is rule.fired's to report.
+    CHECK(VerdictChanges(reported, {V::Fired, V::ConditionFalse, V::NotReached}) == Indices{1});
+    CHECK(VerdictChanges(reported, {V::Fired, V::ConditionFalse, V::NotReached}).empty());
+
+    // The rule that fired is on cooldown now, and the false one is blocked.
+    CHECK(VerdictChanges(reported, {V::ActionCooldown, V::NoResource, V::NotReached}) == Indices{0, 1});
+
+    // Not reached keeps the last word, so coming back to it is no change.
+    CHECK(VerdictChanges(reported, {V::NotReached, V::NotReached, V::NotReached}).empty());
+    CHECK(VerdictChanges(reported, {V::ActionCooldown, V::NoResource, V::ConditionFalse}) == Indices{2});
+
+    // The rules changed: a list of another length starts again.
+    CHECK(VerdictChanges(reported, {V::NoResource}) == Indices{0});
+}
+
 TEST_CASE("a list goes on after its condition has lapsed", "[sequence]")
 {
     // Deliberate. "Health below half: drink, then cast the heal" -- the

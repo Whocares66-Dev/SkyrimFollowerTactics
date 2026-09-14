@@ -391,6 +391,24 @@ TEST_CASE("every verdict has an explanation, for every action", "[vocabulary]")
     REQUIRE(Noun(ActionKind::DrinkStrongest).empty());
 }
 
+TEST_CASE("every verdict has a wire name of its own", "[vocabulary]")
+{
+    // The events log keys on these: a name shared by two verdicts, or one a
+    // translator could reach, would make a query lie.
+    std::vector<std::string> seen;
+    for (std::size_t v = 0; v <= static_cast<std::size_t>(Verdict::NotReached); ++v)
+    {
+        const std::string name = WireName(static_cast<Verdict>(v));
+        INFO("verdict " << v << " is " << name);
+        REQUIRE(IsWireName(name));
+        for (const std::string &other : seen)
+            REQUIRE(other != name);
+        seen.push_back(name);
+    }
+    CHECK(std::string(WireName(Verdict::ConditionFalse)) == "condition-false");
+    CHECK(std::string(WireName(Verdict::NoResource)) == "no-resource");
+}
+
 TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
 {
     // The log said "previous dose still active" about an EQUIP rule, which is

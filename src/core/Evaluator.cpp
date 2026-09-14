@@ -1041,6 +1041,79 @@ const char *ToString(Verdict v) noexcept
     return "?";
 }
 
+const char *WireName(Verdict v) noexcept
+{
+    switch (v)
+    {
+    case Verdict::Fired:
+        return "fired";
+    case Verdict::Disabled:
+        return "disabled";
+    case Verdict::ConditionFalse:
+        return "condition-false";
+    case Verdict::ActionCooldown:
+        return "cooldown";
+    case Verdict::NoTarget:
+        return "no-target";
+    case Verdict::NoResource:
+        return "no-resource";
+    case Verdict::NotInCombat:
+        return "not-in-combat";
+    case Verdict::NothingToPoison:
+        return "nothing-to-poison";
+    case Verdict::NothingToCharge:
+        return "nothing-to-charge";
+    case Verdict::CannotAfford:
+        return "cannot-afford";
+    case Verdict::CannotDualCast:
+        return "cannot-dual-cast";
+    case Verdict::NoMeleeWeapon:
+        return "no-melee-weapon";
+    case Verdict::NoStamina:
+        return "no-stamina";
+    case Verdict::OutOfReach:
+        return "out-of-reach";
+    case Verdict::EffectActive:
+        return "effect-active";
+    case Verdict::AboveSkill:
+        return "above-skill";
+    case Verdict::Outranked:
+        return "outranked";
+    case Verdict::Unsupported:
+        return "unsupported";
+    case Verdict::Busy:
+        return "busy";
+    case Verdict::Casting:
+        return "casting";
+    case Verdict::Recovering:
+        return "recovering";
+    case Verdict::InvalidCondition:
+        return "invalid-condition";
+    case Verdict::Queued:
+        return "queued";
+    case Verdict::NotReached:
+        return "not-reached";
+    }
+    return "?";
+}
+
+std::vector<std::size_t> VerdictChanges(Trace &reported, const Trace &now)
+{
+    if (reported.size() != now.size())
+        reported.assign(now.size(), Verdict::NotReached);
+    std::vector<std::size_t> changed;
+    for (std::size_t i = 0; i < now.size(); ++i)
+    {
+        const Verdict v = now[i];
+        if (v == Verdict::NotReached || v == reported[i])
+            continue;
+        reported[i] = v;
+        if (v != Verdict::Fired)
+            changed.push_back(i);
+    }
+    return changed;
+}
+
 std::uint32_t ChooseSoulGem(const std::vector<Snapshot::SoulGemView> &gems, float missing, bool strongest) noexcept
 {
     const Snapshot::SoulGemView *smallest = nullptr;
