@@ -230,6 +230,7 @@ Verified against the headers. Do not "simplify" these away:
   ours: every line went through its logger, the ini's `level` never applied to a release build,
   and our banner lines were truncated away. Found 2026-09-11, after two days of "debug does
   nothing" in Nordic Souls. We call `SKSE::Init(skse, {.log = false})`.
+- **`ActiveEffect::GetTargetActor()` returns a wrong pointer for an actor.** It does `reinterpret_cast<Actor*>(target)` on the `MagicTarget*`, which is `Actor`'s second base (0xA0 in on AE), so the result points into the middle of the actor. Handed to the game's perk condition check as an argument, it crashed calling a virtual through it (2026-09-13, a summon's Remaining hover in Nordic Souls; the crash log showed two "PlayerCharacter" pointers 0xA0 apart). Use `effect.target->GetTargetStatsObject()` and `As<RE::Actor>()`.
 
 We are on **alandtse/CommonLibSSE-NG v7.5.1** as the submodule `extern/commonlibsse-ng`
 (clone with `--recurse-submodules`). Its vcpkg dependencies are in our manifest.

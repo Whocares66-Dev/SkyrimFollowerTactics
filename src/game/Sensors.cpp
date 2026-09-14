@@ -3840,7 +3840,12 @@ ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
         base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kPowerAffectsDuration) && effect.spell &&
         !effect.spell->GetNoDualCastModifications())
         ft::Multiply(b, "Dual cast", GameSetting("fMagicDualCastingEffectMult", 2.2f));
-    auto *target = const_cast<RE::Actor *>(effect.GetTargetActor());
+    // Not ActiveEffect::GetTargetActor: CommonLib reinterpret_casts the
+    // MagicTarget base to Actor, a pointer 0xA0 inside the actor, and the
+    // perk check handed it crashed calling a virtual through it
+    // (2026-09-13). The target's own accessor gives the reference.
+    auto *targetRef = effect.target ? effect.target->GetTargetStatsObject() : nullptr;
+    auto *target = targetRef ? targetRef->As<RE::Actor>() : nullptr;
     if (const auto caster = effect.GetCasterActor())
         AddEntryPointLines(b, caster.get(), RE::BGSEntryPoint::ENTRY_POINT::kModSpellDuration, {effect.spell, target});
     if (target)
