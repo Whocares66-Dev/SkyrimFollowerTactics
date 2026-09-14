@@ -3595,7 +3595,10 @@ void DrawChips(const std::vector<Chip> &chips, int &selected)
         first = false;
 
         const Im::ImVec2 pos = Im::GetCursorScreenPos();
-        if (Im::Selectable(("##chip" + chip.label).c_str(), selected == chip.id, 0, Im::ImVec2(width, 0.0f)))
+        // By id, not label: two summons of one creature share a name, and
+        // one ImGui id for both left the second unclickable.
+        if (Im::Selectable(("##chip" + std::to_string(chip.id)).c_str(), selected == chip.id, 0,
+                           Im::ImVec2(width, 0.0f)))
             selected = chip.id;
 
         if (!draw)
@@ -5008,18 +5011,21 @@ void DrawSummons(const CharacterView &view)
         Im::TextDisabled("Nothing summoned or raised.");
         return;
     }
+    // The summon chosen, by its reference: two of one creature share a
+    // name, and a place in the list moves when one ahead of it expires.
     int &chosen = g_summonTabs[view.id];
-    if (chosen < 0 || chosen >= static_cast<int>(view.summons.size()))
-        chosen = 0;
+    const auto isChosen = [&chosen](const SummonView &summon) { return static_cast<int>(summon.id) == chosen; };
+    if (std::none_of(view.summons.begin(), view.summons.end(), isChosen))
+        chosen = static_cast<int>(view.summons.front().id);
     {
         Im::Spacing();
         std::vector<Chip> chips;
-        for (std::size_t i = 0; i < view.summons.size(); ++i)
-            chips.push_back(
-                {view.summons[i].name, view.summons[i].raised ? kIconRaised : kIconSummoned, static_cast<int>(i)});
+        chips.reserve(view.summons.size());
+        for (const SummonView &summon : view.summons)
+            chips.push_back({summon.name, summon.raised ? kIconRaised : kIconSummoned, static_cast<int>(summon.id)});
         DrawChips(chips, chosen);
     }
-    DrawSummon(view.summons[static_cast<std::size_t>(chosen)]);
+    DrawSummon(*std::find_if(view.summons.begin(), view.summons.end(), isChosen));
 }
 
 // The character sheet: what they are, as opposed to what they have been told to
