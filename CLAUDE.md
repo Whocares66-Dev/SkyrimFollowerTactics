@@ -305,7 +305,7 @@ Documents is redirected to OneDrive on this machine. Resolve it with
 `[Environment]::GetFolderPath('MyDocuments')`; never assume `%USERPROFILE%\Documents`.
 SKSE's own `skse64.log` is in the same folder.
 
-The first is prose to read while playing, the second the same events as one JSON object per line, to query afterwards. Both are written by one call and filtered by one level, set in `Data/SKSE/Plugins/FollowerTactics.ini` — `info` by default, `debug` for the per-tick readouts. `docs/LOGGING.md` is the design: the levels, the event catalogue, and how to add a call site (`ft::log::<module>.info(...)`; there is no `logger` alias any more).
+The first is prose to read while playing: every line, filtered by the level set in `Data/SKSE/Plugins/FollowerTactics.ini` — `info` by default, `debug` for the per-tick readouts. The second is the game events, what tactics did to and saw of a follower, one JSON object per line, whatever the level; a game event is one call that writes both. `docs/LOGGING.md` is the machinery, the levels and how to add a call site (`ft::log::<module>.info(...)`; there is no `logger` alias any more); `docs/EVENTS.md` is which events there are.
 
 ## Reading the executable
 

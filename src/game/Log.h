@@ -1,12 +1,14 @@
 #pragma once
 // The two log channels, and the one call that writes both.
 //
-//   FollowerTactics.log         prose, for a human tailing it while playing
-//   FollowerTactics.events.jsonl  one JSON object per line, for querying after
+//   FollowerTactics.log           prose, for a human tailing it while playing:
+//                                 every line, filtered by the ini's level
+//   FollowerTactics.events.jsonl  the game events, one JSON object per line,
+//                                 whatever the level
 //
-// Neither is hand-maintained against the other: an event is written once, here,
-// and comes out of both. docs/LOGGING.md is the design -- what belongs at each
-// level, and the catalogue of events.
+// Neither is hand-maintained against the other: a game event is written once,
+// here, and comes out of both. docs/LOGGING.md is the machinery and the
+// levels; docs/EVENTS.md is which events there are and what each carries.
 //
 // Every line names its module, and the module is a FIELD rather than a string
 // somebody typed at the front of the message:
@@ -20,6 +22,7 @@
 #include "core/LogEvent.h"
 
 #include <fmt/format.h>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -40,6 +43,10 @@ void Init();
 // before building something expensive purely to log it -- joining a party
 // into a string, walking an inventory -- since every call below asks anyway.
 [[nodiscard]] bool Enabled(Level level) noexcept;
+
+// Whether the events file is open: `events = true` in the ini, and the file
+// could be made.
+[[nodiscard]] bool EventsOn() noexcept;
 
 // An actor's id and name, as an event carries them: the id is what a query
 // keys on, the name is for the human reading the query's output and is never
@@ -81,26 +88,38 @@ class Module
         Say(level, std::move(f), std::forward<Args>(args)...);
     }
 
-    // An event: the JSON line on the sidecar AND the prose line on the log,
-    // from this one call. `name` is a name from docs/LOGGING.md's catalogue,
-    // `fields` what that row says it carries beyond the envelope, and the
-    // trailing format string is how the same fact reads in prose.
+    // A game event: the JSON line in the events file AND the prose line in
+    // the log, from this one call. `name` is a name from docs/EVENTS.md's
+    // catalogue, `fields` what that row says it carries beyond the envelope,
+    // and the trailing format string is how the same fact reads in prose.
+    // The level filters the prose line only: turning the log down must not
+    // erase the record of a fight.
     //
     //   ft::log::tactics.event(Level::Info, "rule.fired", actor,
     //       {{"ruleIndex", i}, {"ruleName", rule.label}, {"healthPct", pct}},
     //       "{} FIRED rule {} \"{}\"", Describe(actor), i, rule.label);
     template <class... Args>
-    void event(Level level, std::string_view name, RE::Actor *who, Fields fields, fmt::format_string<Args...> f,
-               Args &&...args) const
+    void event(Level level, std::string_view name, RE::Actor *who, std::span<const Field> fields,
+               fmt::format_string<Args...> f, Args &&...args) const
     {
-        if (!Enabled(level))
+        if (!Enabled(level) && !EventsOn())
             return;
         const auto prose = fmt::format(std::move(f), std::forward<Args>(args)...);
         Emit(level, name, who, fields, name_, prose);
     }
 
-    // The same, for an event about no actor in particular (the packages, the
-    // tick, a hook that failed to install).
+    // The same, written as a braced list at the call site. The span form is
+    // for a list built up first, an actor's ids appended to a rule's fields.
+    template <class... Args>
+    void event(Level level, std::string_view name, RE::Actor *who, Fields fields, fmt::format_string<Args...> f,
+               Args &&...args) const
+    {
+        event(level, name, who, std::span<const Field>(fields.begin(), fields.size()), std::move(f),
+              std::forward<Args>(args)...);
+    }
+
+    // The same, for an event about no follower in particular (the party
+    // changing, the master switch).
     template <class... Args>
     void event(Level level, std::string_view name, Fields fields, fmt::format_string<Args...> f, Args &&...args) const
     {
@@ -139,7 +158,7 @@ inline constexpr Module ui{"ui"};
 // Not for call sites -- Module's templates above are the API. These are out of
 // line so that neither spdlog nor the sinks have to be included here.
 void Write(Level level, std::string_view module, std::string_view text);
-void Emit(Level level, std::string_view event, RE::Actor *who, Fields fields, std::string_view module,
+void Emit(Level level, std::string_view event, RE::Actor *who, std::span<const Field> fields, std::string_view module,
           std::string_view prose);
 
 } // namespace ft::log

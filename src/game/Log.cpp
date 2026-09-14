@@ -14,9 +14,10 @@ namespace ft::log
 namespace
 {
 
-// The level both channels are filtered by. Read once from the ini at Init and
-// never again -- an atomic only so that a read from the render thread (the
-// panel logs) cannot race the write at load.
+// The level the prose log is filtered by; the events file takes every game
+// event whatever it says. Read once from the ini at Init and never again --
+// an atomic only so that a read from the render thread (the panel logs)
+// cannot race the write at load.
 std::atomic<Level> g_level{Level::Info};
 
 // The sidecar. A logger of its own with the bare "%v" pattern, so what lands
@@ -162,6 +163,11 @@ bool Enabled(Level level) noexcept
     return level >= g_level.load(std::memory_order_relaxed);
 }
 
+bool EventsOn() noexcept
+{
+    return g_events != nullptr;
+}
+
 std::uint32_t IdOf(RE::Actor *actor) noexcept
 {
     return actor ? actor->GetFormID() : 0;
@@ -190,10 +196,11 @@ void Write(Level level, std::string_view module, std::string_view text)
     spdlog::log(ToSpdlog(level), "{:<11}{}", fmt::format("[{}]", module), text);
 }
 
-void Emit(Level level, std::string_view event, RE::Actor *who, Fields fields, std::string_view module,
+void Emit(Level level, std::string_view event, RE::Actor *who, std::span<const Field> fields, std::string_view module,
           std::string_view prose)
 {
-    Write(level, module, prose);
+    if (Enabled(level))
+        Write(level, module, prose);
 
     if (!g_events)
         return;
@@ -222,10 +229,11 @@ void Init()
     if (!directory)
         return;
 
-    // Both channels open at debug and are tightened at the bottom of this
+    // The prose log opens at debug and is tightened at the bottom of this
     // function, so the banner saying WHICH level was read is written before
     // the filter that would hide it. At `level = error` an otherwise empty log
     // would leave no way to tell a quiet setting from a mod that never loaded.
+    // The events file is never tightened: the level is not its filter.
     {
         auto path = *directory / "FollowerTactics.log";
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
@@ -261,11 +269,6 @@ void Init()
     g_level.store(settings.level, std::memory_order_relaxed);
     spdlog::default_logger()->set_level(ToSpdlog(settings.level));
     spdlog::default_logger()->flush_on(ToSpdlog(settings.level));
-    if (g_events)
-    {
-        g_events->set_level(ToSpdlog(settings.level));
-        g_events->flush_on(ToSpdlog(settings.level));
-    }
 }
 
 } // namespace ft::log
