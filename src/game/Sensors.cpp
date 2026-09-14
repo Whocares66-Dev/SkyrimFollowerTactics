@@ -3816,12 +3816,12 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
 
 namespace
 {
-// An effect's time left, written out as the engine made its duration
-// (ActiveEffect::AdjustForPerks, id 34053, read 2026-09-13): the record's
-// duration, then the caster's Mod Spell Duration entries given the spell
-// and the target, then the target's Mod Incoming Spell Duration given the
-// spell; less the time run. Whatever else moves a duration is not read, and
-// shows as Other.
+// An effect's time left, written out as the engine made its duration: the
+// record's duration; a dual cast (id 34058); the caster's Mod Spell Duration
+// entries given the spell and the target, then the target's Mod Incoming
+// Spell Duration given the spell (ActiveEffect::AdjustForPerks, id 34053);
+// less the time run (docs/MODIFIERS.md). Whatever else moves a duration is
+// not read, and shows as Other.
 ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
 {
     ft::Breakdown b;
@@ -3830,23 +3830,36 @@ ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
     b.unit = " s";
     b.totalLabel = "Remaining";
     ft::Start(b, "Base", static_cast<float>(effect.effect->effectItem.duration));
-    // A dual cast: fMagicDualCastingEffectMult, for an effect the engine
-    // flagged dual whose record lets power move its duration, unless the
-    // spell forbids dual-cast changes. The names are CommonLib's and the
-    // Creation Kit's, not read off the engine, and no actor value moves
-    // the factor; where the guess is wrong, Other carries the gap.
+    const auto caster = effect.GetCasterActor();
+    // A dual cast's effectiveness as id 26518 makes it: the base setting
+    // plus the mult setting times the spell's cost for the caster, 2.5 and
+    // 0 in Nordic Souls, 2.2 and 0 in vanilla. It scales the duration where
+    // the record has Power Affects Duration, Scrambled Bugs' magicEffectFlags
+    // reading, which Nordic Souls runs; vanilla's own body scales an effect
+    // with No Magnitude too. The engine skips an effectiveness of 1 or
+    // below 0.
     const auto *base = effect.effect->baseEffect;
     if (effect.flags.any(RE::ActiveEffect::Flag::kDual) && base &&
-        base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kPowerAffectsDuration) && effect.spell &&
-        !effect.spell->GetNoDualCastModifications())
-        ft::Multiply(b, "Dual cast", GameSetting("fMagicDualCastingEffectMult", 2.2f));
+        base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kPowerAffectsDuration))
+    {
+        const float fixed = GameSetting("fMagicDualCastingEffectivenessBase", 2.2f);
+        const float perCost = GameSetting("fMagicDualCastingEffectivenessMult", 0.0f);
+        const float cost = perCost != 0.0f && effect.spell ? effect.spell->CalculateMagickaCost(caster.get()) : 0.0f;
+        const float effectiveness = fixed + perCost * cost;
+        if (effectiveness >= 0.0f && effectiveness != 1.0f)
+        {
+            ft::BreakdownLine &line = ft::Multiply(b, "Dual cast", effectiveness);
+            if (perCost != 0.0f)
+                line.amountText = "x (" + Fmt("%g", fixed) + " + " + Fmt("%g", perCost) + " x " + Fmt("%g", cost) + ")";
+        }
+    }
     // Not ActiveEffect::GetTargetActor: CommonLib reinterpret_casts the
     // MagicTarget base to Actor, a pointer 0xA0 inside the actor, and the
     // perk check handed it crashed calling a virtual through it
     // (2026-09-13). The target's own accessor gives the reference.
     auto *targetRef = effect.target ? effect.target->GetTargetStatsObject() : nullptr;
     auto *target = targetRef ? targetRef->As<RE::Actor>() : nullptr;
-    if (const auto caster = effect.GetCasterActor())
+    if (caster)
         AddEntryPointLines(b, caster.get(), RE::BGSEntryPoint::ENTRY_POINT::kModSpellDuration, {effect.spell, target});
     if (target)
         AddEntryPointLines(b, target, RE::BGSEntryPoint::ENTRY_POINT::kModIncomingSpellDuration, {effect.spell});
