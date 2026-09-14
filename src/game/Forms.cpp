@@ -43,8 +43,7 @@ bool Place(RE::TESForm *form, const char *what)
     }
     if (next > kLastFormId)
     {
-        log::forms.event(log::Level::Error, "form.error", {{"kind", what}, {"reason", "no free id"}},
-                         "no free id left above {:08X} -- {} not made", kFirstFormId, what);
+        log::forms.error("no free id left above {:08X} -- {} not made", kFirstFormId, what);
         return false;
     }
     const RE::FormID id = next++;
@@ -53,10 +52,7 @@ bool Place(RE::TESForm *form, const char *what)
     const bool ok = form->GetFormID() == id && RE::TESForm::LookupByID(id) == form;
     if (!ok)
     {
-        log::forms.event(
-            log::Level::Error, "form.error",
-            {{"requestedFormId", log::Id(id)}, {"kind", what}, {"reason", "not registered after SetFormID"}},
-            "{} {:08X} (born {:08X}) -- NOT registered", what, form->GetFormID(), born);
+        log::forms.error("{} {:08X} (born {:08X}) -- NOT registered", what, form->GetFormID(), born);
         return false;
     }
     log::forms.debug("{} {:08X} (born {:08X})", what, form->GetFormID(), born);
@@ -73,20 +69,14 @@ RE::TESPackage *ClonePackage(RE::TESPackage *source)
     auto *pkg = CreatePackage(RE::PACKAGE_TYPE::kPackage);
     if (!pkg)
     {
-        log::forms.event(log::Level::Error, "form.error",
-                         {{"kind", "package"}, {"reason", "CreatePackage returned nothing"}},
-                         "CreatePackage returned nothing");
+        log::forms.error("CreatePackage returned nothing");
         return nullptr;
     }
     auto *custom = skyrim_cast<RE::TESCustomPackageData *>(pkg->data);
     auto *srcCustom = skyrim_cast<RE::TESCustomPackageData *>(source->data);
     if (!custom || !srcCustom)
     {
-        log::forms.event(log::Level::Error, "form.error",
-                         {{"requestedFormId", log::Id(source->GetFormID())},
-                          {"kind", "package"},
-                          {"reason", "package data is not TESCustomPackageData"}},
-                         "package data is not TESCustomPackageData (ours {}, source {})",
+        log::forms.error("package data of {:08X} is not TESCustomPackageData (ours {}, source {})", source->GetFormID(),
                          static_cast<const void *>(custom), static_cast<const void *>(srcCustom));
         return nullptr;
     }
@@ -99,14 +89,7 @@ RE::TESPackage *ClonePackage(RE::TESPackage *source)
     if (custom->data.dataSize != srcCustom->data.dataSize || custom->templateParent != srcCustom->templateParent ||
         !custom->nameMap)
     {
-        log::forms.event(log::Level::Error, "form.error",
-                         {{"requestedFormId", log::Id(source->GetFormID())},
-                          {"kind", "package"},
-                          {"reason", "copy incomplete"},
-                          {"inputs", custom->data.dataSize},
-                          {"sourceInputs", srcCustom->data.dataSize},
-                          {"nameMap", custom->nameMap != nullptr}},
-                         "copy of {:08X} incomplete: {} of {} inputs, template {} vs {}, name map {}",
+        log::forms.error("copy of {:08X} incomplete: {} of {} inputs, template {} vs {}, name map {}",
                          source->GetFormID(), custom->data.dataSize, srcCustom->data.dataSize,
                          static_cast<const void *>(custom->templateParent),
                          static_cast<const void *>(srcCustom->templateParent), custom->nameMap ? "present" : "ABSENT");
@@ -153,9 +136,7 @@ RE::TESWordOfPower *CreateWord(const char *name)
     auto *word = factory ? factory->Create() : nullptr;
     if (!word)
     {
-        log::forms.event(log::Level::Error, "form.error",
-                         {{"kind", "word"}, {"reason", "no factory or no word of power"}},
-                         "no factory or no word of power");
+        log::forms.error("no factory or no word of power");
         return nullptr;
     }
     word->fullName = name;
@@ -169,8 +150,7 @@ RE::TESShout *CreateShout(RE::TESWordOfPower *word, RE::TESForm *spell, const ch
     auto *shout = factory ? factory->Create() : nullptr;
     if (!shout)
     {
-        log::forms.event(log::Level::Error, "form.error", {{"kind", "shout"}, {"reason", "no factory or no shout"}},
-                         "no factory or no shout");
+        log::forms.error("no factory or no shout");
         return nullptr;
     }
     shout->fullName = name;

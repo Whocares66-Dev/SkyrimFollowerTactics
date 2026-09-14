@@ -131,9 +131,7 @@ void WatchHits()
     auto *holder = RE::ScriptEventSourceHolder::GetSingleton();
     if (!holder)
     {
-        log::hits.event(log::Level::Warn, "install.failed",
-                        {{"what", "hit events"}, {"reason", "no script event source holder"}},
-                        "no event source holder -- Attacked by will never be true");
+        log::hits.warn("no event source holder -- Attacked by will never be true");
         return;
     }
     holder->AddEventSink<RE::TESHitEvent>(&g_hitSink);

@@ -294,19 +294,14 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
                 const auto *caster =
                     actor ? actor->GetActorRuntimeData().magicCasters[RE::Actor::SlotTypes::kPowerOrShout] : nullptr;
                 const bool ourVoice = high && high->currentShout && high->currentShout->GetFormID() == shoutId;
-                log::packages.event(ourVoice ? log::Level::Info : log::Level::Debug,
-                                    ourVoice ? "package.fired" : "package.otherVoice", actor,
-                                    {{"packageFormId", log::Id(PackageId(slot))},
-                                     {"formId", log::Id(shoutId)},
-                                     {"holderFormId", log::Id(who)},
-                                     {"kind", "voice"}},
-                                    "anim {:08X}: voice fired: shout {:08X} variation {} level {}, voice slot "
-                                    "holds {:08X}, caster spell {:08X} -- {}",
-                                    who, high && high->currentShout ? high->currentShout->GetFormID() : 0,
-                                    high ? static_cast<std::int32_t>(high->currentShoutVariation) : -99,
-                                    actor ? actor->GetCurrentShoutLevel() : -99, voiceItem ? voiceItem->GetFormID() : 0,
-                                    caster && caster->currentSpell ? caster->currentSpell->GetFormID() : 0,
-                                    ourVoice ? "OURS" : "not ours");
+                log::packages.at(ourVoice ? log::Level::Info : log::Level::Debug,
+                                 "anim {:08X}: voice fired: shout {:08X} variation {} level {}, voice slot "
+                                 "holds {:08X}, caster spell {:08X} -- {}",
+                                 who, high && high->currentShout ? high->currentShout->GetFormID() : 0,
+                                 high ? static_cast<std::int32_t>(high->currentShoutVariation) : -99,
+                                 actor ? actor->GetCurrentShoutLevel() : -99, voiceItem ? voiceItem->GetFormID() : 0,
+                                 caster && caster->currentSpell ? caster->currentSpell->GetFormID() : 0,
+                                 ourVoice ? "OURS" : "not ours");
                 if (ourVoice)
                     slot.fired.store(true, std::memory_order_relaxed);
                 continue;
@@ -324,14 +319,9 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
                       : nullptr;
             const std::uint32_t firedID = spell ? spell->GetFormID() : 0;
             const bool ours = firedID == slot.spellId.load(std::memory_order_relaxed);
-            log::packages.event(ours ? log::Level::Info : log::Level::Debug,
-                                ours ? "package.fired" : "package.otherCast", actor,
-                                {{"packageFormId", log::Id(PackageId(slot))},
-                                 {"formId", log::Id(firedID)},
-                                 {"holderFormId", log::Id(who)},
-                                 {"kind", right ? "right hand" : "left hand"}},
-                                "anim {:08X}: {} hand fired {:08X} \"{}\" -- {}", who, right ? "right" : "left",
-                                firedID, log::NameOf(spell), ours ? "OURS" : "the follower's own, ignored");
+            log::packages.at(ours ? log::Level::Info : log::Level::Debug,
+                             "anim {:08X}: {} hand fired {:08X} \"{}\" -- {}", who, right ? "right" : "left", firedID,
+                             log::NameOf(spell), ours ? "OURS" : "the follower's own, ignored");
             if (ours)
                 slot.fired.store(true, std::memory_order_relaxed);
         }
@@ -1080,16 +1070,9 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
     }
     else
         SetPackageCastTime(slot.package, kAuthoredCastTimeMax);
-    log::packages.event(log::Level::Info, "package.armed", actor,
-                        {{"packageFormId", log::Id(PackageId(slot))},
-                         {"formId", log::Id(spellFormID)},
-                         {"holderFormId", log::Id(actor->GetFormID())},
-                         {"kind", "cast"},
-                         {"targetFormId", log::Id(target ? target->GetFormID() : actor->GetFormID())},
-                         {"durationS", sustain}},
-                        "{:08X} aims at {}", PackageId(slot),
-                        target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
-                               : std::string("self"));
+    log::packages.info("{}: {:08X} casts {:08X} at {}", log::NameOf(actor), PackageId(slot), spellFormID,
+                       target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
+                              : std::string("self"));
 
     return Arm(slot, actor, sustain, kArmWindowSeconds);
 }
@@ -1189,15 +1172,9 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
     SetPackageTarget(slot.package, target);
     slot.target = target ? target->GetHandle() : RE::ActorHandle{};
     slot.sustained = false;
-    log::packages.event(log::Level::Info, "package.armed", actor,
-                        {{"packageFormId", log::Id(PackageId(slot))},
-                         {"formId", log::Id(formID)},
-                         {"holderFormId", log::Id(actor->GetFormID())},
-                         {"kind", "voice"},
-                         {"targetFormId", log::Id(target ? target->GetFormID() : actor->GetFormID())}},
-                        "{:08X} aims at {}", PackageId(slot),
-                        target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
-                               : std::string("self"));
+    log::packages.info("{}: {:08X} voices {:08X} at {}", log::NameOf(actor), PackageId(slot), formID,
+                       target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
+                              : std::string("self"));
 
     // The procedure fires only a shout the actor has: the wrapper is given
     // for the lease; a shout of their own they have already. A shout speaks
@@ -1247,13 +1224,8 @@ void ReleaseAllLeases(const char *why)
     ForEachSlot([why](Slot &slot) {
         if (!slot.Busy())
             return;
-        log::packages.event(log::Level::Info, "package.released",
-                            {{"packageFormId", log::Id(PackageId(slot))},
-                             {"holderFormId", log::Id(slot.lease->FormID())},
-                             {"durationS", TacticsSeconds() - slot.armedAt},
-                             {"reason", why}},
-                            "{:08X} released after {:.1f} s: {}", PackageId(slot), TacticsSeconds() - slot.armedAt,
-                            why);
+        log::packages.info("{:08X} held by {:08X} released after {:.1f} s: {}", PackageId(slot), slot.lease->FormID(),
+                           TacticsSeconds() - slot.armedAt, why);
         Release(slot);
     });
 }
@@ -1285,9 +1257,7 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         {
             // Unloaded or gone. The lease's destructor finds no actor and
             // clears nothing; the sweep above catches them if they come back.
-            log::packages.event(log::Level::Info, "package.released",
-                                {{"packageFormId", log::Id(PackageId(slot))}, {"reason", "holder vanished"}},
-                                "{:08X} holder vanished -- released", PackageId(slot));
+            log::packages.info("{:08X} holder vanished -- released", PackageId(slot));
             Release(slot);
             return;
         }
@@ -1347,13 +1317,7 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
 
         if (why)
         {
-            log::packages.event(log::Level::Info, "package.released", actor.get(),
-                                {{"packageFormId", log::Id(PackageId(slot))},
-                                 {"holderFormId", log::Id(actor->GetFormID())},
-                                 {"durationS", now - slot.armedAt},
-                                 {"reason", why}},
-                                "{} releases {:08X} after {:.1f} s: {}", name, PackageId(slot), now - slot.armedAt,
-                                why);
+            log::packages.info("{} releases {:08X} after {:.1f} s: {}", name, PackageId(slot), now - slot.armedAt, why);
             Release(slot);
         }
     });
@@ -1371,8 +1335,7 @@ bool Calibrate()
     auto *colette = RE::TESForm::LookupByID<RE::TESPackage>(kColetteHealID);
     if (!mercer || !colette)
     {
-        log::packages.event(log::Level::Error, "packages.unavailable", {{"reason", "vanilla records missing"}},
-                            "probe: vanilla records missing (Mercer {}, Colette {}) -- cast rules stay off",
+        log::packages.error("probe: vanilla records missing (Mercer {}, Colette {}) -- cast rules stay off",
                             static_cast<const void *>(mercer), static_cast<const void *>(colette));
         return false;
     }
@@ -1380,9 +1343,7 @@ bool Calibrate()
     auto *custom = skyrim_cast<RE::TESCustomPackageData *>(mercer->data);
     if (!custom)
     {
-        log::packages.event(log::Level::Error, "packages.unavailable",
-                            {{"reason", "package data is not TESCustomPackageData"}},
-                            "probe: Mercer's package data is not TESCustomPackageData -- template inputs "
+        log::packages.error("probe: Mercer's package data is not TESCustomPackageData -- template inputs "
                             "unreachable");
         return false;
     }
@@ -1392,8 +1353,7 @@ bool Calibrate()
     std::int8_t uid = 0;
     if (!FindInputUID(custom, "Spell", uid))
     {
-        log::packages.event(log::Level::Error, "packages.unavailable", {{"reason", "no Spell input in the name map"}},
-                            "probe: no 'Spell' input in the name map -- cast rules stay off");
+        log::packages.error("probe: no 'Spell' input in the name map -- cast rules stay off");
         return false;
     }
 
@@ -1427,9 +1387,7 @@ bool Calibrate()
         const std::size_t offset = w * sizeof(std::uintptr_t);
         if (value == canaryAddr)
         {
-            log::packages.event(log::Level::Error, "packages.unavailable",
-                                {{"reason", "Spell input holds its form inline"}},
-                                "probe: canary found inline at +{:02X}, not behind a PackageTarget -- cast rules "
+            log::packages.error("probe: canary found inline at +{:02X}, not behind a PackageTarget -- cast rules "
                                 "stay off. Nothing will be written.",
                                 offset);
             return false;
@@ -1443,9 +1401,7 @@ bool Calibrate()
                 continue;
             if (k * sizeof(std::uintptr_t) != kTargetUnionOffset)
             {
-                log::packages.event(log::Level::Error, "packages.unavailable",
-                                    {{"reason", "PackageTarget layout differs from the library's"}},
-                                    "probe: canary at +{:02X} -> +{:02X}, not +{:02X} -- cast rules stay off. "
+                log::packages.error("probe: canary at +{:02X} -> +{:02X}, not +{:02X} -- cast rules stay off. "
                                     "Nothing will be written.",
                                     offset, k * sizeof(std::uintptr_t), kTargetUnionOffset);
                 return false;
@@ -1458,9 +1414,7 @@ bool Calibrate()
 
     if (g_spellOuter == kNotCalibrated)
     {
-        log::packages.event(log::Level::Error, "packages.unavailable",
-                            {{"reason", "Spell input layout not identified"}},
-                            "probe: layout NOT identified -- cast rules stay off. Nothing will be written.");
+        log::packages.error("probe: layout NOT identified -- cast rules stay off. Nothing will be written.");
         return false;
     }
     log::packages.debug("probe: calibrated (+{:02X} -> +{:02X}); cast rules can name any spell", g_spellOuter,
@@ -1475,8 +1429,7 @@ bool Calibrate()
     auto *player = RE::PlayerCharacter::GetSingleton();
     if (!cpt || !mpt || !player || mpt->target.handle.native_handle() != player->GetHandle().native_handle())
     {
-        log::packages.event(log::Level::Error, "packages.unavailable", {{"reason", "Target input unreadable"}},
-                            "probe: Target inputs {} -- cast rules stay off",
+        log::packages.error("probe: Target inputs {} -- cast rules stay off",
                             mpt ? fmt::format("Mercer's type {} handle {:08X}, player handle {:08X}", mpt->targType,
                                               mpt->target.handle.native_handle(),
                                               player ? player->GetHandle().native_handle() : 0)
@@ -1485,9 +1438,8 @@ bool Calibrate()
     }
     if (mpt->targType == cpt->targType)
     {
-        log::packages.event(
-            log::Level::Error, "packages.unavailable", {{"reason", "Self and specific-reference read the same type"}},
-            "probe: Self and specific-reference read the same type {} -- cast rules stay off", cpt->targType);
+        log::packages.error("probe: Self and specific-reference read the same type {} -- cast rules stay off",
+                            cpt->targType);
         return false;
     }
     g_typeSelf = cpt->targType;
@@ -1581,15 +1533,13 @@ void InitPackages()
     g_canary = RE::TESForm::LookupByID(kCanarySpellID);
     if (!g_tsun || !g_canary)
     {
-        log::packages.event(log::Level::Error, "packages.unavailable", {{"reason", "vanilla records missing"}},
-                            "vanilla records missing (Tsun's shout package {}, Fast Healing {}) -- cast rules "
+        log::packages.error("vanilla records missing (Tsun's shout package {}, Fast Healing {}) -- cast rules "
                             "stay off",
                             static_cast<const void *>(g_tsun), static_cast<const void *>(g_canary));
         return;
     }
 
-    log::packages.event(log::Level::Info, "packages.ready", {},
-                        "input layout found; a follower's cast records are made when the tick first sees them");
+    log::packages.info("input layout found; a follower's cast records are made when the tick first sees them");
     g_available = true;
 }
 
@@ -1607,16 +1557,11 @@ void ProvideCastForms(RE::Actor *actor)
         // What was made before the failure stays registered: forms are never
         // deleted, and trying again would only make more.
         g_kitsFailed.insert(id);
-        log::packages.event(log::Level::Error, "packages.failed", actor, {{"reason", failed}},
-                            "{}: {} -- their cast, power and shout rules stay off", Describe(actor), failed);
+        log::packages.error("{}: {} -- their cast, power and shout rules stay off", Describe(actor), failed);
         return;
     }
-    log::packages.event(log::Level::Info, "packages.made", actor,
-                        {{"castPackageFormId", log::Id(PackageId(kit->spell))},
-                         {"shoutPackageFormId", log::Id(PackageId(kit->voice))},
-                         {"wrapperFormId", log::Id(kit->voice.wrapper->GetFormID())}},
-                        "{}: cast package {:08X}, shout package {:08X}, wrapper {:08X}", Describe(actor),
-                        PackageId(kit->spell), PackageId(kit->voice), kit->voice.wrapper->GetFormID());
+    log::packages.info("{}: cast package {:08X}, shout package {:08X}, wrapper {:08X}", Describe(actor),
+                       PackageId(kit->spell), PackageId(kit->voice), kit->voice.wrapper->GetFormID());
     std::unique_lock lock(g_kitsMutex);
     g_kits.emplace(id, std::move(kit));
 }

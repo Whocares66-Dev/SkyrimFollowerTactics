@@ -5540,9 +5540,8 @@ void Install()
     // drinking potions.
     if (!SKSEMenuFramework::IsInstalled())
     {
-        log::ui.event(log::Level::Info, "ui.unavailable", {{"reason", "SKSE Menu Framework not installed"}},
-                      "SKSE Menu Framework not installed -- no in-game panel. "
-                      "Tactics still run; see this log for what they decide.");
+        log::ui.info("SKSE Menu Framework not installed -- no in-game panel. "
+                     "Tactics still run; see this log for what they decide.");
         return;
     }
 
@@ -5556,8 +5555,7 @@ void Install()
     static auto *const openEvent = SKSEMenuFramework::AddEvent(OnMenuEvent, 0.0f);
     (void)openEvent;
 
-    log::ui.event(log::Level::Info, "ui.installed", {},
-                  "registered with SKSE Menu Framework (F1). Follower entries appear as followers do.");
+    log::ui.info("registered with SKSE Menu Framework (F1). Follower entries appear as followers do.");
 }
 
 } // namespace ft::game::ui

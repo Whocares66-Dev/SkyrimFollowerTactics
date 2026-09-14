@@ -74,6 +74,12 @@ class Module
     {
         Say(Level::Error, std::move(f), std::forward<Args>(args)...);
     }
+    // For a line whose weight is only known when it happens: a spell leaving
+    // a hand is news when it is our cast, and noise when it is the follower's.
+    template <class... Args> void at(Level level, fmt::format_string<Args...> f, Args &&...args) const
+    {
+        Say(level, std::move(f), std::forward<Args>(args)...);
+    }
 
     // An event: the JSON line on the sidecar AND the prose line on the log,
     // from this one call. `name` is a name from docs/LOGGING.md's catalogue,

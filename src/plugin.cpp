@@ -28,7 +28,7 @@ void OnDataLoaded()
     ft::game::RefuseEquipsAgainstPins();
     ft::game::WatchHits();
 
-    ft::log::plugin.event(ft::log::Level::Info, "plugin.loaded", {}, "FollowerTactics loaded");
+    ft::log::plugin.info("FollowerTactics loaded");
 }
 
 } // namespace

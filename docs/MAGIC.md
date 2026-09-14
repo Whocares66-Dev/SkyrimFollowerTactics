@@ -141,7 +141,8 @@ packages: Marcurio releases FF3F0800 after 2.0 s: spell fired
 
 0. The load's `probe:` lines come before any follower exists. A follower's
    `forms:` lines (one per form, "born FF00xxxx", none saying NOT
-   registered) and `packages.made` come the first time the tick sees them.
+   registered) and the `packages:` line naming their cast package, shout
+   package and wrapper come the first time the tick sees them.
 1. `bat ftspawn`, click her, `bat ftmake` (grants Oakflesh, potions, relationship
    rank -- not teammate status).
 2. **Talk to her, "Follow me."** The alias line in the log is the check.

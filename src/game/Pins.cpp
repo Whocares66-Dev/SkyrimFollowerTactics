@@ -1327,12 +1327,8 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         // Neither the panel nor the rules offer this; a pin is a promise the
         // AI would not keep, and it is refused here too rather than
         // half-kept as an equip without a pin.
-        log::pins.event(log::Level::Warn, "pin.refused", actor,
-                        {{"itemFormId", log::Id(thing->GetFormID())},
-                         {"itemName", log::NameOf(thing)},
-                         {"reason", "above the follower's skill; the AI would not choose it"}},
-                        "{} {} cannot be pinned: above the follower's skill, the AI would not choose it",
-                        Describe(actor), log::NameOf(thing));
+        log::pins.warn("{} {} cannot be pinned: above the follower's skill, the AI would not choose it",
+                       Describe(actor), log::NameOf(thing));
         return;
     }
     // One weapon cannot be in both hands. Asked to move their only copy to
@@ -1424,9 +1420,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             g_republish.insert(id);
         break;
     case WearRequest::Unequip:
-        log::pins.event(log::Level::Info, "unequip.applied", actor,
-                        {{"itemFormId", log::Id(described.form)}, {"itemName", name}, {"hand", HandTag(hands)}},
-                        "{} told to put away {}{}", Describe(actor), name, HandTag(hands));
+        log::pins.info("{} told to put away {}{}", Describe(actor), name, HandTag(hands));
         UnequipForm(actor, thing, hands, true, variant);
         if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
             g_republish.insert(id);
@@ -1540,9 +1534,7 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
         auto *thing = RE::TESForm::LookupByID(entry.form);
         if (!thing)
         {
-            log::pins.event(log::Level::Warn, "profile.entryDropped", actor,
-                            {{"kind", "pin"}, {"label", log::Id(entry.form)}, {"reason", "names nothing in this game"}},
-                            "{} saved pin {:08X} names nothing in this game -- forgotten", Describe(actor), entry.form);
+            log::pins.warn("{} saved pin {:08X} names nothing in this game -- forgotten", Describe(actor), entry.form);
             continue;
         }
         const std::string name = NameOr(thing, "?");
@@ -1552,13 +1544,8 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
             described.IsVoice() ? InVoice(actor, thing) : object && Worn(actor, object, entry.hands, entry.variant);
         if (!on || !Pinnable(described))
         {
-            log::pins.event(log::Level::Warn, "profile.entryDropped", actor,
-                            {{"kind", "pin"},
-                             {"label", name},
-                             {"hand", HandTag(entry.hands)},
-                             {"reason", !on ? "not worn now" : "cannot be pinned"}},
-                            "{} saved pin on {}{} does not hold -- {} -- forgotten", Describe(actor), name,
-                            HandTag(entry.hands), !on ? "not worn now" : "cannot be pinned");
+            log::pins.warn("{} saved pin on {}{} does not hold -- {} -- forgotten", Describe(actor), name,
+                           HandTag(entry.hands), !on ? "not worn now" : "cannot be pinned");
             continue;
         }
         AddPin(book, described, entry.hands, false);
@@ -1582,9 +1569,7 @@ void AdoptBans(RE::Actor *actor, const Bans &bans)
         auto *thing = RE::TESForm::LookupByID(ban.form);
         if (!thing)
         {
-            log::pins.event(log::Level::Warn, "profile.entryDropped", actor,
-                            {{"kind", "ban"}, {"label", log::Id(ban.form)}, {"reason", "names nothing in this game"}},
-                            "{} saved ban {:08X} names nothing in this game -- forgotten", Describe(actor), ban.form);
+            log::pins.warn("{} saved ban {:08X} names nothing in this game -- forgotten", Describe(actor), ban.form);
             continue;
         }
         // A ban on a variant holds only while a row of it is carried:
@@ -1593,10 +1578,7 @@ void AdoptBans(RE::Actor *actor, const Bans &bans)
         const bool present = !ban.variant || (object && CountVariant(actor, object, ban.variant) > 0);
         if (!present)
         {
-            log::pins.event(log::Level::Warn, "profile.entryDropped", actor,
-                            {{"kind", "ban"}, {"label", log::NameOf(thing)}, {"reason", "no longer carried"}},
-                            "{} saved ban on {} -- no longer carried -- forgotten", Describe(actor),
-                            log::NameOf(thing));
+            log::pins.warn("{} saved ban on {} -- no longer carried -- forgotten", Describe(actor), log::NameOf(thing));
             continue;
         }
         if (Ban(book, ban.form, ban.variant))
@@ -1893,29 +1875,17 @@ bool Refused(RE::Actor *actor, RE::TESForm *form, RE::ExtraDataList *&extra, con
     if (g_refusedLogged.insert(ReadyKey(actor, form)).second)
     {
         if (refusal.why == Refusal::Why::Banned)
-            log::pins.event(log::Level::Warn, "ban.refused", actor,
-                            {{"itemFormId", log::Id(form->GetFormID())},
-                             {"itemName", log::NameOf(form)},
-                             {"inCombat", actor->IsInCombat()}},
-                            "{} the engine would equip banned {} -- refused ({})", Describe(actor), log::NameOf(form),
-                            actor->IsInCombat() ? "in combat" : "out of combat");
+            log::pins.warn("{} the engine would equip banned {} -- refused ({})", Describe(actor), log::NameOf(form),
+                           actor->IsInCombat() ? "in combat" : "out of combat");
         else
         {
             const auto *held = RE::TESForm::LookupByID(refusal.pin->thing.form);
             const char *why = refusal.why == Refusal::Why::OneCopy    ? "one copy cannot fill both hands"
                               : refusal.why == Refusal::Why::OtherPin ? "another pin holds that hand"
                                                                       : "a pin holds the hand or slot";
-            log::pins.event(log::Level::Warn, "pin.refused", actor,
-                            {{"itemFormId", log::Id(refusal.pin->thing.form)},
-                             {"itemName", log::NameOf(held)},
-                             {"hand", HandTag(refusal.pin->hands)},
-                             {"refusedFormId", log::Id(form->GetFormID())},
-                             {"refusedName", log::NameOf(form)},
-                             {"reason", why},
-                             {"inCombat", actor->IsInCombat()}},
-                            "{} the engine would equip {}{} over pinned {}{} -- refused: {} ({})", Describe(actor),
-                            log::NameOf(form), HandTag(HandsFor(thing.grip, into)), log::NameOf(held),
-                            HandTag(refusal.pin->hands), why, actor->IsInCombat() ? "in combat" : "out of combat");
+            log::pins.warn("{} the engine would equip {}{} over pinned {}{} -- refused: {} ({})", Describe(actor),
+                           log::NameOf(form), HandTag(HandsFor(thing.grip, into)), log::NameOf(held),
+                           HandTag(refusal.pin->hands), why, actor->IsInCombat() ? "in combat" : "out of combat");
         }
     }
     return true;
@@ -1958,8 +1928,7 @@ template <typename Fn> bool Detour(const char *what, REL::RelocationID id, Fn &o
     const LONG result = DetourTransactionCommit();
     if (result != NO_ERROR)
     {
-        log::pins.event(log::Level::Error, "install.failed", {{"what", what}, {"detoursError", result}},
-                        "could not detour {} (Detours error {}) -- the engine's equips of that kind will not be "
+        log::pins.error("could not detour {} (Detours error {}) -- the engine's equips of that kind will not be "
                         "refused against the pins and bans",
                         what, result);
         return false;

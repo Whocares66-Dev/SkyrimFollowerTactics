@@ -781,11 +781,9 @@ void Tick()
     if (g_cost.samples > 0 && (now - g_lastCostReport) >= kCostReportInterval)
     {
         g_lastCostReport = now;
-        log::tactics.event(log::Level::Info, "tactics.cost",
-                           {{"evaluations", g_cost.samples}, {"avgUs", g_cost.AvgUs()}, {"maxUs", g_cost.maxUs}},
-                           "{} evaluations, avg {:.0f} us, max {:.0f} us  (budget: under "
-                           "500 us/frame across all followers)",
-                           g_cost.samples, g_cost.AvgUs(), g_cost.maxUs);
+        log::tactics.info("{} evaluations, avg {:.0f} us, max {:.0f} us  (budget: under "
+                          "500 us/frame across all followers)",
+                          g_cost.samples, g_cost.AvgUs(), g_cost.maxUs);
         g_cost.Reset();
     }
 }
@@ -888,8 +886,7 @@ void Install()
     if (g_installed.exchange(true))
         return;
 
-    log::tactics.event(log::Level::Info, "tactics.installed", {{"tickMs", kTickInterval * 1000.0}},
-                       "tick {:.0f} ms, rules in a fight and on its farewell", kTickInterval * 1000.0);
+    log::tactics.info("tick {:.0f} ms, rules in a fight and on its farewell", kTickInterval * 1000.0);
     log::tactics.info("a follower starts with no rules; tactics are kept in the save (SKSE co-save)");
 
     // Detached on purpose: Skyrim never unloads SKSE plugins, and joining a
