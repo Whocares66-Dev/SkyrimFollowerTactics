@@ -22,6 +22,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-unchecked-optional-access,
   clang-analyzer-*,
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
   concurrency-*,
   cppcoreguidelines-pro-type-member-init,
   cppcoreguidelines-slicing,
@@ -47,6 +48,13 @@ Checks: >
 #                                          so every use in Packages.cpp is a
 #                                          false positive; the debug STL
 #                                          asserts the same thing at run time
+#   clang-analyzer-optin.core.EnumCastOutOfRange   an opt-in check that fires
+#                                          inside MSVC's own <filesystem>
+#                                          (xfilesystem_abi.h: a stats-flags
+#                                          bitmask OR'd to 33) on any status
+#                                          query, where no NOLINT of ours
+#                                          reaches; a flags enum combined is
+#                                          what a flags enum is for
 #   performance-no-int-to-ptr              an address cast is what a hook or
 #                                          an offset read of an engine struct
 #                                          IS; ten hits, all of that kind

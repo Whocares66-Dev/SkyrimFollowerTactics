@@ -112,6 +112,7 @@ add_library(ft_core STATIC
     src/core/LogEvent.cpp
     src/core/Profile.cpp
     src/core/Rule.cpp
+    src/core/Sessions.cpp
     src/core/Vocabulary.cpp
 )
 target_include_directories(ft_core PUBLIC src)
