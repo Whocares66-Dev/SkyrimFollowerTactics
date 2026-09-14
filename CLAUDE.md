@@ -10,6 +10,7 @@ explicit uncertainty flags. `docs/MAGIC.md` is how casting works and what does n
 unique id, what a pin, a ban and a rule name, what is still to verify);
 `docs/GAME_MODEL.md` is the plan for a model of the engine the item logic can be
 tested against without Skyrim (not yet built; what is known, what to measure first);
+`docs/DEVBENCH.md` is what devbench, a plugin that lets a script or an agent drive a running Skyrim, would give us, its limits, and how it meets the game model (observations; nothing wired in);
 `docs/LOGGING.md` is the log design (levels, structured events, the JSON-lines sidecar);
 `docs/MODIFIERS.md` is where a follower's bonuses come from and how to total them (perk
 entry points over actor values; research and thoughts, with the open questions);

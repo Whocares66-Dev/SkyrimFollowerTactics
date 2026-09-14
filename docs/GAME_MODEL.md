@@ -82,6 +82,8 @@ Each is one of today's, as a test over the fake bag, in the order they were foun
 
 ## To read or measure before building
 
+`docs/DEVBENCH.md`, "How it relates to the game model", is how these could be measured by script against the running game instead of by hand.
+
 - **The engine's no-list pick with the stack listless and a stackable row beside it.** Null is the only way to name a listless copy; whether the engine's first step takes it or the poisoned list first is unread. The debug line after such an equip says.
 - **What the menu splits on, in full.** `InventoryEntryData::NormalizeAndCountNonStackableExtraLists` and `ExtraDataList::IsInventoryStackable` are the candidates. The scan's debug line gives the engine's stackable verdict per list shape; read it against the menu for the outfit mark (`8E`), the alias mark (`95`), a leveled-list mark, and a poisoned list.
 - **The arrival merge.** Circlets handed over separately merged into one list; two plain daggers did not. Whether the difference is the flag, the ownership, or the order of arrival decides how the model's hand-over behaves.
