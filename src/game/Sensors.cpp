@@ -778,8 +778,8 @@ SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
         {
             const bool hostile = magic->IsPoison() || effect->baseEffect->IsHostile();
             parties.subject = hostile ? enemy : nullptr;
-            parties.missing =
-                hostile ? "Asked of the enemy it hits: nobody is being fought now" : "Asked of whoever it lands on";
+            parties.missing = hostile ? "Conditioned on the enemy it hits: nobody is being fought now"
+                                      : "Conditioned on whoever it lands on";
         }
         // The record's magnitude is unsigned; a detrimental effect takes
         // it away.
@@ -3187,7 +3187,7 @@ std::vector<SheetRow> ConditionRows(const RE::TESCondition &condition, const Con
                 if (item->IsTrue(params))
                     row.icon = kGlyphTick;
                 if (object == Object::kSelf || object == Object::kTarget)
-                    row.note = "Asked of " + PartyName(runsOn);
+                    row.note = "Conditioned on " + PartyName(runsOn);
             }
         }
         rows.push_back(std::move(row));
