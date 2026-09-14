@@ -82,6 +82,19 @@ Nordic Souls hands every NPC Perk Skill Boosts (0xCF788): Apothecary's and Thaum
 
 **Decimals and Other, decided 2026-09-13.** Every amount prints with the decimals it has, two at most and never fewer than the row asks for: a tempering bonus reads +4.16, a rounding +0.42, a base 32, regen keeps its 3.00%. Every step the formula takes is a line of its own, the engine's rounding up of a piece included, so a reader can redo the arithmetic from the page. Other is kept for what the formula as written does not take into account; a gap below half a hundredth is floating-point noise and is not shown. Hiding a rounding that printed as zero was tried and dropped the same day: the hidden fraction came back as Other wherever a perk multiplied it afterwards. A rounding is never folded into a multiplier: `x (1.15 + 0.42)` would compute 56.77 for a shield the engine rates 42, since the 0.42 is added to the product; Armor Perks reads `x (a + b)` because the engine adds it to the multiplier.
 
+## A summon's values: the summoner's perks arrive as effects on it (read 2026-09-13, on `wip-summon-stats`)
+
+The Summons tab's bars had no hover: `DrawSummon` never passed a breakdown, where the Character tab's are built in `Tactics.cpp`. They now take `ValueBreakdown` of the summon itself. Whether that is the whole picture depends on how a summoner's perks reach a summon, which Adamant (Nordic Souls) does through the summon's own active effects, read with houseCARL from `Adamant.esp`:
+
+- **Daedric Pact** (A3A163, "Summoned creatures have 100 extra Health, Magicka, and Stamina"), **Armor of Shadows** (56BCA4 and 566B9E, armour rating and Magic Resistance) and **Ritual of Power** (A3A164 and 69174C, damage) are each one ability entry: a constant hidden cloak on the summoner (`MAG_PerkDaedricPactCloak` and its siblings), switched off while the summoner is a vampire lord, werewolf or werebear.
+- The cloak re-casts a short concentration spell, 1 to 5 s, on the actors around it. Its effects are Value Modifiers with Recover -- `MAG_PerkDaedricPactHealthConcActor` is Health +100 -- gated on the receiver: `IsCommandedActor = 1`, not hostile, not three actors listed by ID, not carrying the Update.esm effect keyword ADA006.
+- So each buff is an active effect on the summon, cast by the summoner, and the summon's own values carry it: a Daedric Pact line in the summon's Health hover, Armor of Shadows in the Armor and Magic Resistance rows of the sheet the tab already builds from the summon.
+- **The gate does not ask whose summon it is.** As the records read, the player's cloak buffs a follower's summon standing near the player as much as the player's own. Not seen in play.
+- **Dark Oath** (105F30, "Summoned creatures last 50% longer") is another kind: a Mod Spell Duration entry on the summoner, conditioned on the spell. It lengthens the commanding effect on the summoner and nothing on the summon, and shows as the tab's Remaining time, not in any breakdown.
+- **Ritual of Power's damage** is two Adamant effects whose archetype was not expanded (06AD1B, 69174B), beside Mysticism's `MAG_RitualofPowerControllerPerk` with Mod Attack Damage and Mod Spell Magnitude entries reading Conjuration Skill Advance. Whether that controller perk sits on the summon, where the summon sheet's damage figures would take it in, or on the summoner, is not read.
+
+Not settled: whether every mod that strengthens summons does it through effects on the summon. One that works through an entry point on the summoner, conditioned on the summon, would not show on the summon's sheet at all; none seen yet.
+
 ## Open questions
 
 - Whether the player's walk, hooked in the Nordic Souls process, is the same as on disk there too, and by which plugin. Not needed for followers.

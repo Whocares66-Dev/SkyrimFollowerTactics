@@ -4972,12 +4972,15 @@ void DrawSummon(const SummonView &summon)
     geo.valueLeft = contentRight - valueWidth;
     geo.statLabelRight = geo.valueLeft - 12.0f;
 
-    DrawStatRow(geo, "Health", summon.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
-                [&] { Im::Text("%s", levelText.c_str()); });
-    DrawStatRow(geo, "Stamina", summon.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Kind",
-                [&] { Im::TextDisabled("%s", kindText.c_str()); });
-    DrawStatRow(geo, "Magicka", summon.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Remaining",
-                [&] { Im::Text("%s", remainingText.c_str()); });
+    DrawStatRow(
+        geo, "Health", summon.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
+        [&] { Im::Text("%s", levelText.c_str()); }, summon.healthBreakdown);
+    DrawStatRow(
+        geo, "Stamina", summon.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Kind",
+        [&] { Im::TextDisabled("%s", kindText.c_str()); }, summon.staminaBreakdown);
+    DrawStatRow(
+        geo, "Magicka", summon.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Remaining",
+        [&] { Im::Text("%s", remainingText.c_str()); }, summon.magickaBreakdown);
 
     Im::Spacing();
     // The sheet's General table has the reference, its base and the name,

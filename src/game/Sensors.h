@@ -445,6 +445,13 @@ struct SummonView
     ft::Stat health{};
     ft::Stat magicka{};
     ft::Stat stamina{};
+    // Each bar written out as the follower's are. A summoner's perks reach
+    // the summon as effects running on it -- Adamant's are cloaks on the
+    // summoner casting onto commanded actors near them -- so they list with
+    // the summon's own (docs/MODIFIERS.md).
+    ft::Breakdown healthBreakdown;
+    ft::Breakdown magickaBreakdown;
+    ft::Breakdown staminaBreakdown;
     float remaining{0.0f}; // seconds left on the effect that commands it; 0 when unknown
     bool raised{false};    // a reanimated corpse, as opposed to a summon
     std::vector<SheetSection> sheet;

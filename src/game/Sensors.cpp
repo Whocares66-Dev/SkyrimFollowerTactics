@@ -3833,6 +3833,9 @@ std::vector<SummonView> ScanSummons(RE::Actor *actor)
         view.health = ReadStat(summon.get(), RE::ActorValue::kHealth);
         view.magicka = ReadStat(summon.get(), RE::ActorValue::kMagicka);
         view.stamina = ReadStat(summon.get(), RE::ActorValue::kStamina);
+        view.healthBreakdown = ValueBreakdown(summon.get(), RE::ActorValue::kHealth, "");
+        view.magickaBreakdown = ValueBreakdown(summon.get(), RE::ActorValue::kMagicka, "");
+        view.staminaBreakdown = ValueBreakdown(summon.get(), RE::ActorValue::kStamina, "");
         // The commanding effect runs on the FOLLOWER: its duration less its
         // elapsed time is how long the summon has left. A reanimate's effect
         // is a ReanimateEffect; a summon's a SummonCreatureEffect.
