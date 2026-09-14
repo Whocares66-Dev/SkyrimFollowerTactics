@@ -90,6 +90,13 @@ namespace ft::game
 // or off, on the same half-second clock, by a watchdog that looks only at the
 // pinned items and does nothing at all when nothing is pinned.
 //
+// Only while they are in the player's service. A follower dismissed keeps
+// their pins and bans, in the book and in the save, and none of the three
+// means applies them: the watchdog walks the tick's followers, who are
+// teammates, and the equip detour and the score hook pass anyone who is not
+// one. Rejoining, the book applies again, and the watchdog's first pass puts
+// the pinned things back on and takes the banned ones off.
+//
 // Callable from any thread: the work is queued to the game thread. The
 // pins go into the save with the rules (game/Profiles.h).
 enum class WearRequest

@@ -911,7 +911,9 @@ RE::NiPointer<RE::Actor> AttackerOf(RE::CombatController *controller)
 // inventory are only read for the few with a book.
 bool ShadowedEntry(RE::CombatInventoryItem *entry, RE::Actor *actor, const char *&why)
 {
-    if (!entry || !entry->item || !actor)
+    // A flag read, ahead of the lock: out of the player's service the book
+    // waits for them to rejoin (Pins.h).
+    if (!entry || !entry->item || !actor || !actor->IsPlayerTeammate())
         return false;
     std::vector<Pin> pins;
     Bans bans;
@@ -1812,7 +1814,9 @@ std::vector<VariantInBag> VariantsInBag(RE::Actor *actor, RE::TESBoundObject *ob
 // watchdog answers.
 bool Refused(RE::Actor *actor, RE::TESForm *form, RE::ExtraDataList *&extra, const RE::BGSEquipSlot *slot)
 {
-    if (IsOurCast(actor, form->GetFormID()))
+    // Out of the player's service the book waits, kept, and the engine
+    // dresses them as it likes until they rejoin (Pins.h).
+    if (!actor->IsPlayerTeammate() || IsOurCast(actor, form->GetFormID()))
         return false;
     std::scoped_lock lock(g_pinMutex);
     static const std::vector<Pin> kNoPins;
