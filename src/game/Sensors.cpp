@@ -1951,8 +1951,7 @@ std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
 
 // What one hand holds, as rows: a weapon and its numbers, a spell and its
 // cost and strongest effect, a shield and its rating, or a torch. An empty
-// hand adds no rows, and the caller shows no table for it. A two-hander
-// shows in the right hand and the left says so.
+// hand adds no rows, and the caller shows no table for it.
 void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
 {
     RE::TESForm *held = actor->GetEquippedObject(left);
@@ -1961,11 +1960,6 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
 
     if (auto *weapon = held->As<RE::TESObjectWEAP>())
     {
-        if (left && TwoHanded(weapon))
-        {
-            rows.push_back(Row("Held", "the same, two-handed"));
-            return;
-        }
         rows.push_back(Row("Weapon", NameOr(weapon, "?")));
         rows.back().form = weapon->GetFormID();
         // In their hands: the carried item, for its tempering. Each figure
@@ -2682,12 +2676,19 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     // Attack: what each hand holds, whatever it is. The old Attack section
     // knew only weapons, which left a mage's page saying "unarmed". A hand
     // holding nothing gets no table; with both empty, the one thing worth
-    // saying is what their fists do.
+    // saying is what their fists do. A two-handed weapon or a spell cast
+    // with both hands is one thing in both, and one table: a Left Hand
+    // table saying "the same" was a table of nothing.
     {
-        SheetSection right{"Right Hand", {}, "Attack"};
+        RE::TESForm *held = actor->GetEquippedObject(false);
+        auto *weapon = held ? held->As<RE::TESObjectWEAP>() : nullptr;
+        auto *spell = held ? held->As<RE::SpellItem>() : nullptr;
+        const bool both = TwoHanded(weapon) || (spell && spell->IsTwoHanded());
+        SheetSection right{both ? "Both Hands" : "Right Hand", {}, "Attack"};
         HandRows(actor, false, right.rows);
         SheetSection left{"Left Hand", {}, "Attack"};
-        HandRows(actor, true, left.rows);
+        if (!both)
+            HandRows(actor, true, left.rows);
 
         if (right.rows.empty() && left.rows.empty())
         {
