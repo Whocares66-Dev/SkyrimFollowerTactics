@@ -2,9 +2,9 @@
 // Forms made in memory at load, so this mod ships no plugin file.
 //
 // WHY
-// Everything the cast machinery needs from a record -- sixteen packages, eight
-// wrapper shouts, eight words -- is content only in the sense that the engine
-// wants it in a form. Nothing about it is authored per player or per
+// Everything the cast machinery needs from a record -- packages, wrapper
+// shouts, words -- is content only in the sense that the engine wants it in a
+// form. Nothing about it is authored per player or per
 // follower, and none of it belongs in a save: a follower's rules go through
 // the co-save, the packages are a mechanism. Making them at load means the
 // load order does not change when the mod is installed, nothing of ours is
@@ -15,11 +15,14 @@
 // runtime") rather than assumed:
 // - TESForm's constructor gives a form made outside file loading a dynamic
 //   FormID from the data handler and registers it in the global form map.
-//   Those IDs are FF000800..FF3FFFFF, and the counter is restored from the
-//   save on load, so a save's own created objects (potions, enchantments)
-//   can sit at the same IDs a plugin took at start-up. Ours are moved to a
-//   range the allocator never reaches (kRuntimeFormBase) so neither side can
-//   collide with the other.
+//   The allocator (13740) counts up from FF000800, skips an ID the form map
+//   or the loaded save (BGSSaveLoadGame::IsFormIDInUse) holds, and wraps at
+//   FF3FFFFF. Its counter is restored from the save on load, and a save
+//   brings its own created objects (potions, enchantments) back at their
+//   saved IDs without asking, so a form of ours made before a load could sit
+//   where one of them lands. Ours are moved to IDs from kFirstFormId up,
+//   which a save's counter reaches only after some four million created
+//   forms, each checked as the allocator checks.
 // - TESForm::Copy and CreateDuplicateForm copy NOTHING for a package: the
 //   package does not override them. The engine's own copy of a package's
 //   inputs is TESCustomPackageData::Copy, which recreates every input through
@@ -49,19 +52,18 @@ class TESWordOfPower;
 namespace ft::game
 {
 
-// Where our forms live. The engine's dynamic-ID allocator wraps at FF3FFFFF
-// and a save's created-object references are 22 bits, so FF3F0000.. is
-// reachable by neither; a form here can still be looked up by ID and, should
-// a reference ever leak into a save, round-trips to a unique ID that simply
-// resolves to nothing in a session without the mod. The low bits are the
-// mod's own local IDs, kept for the log.
-inline constexpr std::uint32_t kRuntimeFormBase = 0xFF3F0000;
+// Where the walk for our IDs starts, and the last ID a dynamic form can have.
+// An ID another plugin's form already holds is skipped, so it costs an ID
+// rather than the feature.
+inline constexpr std::uint32_t kFirstFormId = 0xFF3F0800;
+inline constexpr std::uint32_t kLastFormId = 0xFF3FFFFF;
 
-// A package with the same inputs as `source`, its own copy of each, at our
-// ID. packData is set to what the ESP-era records carried: IgnoreCombat, Run,
-// no interrupt override, no interrupt flags. No conditions; add one with
-// AddIsReferenceCondition. Null if the engine refused.
-[[nodiscard]] RE::TESPackage *ClonePackage(RE::TESPackage *source, std::uint32_t localID);
+// A package with the same inputs as `source`, its own copy of each, at the
+// next free ID. packData is set to what the ESP-era records carried:
+// IgnoreCombat, Run, no interrupt override, no interrupt flags. No
+// conditions; add one with AddIsReferenceCondition. Null if the engine
+// refused.
+[[nodiscard]] RE::TESPackage *ClonePackage(RE::TESPackage *source);
 
 // Give a package a single condition, `GetIsReference(<none>) == 1` on the
 // subject, and return the item so the caller can point its parameter at an
@@ -73,8 +75,7 @@ inline constexpr std::uint32_t kRuntimeFormBase = 0xFF3F0000;
 // A word of power and a one-word wrapper shout, as the ESP-era records were:
 // the word is a label; the shout's first variation is the word with the
 // given spell and a one-second recovery, the other two empty.
-[[nodiscard]] RE::TESWordOfPower *CreateWord(std::uint32_t localID, const char *name);
-[[nodiscard]] RE::TESShout *CreateShout(std::uint32_t localID, RE::TESWordOfPower *word, RE::TESForm *spell,
-                                        const char *name);
+[[nodiscard]] RE::TESWordOfPower *CreateWord(const char *name);
+[[nodiscard]] RE::TESShout *CreateShout(RE::TESWordOfPower *word, RE::TESForm *spell, const char *name);
 
 } // namespace ft::game

@@ -24,23 +24,30 @@ RE::TESPackage *CreatePackage(RE::PACKAGE_TYPE type)
     return func(type);
 }
 
-// Move a fresh form from the engine's dynamic ID to ours. The constructor
-// registered it under the dynamic one; SetFormID takes it out of the map and
-// puts it back under the new ID.
-bool Place(RE::TESForm *form, std::uint32_t localID, const char *what)
+// Move a fresh form from the engine's dynamic ID to the next free one of
+// ours. The constructor registered it under the dynamic one; SetFormID takes
+// it out of the map and puts it back under the new ID. Our forms are never
+// deleted, so an ID the walk has passed stays passed. Game thread only.
+bool Place(RE::TESForm *form, const char *what)
 {
-    const RE::FormID id = kRuntimeFormBase | localID;
-    if (auto *taken = RE::TESForm::LookupByID(id))
+    static RE::FormID next = kFirstFormId;
+    auto *save = RE::BGSSaveLoadGame::GetSingleton();
+    for (; next <= kLastFormId; ++next)
     {
-        log::forms.event(log::Level::Error, "form.error",
-                         {{"requestedFormId", log::Id(id)},
-                          {"kind", what},
-                          {"reason", "id already taken"},
-                          {"takenByFormType", static_cast<int>(taken->GetFormType())}},
-                         "{:08X} is already taken by a {} -- {} not made", id, static_cast<int>(taken->GetFormType()),
-                         what);
+        auto *taken = RE::TESForm::LookupByID(next);
+        if (!taken && !(save && save->IsFormIDInUse(next)))
+            break;
+        log::forms.debug("{:08X} is taken ({}) -- skipped", next,
+                         taken ? fmt::format("a form of type {}", static_cast<int>(taken->GetFormType()))
+                               : std::string("by the loaded save"));
+    }
+    if (next > kLastFormId)
+    {
+        log::forms.event(log::Level::Error, "form.error", {{"kind", what}, {"reason", "no free id"}},
+                         "no free id left above {:08X} -- {} not made", kFirstFormId, what);
         return false;
     }
+    const RE::FormID id = next++;
     const auto born = form->GetFormID();
     form->SetFormID(id, /*updateFile*/ false);
     const bool ok = form->GetFormID() == id && RE::TESForm::LookupByID(id) == form;
@@ -58,7 +65,7 @@ bool Place(RE::TESForm *form, std::uint32_t localID, const char *what)
 
 } // namespace
 
-RE::TESPackage *ClonePackage(RE::TESPackage *source, std::uint32_t localID)
+RE::TESPackage *ClonePackage(RE::TESPackage *source)
 {
     if (!source || !source->data)
         return nullptr;
@@ -118,7 +125,7 @@ RE::TESPackage *ClonePackage(RE::TESPackage *source, std::uint32_t localID)
     pkg->combatStyle = nullptr;
     pkg->ownerQuest = nullptr;
 
-    if (!Place(pkg, localID, "package"))
+    if (!Place(pkg, "package"))
         return nullptr;
     return pkg;
 }
@@ -140,7 +147,7 @@ RE::TESConditionItem *AddIsReferenceCondition(RE::TESPackage *pkg)
     return item;
 }
 
-RE::TESWordOfPower *CreateWord(std::uint32_t localID, const char *name)
+RE::TESWordOfPower *CreateWord(const char *name)
 {
     auto *factory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::TESWordOfPower>();
     auto *word = factory ? factory->Create() : nullptr;
@@ -153,10 +160,10 @@ RE::TESWordOfPower *CreateWord(std::uint32_t localID, const char *name)
     }
     word->fullName = name;
     word->translation = "power";
-    return Place(word, localID, "word") ? word : nullptr;
+    return Place(word, "word") ? word : nullptr;
 }
 
-RE::TESShout *CreateShout(std::uint32_t localID, RE::TESWordOfPower *word, RE::TESForm *spell, const char *name)
+RE::TESShout *CreateShout(RE::TESWordOfPower *word, RE::TESForm *spell, const char *name)
 {
     auto *factory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::TESShout>();
     auto *shout = factory ? factory->Create() : nullptr;
@@ -176,7 +183,7 @@ RE::TESShout *CreateShout(std::uint32_t localID, RE::TESWordOfPower *word, RE::T
         shout->variations[w].spell = nullptr;
         shout->variations[w].recoveryTime = 0.0f;
     }
-    return Place(shout, localID, "shout") ? shout : nullptr;
+    return Place(shout, "shout") ? shout : nullptr;
 }
 
 } // namespace ft::game

@@ -85,19 +85,12 @@ class Actor;
 namespace ft::game
 {
 
-// The pool is sixteen package records. Slots 0..7 are UseMagic
-// (FT_CastSlot1..8) and cast a spell from a hand; slots 8..15 are Shout
-// (FT_ShoutSlot1..8) and cast from the voice, which is how a POWER is
-// performed -- the UseMagic procedure never fires one (docs/ACTIONS.md 7).
-// Each Shout slot's record points at its own wrapper shout
-// (FT_PowerShout1..8), a one-word shout whose word's spell is repointed at
-// the rule's power for the lease. The local IDs are the low bits of the
-// forms' runtime IDs (game/Forms.h), kept from the plugin-file era so the
-// log reads the same.
-inline constexpr std::uint32_t kFirstPackageLocalID = 0x000800;      // FT_CastSlot1..8
-inline constexpr std::uint32_t kFirstWordLocalID = 0x000809;         // FT_PowerWord1..8
-inline constexpr std::uint32_t kFirstWrapperShoutLocalID = 0x000811; // FT_PowerShout1..8
-inline constexpr std::uint32_t kFirstShoutPackageLocalID = 0x000819; // FT_ShoutSlot1..8
+// The pool is sixteen package records. Slots 0..7 are UseMagic and cast a
+// spell from a hand; slots 8..15 are Shout and cast from the voice, which is
+// how a POWER is performed -- the UseMagic procedure never fires one
+// (docs/ACTIONS.md 7). Each Shout slot's record points at its own wrapper
+// shout, a one-word shout whose word's spell is repointed at the rule's
+// power for the lease.
 inline constexpr std::size_t kSpellSlots = 8;
 inline constexpr std::size_t kVoiceSlots = 8;
 inline constexpr std::size_t kPackageSlots = kSpellSlots + kVoiceSlots;

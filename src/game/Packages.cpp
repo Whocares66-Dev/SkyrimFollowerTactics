@@ -1557,7 +1557,7 @@ void InitPackages()
     // canary and read back.
     for (std::size_t i = 0; i < kSpellSlots; ++i)
     {
-        auto *pkg = ClonePackage(mercer, kFirstPackageLocalID + static_cast<std::uint32_t>(i));
+        auto *pkg = ClonePackage(mercer);
         auto *condition = AddIsReferenceCondition(pkg);
         if (!pkg || !condition || !ProveCopy(pkg, "Spell", fastHealing, i) || !SetPackageTarget(pkg, nullptr))
         {
@@ -1575,11 +1575,9 @@ void InitPackages()
     // its Shout input on the wrapper and Target back to Self.
     for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
     {
-        const auto k = static_cast<std::uint32_t>(i - kSpellSlots);
-        auto *word = CreateWord(kFirstWordLocalID + k, "Power");
-        auto *wrapper =
-            word ? CreateShout(kFirstWrapperShoutLocalID + k, word, fastHealing, "FollowerTactics power") : nullptr;
-        auto *pkg = wrapper ? ClonePackage(tsun, kFirstShoutPackageLocalID + k) : nullptr;
+        auto *word = CreateWord("Power");
+        auto *wrapper = word ? CreateShout(word, fastHealing, "FollowerTactics power") : nullptr;
+        auto *pkg = wrapper ? ClonePackage(tsun) : nullptr;
         auto *condition = AddIsReferenceCondition(pkg);
         if (!pkg || !condition || !ProveCopy(pkg, "Shout", wrapper, i) || !SetPackageTarget(pkg, nullptr))
         {
