@@ -2,6 +2,8 @@
 
 Two channels, four levels, and one call that writes both. Built 2026-09-09; not yet verified in play.
 
+**Being replaced (2026-09-14):** `docs/EVENTS.md` is the design the events file is moving to -- game events only, written whatever the level, the last 1,000 held in memory, a pair of files per session with the previous one archived. What follows describes the code as it stands until that is built, when the catalogue below gives way to EVENTS.md's.
+
 Before it, every `logger::` call in `src/game` wrote prose at `info` (the level was hardcoded in `plugin.cpp`, so nothing was ever logged at `debug` — nothing would have shown), with the follower's name as a free interpolated `{}` and the module as a string prefix somebody typed (`"tactics: "`, `"packages: "`, `"pins: "`, and on most lines nothing at all). That was fine to read live and bad to query: no field to `grep` on, and a one-time byte-level calibration probe sat in the same bucket as "FIRED rule 0 -> performed."
 
 ## Two channels
