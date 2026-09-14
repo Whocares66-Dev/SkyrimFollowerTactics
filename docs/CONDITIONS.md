@@ -268,13 +268,14 @@ Adamant.esp gives Dragonhide (0CDB70) a fourth effect, `MAG_PerkBastionArmorFFSe
 ### What the panel does (built 2026-09-13, not yet seen in play)
 
 - **An effect on the Effects tab is Inactive by the engine's flag**, `kInactive` or `kDispelled`, which the sheet's totals read too, so the list and the totals cannot disagree. Its page greys the row "Inactive" by the same flag; the conditions beneath are for reference.
-- **The conditions are asked of the parties in the table** (`ConditionParties` in `Sensors.h`). A condition on the Subject or the Target hovers as the party it was asked of, "Conditioned on target (Player)", or "(N/A)" for a party nobody can name -- the Subject of an aimed spell out of a fight, the caster once gone -- which then shows N/A under Met too. An effect with such a condition gets no "Conditions not met" verdict: the engine's answer there is the false of asking nobody.
+- **The conditions are asked of the parties in the table** (`ConditionParties` in `Sensors.h`), and each names the one it runs on, after the swap flag: "HasPerk(Bastion) on Player", "GetShouldAttack(Player) on Lydia". A party nobody can name -- the Subject of an aimed spell out of a fight, the caster once gone -- keeps the Creation Kit's word, "on Subject" or "on Target".
+- **Under Met a tick is true and blank is false.** **N/A** is a condition that needs a party who is not there -- no enemy being fought, the caster gone -- whose engine answer would be the false of asking nobody. **?** is one whose answer cannot be known from a sheet: `EffectWasDualCast`, which reads a flag held only while an effect is added and is 0 afterwards. An effect with either under it gets no "Conditions not met" verdict.
 - **In a fight, a hostile aimed effect, a weapon's enchantment or a poison is asked of the enemy the follower is fighting** (their live combat target); out of one, of nobody.
 - **Perk pages are unchanged**, still asking the owner as both parties: the engine asks tab 0 with no Target, but in Nordic Souls `PerkEntryPointExtender` replaces that check, and what it does is unread.
 
 ### To verify
 
-- In play: Bastion Dragonhide on a follower reads active, `HasPerk` and `GetShouldAttack` ticked and `EffectWasDualCast` not; a weapon's enchantment page ticks against the enemy in a fight and shows N/A out of one.
+- In play: Bastion Dragonhide on a follower reads active, `HasPerk` and `GetShouldAttack` ticked and `EffectWasDualCast` a ?; a weapon's enchantment page ticks against the enemy in a fight and shows N/A out of one.
 - Where the engine asks a magic effect record's conditions on landing, and with what; expected the same two parties with `kCheckAddEffectDualCast` set on the caster.
 - What `BugFixesSSE` and `PerkEntryPointExtender` change; the setting pacing the re-check; Command Target falling to the Subject; whether any perk in the load order puts a Target condition on tab 0.
 - The rows do not show the swap flag.

@@ -2689,9 +2689,6 @@ void DrawConditionTable(const std::string &id, const std::vector<SheetRow> &rows
         Im::TableNextRow(0, 0.0f);
         Im::TableSetColumnIndex(0);
         Im::Text("%s", row.label.c_str());
-        // Whom it was asked of, or why it was not.
-        if (!row.note.empty() && Im::IsItemHovered(0))
-            Im::SetTooltip("%s", row.note.c_str());
         Im::TableSetColumnIndex(1);
         Im::Text("%s", row.value.c_str());
         Im::TableSetColumnIndex(2);
@@ -2703,11 +2700,9 @@ void DrawConditionTable(const std::string &id, const std::vector<SheetRow> &rows
         }
         else if (!row.extra.empty())
         {
-            // Unasked: blank would read as not met.
+            // N/A, nobody to ask, or ?, no answer to be had: blank is false.
             const DimText grey(true);
             Im::Text("%s", row.extra.c_str());
-            if (!row.note.empty() && Im::IsItemHovered(0))
-                Im::SetTooltip("%s", row.note.c_str());
         }
     }
     Im::EndTable();

@@ -725,8 +725,8 @@ SheetRow EffectEntryRow(const RE::Effect &effect, float magnitude, const Conditi
     // Two lists gate it: the spell's own entry's, and the effect record's
     // -- a Breton's hidden effects are gated on the record, a Nordic Souls
     // scroll's on the entry -- and both must hold. No verdict where a
-    // condition was left unasked, whose answer would be the engine's false
-    // for the party nobody could name; nor with no Subject at all, which
+    // condition is N/A, whose answer would be the engine's false for the
+    // party nobody could name, or ?, whose answer is not to be had; nor with no Subject at all, which
     // the engine never passes to a list (a perk's tab without its argument
     // is not asked, ID 23800), so what it would say is unread.
     const std::array<const RE::TESCondition *, 2> lists{&effect.conditions, &base->conditions};
@@ -3024,8 +3024,10 @@ bool HoldsForm(RE::SCRIPT_PARAM_TYPE type)
 // engine's table: guessed from the value, any pointer taken for a form, it
 // crashed the game on a player's spell whose condition held a pointer to
 // something else (2026-09-13). Trailing zero parameters are dropped, as a
-// function with no parameters holds zeros there.
-std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
+// function with no parameters holds zeros there. `subject` and `target`
+// are what the parties are called after "on"; an empty Subject goes
+// unsaid.
+std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data, const std::string &subject, const std::string &target)
 {
     const auto id = static_cast<std::size_t>(data.functionData.function.get());
     const char *name = id < kConditionNames.size() && *kConditionNames[id] ? kConditionNames[id] : nullptr;
@@ -3051,9 +3053,10 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
             const char *formName = form->GetName();
             const char *editorID = form->GetFormEditorID();
             const bool byEditorID = form->Is(RE::FormType::Perk) || !formName || !*formName;
-            args.push_back(byEditorID && editorID && *editorID ? editorID
-                           : formName && *formName             ? formName
-                                                               : HexId(form->GetFormID()));
+            args.push_back(form->IsPlayerRef()                   ? "Player"
+                           : byEditorID && editorID && *editorID ? editorID
+                           : formName && *formName               ? formName
+                                                                 : HexId(form->GetFormID()));
         }
         else if (typed && type == RE::SCRIPT_PARAM_TYPE::kActorValue)
         {
@@ -3079,9 +3082,11 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
     switch (data.object.get())
     {
     case Object::kSelf:
+        if (!subject.empty())
+            call += " on " + subject;
         break;
     case Object::kTarget:
-        call += " on Target";
+        call += " on " + target;
         break;
     case Object::kCombatTarget:
         call += " on Combat Target";
@@ -3152,42 +3157,52 @@ std::vector<SheetRow> ConditionRows(const RE::TESCondition &condition, const Con
         }
         else
             value = Fmt("%g", data.comparisonValue.f);
-        SheetRow row = Row(ConditionCall(data) + (on ? std::string(" on ") + on : ""),
+        using Object = RE::CONDITIONITEMOBJECT;
+        const auto object = data.object.get();
+        // The party the engine runs it on (TESConditionItem::IsTrue,
+        // docs/CONDITIONS.md 10): the Subject, or through the Subject its
+        // combat target or linked reference; the Target; the swap flag
+        // trading the two when both are there. A named reference needs
+        // neither, and a quest alias, package data or a story event is
+        // context no sheet has, asked for the false it gives.
+        const bool swapped = data.flags.swapTarget && parties.subject && parties.target;
+        bool onTarget = object == Object::kTarget;
+        if (swapped && (object == Object::kSelf || object == Object::kTarget))
+            onTarget = !onTarget;
+        RE::TESObjectREFR *runsOn = onTarget ? parties.target : parties.subject;
+        // The call names whom it runs on, so no hover is needed to see it;
+        // the Creation Kit's word where there is nobody to name. A perk's
+        // later tab keeps the words: its Subject is the entry's argument,
+        // listed and not asked.
+        std::string subject = on ? "" : parties.subject ? PartyName(parties.subject) : "Subject";
+        std::string target = on ? "Target" : parties.target ? PartyName(parties.target) : "Target";
+        if (swapped && !on)
+            std::swap(subject, target);
+        SheetRow row = Row(ConditionCall(data, subject, target) + (on ? std::string(" on ") + on : ""),
                            std::string(op) + " " + value + (data.flags.isOR ? "  OR" : ""));
         // Met only where the condition is on the actor: one on another
         // argument -- the spell, the weapon, the target -- has nothing to
         // be asked of here, and a tick from asking the actor would lie.
         if (!on)
         {
-            // The party the engine runs it on (TESConditionItem::IsTrue,
-            // docs/CONDITIONS.md 10): the Subject, or through the Subject
-            // its combat target or linked reference; the Target; the swap
-            // flag trading the two when both are there. A named reference
-            // needs neither, and a quest alias, package data or a story
-            // event is context no sheet has, asked for the false it gives.
-            using Object = RE::CONDITIONITEMOBJECT;
-            const auto object = data.object.get();
             const bool needsParty = object == Object::kSelf || object == Object::kTarget ||
                                     object == Object::kCombatTarget || object == Object::kLinkedRef ||
                                     object == Object::kCommandTarget;
-            bool onTarget = object == Object::kTarget;
-            if ((object == Object::kSelf || object == Object::kTarget) && data.flags.swapTarget && parties.subject &&
-                parties.target)
-                onTarget = !onTarget;
-            RE::TESObjectREFR *runsOn = onTarget ? parties.target : parties.subject;
+            // N/A: a party it needs is not there -- nobody being fought,
+            // the caster gone. ?: there, but the answer cannot be known
+            // from a sheet: EffectWasDualCast reads a flag held only while
+            // a dual-cast effect is being added (handler 21719), and is 0
+            // afterwards whatever the cast was.
             if (needsParty && !runsOn)
                 row.extra = "N/A";
+            else if (data.functionData.function.get() == RE::FUNCTION_DATA::FunctionID::kEffectWasDualCast)
+                row.extra = "?";
             else
             {
                 RE::ConditionCheckParams params(parties.subject, parties.target);
                 if (item->IsTrue(params))
                     row.icon = kGlyphTick;
             }
-            // Not named for a combat target or a linked reference, which is
-            // the Subject's and not the Subject.
-            if (needsParty && (!runsOn || object == Object::kSelf || object == Object::kTarget))
-                row.note = std::string("Conditioned on ") + (onTarget ? "target" : "subject") + " (" +
-                           (runsOn ? PartyName(runsOn) : "N/A") + ")";
         }
         rows.push_back(std::move(row));
     }
