@@ -233,3 +233,48 @@ The player is "Player" everywhere in the panel, never by name: a long name break
 **Attacking and Attacked by** (Targeting and Target of until 2026-09-09) replace the old "attacking player" and "target of player": each opens on the members of the party -- Self, Player, the other followers by name -- so `Enemy: Attacked by Player` is the one the player is fighting and `Enemy: Attacking <Lydia>` the one going for Lydia. The member goes on the wire as `"member": "player"` or the follower's form; the wire names are `attacking` and `attacked-by`. `Enemy: Attacked by <this follower>` is the follower's own target, which was a subject of its own ("Target") until 2026-09-08; one place for one question.
 
 **On the action side** there is one Enemy heading, read from the condition: under an enemy condition it is the enemy the condition matched; under any other, whoever the follower is fighting, and failing that the nearest enemy sensed, since a cast must go at someone and nearest is what the follower's own AI picks. The separate "Target" heading is gone with the subject. Attacker stays: whoever last hit the actor the condition bound. It is not offered under an enemy or a corpse condition, and `IsActionTargetValidFor` refuses it there: an enemy's attacker is one of the party, and no rule means to aim at that. The other way round is a condition, `Enemy: Attacking <member>`, which binds the enemy on a party member. Under an enemy condition only Enemy (and self, the player, the followers) are offered.
+
+## 10. Who a record's condition is asked of (read 2026-09-13)
+
+Not the rule conditions above: the Creation Kit conditions on records -- a spell's effect, a magic effect, a perk's entry -- that the panel's pages list under an effect. Each runs on a party (Subject, Target, a named Reference, Combat Target, Linked Reference, Quest Alias, Package Data, Event Data, Command Target) and may carry a flag swapping Subject and Target; who Subject and Target *are* depends on what asks. Until 2026-09-13 the panel asked every list with the follower as both, and greyed Adamant's Bastion Dragonhide on a follower as "Conditions not met" while the Character sheet counted its +200.
+
+### What the engine does
+
+Read from the running 1.6.1170 executable (Nordic Souls, `tools/livedisasm.py`); the IDs are the Address Library's.
+
+- **A running effect is re-checked** by ID 34062, from `ActiveEffect::EvaluateConditions` (34063, vtable slot 05): `effect->conditions.IsTrue(target->GetTargetStatsObject(), caster)`. **The Subject is the actor the effect is on, the Target whoever cast it.** The answer goes to `conditionStatus`, and 34063 sets `kInactive` while it is false. Paced by elapsed time against a setting not yet named.
+- **Only the spell entry's list is re-checked**, and only with `kHasConditions` set, which the constructor (34049) sets exactly when that list is not empty. A magic effect record's own conditions (`EffectSetting::conditions`) are never in this check: asked when the effect lands, never again. Where they are asked on landing is not read; the only magic-code caller of `TESCondition::IsTrue` (29888) is 34062.
+- **A perk entry** (`BGSEntryPointPerkEntry::CheckConditionFilters`, the vanilla body 23800) asks tab *i* as `IsTrue(argument i as a reference, nullptr)`: a base-form argument, a weapon or a spell, is wrapped in one shared dummy reference so reference functions work on it; a tab whose argument is missing is not asked and holds only if it has no conditions; and the Target is null on every tab. So tab 0's Subject is the owner, and anything on its Target is false.
+- **One condition** (`TESConditionItem::IsTrue`, 29924) runs on: the Subject for Subject; the Target for Target; the named reference for Reference; the Subject's combat target for Combat Target; the Subject's linked reference for Linked Reference; the context's quest alias, package data or story event for those three; and Command Target falls to the switch's default, the Subject (unexpected, unverified). The swap flag (bit 4) trades the two parties when both are there. **A reference function with nothing to run on is false, its handler never called** -- which is not the same as "not met".
+- **`EffectWasDualCast`** (handler 21719) reads `Actor::boolFlags` `kCheckAddEffectDualCast` (bit 30) on the actor it runs on, 0 for anything else: a flag held only while a dual-cast effect is being added. Asked at any other moment it is 0.
+- **Two detours in Nordic Souls** stand in front of these: `BugFixesSSE.dll` detours 34062 and `PerkEntryPointExtender.dll` replaces the perk entry's slot 00. The bodies above are vanilla; what those two change is not read.
+
+### The Bastion case
+
+Adamant.esp gives Dragonhide (0CDB70) a fourth effect, `MAG_PerkBastionArmorFFSelfArea` "Armor - Bastion" (09862F): Self, area 50, +200 DamageResist, no conditions on the entry. The magic effect record carries three: `EffectWasDualCast = 1` on Target, `HasPerk(MAG_Bastion) = 1` on Target, `GetShouldAttack(Player) = 0` on Subject. The perk reads "Protection spells like Oakflesh and Fire Shell affect nearby allies when dual cast." Asked as the engine asks on landing -- Subject the ally in the area, Target the player who cast it -- all three hold. Asked with the player as Target afterwards, `HasPerk` and `GetShouldAttack` still hold and `EffectWasDualCast` does not, and never will: the list is the record's and is not asked again. **So asking conditions again cannot say whether an effect is acting; only the engine's flag can.**
+
+### Who the parties are, by page
+
+| Page | Subject | Target |
+|---|---|---|
+| Effects tab, an effect running on the follower | the follower | whoever cast it (`ActiveEffect::caster`); nobody once the caster is gone |
+| a Self spell, shout or scroll; a potion, food, an ingredient; a worn enchantment | the follower | the follower |
+| an aimed spell or scroll, a weapon's enchantment, a poison on a blade | whoever it hits: for a hostile effect the enemy the follower is fighting, else nobody the page can name | the follower |
+| a perk, tab 0 | the owner | nobody (false in the engine) |
+| a perk, other tabs | the entry's argument | nobody |
+
+`AlchemyItem::GetDelivery` answers Self for every potion and every poison alike, so a poison is told by `IsPoison()`.
+
+### What the panel does (built 2026-09-13, not yet seen in play)
+
+- **An effect on the Effects tab is Inactive by the engine's flag**, `kInactive` or `kDispelled`, which the sheet's totals read too, so the list and the totals cannot disagree. Its page greys the row "Inactive" by the same flag; the conditions beneath are for reference.
+- **The conditions are asked of the parties in the table** (`ConditionParties` in `Sensors.h`). A condition's name hovers as whom it was asked of ("Asked of Player"). One that runs on a party nobody can name shows N/A under Met, hovering the reason, and an effect with such a condition gets no "Conditions not met" verdict: the engine's answer there is the false of asking nobody.
+- **In a fight, a hostile aimed effect, a weapon's enchantment or a poison is asked of the enemy the follower is fighting** (their live combat target); out of one, of nobody.
+- **Perk pages are unchanged**, still asking the owner as both parties: the engine asks tab 0 with no Target, but in Nordic Souls `PerkEntryPointExtender` replaces that check, and what it does is unread.
+
+### To verify
+
+- In play: Bastion Dragonhide on a follower reads active, `HasPerk` and `GetShouldAttack` ticked and `EffectWasDualCast` not; a weapon's enchantment page ticks against the enemy in a fight and shows N/A out of one.
+- Where the engine asks a magic effect record's conditions on landing, and with what; expected the same two parties with `kCheckAddEffectDualCast` set on the caster.
+- What `BugFixesSSE` and `PerkEntryPointExtender` change; the setting pacing the re-check; Command Target falling to the Subject; whether any perk in the load order puts a Target condition on tab 0.
+- The rows do not show the swap flag.

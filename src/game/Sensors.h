@@ -371,16 +371,29 @@ struct SheetSection
     std::string group;
 };
 
+// Who a record's conditions are asked of: the Subject and the Target the
+// engine passes. For an effect that is the one it lands on and whoever
+// cast it (docs/CONDITIONS.md 10). A party the page cannot name is null,
+// and a condition that runs on it is listed unasked, `missing` saying why:
+// asked of nobody the engine answers false, which is not "not met".
+struct ConditionParties
+{
+    RE::TESObjectREFR *subject{nullptr};
+    RE::TESObjectREFR *target{nullptr};
+    const char *missing{""};
+};
+
 // What a spell, an enchantment or a potion does, effect by effect, as a
 // perk's page lists its entries: the value each moves and by how much,
 // else its kind and what it names; the engine's archetype, the duration,
 // "hidden" where the game's list would not show it; each row opening on
-// its conditions, with a tick where they hold for the actor. `magnitude`
-// says which number a row carries: the record's, or the caster's actual
-// one. The record beside the author's prose, which says what they meant.
+// its conditions, with a tick where they hold for whom the effect would
+// land on and the actor using it. `magnitude` says which number a row
+// carries: the record's, or the caster's actual one. The record beside the
+// author's prose, which says what they meant.
 [[nodiscard]] SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
                                      const std::function<float(const RE::Effect *)> &magnitude);
-[[nodiscard]] SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnitude);
+[[nodiscard]] SheetRow EffectEntryRow(const RE::Effect &effect, float magnitude, const ConditionParties &parties);
 
 // One effect running on the follower, for the Effects tab: the effect as
 // the game names it, its magnitude, what is left of it, and where it comes
@@ -406,9 +419,11 @@ struct EffectRow
     // Fortify One-handed on a follower, which writes a value nothing on a
     // follower reads. Listed greyed, hovering as "Not applied".
     bool applied{true};
-    // False while the effect is on the list but not acting: its conditions
-    // do not hold right now (Spellbreaker's ward off the block). Listed
-    // greyed, hovering as "Inactive".
+    // False while the effect is on the list but not acting (Spellbreaker's
+    // ward off the block), by the engine's own flag and not by asking the
+    // conditions again: a magic effect record's conditions are asked once,
+    // when it lands, and can read false ever after (Adamant's Bastion asks
+    // whether the cast was dual). Listed greyed, hovering as "Inactive".
     bool active{true};
 
     // The page: the effect's numbers as the first section, then what its

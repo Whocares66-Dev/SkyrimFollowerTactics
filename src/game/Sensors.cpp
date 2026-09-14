@@ -628,11 +628,11 @@ ft::Breakdown CarryWeightBreakdown(RE::Actor *actor)
     return b;
 }
 
-// The conditions of one tab, a row each: the call, the comparison, and a
-// tick where it holds for the actor. `on` names the entry's argument the
-// tab is on, for a tab other than the first (the perk's owner): those are
+// The conditions of one list, a row each: the call, the comparison, and a
+// tick where it holds for the parties. `on` names the entry's argument the
+// tab is on, for a perk's tab other than the first (the owner): those are
 // listed, not evaluated.
-std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition,
+std::vector<SheetRow> ConditionRows(const RE::TESCondition &condition, const ConditionParties &parties,
                                     const char *on = nullptr); // below, with the perks
 // The value's display name, where the game has one; else the Creation
 // Kit's, read as words. Below, with the perk entry points.
@@ -662,7 +662,7 @@ bool MovesValue(const RE::EffectSetting *base)
 // away, as an active effect's own magnitude is, and as EffectsOf reads a
 // record's (Spellbreaker's -5 Stamina read as +5 once, the sign applied
 // twice).
-SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnitude)
+SheetRow EffectEntryRow(const RE::Effect &effect, float magnitude, const ConditionParties &parties)
 {
     const auto *base = effect.baseEffect;
     const auto valueName = ValueName;
@@ -724,16 +724,27 @@ SheetRow EffectEntryRow(RE::Actor *actor, const RE::Effect &effect, float magnit
         row.mark = kGlyphTick;
     // Two lists gate it: the spell's own entry's, and the effect record's
     // -- a Breton's hidden effects are gated on the record, a Nordic Souls
-    // scroll's on the entry -- and both must hold.
-    bool holds = true;
-    for (const RE::TESCondition *conditions : {&effect.conditions, &base->conditions})
+    // scroll's on the entry -- and both must hold. No verdict where a
+    // condition was left unasked, whose answer would be the engine's false
+    // for the party nobody could name; nor with no Subject at all, which
+    // the engine never passes to a list (a perk's tab without its argument
+    // is not asked, ID 23800), so what it would say is unread.
+    const std::array<const RE::TESCondition *, 2> lists{&effect.conditions, &base->conditions};
+    bool asked = parties.subject != nullptr;
+    for (const RE::TESCondition *conditions : lists)
     {
         if (!conditions->head)
             continue;
-        const auto rows = ConditionRows(actor, *conditions);
-        row.detail.insert(row.detail.end(), rows.begin(), rows.end());
-        holds = holds && conditions->IsTrue(actor, actor);
+        for (auto &condition : ConditionRows(*conditions, parties))
+        {
+            asked = asked && condition.extra.empty();
+            row.detail.push_back(std::move(condition));
+        }
     }
+    bool holds = true;
+    for (const RE::TESCondition *conditions : lists)
+        if (asked && conditions->head)
+            holds = holds && conditions->IsTrue(parties.subject, parties.target);
     if (!holds)
         row.aside = "Conditions not met";
     return row;
@@ -745,14 +756,36 @@ SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
     SheetSection section{"Effects", {}, {}};
     if (!magic)
         return section;
+    // Whom the conditions are asked of, as when the item lands: the one it
+    // lands on as Subject, the actor using it as Target. A Self spell, a
+    // potion, food, an ingredient and a worn enchantment land on the actor.
+    // A poison reports Self as every potion does and lands on whoever the
+    // blade strikes, as a weapon's enchantment and an aimed spell land on
+    // whoever they hit: for a hostile effect, the enemy the actor is
+    // fighting while there is one; for anything else nobody the page can
+    // name.
+    const bool onSelf = magic->GetDelivery() == RE::MagicSystem::Delivery::kSelf && !magic->IsPoison();
+    const auto fighting = !onSelf && actor && actor->IsInCombat()
+                              ? actor->GetActorRuntimeData().currentCombatTarget.get()
+                              : RE::NiPointer<RE::Actor>{};
+    RE::Actor *enemy = fighting && !fighting->IsDead() ? fighting.get() : nullptr;
     for (const auto *effect : magic->effects)
     {
         if (!effect || !effect->baseEffect)
             continue;
+        ConditionParties parties{actor, actor, ""};
+        if (!onSelf)
+        {
+            const bool hostile = magic->IsPoison() || effect->baseEffect->IsHostile();
+            parties.subject = hostile ? enemy : nullptr;
+            parties.missing =
+                hostile ? "Asked of the enemy it hits: nobody is being fought now" : "Asked of whoever it lands on";
+        }
         // The record's magnitude is unsigned; a detrimental effect takes
         // it away.
         const float amount = magnitude(effect);
-        section.rows.push_back(EffectEntryRow(actor, *effect, effect->baseEffect->IsDetrimental() ? -amount : amount));
+        section.rows.push_back(
+            EffectEntryRow(*effect, effect->baseEffect->IsDetrimental() ? -amount : amount, parties));
     }
     return section;
 }
@@ -791,12 +824,12 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         row.form = base->GetFormID();
         row.sourceForm = ae->spell ? ae->spell->GetFormID() : 0;
         row.applied = EffectApplies(actor, base);
-        // Running but not acting: the engine sets a flag on an effect
-        // whose conditions have stopped holding, and the conditions are
-        // asked too, for the tick between.
-        row.active = !ae->flags.any(RE::ActiveEffect::Flag::kInactive) &&
-                     (!ae->effect->conditions.head || ae->effect->conditions.IsTrue(actor, actor)) &&
-                     (!base->conditions.head || base->conditions.IsTrue(actor, actor));
+        // Running but not acting, by the engine's flag, which the sheet's
+        // totals read too (ForEachActiveEffect). Not by asking the
+        // conditions: the engine asks an effect record's once, when the
+        // effect lands, and Adamant's Bastion asks there whether the cast
+        // was dual, which reads false ever after (docs/CONDITIONS.md 10).
+        row.active = !ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled);
         row.name = name;
         row.magnitude = ae->magnitude;
         row.duration = ae->duration;
@@ -828,7 +861,13 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         // duration reads as what is left of what there was.
         {
             SheetSection page{"Effect", {}, {}};
-            SheetRow line = EffectEntryRow(actor, *ae->effect, ae->magnitude);
+            // Its conditions as the engine asks them of a running effect:
+            // of the one it is on, and of whoever cast it -- the player,
+            // for a Bastion Dragonhide on a follower. For reference: the
+            // row's grey is the flag.
+            const auto caster = ae->caster.get();
+            SheetRow line = EffectEntryRow(*ae->effect, ae->magnitude, {actor, caster.get(), "The caster is gone"});
+            line.aside = row.active ? "" : "Inactive";
             if (ae->duration > 0.0f)
             {
                 line.extra = RemainingText(ae->duration);
@@ -837,8 +876,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             line.link = row.source;
             // Whoever cast it, when it was not the follower: the player's
             // Courage, an enemy's Fury.
-            if (auto caster = ae->caster.get();
-                caster && caster.get() != actor && caster->GetName() && *caster->GetName())
+            if (caster && caster.get() != actor && caster->GetName() && *caster->GetName())
                 line.link += std::string(" (") + caster->GetName() + ")";
             line.form = row.linkForm;
             page.rows.push_back(std::move(line));
@@ -3082,9 +3120,19 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data)
     return call;
 }
 
+// A party by the name the panel gives it: the player is "Player", as
+// everywhere in the panel.
+std::string PartyName(RE::TESObjectREFR *ref)
+{
+    if (ref->IsPlayerRef())
+        return "Player";
+    const char *name = ref->GetDisplayFullName();
+    return name && *name ? name : HexId(ref->GetFormID());
+}
+
 // A condition list as rows: the call, the comparison ("== 1", "OR" after
-// it where the list reads so), and a tick where the actor meets it now.
-std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &condition, const char *on)
+// it where the list reads so), and a tick where the parties meet it now.
+std::vector<SheetRow> ConditionRows(const RE::TESCondition &condition, const ConditionParties &parties, const char *on)
 {
     std::vector<SheetRow> rows;
     for (const auto *item = condition.head; item; item = item->next)
@@ -3113,9 +3161,34 @@ std::vector<SheetRow> ConditionRows(RE::Actor *actor, const RE::TESCondition &co
         // be asked of here, and a tick from asking the actor would lie.
         if (!on)
         {
-            RE::ConditionCheckParams params(actor, actor);
-            if (item->IsTrue(params))
-                row.icon = kGlyphTick;
+            // The party the engine runs it on (TESConditionItem::IsTrue,
+            // docs/CONDITIONS.md 10): the Subject, or through the Subject
+            // its combat target or linked reference; the Target; the swap
+            // flag trading the two when both are there. A named reference
+            // needs neither, and a quest alias, package data or a story
+            // event is context no sheet has, asked for the false it gives.
+            using Object = RE::CONDITIONITEMOBJECT;
+            const auto object = data.object.get();
+            const bool needsParty = object == Object::kSelf || object == Object::kTarget ||
+                                    object == Object::kCombatTarget || object == Object::kLinkedRef ||
+                                    object == Object::kCommandTarget;
+            RE::TESObjectREFR *runsOn = object == Object::kTarget ? parties.target : parties.subject;
+            if ((object == Object::kSelf || object == Object::kTarget) && data.flags.swapTarget && parties.subject &&
+                parties.target)
+                runsOn = object == Object::kTarget ? parties.subject : parties.target;
+            if (needsParty && !runsOn)
+            {
+                row.extra = "N/A";
+                row.note = parties.missing;
+            }
+            else
+            {
+                RE::ConditionCheckParams params(parties.subject, parties.target);
+                if (item->IsTrue(params))
+                    row.icon = kGlyphTick;
+                if (object == Object::kSelf || object == Object::kTarget)
+                    row.note = "Asked of " + PartyName(runsOn);
+            }
         }
         rows.push_back(std::move(row));
     }
@@ -3418,7 +3491,7 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
                 const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
                 if (point->conditions.size() > 0 && point->conditions[0])
                 {
-                    row.detail = ConditionRows(actor, point->conditions[0]);
+                    row.detail = ConditionRows(point->conditions[0], {actor, actor, ""});
                     active = point->conditions[0].IsTrue(actor, actor);
                 }
                 for (std::uint32_t tab = 1; tab < point->conditions.size(); ++tab)
@@ -3426,7 +3499,7 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
                     if (!point->conditions[tab])
                         continue;
                     const std::string on = "argument " + std::to_string(tab + 1);
-                    for (SheetRow &r : ConditionRows(actor, point->conditions[tab], on.c_str()))
+                    for (SheetRow &r : ConditionRows(point->conditions[tab], {actor, actor, ""}, on.c_str()))
                         row.detail.push_back(std::move(r));
                 }
             }
