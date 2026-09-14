@@ -194,7 +194,7 @@ ActionResult ResultOf(CastRequest request)
     switch (request)
     {
     case CastRequest::Armed:
-        return ActionResult::Performed;
+        return ActionResult::Requested;
     case CastRequest::SpellNotInSlot:
     case CastRequest::TargetGone:
         return ActionResult::MissingItem;
@@ -241,6 +241,8 @@ const char *ToString(ActionResult r) noexcept
     {
     case ActionResult::Performed:
         return "performed";
+    case ActionResult::Requested:
+        return "requested";
     case ActionResult::NoSuchAction:
         return "action not implemented in this phase";
     case ActionResult::MissingItem:

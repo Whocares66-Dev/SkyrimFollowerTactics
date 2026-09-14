@@ -61,6 +61,17 @@ void Init();
 [[nodiscard]] std::string NameOf(RE::Actor *actor);
 [[nodiscard]] std::string NameOf(const RE::TESForm *form);
 
+// An actor as an event names one: its reference id, its base id (the leveled
+// template's base where there is one) and its name, appended under the three
+// keys given. The keys must be string literals: a Field keeps a view of its
+// key, and one built at run time would dangle. Read at the moment of the
+// event, since the actor may be unloaded by the time anything follows.
+void AppendActor(std::vector<Field> &fields, std::string_view idKey, std::string_view baseKey, std::string_view nameKey,
+                 std::uint32_t actorId);
+
+// A form's id and name, likewise.
+void AppendForm(std::vector<Field> &fields, std::string_view idKey, std::string_view nameKey, std::uint32_t formId);
+
 // A module of the mod: one per source file that logs, named for the file.
 // Constructible at namespace scope with no static-initialisation order
 // problem, because it holds nothing but its own name.

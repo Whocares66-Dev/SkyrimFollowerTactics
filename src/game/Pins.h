@@ -120,7 +120,8 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
 // rule's pin is the panel's pin: it goes in the same book, shows in the
 // same cells, and the panel can let it go. Pin puts `form` in `hand` --
 // Both for an either-hand spell is once in each hand -- and returns whether
-// the form was found. Release lets go of every pin of `kind` and takes
+// the form was found and the pin taken: a spell above the follower's skill
+// is refused. Release lets go of every pin of `kind` and takes
 // those things off, so the AI decides again.
 bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand,
             const std::optional<ft::ItemVariant> &variant = std::nullopt);

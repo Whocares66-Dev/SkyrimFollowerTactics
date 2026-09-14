@@ -18,6 +18,7 @@ namespace ft::game
 enum class ActionResult : std::uint8_t
 {
     Performed,
+    Requested,      // asked of the AI -- a cast, a scroll, a shout, a power -- whose outcome follows
     NoSuchAction,   // not implemented in this phase
     MissingItem,    // the potion or spell vanished between snapshot and dispatch
     NoEquipManager, // the game singleton was unavailable

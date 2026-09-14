@@ -38,12 +38,6 @@ namespace
 // reads well at, and the cost is far under budget either way.)
 constexpr double kTickInterval = 0.5;
 
-// How often a follower may report *why* it did not act. Without this the log
-// is a line per rule per tick per follower and unreadable; with it, the
-// answer to "why didn't they drink" is always in the last few seconds of the
-// file.
-constexpr double kDiagnosticInterval = 2.0;
-
 // How often to report measured tick cost.
 constexpr double kCostReportInterval = 5.0;
 
@@ -64,7 +58,10 @@ int g_lastFollowerCount = -1;
 struct FollowerState
 {
     ft::EvalContext eval;
-    double lastDiagnosticAt{-1.0e9};
+    // The verdicts last reported for each rule, and the rules they were for:
+    // new rules, or a new fight, report afresh.
+    ft::Trace reported;
+    ft::RuleSet reportedRules;
     // In combat on the last tick, for the edges: the first evaluation of a
     // fight, and the one farewell evaluation after it.
     bool fighting{false};
@@ -276,20 +273,36 @@ ft::ActionKind FirstKind(const ft::Rule &rule)
     return rule.actions.empty() ? ft::ActionKind::None : rule.actions.front().kind;
 }
 
-void LogDiagnostic(RE::Actor *actor, const ft::Snapshot &snap, const ft::RuleSet &rules, const ft::Trace &trace)
+// Why each rule did or did not act, when that changes (core's
+// VerdictChanges): the events log's answer to "why didn't they drink", which
+// the panel's Status column gave for half a second. At debug in the prose
+// log, where a line per change would crowd what is read while playing; the
+// events file has every one.
+void ReportVerdicts(RE::Actor *actor, const ft::RuleSet &rules, const ft::Trace &trace,
+                    const ft::ActionTrace &actionTrace, ft::Trace &reported)
 {
-    if (!log::Enabled(log::Level::Debug))
-        return;
-
-    log::tactics.debug("{} health {:.0f}/{:.0f} ({:.0f}%) combat={} consumables={}", Describe(actor),
-                       snap.health.current, snap.health.max, snap.health.Pct() * 100.0, snap.inCombat,
-                       snap.potions.carried.size());
-
-    for (std::size_t i = 0; i < trace.size(); ++i)
+    for (const std::size_t i : ft::VerdictChanges(reported, trace))
     {
-        const auto &rule = rules.rules[i];
-        log::tactics.debug("  rule {} \"{}\" [{}]: {}", i, rule.label, ActionNames(rule),
-                           ft::Explain(trace[i], FirstKind(rule)));
+        const ft::Rule &rule = rules.rules[i];
+        // Worded for the action the verdict is about: the first one reached.
+        ft::ActionKind kind = FirstKind(rule);
+        if (i < actionTrace.size())
+        {
+            const auto &verdicts = actionTrace[i];
+            for (std::size_t a = 0; a < verdicts.size() && a < rule.actions.size(); ++a)
+            {
+                if (verdicts[a] != ft::Verdict::NotReached)
+                {
+                    kind = rule.actions[a].kind;
+                    break;
+                }
+            }
+        }
+        const std::string_view reason = ft::Explain(trace[i], kind);
+        log::tactics.event(
+            log::Level::Debug, "rule.verdict", actor,
+            {{"ruleIndex", i}, {"ruleName", rule.label}, {"verdict", ft::WireName(trace[i])}, {"reason", reason}},
+            "{} rule {} \"{}\" [{}]: {}", Describe(actor), i, rule.label, ActionNames(rule), reason);
     }
 }
 
@@ -494,13 +507,25 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     // making them per-follower.
     const ft::RuleSet rules = GetRules(id);
     ft::Trace trace;
-    const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace);
+    ft::ActionTrace actionTrace;
+    const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
 
     // The cost measured is the snapshot and the evaluation -- the rules'
     // own -- not the panel's sheets, which PublishView builds after.
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
     PublishView(actor, snapshot);
+
+    // New rules, or a new fight, report every rule's verdict afresh. The
+    // farewell evaluation reports nothing: every standing rule turns false on
+    // it at once, which says only that the fight is over.
+    if (began || rules.rules != state.reportedRules.rules)
+    {
+        state.reported.clear();
+        state.reportedRules = rules;
+    }
+    if (!ended)
+        ReportVerdicts(actor, rules, trace, actionTrace, state.reported);
 
     if (decision.Fired())
     {
@@ -513,18 +538,29 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
             const auto &step = *decision.step;
             const auto result = Execute(step.action, step.target, actor);
 
-            log::tactics.event(log::Level::Info, "rule.fired", actor,
-                               {{"ruleIndex", decision.ruleIndex},
-                                {"ruleName", label},
-                                {"action", ft::WireName(step.action.kind)},
-                                {"targetFormId", log::Id(step.target)},
-                                {"outcome", ToString(result)},
-                                {"healthPct", snapshot.health.Pct()}},
+            // Whom the condition bound and whom the action went at, by
+            // reference and base, and the thing it used: the potion a policy
+            // chose, the spell, the item and which copy of it.
+            std::vector<log::Field> fields{{"ruleIndex", decision.ruleIndex},
+                                           {"ruleName", label},
+                                           {"subjectKind", ft::WireName(decision.rule.subject)}};
+            log::AppendActor(fields, "subjectFormId", "subjectBaseFormId", "subjectName", step.subject);
+            fields.emplace_back("action", ft::WireName(step.action.kind));
+            log::AppendActor(fields, "targetFormId", "targetBaseFormId", "targetName", step.target);
+            if (step.action.form != 0)
+                log::AppendForm(fields, "formId", "formName", step.action.form);
+            if (ft::IsEquip(step.action.kind))
+                fields.emplace_back("variant", ft::VariantText(step.action.variant));
+            fields.emplace_back("outcome", ToString(result));
+            fields.emplace_back("healthPct", snapshot.health.Pct());
+            log::tactics.event(log::Level::Info, "rule.fired", actor, fields,
                                "{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
                                decision.ruleIndex, label, ft::WireName(step.action.kind), ToString(result),
                                snapshot.health.current, snapshot.health.max, snapshot.health.Pct() * 100.0);
 
-            if (result != ActionResult::Performed)
+            // Requested is not a failure: a cast's own outcome follows when
+            // its package is released.
+            if (result != ActionResult::Performed && result != ActionResult::Requested)
             {
                 // A rule that fires but does not take effect is the failure
                 // worth shouting about: the engine believed it acted, and it
@@ -539,12 +575,6 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
         }
 
         return;
-    }
-
-    if ((now - state.lastDiagnosticAt) >= kDiagnosticInterval)
-    {
-        state.lastDiagnosticAt = now;
-        LogDiagnostic(actor, snapshot, rules, trace);
     }
 }
 

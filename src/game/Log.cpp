@@ -321,6 +321,23 @@ std::string NameOf(const RE::TESForm *form)
     return (name && *name) ? name : "<unnamed>";
 }
 
+void AppendActor(std::vector<Field> &fields, std::string_view idKey, std::string_view baseKey, std::string_view nameKey,
+                 std::uint32_t actorId)
+{
+    auto *actor = actorId != 0 ? RE::TESForm::LookupByID<RE::Actor>(actorId) : nullptr;
+    const auto *base = actor ? actor->GetTemplateBase() : nullptr;
+    fields.emplace_back(idKey, Id(actorId));
+    fields.emplace_back(baseKey, Id(base ? base->GetFormID() : 0));
+    fields.emplace_back(nameKey, actor ? NameOf(actor) : std::string{});
+}
+
+void AppendForm(std::vector<Field> &fields, std::string_view idKey, std::string_view nameKey, std::uint32_t formId)
+{
+    const auto *form = formId != 0 ? RE::TESForm::LookupByID(formId) : nullptr;
+    fields.emplace_back(idKey, Id(formId));
+    fields.emplace_back(nameKey, form ? NameOf(form) : std::string{});
+}
+
 void Write(Level level, std::string_view module, std::string_view text)
 {
     // The pattern's time, thread and level, the module column, the line end.

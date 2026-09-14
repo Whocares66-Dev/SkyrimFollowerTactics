@@ -1315,8 +1315,9 @@ namespace
 {
 
 // One request against the book, on the game thread: the panel's task and
-// the rules' tick both come here.
-void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, bool fromPanel,
+// the rules' tick both come here. False when a pin is refused, so a rule's
+// refused pin is not reported done.
+bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, bool fromPanel,
           const std::optional<ft::ItemVariant> &variant = std::nullopt, RE::ExtraDataList *row = nullptr)
 {
     const ft::ActorId id = actor->GetFormID();
@@ -1329,7 +1330,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         // half-kept as an equip without a pin.
         log::pins.warn("{} {} cannot be pinned: above the follower's skill, the AI would not choose it",
                        Describe(actor), log::NameOf(thing));
-        return;
+        return false;
     }
     // One weapon cannot be in both hands. Asked to move their only copy to
     // the other hand, take it out of the first; otherwise the engine's
@@ -1486,6 +1487,7 @@ void Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     // time has run. Applying it here as well (UpdateArmorAbility) put
     // robes of Destruction at -34% instead of -17%: the engine's own
     // application still came, on top. Deferred it stays.
+    return true;
 }
 
 } // namespace
@@ -1617,12 +1619,11 @@ bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand, const std::optional
     // record gives it, whatever was asked.
     if (hand == Hand::Both && DescribeHoldable(actor, thing).grip == Grip::Either)
     {
-        Wear(actor, thing, WearRequest::Pin, Hand::Left, false, variant);
-        Wear(actor, thing, WearRequest::Pin, Hand::Right, false, variant);
-        return true;
+        const bool left = Wear(actor, thing, WearRequest::Pin, Hand::Left, false, variant);
+        const bool right = Wear(actor, thing, WearRequest::Pin, Hand::Right, false, variant);
+        return left && right;
     }
-    Wear(actor, thing, WearRequest::Pin, hand, false, variant);
-    return true;
+    return Wear(actor, thing, WearRequest::Pin, hand, false, variant);
 }
 
 void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
