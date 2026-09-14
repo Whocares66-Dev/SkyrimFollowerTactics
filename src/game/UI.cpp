@@ -2877,7 +2877,6 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Im::Spacing();
                 Im::Spacing();
             }
-            Im::SetCursorPosX(Im::GetCursorPosX() + kCellPadX);
             Im::Text("%s", section.title.c_str());
         }
         firstInGroup = false;
