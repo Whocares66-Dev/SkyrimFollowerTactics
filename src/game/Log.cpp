@@ -257,8 +257,15 @@ void Init()
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
         g_events = std::make_shared<spdlog::logger>("events", std::move(sink));
         g_events->set_level(spdlog::level::debug);
-        g_events->flush_on(spdlog::level::debug);
+        // Buffered, unlike the prose log: flushed on a warning and otherwise
+        // once a second. A crash loses at most that second, and the prose
+        // log, which carries the same events, still flushes every line. The
+        // flusher reaches registered loggers only; the prose logger is one,
+        // as the default.
+        g_events->flush_on(spdlog::level::warn);
         g_events->set_pattern("%v");
+        spdlog::register_logger(g_events);
+        spdlog::flush_every(std::chrono::seconds(1));
     }
 
     plugin.info("log level {}, events {}", ToString(settings.level),
