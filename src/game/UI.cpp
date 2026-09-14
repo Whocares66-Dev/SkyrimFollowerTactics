@@ -3184,13 +3184,25 @@ enum class Tab
     Character,
     Inventory,
     Magic,
-    Effects
+    Summons,
+    Effects,
+    Skills,
+    CombatStyle, // a follower's page only
+    Tactics,     // a follower's page only
 };
+
+// The Inventory and Magic categories are one for every page, as the filters
+// are: Weapons on one follower is Weapons on the next and on the player.
+// Render thread only.
+int g_inventoryCategory = -1;
+int g_magicCategory = -1;
 
 struct InventoryTabState
 {
-    std::uint64_t detail{0};        // the row open in detail, by InventoryItem::Key; 0 for the list
-    int category{-1};               // an ItemCategory, or -1 for all of them
+    std::uint64_t detail{0}; // the row open in detail, by InventoryItem::Key; 0 for the list
+    // This frame's category: g_inventoryCategory, or All on a page with
+    // nothing in it.
+    int category{-1};
     Tab openedFrom{Tab::Inventory}; // where the detail page returns to
     Tab select{Tab::None};          // a tab to switch to on the next frame
 };
@@ -3606,13 +3618,17 @@ void DrawCategoryRow(const CharacterView &view, InventoryTabState &state)
         const auto category = static_cast<ItemCategory>(i);
         chips.push_back({DisplayName(category), IconFor(category), static_cast<int>(i)});
     }
-    DrawChips(chips, state.category);
 
-    // A category that has just emptied -- the last potion drunk -- falls back
-    // to All rather than showing an empty table under a tab that is no
-    // longer there.
-    if (state.category >= 0 && counts[static_cast<std::size_t>(state.category)] == 0)
-        state.category = -1;
+    // A category with nothing in it here -- the last potion drunk, or a
+    // follower with no keys -- shows All rather than an empty table under a
+    // tab that is not there, and leaves the choice standing for the pages
+    // that have it.
+    const int shared = g_inventoryCategory;
+    state.category = shared >= 0 && counts[static_cast<std::size_t>(shared)] > 0 ? shared : -1;
+    int chosen = state.category;
+    DrawChips(chips, chosen);
+    if (chosen != state.category)
+        g_inventoryCategory = state.category = chosen;
 }
 
 // The inventory table's columns, by id rather than by position: which of
@@ -4218,8 +4234,10 @@ void DrawInventory(const CharacterView &view)
 // SkyUI's Magic menu: All, the five schools, Shouts, Powers.
 struct MagicTabState
 {
-    std::uint32_t detail{0};    // the entry open in detail; 0 for the list
-    int category{-1};           // a MagicCategory, or -1 for all of them
+    std::uint32_t detail{0}; // the entry open in detail; 0 for the list
+    // This frame's category: g_magicCategory, or All on a page with nothing
+    // in it.
+    int category{-1};
     Tab openedFrom{Tab::Magic}; // where the detail page returns to: the list, or the Character sheet
 };
 
@@ -4351,9 +4369,14 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
             const auto category = static_cast<MagicCategory>(i);
             chips.push_back({DisplayName(category), IconFor(category), static_cast<int>(i)});
         }
-        DrawChips(chips, state.category);
-        if (state.category >= 0 && counts[static_cast<std::size_t>(state.category)] == 0)
-            state.category = -1;
+        // As the Inventory tab's (DrawCategoryRow): All where the shared
+        // category has nothing, the choice kept for the pages that have it.
+        const int shared = g_magicCategory;
+        state.category = shared >= 0 && counts[static_cast<std::size_t>(shared)] > 0 ? shared : -1;
+        int chosen = state.category;
+        DrawChips(chips, chosen);
+        if (chosen != state.category)
+            g_magicCategory = state.category = chosen;
     }
     Im::Spacing();
 
@@ -5256,44 +5279,76 @@ void TabBody(const char *name, ft::ActorId actor, const std::function<void()> &d
     Im::EndChild();
 }
 
+// The top tab on the page drawn last, and whose page that was. Followers
+// share one tab bar and the player has another, and ImGui keeps each bar's
+// choice apart, so the tab is carried from page to page here: the Skills of
+// one follower, then of the player, then of the next follower. Render
+// thread only.
+Tab g_shownTab = Tab::None;
+ft::ActorId g_shownPage = 0;
+
+// The tab a page opens on, on the frame it is drawn after another page's;
+// None on the frames after, when its bar keeps the choice. The player's
+// page has no Combat Style or Tactics, and opens on Character from either.
+Tab CarriedTab(const CharacterView &view)
+{
+    if (view.id == g_shownPage)
+        return Tab::None;
+    g_shownPage = view.id;
+    if (view.player && (g_shownTab == Tab::CombatStyle || g_shownTab == Tab::Tactics))
+        return Tab::Character;
+    return g_shownTab;
+}
+
+// A top tab: selected when `select` names it, and noted as the tab shown
+// while it is open.
+bool BeginSheetTab(const char *label, Tab tab, Tab select)
+{
+    if (!Im::BeginTabItem(label, nullptr, select == tab ? Im::ImGuiTabItemFlags_SetSelected : 0))
+        return false;
+    g_shownTab = tab;
+    return true;
+}
+
 // The sheet's tabs, inside the caller's tab bar, reading left to right as
 // who they are, what they carry, what they can cast, what they command,
 // what is running on them and what they can do: a follower's page and the
-// player's alike.
-void DrawSheetTabs(const CharacterView &view)
+// player's alike. `carried` is CarriedTab's answer for this page.
+void DrawSheetTabs(const CharacterView &view, Tab carried)
 {
     // A pending switch, from a link on the sheet or the back arrow on an
-    // item page; consumed here so it acts for one frame only.
+    // item page, consumed here so it acts for one frame only; else the tab
+    // carried from the last page.
     auto &inventoryState = g_inventoryTabs[view.id];
-    const Tab select = inventoryState.select;
+    const Tab select = inventoryState.select != Tab::None ? inventoryState.select : carried;
     inventoryState.select = Tab::None;
 
-    if (Im::BeginTabItem("Character", nullptr, select == Tab::Character ? Im::ImGuiTabItemFlags_SetSelected : 0))
+    if (BeginSheetTab("Character", Tab::Character, select))
     {
         TabBody("character", view.id, [&] { DrawCharacter(view); });
         Im::EndTabItem();
     }
-    if (Im::BeginTabItem("Inventory", nullptr, select == Tab::Inventory ? Im::ImGuiTabItemFlags_SetSelected : 0))
+    if (BeginSheetTab("Inventory", Tab::Inventory, select))
     {
         TabBody("inventory", view.id, [&] { DrawInventory(view); });
         Im::EndTabItem();
     }
-    if (Im::BeginTabItem("Magic", nullptr, select == Tab::Magic ? Im::ImGuiTabItemFlags_SetSelected : 0))
+    if (BeginSheetTab("Magic", Tab::Magic, select))
     {
         TabBody("magic", view.id, [&] { DrawMagic(view); });
         Im::EndTabItem();
     }
-    if (Im::BeginTabItem("Summons"))
+    if (BeginSheetTab("Summons", Tab::Summons, select))
     {
         TabBody("summons", view.id, [&] { DrawSummons(view); });
         Im::EndTabItem();
     }
-    if (Im::BeginTabItem("Effects", nullptr, select == Tab::Effects ? Im::ImGuiTabItemFlags_SetSelected : 0))
+    if (BeginSheetTab("Effects", Tab::Effects, select))
     {
         TabBody("effects", view.id, [&] { DrawEffects(view); });
         Im::EndTabItem();
     }
-    if (Im::BeginTabItem("Skills"))
+    if (BeginSheetTab("Skills", Tab::Skills, select))
     {
         TabBody("skills", view.id, [&] {
             Im::Spacing();
@@ -5303,28 +5358,24 @@ void DrawSheetTabs(const CharacterView &view)
     }
 }
 
-// Whether any follower's page has been drawn yet. The first page to open
-// lands on Tactics, which is what the mod is for; from then on the tab bar
-// keeps whatever was last chosen, as tab bars do. Render thread only.
-bool g_pageOpened = false;
-
 // One page per follower: the sheet's tabs, then how their combat AI is
-// tuned and what they have been told to do. ONE tab bar id for every
-// follower, so the chosen tab carries across pages: the Skills of one,
-// then of the next, without choosing Skills again each time.
+// tuned and what they have been told to do. The first page drawn opens on
+// Tactics, which is what the mod is for; every page after opens on the tab
+// the last one showed (CarriedTab).
 void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 {
     if (!Im::BeginTabBar("follower##tabs"))
         return;
 
-    const bool firstOpen = !g_pageOpened;
-    g_pageOpened = true;
-    const Im::ImGuiTabItemFlags tacticsFlags = firstOpen ? Im::ImGuiTabItemFlags_SetSelected : 0;
+    const bool firstPage = g_shownTab == Tab::None;
+    Tab carried = CarriedTab(view);
+    if (firstPage)
+        carried = Tab::Tactics;
 
-    DrawSheetTabs(view);
+    DrawSheetTabs(view, carried);
     // What the combat AI is tuned by, before what it is told: a rule works
     // with, or against, these numbers.
-    if (Im::BeginTabItem("Combat Style"))
+    if (BeginSheetTab("Combat Style", Tab::CombatStyle, carried))
     {
         TabBody("combatstyle", view.id, [&] {
             Im::Spacing();
@@ -5332,7 +5383,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
         });
         Im::EndTabItem();
     }
-    if (Im::BeginTabItem("Tactics", nullptr, tacticsFlags))
+    if (BeginSheetTab("Tactics", Tab::Tactics, carried))
     {
         TabBody("tactics", view.id, [&] { DrawTactics(rules, view); });
         Im::EndTabItem();
@@ -5436,15 +5487,15 @@ void __stdcall RenderSettings()
     DrawSettings();
 }
 
-// The player's page: the sheet's tabs alone, in a tab bar of its own, apart
-// from the followers' bar, whose first open lands on Tactics.
+// The player's page: the sheet's tabs alone, in a tab bar of its own, on
+// the tab carried from the last page drawn.
 void __stdcall RenderPlayer()
 {
     // Nothing until the open's task has read the player: a frame.
     const auto view = ObservePlayer();
     if (!view || !Im::BeginTabBar("player##tabs"))
         return;
-    DrawSheetTabs(*view);
+    DrawSheetTabs(*view, CarriedTab(*view));
     Im::EndTabBar();
 }
 
