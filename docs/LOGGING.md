@@ -71,7 +71,7 @@ There is deliberately no log-schema-version field. That problem belongs to the c
 | event | module | beyond the envelope |
 |---|---|---|
 | `plugin.loaded` | plugin | (none: the packages, the tick, the panel and the hooks are up) |
-| `tactics.installed` | tactics | `tickMs`, `maxFollowers` |
+| `tactics.installed` | tactics | `tickMs` |
 | `tactics.switched` | tactics | `enabled` |
 | `tactics.cost` | tactics | `evaluations`, `avgUs`, `maxUs` |
 | `followers.controlled` | tactics | `count`, `followers[]` |

@@ -5421,7 +5421,9 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 //
 //  1. RenderFunction is `void(__stdcall*)()` with no user data, so an entry
 //     cannot be told which follower it is for. Each needs its own function --
-//     hence a fixed pool of slots, one static trampoline apiece.
+//     hence a fixed pool of slots, one static trampoline apiece. A slot is
+//     held for the life of the process (2. below), so the pool counts every
+//     follower seen in one launch, not the party of the moment.
 //  2. Removing an entry needs DeleteSection, which the framework's source has
 //     but no released build yet exports (3.14.1 is the newest; ours is
 //     3.14.0). The SDK wrapper returns false when the export is missing, so
@@ -5432,7 +5434,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 // names. Those seen together are registered in name order; a later one comes
 // after them, since an entry cannot be moved once added.
 
-constexpr std::size_t kSlots = kMaxManagedFollowers; // one entry per follower the tick can manage
+constexpr std::size_t kSlots = 64;
 
 struct Slot
 {
@@ -5642,9 +5644,8 @@ void SyncFollowers()
         }
         if (index == kSlots)
         {
-            // Cannot happen while the tick manages at most kSlots: said
-            // once if it does, since the panel would otherwise just lack
-            // a name.
+            // Said once, since the panel would otherwise just lack a
+            // name.
             static std::unordered_set<ft::ActorId> said;
             if (said.insert(view.id).second)
                 log::ui.warn("no menu entry for {}: all {} are taken", view.name, kSlots);

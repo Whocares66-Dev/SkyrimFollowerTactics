@@ -111,10 +111,6 @@ struct FollowerView : CharacterView
     ft::Holdings holdings;
 };
 
-// How many followers the tick manages at once, and so how many entries the
-// panel has: the first eight teammates the process lists offer.
-inline constexpr std::size_t kMaxManagedFollowers = 8;
-
 // Everything the UI needs, all copied. Includes followers who are NOT fighting:
 // tactics are authored before a fight, so the panel has to show them then.
 // One follower's alone, for the page that draws one: every open page copied

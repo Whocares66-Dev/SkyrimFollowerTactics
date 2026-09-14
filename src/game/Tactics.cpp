@@ -265,8 +265,6 @@ std::vector<RE::Actor *> CollectManagedFollowers()
             continue;
 
         followers.push_back(raw);
-        if (followers.size() >= kMaxManagedFollowers)
-            break;
     }
 
     return followers;
@@ -906,10 +904,8 @@ void Install()
     if (g_installed.exchange(true))
         return;
 
-    log::tactics.event(log::Level::Info, "tactics.installed",
-                       {{"tickMs", kTickInterval * 1000.0}, {"maxFollowers", kMaxManagedFollowers}},
-                       "tick {:.0f} ms, rules in a fight and on its farewell, max {} followers", kTickInterval * 1000.0,
-                       kMaxManagedFollowers);
+    log::tactics.event(log::Level::Info, "tactics.installed", {{"tickMs", kTickInterval * 1000.0}},
+                       "tick {:.0f} ms, rules in a fight and on its farewell", kTickInterval * 1000.0);
     log::tactics.info("a follower starts with no rules; tactics are kept in the save (SKSE co-save)");
 
     // Detached on purpose: Skyrim never unloads SKSE plugins, and joining a
