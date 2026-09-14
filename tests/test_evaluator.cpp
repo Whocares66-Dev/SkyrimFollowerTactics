@@ -2464,7 +2464,7 @@ TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     // Not "no potion" -- they have twelve. The reason has to be the real one or
-    // the debug column sends you to check the inventory for nothing.
+    // the log sends you to check the inventory for nothing.
     REQUIRE(trace.at(0) == Verdict::EffectActive);
 
     // Dose finished, still hurt: free to drink again.

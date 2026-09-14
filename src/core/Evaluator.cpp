@@ -770,7 +770,7 @@ Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, Actor
         return Verdict::Unsupported;
     // Reported separately from ConditionFalse on purpose: a pair that can
     // never be answered is an authoring mistake, not a condition that
-    // happens to be untrue right now, and the debug column must not send
+    // happens to be untrue right now, and the log must not send
     // someone off to investigate a follower's health for nothing.
     if (!IsPredicateValidFor(r.subject, r.predicate) || !IsActionTargetValidFor(r.subject, r.actionTarget) ||
         !IsDamageKindValidFor(r.predicate, r.damageKind))
@@ -977,75 +977,6 @@ const char *Explain(Verdict v, ActionKind action) noexcept
     default:
         return ToString(v);
     }
-}
-
-const char *Brief(Verdict v, ActionKind action) noexcept
-{
-    switch (v)
-    {
-    case Verdict::Fired:
-        return "fired";
-    case Verdict::ConditionFalse:
-        return "false";
-    case Verdict::ActionCooldown:
-    case Verdict::Recovering: // the shout's own, told apart from the action's in the tooltip
-        return "cooldown";
-    case Verdict::NothingToPoison:
-    case Verdict::NothingToCharge:
-    case Verdict::NoMeleeWeapon:
-        return "no weapon";
-    case Verdict::NoResource:
-        // A consumable the follower is out of reads as its count, the way
-        // the Consume menu shows one; a spell rule reporting "count: 0"
-        // would be worse than reporting nothing.
-        switch (action)
-        {
-        case ActionKind::UsePower:
-            return "no power";
-        case ActionKind::Shout:
-            return "no shout";
-        case ActionKind::UseScroll:
-            return "no scroll";
-        case ActionKind::CastSpell:
-        case ActionKind::EquipSpell:
-            return "no spell";
-        default:
-            return IsEquip(action) ? "not carried" : "count: 0";
-        }
-    case Verdict::NotInCombat:
-        return "no fight";
-    case Verdict::EffectActive:
-        return IsEquip(action) ? "pinned" : IsApply(action) ? "poisoned" : IsCharge(action) ? "charged" : "active";
-    case Verdict::AboveSkill:
-        return "too high";
-    case Verdict::Outranked:
-        return "outranked";
-    case Verdict::NoTarget:
-        return "no target";
-    case Verdict::CannotAfford:
-        return "no magicka";
-    case Verdict::CannotDualCast:
-        return "no perk";
-    case Verdict::NoStamina:
-        return "no stamina";
-    case Verdict::OutOfReach:
-        return "too far";
-    case Verdict::Busy:
-        return "busy";
-    case Verdict::Casting:
-        return "casting";
-    case Verdict::Queued:
-        return "queued";
-    case Verdict::Disabled:
-        return "off";
-    case Verdict::NotReached:
-        return ""; // nothing to say: an empty cell, not a placeholder
-    case Verdict::InvalidCondition:
-        return "invalid";
-    case Verdict::Unsupported:
-        return "n/a";
-    }
-    return "?";
 }
 
 const char *ToString(Verdict v) noexcept

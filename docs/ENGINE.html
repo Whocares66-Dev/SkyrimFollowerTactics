@@ -179,8 +179,8 @@ flowchart LR
   </pre></div>
   <p class="caption">A task runs once on the game thread. A task that re-adds itself hangs the game; the pacing thread is the only clock.</p>
 
-  <p>The panel reads a <code>FollowerView</code>: a snapshot of her stats, inventory, spells,
-  combat style and the last verdict of every rule, rebuilt by the tick and copied by the panel
+  <p>The panel reads a <code>FollowerView</code>: a snapshot of the follower's stats, inventory,
+  spells and combat style, rebuilt by the tick and copied by the panel
   each frame. Nothing the panel draws is a live pointer. When a click needs the game (a pin, a
   rule change), it is queued as a task and answered on the next tick's view, or immediately where
   the request republishes the view itself.</p>
@@ -246,15 +246,15 @@ flowchart LR
   <h3>Rules</h3>
   <p>A rule set is an ordered list of <code>IF subject predicate [value] THEN action [form]</code>.
   Evaluation is first-match-wins: rules are tried in order and the first that fires is the
-  decision for that tick. Every rule gets a verdict, which is what the Tactics tab's Status column
-  shows; the ones that matter are these.</p>
+  decision for that tick. Every rule gets a verdict, which the log reports; the ones that matter
+  are these.</p>
 
   <table>
     <tr><th>verdict</th><th>meaning</th></tr>
     <tr><td>fired</td><td>The condition held and the action was performed this tick.</td></tr>
     <tr><td>false</td><td>The condition did not hold.</td></tr>
     <tr><td>cooldown</td><td>The condition held, but the action, the rule or the potion is on cooldown. Cooldowns run on game time, so a menu does not age them.</td></tr>
-    <tr><td>no potion / no spell</td><td>The action names something she does not have.</td></tr>
+    <tr><td>no potion / no spell</td><td>The action names something the follower does not have.</td></tr>
     <tr><td>no magicka, busy, no target</td><td>The action could not be performed right now.</td></tr>
     <tr><td>off, invalid, n/a</td><td>Decided before the condition is looked at: disabled, or a subject-predicate pair the matrix forbids.</td></tr>
   </table>

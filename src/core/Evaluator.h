@@ -13,9 +13,9 @@
 namespace ft
 {
 
-// Why a rule did not fire. Surfaced verbatim in the UI's debug column, which is
-// the single most useful feature in the whole editor -- authoring rules against
-// an opaque engine without it is guesswork.
+// Why a rule did not fire. Authoring rules against an opaque engine is
+// guesswork without it, so every evaluation says, per rule, and the log
+// carries it (docs/EVENTS.md).
 enum class Verdict : std::uint8_t
 {
     Fired,
@@ -212,14 +212,14 @@ struct Decision
 };
 
 using Trace = std::vector<Verdict>;
-// Per rule, per action: why each action did or did not happen, for the
-// status tooltip. NotReached for an action after one still being waited
-// for, and for every action of a rule that was not reached.
+// Per rule, per action: why each action did or did not happen. NotReached
+// for an action after one still being waited for, and for every action of
+// a rule that was not reached.
 using ActionTrace = std::vector<std::vector<Verdict>>;
 
 // Pure. Reads the snapshot, mutates only ctx's bookkeeping when a rule fires.
-// Pass a trace to get a per-rule verdict for the debug column, and an action
-// trace for the per-action breakdown.
+// Pass a trace to get a verdict per rule, and an action trace for one per
+// action.
 Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace = nullptr,
                   ActionTrace *actionTrace = nullptr);
 
@@ -247,12 +247,5 @@ const char *ToString(Verdict v) noexcept;
 // different things depending on the action, and the wording has to follow or
 // the log misdirects exactly when it is being read most carefully.
 [[nodiscard]] const char *Explain(Verdict v, ActionKind action) noexcept;
-
-// The same again in a word or two, for the status column beside a rule:
-// "fired", "false", "count: 0", "no fight". Kept beside Explain so the
-// column and its tooltip cannot disagree (the column said "count: 0" of a
-// blow out of a fight while the tooltip said "not in a fight"). Empty for
-// NotReached: an empty cell, not a placeholder.
-[[nodiscard]] const char *Brief(Verdict v, ActionKind action) noexcept;
 
 } // namespace ft

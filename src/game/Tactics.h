@@ -73,9 +73,6 @@ struct CharacterView
 // sheet.
 struct FollowerView : CharacterView
 {
-    // Seconds of voice recovery left, for the status tooltip of a shout or
-    // power rule waiting on it: "Shout on cooldown (12 s)".
-    float voiceRecovery{0.0f};
     // The other followers under tactics, by name, for the condition menu's
     // named subjects.
     struct Peer
@@ -85,17 +82,6 @@ struct FollowerView : CharacterView
     };
     std::vector<Peer> peers;
     ft::Snapshot snapshot;
-    ft::Trace trace;             // per-rule verdict: the debug column
-    ft::ActionTrace actionTrace; // per-action verdicts: the column's tooltip
-
-    // Whether this follower's rules were actually evaluated this tick.
-    //
-    // False out of combat, where we deliberately do only the cheap part: read
-    // the actor values so the UI can show who is under tactics control, and
-    // skip both the inventory scan and the evaluation. The trace and potion
-    // counts are meaningless then, and the UI says so rather than showing a
-    // stale verdict or a confident zero.
-    bool evaluated{false};
 
     // The spells this follower can be told to cast or equip, sorted by name.
     // Lives on the view rather than in Snapshot because it is menu content, not

@@ -1,12 +1,8 @@
 // The in-game panel, drawn with ImGui via SKSE Menu Framework: the rule
-// editor, with the status column beside every rule, and the character
-// sheet -- inventory, magic, effects, summons, character, skills -- of a
-// follower and of the player.
-//
-// The status column came first, before editing, and the reason is worth
-// restating (docs/PLAN.md 3.7): authoring rules against an opaque engine
-// is guesswork without it. The engine records, per rule, exactly why that
-// rule did not fire -- this puts it on screen instead of in a log file.
+// editor and the character sheet -- inventory, magic, effects, summons,
+// character, skills -- of a follower and of the player. Why a rule did or
+// did not act is not a column here: a verdict lasted one tick and blanked
+// when the fight ended, so it goes to the events log (docs/EVENTS.md).
 //
 // Everything here runs on the render thread. It never touches an RE::Actor and
 // never reaches into live engine state -- ObserveFollowers() hands back a copy.
@@ -51,7 +47,7 @@ namespace
 
 namespace Im = ImGuiMCP;
 
-// --- status ----------------------------------------------------------------
+// --- set aside -------------------------------------------------------------
 
 bool TakesSpell(ft::ActionKind action);
 void SlashCell();
@@ -113,56 +109,8 @@ class DimText
     bool dim_;
 };
 
-// One short word for the Status column, and the colour to say it in.
-//
-// Deliberately terse. This column sits beside two editable cells in a narrow
-// table, and a sentence here pushed the Then cell off the row -- "true (action
-// used too recently)" is three times the width of "cooldown" and says the same
-// thing. The long wording is still one hover away.
-//
-// The four cooldown verdicts collapse to one word on purpose: which timer is
-// holding a rule back is a debugging detail, and the tooltip keeps it.
-//
-// Note what is NOT shown. Disabled, Unsupported, InvalidCondition and
-// NotReached are all decided BEFORE the condition is ever evaluated -- look at
-// the order of checks in Evaluate() -- so for those we genuinely do not know
-// whether the condition holds, and printing "false" would be inventing an
-// answer. They get their own word instead.
-struct Status
-{
-    const char *text;
-    Im::ImVec4 color;
-};
-
-// The colour of what needs seeing to: a broken rule, a bag past its
-// capacity.
+// The colour of what needs seeing to: a bag past its capacity.
 constexpr Im::ImVec4 kAlarm{0.95f, 0.45f, 0.40f, 1.0f};
-
-Status StatusFor(ft::Verdict v, ft::ActionKind action)
-{
-    constexpr Im::ImVec4 acted{0.55f, 0.90f, 0.55f, 1.0f}; // it happened
-    constexpr Im::ImVec4 quiet{0.55f, 0.55f, 0.58f, 1.0f}; // nothing to say
-    constexpr Im::ImVec4 held{0.85f, 0.75f, 0.40f, 1.0f};  // true, but blocked
-    constexpr Im::ImVec4 broken = kAlarm;                  // needs fixing
-
-    // The word is core's (Brief), beside the sentence the tooltip shows, so
-    // the two cannot disagree; only the colour is decided here.
-    const char *text = ft::Brief(v, action);
-    switch (v)
-    {
-    case ft::Verdict::Fired:
-        return {text, acted};
-    case ft::Verdict::ConditionFalse:
-    case ft::Verdict::Disabled:
-    case ft::Verdict::NotReached:
-        return {text, quiet};
-    case ft::Verdict::InvalidCondition:
-    case ft::Verdict::Unsupported:
-        return {text, broken};
-    default:
-        return {text, held};
-    }
-}
 
 // --- rule text -------------------------------------------------------------
 
@@ -1216,25 +1164,6 @@ std::string Lower(std::string_view text)
     return out;
 }
 
-// A tooltip reads as a sentence: the core's explanations are lowercase so
-// they can sit inside a log line, and get their capital here.
-std::string Sentence(std::string_view text)
-{
-    std::string out(text);
-    if (!out.empty())
-        out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
-    return out;
-}
-
-// The status cell's tooltip. The core's sentence, with the one number the
-// core does not have: how long the shout's cooldown has to run.
-std::string VerdictTooltip(ft::Verdict verdict, ft::ActionKind action, const FollowerView &view)
-{
-    if (verdict == ft::Verdict::Recovering && view.voiceRecovery > 0.0f)
-        return "Shout on cooldown (" + std::to_string(std::lround(view.voiceRecovery)) + " s)";
-    return Sentence(ft::Explain(verdict, action));
-}
-
 // The thing an action names, capitalised for a heading of its own:
 // "Weapon" under Equip, "Strongest soul gem" under Charge.
 std::string NounHeading(ft::ActionKind action)
@@ -2006,26 +1935,12 @@ void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
     }
 }
 
-// The widest word the Status column shows: every verdict's, for the
-// actions worded differently, measured off the words themselves.
-float StatusColumnWidth()
-{
-    float widest = 0.0f;
-    for (std::size_t v = 0; v <= static_cast<std::size_t>(ft::Verdict::NotReached); ++v)
-        for (const auto action : {ft::ActionKind::DrinkStrongest, ft::ActionKind::CastSpell, ft::ActionKind::UsePower,
-                                  ft::ActionKind::Shout, ft::ActionKind::UseScroll, ft::ActionKind::EquipWeapon,
-                                  ft::ActionKind::ApplyPoison, ft::ActionKind::ChargeSoulGem, ft::ActionKind::Attack})
-            widest = (std::max)(widest, TextWidth(ft::Brief(static_cast<ft::Verdict>(v), action)));
-    return widest + kCellPadX * 2.0f;
-}
-
 // The drawer an open rule reveals: its actions, one row each in the order
-// they are done, each its own menu; each action's own verdict; and up,
-// down and remove, as the rule table's Order column. A plus beneath for
-// one more. Set under the Then column -- its left edge on Then's border,
-// its right on the table's -- with Status and Order the parent's widths,
-// so its columns line up with the parent's and need no headings of their
-// own. Returns whether the rules changed.
+// they are done, each its own menu; and up, down and remove, as the rule
+// table's Order column. A plus beneath for one more. Set under the Then
+// column -- its left edge on Then's border, its right on the table's --
+// with Order the parent's width, so its columns line up with the parent's
+// and need no headings of their own. Returns whether the rules changed.
 bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView &view, float left, float right,
                        float spacing)
 {
@@ -2038,13 +1953,12 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
     // already sits on that piece's bottom border, so the drawer's own top
     // border lands on the same pixel unaided, and the pixel of clearance put
     // one line above the other instead of on it. Measured off a screenshot:
-    // the border under Action/Status/Order was two pixels where the same
+    // the border under Action/Order was two pixels where the same
     // row's border under On/#/Condition was one.
     Im::SetCursorScreenPos(Im::ImVec2(left, Im::GetCursorScreenPos().y));
 
     const float row = Im::GetFrameHeight();
     const float gutter = kCellPadX * 2.0f;
-    const float statusWidth = StatusColumnWidth();
     const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
     const float width = (std::max)(0.0f, right - left);
 
@@ -2054,16 +1968,10 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
     int removeAt = -1;
     const std::string id = std::to_string(view.id) + "/" + std::to_string(ruleIndex);
 
-    const auto *perAction =
-        ruleIndex < view.actionTrace.size() && view.actionTrace[ruleIndex].size() == rule.actions.size()
-            ? &view.actionTrace[ruleIndex]
-            : nullptr;
-
     constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
-    if (Im::BeginTable(("actions##" + id).c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
+    if (Im::BeginTable(("actions##" + id).c_str(), 2, flags, Im::ImVec2(width, 0.0f), 0.0f))
     {
         Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-        Im::TableSetupColumn("Status", Im::ImGuiTableColumnFlags_WidthFixed, statusWidth, 0);
         Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
 
         for (std::size_t a = 0; a < rule.actions.size(); ++a)
@@ -2076,20 +1984,6 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
                 changed = true;
 
             Im::TableSetColumnIndex(1);
-            Im::AlignTextToFramePadding();
-            if (!view.evaluated || !perAction)
-            {
-                // Not evaluated yet: an empty cell, not a placeholder.
-            }
-            else
-            {
-                const Status status = StatusFor((*perAction)[a], rule.actions[a].kind);
-                Im::TextColored(status.color, "%s", status.text);
-                if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", VerdictTooltip((*perAction)[a], rule.actions[a].kind, view).c_str());
-            }
-
-            Im::TableSetColumnIndex(2);
             {
                 const float group = row * 3.0f + kOrderGap * 2.0f;
                 const float cell = Im::GetContentRegionAvail().x;
@@ -2179,7 +2073,6 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     // click target now, so it needs no room for a button around the glyph.
     const float onWidth = (std::max)(TextWidth("On"), row * 0.4f) + gutter;
     const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
-    const float statusWidth = StatusColumnWidth();
     const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
 
     const auto border = Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f);
@@ -2211,7 +2104,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     bool changed = false;
     const auto beginPiece = [&]() {
         const std::string id = "rules##" + std::to_string(piece++);
-        if (!Im::BeginTable(id.c_str(), 6, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+        if (!Im::BeginTable(id.c_str(), 5, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
             return false;
         Im::TableSetupColumn("On", Im::ImGuiTableColumnFlags_WidthFixed, onWidth, 0);
         Im::TableSetupColumn("#", Im::ImGuiTableColumnFlags_WidthFixed, numWidth, 0);
@@ -2219,9 +2112,6 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // The wider share, because an action reads as a phrase ("Drink magicka
         // potion") where a condition is mostly short words and a number.
         Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.25f, 0);
-        // Fixed, not stretched: a stretched Status column grew with its longest
-        // verdict and ate the Then cell, which is what covered the action text.
-        Im::TableSetupColumn("Status", Im::ImGuiTableColumnFlags_WidthFixed, statusWidth, 0);
         Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
         if (piece == 1)
         {
@@ -2246,7 +2136,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             Im::SetCursorScreenPos(pos);
             Im::Text("On");
             int column = 1;
-            for (const char *label : {"#", "Condition", "Action", "Status", "Order"})
+            for (const char *label : {"#", "Condition", "Action", "Order"})
             {
                 Im::TableSetColumnIndex(column++);
                 Im::Text("%s", label);
@@ -2334,8 +2224,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             }
         }
 
-        // A rule that is off reads as off: its number, condition, action and
-        // status dim together, and the If and Then cells stop answering, so
+        // A rule that is off reads as off: its number, condition and action
+        // dim together, and the If and Then cells stop answering, so
         // it cannot be edited without turning it on. The switch itself and
         // the order and delete controls stay live: an off rule is still in
         // the list and can still be moved or removed. A rule set aside for
@@ -2435,27 +2325,11 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             Im::Text("%zu actions", rule.actions.size());
         }
 
-        Im::TableSetColumnIndex(4);
-        Im::AlignTextToFramePadding();
-        if (!view.evaluated)
-        {
-            // Not evaluated yet: an empty cell, not a placeholder.
-        }
-        else
-        {
-            const auto verdict = i < view.trace.size() ? view.trace[i] : ft::Verdict::NotReached;
-            const ft::ActionKind firstKind = rule.actions.front().kind;
-            const Status status = StatusFor(verdict, firstKind);
-            Im::TextColored(status.color, "%s", status.text);
-            if (Im::IsItemHovered(0))
-                Im::SetTooltip("%s", VerdictTooltip(verdict, firstKind, view).c_str());
-        }
-
         EndDimmed();
 
         // Order is semantics, not decoration: rules are first-match-wins, so
         // moving a row changes which rule shadows which.
-        Im::TableSetColumnIndex(5);
+        Im::TableSetColumnIndex(4);
         {
             // Centre the three as a group, using the SAME gap the layout below
             // actually uses. Measuring with ItemSpacing while laying out with

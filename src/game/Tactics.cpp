@@ -331,7 +331,6 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     // cached until something invalidates it.
     v.spells = ScanCastableSpells(actor);
     v.consumables = ScanCarriedConsumables(actor);
-    v.voiceRecovery = VoiceRecoveryOf(actor);
     for (auto *other : CollectManagedFollowers())
     {
         if (other && other != actor)
@@ -436,14 +435,12 @@ void PublishIdle(RE::Actor *actor, double now, bool inCombat)
 
     FollowerView v;
     v.snapshot = snapshot;
-    v.evaluated = false;
     v.inCombat = inCombat;
     FillDisplayFields(actor, v);
     PublishOne(std::move(v));
 }
 
-void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace,
-                 const ft::ActionTrace &actionTrace);
+void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot);
 
 void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 {
@@ -497,14 +494,13 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     // making them per-follower.
     const ft::RuleSet rules = GetRules(id);
     ft::Trace trace;
-    ft::ActionTrace actionTrace;
-    const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
+    const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace);
 
     // The cost measured is the snapshot and the evaluation -- the rules'
     // own -- not the panel's sheets, which PublishView builds after.
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
-    PublishView(actor, snapshot, trace, actionTrace);
+    PublishView(actor, snapshot);
 
     if (decision.Fired())
     {
@@ -551,19 +547,14 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     }
 }
 
-// Replace this follower's entry in the observable view. Called for every
-// follower every tick, whether or not a rule fired -- the debug column is most
-// useful precisely when nothing is firing.
-void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot, const ft::Trace &trace,
-                 const ft::ActionTrace &actionTrace)
+// Replace this follower's entry in the observable view, every tick the
+// follower is evaluated, whether or not a rule fired.
+void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot)
 {
     FollowerView v;
     v.snapshot = snapshot;
-    v.trace = trace;
-    v.actionTrace = actionTrace;
-    v.evaluated = true;
-    // Evaluated is no longer the same as fighting: the Combat end lists
-    // run on after the fight.
+    // Evaluated is not the same as fighting: the Combat end lists run on
+    // after the fight.
     v.inCombat = snapshot.inCombat;
     FillDisplayFields(actor, v);
     PublishOne(std::move(v));
@@ -723,7 +714,7 @@ void Tick()
 
         // Both switches must be on. A follower turned off still appears in the
         // panel, and still reports whether they are fighting -- they are simply
-        // not evaluated, which is what the empty Status column then says.
+        // not evaluated.
         // Bleeding out, nothing can be performed: no potion, no cast, and the
         // 12:20 run fired a cast rule four times at negative health. Hold
         // evaluation until they are up again, and say so once.

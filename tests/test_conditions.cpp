@@ -427,7 +427,7 @@ TEST_CASE("a named soul gem is spent only while carried", "[evaluator]")
 
 TEST_CASE("every verdict has a word, plain and for each action", "[vocabulary]")
 {
-    // The status column prints these; a verdict added without one would
+    // The log prints these; a verdict added without one would
     // show as "?". NotReached is the last, so the loop knows where to stop.
     for (int v = 0; v <= static_cast<int>(Verdict::NotReached); ++v)
     {
