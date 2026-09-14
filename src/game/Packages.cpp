@@ -181,6 +181,13 @@ struct Slot
     std::atomic<std::uint32_t> spellId{0};
     std::atomic<std::uint32_t> shoutId{0};
     bool extended = false;
+    // Whom the record was aimed at when armed (the holder, for a self-cast)
+    // and the rule that asked for it (NoteRule; -1 until then): what the
+    // release reports as rule.resolved. Kept as an id because the handle
+    // above may not outlive the target.
+    std::uint32_t targetId = 0;
+    int ruleIndex = -1;
+    std::string ruleName;
 
     [[nodiscard]] bool Busy() const noexcept
     {
@@ -824,6 +831,37 @@ void SpendScroll(Slot &slot, RE::Actor *actor)
     slot.scrollsBefore = 0;
 }
 
+// What came of a requested cast, as the rule that asked for it reads it:
+// cast or not, whether the AI picked the package up, and the release's own
+// reason. Before Release, which forgets all of it. `holder` is null when the
+// follower has gone, and their id is given instead.
+void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId, const char *reason, double seconds)
+{
+    const bool cast = slot.fired.load(std::memory_order_relaxed);
+    const char *kind = "spell";
+    if (slot.wrapper)
+        kind = slot.power ? "power" : "shout";
+    else if (RE::TESForm::LookupByID<RE::ScrollItem>(slot.spell))
+        kind = "scroll";
+
+    std::vector<log::Field> fields;
+    if (!holder)
+        fields.emplace_back("followerId", log::Id(holderId));
+    fields.emplace_back("ruleIndex", slot.ruleIndex);
+    fields.emplace_back("ruleName", slot.ruleName);
+    fields.emplace_back("kind", kind);
+    log::AppendForm(fields, "formId", "formName", slot.spell);
+    log::AppendActor(fields, "targetFormId", "targetBaseFormId", "targetName", slot.targetId);
+    fields.emplace_back("outcome", cast ? "cast" : "not-cast");
+    fields.emplace_back("pickedUp", slot.seenRunning);
+    fields.emplace_back("reason", reason);
+    fields.emplace_back("durationS", seconds);
+    log::packages.event(log::Level::Info, "rule.resolved", holder, fields,
+                        "{} rule {} \"{}\": {} {} {} -- {}, after {:.1f} s",
+                        holder ? log::NameOf(holder) : log::Id(holderId), slot.ruleIndex, slot.ruleName, kind,
+                        log::NameOf(RE::TESForm::LookupByID(slot.spell)), cast ? "cast" : "not cast", reason, seconds);
+}
+
 void Release(Slot &slot)
 {
     // The record comes off the stack it was put on, if it was, while the
@@ -863,6 +901,9 @@ void Release(Slot &slot)
     slot.extended = false;
     slot.seenRunning = false;
     slot.streaming = false;
+    slot.targetId = 0;
+    slot.ruleIndex = -1;
+    slot.ruleName.clear();
 }
 
 } // namespace
@@ -1032,6 +1073,7 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
 
     SetPackageTarget(slot.package, target);
     slot.target = target ? target->GetHandle() : RE::ActorHandle{};
+    slot.targetId = target ? target->GetFormID() : actor->GetFormID();
 
     // Both hands or one: set on every request, since the last lease may have
     // left it either way.
@@ -1171,6 +1213,7 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
 
     SetPackageTarget(slot.package, target);
     slot.target = target ? target->GetHandle() : RE::ActorHandle{};
+    slot.targetId = target ? target->GetFormID() : actor->GetFormID();
     slot.sustained = false;
     log::packages.info("{}: {:08X} voices {:08X} at {}", log::NameOf(actor), PackageId(slot), formID,
                        target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
@@ -1216,7 +1259,26 @@ void ResetPackages()
         slot.fired.store(false, std::memory_order_relaxed);
         slot.stopped.store(false, std::memory_order_relaxed);
         slot.begun.store(false, std::memory_order_relaxed);
+        slot.targetId = 0;
+        slot.ruleIndex = -1;
+        slot.ruleName.clear();
     });
+}
+
+void NoteRule(std::uint32_t holderId, int ruleIndex, std::string_view ruleName)
+{
+    auto *kit = KitOf(holderId);
+    if (!kit)
+        return;
+    for (Slot *slot : {&kit->spell, &kit->voice})
+    {
+        if (slot->Busy())
+        {
+            slot->ruleIndex = ruleIndex;
+            slot->ruleName = ruleName;
+            return;
+        }
+    }
 }
 
 void ReleaseAllLeases(const char *why)
@@ -1224,8 +1286,12 @@ void ReleaseAllLeases(const char *why)
     ForEachSlot([why](Slot &slot) {
         if (!slot.Busy())
             return;
-        log::packages.info("{:08X} held by {:08X} released after {:.1f} s: {}", PackageId(slot), slot.lease->FormID(),
-                           TacticsSeconds() - slot.armedAt, why);
+        {
+            const auto holder = slot.lease->Actor();
+            ReportResolved(slot, holder.get(), slot.lease->FormID(), why, TacticsSeconds() - slot.armedAt);
+        }
+        log::packages.debug("{:08X} held by {:08X} released after {:.1f} s: {}", PackageId(slot), slot.lease->FormID(),
+                            TacticsSeconds() - slot.armedAt, why);
         Release(slot);
     });
 }
@@ -1257,7 +1323,8 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         {
             // Unloaded or gone. The lease's destructor finds no actor and
             // clears nothing; the sweep above catches them if they come back.
-            log::packages.info("{:08X} holder vanished -- released", PackageId(slot));
+            ReportResolved(slot, nullptr, slot.lease->FormID(), "holder vanished", now - slot.armedAt);
+            log::packages.debug("{:08X} holder vanished -- released", PackageId(slot));
             Release(slot);
             return;
         }
@@ -1317,7 +1384,9 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
 
         if (why)
         {
-            log::packages.info("{} releases {:08X} after {:.1f} s: {}", name, PackageId(slot), now - slot.armedAt, why);
+            ReportResolved(slot, actor.get(), actor->GetFormID(), why, now - slot.armedAt);
+            log::packages.debug("{} releases {:08X} after {:.1f} s: {}", name, PackageId(slot), now - slot.armedAt,
+                                why);
             Release(slot);
         }
     });

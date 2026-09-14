@@ -77,6 +77,7 @@
 //   that follows, or when the target dies, or at a deadline.
 
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 namespace RE
@@ -159,6 +160,11 @@ enum class CastRequest : std::uint8_t
 // as for RequestCast. The lease ends on the voice's fire event for our
 // shout, or at the deadline.
 [[nodiscard]] CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId);
+
+// The rule a follower's armed request is for, so that its release can say
+// what came of it (rule.resolved). Called once RequestCast or RequestShout
+// has armed one; a follower holds at most one record, found by their id.
+void NoteRule(std::uint32_t holderId, int ruleIndex, std::string_view ruleName);
 
 // Called every tick from the game thread. Watches held records: reports when
 // the AI picks our package up, and releases the record once the cast has

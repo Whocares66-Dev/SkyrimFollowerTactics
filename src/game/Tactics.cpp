@@ -537,6 +537,10 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
         {
             const auto &step = *decision.step;
             const auto result = Execute(step.action, step.target, actor);
+            // A requested cast's outcome comes when its package is released,
+            // and names the rule that asked for it.
+            if (result == ActionResult::Requested)
+                NoteRule(actor->GetFormID(), decision.ruleIndex, label);
 
             // Whom the condition bound and whom the action went at, by
             // reference and base, and the thing it used: the potion a policy
