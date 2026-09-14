@@ -2,14 +2,14 @@
 
 Two channels, four levels, and one call that writes both. Built 2026-09-09; not yet verified in play.
 
-**Being replaced (2026-09-14):** `docs/EVENTS.md` is the design the events file is moving to -- game events only, written whatever the level, the last 1,000 held in memory, a pair of files per session with the previous one archived. What follows describes the code as it stands until that is built, when the catalogue below gives way to EVENTS.md's.
+**Since 2026-09-14 the events file holds game events only**, written whatever the level, and a game event is also kept in memory and archived with its session. `docs/EVENTS.md` is which events there are, what each carries, and how the files are kept; this is the machinery: the two channels, the levels, the envelope, and how to add a call site.
 
 Before it, every `logger::` call in `src/game` wrote prose at `info` (the level was hardcoded in `plugin.cpp`, so nothing was ever logged at `debug` — nothing would have shown), with the follower's name as a free interpolated `{}` and the module as a string prefix somebody typed (`"tactics: "`, `"packages: "`, `"pins: "`, and on most lines nothing at all). That was fine to read live and bad to query: no field to `grep` on, and a one-time byte-level calibration probe sat in the same bucket as "FIRED rule 0 -> performed."
 
 ## Two channels
 
 - **`FollowerTactics.log`** — prose, for a human tailing it while playing. Still the thing every doc's play-test evidence quotes.
-- **`FollowerTactics.events.jsonl`** — beside it. One JSON object per line, for the events worth querying after the fact: state changes, not narration. Not every call site is here — the calibration dumps in `Packages.cpp` and the per-tick sensor dumps in `Sensors.cpp` have no query value in either format and are prose-only, at `debug`.
+- **`FollowerTactics.events.jsonl`** — beside it. One JSON object per line: the game events (`docs/EVENTS.md`), what tactics did to and saw of a follower, whatever the level. Everything else — a follower's cast records, forms, hooks, the profile, the panel, the tick's cost, the calibration and sensor dumps — is prose only.
 
 Both come out of the same `event()` call at the point the event happens; nobody hand-maintains two logs of the same fact.
 
@@ -37,7 +37,7 @@ level  = info      ; error | warn | info | debug
 events = true      ; the .jsonl sidecar
 ```
 
-Every value in the shipped file is its default, so deleting the file changes nothing. The level filters **both** channels: `level = warn` means warnings and errors in the prose log and in the sidecar alike.
+Deleting the file gives the defaults: `info`, and the events file on. The level filters the prose log only: `level = warn` means warnings and errors in `FollowerTactics.log`, and every game event still in the events file.
 
 | level | rule | examples |
 |---|---|---|
@@ -49,17 +49,19 @@ Every value in the shipped file is its default, so deleting the file changes not
 Two reclassifications the levels forced, both of which had been hiding something:
 
 - `Profiles.cpp`, "the saved tactics could not be read — starting with none", was `error` and is `warn`. It recovers cleanly to an empty rule list, which is the `warn` definition.
-- Every probe line in `Packages.cpp` ending "cast rules stay off" was `info` and is now `error` with a `packages.unavailable` event. The feature is off until something changes; reporting that at `info` beside a hex dump is how it could turn itself off unnoticed.
+- Every probe line in `Packages.cpp` ending "cast rules stay off" was `info` and is now `error`. The feature is off until something changes; reporting that at `info` beside a hex dump is how it could turn itself off unnoticed.
 
 ## The envelope
 
 Every `.jsonl` line carries the same five header fields, then the follower it is about, then the event's own:
 
 ```json
-{"ts":"2026-09-09T14:02:11.400Z","level":"info","plugin":"FollowerTactics","version":"0.1.0",
+{"ts":"2026-09-14T19:53:11.400Z","level":"info","plugin":"FollowerTactics","version":"0.1.0",
  "event":"rule.fired","followerId":"0xFF000DE0","followerName":"Lydia",
- "ruleIndex":0,"ruleName":"emergency heal","action":"drink-strongest",
- "targetFormId":"0xFF000DE0","outcome":"performed","healthPct":0.49}
+ "ruleIndex":0,"ruleName":"emergency heal","subjectKind":"self",
+ "subjectFormId":"0xFF000DE0","subjectBaseFormId":"0x000A2C94","subjectName":"Lydia",
+ "action":"drink-strongest","targetFormId":"0xFF000DE0","targetBaseFormId":"0x000A2C94","targetName":"Lydia",
+ "outcome":"performed","healthPct":0.49}
 ```
 
 `ts` is UTC with milliseconds, so lines sort across a DST boundary and across machines. `version` is `CMakeLists.txt`'s `project(... VERSION)`, so a `.jsonl` attached to a bug report says which build wrote it. Every form id is a string in one spelling — `0x` and eight upper-case digits — so a query keys on one form of it; `followerId`/`followerName` follow `PROFILES.md`'s convention, the id to key on and the name for the human reading the output, never read back.
@@ -68,44 +70,9 @@ There is deliberately no log-schema-version field. That problem belongs to the c
 
 ## Events
 
-`error` and `warn` events carry that level; the rest are `info` unless noted.
+Which events there are, what each carries, and when they are written is `docs/EVENTS.md`. A game event carries its level in the envelope -- `warn` for `rule.actionFailed` and `session.ceiling`, `debug` for `rule.verdict`, `info` for the rest -- and the level decides its prose line and nothing about the events file.
 
-| event | module | beyond the envelope |
-|---|---|---|
-| `plugin.loaded` | plugin | (none: the packages, the tick, the panel and the hooks are up) |
-| `tactics.installed` | tactics | `tickMs` |
-| `tactics.switched` | tactics | `enabled` |
-| `tactics.cost` | tactics | `evaluations`, `avgUs`, `maxUs` |
-| `followers.controlled` | tactics | `count`, `followers[]` |
-| `combat.entered` / `combat.left` | tactics | `allies[]`, `enemies[]` (entered only) |
-| `follower.down` / `follower.up` | tactics | — |
-| `rule.fired` | tactics | `ruleIndex`, `ruleName`, `action`, `targetFormId`, `outcome`, `healthPct` |
-| `rule.actionFailed` | tactics | `ruleIndex`, `ruleName`, `action`, `reason` — **warn** |
-| `poison.applied` | actions | `poisonFormId`, `poisonName`, `weaponFormId`, `weaponName` |
-| `soul.spent` | actions | `gemFormId`, `soul`, `weaponFormId`, `chargeBefore`, `chargeAfter`, `chargeMax` |
-| `pin.applied` / `pin.released` / `pin.restored` | pins | `itemFormId`, `itemName`, `hand`, `reason` |
-| `pin.refused` | pins | `itemFormId`, `hand`, `reason`, and `refusedFormId` when the engine's own equip was blocked — **warn** |
-| `ban.applied` / `ban.released` / `ban.enforced` | pins | `itemFormId`, `itemName` |
-| `ban.refused` | pins | `itemFormId`, `inCombat` — **warn** |
-| `equip.applied` / `equip.removed` | pins | `itemFormId`, `hand`, `pinned` |
-| `unequip.applied` | pins | `itemFormId`, `itemName`, `hand` — the player's page, which touches no pin or ban |
-| `dualWield.allowed` | pins | `styleFormId`, `copyFormId` |
-| `package.armed` | packages | `packageFormId`, `formId`, `holderFormId`, `kind`, `targetFormId`, `durationS` |
-| `package.fired` | packages | `packageFormId`, `formId`, `holderFormId`, `kind` |
-| `package.released` | packages | `packageFormId`, `holderFormId`, `durationS`, `reason` |
-| `packages.ready` | packages | (none: the input layout was found at load) |
-| `packages.made` | packages | `castPackageFormId`, `shoutPackageFormId`, `wrapperFormId` — a follower's records, the first time the tick sees them |
-| `packages.unavailable` / `packages.failed` | packages | `reason` — **error**; the first turns casting off for everyone, the second for one follower |
-| `scroll.spent` | packages | `formId`, `by`, `carriedBefore`, `carriedAfter` |
-| `profile.loaded` / `profile.saved` / `profile.claimed` | profiles | `recordCount`, `ruleCount`, `pinCount`, `enabled` |
-| `profile.entryDropped` | profiles, pins | `kind` (`rule`/`pin`/`ban`/`record`), `label`, `reason` — **warn** |
-| `profile.newerSchema` | profiles | `key`, `schema`, `known` — **warn** |
-| `profile.saveFailed` | profiles | `key`, `reason` — **error** |
-| `form.error` | forms | `requestedFormId`, `kind`, `reason` — **error** |
-| `install.failed` | pins, hits, profiles | `what`, `reason` — **error**, except the hit sink, which degrades to "Attacked by is never true" |
-| `ui.installed` / `ui.unavailable` | ui | `reason` |
-
-Diagnostic-only call sites do not get an event name; they are prose-only at `debug`. Two events are the exception that proves it: `package.otherCast` and `package.otherVoice`, at `debug`, are the same line as `package.fired` for a cast that turned out to be the follower's own — a `.jsonl` at `debug` can then tell "ours fired" from "something fired" without parsing prose.
+A diagnostic has no event name: it is a prose line, at the level the table above gives it. A cast of ours leaving a hand is `info` and the follower's own is `debug`, one line through `Module::at`.
 
 ## Where the code is
 

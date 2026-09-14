@@ -1,6 +1,6 @@
 # Game events
 
-What tactics record about the game: which rules were weighed and why they did or did not act, whom a rule was about and whom it aimed at, what came of a cast, and what happened to a follower's pins and bans. Designed 2026-09-14; **not yet built**. `docs/LOGGING.md` is the machinery underneath (the prose log, the levels, the JSON envelope); this is what goes through it as a game event, where the events are kept, and how the files are managed.
+What tactics record about the game: which rules were weighed and why they did or did not act, whom a rule was about and whom it aimed at, what came of a cast, and what happened to a follower's pins and bans. Built 2026-09-14; **not yet verified in play** (the list at the end). `docs/LOGGING.md` is the machinery underneath (the prose log, the levels, the JSON envelope); this is what goes through it as a game event, where the events are kept, and how the files are managed.
 
 ## Why
 
@@ -16,7 +16,7 @@ A game event is one `Module::event()` call, and it goes to three places:
 - **`FollowerTactics.events.jsonl`**, as a JSON line, whenever `events = true`, **whatever `level` says**. Turning the prose log down to warnings must not erase the record of a fight.
 - **Memory**, always: the last 1,000 events, for the panel.
 
-Everything that is not a game event -- the plugin loading, the package pool, forms made at load, hooks installing, the profile's save and load, the panel, the tick's cost -- is prose in `FollowerTactics.log` only.
+Everything that is not a game event -- the plugin loading, a follower's cast records and the forms they are made of, hooks installing, the profile's save and load, the panel, the tick's cost -- is prose in `FollowerTactics.log` only.
 
 ## The panel reads memory, not the file
 
@@ -65,14 +65,16 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 - **Every event about a follower** carries `followerId` and `followerName` first, as the envelope always has.
 - **An actor** a rule was about or aimed at: the reference FormID, the base FormID, and the display name. The base is `Actor::GetTemplateBase()`, the leveled template's base where there is one, else `GetActorBase()`; which of the two matches the record in the plugin is to be checked on a leveled bandit against xEdit. Both are captured when the rule acts, since the actor may be unloaded by the time an outcome arrives.
 - **An item or a spell**: the base FormID and the name, and for an item the variant as one string -- `any`, `plain`, or for example `tempered 1.20; enchanted 0x0001A2B3@25/60/0; named "Frost Fang"` -- from `VariantText` in core. An item in a bag has no reference and no FormID of its own; a copy is told from another by its variant (`docs/UNIQUE.md`).
+- **The item in a pin or ban event** is `itemFormId` and `itemName`, with `hand` -- `[L]`, `[R]`, `[LR]`, or empty for armour, ammunition, the voice and a ban -- and `variant`.
 - **A field's key is a string literal.** A helper that appends an actor's three fields takes its three keys as arguments, `AppendActor(out, "subjectFormId", "subjectBaseFormId", "subjectName", id)`; a key built at run time would dangle.
 
 ## The catalogue
 
 | event | when | beyond the follower |
 |---|---|---|
-| `session.started` | the first line of every session | `version` |
-| `game.loaded` | a save loaded or a new game begun | — |
+| `session.started` | the first line of every session | — (its `ts` is the session's start) |
+| `session.ceiling` (warn) | the events file has taken its 64 MB for the session; nothing more is written to it | `megabytes` |
+| `game.loaded` | a save loaded or a new game begun | `newGame` |
 | `combat.entered` / `combat.left` | the follower's fight begins or ends | `allies[]`, `enemies[]` (entered) |
 | `follower.down` / `follower.up` | bleeding out, and up again | — |
 | `followers.controlled` | who is under tactics changes | `count`, `followers[]` |
@@ -86,11 +88,11 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 | `scroll.spent` | a scroll read | the scroll, `by`, carried before and after |
 | `equip.applied` | the panel readies a thing without pinning it | the item, `hand`, the variant |
 | `pin.applied` / `pin.released` | a pin made or let go | the item, `hand`, the variant, `by`, `reason` |
-| `pin.overridden` | a rule's pin, or its None, in a fight displaces a pin the follower had before the fight | the displaced item, `hand`, the variant, the rule's item |
-| `ban.overridden` | a rule pins a banned item | the item, the variant, `inCombat` |
+| `pin.overridden` | a rule's pin, or its None, in a fight displaces a pin the follower had before the fight | the displaced item, `hand`, the variant, `by: rule`, `overriddenByFormId` and `overriddenByName` (`0x00000000` and "nothing: the AI decides" for a None) |
+| `ban.overridden` | a rule pins a banned item | the item, `hand`, the variant, `by: rule`, `inCombat` |
 | `pin.restored` | the fight is over and a pin from before it is pinned again, and put back on | the item, `hand`, the variant, `by: fight-end` |
-| `pin.enforced` | a pinned thing was found off and is put back: once per violation | the item, `hand`, the variant, `displacedByFormId` |
-| `ban.enforced` | a banned thing was found on and is taken off: once per violation | the item, the variant, the `hand` it was in, `by` |
+| `pin.enforced` | a pinned thing was found off and is put back: once per violation | the item, `hand`, the variant, `displacedByFormId` and `displacedByName` (what the voice or the pinned hand held instead; nothing for armour), `reason` |
+| `ban.enforced` | a banned thing was found on and is taken off: once per violation | the item, the variant, the `hand` it was in, and `by: fight-end` when a rule's pin on it has just gone with the fight |
 | `ban.applied` / `ban.released` | a ban made or lifted | the item, the variant, `by` |
 
 **`by`** says who did it: `player` (the panel), `rule`, `fight-end` (the after-fight restore), `save` (taken back from the save), `game` (the thing is no longer carried).
@@ -105,7 +107,7 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 
 ### Not game events
 
-Prose in `FollowerTactics.log` only: the plugin loading; the tick installing and its cost; the package pool, its slots, and a package armed, fired or released; forms made at load; a hook that failed to install; the profile's save, load and dropped entries; the panel installing; the player's own page putting something away; and a pin or ban **refused**, whether by the equip detour stopping the engine before it broke one or by a spell above the follower's skill. A refusal changes nothing on the follower; a rule's refused pin is reported by `rule.actionFailed`.
+Prose in `FollowerTactics.log` only: the plugin loading; the tick installing and its cost; a follower's cast records being made, and a package armed, fired or released; the forms they are made of; a hook that failed to install; the profile's save, load and dropped entries; the panel installing; the player's own page putting something away; and a pin or ban **refused**, whether by the equip detour stopping the engine before it broke one or by a spell above the follower's skill. A refusal changes nothing on the follower; a rule's refused pin is reported by `rule.actionFailed`.
 
 ## How the harder ones are known
 
@@ -113,7 +115,7 @@ Prose in `FollowerTactics.log` only: the plugin loading; the tick installing and
 
 **A verdict reported when it changes.** Each follower keeps the verdict last reported for each rule. After an evaluation, a rule whose verdict is different is reported, with three exceptions: "not reached" says nothing and keeps the last value; "fired" updates it silently, since `rule.fired` says so; and the farewell evaluation after a fight is skipped, since every standing rule turns false on it. The record starts again when a fight begins and when the rules change. Which rules to report is a pure function in core, tested; the verdict's wire name sits beside `ToString` in `Evaluator.cpp`.
 
-**A cast's outcome.** A cast, scroll, shout or power is a request: a package on the follower's stack, released later. When the request is armed, the rule's index and name are written onto the follower's slot, and where the slot is released -- the tick's release, a holder gone, a save -- `rule.resolved` is emitted with whether the spell was cast, whether the AI picked the package up, and the release reason. A load resets the slots and emits nothing: the requests belonged to the game before it. There is no `interrupted` yet: the begin-cast flag is set by any cast the follower begins, theirs as well as ours, so a cast that began and never fired is not yet told from one that never began; that waits on tying the flag to our spell and checking it in play.
+**A cast's outcome.** A cast, scroll, shout or power is a request: a package on the follower's stack, released later. When the request is armed, the rule's index and name are written onto the follower's cast record, and where the record is released -- the tick's release, a holder gone, a save -- `rule.resolved` is emitted with whether the spell was cast, whether the AI picked the package up, and the release reason. A load resets the records and emits nothing: the requests belonged to the game before it. There is no `interrupted` yet: the begin-cast flag is set by any cast the follower begins, theirs as well as ours, so a cast that began and never fired is not yet told from one that never began; that waits on tying the flag to our spell and checking it in play.
 
 **A rule overriding the player.** When a rule pins in a fight, what its pin displaces is checked against the pins the follower had when the fight began: a displaced pin found there is `pin.overridden`, anything else `pin.released`. A rule's None does the same. A rule pinning a banned item is `ban.overridden`. A ban made in the panel on a pinned item lets the pin go, and now says so.
 

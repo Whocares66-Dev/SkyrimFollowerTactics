@@ -168,7 +168,10 @@ in `docs/PLAN.md`.
 
 ## Harness and diagnostics
 
-- **Structured log — built 2026-09-09, not yet verified in play.** `docs/LOGGING.md` is what it does. What is left is a session with the game up: that the ini is found under MO2's virtual file system, that `.events.jsonl` lands beside the log, and that a fight's lines read the way the level table says they should at `info` and at `debug`.
+- **Structured log — built 2026-09-09; game events, the in-memory list and the session archive built 2026-09-14; none of it verified in play.** `docs/LOGGING.md` is the machinery, `docs/EVENTS.md` the events and its own "To verify in play" list. What is left is a session with the game up: that the ini is found under MO2's virtual file system, that the previous session's pair is archived and the new one opens, and each item on EVENTS.md's list.
+- **The Logs tab** that reads the in-memory events (`log::RecentEvents`): not built. `docs/EVENTS.md` says why it reads memory rather than the file.
+- **A cast's `interrupted` outcome** (`docs/EVENTS.md`, "How the harder ones are known"): needs the begin-cast flag tied to our spell, and checking in play.
+- **The shipped ini's `level = debug`** contradicts the default it documents (`info`); left as it is while the dist zip is being tested.
 - **Recruiting from the console.** `cqf DialogueFollower SetFollower <refid>`
   should fill the alias without the dialogue; unverified.
 - **Package tests.** The cast records and leases have no unit tests because they
