@@ -3820,8 +3820,8 @@ namespace
 // (ActiveEffect::AdjustForPerks, id 34053, read 2026-09-13): the record's
 // duration, then the caster's Mod Spell Duration entries given the spell
 // and the target, then the target's Mod Incoming Spell Duration given the
-// spell; less the time run. Whatever else moves a duration -- a dual cast
-// is the likeliest -- is not read, and shows as Other.
+// spell; less the time run. Whatever else moves a duration is not read, and
+// shows as Other.
 ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
 {
     ft::Breakdown b;
@@ -3830,6 +3830,16 @@ ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
     b.unit = " s";
     b.totalLabel = "Remaining";
     ft::Start(b, "Base", static_cast<float>(effect.effect->effectItem.duration));
+    // A dual cast: fMagicDualCastingEffectMult, for an effect the engine
+    // flagged dual whose record lets power move its duration, unless the
+    // spell forbids dual-cast changes. The names are CommonLib's and the
+    // Creation Kit's, not read off the engine, and no actor value moves
+    // the factor; where the guess is wrong, Other carries the gap.
+    const auto *base = effect.effect->baseEffect;
+    if (effect.flags.any(RE::ActiveEffect::Flag::kDual) && base &&
+        base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kPowerAffectsDuration) && effect.spell &&
+        !effect.spell->GetNoDualCastModifications())
+        ft::Multiply(b, "Dual cast", GameSetting("fMagicDualCastingEffectMult", 2.2f));
     auto *target = const_cast<RE::Actor *>(effect.GetTargetActor());
     if (const auto caster = effect.GetCasterActor())
         AddEntryPointLines(b, caster.get(), RE::BGSEntryPoint::ENTRY_POINT::kModSpellDuration, {effect.spell, target});
