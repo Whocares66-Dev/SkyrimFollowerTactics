@@ -1,9 +1,63 @@
 #include "core/Loadout.h"
 
+#include "core/LogEvent.h"
+
 #include <algorithm>
+#include <array>
+#include <charconv>
+#include <string>
+#include <system_error>
+#include <vector>
 
 namespace ft
 {
+namespace
+{
+
+// A number as the log writes it: the shortest spelling that reads back as
+// the same float, or with a fixed number of places.
+std::string Number(float value, std::optional<int> places = std::nullopt)
+{
+    std::array<char, 32> buffer{};
+    char *const first = buffer.data();
+    char *const last = first + buffer.size();
+    const std::to_chars_result result = places ? std::to_chars(first, last, value, std::chars_format::fixed, *places)
+                                               : std::to_chars(first, last, value);
+    return result.ec == std::errc{} ? std::string(first, result.ptr) : std::string{};
+}
+
+} // namespace
+
+std::string VariantText(const std::optional<ItemVariant> &variant)
+{
+    if (!variant)
+        return "any";
+    if (variant->IsPlain())
+        return "plain";
+
+    std::vector<std::string> parts;
+    if (variant->tempering != 0.0f)
+        parts.push_back("tempered " + Number(variant->tempering, 2));
+    if (!variant->enchantment.empty())
+    {
+        std::string enchanted = "enchanted ";
+        for (const EnchantEffect &effect : variant->enchantment)
+        {
+            if (&effect != &variant->enchantment.front())
+                enchanted += ", ";
+            enchanted += log::Id(effect.effect) + '@' + Number(effect.magnitude) + '/' +
+                         std::to_string(effect.duration) + '/' + std::to_string(effect.area);
+        }
+        parts.push_back(std::move(enchanted));
+    }
+    if (!variant->label.empty())
+        parts.push_back("named \"" + variant->label + '"');
+
+    std::string text;
+    for (const std::string &part : parts)
+        text += (text.empty() ? "" : "; ") + part;
+    return text;
+}
 
 Hand HandsFor(Grip grip, Hand requested) noexcept
 {

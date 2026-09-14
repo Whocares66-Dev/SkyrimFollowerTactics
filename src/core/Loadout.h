@@ -192,6 +192,12 @@ struct ItemVariant
            a.label == b.label;
 }
 
+// A variant as one field of an event: "any" for the form, whichever copy;
+// "plain" for a copy nothing was done to; else its parts, as in
+// `tempered 1.20; enchanted 0x0003A9AD@20/1/0; named "Frost Fang"`, each
+// effect as its form, magnitude, duration and area.
+[[nodiscard]] std::string VariantText(const std::optional<ItemVariant> &variant);
+
 // The planner's question: the same variant, or the form -- no variant --
 // on either side, which every variant of the form answers to.
 [[nodiscard]] inline bool SameVariant(const std::optional<ItemVariant> &a, const std::optional<ItemVariant> &b) noexcept

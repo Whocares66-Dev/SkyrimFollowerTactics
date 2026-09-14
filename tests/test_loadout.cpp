@@ -907,6 +907,28 @@ TEST_CASE("a variant is what the player chose: tempering, an enchantment, a labe
     CHECK(IsBanned(bans, whichever));
 }
 
+TEST_CASE("a variant reads as one field of an event", "[pins]")
+{
+    CHECK(VariantText(std::nullopt) == "any");
+    CHECK(VariantText(ItemVariant{}) == "plain");
+
+    ItemVariant fang;
+    fang.tempering = 1.2f;
+    fang.enchantment = kFrost;
+    fang.label = "Frost Fang";
+    CHECK(VariantText(fang) == R"(tempered 1.20; enchanted 0x0003A9AD@20/1/0; named "Frost Fang")");
+
+    // Effects in the order the enchantment holds them; a magnitude as short
+    // as it reads back.
+    ItemVariant twice;
+    twice.enchantment = {{0x3A9AD, 20.0f, 1, 0}, {0x4605A, 12.5f, 0, 5}};
+    CHECK(VariantText(twice) == "enchanted 0x0003A9AD@20/1/0, 0x0004605A@12.5/0/5");
+
+    ItemVariant tempered;
+    tempered.tempering = 1.5f;
+    CHECK(VariantText(tempered) == "tempered 1.50");
+}
+
 TEST_CASE("an enchantment is its effects at their strengths, in any order", "[pins]")
 {
     // Resist Fire 25% and Resist Fire 50% are two enchantments the game
