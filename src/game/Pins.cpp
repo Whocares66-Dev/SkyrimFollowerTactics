@@ -541,6 +541,7 @@ void TakeOffEverywhere(RE::Actor *actor, RE::TESForm *form, const Holdable &desc
 void ApplyToBook(RE::Actor *actor, std::vector<Pin> &pins, PinRequest request, const Holdable &incoming, Hand hands,
                  bool moving, bool dualWield)
 {
+    const char *const why = request == PinRequest::Ban ? "banned" : "to make room";
     for (const Displaced &gone : ApplyRequest(pins, request, incoming, hands, moving, dualWield))
     {
         auto *held = RE::TESForm::LookupByID(gone.form);
@@ -548,8 +549,8 @@ void ApplyToBook(RE::Actor *actor, std::vector<Pin> &pins, PinRequest request, c
                         {{"itemFormId", log::Id(gone.form)},
                          {"itemName", log::NameOf(held)},
                          {"hand", HandTag(gone.hands)},
-                         {"reason", "to make room"}},
-                        "{} unpinning {}{} to make room", Describe(actor), log::NameOf(held), HandTag(gone.hands));
+                         {"reason", why}},
+                        "{} unpinning {}{} -- {}", Describe(actor), log::NameOf(held), HandTag(gone.hands), why);
     }
 }
 

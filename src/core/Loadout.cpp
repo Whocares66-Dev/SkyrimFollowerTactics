@@ -358,9 +358,17 @@ std::vector<Displaced> ApplyRequest(std::vector<Pin> &pins, PinRequest request, 
             const Hand left = LetGo(pins, thing, Without(Hand::Both, hands));
         return displaced;
     }
-    case PinRequest::Ban:
+    case PinRequest::Ban: {
+        // What the ban lets go is reported as what gave way. Asked first,
+        // because letting go of a pin with no hand gives back no hand, the
+        // same as letting go of nothing.
+        const Pin *pinned = FindPin(pins, thing);
+        if (!pinned)
+            return {};
+        const Displaced gone{pinned->thing.form, pinned->thing.variant, pinned->hands};
         [[maybe_unused]] const Hand let = LetGo(pins, thing, Hand::None);
-        return {};
+        return {gone};
+    }
     }
     return {};
 }

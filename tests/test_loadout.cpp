@@ -1188,10 +1188,22 @@ TEST_CASE("a request from the panel does the same to either book", "[pins]")
     CHECK(ApplyRequest(book, PinRequest::Equip, dagger, Hand::Right, true, true).empty());
     CHECK(book.empty());
 
-    // A ban lets the whole pin go.
+    // A ban lets the whole pin go, and says so: a ban from the panel on a
+    // pinned dagger released the pin with no word of it.
     book = {{dagger, Hand::Both}};
-    CHECK(ApplyRequest(book, PinRequest::Ban, dagger, Hand::None, false, true).empty());
+    const auto banned = ApplyRequest(book, PinRequest::Ban, dagger, Hand::None, false, true);
+    REQUIRE(banned.size() == 1);
+    CHECK(banned[0].form == kIronDagger);
+    CHECK(banned[0].hands == Hand::Both);
     CHECK(book.empty());
+
+    // A pin with no hand goes and is reported the same way; a ban on
+    // something not pinned lets go of nothing.
+    const Holdable cuirass = Armour(0x00012E49, 1U << 2);
+    book = {{cuirass, Hand::None}};
+    CHECK(ApplyRequest(book, PinRequest::Ban, cuirass, Hand::None, false, true).size() == 1);
+    CHECK(book.empty());
+    CHECK(ApplyRequest(book, PinRequest::Ban, dagger, Hand::None, false, true).empty());
 }
 
 TEST_CASE("the engine's spell and shout equips are refused as an item's are; ours pass", "[pins]")

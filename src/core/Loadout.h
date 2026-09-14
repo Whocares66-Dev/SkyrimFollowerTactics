@@ -403,7 +403,7 @@ struct Refusal
 // book in use and on the one remembered for after the fight. Pin makes
 // room and adds; Equip makes room, and a lone weapon moving hands
 // (`moving`) leaves the hand it came from; Ban lets the whole pin go.
-// Returns what gave way to make room, for the log.
+// Returns what gave way -- to make room, or to the ban -- for the log.
 enum class PinRequest : std::uint8_t
 {
     Pin,
