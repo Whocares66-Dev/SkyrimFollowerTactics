@@ -506,8 +506,9 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     {
         // The one action of the tick; the rest of the rule's list follows,
         // one per tick.
-        const auto index = static_cast<std::size_t>(decision.ruleIndex);
-        const std::string label = index < rules.rules.size() ? rules.rules[index].label : "";
+        // The rule as its list began: after a reorder or a delete, the index
+        // names another rule.
+        const std::string &label = decision.rule.label;
         {
             const auto &step = *decision.step;
             const auto result = Execute(step.action, step.target, actor);

@@ -612,6 +612,7 @@ TEST_CASE("on its edge every Combat start rule is checked first, and their lists
     d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.ruleIndex == 2);
     REQUIRE(d.actionForm() == kMagickaPotion);
+    REQUIRE(d.subjectId() == s.self);
     REQUIRE(trace.at(0) == Verdict::NotReached);
 
     s.now += 0.5;
@@ -2348,7 +2349,7 @@ TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
 {
     // Bound to the weakest enemy when it began, the list keeps aiming at
     // that enemy though another becomes the weakest; and it keeps its
-    // actions though the rule is edited under it.
+    // actions and its name though the rule is edited and moved under it.
     constexpr std::uint32_t kA = 0x00012FCC;
     constexpr std::uint32_t kB = 0x0005AD5C;
     Rule r;
@@ -2357,6 +2358,7 @@ TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
     r.conditionArg = 0.9f;
     r.actionTarget = ActionTargetKind::Enemy;
     r.actions = {{ActionKind::CastSpell, kA}, {ActionKind::CastSpell, kB}};
+    r.label = "focus the weakest";
     RuleSet rs;
     rs.rules = {r};
 
@@ -2370,16 +2372,79 @@ TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
 
     Decision d = Tick(rs, s, ctx, trace, actions);
     REQUIRE(d.targetId() == 0x101);
+    REQUIRE(d.subjectId() == 0x101);
+    REQUIRE(d.rule.label == "focus the weakest");
 
-    // The other enemy is now the weakest, and the rule now says something
-    // else entirely: the list in progress is unmoved by either.
+    // The other enemy is now the weakest, the rule says something else
+    // entirely under another name, and another rule has been put above it:
+    // the list in progress is unmoved by any of it.
     s.enemies[0].health = {90.0f, 100.0f};
     s.enemies[1].health = {10.0f, 100.0f};
     rs.rules[0].actions = {DrinkStamina()};
+    rs.rules[0].label = "rewritten";
+    rs.rules.insert(rs.rules.begin(), HealBelow(0.9f));
     d = Tick(rs, s, ctx, trace, actions);
     REQUIRE(d.actionForm() == kB);
     REQUIRE(d.targetId() == 0x101);
+    REQUIRE(d.subjectId() == 0x101);
+    REQUIRE(d.rule.label == "focus the weakest");
     REQUIRE_FALSE(ctx.pending.Active());
+}
+
+TEST_CASE("a decision names whom its condition bound", "[sequence]")
+{
+    constexpr std::uint32_t kReanimate = 0x00065BD7; // cap 13
+    constexpr ActorId kWolf = 0x201;
+    constexpr ActorId kBandit = 0x1002;
+
+    Snapshot s = Healthy();
+    s.inCombat = true;
+    s.health = {40.0f, 100.0f};
+    s.enemies.push_back({kWolf, {30.0f, 100.0f}, 300.0f});
+    s.spells.known.push_back(kReanimate);
+    s.spells.caps.push_back({kReanimate, 13});
+
+    const auto bound = [&](const Rule &r) {
+        RuleSet rs;
+        rs.rules = {r};
+        EvalContext ctx;
+        const Decision d = Evaluate(rs, s, ctx);
+        REQUIRE(d.Fired());
+        return d.subjectId();
+    };
+
+    SECTION("the follower")
+    {
+        CHECK(bound(HealBelow(0.5f)) == s.self);
+    }
+
+    SECTION("the enemy it matched, whoever the action is aimed at")
+    {
+        Rule r = HealBelow(0.5f);
+        r.subject = SubjectKind::Enemy;
+        r.actionTarget = ActionTargetKind::Self;
+        CHECK(bound(r) == kWolf);
+    }
+
+    SECTION("the corpse it matched")
+    {
+        s.corpses.push_back({kBandit, 9, 300.0f});
+        Rule r;
+        r.subject = SubjectKind::Corpse;
+        r.predicate = PredicateKind::LevelHighest;
+        r.actionTarget = ActionTargetKind::Corpse;
+        r.FirstAction().kind = ActionKind::CastSpell;
+        r.FirstAction().form = kReanimate;
+        CHECK(bound(r) == kBandit);
+    }
+
+    SECTION("no one, for no corpse: its binding is the follower")
+    {
+        Rule r = HealBelow(0.5f);
+        r.subject = SubjectKind::Corpse;
+        r.predicate = PredicateKind::CorpseNone;
+        CHECK(bound(r) == 0);
+    }
 }
 
 TEST_CASE("a list goes on after its condition has lapsed", "[sequence]")

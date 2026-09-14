@@ -701,30 +701,32 @@ bool Transient(Verdict v)
 // action is only blocked for the moment has otherwise not begun, and
 // yields to the rules beneath it, as a single-action rule always did.
 // Returns whether the run stopped on a wait.
-bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, ActionTargetKind aimedAt, ActorId target,
-         bool committed, const Snapshot &snap, EvalContext &ctx, Decision &decision, std::vector<Verdict> &verdicts,
+bool Run(const Rule &rule, std::size_t from, int ruleIndex, ActorId subject, ActorId target, bool committed,
+         const Snapshot &snap, EvalContext &ctx, Decision &decision, std::vector<Verdict> &verdicts,
          std::vector<Pin> &heldAbove)
 {
+    const std::vector<Action> &actions = rule.actions;
     verdicts.assign(actions.size(), Verdict::NotReached);
     for (std::size_t i = from; i < actions.size(); ++i)
     {
         const Action &a = actions[i];
-        const Verdict v = Availability(a, snap, ctx, aimedAt, target, heldAbove);
+        const Verdict v = Availability(a, snap, ctx, rule.actionTarget, target, heldAbove);
         verdicts[i] = v;
         if (v == Verdict::Fired)
         {
             decision.ruleIndex = ruleIndex;
+            decision.rule = rule;
             // The step carries the bottle or gem a policy chose, so the
             // game side has only to consume it.
             Action resolved = a;
             resolved.form = ChosenForm(a, snap);
-            decision.step = Decision::Step{resolved, target};
+            decision.step = Decision::Step{resolved, target, subject};
             // The one cooldown there is: the ACTION goes on cooldown for as
             // long as its effect takes to show, and every rule that uses it
             // reports it. Nothing is keyed by rule or by condition.
             ctx.Block(CooldownKey(a, target), snap.now + MinimumCooldown(a.kind));
             // The rest waits for the next tick, or the list is through.
-            ctx.pending = i + 1 < actions.size() ? EvalContext::Sequence{ruleIndex, aimedAt, target, actions, i + 1}
+            ctx.pending = i + 1 < actions.size() ? EvalContext::Sequence{ruleIndex, rule, subject, target, i + 1}
                                                  : EvalContext::Sequence{};
             return false;
         }
@@ -732,7 +734,7 @@ bool Run(const std::vector<Action> &actions, std::size_t from, int ruleIndex, Ac
             continue; // cannot be done at all: skipped
         if (committed)
         {
-            ctx.pending = {ruleIndex, aimedAt, target, actions, i};
+            ctx.pending = {ruleIndex, rule, subject, target, i};
             return true;
         }
         // Not begun: the rest of this rule is not reached this tick either.
@@ -754,10 +756,11 @@ Verdict Summary(const Decision &decision, const std::vector<Verdict> &verdicts)
     return Verdict::Unsupported;
 }
 
-// Whether a rule gets as far as its actions this tick, and against whom.
+// Whether a rule gets as far as its actions this tick, whom its condition
+// bound, and against whom it acts.
 // Fired here means admitted; anything else is the verdict that stopped it,
 // and stands for the rule in the trace.
-Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, ActorId &target)
+Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, ActorId &subject, ActorId &target)
 {
     if (!r.enabled)
         return Verdict::Disabled;
@@ -778,6 +781,7 @@ Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, Actor
     const Binding binding = EvaluateCondition(r, snap);
     if (!binding)
         return Verdict::ConditionFalse;
+    subject = r.predicate == PredicateKind::CorpseNone ? 0 : binding.id;
     bool targetOk = false;
     target = ResolveActionTarget(r, snap, binding, &targetOk);
     return targetOk ? Verdict::Fired : Verdict::NoTarget;
@@ -827,14 +831,15 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             const Rule &r = rs.rules[i];
             if (r.predicate != at)
                 continue;
+            ActorId subject = 0;
             ActorId target = 0;
-            const Verdict admitted = Admit(r, snap, ctx, target);
+            const Verdict admitted = Admit(r, snap, ctx, subject, target);
             if (admitted != Verdict::Fired)
             {
                 put(i, admitted);
                 continue;
             }
-            ctx.queued.push_back({static_cast<int>(i), r.actionTarget, target, r.actions, 0});
+            ctx.queued.push_back({static_cast<int>(i), r, subject, target, 0});
         }
     }
 
@@ -855,8 +860,8 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         const EvalContext::Sequence seq = ctx.pending;
         std::vector<Pin> none;
         std::vector<Verdict> verdicts;
-        const bool waiting = Run(seq.actions, seq.next, seq.ruleIndex, seq.aimedAt, seq.target, true, snap, ctx,
-                                 decision, verdicts, none);
+        const bool waiting =
+            Run(seq.rule, seq.next, seq.ruleIndex, seq.subject, seq.target, true, snap, ctx, decision, verdicts, none);
         const auto i = static_cast<std::size_t>(seq.ruleIndex);
         put(i, Summary(decision, verdicts));
         if (actionTrace && i < actionTrace->size() && (*actionTrace)[i].size() == verdicts.size())
@@ -891,8 +896,9 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         if (edge && r.predicate == at)
             continue;
 
+        ActorId subject = 0;
         ActorId target = 0;
-        const Verdict admitted = Admit(r, snap, ctx, target);
+        const Verdict admitted = Admit(r, snap, ctx, subject, target);
         if (admitted != Verdict::Fired)
         {
             put(i, admitted);
@@ -900,8 +906,8 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
         }
 
         std::vector<Verdict> verdicts;
-        const bool waiting = Run(r.actions, 0, static_cast<int>(i), r.actionTarget, target, false, snap, ctx, decision,
-                                 verdicts, heldAbove);
+        const bool waiting =
+            Run(r, 0, static_cast<int>(i), subject, target, false, snap, ctx, decision, verdicts, heldAbove);
         put(i, Summary(decision, verdicts));
         if (actionTrace)
             (*actionTrace)[i] = verdicts;

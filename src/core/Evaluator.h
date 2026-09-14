@@ -140,20 +140,21 @@ struct EvalContext
     // A rule's list of actions in progress. A rule commits when its first
     // action is done; from then on an action that cannot be done yet is
     // waited for, tick after tick, and no other rule is evaluated until the
-    // list is through. Held as a copy of the actions, so editing the rules
-    // mid-list changes nothing already begun. Dropped when a fight ends and
-    // when a new one begins.
+    // list is through. Held as a copy of the rule, so editing or reordering
+    // the rules mid-list changes nothing already begun, and the log names the
+    // rule that is acting rather than whatever now sits at its index.
+    // Dropped when a fight ends and when a new one begins.
     struct Sequence
     {
         int ruleIndex{-1};
-        ActionTargetKind aimedAt{ActionTargetKind::Self};
+        Rule rule;
+        ActorId subject{0}; // whom the condition bound when the list began
         ActorId target{0};
-        std::vector<Action> actions;
         std::size_t next{0}; // the first action not yet done
 
         [[nodiscard]] bool Active() const noexcept
         {
-            return next < actions.size();
+            return next < rule.actions.size();
         }
     };
     Sequence pending;
@@ -182,9 +183,16 @@ struct Decision
     {
         Action action;
         ActorId target{0};
+        // Whom the rule's condition bound: the follower, the player, or the
+        // ally, enemy or corpse it matched. 0 for Corpse: None, whose binding
+        // is the follower themself and would read as a corpse.
+        ActorId subject{0};
     };
 
     int ruleIndex{-1};
+    // The rule as its list began, kept though the rules are edited or
+    // reordered under a list in progress.
+    Rule rule;
     std::optional<Step> step;
 
     [[nodiscard]] bool Fired() const noexcept
@@ -208,6 +216,10 @@ struct Decision
     [[nodiscard]] ActorId targetId() const noexcept
     {
         return step ? step->target : 0;
+    }
+    [[nodiscard]] ActorId subjectId() const noexcept
+    {
+        return step ? step->subject : 0;
     }
 };
 
