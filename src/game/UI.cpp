@@ -4980,7 +4980,14 @@ void DrawSummon(const SummonView &summon)
         [&] { Im::TextDisabled("%s", kindText.c_str()); }, summon.staminaBreakdown);
     DrawStatRow(
         geo, "Magicka", summon.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Remaining",
-        [&] { Im::Text("%s", remainingText.c_str()); }, summon.magickaBreakdown);
+        [&] {
+            Im::Text("%s", remainingText.c_str());
+            // Where the time comes from, the summoner's perks on the spell
+            // among it, on the figure as Carrying's is.
+            if (!summon.remainingBreakdown.empty() && Im::IsItemHovered(0))
+                BreakdownTooltip(summon.remainingBreakdown);
+        },
+        summon.magickaBreakdown);
 
     Im::Spacing();
     // The sheet's General table has the reference, its base and the name,

@@ -3814,6 +3814,34 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
     return out;
 }
 
+namespace
+{
+// An effect's time left, written out as the engine made its duration
+// (ActiveEffect::AdjustForPerks, id 34053, read 2026-09-13): the record's
+// duration, then the caster's Mod Spell Duration entries given the spell
+// and the target, then the target's Mod Incoming Spell Duration given the
+// spell; less the time run. Whatever else moves a duration -- a dual cast
+// is the likeliest -- is not read, and shows as Other.
+ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
+{
+    ft::Breakdown b;
+    if (!effect.effect || effect.duration <= 0.0f)
+        return b;
+    b.unit = " s";
+    b.totalLabel = "Remaining";
+    ft::Start(b, "Base", static_cast<float>(effect.effect->effectItem.duration));
+    auto *target = const_cast<RE::Actor *>(effect.GetTargetActor());
+    if (const auto caster = effect.GetCasterActor())
+        AddEntryPointLines(b, caster.get(), RE::BGSEntryPoint::ENTRY_POINT::kModSpellDuration, {effect.spell, target});
+    if (target)
+        AddEntryPointLines(b, target, RE::BGSEntryPoint::ENTRY_POINT::kModIncomingSpellDuration, {effect.spell});
+    ft::Add(b, "Elapsed", -effect.elapsedSeconds);
+    b.total = (std::max)(0.0f, effect.duration - effect.elapsedSeconds);
+    ft::Close(b);
+    return b;
+}
+} // namespace
+
 std::vector<SummonView> ScanSummons(RE::Actor *actor)
 {
     std::vector<SummonView> out;
@@ -3842,7 +3870,10 @@ std::vector<SummonView> ScanSummons(RE::Actor *actor)
         if (const auto *effect = commanded.activeEffect)
         {
             if (effect->duration > 0.0f)
+            {
                 view.remaining = (std::max)(0.0f, effect->duration - effect->elapsedSeconds);
+                view.remainingBreakdown = RemainingBreakdown(*effect);
+            }
             view.raised = effect->GetBaseObject() &&
                           effect->GetBaseObject()->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate;
         }

@@ -453,7 +453,11 @@ struct SummonView
     ft::Breakdown magickaBreakdown;
     ft::Breakdown staminaBreakdown;
     float remaining{0.0f}; // seconds left on the effect that commands it; 0 when unknown
-    bool raised{false};    // a reanimated corpse, as opposed to a summon
+    // The time left written out: the spell's duration, the summoner's perks
+    // on it, the time run. The summoner's perks shape the summon here too,
+    // Dark Oath's "last twice as long" among them.
+    ft::Breakdown remainingBreakdown;
+    bool raised{false}; // a reanimated corpse, as opposed to a summon
     std::vector<SheetSection> sheet;
 };
 
