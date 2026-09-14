@@ -151,11 +151,6 @@ namespace
 // Written on the game thread by the tick, read on the render thread by the UI,
 // so it is guarded. The lock is held only for the copy in or out -- never
 // across rendering, and never across BuildSnapshot.
-// The last evaluation for each follower, kept for the UI.
-//
-// Written on the game thread by the tick, read on the render thread by the UI,
-// so it is guarded. The lock is held only for the copy in or out -- never
-// across rendering, and never across BuildSnapshot.
 std::mutex g_viewMutex;
 std::vector<FollowerView> g_view;
 
