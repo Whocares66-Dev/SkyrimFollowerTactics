@@ -1972,21 +1972,20 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
             row.value = Fmt("%.0f", damage);
             rows.push_back(std::move(row));
         }
+        // The critical pair in the details page's words and order. Speed,
+        // reach and stagger are the record's and on that page. A critical
+        // that never lands or lands for nothing is no critical: neither
+        // row, rather than one of them beside a 0.
         {
-            SheetRow row;
-            const float speed = WeaponSpeed(actor, weapon, left, &row.breakdown);
-            row.label = "Speed";
-            row.value = Fmt("%.2f", speed);
-            rows.push_back(std::move(row));
-        }
-        rows.push_back(Row("Reach", Fmt("%.2f", weapon->GetReach())));
-        rows.push_back(Row("Stagger", Fmt("%.2f", weapon->GetStagger())));
-        {
-            SheetRow row;
-            const float chance = CritChance(actor, weapon, &row.breakdown);
-            row.label = "Crit Chance";
-            row.value = Fmt("%.0f%%", chance);
-            rows.push_back(std::move(row));
+            SheetRow chance;
+            const float percent = CritChance(actor, weapon, &chance.breakdown);
+            if (const auto critDamage = weapon->GetCritDamage(); critDamage > 0 && percent >= 0.5f)
+            {
+                rows.push_back(Row("Critical Damage", std::to_string(critDamage)));
+                chance.label = "Critical Chance";
+                chance.value = Fmt("%.0f%%", percent);
+                rows.push_back(std::move(chance));
+            }
         }
         if (weapon->IsBow() || weapon->IsCrossbow())
         {
@@ -2387,35 +2386,6 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     b.total = damage;
     ft::Close(b);
     return damage;
-}
-
-float WeaponSpeed(RE::Actor *actor, const RE::TESObjectWEAP *weapon, bool left, ft::Breakdown *out)
-{
-    if (!weapon)
-        return 0.0f;
-    ft::Breakdown local;
-    ft::Breakdown &b = out ? *out : local;
-    b = {};
-    b.decimals = 2;
-    float speed = weapon->GetSpeed();
-    ft::Start(b, "Base", speed);
-    // The hand's multiplier: 0 means none (the value's default), and any
-    // other number multiplies -- the engine's rule as the speed-fix mods
-    // describe it, and the reason two boosts stack wrongly in vanilla. Not
-    // read off the executable.
-    const auto value = left ? RE::ActorValue::kLeftWeaponSpeedMultiply : RE::ActorValue::kWeaponSpeedMult;
-    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
-    if (const float mult = owner ? owner->GetActorValue(value) : 0.0f; mult > 0.0f && mult != 1.0f)
-    {
-        speed *= mult;
-        ft::BreakdownLine &line = ft::Multiply(b, "Weapon Speed Mult", mult);
-        ft::Breakdown sources;
-        AddSourceLines(sources, Contributions(actor, value));
-        line.detail = std::move(sources.lines);
-    }
-    b.total = speed;
-    ft::Close(b);
-    return speed;
 }
 
 float CritChance(RE::Actor *actor, RE::TESObjectWEAP *weapon, ft::Breakdown *out)

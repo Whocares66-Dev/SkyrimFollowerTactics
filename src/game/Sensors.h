@@ -569,12 +569,6 @@ struct PerkPage
 [[nodiscard]] float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry,
                                 ft::Breakdown *out = nullptr);
 
-// The speed a weapon swings at in one of their hands: the record's, times
-// the hand's weapon speed multiplier where one is set (0 on the value
-// means none, a quirk of the engine's: docs/MODIFIERS.md).
-[[nodiscard]] float WeaponSpeed(RE::Actor *actor, const RE::TESObjectWEAP *weapon, bool left,
-                                ft::Breakdown *out = nullptr);
-
 // Their chance of a critical hit with a weapon, in percent: the critical
 // chance value, through the perks on the critical hit chance entry point.
 [[nodiscard]] float CritChance(RE::Actor *actor, RE::TESObjectWEAP *weapon, ft::Breakdown *out = nullptr);
