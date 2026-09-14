@@ -374,13 +374,12 @@ struct SheetSection
 // Who a record's conditions are asked of: the Subject and the Target the
 // engine passes. For an effect that is the one it lands on and whoever
 // cast it (docs/CONDITIONS.md 10). A party the page cannot name is null,
-// and a condition that runs on it is listed unasked, `missing` saying why:
-// asked of nobody the engine answers false, which is not "not met".
+// and a condition that runs on it is listed unasked, N/A: asked of nobody
+// the engine answers false, which is not "not met".
 struct ConditionParties
 {
     RE::TESObjectREFR *subject{nullptr};
     RE::TESObjectREFR *target{nullptr};
-    const char *missing{""};
 };
 
 // What a spell, an enchantment or a potion does, effect by effect, as a

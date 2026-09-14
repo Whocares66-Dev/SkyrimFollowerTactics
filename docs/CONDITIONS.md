@@ -268,7 +268,7 @@ Adamant.esp gives Dragonhide (0CDB70) a fourth effect, `MAG_PerkBastionArmorFFSe
 ### What the panel does (built 2026-09-13, not yet seen in play)
 
 - **An effect on the Effects tab is Inactive by the engine's flag**, `kInactive` or `kDispelled`, which the sheet's totals read too, so the list and the totals cannot disagree. Its page greys the row "Inactive" by the same flag; the conditions beneath are for reference.
-- **The conditions are asked of the parties in the table** (`ConditionParties` in `Sensors.h`). A condition's name hovers as whom it was asked of ("Conditioned on Player"). One that runs on a party nobody can name shows N/A under Met, hovering the reason, and an effect with such a condition gets no "Conditions not met" verdict: the engine's answer there is the false of asking nobody.
+- **The conditions are asked of the parties in the table** (`ConditionParties` in `Sensors.h`). A condition on the Subject or the Target hovers as the party it was asked of, "Conditioned on target (Player)", or "(N/A)" for a party nobody can name -- the Subject of an aimed spell out of a fight, the caster once gone -- which then shows N/A under Met too. An effect with such a condition gets no "Conditions not met" verdict: the engine's answer there is the false of asking nobody.
 - **In a fight, a hostile aimed effect, a weapon's enchantment or a poison is asked of the enemy the follower is fighting** (their live combat target); out of one, of nobody.
 - **Perk pages are unchanged**, still asking the owner as both parties: the engine asks tab 0 with no Target, but in Nordic Souls `PerkEntryPointExtender` replaces that check, and what it does is unread.
 

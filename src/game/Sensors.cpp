@@ -773,13 +773,11 @@ SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
     {
         if (!effect || !effect->baseEffect)
             continue;
-        ConditionParties parties{actor, actor, ""};
+        ConditionParties parties{actor, actor};
         if (!onSelf)
         {
             const bool hostile = magic->IsPoison() || effect->baseEffect->IsHostile();
             parties.subject = hostile ? enemy : nullptr;
-            parties.missing = hostile ? "Conditioned on the enemy it hits: nobody is being fought now"
-                                      : "Conditioned on whoever it lands on";
         }
         // The record's magnitude is unsigned; a detrimental effect takes
         // it away.
@@ -866,7 +864,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             // for a Bastion Dragonhide on a follower. For reference: the
             // row's grey is the flag.
             const auto caster = ae->caster.get();
-            SheetRow line = EffectEntryRow(*ae->effect, ae->magnitude, {actor, caster.get(), "The caster is gone"});
+            SheetRow line = EffectEntryRow(*ae->effect, ae->magnitude, {actor, caster.get()});
             line.aside = row.active ? "" : "Inactive";
             if (ae->duration > 0.0f)
             {
@@ -3172,23 +3170,24 @@ std::vector<SheetRow> ConditionRows(const RE::TESCondition &condition, const Con
             const bool needsParty = object == Object::kSelf || object == Object::kTarget ||
                                     object == Object::kCombatTarget || object == Object::kLinkedRef ||
                                     object == Object::kCommandTarget;
-            RE::TESObjectREFR *runsOn = object == Object::kTarget ? parties.target : parties.subject;
+            bool onTarget = object == Object::kTarget;
             if ((object == Object::kSelf || object == Object::kTarget) && data.flags.swapTarget && parties.subject &&
                 parties.target)
-                runsOn = object == Object::kTarget ? parties.subject : parties.target;
+                onTarget = !onTarget;
+            RE::TESObjectREFR *runsOn = onTarget ? parties.target : parties.subject;
             if (needsParty && !runsOn)
-            {
                 row.extra = "N/A";
-                row.note = parties.missing;
-            }
             else
             {
                 RE::ConditionCheckParams params(parties.subject, parties.target);
                 if (item->IsTrue(params))
                     row.icon = kGlyphTick;
-                if (object == Object::kSelf || object == Object::kTarget)
-                    row.note = "Conditioned on " + PartyName(runsOn);
             }
+            // Not named for a combat target or a linked reference, which is
+            // the Subject's and not the Subject.
+            if (needsParty && (!runsOn || object == Object::kSelf || object == Object::kTarget))
+                row.note = std::string("Conditioned on ") + (onTarget ? "target" : "subject") + " (" +
+                           (runsOn ? PartyName(runsOn) : "N/A") + ")";
         }
         rows.push_back(std::move(row));
     }
@@ -3491,7 +3490,7 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
                 const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
                 if (point->conditions.size() > 0 && point->conditions[0])
                 {
-                    row.detail = ConditionRows(point->conditions[0], {actor, actor, ""});
+                    row.detail = ConditionRows(point->conditions[0], {actor, actor});
                     active = point->conditions[0].IsTrue(actor, actor);
                 }
                 for (std::uint32_t tab = 1; tab < point->conditions.size(); ++tab)
@@ -3499,7 +3498,7 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
                     if (!point->conditions[tab])
                         continue;
                     const std::string on = "argument " + std::to_string(tab + 1);
-                    for (SheetRow &r : ConditionRows(point->conditions[tab], {actor, actor, ""}, on.c_str()))
+                    for (SheetRow &r : ConditionRows(point->conditions[tab], {actor, actor}, on.c_str()))
                         row.detail.push_back(std::move(r));
                 }
             }
