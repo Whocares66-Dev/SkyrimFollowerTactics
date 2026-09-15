@@ -2,6 +2,7 @@
 
 #include "game/Forms.h"
 #include "game/Log.h"
+#include "game/Sensors.h"
 #include "game/Sheet.h"
 #include "game/Util.h"
 
@@ -163,7 +164,14 @@ struct Slot
 
     // A concentration stream: the fire event is its start, not a release.
     bool sustained = false;
-    float sustain = 0.0f;   // how long it was asked to run
+    float sustain = 0.0f; // how long it was asked to run
+    // A power attack's price and reach, and the follower's stamina and
+    // distance to the target when it was asked: what rule.resolved sets
+    // beside the same at the end.
+    float staminaCost = 0.0f;
+    float reach = 0.0f;
+    float staminaAtArm = -1.0f;
+    float distanceAtArm = -1.0f;
     bool streaming = false; // our fire event has been seen
     // Whom the stream is aimed at, so it can stop when they are dead.
     RE::ActorHandle target;
@@ -955,14 +963,37 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
     log::AppendActor(fields, "targetFormId", "targetBaseFormId", "targetName", slot.targetId);
     fields.emplace_back("outcome", outcome);
     fields.emplace_back("pickedUp", slot.seenRunning);
+    std::string blowNote;
     if (slot.weapon)
+    {
+        // What a power attack not made could not do: pay, reach, or get
+        // between swings. At the request and now; -1 with no one to measure.
+        const auto target = slot.target.get();
+        const auto *state = holder ? holder->AsActorState() : nullptr;
+        const double staminaNow =
+            holder ? static_cast<double>(holder->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina)) : -1.0;
+        const double distanceNow =
+            holder && target ? static_cast<double>(holder->GetPosition().GetDistance(target->GetPosition())) : -1.0;
+        const int attackState = state ? static_cast<int>(state->GetAttackState()) : -1;
         fields.emplace_back("attackEvent", slot.attackEvent);
+        fields.emplace_back("staminaCost", static_cast<double>(slot.staminaCost));
+        fields.emplace_back("staminaAtRequest", static_cast<double>(slot.staminaAtArm));
+        fields.emplace_back("staminaAtEnd", staminaNow);
+        fields.emplace_back("reach", static_cast<double>(slot.reach));
+        fields.emplace_back("distanceAtRequest", static_cast<double>(slot.distanceAtArm));
+        fields.emplace_back("distanceAtEnd", distanceNow);
+        fields.emplace_back("attackStateAtEnd", attackState);
+        blowNote = fmt::format(" (stamina {:.0f} -> {:.0f} for {:.0f}; distance {:.0f} -> {:.0f} of {:.0f}; attack "
+                               "state {})",
+                               slot.staminaAtArm, staminaNow, slot.staminaCost, slot.distanceAtArm, distanceNow,
+                               slot.reach, attackState);
+    }
     fields.emplace_back("reason", reason);
     fields.emplace_back("durationS", seconds);
     log::packages.event(log::Level::Info, "rule.resolved", holder, fields,
-                        "{} rule {} \"{}\": {} {} {} -- {}, after {:.1f} s",
+                        "{} rule {} \"{}\": {} {} {} -- {}, after {:.1f} s{}",
                         holder ? log::NameOf(holder) : log::Id(holderId), slot.ruleIndex, slot.ruleName, kind,
-                        log::NameOf(RE::TESForm::LookupByID(slot.spell)), outcome, reason, seconds);
+                        log::NameOf(RE::TESForm::LookupByID(slot.spell)), outcome, reason, seconds, blowNote);
 }
 
 void Release(Slot &slot)
@@ -1411,7 +1442,8 @@ void TickWeaponSlot(Slot &slot, double now)
 }
 } // namespace
 
-CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, int ruleIndex, std::string_view ruleName)
+CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, const BlowPlan &plan, int ruleIndex,
+                               std::string_view ruleName)
 {
     auto *kit = g_available && actor ? KitOf(actor->GetFormID()) : nullptr;
     if (!kit || !kit->weapon.package)
@@ -1452,6 +1484,10 @@ CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, int rul
     slot.swinging = false;
     slot.attackEvent.clear();
     slot.attackAtArm = AttackDataOf(actor);
+    slot.staminaCost = plan.stamina;
+    slot.reach = plan.reach;
+    slot.staminaAtArm = actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
+    slot.distanceAtArm = actor->GetPosition().GetDistance(target->GetPosition());
     log::packages.info("{}: {:08X} power attacks {:08X} \"{}\"", log::NameOf(actor), PackageId(slot),
                        target->GetFormID(), log::NameOf(target));
     g_weaponLeases.fetch_add(1, std::memory_order_relaxed);

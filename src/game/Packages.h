@@ -90,6 +90,8 @@ class Actor;
 namespace ft::game
 {
 
+struct BlowPlan;
+
 // The spell a fresh record is pointed at, and the check that the layout
 // found on vanilla records holds on the copies. Fast Healing.
 inline constexpr std::uint32_t kCanarySpellID = 0x0002F3B8;
@@ -173,8 +175,11 @@ enum class CastRequest : std::uint8_t
 // the graph takes it (docs/ATTACK.md). The lease ends once the swing has
 // ended, when the AI drops the package, or at the deadline. NoPackages when
 // the follower has no such record: the checks at load failed, or the copy did.
-[[nodiscard]] CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, int ruleIndex,
-                                             std::string_view ruleName);
+// `plan` is the blow as the sensors priced it; its cost and reach go into
+// rule.resolved beside the follower's stamina and distance, so a power attack
+// not made says whether they could pay and reach.
+[[nodiscard]] CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, const BlowPlan &plan,
+                                             int ruleIndex, std::string_view ruleName);
 
 // Is a power attack's record held by anyone? Any thread: the pacing thread
 // asks it to decide whether the fast tick is wanted.

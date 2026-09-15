@@ -465,7 +465,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // stay events.
         if (blow.swing == ft::Swing::Right || blow.swing == ft::Swing::Both)
         {
-            const auto request = RequestPowerAttack(actor, elsewhere ? target : currentId, ruleIndex, ruleName);
+            const auto request = RequestPowerAttack(actor, elsewhere ? target : currentId, blow, ruleIndex, ruleName);
             if (request != CastRequest::NoPackages)
             {
                 log::actions.debug("power attack: {}", ToString(request));
