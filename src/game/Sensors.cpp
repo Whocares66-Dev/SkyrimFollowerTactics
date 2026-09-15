@@ -3100,14 +3100,13 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
         }
         s.rows.push_back(note(Row("Close Range", flanking ? "Flanking" : "Dueling"),
                               "- Dueling: circles, falls back\n"
-                              "- Flanking: keeps a distance, stalks\n"
-                              "- One or the other"));
+                              "- Flanking: keeps a distance, stalks"));
         // A tick when allowed, as the equipped state is shown; no row at all
         // when not.
         if (live->flags.all(Flag::kAllowDualWielding))
         {
-            SheetRow row = note(Row("Dual Wield", ""), "- May hold a weapon in each hand\n"
-                                                       "- Humanoids only");
+            SheetRow row = note(Row("Dual Wield", ""), "- Can hold a weapon in each hand\n"
+                                                       "- Staves do not count");
             row.icon = kGlyphTick;
             s.rows.push_back(std::move(row));
         }
@@ -3117,8 +3116,7 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
         const auto &g = live->generalData;
         SheetSection s{"General", {}, {}};
         s.rows.push_back(note(Row("Offensive", chance(g.offensiveMult)), "- Higher: attacks more often\n"
-                                                                         "- More power attacks\n"
-                                                                         "- Paired with Defensive"));
+                                                                         "- More power attacks"));
         s.rows.push_back(note(Row("Defensive", chance(g.defensiveMult)), "- Higher: blocks more, holds it longer\n"
                                                                          "- Bashes more, given a shield or a weapon"));
         s.rows.push_back(note(Row("Group Offensive", chance(g.groupOffensiveMult)),

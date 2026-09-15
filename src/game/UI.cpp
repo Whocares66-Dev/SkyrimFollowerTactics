@@ -3287,36 +3287,21 @@ void TextRightInCell(const std::string &text)
     Im::Text("%s", text.c_str());
 }
 
-// A sheet row's hover text as a table: each "Label: value" line a row, the
-// values right-aligned so the numbers line up down the column -- "3.00%"
-// under "+3.00%" ends on the same edge. A line with no ": " is a plain
-// line.
+// A sheet row's hover text, a line at a time. Plain text: the notes are
+// prose, and a table that split each line at its colon set "- Higher:" apart
+// from the rest of its sentence (2026-09-15). Numbers with sources have
+// their own tooltip, the breakdown's.
 void NoteTooltip(const std::string &note)
 {
     Im::BeginTooltip();
-    if (Im::BeginTable("note", 2, Im::ImGuiTableFlags_SizingFixedFit, Im::ImVec2(0.0f, 0.0f), 0.0f))
+    std::size_t from = 0;
+    while (from <= note.size())
     {
-        std::size_t from = 0;
-        while (from <= note.size())
-        {
-            const std::size_t end = note.find('\n', from);
-            const std::string line = note.substr(from, end == std::string::npos ? std::string::npos : end - from);
-            from = end == std::string::npos ? note.size() + 1 : end + 1;
-            if (line.empty())
-                continue;
-            Im::TableNextRow(0, 0.0f);
-            Im::TableSetColumnIndex(0);
-            const std::size_t colon = line.rfind(": ");
-            if (colon == std::string::npos)
-            {
-                Im::Text("%s", line.c_str());
-                continue;
-            }
-            Im::Text("%s", line.substr(0, colon + 1).c_str());
-            Im::TableSetColumnIndex(1);
-            TextRightInCell(line.substr(colon + 2));
-        }
-        Im::EndTable();
+        const std::size_t end = note.find('\n', from);
+        const std::string line = note.substr(from, end == std::string::npos ? std::string::npos : end - from);
+        from = end == std::string::npos ? note.size() + 1 : end + 1;
+        if (!line.empty())
+            Im::Text("%s", line.c_str());
     }
     Im::EndTooltip();
 }
