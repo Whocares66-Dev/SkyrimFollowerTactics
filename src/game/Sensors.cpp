@@ -424,12 +424,33 @@ bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
     return primary || secondary;
 }
 
+namespace
+{
+// A controller: a spell whose every effect is hidden from the player's
+// active effects, there for its arithmetic and never seen in play. Its name
+// says nothing ("Attack Speed Controller"), so its amount is left to Other.
+// A hidden effect on a spell the player does see (Elfborn's resistance
+// penalties) keeps the spell's name, and an enchantment keeps its item's.
+bool Controller(const RE::MagicItem *spell)
+{
+    if (!spell || spell->As<RE::EnchantmentItem>() || spell->effects.empty())
+        return false;
+    for (const RE::Effect *effect : spell->effects)
+    {
+        if (!effect || !effect->baseEffect ||
+            !effect->baseEffect->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
+            return false;
+    }
+    return true;
+}
+} // namespace
+
 std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 {
     std::vector<Contribution> out;
     ForEachActiveEffect(actor, [&](RE::ActiveEffect &effect) {
         auto *ae = &effect;
-        if (!ModifiesValue(effect, value))
+        if (!ModifiesValue(effect, value) || Controller(ae->spell))
             return;
         const auto *base = ae->effect->baseEffect;
         std::string source = SourceName(actor, ae);

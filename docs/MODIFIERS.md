@@ -74,6 +74,8 @@ The follower's sheet read "+100 Magicka/s" for Bard Song, and nothing for the co
 
 - **The carry weight limit is not the Carry Weight value (read off the running game, 2026-09-13).** `Actor::GetTotalCarryWeight` (id 37452) reads the value and hands it to `HandleEntryPoint` with Get Max Carry Weight (0xA), so a perk there changes the limit and leaves the value alone: "Carry Weight x10" in Nordic Souls is one such perk, and the sheet read the value's 400. The Carrying figure is now that function's result, and its hover adds each Get Max Carry Weight entry after the value's own lines.
 
+- **Controllers are not sources (decided 2026-09-14).** A spell whose every effect is flagged Hide In UI is a controller the player never sees, named for its arithmetic ("Attack Speed Controller", Thaumaturgy's "Armor Controller Ability"), and its amount is Other. A hidden effect on a spell the player does see (Elfborn's resistance penalties) keeps the spell's name, and an enchantment keeps its item's.
+
 **Not read off the executable, taken from UESP, and so where a wrong number would first show as an Other line:** that the listed weapon damage carries Attack Damage Mult and flat Melee Damage, and in that order after the perks; that a weapon speed multiplier of 0 means none and any other value multiplies; that the critical chance figure starts from the Critical Chance value before its entry point. Verify by comparing the sheet against the game's own numbers for the player, who shows them.
 
 ## Bug, fixed 2026-09-13: Fortify skill values were counted twice for a follower who holds the hidden perk
