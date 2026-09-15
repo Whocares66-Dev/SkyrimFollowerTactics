@@ -450,9 +450,9 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             return ActionResult::MissingItem;
 
         // A bash is made from a block, as the engine makes one: raised, the
-        // bash sent once it is up, lowered (game/Blows.h).
+        // bash asked for once it is up, lowered (game/Blows.h).
         if (action.kind != ft::ActionKind::PowerAttack)
-            return RequestBash(actor, action.kind == ft::ActionKind::PowerBash, ruleIndex, ruleName) ==
+            return RequestBash(actor, target, action.kind == ft::ActionKind::PowerBash, ruleIndex, ruleName) ==
                            BashRequest::Started
                        ? ActionResult::Requested
                        : ActionResult::Busy;

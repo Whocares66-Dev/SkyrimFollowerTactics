@@ -19,7 +19,7 @@ namespace
 // to end and a block to come up; a request still waiting then is given up,
 // and says at which step.
 constexpr double kDeadlineSeconds = 2.0;
-// How long a bash the graph took is watched for the bash attack state. The
+// How long a bash that was taken is watched for the bash attack state. The
 // animation is under a second; one not seen by then was not made.
 constexpr double kWatchSeconds = 1.5;
 
@@ -27,12 +27,13 @@ enum class Step : std::uint8_t
 {
     Ready,    // waiting for the weapon drawn and no swing, then the block
     Blocking, // waiting for the block to be up, then the bash
-    Bashing   // the graph took the bash; watched until it ends
+    Bashing   // the bash was taken; watched until it ends
 };
 
 struct Run
 {
     RE::ActorHandle actor;
+    RE::ActorHandle target;
     std::uint32_t id = 0;
     bool power = false;
     Step step = Step::Ready;
@@ -46,7 +47,10 @@ struct Run
     bool alreadyBlocking = false;
     bool sawBash = false;
     int blockRefusals = 0; // the left attack action was turned away
-    int bashRefusals = 0;  // the graph turned the bash away with the block up
+    int bashRefusals = 0;  // the bash was turned away with the block up
+    // The first attack state other than a bash seen once the bash was taken,
+    // -1 for none: a swing the tree chose over the bash.
+    int otherAttackState = -1;
     int ruleIndex = -1;
     std::string ruleName;
 };
@@ -87,6 +91,7 @@ void Report(const Run &run, RE::Actor *actor, const char *reason, double now)
     fields.emplace_back("sentS", since(run.sentAt));
     fields.emplace_back("blockRefusals", run.blockRefusals);
     fields.emplace_back("bashRefusals", run.bashRefusals);
+    fields.emplace_back("attackStateSeen", run.otherAttackState);
     log::blows.event(log::Level::Info, "rule.resolved", actor, fields,
                      "{} rule {} \"{}\": {} {} -- {}, after {:.2f} s (block {}, up at {:.2f} s, taken at {:.2f} s, "
                      "refused {} block + {} bash)",
@@ -157,14 +162,25 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
             return nullptr;
         if (run.blockUpAt < 0.0)
             run.blockUpAt = now;
-        if (!actor->NotifyAnimationGraph(EventOf(run)))
+        // A bash is the right attack action from the block, as the combat AI
+        // makes one: the tree resolves it into bashStart, and the action is
+        // what sets the bash attack state.
+        bool taken = false;
+        if (run.power)
+            taken = actor->NotifyAnimationGraph(EventOf(run));
+        else if (const auto target = run.target.get())
+            taken = RE::CombatAnimation::Execute(actor, target.get(), RE::CombatAnimation::ANIM::kActionRightAttack);
+        else
+            taken = RE::CombatAnimation::Execute(actor, RE::CombatAnimation::ANIM::kActionRightAttack);
+        if (!taken)
         {
             ++run.bashRefusals;
             return nullptr;
         }
         run.sentAt = now;
         run.step = Step::Bashing;
-        log::blows.debug("{}: {} taken by the graph {:.2f} s after the request", Describe(actor), EventOf(run),
+        log::blows.debug("{}: {} taken {:.2f} s after the request", Describe(actor),
+                         run.power ? "bashPowerStart" : "the right attack action from the block",
                          now - run.requestedAt);
         return nullptr;
     }
@@ -173,19 +189,27 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
         run.sawBash = true;
     else if (run.sawBash)
         return "bash made";
+    else if (attack != RE::ATTACK_STATE_ENUM::kNone && run.otherAttackState < 0)
+        run.otherAttackState = static_cast<int>(attack);
     if (now - run.sentAt >= kWatchSeconds)
-        return run.sawBash ? "watch over, still bashing" : "taken, never bashed";
+    {
+        if (run.sawBash)
+            return "watch over, still bashing";
+        return run.otherAttackState >= 0 ? "taken, an attack but no bash" : "taken, never bashed";
+    }
     return nullptr;
 }
 
 } // namespace
 
-BashRequest RequestBash(RE::Actor *actor, bool power, int ruleIndex, std::string_view ruleName)
+BashRequest RequestBash(RE::Actor *actor, std::uint32_t targetId, bool power, int ruleIndex, std::string_view ruleName)
 {
     if (IsMidBash(actor))
         return BashRequest::AlreadyBashing;
     Run run;
     run.actor = actor->GetHandle();
+    if (auto *target = targetId != 0 ? RE::TESForm::LookupByID<RE::Actor>(targetId) : nullptr)
+        run.target = target->GetHandle();
     run.id = actor->GetFormID();
     run.power = power;
     run.ruleIndex = ruleIndex;

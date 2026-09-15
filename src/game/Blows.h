@@ -6,15 +6,16 @@
 // is offered only to an actor who wants to block and is blocking, and the
 // combat AI bashes the same way, its block raised by a CombatAnimation of the
 // left attack action before its attack (docs/ATTACK.md "How the engine
-// bashes"). A bash event sent to a follower who is not blocking is one the
-// tree would never choose. Power Bash goes the same way; the tree offers a
-// power bash to the player alone, so it is sent to the graph as an event
-// too, but from the block.
+// bashes"). The bash itself is the right attack action made from the block,
+// which the tree resolves into bashStart, and which sets the bash attack
+// state; the event sent straight to the graph was taken and set no such
+// state (2026-09-15). The tree offers a power bash to the player alone, so a
+// power bash is still sent to the graph as an event, from the block.
 //
 // So a request is steps: the hands free (the weapon drawn, no swing in
-// progress), the block raised unless it is up already, the bash sent once it
-// is up, the bash watched until it ends, the block lowered if the request
-// raised it. The fast tick advances them (game/Tactics.cpp), every 50 ms
+// progress), the block raised unless it is up already, the bash asked for
+// once it is up, the bash watched until it ends, the block lowered if the
+// request raised it. The fast tick advances them (game/Tactics.cpp), every 50 ms
 // while any is in flight: at the half-second turn the follower's AI would
 // have the block down again between two steps.
 
@@ -35,10 +36,11 @@ enum class BashRequest : std::uint8_t
     AlreadyBashing // this follower has one in flight
 };
 
-// Start a bash, or a power bash, for the rule named, which rule.resolved
-// names again when it is over. The caller has judged that what is in the
-// hands bashes. Game thread.
-[[nodiscard]] BashRequest RequestBash(RE::Actor *actor, bool power, int ruleIndex, std::string_view ruleName);
+// Start a bash, or a power bash, at the target, for the rule named, which
+// rule.resolved names again when it is over. The caller has judged that
+// what is in the hands bashes. Game thread.
+[[nodiscard]] BashRequest RequestBash(RE::Actor *actor, std::uint32_t targetId, bool power, int ruleIndex,
+                                      std::string_view ruleName);
 
 // Is this follower in the middle of one? Their rules wait meanwhile: a pin
 // or a potion mid-bash would cut it off. Game thread.
