@@ -56,7 +56,8 @@ endif()
 if(FT_CLANG_TIDY)
     message(STATUS "clang-tidy: ${FT_CLANG_TIDY}")
 
-    # Scope: everything WE wrote -- src/core, plus src/game where it is built.
+    # Scope: everything WE wrote -- src/core, plus src/game and the files at the
+    # top of src (plugin.cpp, the entry point) where they are built.
     #
     # This used to be src/core only, on the grounds that src/game pulls in
     # RE/Skyrim.h and would bury real findings under third-party noise. That was
@@ -71,15 +72,15 @@ if(FT_CLANG_TIDY)
     #    precompiled PCH file" -- which looks exactly like a clean run, because
     #    it reports zero findings.
     #
-    # Each preset lints what its OWN database covers -- src/game is in the
-    # plugin's alone. Pointing -p at another preset's is what went stale;
-    # CLAUDE.md, "The linter's blind spot", has that story.
+    # Each preset lints what its OWN database covers -- src/game and the top of
+    # src are in the plugin's alone. Pointing -p at another preset's is what
+    # went stale; CLAUDE.md, "The linter's blind spot", has that story.
     file(GLOB FT_TIDY_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/core/*.cpp")
     set(FT_TIDY_SCOPE "src/core")
     if(FT_BUILD_PLUGIN)
-        file(GLOB FT_TIDY_GAME CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/game/*.cpp")
+        file(GLOB FT_TIDY_GAME CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/game/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.cpp")
         list(APPEND FT_TIDY_SOURCES ${FT_TIDY_GAME})
-        set(FT_TIDY_SCOPE "src/core and src/game")
+        set(FT_TIDY_SCOPE "src/core, src/game and src/*.cpp")
     endif()
 
     # Our own headers: any of them changing can change a finding in any file

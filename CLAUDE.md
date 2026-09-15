@@ -109,7 +109,7 @@ Before anything is called done, all four must be green, plus both of these:
 
 ```powershell
 .\tools\build.ps1 -Preset core-asan -Test   # AddressSanitizer
-cmake --build --preset debug --target tidy  # the linter over src/game too
+cmake --build --preset debug --target tidy  # the linter over src/game and src/plugin.cpp too
 ```
 
 The second is the slower one -- every `src/game` translation unit parses the whole of CommonLibSSE, which no filter avoids and which the `/Y-` above means clang cannot precompile once and reuse. Spread across cores it is about a minute and a half against `src/core`'s twenty seconds, which is why it sits here rather than in the fast loop.
@@ -125,7 +125,7 @@ there IS a real check, so use it.
 
 ### The linter's blind spot, and how it hid
 
-**Each preset's `tidy` lints what its own compile database covers, and no more**: the core presets lint `src/core`, and `src/game` -- which appears only in the *plugin's* database -- is covered by `cmake --build --preset debug --target tidy`. Getting `src/game` covered needs two
+**Each preset's `tidy` lints what its own compile database covers, and no more**: the core presets lint `src/core`, and `src/game` and `src/plugin.cpp` -- which appear only in the *plugin's* database -- are covered by `cmake --build --preset debug --target tidy`. Getting `src/game` covered needs two
 flags that are easy to get wrong:
 
 - `--header-filter=src.(core|game)` keeps CommonLibSSE's thousands of header
