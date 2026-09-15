@@ -212,6 +212,11 @@ struct Slot
     // event of ours, once seen.
     const char *targetInput = "Target";
     const RE::BGSAttackData *attackAtArm = nullptr;
+    // The override list the record was put in (FindStack), a form that
+    // outlives the actor and the load, so it is kept to take the record out;
+    // and where it went, which rule.resolved reports.
+    RE::BGSListForm *overrideList = nullptr;
+    const char *placedIn = nullptr;
     std::string attackEvent;
 
     [[nodiscard]] bool Busy() const noexcept
@@ -826,56 +831,208 @@ void ReturnShoutVoice(Slot &slot)
     slot.ownVoice = nullptr;
 }
 
-// How a record reaches a follower: at the front of their own package
-// stack. Every alias an actor fills is instanced for them as an array of
-// packages on the actor (ExtraAliasInstanceArray), and the array whose
-// packages include the one running now is the stack that has them in the
-// fight, so the record goes at its front, where it is evaluated first; the
-// lease's condition gates it. Per actor, so nothing shared is touched: the
-// vanilla follower alias's combat-override list, which was spliced until
-// 2026-09-09, is left alone (docs/MAGIC.md "The list they live in"). The
-// created-package route (PutCreatedPackage) was tried and is not
-// evaluated in a fight.
-RE::BSTArray<RE::TESPackage *> *PutOnStack(RE::Actor *actor, RE::TESPackage *pkg)
+// A quest alias's override package lists are not on the alias: its loader
+// (24013) files a BGSOverridePackCollection for it in a global map keyed by
+// the alias, and the follower alias's combat override list is where a
+// follower's package in a fight comes from (docs/ATTACK.md "Facing").
+// CommonLib has the table's layout (BSTScatterTable, RE/B/BSTHashMap.h) but
+// not this global, so the table is read through a copy of that layout,
+// anchored on the capacity the loader reads (Address Library 369298, 0x0C
+// into the table): an address known for 1.6.1170 alone (docs/VERSIONS.md).
+struct AliasOverrideEntry
 {
-    auto *extra = actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
-    if (!extra)
+    const RE::BGSRefAlias *alias;
+    const RE::BGSOverridePackCollection *lists;
+    const AliasOverrideEntry *next; // null in an empty slot; the sentinel ends a chain
+};
+struct AliasOverrideMap
+{
+    std::uint64_t pad00;
+    std::uint32_t pad08;
+    std::uint32_t capacity;
+    std::uint32_t free;
+    std::uint32_t good;
+    const AliasOverrideEntry *sentinel;
+    std::uint64_t pad20;
+    const AliasOverrideEntry *entries;
+};
+static_assert(sizeof(AliasOverrideEntry) == 0x18);
+static_assert(offsetof(AliasOverrideMap, capacity) == 0x0C && offsetof(AliasOverrideMap, sentinel) == 0x18 &&
+              offsetof(AliasOverrideMap, entries) == 0x28);
+// Nothing reads the map unless CheckAliasOverrideLists found it as expected.
+bool g_aliasOverrideListsRead = false;
+
+// AE alone: the ID means something else to the Special Edition's library.
+const AliasOverrideMap &AliasOverrideTable()
+{
+    static REL::Relocation<const AliasOverrideMap *> at{REL::ID(369298), -0x0C};
+    return *at.get();
+}
+
+// An alias's override lists: null when it has none, or the map is not read.
+// The keys are reference aliases, whose base is their first and only one, so
+// an instance's base alias pointer compares equal to its key.
+const RE::BGSOverridePackCollection *OverrideListsOf(const RE::BGSBaseAlias *alias)
+{
+    if (!g_aliasOverrideListsRead || !alias)
         return nullptr;
-    const auto *running = actor->GetCurrentPackage();
-    RE::BSTArray<RE::TESPackage *> *chosen = nullptr;
-    const RE::BGSRefAliasInstanceData *chosenInst = nullptr;
-    std::uint32_t most = 0;
-    for (const auto *inst : extra->aliases)
+    const AliasOverrideMap &map = AliasOverrideTable();
+    for (std::uint32_t i = 0; i < map.capacity; ++i)
     {
-        if (!inst || !inst->instancedPackages)
-            continue;
-        auto *packages = const_cast<RE::BSTArray<RE::TESPackage *> *>(inst->instancedPackages);
-        const bool holdsRunning = running && std::find(packages->begin(), packages->end(), running) != packages->end();
-        // The array running them now; failing that, the fullest, which is
-        // the quest that drives them.
-        if (holdsRunning || (!chosen && packages->size() > most))
+        const AliasOverrideEntry &entry = map.entries[i];
+        if (entry.next && entry.alias == alias)
+            return entry.lists;
+    }
+    return nullptr;
+}
+
+// The package data a power attack's record runs with, by where it is put.
+// On an alias's package array it needs IgnoreCombat, or the combat override
+// is picked over it in a fight, and then nothing faces the follower but
+// TurnToward. In an override list it takes the data of the one vanilla
+// UseWeapon record kept in such a list, Karliah's in Blindsighted: Weapon
+// Drawn and interrupt override Combat, without IgnoreCombat, so combat goes
+// on facing and moving the follower. Copied, not written: the file's
+// interrupt override values and the library's names for them do not agree
+// (docs/MAGIC.md "Forms at runtime").
+struct PackageData
+{
+    decltype(RE::PACKAGE_DATA::packFlags) flags;
+    decltype(RE::PACKAGE_DATA::interruptOverrideType) interruptOverride;
+    decltype(RE::PACKAGE_DATA::foBehaviorFlags) interruptFlags;
+};
+constexpr std::uint32_t kKarliahCombatOverrideID = 0x000FCC2A; // TG08BKarliahUseWeaponCombatOverride
+std::optional<PackageData> g_weaponOnStack;
+std::optional<PackageData> g_weaponInOverrideList;
+
+PackageData DataOf(const RE::TESPackage &pkg)
+{
+    return {pkg.packData.packFlags, pkg.packData.interruptOverrideType, pkg.packData.foBehaviorFlags};
+}
+
+void SetData(RE::TESPackage &pkg, const PackageData &data)
+{
+    pkg.packData.packFlags = data.flags;
+    pkg.packData.interruptOverrideType = data.interruptOverride;
+    pkg.packData.foBehaviorFlags = data.interruptFlags;
+}
+
+template <class T> void PutFirst(RE::BSTArray<T *> &items, std::type_identity_t<T *> item)
+{
+    std::vector<T *> keep(items.begin(), items.end());
+    items.clear();
+    items.push_back(item);
+    for (auto *p : keep)
+        if (p != item)
+            items.push_back(p);
+}
+
+template <class T> bool TakeOut(RE::BSTArray<T *> &items, std::type_identity_t<const T *> item)
+{
+    std::vector<T *> keep;
+    for (auto *p : items)
+        if (p != item)
+            keep.push_back(p);
+    if (keep.size() == items.size())
+        return false;
+    items.clear();
+    for (auto *p : keep)
+        items.push_back(p);
+    return true;
+}
+
+std::string AliasName(const RE::BGSRefAliasInstanceData &inst)
+{
+    return fmt::format("{} \"{}\" alias {}", inst.quest ? fmt::format("{:08X}", inst.quest->GetFormID()) : "?",
+                       inst.quest && inst.quest->GetFormEditorID() ? inst.quest->GetFormEditorID() : "",
+                       inst.alias ? inst.alias->aliasID : 0xFFFFFFFF);
+}
+
+// Where a record is put: one of the actor's alias package arrays, or an
+// override list, a form shared by everyone whose alias or record names it.
+struct Stack
+{
+    RE::BSTArray<RE::TESPackage *> *packages = nullptr;
+    RE::BGSListForm *list = nullptr;
+    const char *kind = nullptr; // "alias packages", or which override list
+    std::string owner;
+};
+
+// How a record reaches a follower: at the front of the list their running
+// package came from, where it is evaluated first; the lease's condition
+// gates it. Every alias an actor fills is instanced for them as an array of
+// packages on the actor (ExtraAliasInstanceArray). When `overrideLists`, an
+// override list that holds the running package is looked for next, on each
+// alias they fill and on their record: in a fight that is the combat
+// override list. Failing both, the fullest array, which is the quest that
+// drives them. The created-package route (PutCreatedPackage) was tried and
+// is not evaluated in a fight.
+Stack FindStack(RE::Actor *actor, bool overrideLists)
+{
+    Stack fullest;
+    const auto *running = actor->GetCurrentPackage();
+    auto *extra = actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
+    if (extra)
+    {
+        std::uint32_t most = 0;
+        for (const auto *inst : extra->aliases)
         {
-            chosen = packages;
-            chosenInst = inst;
-            most = packages->size();
-            if (holdsRunning)
-                break;
+            if (!inst || !inst->instancedPackages)
+                continue;
+            auto *packages = const_cast<RE::BSTArray<RE::TESPackage *> *>(inst->instancedPackages);
+            if (running && std::find(packages->begin(), packages->end(), running) != packages->end())
+                return {packages, nullptr, "alias packages", AliasName(*inst)};
+            if (packages->size() > most)
+            {
+                most = packages->size();
+                fullest = {packages, nullptr, "alias packages", AliasName(*inst)};
+            }
         }
     }
-    if (!chosen)
-        return nullptr;
-    std::vector<RE::TESPackage *> keep(chosen->begin(), chosen->end());
-    chosen->clear();
-    chosen->push_back(pkg);
-    for (auto *p : keep)
-        if (p != pkg)
-            chosen->push_back(p);
-    log::packages.debug("{:08X} at the front of {} \"{}\" alias {} ({} packages)", pkg->GetFormID(),
-                        chosenInst->quest ? fmt::format("{:08X}", chosenInst->quest->GetFormID()) : "?",
-                        chosenInst->quest && chosenInst->quest->GetFormEditorID() ? chosenInst->quest->GetFormEditorID()
-                                                                                  : "",
-                        chosenInst->alias ? chosenInst->alias->aliasID : 0xFFFFFFFF, chosen->size());
-    return chosen;
+    if (overrideLists && running)
+    {
+        Stack found;
+        const auto holding = [running, &found](const RE::BGSOverridePackCollection *lists, std::string owner) {
+            if (!lists)
+                return false;
+            const std::array<std::pair<RE::BGSListForm *, const char *>, 4> named{
+                {{lists->enterCombatOverRidePackList, "combat override list"},
+                 {lists->spectatorOverRidePackList, "spectator override list"},
+                 {lists->observeCorpseOverRidePackList, "observe corpse override list"},
+                 {lists->guardWarnOverRidePackList, "guard warn override list"}}};
+            for (const auto &[list, kind] : named)
+            {
+                if (list && std::find(list->forms.begin(), list->forms.end(), running) != list->forms.end())
+                {
+                    found = {nullptr, list, kind, std::move(owner)};
+                    return true;
+                }
+            }
+            return false;
+        };
+        if (extra)
+        {
+            for (const auto *inst : extra->aliases)
+                if (inst && holding(OverrideListsOf(inst->alias), AliasName(*inst)))
+                    return found;
+        }
+        if (holding(actor->GetActorBase(), "their record"))
+            return found;
+    }
+    return fullest;
+}
+
+void PutOnStack(const Stack &stack, RE::TESPackage *pkg)
+{
+    if (stack.list)
+        PutFirst(stack.list->forms, pkg);
+    else if (stack.packages)
+        PutFirst(*stack.packages, pkg);
+    else
+        return;
+    log::packages.debug("{:08X} at the front of the {}{} of {} ({} entries)", pkg->GetFormID(), stack.kind,
+                        stack.list ? fmt::format(" {:08X}", stack.list->GetFormID()) : "", stack.owner,
+                        stack.list ? stack.list->forms.size() : stack.packages->size());
 }
 
 void TakeOffStack(RE::Actor *actor, RE::TESPackage *pkg)
@@ -885,18 +1042,8 @@ void TakeOffStack(RE::Actor *actor, RE::TESPackage *pkg)
         return;
     for (const auto *inst : extra->aliases)
     {
-        if (!inst || !inst->instancedPackages)
-            continue;
-        auto *packages = const_cast<RE::BSTArray<RE::TESPackage *> *>(inst->instancedPackages);
-        std::vector<RE::TESPackage *> keep;
-        for (auto *p : *packages)
-            if (p != pkg)
-                keep.push_back(p);
-        if (keep.size() == packages->size())
-            continue;
-        packages->clear();
-        for (auto *p : keep)
-            packages->push_back(p);
+        if (inst && inst->instancedPackages)
+            TakeOut(*const_cast<RE::BSTArray<RE::TESPackage *> *>(inst->instancedPackages), pkg);
     }
 }
 
@@ -964,6 +1111,7 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
     log::AppendActor(fields, "targetFormId", "targetBaseFormId", "targetName", slot.targetId);
     fields.emplace_back("outcome", outcome);
     fields.emplace_back("pickedUp", slot.seenRunning);
+    fields.emplace_back("placedIn", slot.placedIn ? slot.placedIn : "nowhere");
     std::string blowNote;
     if (slot.weapon)
     {
@@ -1049,6 +1197,10 @@ void Release(Slot &slot)
             TakeOffStack(actor.get(), slot.package);
     }
     slot.onStack = false;
+    if (slot.overrideList)
+        TakeOut(slot.overrideList->forms, slot.package);
+    slot.overrideList = nullptr;
+    slot.placedIn = nullptr;
     // The wrapper comes off before the lease goes: the lease is what still
     // knows whose list it is in.
     if (slot.wrapper && slot.lease)
@@ -1192,8 +1344,18 @@ CastRequest Arm(Slot &slot, RE::Actor *actor, float sustain, double window, int 
     slot.spellId.store(slot.spell, std::memory_order_relaxed);
     slot.shoutId.store(slot.shouting ? slot.shouting->GetFormID() : 0, std::memory_order_relaxed);
     slot.holder.store(actor->GetFormID(), std::memory_order_release);
-    slot.onStack = PutOnStack(actor, slot.package) != nullptr;
-    if (!slot.onStack)
+    // A power attack's record may go in an override list, with the package
+    // data for it; a cast's stays on the alias arrays, the route verified
+    // for casts.
+    const bool overrideLists = slot.weapon && g_weaponOnStack && g_weaponInOverrideList;
+    const Stack stack = FindStack(actor, overrideLists);
+    if (overrideLists)
+        SetData(*slot.package, stack.list ? *g_weaponInOverrideList : *g_weaponOnStack);
+    PutOnStack(stack, slot.package);
+    slot.onStack = stack.packages != nullptr;
+    slot.overrideList = stack.list;
+    slot.placedIn = stack.kind;
+    if (!stack.packages && !stack.list)
         log::packages.warn("{} fills no alias with packages; the record has no way to them", Describe(actor));
 
     // Immediate, or they finish whatever they are doing first and the rule's
@@ -1464,8 +1626,9 @@ void TickWeaponSlot(Slot &slot, double now)
 
     // Turned toward the target while no swing of ours is under way: the
     // procedure attacks only a target in front, and in a fight it does not
-    // turn the follower itself.
-    if (!slot.swinging)
+    // turn the follower itself. In an override list the record leaves combat
+    // running, and facing is combat's.
+    if (!slot.swinging && !slot.overrideList)
     {
         if (const auto target = slot.target.get())
             TurnToward(actor.get(), target.get());
@@ -1572,6 +1735,12 @@ void ResetPackages()
         // and are rebuilt with them on load; the record's condition is
         // false by then and the entry never passes.
         slot.onStack = false;
+        // An override list is a form, not the actor's: it is not rebuilt on
+        // load, and the record would stay in it.
+        if (slot.overrideList)
+            TakeOut(slot.overrideList->forms, slot.package);
+        slot.overrideList = nullptr;
+        slot.placedIn = nullptr;
         slot.holder.store(0, std::memory_order_release);
         slot.spellId.store(0, std::memory_order_relaxed);
         slot.shoutId.store(0, std::memory_order_relaxed);
@@ -2002,39 +2171,9 @@ bool CalibrateWeapon()
     return true;
 }
 
-// A quest alias's override package lists are not on the alias: its loader
-// (24013) files a BGSOverridePackCollection for it in a global map keyed by
-// the alias, and the follower alias's combat override list is where a
-// follower's package in a fight comes from (docs/ATTACK.md "Facing").
-// CommonLib has the table's layout (BSTScatterTable, RE/B/BSTHashMap.h) but
-// not this global, so the table is read through a copy of that layout,
-// anchored on the capacity the loader reads (Address Library 369298, 0x0C
-// into the table): an address known for 1.6.1170 alone (docs/VERSIONS.md).
-struct AliasOverrideEntry
-{
-    const RE::BGSRefAlias *alias;
-    const RE::BGSOverridePackCollection *lists;
-    const AliasOverrideEntry *next; // null in an empty slot; the sentinel ends a chain
-};
-struct AliasOverrideMap
-{
-    std::uint64_t pad00;
-    std::uint32_t pad08;
-    std::uint32_t capacity;
-    std::uint32_t free;
-    std::uint32_t good;
-    const AliasOverrideEntry *sentinel;
-    std::uint64_t pad20;
-    const AliasOverrideEntry *entries;
-};
-static_assert(sizeof(AliasOverrideEntry) == 0x18);
-static_assert(offsetof(AliasOverrideMap, capacity) == 0x0C && offsetof(AliasOverrideMap, sentinel) == 0x18 &&
-              offsetof(AliasOverrideMap, entries) == 0x28);
 constexpr std::uint32_t kDialogueFollowerID = 0x000750BA;
 constexpr std::uint32_t kFollowerCombatOverrideListID = 0x0005C852; // PlayerFollowerCombatOverridePackageList
 constexpr std::uint32_t kMostAliasesFiled = 1U << 20;
-// Nothing reads the map unless CheckAliasOverrideLists found it as expected.
-bool g_aliasOverrideListsRead = false;
 
 bool InGameData(std::uintptr_t address)
 {
@@ -2079,8 +2218,7 @@ bool CheckAliasOverrideLists()
         return false;
     }
 
-    static REL::Relocation<const AliasOverrideMap *> at{REL::ID(369298), -0x0C};
-    const auto *map = at.get();
+    const AliasOverrideMap *map = &AliasOverrideTable();
     const std::uint32_t capacity = map->capacity;
     const bool powerOfTwo = capacity != 0 && (capacity & (capacity - 1)) == 0;
     const auto entriesAt = reinterpret_cast<std::uintptr_t>(map->entries);
@@ -2253,6 +2391,8 @@ const char *MakeKit(Kit &kit)
             log::packages.warn("power attack package: {} -- Power Attack goes by the animation event", failed);
         else
         {
+            // Every follower's copy is configured alike.
+            g_weaponOnStack = DataOf(*weaponPkg);
             kit.weapon.package = weaponPkg;
             kit.weapon.condition = weaponCondition;
             kit.weapon.weapon = true;
@@ -2291,6 +2431,21 @@ void InitPackages()
         g_weaponSource = RE::TESForm::LookupByID<RE::TESPackage>(kEdorfinAttackTargetID);
     else
         log::packages.warn("UseWeapon inputs not identified -- Power Attack goes by the animation event");
+
+    // Without Karliah's record, a power attack's record keeps to the alias
+    // arrays, with IgnoreCombat and TurnToward.
+    if (const auto *karliah = RE::TESForm::LookupByID<RE::TESPackage>(kKarliahCombatOverrideID))
+    {
+        g_weaponInOverrideList = DataOf(*karliah);
+        log::packages.debug("Karliah's package data for an override list: flags {:08X}, interrupt override {}, "
+                            "interrupt flags {:04X}",
+                            karliah->packData.packFlags.underlying(),
+                            static_cast<int>(karliah->packData.interruptOverrideType.underlying()),
+                            karliah->packData.foBehaviorFlags.underlying());
+    }
+    else
+        log::packages.warn("Karliah's combat override record is missing -- a power attack stays off the override "
+                           "lists");
 }
 
 void ProvideCastForms(RE::Actor *actor)

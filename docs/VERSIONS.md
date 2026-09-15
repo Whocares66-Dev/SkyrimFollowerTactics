@@ -12,7 +12,7 @@ Called only when `REL::Module::IsAE()`; on SE and VR the feature is skipped.
 |---|---|---|---|
 | Turn an actor toward a point, through its movement controller (the UseWeapon procedure's own call out of combat) | 37834 | `TurnToward`, `src/game/Packages.cpp` | not turned; a power attack needs the follower already facing the target |
 | Take that point back | 37839 | `StopTurning`, same file | nothing to take back |
-| The global map from a quest alias to its `BGSOverridePackCollection`: the capacity field the alias loader (24013) reads, 0x0C into the table | 369298 | `CheckAliasOverrideLists`, same file | not read |
+| The global map from a quest alias to its `BGSOverridePackCollection`: the capacity field the alias loader (24013) reads, 0x0C into the table | 369298 | `CheckAliasOverrideLists` and `OverrideListsOf`, same file | not read; a power attack's record goes on an alias's package array with IgnoreCombat and is turned toward the target |
 
 An AE ID names the same thing in every AE build's Address Library only if that library's authors matched it; these were read on 1.6.1170. On an AE build whose library lacks one, CommonLib stops the game at the first use with "Failed to find the id within the address library" (`src/REL/IDDB.cpp`), rather than skipping.
 
