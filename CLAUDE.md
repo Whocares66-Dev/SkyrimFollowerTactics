@@ -15,6 +15,7 @@ tested against without Skyrim (not yet built; what is known, what to measure fir
 `docs/EVENTS.md` is the game events: what tactics record, the last 1,000 kept in memory for the panel, and the per-session files and their archive (built 2026-09-14; not yet verified in play);
 `docs/MODIFIERS.md` is where a follower's bonuses come from and how to total them (perk
 entry points over actor values; research and thoughts, with the open questions);
+`docs/VERSIONS.md` is every address, vtable slot and layout taken from one build of the game (1.6.1170) rather than from CommonLib, to resolve before shipping; add a row when you add one;
 `docs/TODO.md` is what is still to do.
 
 ## The one architectural rule

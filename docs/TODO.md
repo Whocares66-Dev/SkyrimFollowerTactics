@@ -183,6 +183,8 @@ in `docs/PLAN.md`.
 
 ## Toolchain
 
+- **Version-bound addresses, before shipping** (`docs/VERSIONS.md`). Every Address Library ID, vtable slot and engine layout read from 1.6.1170 alone: each gets its Special Edition (and VR) counterpart read and checked, or the feature it serves says plainly that it is AE-only.
+
 - **CommonLibSSE-NG migration** to alandtse `ng` (`docs/COMMONLIB.md`): brings
   `ForceRefTo`, and re-check the `Skyrim.INI` log-directory quirk.
 
