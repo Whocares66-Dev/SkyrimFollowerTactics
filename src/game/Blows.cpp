@@ -22,6 +22,12 @@ constexpr double kDeadlineSeconds = 2.0;
 // How long a bash that was taken is watched for the bash attack state. The
 // animation is under a second; one not seen by then was not made.
 constexpr double kWatchSeconds = 1.5;
+// How long a request that had to wait -- for the follower's own swing to
+// end, or the block to come up -- holds the bash once the hands are free
+// with the block up. Asked for on the tick the wait ended, the tree chose an
+// ordinary attack or nothing: no bash in eight such requests, where ten of
+// twelve that went straight through bashed (2026-09-15).
+constexpr double kSettleSeconds = 0.25;
 
 enum class Step : std::uint8_t
 {
@@ -41,11 +47,16 @@ struct Run
     double blockAskedAt = -1.0;
     double blockUpAt = -1.0;
     double sentAt = -1.0;
+    // Since when the hands have been free (the weapon drawn, no attack), and
+    // free with the block up; -1 while they are not.
+    double freeSince = -1.0;
+    double steadySince = -1.0;
     // Lowered at the end only if this request raised it: a block the
     // follower already held is their AI's to lower.
     bool raised = false;
     bool alreadyBlocking = false;
     bool sawBash = false;
+    bool waited = false;   // a step could not go on at once; the bash settles first
     int blockRefusals = 0; // the left attack action was turned away
     int bashRefusals = 0;  // the bash was turned away with the block up
     // The first attack state other than a bash seen once the bash was taken,
@@ -89,18 +100,23 @@ void Report(const Run &run, RE::Actor *actor, const char *reason, double now)
     fields.emplace_back("blockRaised", run.raised);
     fields.emplace_back("blockUpS", since(run.blockUpAt));
     fields.emplace_back("sentS", since(run.sentAt));
+    fields.emplace_back("waited", run.waited);
+    fields.emplace_back("handsFreeS", since(run.freeSince));
+    fields.emplace_back("steadyS", since(run.steadySince));
     fields.emplace_back("blockRefusals", run.blockRefusals);
     fields.emplace_back("bashRefusals", run.bashRefusals);
     fields.emplace_back("attackStateSeen", run.otherAttackState);
     log::blows.event(log::Level::Info, "rule.resolved", actor, fields,
-                     "{} rule {} \"{}\": {} {} -- {}, after {:.2f} s (block {}, up at {:.2f} s, taken at {:.2f} s, "
+                     "{} rule {} \"{}\": {} {} -- {}, after {:.2f} s (block {}, up at {:.2f} s, steady at {:.2f} s, "
+                     "taken at {:.2f} s{}, "
                      "refused {} block + {} bash)",
                      actor ? log::NameOf(actor) : log::Id(run.id), run.ruleIndex, run.ruleName, KindOf(run),
                      run.sawBash ? "made" : "not made", reason, now - run.requestedAt,
                      run.alreadyBlocking ? "already up"
                      : run.raised        ? "raised"
                                          : "not raised",
-                     since(run.blockUpAt), since(run.sentAt), run.blockRefusals, run.bashRefusals);
+                     since(run.blockUpAt), since(run.steadySince), since(run.sentAt), run.waited ? " after a wait" : "",
+                     run.blockRefusals, run.bashRefusals);
 }
 
 void Finish(const Run &run, RE::Actor *actor, const char *reason, double now)
@@ -134,7 +150,13 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
             return run.blockRefusals > 0 ? "deadline, block refused" : "deadline, still mid-swing";
         }
         if (!state->IsWeaponDrawn() || attack != RE::ATTACK_STATE_ENUM::kNone)
+        {
+            run.waited = true;
+            run.freeSince = -1.0;
             return nullptr;
+        }
+        if (run.freeSince < 0.0)
+            run.freeSince = now;
         if (actor->IsBlocking())
             run.alreadyBlocking = true;
         else
@@ -148,6 +170,7 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
             if (!run.raised)
             {
                 ++run.blockRefusals;
+                run.waited = true;
                 return nullptr;
             }
         }
@@ -157,11 +180,25 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
     if (run.step == Step::Blocking)
     {
         if (late)
-            return run.blockUpAt < 0.0 ? "deadline, block never up" : "deadline, bash refused from the block";
-        if (!actor->IsBlocking())
+        {
+            if (run.blockUpAt < 0.0)
+                return "deadline, block never up";
+            return run.bashRefusals > 0 ? "deadline, bash refused from the block" : "deadline, never steady";
+        }
+        // The follower's own AI may swing again, or drop the block, while
+        // this waits; either starts the settle over.
+        if (!actor->IsBlocking() || attack != RE::ATTACK_STATE_ENUM::kNone)
+        {
+            run.waited = true;
+            run.steadySince = -1.0;
             return nullptr;
+        }
         if (run.blockUpAt < 0.0)
             run.blockUpAt = now;
+        if (run.steadySince < 0.0)
+            run.steadySince = now;
+        if (run.waited && now - run.steadySince < kSettleSeconds)
+            return nullptr;
         // A bash is the right attack action from the block, as the combat AI
         // makes one: the tree resolves it into bashStart, and the action is
         // what sets the bash attack state.
