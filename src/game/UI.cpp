@@ -1605,14 +1605,15 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
     };
 
-    // Attack this one, bash them; then the power blows. Each says what it
-    // does in its name; no tooltip.
+    // What the weapon does, then what blocks: Attack and Power Attack, a
+    // divider, Bash and Power Bash. Each says what it does in its name; no
+    // tooltip.
     for (const auto kind :
-         {ft::ActionKind::Attack, ft::ActionKind::Bash, ft::ActionKind::PowerAttack, ft::ActionKind::PowerBash})
+         {ft::ActionKind::Attack, ft::ActionKind::PowerAttack, ft::ActionKind::Bash, ft::ActionKind::PowerBash})
     {
         if (!valid(kind))
             continue;
-        group(kind == ft::ActionKind::Attack || kind == ft::ActionKind::Bash ? 0 : 1);
+        group(kind == ft::ActionKind::Attack || kind == ft::ActionKind::PowerAttack ? 0 : 1);
         const bool selected = here && act.kind == kind;
         if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
         {
