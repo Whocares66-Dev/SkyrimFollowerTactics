@@ -2072,9 +2072,12 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
             // actor value keeps (Comprehensive Attack Rate Patch caps and
             // tapers it in its detour of the engine's speed, 2026-09-14). The
             // formula stays as the lines and the fallback, and what it misses
-            // is Other. Not yet watched: that the variable is the whole
-            // speed and not the multiplier alone, which a dagger with no
-            // speed effects shows by reading its record's figure.
+            // is Other. The variable is the whole speed, record included: a
+            // dagger with no speed effects read its record's 1.30
+            // (2026-09-15). It moves only while the game runs, so with the
+            // clock frozen behind the panel it can lag -- 1.00 on a first
+            // open, 1.30 once the panel was closed and opened -- and the lag
+            // reads as Other, as an enchantment equipped from the panel does.
             if (float live = 0.0f; actor->GetGraphVariableFloat(left ? "leftWeaponSpeedMult" : "weaponSpeedMult", live))
             {
                 log::sensors.debug("{} {} speed: graph {:.3f}, formula {:.3f}", Describe(actor), NameOr(weapon, "?"),
