@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <nlohmann/json.hpp>
 
@@ -69,6 +70,15 @@ std::string Id(std::uint32_t formID)
     std::array<char, 16> buffer{};
     const int written = std::snprintf(buffer.data(), buffer.size(), "0x%08X", formID);
     return written > 0 ? std::string(buffer.data(), static_cast<std::size_t>(written)) : std::string{};
+}
+
+double Rounded(double value) noexcept
+{
+    // NaN and the infinities go through as they are: nlohmann writes null for
+    // them, and rounding has nothing to say about a value that is not a number.
+    if (!std::isfinite(value))
+        return value;
+    return std::round(value * 1000.0) / 1000.0;
 }
 
 Field::Field(std::string_view key, std::string value) : key_(key), value_(std::move(value))

@@ -48,6 +48,12 @@ enum class Level : std::uint8_t
 // Not noexcept: it returns a std::string, so it allocates like any other.
 [[nodiscard]] std::string Id(std::uint32_t formID);
 
+// A number as an event writes it: three decimals, so a duration reads in
+// milliseconds and a fraction to a tenth of a percent. A float widened to a
+// double otherwise carries its own noise into the line -- a 2.006 s hold was
+// written 2.0060348510742188 -- which reads badly and diffs worse.
+[[nodiscard]] double Rounded(double value) noexcept;
+
 // One key and its value. The constructors are what decide how a value is
 // spelled in JSON -- an id is a string, a count is a number, a list of actors
 // is an array of ids -- so a call site writes the value it has and never a
@@ -71,7 +77,7 @@ class Field
 
     template <class T>
         requires std::floating_point<T>
-    Field(std::string_view key, T value) : key_(key), value_(static_cast<double>(value))
+    Field(std::string_view key, T value) : key_(key), value_(Rounded(static_cast<double>(value)))
     {
     }
 

@@ -76,6 +76,17 @@ TEST_CASE("each kind of value is spelled the way a query expects", "[logevent]")
     CHECK(j["spellFormId"].is_string());
 }
 
+TEST_CASE("a number is written to milliseconds, not to a float's noise", "[logevent]")
+{
+    // What a float brings with it when it widens: these are the values a
+    // 2.006 s power and a follower at 54% health wrote before the rounding.
+    const auto j = Parse(log::FormatEvent(log::Level::Info, "rule.resolved", kVersion, kStamp,
+                                          {{"durationS", 2.006F}, {"healthPct", 0.5408737F}}));
+
+    CHECK(j["durationS"] == 2.006);
+    CHECK(j["healthPct"] == 0.541);
+}
+
 TEST_CASE("an id is one spelling: eight digits, upper case, 0x", "[logevent]")
 {
     CHECK(log::Id(0xFF000DE0) == "0xFF000DE0");
