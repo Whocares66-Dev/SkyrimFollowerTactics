@@ -88,7 +88,7 @@ The record carries only the fields a rule reads, so a status is written only und
 
 ## Pins and bans, and why the mod is safe to remove
 
-A pin is a promise about what is worn, and a load re-dresses nobody. So a saved pin is taken back only if, when the follower is first seen, they still have the thing **on**, in those hands (worn, for armour and ammunition), and it is still pinnable. Otherwise it is forgotten with an `info` line: the thing is gone, or the save was played on without the mod and the game re-dressed them in the meantime. Nothing is equipped on load.
+A pin is a promise about what is worn, and a load re-dresses nobody. So a saved pin is taken back only if, when the follower is first seen, they still have the thing **on**, in those hands (worn, for armour and ammunition), and it is still pinnable. Otherwise it is forgotten with a `warn` line naming the variant: the thing is gone, or the save was played on without the mod and the game re-dressed them in the meantime. Nothing is equipped on load.
 
 A ban is a promise about what is **not** worn, which a load can keep for anything that still exists: a saved ban is taken back whole, and the watchdog's first pass takes the thing off if the follower has it on. A ban whose form is not in this load order is forgotten the same way, and so is a ban on a variant no row of which is carried.
 

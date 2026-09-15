@@ -65,10 +65,12 @@ struct OwnEquip
     OwnEquip &operator=(const OwnEquip &) = delete;
 };
 
-// Refusals already logged, one per follower and thing: the engine asks
-// again every frame or so, and one line says it. Cleared when their pins
-// change, so a fresh conflict is logged afresh.
-std::unordered_set<std::uint64_t> g_refusedLogged;
+// Refusals already logged, one per follower, thing and copy (its variant, as
+// the log spells it): the engine asks again every frame or so and one line
+// says it, but another copy of the same thing is another decision and gets
+// its own. Cleared when their pins change, so a fresh conflict is logged
+// afresh.
+std::unordered_set<std::string> g_refusedLogged;
 
 // Violations already reported: the watchdog finds a pin off, or a banned
 // thing on, every half second until the equip takes, and one event says so.
@@ -640,10 +642,11 @@ std::string HandsState(RE::Actor *actor)
            " R=" + name(actor->GetEquippedObject(false));
 }
 
-// A follower and a form, as one key.
-std::uint64_t ReadyKey(const RE::Actor *actor, const RE::TESForm *form)
+// The copy an equip is judged as, for the log: its variant as the events
+// spell it, or that the engine was left to pick one.
+std::string CopyText(const std::optional<ft::ItemVariant> &variant)
 {
-    return (static_cast<std::uint64_t>(actor->GetFormID()) << 32) | form->GetFormID();
+    return variant ? ft::VariantText(variant) : std::string("no list named");
 }
 
 // What is where a put-back pin goes, for the log: the voice's power or shout,
@@ -1679,8 +1682,9 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
             described.IsVoice() ? InVoice(actor, thing) : object && Worn(actor, object, entry.hands, entry.variant);
         if (!on || !Pinnable(described))
         {
-            log::pins.warn("{} saved pin on {}{} does not hold -- {} -- forgotten", Describe(actor), name,
-                           HandTag(entry.hands), !on ? "not worn now" : "cannot be pinned");
+            log::pins.warn("{} saved pin on {}{} ({}) does not hold -- {} -- forgotten", Describe(actor), name,
+                           HandTag(entry.hands), ft::VariantText(entry.variant),
+                           !on ? "not worn now" : "cannot be pinned");
             continue;
         }
         AddPin(book, described, entry.hands, false);
@@ -1965,8 +1969,8 @@ bool Refused(RE::Actor *actor, RE::TESForm *form, RE::ExtraDataList *&extra, con
     auto *object = equipment ? form->As<RE::TESBoundObject>() : nullptr;
     Holdable thing = DescribeHoldable(actor, form, extra ? std::optional(VariantOf(extra)) : std::nullopt);
     const Hand into = SlotHand(slot);
-    log::pins.debug("{} the engine equips {}{}{}", Describe(actor), log::NameOf(form), HandTag(into),
-                    extra ? "" : " (no list named)");
+    log::pins.debug("{} the engine equips {}{} ({})", Describe(actor), log::NameOf(form), HandTag(into),
+                    CopyText(thing.variant));
     if (object && !pins.empty())
     {
         // The incumbent first: a copy of a pinned variant worn where this
@@ -2012,8 +2016,8 @@ bool Refused(RE::Actor *actor, RE::TESForm *form, RE::ExtraDataList *&extra, con
             extra = lists[*pick];
             thing.variant = copies[*pick].variant;
             if (extra)
-                log::pins.debug("{} the engine's pick for {}{} minus the bans: a row of another variant",
-                                Describe(actor), log::NameOf(form), HandTag(into));
+                log::pins.debug("{} the engine's pick for {}{} minus the bans: a row of another variant ({})",
+                                Describe(actor), log::NameOf(form), HandTag(into), CopyText(thing.variant));
         }
     }
     const Refusal refusal = RefusesEngineEquip(pins, bans, thing, into, DualWieldAllowed(actor));
@@ -2022,20 +2026,22 @@ bool Refused(RE::Actor *actor, RE::TESForm *form, RE::ExtraDataList *&extra, con
     if (refusal.why != Refusal::Why::Banned)
         if (const auto *weapon = form->As<RE::TESObjectWEAP>(); weapon && weapon->IsBound())
             return false;
-    if (g_refusedLogged.insert(ReadyKey(actor, form)).second)
+    const std::string copy = CopyText(thing.variant);
+    if (g_refusedLogged.insert(fmt::format("{:08X} {:08X} {}", actor->GetFormID(), form->GetFormID(), copy)).second)
     {
         if (refusal.why == Refusal::Why::Banned)
-            log::pins.warn("{} the engine would equip banned {} -- refused ({})", Describe(actor), log::NameOf(form),
-                           actor->IsInCombat() ? "in combat" : "out of combat");
+            log::pins.warn("{} the engine would equip banned {} ({}) -- refused ({})", Describe(actor),
+                           log::NameOf(form), copy, actor->IsInCombat() ? "in combat" : "out of combat");
         else
         {
             const auto *held = RE::TESForm::LookupByID(refusal.pin->thing.form);
             const char *why = refusal.why == Refusal::Why::OneCopy    ? "one copy cannot fill both hands"
                               : refusal.why == Refusal::Why::OtherPin ? "another pin holds that hand"
                                                                       : "a pin holds the hand or slot";
-            log::pins.warn("{} the engine would equip {}{} over pinned {}{} -- refused: {} ({})", Describe(actor),
-                           log::NameOf(form), HandTag(HandsFor(thing.grip, into)), log::NameOf(held),
-                           HandTag(refusal.pin->hands), why, actor->IsInCombat() ? "in combat" : "out of combat");
+            log::pins.warn("{} the engine would equip {}{} ({}) over pinned {}{} ({}) -- refused: {} ({})",
+                           Describe(actor), log::NameOf(form), HandTag(HandsFor(thing.grip, into)), copy,
+                           log::NameOf(held), HandTag(refusal.pin->hands), ft::VariantText(refusal.pin->thing.variant),
+                           why, actor->IsInCombat() ? "in combat" : "out of combat");
         }
     }
     return true;
