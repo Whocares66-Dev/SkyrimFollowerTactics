@@ -357,7 +357,7 @@ TEST_CASE("a blow at a target the senses have lost has no target", "[target]")
     Snapshot s = Party();
     s.enemies.clear();
     s.currentTarget = 0x999;
-    s.powerAttack = {true, 10.0f, 200.0f};
+    s.powerAttack = {true, true, 10.0f, 200.0f};
 
     Rule r = About(SubjectKind::Self, PredicateKind::Any);
     r.actionTarget = ActionTargetKind::Enemy;

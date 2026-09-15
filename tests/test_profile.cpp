@@ -192,6 +192,35 @@ const std::string kHealRule = R"({
 
 } // namespace
 
+TEST_CASE("the settings round-trip, and a document missing them keeps the defaults", "[profile]")
+{
+    Settings s;
+    REQUIRE(s.requireDualWieldStyle); // vanilla's own answer: the style decides
+    REQUIRE_FALSE(s.requireDualCastPerks);
+    REQUIRE_FALSE(s.requirePowerBashPerk);
+
+    s.requireDualWieldStyle = false;
+    s.requireDualCastPerks = true;
+    s.requirePowerBashPerk = true;
+    const auto back = ReadSettings(WriteSettings(s));
+    REQUIRE(back);
+    REQUIRE_FALSE(back->requireDualWieldStyle);
+    REQUIRE(back->requireDualCastPerks);
+    REQUIRE(back->requirePowerBashPerk);
+
+    // A key this build does not know is ignored, and one it knows but the
+    // document does not carry keeps its default.
+    const auto partial = ReadSettings(R"({"schema":1,"requirePowerBashPerk":true,"somethingElse":7})");
+    REQUIRE(partial);
+    REQUIRE(partial->requireDualWieldStyle);
+    REQUIRE_FALSE(partial->requireDualCastPerks);
+    REQUIRE(partial->requirePowerBashPerk);
+
+    // Not a document at all: nothing read, and the caller keeps what it has.
+    REQUIRE_FALSE(ReadSettings("{").has_value());
+    REQUIRE_FALSE(ReadSettings("[1,2,3]").has_value());
+}
+
 TEST_CASE("a profile round-trips through its file", "[profile]")
 {
     const Profile before = Everything();

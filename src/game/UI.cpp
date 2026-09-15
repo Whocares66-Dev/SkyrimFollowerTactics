@@ -16,6 +16,7 @@
 #include "core/Vocabulary.h"
 #include "game/Log.h"
 #include "game/Pins.h"
+#include "game/Settings.h"
 #include "game/Sheet.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
@@ -1222,6 +1223,14 @@ std::string LastName(const ft::Action &act)
 // what the tick found the follower to have; the words are the panel's.
 bool ActionAvailable(const ft::Action &act, const FollowerView &view)
 {
+    // What Settings requires of the follower, as the menus no longer offer
+    // it: a written rule for it reads as unavailable rather than firing and
+    // being refused every time.
+    if (act.kind == ft::ActionKind::PowerBash && !view.snapshot.powerBash.perk)
+        return false;
+    if (act.kind == ft::ActionKind::CastSpell && act.dual && act.form != 0 &&
+        !view.snapshot.spells.CanDualCast(act.form))
+        return false;
     return ft::ActionHad(act, view.holdings);
 }
 
@@ -1613,7 +1622,11 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     {
         if (!valid(kind))
             continue;
-        group(kind == ft::ActionKind::Attack || kind == ft::ActionKind::PowerAttack ? 0 : 1);
+        // Where Settings asks the Power Bash perk of a follower who has not
+        // got it, a power bash is not offered at all.
+        if (kind == ft::ActionKind::PowerBash && !view.snapshot.powerBash.perk)
+            continue;
+        group(kind == ft::ActionKind::Attack || ft::ActionKind::PowerAttack == kind ? 0 : 1);
         const bool selected = here && act.kind == kind;
         if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
         {
@@ -5369,23 +5382,51 @@ void DrawSettings()
     Im::Separator();
     Im::Spacing();
 
+    // One switch: the tick, then the words beside it. The hover is on the
+    // switch, not the word, and says what a click does; it is read before
+    // the click is answered, so the text matches the tick shown this frame.
+    const auto toggle = [](const char *id, bool on, const char *label, const char *toTurnOn, const char *toTurnOff) {
+        Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+        const bool clicked = GlyphButton(id, Im::GetFrameHeight(), Glyph::Tick, on);
+        Im::PopStyleVar(1);
+        if (Im::IsItemHovered(0))
+            Im::SetTooltip("%s", on ? toTurnOff : toTurnOn);
+        Im::SameLine(0.0f, kCellPadX);
+        Im::AlignTextToFramePadding();
+        Im::Text("%s", label);
+        return clicked;
+    };
+
+    CentredHeading("Tactics");
     // The same switch as each follower's on their Tactics tab, and read
     // live the same way.
     const bool enabled = IsEnabled();
-    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-    const bool toggled = GlyphButton("enabledAll", Im::GetFrameHeight(), Glyph::Tick, enabled);
-    Im::PopStyleVar(1);
-    // On the switch, not the word: the hover says what a click does, and
-    // the switch is what is clicked. Read before the toggle, so the text
-    // matches the tick shown this frame.
-    if (Im::IsItemHovered(0))
-        Im::SetTooltip(enabled ? "Click to turn off tactics for all followers"
-                               : "Click to turn on tactics for all followers");
-    if (toggled)
+    if (toggle("enabledAll", enabled, "Enable tactics for all followers", "Click to turn on tactics for all followers",
+               "Click to turn off tactics for all followers"))
         SetEnabled(!enabled);
-    Im::SameLine(0.0f, kCellPadX);
-    Im::AlignTextToFramePadding();
-    Im::Text("Enable for all");
+
+    Im::Spacing();
+    // What a follower must have before a thing is offered at all
+    // (game/Settings.h). Each is saved with the game.
+    CentredHeading("Customize");
+    ft::Settings settings = CurrentSettings();
+    const ft::Settings was = settings;
+    if (toggle("requireDualWieldStyle", settings.requireDualWieldStyle, "Require dual wield combat style",
+               "Click to require dual wield combat style for dual wielding",
+               "Click to not require dual wield combat style for dual wielding"))
+        settings.requireDualWieldStyle = !settings.requireDualWieldStyle;
+    if (toggle("requireDualCastPerks", settings.requireDualCastPerks, "Require dual casting perks",
+               "Click to require the school's Dual Casting perk for dual casting",
+               "Click to not require the school's Dual Casting perk for dual casting"))
+        settings.requireDualCastPerks = !settings.requireDualCastPerks;
+    if (toggle("requirePowerBashPerk", settings.requirePowerBashPerk, "Require power bash perk",
+               "Click to require the Power Bash perk for power bashing",
+               "Click to not require the Power Bash perk for power bashing"))
+        settings.requirePowerBashPerk = !settings.requirePowerBashPerk;
+    if (settings.requireDualWieldStyle != was.requireDualWieldStyle ||
+        settings.requireDualCastPerks != was.requireDualCastPerks ||
+        settings.requirePowerBashPerk != was.requirePowerBashPerk)
+        SetSettings(settings);
 }
 
 void __stdcall RenderSettings()

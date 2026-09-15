@@ -103,4 +103,21 @@ struct ReadResult
 
 [[nodiscard]] ReadResult ReadProfile(std::string_view json, const FormCodec &codec);
 
+// The player's own choices, which are not any one follower's: what a
+// follower must have before the panel offers a thing at all. Each is off
+// where the game itself asks nothing of an NPC, and the one that matches
+// vanilla's behaviour -- the combat style deciding who dual wields -- is on.
+// Saved once per game, beside the follower records (game/Profiles.h).
+struct Settings
+{
+    bool requireDualWieldStyle{true};
+    bool requireDualCastPerks{false};
+    bool requirePowerBashPerk{false};
+};
+
+[[nodiscard]] std::string WriteSettings(const Settings &settings);
+// Missing keys keep their defaults and unknown ones are ignored, as a
+// profile's are. Absent only when the text is not a JSON object at all.
+[[nodiscard]] std::optional<Settings> ReadSettings(std::string_view json);
+
 } // namespace ft

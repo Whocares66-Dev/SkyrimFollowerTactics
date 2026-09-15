@@ -13,6 +13,7 @@
 #include "game/Magic.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
+#include "game/Settings.h"
 #include "game/Util.h"
 
 #include <algorithm>
@@ -270,16 +271,19 @@ bool IsPower(const RE::SpellItem *spell)
            IsLeasedPower(spell->GetFormID());
 }
 
-// Whether the actor can dual cast a spell: the perk system's answer to the
-// Can Dual Cast Spell entry point for this spell -- each school's Dual
-// Casting perk sets it for its own school, so a mod's perk counts the same
-// -- and a record that leaves a hand free, by its equip slot: vanilla's
-// master spells take both hands, a mod's may not, and the level says
-// nothing.
+// Whether the actor can dual cast a spell: a record that leaves a hand free,
+// by its equip slot -- vanilla's master spells take both hands, a mod's may
+// not, and the level says nothing -- and, where Settings asks for it, the
+// perk system's answer to the Can Dual Cast Spell entry point, which each
+// school's Dual Casting perk sets for its own school, so a mod's perk counts
+// the same. The game asks that of the player; of a follower it is asked only
+// when the player says so (game/Settings.h).
 bool CanDualCast(RE::Actor *actor, RE::SpellItem *spell)
 {
     if (!actor || !spell || !IsCastable(spell) || spell->IsTwoHanded())
         return false;
+    if (!CurrentSettings().requireDualCastPerks)
+        return true;
     float allowed = 0.0f;
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kCanDualCastSpell, actor, spell, &allowed);
     return allowed != 0.0f;
@@ -1210,12 +1214,26 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     return plan;
 }
 
+namespace
+{
+// The Block tree's Power Bash perk (058F67). The tree asks it of the player
+// alone, so a follower needs it only where Settings says so.
+bool HasPowerBashPerk(RE::Actor *actor)
+{
+    constexpr std::uint32_t kPowerBashPerk = 0x00058F67;
+    auto *perk = RE::TESForm::LookupByID<RE::BGSPerk>(kPowerBashPerk);
+    return perk && actor->HasPerk(perk);
+}
+} // namespace
+
 BlowPlan PlanBash(RE::Actor *actor, bool power)
 {
     BlowPlan plan;
     if (!actor || !ft::BashesWith(DescribeHands(actor)))
         return plan;
     plan.event = power ? "bashPowerStart" : "bashStart";
+    if (power && CurrentSettings().requirePowerBashPerk)
+        plan.perk = HasPowerBashPerk(actor);
     // The cost as the engine prices a bash (26429): the setting for the kind
     // -- fStaminaBashBase 35, fStaminaPowerBashBase 55 in vanilla -- times the
     // attack's own stamina multiplier. No perk entry point prices a bash.
@@ -1484,7 +1502,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     for (const auto kind : {ft::ActionKind::PowerAttack, ft::ActionKind::Bash, ft::ActionKind::PowerBash})
     {
         const BlowPlan plan = PlanBlow(actor, kind);
-        s.BlowFor(kind) = {plan.Possible(), plan.stamina, plan.reach};
+        s.BlowFor(kind) = {plan.Possible(), plan.perk, plan.stamina, plan.reach};
     }
 
     s.traits = ReadTraits(actor);
@@ -3118,6 +3136,10 @@ bool DualWieldAllowed(RE::Actor *actor)
 {
     // The style tunes the combat AI; the player holds what they like.
     if (actor && actor->IsPlayerRef())
+        return true;
+    // With the requirement off, anyone may hold two weapons and what the AI
+    // makes of them is the AI's business (game/Settings.h).
+    if (!CurrentSettings().requireDualWieldStyle)
         return true;
     auto *style = LiveCombatStyle(actor);
     return !style || style->flags.all(RE::TESCombatStyle::FLAG::kAllowDualWielding);

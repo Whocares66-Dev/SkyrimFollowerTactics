@@ -238,6 +238,9 @@ struct BlowPlan
     const char *event{nullptr};
     float stamina{0.0f};
     float reach{0.0f};
+    // Whether the follower has the perk the Settings page asks for this
+    // blow, where it asks one (game/Settings.h). True when it asks none.
+    bool perk{true};
     // A power attack's hand: the UseWeapon record attacks with the right
     // alone, so the other swings go by the event.
     ft::Swing swing{ft::Swing::None};

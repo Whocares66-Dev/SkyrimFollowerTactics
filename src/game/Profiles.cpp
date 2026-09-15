@@ -1,6 +1,7 @@
 #include "game/Profiles.h"
 
 #include "game/Log.h"
+#include "game/Settings.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
 
@@ -21,6 +22,9 @@ constexpr std::uint32_t kPluginId = 'FTAC';
 // and the bytes. The record's version is the format's schema number, so
 // a record from a newer build says so before it is parsed.
 constexpr std::uint32_t kFollowerRecord = 'PROF';
+// One record for the player's own choices, which belong to no follower:
+// what the Settings page requires (game/Settings.h), as JSON text.
+constexpr std::uint32_t kSettingsRecord = 'SETT';
 
 // The records the loaded save holds, by key, until a follower claims
 // theirs. Whatever is still here when the game saves is written back as
@@ -51,6 +55,10 @@ bool WriteFollower(const SKSE::SerializationInterface *intfc, const std::string 
 
 void OnSave(SKSE::SerializationInterface *intfc)
 {
+    if (!intfc->OpenRecord(kSettingsRecord, static_cast<std::uint32_t>(ft::kProfileSchema)) ||
+        !WriteString(intfc, ft::WriteSettings(CurrentSettings())))
+        log::profiles.error("could not write the settings to the save");
+
     std::size_t live = 0;
     std::size_t carried = 0;
     for (const Filed &filed : ProfilesToSave())
@@ -82,6 +90,20 @@ void OnLoad(SKSE::SerializationInterface *intfc)
     std::uint32_t length = 0;
     while (intfc->GetNextRecordInfo(type, version, length))
     {
+        if (type == kSettingsRecord)
+        {
+            std::string text;
+            if (!ReadString(intfc, text))
+            {
+                log::profiles.error("the settings record is cut short -- the defaults stand");
+                continue;
+            }
+            if (const auto settings = ft::ReadSettings(text))
+                SetSettings(*settings);
+            else
+                log::profiles.warn("the settings record could not be read -- the defaults stand");
+            continue;
+        }
         if (type != kFollowerRecord)
         {
             log::profiles.warn("co-save record {:08X} is not one this build knows -- skipped", type);
@@ -107,6 +129,10 @@ void OnLoad(SKSE::SerializationInterface *intfc)
 void OnRevert(SKSE::SerializationInterface *)
 {
     g_saved.clear();
+    // The defaults, so a save with no settings record -- one made before
+    // they existed, or by a build without them -- does not inherit the last
+    // session's.
+    SetSettings(ft::Settings{});
     ForgetSession();
 }
 

@@ -86,6 +86,19 @@ The record carries only the fields a rule reads, so a status is written only und
 
 **Forms** are written as `0x<local id>~<plugin>`, the plugin's own id and the plugin that defines the record, the form SPID and KID users already know. Reading resolves the plugin through the data handler, so a record is good after a load-order change without SKSE's `ResolveFormID`. A form with no plugin (made at runtime) is written as its bare id, `0xFF000DE0`, which is only good in the save it came from, which is the only place it is.
 
+## The settings record
+
+Beside the follower records the co-save holds one `SETT` record: the player's own choices, which belong to no follower (`src/game/Settings.h`). Its version is the same schema number, and it is one JSON object:
+
+| key | what |
+|---|---|
+| `schema` | as a follower record's |
+| `requireDualWieldStyle` | a follower must have a combat style that allows dual wielding before a weapon is put in the second hand. On by default, which is what the mod did before the setting existed |
+| `requireDualCastPerks` | a follower must have the school's Dual Casting perk before a spell of that school is offered, or fired, as a dual cast. Off by default: the game asks this of the player, not of an NPC |
+| `requirePowerBashPerk` | a follower must have the Block tree's Power Bash perk before a power bash is offered or fired. Off by default, for the same reason: the idle tree asks it of the player alone (`docs/ATTACK.md`) |
+
+A missing key keeps its default, an unknown one is ignored, and a save with no record at all -- one made before the settings existed -- loads the defaults rather than whatever the last session had.
+
 ## Pins and bans, and why the mod is safe to remove
 
 A pin is a promise about what is worn, and a load re-dresses nobody. So a saved pin is taken back only if, when the follower is first seen, they still have the thing **on**, in those hands (worn, for armour and ammunition), and it is still pinnable. Otherwise it is forgotten with a `warn` line naming the variant: the thing is gone, or the save was played on without the mod and the game re-dressed them in the meantime. Nothing is equipped on load.

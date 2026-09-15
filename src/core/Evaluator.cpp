@@ -598,6 +598,11 @@ Verdict BlowAvailability(const Action &a, const Snapshot &snap, ActorId target)
     const Snapshot::Blow &blow = snap.BlowFor(a.kind);
     if (!snap.inCombat)
         return Verdict::NotInCombat;
+    // What the player asked to be required of it, before what is in the
+    // hands: a perk the follower will never have this fight is the plainer
+    // reason.
+    if (!blow.perk)
+        return Verdict::NoPerk;
     if (!blow.possible)
         return Verdict::NoMeleeWeapon;
     const ActorView *enemy = target != 0 ? snap.Enemy(target) : nullptr;
@@ -1018,6 +1023,8 @@ const char *ToString(Verdict v) noexcept
         return "cannot dual cast it: no perk for the school";
     case Verdict::NoMeleeWeapon:
         return "nothing in hand for that blow";
+    case Verdict::NoPerk:
+        return "has not got the perk Settings requires for it";
     case Verdict::NoStamina:
         return "not enough stamina";
     case Verdict::OutOfReach:
@@ -1074,6 +1081,8 @@ const char *WireName(Verdict v) noexcept
         return "cannot-dual-cast";
     case Verdict::NoMeleeWeapon:
         return "no-melee-weapon";
+    case Verdict::NoPerk:
+        return "no-perk";
     case Verdict::NoStamina:
         return "no-stamina";
     case Verdict::OutOfReach:

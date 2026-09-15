@@ -371,6 +371,10 @@ struct Snapshot
     struct Blow
     {
         bool possible{false};
+        // Whether the follower has what the Settings page requires of this
+        // blow: the Power Bash perk, where that is asked for. True when
+        // nothing is asked, which is the default and vanilla's own answer.
+        bool perk{true};
         float stamina{0.0f};
         float reach{0.0f};
     };

@@ -3254,6 +3254,38 @@ TEST_CASE("a dual cast needs the perk the snapshot reports, and pays the dual co
     REQUIRE(d.step->action.dual);
 }
 
+TEST_CASE("a blow waits on the perk the settings ask of it", "[resources]")
+{
+    RuleSet rs;
+    Rule bash;
+    bash.subject = SubjectKind::Enemy;
+    bash.predicate = PredicateKind::Any;
+    bash.actionTarget = ActionTargetKind::Enemy;
+    bash.FirstAction().kind = ActionKind::PowerBash;
+    rs.rules.push_back(bash);
+
+    Snapshot s = Healthy();
+    s.enemies.push_back({0x101, {50.0f, 100.0f}, 100.0f});
+    s.enemies[0].reachDistance = 100.0f;
+    s.stamina = {100.0f, 100.0f};
+    // Possible, paid for and in reach, but the perk the player asked to be
+    // required is not held: said as such, not as "nothing in hand".
+    s.powerBash = {true, false, 20.0f, 200.0f};
+    EvalContext ctx;
+
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoPerk);
+
+    // With the perk -- or with the requirement turned off, which reads the
+    // same here -- it fires.
+    s.powerBash.perk = true;
+    trace.clear();
+    const auto fired = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(fired.Fired());
+    REQUIRE(fired.action() == ActionKind::PowerBash);
+}
+
 TEST_CASE("a power attack needs a fight, something that swings, and the stamina it costs", "[resources]")
 {
     RuleSet rs;
@@ -3291,7 +3323,7 @@ TEST_CASE("a power attack needs a fight, something that swings, and the stamina 
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::NoMeleeWeapon); // a bow, a spell, nothing
 
-    s.powerAttack = {true, 40.0f, 200.0f};
+    s.powerAttack = {true, true, 40.0f, 200.0f};
     trace.clear();
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::NoStamina); // 30 against 40
@@ -3342,7 +3374,7 @@ TEST_CASE("a bash and a power bash are blows of their own, priced apart", "[reso
     s.enemies.push_back({0x101, {50.0f, 100.0f}, 100.0f});
     s.stamina = {40.0f, 100.0f};
     // A sword and nothing else: a power attack, no bash.
-    s.powerAttack = {true, 25.0f, 180.0f};
+    s.powerAttack = {true, true, 25.0f, 180.0f};
     EvalContext ctx;
 
     Trace trace;
@@ -3351,8 +3383,8 @@ TEST_CASE("a bash and a power bash are blows of their own, priced apart", "[reso
     REQUIRE(trace.at(1) == Verdict::NoMeleeWeapon);
 
     // A shield: the bash is affordable at 35, the power bash at 55 is not.
-    s.bash = {true, 35.0f, 180.0f};
-    s.powerBash = {true, 55.0f, 180.0f};
+    s.bash = {true, true, 35.0f, 180.0f};
+    s.powerBash = {true, true, 55.0f, 180.0f};
     trace.clear();
     const auto d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.Fired());

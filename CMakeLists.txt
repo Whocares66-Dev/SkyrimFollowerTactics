@@ -187,6 +187,7 @@ if(FT_BUILD_PLUGIN)
         src/game/Packages.cpp
         src/game/Forms.cpp
         src/game/Profiles.cpp
+        src/game/Settings.cpp
         src/game/CustomSkillsFramework.cpp)
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 

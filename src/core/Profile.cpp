@@ -452,6 +452,28 @@ FormCodec FormCodec::Hex()
     return c;
 }
 
+std::string WriteSettings(const Settings &settings)
+{
+    json j;
+    j["schema"] = kProfileSchema;
+    j["requireDualWieldStyle"] = settings.requireDualWieldStyle;
+    j["requireDualCastPerks"] = settings.requireDualCastPerks;
+    j["requirePowerBashPerk"] = settings.requirePowerBashPerk;
+    return j.dump(2);
+}
+
+std::optional<Settings> ReadSettings(std::string_view text)
+{
+    const json j = json::parse(text, nullptr, false);
+    if (j.is_discarded() || !j.is_object())
+        return std::nullopt;
+    Settings s;
+    s.requireDualWieldStyle = Bool(j, "requireDualWieldStyle").value_or(s.requireDualWieldStyle);
+    s.requireDualCastPerks = Bool(j, "requireDualCastPerks").value_or(s.requireDualCastPerks);
+    s.requirePowerBashPerk = Bool(j, "requirePowerBashPerk").value_or(s.requirePowerBashPerk);
+    return s;
+}
+
 std::string WriteProfile(const Profile &profile, const FormCodec &codec)
 {
     json j;

@@ -30,6 +30,7 @@ enum class Verdict : std::uint8_t
     CannotAfford,     // knows the spell, cannot pay for it right now
     CannotDualCast,   // a dual cast of a spell the follower cannot dual cast: no perk for its school
     NoMeleeWeapon,    // a blow with nothing in hand for it: a swing without a blade, a bash without a shield
+    NoPerk,           // a blow the Settings page asks a perk for, which this follower has not got
     NoStamina,        // a blow the follower cannot pay for right now
     OutOfReach,       // a blow at an enemy further than it reaches
     EffectActive,     // a previous dose is still running; or the thing is already pinned
