@@ -80,7 +80,7 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 | `follower.down` / `follower.up` | bleeding out, and up again | — |
 | `followers.controlled` | who is under tactics changes | `count`, `followers[]` (each an actor) |
 | `tactics.switched` | the master switch | `enabled` |
-| `rule.fired` | a rule's action is dispatched | `ruleIndex`, `ruleName` (the rule as it began), `subjectKind` and the subject's ids, `action`, the target's ids, the form and variant, `outcome`, `healthPct` |
+| `rule.fired` | a rule's action is dispatched | `ruleIndex`, `ruleName` (the rule as it began), `subjectKind` and the subject's ids, `action`, the target's ids, the form and variant, `outcome`, `followerHealthPct` (the follower's own health, whoever the subject) |
 | `rule.actionFailed` (warn) | the outcome is neither `performed` nor `requested`, a refused pin included | `ruleIndex`, `ruleName`, `action`, `reason` |
 | `rule.resolved` | a requested cast, scroll, shout or power is over | `ruleIndex`, `ruleName`, `kind`, the form, the target's ids, `outcome` (`cast` or `not-cast`), `pickedUp`, `reason`, `durationS` |
 | `rule.verdict` | a rule's verdict differs from the last one reported | `ruleIndex`, `ruleName`, `verdict`, `reason` |

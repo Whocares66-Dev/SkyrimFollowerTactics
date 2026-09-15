@@ -61,7 +61,7 @@ Every `.jsonl` line carries the same five header fields, then the follower it is
  "ruleIndex":0,"ruleName":"emergency heal","subjectKind":"self",
  "subjectFormId":"0xFF000DE0","subjectBaseFormId":"0x000A2C94","subjectName":"Lydia",
  "action":"drink-strongest","targetFormId":"0xFF000DE0","targetBaseFormId":"0x000A2C94","targetName":"Lydia",
- "outcome":"performed","healthPct":0.49}
+ "outcome":"performed","followerHealthPct":0.49}
 ```
 
 `ts` is UTC with milliseconds, so lines sort across a DST boundary and across machines. `version` is `CMakeLists.txt`'s `project(... VERSION)`, so a `.jsonl` attached to a bug report says which build wrote it. Every form id is a string in one spelling — `0x` and eight upper-case digits — so a query keys on one form of it; `followerId`/`followerName` follow `PROFILES.md`'s convention, the id to key on and the name for the human reading the output, never read back. Every number is rounded to three decimals on its way in, so a duration reads in milliseconds and a fraction to a tenth of a percent, rather than carrying the noise a float brings with it when it widens to a double.

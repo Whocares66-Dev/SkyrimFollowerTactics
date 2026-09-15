@@ -117,7 +117,7 @@ class Module
     // the ini says, so it is always formatted.
     //
     //   ft::log::tactics.event(Level::Info, "rule.fired", actor,
-    //       {{"ruleIndex", i}, {"ruleName", rule.label}, {"healthPct", pct}},
+    //       {{"ruleIndex", i}, {"ruleName", rule.label}, {"followerHealthPct", pct}},
     //       "{} FIRED rule {} \"{}\"", Describe(actor), i, rule.label);
     template <class... Args>
     void event(Level level, std::string_view name, RE::Actor *who, std::span<const Field> fields,

@@ -557,7 +557,7 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
             if (ft::IsEquip(step.action.kind))
                 fields.emplace_back("variant", ft::VariantText(step.action.variant));
             fields.emplace_back("outcome", ToString(result));
-            fields.emplace_back("healthPct", snapshot.health.Pct());
+            fields.emplace_back("followerHealthPct", snapshot.health.Pct());
             log::tactics.event(log::Level::Info, "rule.fired", actor, fields,
                                "{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
                                decision.ruleIndex, label, ft::WireName(step.action.kind), ToString(result),
