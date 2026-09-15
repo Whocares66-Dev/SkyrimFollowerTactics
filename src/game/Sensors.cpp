@@ -428,6 +428,8 @@ namespace
 {
 bool Hidden(const RE::EffectSetting *base)
 {
+bool HeldPerkGrants(RE::Actor *actor, const RE::MagicItem *spell); // below, with the perks
+
     return base && base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI);
 }
 
@@ -456,10 +458,19 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
     // abilities of that name, the Magicka Rate on one and the hidden
     // resistance penalties on the other, and the penalties read as Other
     // (2026-09-14). So a hidden-only spell is named where a visible running
-    // effect carries the same spell name, which the player does see. Gathered
-    // in the one walk and settled after it.
+    // effect carries the same spell name, which the player does see, or
+    // where a perk the actor holds grants it under that name, a perk being
+    // seen on its tree: Stormcrown's Windcaller perk grants a hidden
+    // Windcaller ability, which read as Other (2026-09-15). Gathered in the
+    // one walk and settled after it.
     std::unordered_set<std::string> seen;
-    std::vector<std::pair<std::string, Contribution>> hidden;
+    struct Pending
+    {
+        std::string name;
+        const RE::MagicItem *spell;
+        Contribution contribution;
+    };
+    std::vector<Pending> hidden;
     ForEachActiveEffect(actor, [&](RE::ActiveEffect &effect) {
         auto *ae = &effect;
         const char *spellName = ae->spell ? ae->spell->GetName() : nullptr;
@@ -487,14 +498,14 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         Contribution c{std::move(source), NameOr(base, ""),
                        first ? ae->magnitude : ae->magnitude * base->data.secondAVWeight};
         if (AllHidden(ae->spell))
-            hidden.emplace_back(spellName ? spellName : "", std::move(c));
+            hidden.push_back({spellName ? spellName : "", ae->spell, std::move(c)});
         else
             out.push_back(std::move(c));
     });
-    for (auto &[name, c] : hidden)
+    for (Pending &pending : hidden)
     {
-        if (!name.empty() && seen.contains(name))
-            out.push_back(std::move(c));
+        if (!pending.name.empty() && (seen.contains(pending.name) || HeldPerkGrants(actor, pending.spell)))
+            out.push_back(std::move(pending.contribution));
     }
     // Smallest first: the weaknesses, then the boons, the largest last.
     std::stable_sort(out.begin(), out.end(),
@@ -1973,6 +1984,43 @@ const std::vector<std::string> &PerkReaders(const RE::BGSPerk *perk)
             if (!other)
                 continue;
             for (const auto *entry : other->perkEntries)
+// Whether a perk the actor holds grants this ability under the ability's own
+// name. Which perks grant which abilities is the load order's, read once.
+bool HeldPerkGrants(RE::Actor *actor, const RE::MagicItem *spell)
+{
+    static const std::unordered_map<const RE::MagicItem *, std::vector<RE::BGSPerk *>> grants = [] {
+        std::unordered_map<const RE::MagicItem *, std::vector<RE::BGSPerk *>> out;
+        auto *handler = RE::TESDataHandler::GetSingleton();
+        if (!handler)
+            return out;
+        for (auto *perk : handler->GetFormArray<RE::BGSPerk>())
+        {
+            if (!perk)
+                continue;
+            for (const auto *entry : perk->perkEntries)
+            {
+                if (!entry || entry->GetType() != RE::PERK_ENTRY_TYPE::kAbility)
+                    continue;
+                if (const auto *ability = static_cast<const RE::BGSAbilityPerkEntry *>(entry)->ability)
+                    out[ability].push_back(perk);
+            }
+        }
+        return out;
+    }();
+    if (!actor || !spell)
+        return false;
+    const auto found = grants.find(spell);
+    if (found == grants.end())
+        return false;
+    std::string name = NameOr(spell, "");
+    const auto first = name.find_first_not_of(' ');
+    if (first == std::string::npos)
+        return false;
+    name = name.substr(first, name.find_last_not_of(' ') - first + 1);
+    return std::any_of(found->second.begin(), found->second.end(),
+                       [&](RE::BGSPerk *perk) { return actor->HasPerk(perk) && PerkName(perk) == name; });
+}
+
             {
                 if (!entry || entry->GetType() != RE::PERK_ENTRY_TYPE::kEntryPoint)
                     continue;
