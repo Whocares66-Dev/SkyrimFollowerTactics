@@ -42,6 +42,10 @@ constexpr double kArmWindowSeconds = 2.5;
 // started case, as 2.5 s is for a hand cast; a bit longer because the AI
 // had a second's hesitation on one of the two.
 constexpr double kVoiceArmWindowSeconds = 3.0;
+// A power attack's: the AI's pick-up, as for a cast, and the weapon drawn if
+// it is away. Stepped back once the swing is seen, so the swing runs out.
+constexpr double kWeaponArmWindowSeconds = 3.0;
+constexpr double kWeaponSwingSeconds = 3.0;
 
 // The condition, as an owned resource.
 //
@@ -181,26 +185,43 @@ struct Slot
     std::atomic<std::uint32_t> spellId{0};
     std::atomic<std::uint32_t> shoutId{0};
     bool extended = false;
+    // A power attack's record (RequestPowerAttack), and whether its swing has
+    // been seen. Beside the other flags: between the pointers they padded
+    // the slot past what the linter allows.
+    bool weapon = false;
+    bool swinging = false;
     // Whom the record was aimed at when armed (the holder, for a self-cast)
-    // and the rule that asked for it (NoteRule; -1 until then): what the
+    // and the rule that asked for it (given to Arm; -1 when idle): what the
     // release reports as rule.resolved. Kept as an id because the handle
     // above may not outlive the target.
     std::uint32_t targetId = 0;
     int ruleIndex = -1;
     std::string ruleName;
+    // A power attack's target input is "Target to Attack" where the others'
+    // is "Target". The attack the follower was in when it was armed, so a
+    // swing of their own already running is not taken for ours; and the
+    // event of ours, once seen.
+    const char *targetInput = "Target";
+    const RE::BGSAttackData *attackAtArm = nullptr;
+    std::string attackEvent;
 
     [[nodiscard]] bool Busy() const noexcept
     {
         return lease.has_value();
     }
 };
-// One follower's records: a UseMagic package for a spell, and a Shout
-// package with its wrapper for a power or a shout.
+// One follower's records: a UseMagic package for a spell, a Shout package
+// with its wrapper for a power or a shout, and a UseWeapon package for a
+// power attack, which has no package when its copy could not be made.
 struct Kit
 {
     Slot spell;
     Slot voice;
+    Slot weapon;
 };
+
+// How many power attack records are held: the pacing thread's question.
+std::atomic<int> g_weaponLeases{0};
 
 // Every follower's records by reference ID, until the game quits: forms are
 // never deleted, so the map is never pruned either. Only the game thread
@@ -234,6 +255,7 @@ template <class Fn> void ForEachSlot(Fn &&fn)
     {
         fn(entry.second->spell);
         fn(entry.second->voice);
+        fn(entry.second->weapon);
     }
 }
 
@@ -595,10 +617,52 @@ bool SetPackageCastTime(RE::TESPackage *pkg, float seconds)
     return true;
 }
 
-// Aim a slot's Target input at an actor, or back at Self with nullptr.
-bool SetPackageTarget(RE::TESPackage *pkg, RE::Actor *target)
+// Where, inside an Int input, its number sits, and inside a Location input
+// the pointer to its PackageLocation: found at load on values vanilla records
+// were authored with (CalibrateWeapon), as the Spell and CastTime layouts are.
+std::size_t g_intOffset = kNotCalibrated;
+std::size_t g_locationOffset = kNotCalibrated;
+
+RE::IPackageData *NamedInput(RE::TESPackage *pkg, const char *inputName)
 {
-    auto *pt = g_targetCalibrated ? TargetOfInput(pkg, "Target") : nullptr;
+    auto *custom = pkg ? skyrim_cast<RE::TESCustomPackageData *>(pkg->data) : nullptr;
+    std::int8_t uid = 0;
+    if (!custom || !FindInputUID(custom, inputName, uid))
+        return nullptr;
+    return InputByUID(custom, uid);
+}
+
+std::int32_t *IntOfInput(RE::TESPackage *pkg, const char *inputName)
+{
+    auto *input = g_intOffset != kNotCalibrated ? NamedInput(pkg, inputName) : nullptr;
+    return input ? reinterpret_cast<std::int32_t *>(reinterpret_cast<std::uintptr_t>(input) + g_intOffset) : nullptr;
+}
+
+// Read as SetPackageBool writes: bit 1 of the data word, on an input whose
+// type name says Bool.
+std::optional<bool> BoolOfInput(RE::TESPackage *pkg, const char *inputName)
+{
+    auto *input = NamedInput(pkg, inputName);
+    if (!input || input->GetTypeName() != "Bool")
+        return std::nullopt;
+    return (static_cast<RE::BGSPackageDataBool *>(input)->data.i & 0x2u) != 0;
+}
+
+RE::PackageLocation *LocationOfInput(RE::TESPackage *pkg, const char *inputName)
+{
+    auto *input = g_locationOffset != kNotCalibrated ? NamedInput(pkg, inputName) : nullptr;
+    if (!input)
+        return nullptr;
+    const std::uintptr_t p =
+        *reinterpret_cast<std::uintptr_t *>(reinterpret_cast<std::uintptr_t>(input) + g_locationOffset);
+    return LooksLikePointer(p) ? reinterpret_cast<RE::PackageLocation *>(p) : nullptr;
+}
+
+// Aim a slot's target input -- "Target", or a power attack's "Target to
+// Attack" -- at an actor, or back at Self with nullptr.
+bool SetPackageTarget(RE::TESPackage *pkg, RE::Actor *target, const char *inputName = "Target")
+{
+    auto *pt = g_targetCalibrated ? TargetOfInput(pkg, inputName) : nullptr;
     if (!pt)
         return false;
 
@@ -674,7 +738,7 @@ void TakeWrapper(RE::Actor *actor, RE::TESShout *wrapper)
 // request before the first resolves would put two records on them.
 bool AlreadyCasting(const Kit *kit)
 {
-    return kit && (kit->spell.Busy() || kit->voice.Busy());
+    return kit && (kit->spell.Busy() || kit->voice.Busy() || kit->weapon.Busy());
 }
 
 // The one way a record comes back. Destroying the lease clears the condition
@@ -854,10 +918,14 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
 {
     const bool cast = slot.fired.load(std::memory_order_relaxed);
     const char *kind = "spell";
-    if (slot.wrapper)
+    if (slot.weapon)
+        kind = "power attack";
+    else if (slot.wrapper)
         kind = slot.power ? "power" : "shout";
     else if (RE::TESForm::LookupByID<RE::ScrollItem>(slot.spell))
         kind = "scroll";
+    // A power attack is made or not; its form is the weapon in the right hand.
+    const char *outcome = slot.weapon ? (cast ? "made" : "not-made") : (cast ? "cast" : "not-cast");
 
     std::vector<log::Field> fields;
     if (!holder)
@@ -867,18 +935,22 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
     fields.emplace_back("kind", kind);
     log::AppendForm(fields, "formId", "formName", slot.spell);
     log::AppendActor(fields, "targetFormId", "targetBaseFormId", "targetName", slot.targetId);
-    fields.emplace_back("outcome", cast ? "cast" : "not-cast");
+    fields.emplace_back("outcome", outcome);
     fields.emplace_back("pickedUp", slot.seenRunning);
+    if (slot.weapon)
+        fields.emplace_back("attackEvent", slot.attackEvent);
     fields.emplace_back("reason", reason);
     fields.emplace_back("durationS", seconds);
     log::packages.event(log::Level::Info, "rule.resolved", holder, fields,
                         "{} rule {} \"{}\": {} {} {} -- {}, after {:.1f} s",
                         holder ? log::NameOf(holder) : log::Id(holderId), slot.ruleIndex, slot.ruleName, kind,
-                        log::NameOf(RE::TESForm::LookupByID(slot.spell)), cast ? "cast" : "not cast", reason, seconds);
+                        log::NameOf(RE::TESForm::LookupByID(slot.spell)), outcome, reason, seconds);
 }
 
 void Release(Slot &slot)
 {
+    if (slot.weapon && slot.lease)
+        g_weaponLeases.fetch_sub(1, std::memory_order_relaxed);
     // The record comes off the stack it was put on, if it was, while the
     // lease still knows whose.
     if (slot.onStack && slot.lease)
@@ -909,13 +981,16 @@ void Release(Slot &slot)
     // the stack by then.
     slot.lease.reset();
     slot.target = {};
-    SetPackageTarget(slot.package, nullptr); // no target handle outlives its lease
+    SetPackageTarget(slot.package, nullptr, slot.targetInput); // no target handle outlives its lease
     slot.fired.store(false, std::memory_order_relaxed);
     slot.stopped.store(false, std::memory_order_relaxed);
     slot.begun.store(false, std::memory_order_relaxed);
     slot.extended = false;
     slot.seenRunning = false;
     slot.streaming = false;
+    slot.attackAtArm = nullptr;
+    slot.swinging = false;
+    slot.attackEvent.clear();
     slot.targetId = 0;
     slot.ruleIndex = -1;
     slot.ruleName.clear();
@@ -994,9 +1069,11 @@ namespace
 {
 // The shared end of a request: the slot is pointed where it should be, and
 // this points the slot's condition at the follower and asks the AI to look.
-CastRequest Arm(Slot &slot, RE::Actor *actor, float sustain, double window)
+CastRequest Arm(Slot &slot, RE::Actor *actor, float sustain, double window, int ruleIndex, std::string_view ruleName)
 {
     slot.armedAt = TacticsSeconds();
+    slot.ruleIndex = ruleIndex;
+    slot.ruleName = ruleName;
     // The window covers the AI's start-up latency. For a stream it is
     // extended when the stream actually starts (see the tick), so a stream
     // that never starts does not hold them for the sustain on top.
@@ -1043,7 +1120,7 @@ CastRequest Arm(Slot &slot, RE::Actor *actor, float sustain, double window)
 } // namespace
 
 CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId, float sustainSeconds,
-                        bool dualCast)
+                        bool dualCast, int ruleIndex, std::string_view ruleName)
 {
     auto *kit = g_available && actor ? KitOf(actor->GetFormID()) : nullptr;
     if (!kit)
@@ -1131,10 +1208,11 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
                        target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
                               : std::string("self"));
 
-    return Arm(slot, actor, sustain, kArmWindowSeconds);
+    return Arm(slot, actor, sustain, kArmWindowSeconds, ruleIndex, ruleName);
 }
 
-CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId)
+CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId, int ruleIndex,
+                         std::string_view ruleName)
 {
     auto *kit = g_available && actor ? KitOf(actor->GetFormID()) : nullptr;
     if (!kit)
@@ -1242,7 +1320,127 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
     else
         LendShoutVoice(slot, actor);
 
-    return Arm(slot, actor, 0.0f, kVoiceArmWindowSeconds);
+    return Arm(slot, actor, 0.0f, kVoiceArmWindowSeconds, ruleIndex, ruleName);
+}
+
+namespace
+{
+// The attack the follower's high process is in, or was last in: the race's
+// attack data entry, which names the event and says power attack or not.
+const RE::BGSAttackData *AttackDataOf(RE::Actor *actor)
+{
+    auto *process = actor ? actor->GetActorRuntimeData().currentProcess : nullptr;
+    auto *high = process ? process->high : nullptr;
+    return high ? high->attackData.get() : nullptr;
+}
+
+// A power attack's lease. The procedure does complete once its one attack is
+// counted (docs/ATTACK.md), but the condition still passes then and the AI
+// would pick the package again, so the lease goes as soon as the swing has
+// ended: a power attack seen after pick-up, then the attack state back at none.
+void TickWeaponSlot(Slot &slot, double now)
+{
+    auto actor = slot.lease->Actor();
+    if (!actor)
+    {
+        ReportResolved(slot, nullptr, slot.lease->FormID(), "holder vanished", now - slot.armedAt);
+        Release(slot);
+        return;
+    }
+    const bool running = actor->GetCurrentPackage() == slot.package;
+    if (running && !slot.seenRunning)
+    {
+        slot.seenRunning = true;
+        log::packages.debug("{} is RUNNING {:08X} (power attack) after {:.2f} s", Describe(actor.get()),
+                            PackageId(slot), now - slot.armedAt);
+    }
+    auto *state = actor->AsActorState();
+    const auto attack = state ? state->GetAttackState() : RE::ATTACK_STATE_ENUM::kNone;
+    const auto *attackData = AttackDataOf(actor.get());
+    // A swing of their own running when the lease began is not ours; once
+    // they are between swings, any power attack is.
+    if (attack == RE::ATTACK_STATE_ENUM::kNone)
+        slot.attackAtArm = nullptr;
+    if (!slot.swinging && slot.seenRunning && attack != RE::ATTACK_STATE_ENUM::kNone && attackData &&
+        attackData != slot.attackAtArm && attackData->data.flags.all(RE::AttackData::AttackFlag::kPowerAttack))
+    {
+        slot.swinging = true;
+        slot.fired.store(true, std::memory_order_relaxed);
+        slot.attackEvent = attackData->event.c_str();
+        slot.until = (std::max)(slot.until, now + kWeaponSwingSeconds);
+        log::packages.info("{} power attacks: {} after {:.2f} s", Describe(actor.get()), slot.attackEvent,
+                           now - slot.armedAt);
+    }
+
+    const char *why = nullptr;
+    if (slot.swinging && attack == RE::ATTACK_STATE_ENUM::kNone)
+        why = "power attack made";
+    else if (slot.seenRunning && !running)
+        why = slot.swinging ? "package ended mid-swing" : "package ended";
+    else if (now >= slot.until)
+    {
+        if (!slot.seenRunning)
+            why = "deadline, AI never picked it up";
+        else
+            why = slot.swinging ? "deadline, still swinging" : "deadline, no power attack";
+    }
+    if (!why)
+        return;
+    ReportResolved(slot, actor.get(), actor->GetFormID(), why, now - slot.armedAt);
+    log::packages.debug("{} releases {:08X} after {:.2f} s: {}", Describe(actor.get()), PackageId(slot),
+                        now - slot.armedAt, why);
+    Release(slot);
+}
+} // namespace
+
+CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, int ruleIndex, std::string_view ruleName)
+{
+    auto *kit = g_available && actor ? KitOf(actor->GetFormID()) : nullptr;
+    if (!kit || !kit->weapon.package)
+        return CastRequest::NoPackages;
+
+    auto *target =
+        targetId != 0 && targetId != actor->GetFormID() ? RE::TESForm::LookupByID<RE::Actor>(targetId) : nullptr;
+    if (!target || !target->Is3DLoaded())
+    {
+        log::packages.debug("power attack: target {:08X} is not a loaded actor", targetId);
+        return CastRequest::TargetGone;
+    }
+    if (AlreadyCasting(kit))
+        return CastRequest::AlreadyCasting;
+
+    auto &slot = kit->weapon;
+    if (!SetPackageTarget(slot.package, target, slot.targetInput))
+    {
+        log::packages.warn("{:08X} could not aim its {} input", PackageId(slot), slot.targetInput);
+        return CastRequest::SpellNotInSlot;
+    }
+    slot.target = target->GetHandle();
+    slot.targetId = target->GetFormID();
+    const auto *inHand = actor->GetEquippedObject(false);
+    slot.spell = inHand ? inHand->GetFormID() : 0;
+    slot.sustained = false;
+    slot.swinging = false;
+    slot.attackEvent.clear();
+    slot.attackAtArm = AttackDataOf(actor);
+    log::packages.info("{}: {:08X} power attacks {:08X} \"{}\"", log::NameOf(actor), PackageId(slot),
+                       target->GetFormID(), log::NameOf(target));
+    g_weaponLeases.fetch_add(1, std::memory_order_relaxed);
+    return Arm(slot, actor, 0.0f, kWeaponArmWindowSeconds, ruleIndex, ruleName);
+}
+
+bool AnyWeaponLease() noexcept
+{
+    return g_weaponLeases.load(std::memory_order_relaxed) > 0;
+}
+
+void TickWeaponLeases(double now)
+{
+    if (!g_available)
+        return;
+    for (auto &entry : g_kits)
+        if (entry.second->weapon.Busy())
+            TickWeaponSlot(entry.second->weapon, now);
 }
 
 void ResetPackages()
@@ -1267,10 +1465,13 @@ void ResetPackages()
         slot.lease.reset();
         // As Release leaves a slot: no target handle outlives its lease.
         slot.target = {};
-        SetPackageTarget(slot.package, nullptr);
+        SetPackageTarget(slot.package, nullptr, slot.targetInput);
         slot.seenRunning = false;
         slot.streaming = false;
         slot.extended = false;
+        slot.attackAtArm = nullptr;
+        slot.swinging = false;
+        slot.attackEvent.clear();
         slot.fired.store(false, std::memory_order_relaxed);
         slot.stopped.store(false, std::memory_order_relaxed);
         slot.begun.store(false, std::memory_order_relaxed);
@@ -1278,22 +1479,7 @@ void ResetPackages()
         slot.ruleIndex = -1;
         slot.ruleName.clear();
     });
-}
-
-void NoteRule(std::uint32_t holderId, int ruleIndex, std::string_view ruleName)
-{
-    auto *kit = KitOf(holderId);
-    if (!kit)
-        return;
-    for (Slot *slot : {&kit->spell, &kit->voice})
-    {
-        if (slot->Busy())
-        {
-            slot->ruleIndex = ruleIndex;
-            slot->ruleName = ruleName;
-            return;
-        }
-    }
+    g_weaponLeases.store(0, std::memory_order_relaxed);
 }
 
 void ReleaseAllLeases(const char *why)
@@ -1332,6 +1518,11 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
     ForEachSlot([now](Slot &slot) {
         if (!slot.Busy())
             return;
+        if (slot.weapon)
+        {
+            TickWeaponSlot(slot, now);
+            return;
+        }
 
         auto actor = slot.lease->Actor();
         if (!actor)
@@ -1569,6 +1760,186 @@ bool ProveCopy(RE::TESPackage *pkg, const char *inputName, RE::TESForm *canary)
     return true;
 }
 
+// A power attack's record is a copy of Edorfin's attack-a-target package
+// (EdorfinAttackTarget): an instance of the UseWeapon template, whose
+// procedure node maps Always Power Attack to an input. UseWeaponAlreadyHeld,
+// the template of Karliah's combat override in Blindsighted, maps it to none
+// (docs/ATTACK.md). Edorfin's trigger is himself and the record has no
+// conditions; its Use Weapon Location, his editor location, is rewritten.
+constexpr std::uint32_t kEdorfinAttackTargetID = 0x00055D48;
+// The values the checks read, as authored. The heroes of Sovngarde's package
+// (MQ206HeroAttackAlduin) pauses between barrages of one to three attacks,
+// triggers at 1500 and attacks from around an alias, radius 425; Vilkas's
+// training package (C00VilkasTrainInTrainingYard) aims at one reference.
+constexpr std::uint32_t kHeroAttackAlduinID = 0x000CD9F9;
+constexpr std::uint32_t kVilkasTrainID = 0x000F7952;
+constexpr const char *kTargetToAttack = "Target to Attack";
+constexpr const char *kUseWeaponLocation = "Use Weapon Location";
+RE::TESPackage *g_weaponSource = nullptr;
+
+std::size_t FindIntOffset(RE::TESPackage *pkg, const char *inputName, std::int32_t authored)
+{
+    auto *input = NamedInput(pkg, inputName);
+    if (!input)
+        return kNotCalibrated;
+    log::packages.debug("probe: {} +00 {}", inputName, HexDump(input, 32));
+    for (std::size_t off = sizeof(std::uintptr_t); off + sizeof(std::int32_t) <= 32; off += sizeof(std::int32_t))
+        if (*reinterpret_cast<const std::int32_t *>(reinterpret_cast<std::uintptr_t>(input) + off) == authored)
+            return off;
+    return kNotCalibrated;
+}
+
+// The pointer, past the vtable, whose PackageLocation has the authored type
+// and radius.
+std::size_t FindLocationOffset(RE::TESPackage *pkg, const char *inputName, RE::PackageLocation::Type type,
+                               std::uint32_t radius)
+{
+    auto *input = NamedInput(pkg, inputName);
+    if (!input)
+        return kNotCalibrated;
+    log::packages.debug("probe: {} +00 {}", inputName, HexDump(input, 32));
+    const auto *words = reinterpret_cast<const std::uintptr_t *>(input);
+    for (std::size_t w = 1; w < 4; ++w)
+    {
+        if (!LooksLikePointer(words[w]))
+            continue;
+        const auto *location = reinterpret_cast<const RE::PackageLocation *>(words[w]);
+        if (location->locType.get() == type && location->rad == radius)
+            return w * sizeof(std::uintptr_t);
+    }
+    return kNotCalibrated;
+}
+
+// The Int, Bool, Location and target layouts of the UseWeapon inputs, each
+// against a second record before anything is written through it. False
+// leaves Power Attack to the animation event; the casts are not affected.
+bool CalibrateWeapon()
+{
+    auto *edorfin = RE::TESForm::LookupByID<RE::TESPackage>(kEdorfinAttackTargetID);
+    auto *hero = RE::TESForm::LookupByID<RE::TESPackage>(kHeroAttackAlduinID);
+    auto *vilkas = RE::TESForm::LookupByID<RE::TESPackage>(kVilkasTrainID);
+    if (!edorfin || !hero || !vilkas)
+    {
+        log::packages.error("probe: UseWeapon records missing (Edorfin {}, heroes {}, Vilkas {})",
+                            static_cast<const void *>(edorfin), static_cast<const void *>(hero),
+                            static_cast<const void *>(vilkas));
+        return false;
+    }
+
+    g_intOffset = FindIntOffset(edorfin, "Trigger Radius", 350);
+    const auto *heroRadius = IntOfInput(hero, "Trigger Radius");
+    const auto *heroAttacks = IntOfInput(hero, "Max Attacks per Barrage");
+    if (g_intOffset == kNotCalibrated || !heroRadius || *heroRadius != 1500 || !heroAttacks || *heroAttacks != 3)
+    {
+        log::packages.error("probe: Int inputs not identified (the heroes' radius {}, attacks {})",
+                            heroRadius ? *heroRadius : -1, heroAttacks ? *heroAttacks : -1);
+        g_intOffset = kNotCalibrated;
+        return false;
+    }
+
+    const auto heroPause = BoolOfInput(hero, "Pause between Barrages?");
+    const auto edorfinPause = BoolOfInput(edorfin, "Pause between Barrages?");
+    if (!heroPause || !*heroPause || !edorfinPause || *edorfinPause)
+    {
+        log::packages.error("probe: Bool inputs do not read as authored (the heroes pause {}, Edorfin {})",
+                            heroPause ? (*heroPause ? "true" : "false") : "unread",
+                            edorfinPause ? (*edorfinPause ? "true" : "false") : "unread");
+        return false;
+    }
+
+    g_locationOffset =
+        FindLocationOffset(edorfin, kUseWeaponLocation, RE::PackageLocation::Type::kNearEditorLocation, 32);
+    const auto *heroLocation = LocationOfInput(hero, kUseWeaponLocation);
+    const auto *search = LocationOfInput(edorfin, "Search for Weapon Location");
+    if (g_locationOffset == kNotCalibrated || !heroLocation ||
+        heroLocation->locType.get() != RE::PackageLocation::Type::kAlias_Reference || heroLocation->rad != 425 ||
+        !search || search->locType.get() != RE::PackageLocation::Type::kNearSelf)
+    {
+        log::packages.error("probe: Location inputs not identified");
+        g_locationOffset = kNotCalibrated;
+        return false;
+    }
+
+    const auto *aim = TargetOfInput(vilkas, kTargetToAttack);
+    if (!aim || aim->targType != g_typeSpecificReference)
+    {
+        log::packages.error("probe: Vilkas's {} reads type {}, not a specific reference ({})", kTargetToAttack,
+                            aim ? static_cast<int>(aim->targType) : -1, static_cast<int>(g_typeSpecificReference));
+        return false;
+    }
+    log::packages.debug("probe: UseWeapon inputs calibrated: Int at +{:02X}, Location at +{:02X}", g_intOffset,
+                        g_locationOffset);
+    return true;
+}
+
+// A fresh copy of Edorfin's record made into a power attack's. Everything but
+// the target is the same for every request, so it is set once, here. Null
+// when made, otherwise what could not be.
+const char *ConfigureWeapon(RE::TESPackage *pkg, RE::TESPackage *source)
+{
+    // The engine's copy gives each target input its own PackageTarget, and
+    // should give the location its own PackageLocation; checked, because a
+    // shared one written here would move Edorfin's.
+    auto *location = LocationOfInput(pkg, kUseWeaponLocation);
+    if (!location || location == LocationOfInput(source, kUseWeaponLocation))
+        return "its Use Weapon Location is not its own";
+    // Near the follower wherever they stand, so the procedure's travel to it
+    // is over before it starts, as the cast records' location is.
+    location->locType = RE::PackageLocation::Type::kNearSelf;
+    location->rad = 10000;
+    location->data.object = nullptr;
+
+    // Edorfin's record does no damage, holds while anyone is in the line of
+    // attack, and never ends. A follower's attacks with the party around it,
+    // does damage, and is over after one barrage of one power attack.
+    struct Flag
+    {
+        const char *name;
+        bool value;
+    };
+    constexpr std::array<Flag, 9> kFlags{{{"Always Power Attack?", true},
+                                          {"Do No Damage?", false},
+                                          {"Always Hit?", false},
+                                          {"Hold when Blocked?", false},
+                                          {"Never End?", false},
+                                          {"Pause between Barrages?", false},
+                                          {"Allow Combat Start on hit?", false},
+                                          {"Aim Only, Don't Fire? (usually false)", false},
+                                          {"Headtrack Target?", true}}};
+    for (const Flag &flag : kFlags)
+    {
+        if (!SetPackageBool(pkg, flag.name, flag.value))
+        {
+            log::packages.warn("{:08X}: no Bool input \"{}\"", pkg->GetFormID(), flag.name);
+            return "a Bool input could not be set";
+        }
+    }
+    for (const char *name : {"End after this many Barrages:", "Min Attacks per Barrage:", "Max Attacks per Barrage"})
+    {
+        auto *value = IntOfInput(pkg, name);
+        if (!value)
+        {
+            log::packages.warn("{:08X}: no Int input \"{}\"", pkg->GetFormID(), name);
+            return "an Int input could not be set";
+        }
+        *value = 1;
+    }
+
+    // The target through the calibrated layout, read back, as ProveCopy
+    // proves a cast record's spell.
+    auto *player = RE::PlayerCharacter::GetSingleton();
+    if (!player || !SetPackageTarget(pkg, player, kTargetToAttack))
+        return "its Target to Attack could not be aimed";
+    const auto *aim = TargetOfInput(pkg, kTargetToAttack);
+    const bool aimed = aim && aim->target.handle.native_handle() == player->GetHandle().native_handle();
+    SetPackageTarget(pkg, nullptr, kTargetToAttack);
+    if (!aimed)
+        return "its Target to Attack did not read back";
+
+    pkg->packData.packFlags.set(RE::PACKAGE_DATA::GeneralFlag::kWeaponDrawn);
+    return nullptr;
+}
+
 // A follower's records: Mercer's record with Target back to Self and Spell
 // on the canary, read back; a word, a wrapper shout on it, and Tsun's record
 // with its Shout input on the wrapper and Target back to Self. Null when
@@ -1602,6 +1973,26 @@ const char *MakeKit(Kit &kit)
     kit.voice.condition = shoutCondition;
     kit.voice.wrapper = wrapper;
     kit.voice.spell = wrapper->GetFormID();
+
+    // A power attack's record. The casts do not need it, so a follower whose
+    // copy fails keeps them, and Power Attack goes by the animation event.
+    if (g_weaponSource)
+    {
+        auto *weaponPkg = ClonePackage(g_weaponSource);
+        auto *weaponCondition = AddIsReferenceCondition(weaponPkg);
+        const char *failed =
+            !weaponPkg || !weaponCondition ? "could not be copied" : ConfigureWeapon(weaponPkg, g_weaponSource);
+        if (failed)
+            log::packages.warn("power attack package: {} -- Power Attack goes by the animation event", failed);
+        else
+        {
+            kit.weapon.package = weaponPkg;
+            kit.weapon.condition = weaponCondition;
+            kit.weapon.weapon = true;
+            kit.weapon.targetInput = kTargetToAttack;
+            kit.weapon.spell = 0;
+        }
+    }
     return nullptr;
 }
 } // namespace
@@ -1625,6 +2016,13 @@ void InitPackages()
 
     log::packages.info("input layout found; a follower's cast records are made when the tick first sees them");
     g_available = true;
+
+    // A power attack's record needs layouts of its own; without them only
+    // that action falls back, to the animation event.
+    if (CalibrateWeapon())
+        g_weaponSource = RE::TESForm::LookupByID<RE::TESPackage>(kEdorfinAttackTargetID);
+    else
+        log::packages.warn("UseWeapon inputs not identified -- Power Attack goes by the animation event");
 }
 
 void ProvideCastForms(RE::Actor *actor)
@@ -1644,8 +2042,9 @@ void ProvideCastForms(RE::Actor *actor)
         log::packages.error("{}: {} -- their cast, power and shout rules stay off", Describe(actor), failed);
         return;
     }
-    log::packages.info("{}: cast package {:08X}, shout package {:08X}, wrapper {:08X}", Describe(actor),
-                       PackageId(kit->spell), PackageId(kit->voice), kit->voice.wrapper->GetFormID());
+    log::packages.info("{}: cast package {:08X}, shout package {:08X}, wrapper {:08X}, power attack package {:08X}",
+                       Describe(actor), PackageId(kit->spell), PackageId(kit->voice), kit->voice.wrapper->GetFormID(),
+                       PackageId(kit->weapon));
     std::unique_lock lock(g_kitsMutex);
     g_kits.emplace(id, std::move(kit));
 }

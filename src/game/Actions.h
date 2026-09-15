@@ -4,6 +4,8 @@
 #include "core/Evaluator.h"
 #include "game/Sensors.h"
 
+#include <string_view>
+
 namespace RE
 {
 class Actor;
@@ -44,7 +46,10 @@ enum class ActionResult : std::uint8_t
 // through here. `target` is the step's: whom the rule aimed the action at.
 // The action's form is the thing to use: a policy's has been resolved to
 // the bottle it chose by the evaluator (ChosenForm), so a Strongest and a
-// named potion arrive the same way.
-ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor);
+// named potion arrive the same way. `ruleIndex` and `ruleName` are the rule's,
+// for a request -- a cast, a power attack, a bash -- to name when it is over
+// (rule.resolved).
+ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor, int ruleIndex,
+                     std::string_view ruleName);
 
 } // namespace ft::game

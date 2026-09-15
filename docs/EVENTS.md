@@ -83,7 +83,7 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 | `tactics.switched` | the master switch | `enabled` |
 | `rule.fired` | a rule's action is dispatched | `ruleIndex`, `ruleName` (the rule as it began), `subjectKind` and the subject's ids, `action`, the target's ids, the form and variant, `outcome`, `followerHealthPct` (the follower's own health, whoever the subject) |
 | `rule.actionFailed` (warn) | the outcome is neither `performed` nor `requested`, a refused pin included | `ruleIndex`, `ruleName`, `action`, `reason` |
-| `rule.resolved` | a requested cast, scroll, shout or power is over | `ruleIndex`, `ruleName`, `kind`, the form, the target's ids, `outcome` (`cast` or `not-cast`), `pickedUp`, `reason`, `durationS` |
+| `rule.resolved` | a requested cast, scroll, shout, power, power attack or bash is over | `ruleIndex`, `ruleName`, `kind`, `outcome` (`cast` or `not-cast`; `made` or `not-made` for a power attack or a bash), `reason`, `durationS`. A cast, scroll, shout, power or power attack adds the form (a power attack's is the weapon in the right hand), the target's ids and `pickedUp`, and a power attack its `attackEvent`. A bash or power bash adds `alreadyBlocking`, `blockRaised`, `blockUpS` and `sentS` (seconds after the request, -1 for never), `blockRefusals` and `bashRefusals` (`docs/ATTACK.md`) |
 | `rule.verdict` | a rule's verdict differs from the last one reported | `ruleIndex`, `ruleName`, `verdict`, `reason` |
 | `poison.applied` | a poison on a blade | the poison, the weapon |
 | `soul.spent` | a soul gem into a weapon | the gem, the soul, the weapon, the charge before, after and at most |
@@ -99,11 +99,11 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 
 **`by`** says who did it: `player` (the panel), `rule`, `fight-end` (the after-fight restore), `save` (taken back from the save), `game` (the thing is no longer carried).
 
-**`outcome`** on `rule.fired`: `performed` for what is done at once -- a drink, a poison, a soul gem, an equip, a blow sent -- and `requested` for a cast, scroll, shout or power, whose own outcome follows in `rule.resolved`; anything else is the failure, and `rule.actionFailed` repeats it as a warning.
+**`outcome`** on `rule.fired`: `performed` for what is done at once -- a drink, a poison, a soul gem, an equip, a power attack sent as an event -- and `requested` for a cast, scroll, shout, power, power attack or bash, whose own outcome follows in `rule.resolved`; anything else is the failure, and `rule.actionFailed` repeats it as a warning.
 
-**`rule.resolved` pairs with the follower's last `rule.fired` whose outcome was `requested`**: a follower holds at most one cast at a time, and no rule of theirs can request another while it is held. It carries the rule's index and name as well, so it reads alone.
+**`rule.resolved` pairs with the follower's last `rule.fired` whose outcome was `requested`**: a follower has at most one request in flight -- a cast, a power attack or a bash -- and no rule of theirs can make another meanwhile. It carries the rule's index and name as well, so it reads alone.
 
-**`reason`** on `rule.resolved` is the package's own release reason: `spell fired`, `shout fired`, `power fired`, `stream ended`, `target dead`, `package ended`, `deadline, never cast`, `deadline, AI never picked it up`, `deadline, stream still running`, `holder vanished`, `saving`.
+**`reason`** on `rule.resolved` is why the request ended. A cast's, scroll's, shout's or power's is the package's own release reason: `spell fired`, `shout fired`, `power fired`, `stream ended`, `target dead`, `package ended`, `deadline, never cast`, `deadline, AI never picked it up`, `deadline, stream still running`, `holder vanished`, `saving`. A power attack's: `power attack made`, `package ended`, `package ended mid-swing`, `deadline, AI never picked it up`, `deadline, no power attack`, `deadline, still swinging`, `holder vanished`, `saving`. A bash's: `bash made`, `taken, never bashed`, `watch over, still bashing`, `deadline, weapon never drawn`, `deadline, still mid-swing`, `deadline, block refused`, `deadline, block never up`, `deadline, bash refused from the block`, `holder vanished`, `no actor state`, `saving`.
 
 **`rule.verdict`** carries the verdict's wire name (`no-resource`, `cooldown`, `condition-false`, ...) and the sentence the Status column's tooltip used to show. Its prose line is at `debug`, so the prose log stays quiet at `info`; the events file has every one.
 

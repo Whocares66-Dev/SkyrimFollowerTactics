@@ -1,5 +1,6 @@
 #include "game/Actions.h"
 
+#include "game/Blows.h"
 #include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
@@ -294,7 +295,8 @@ ActionResult PointAt(RE::Actor *actor, std::uint32_t target)
     return ActionResult::Performed;
 }
 
-ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor)
+ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor, int ruleIndex,
+                     std::string_view ruleName)
 {
     if (!actor)
         return ActionResult::MissingItem;
@@ -354,7 +356,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             targetId = target;
         const char *what = shout ? "shout" : "power";
         log::actions.debug("{}: {} through a shout slot", what, log::NameOf(form));
-        const auto request = RequestShout(actor, action.form, targetId);
+        const auto request = RequestShout(actor, action.form, targetId, ruleIndex, ruleName);
         log::actions.debug("{}: {}", what, ToString(request));
         return ResultOf(request);
     }
@@ -402,7 +404,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
 
         // actionArg is the sustain time for a concentration spell, when a rule
         // sets one; zero takes the default.
-        const auto request = RequestCast(actor, action.form, targetId, action.arg, action.dual);
+        const auto request = RequestCast(actor, action.form, targetId, action.arg, action.dual, ruleIndex, ruleName);
         log::actions.debug("cast: {}", ToString(request));
         return ResultOf(request);
     }
@@ -434,17 +436,11 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     case ft::ActionKind::Bash:
     case ft::ActionKind::PowerBash: {
         // At an enemy who is not the follower's target, point them there
-        // first, as Attack does; then one blow, by the animation event the
-        // race's attack data names for what is in the hands. The follower's
-        // own combat AI runs the same graph, so the event is refused while
-        // a swing, a block or a stagger is in progress. The refusal DOES
-        // spend the action's cooldown: the core stamps it when the decision
-        // is made, before this runs, so the rule waits the full 1.5 s before
-        // trying again rather than retrying on the next tick. Measured in
-        // play 2026-09-09: 3 of 11 blows landed (docs/ACTIONS.md 6).
+        // first, as Attack does.
         const auto current = actor->GetActorRuntimeData().currentCombatTarget.get();
         const std::uint32_t currentId = current ? current->GetFormID() : 0;
-        if (target != 0 && target != actor->GetFormID() && target != currentId)
+        const bool elsewhere = target != 0 && target != actor->GetFormID();
+        if (elsewhere && target != currentId)
         {
             if (PointAt(actor, target) != ActionResult::Performed)
                 return ActionResult::NoTarget;
@@ -452,6 +448,36 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         const BlowPlan blow = PlanBlow(actor, action.kind);
         if (!blow.Possible())
             return ActionResult::MissingItem;
+
+        // A bash is made from a block, as the engine makes one: raised, the
+        // bash sent once it is up, lowered (game/Blows.h).
+        if (action.kind != ft::ActionKind::PowerAttack)
+            return RequestBash(actor, action.kind == ft::ActionKind::PowerBash, ruleIndex, ruleName) ==
+                           BashRequest::Started
+                       ? ActionResult::Requested
+                       : ActionResult::Busy;
+
+        // A power attack with the right hand's weapon goes through the
+        // follower's UseWeapon record, which waits for their own swing to end
+        // instead of being turned away mid-swing: sent as an event, 3 of 11
+        // blows landed in play (2026-09-09, docs/ACTIONS.md 6). The procedure
+        // attacks with the right hand alone, so the left's blade and the fists
+        // stay events.
+        if (blow.swing == ft::Swing::Right || blow.swing == ft::Swing::Both)
+        {
+            const auto request = RequestPowerAttack(actor, elsewhere ? target : currentId, ruleIndex, ruleName);
+            if (request != CastRequest::NoPackages)
+            {
+                log::actions.debug("power attack: {}", ToString(request));
+                return ResultOf(request);
+            }
+        }
+
+        // The left's blade, the fists, or no record for this follower: the
+        // animation event the race's attack data names for what is in the hands. The follower's own combat AI
+        // runs the same graph, so it is refused while a swing, a block or a
+        // stagger is in progress, and the refusal spends the cooldown the
+        // core stamped when it decided.
         auto *state = actor->AsActorState();
         if (!state || !state->IsWeaponDrawn())
             return ActionResult::WeaponSheathed;

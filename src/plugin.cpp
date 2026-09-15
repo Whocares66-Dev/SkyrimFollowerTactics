@@ -3,6 +3,7 @@
 // engine is tested under Catch2 (tests/), and the plugin links the same
 // library the tests do, so nothing is re-proved here.
 
+#include "game/Blows.h"
 #include "game/Hits.h"
 #include "game/Log.h"
 #include "game/Packages.h"
@@ -68,6 +69,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
                 ft::log::plugin.event(ft::log::Level::Info, "game.loaded", {{"newGame", fresh}}, "{}",
                                       fresh ? "a new game begins" : "a save is loaded");
                 ft::game::ResetPackages();
+                ft::game::ResetBashes();
             }
 
             // Sent before the engine writes the save (SKSE's SaveGame hook
@@ -76,9 +78,11 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
             // shouting a re-typed power: all of it would go into the file, and
             // the packages are runtime forms that the save cannot bring back
             // whole. Every lease ends here, so the save holds nothing of ours.
+            // A bash in flight ends too, its block lowered if it raised one.
             if (message->type == SKSE::MessagingInterface::kSaveGame)
             {
                 ft::game::ReleaseAllLeases("saving");
+                ft::game::EndAllBashes("saving");
                 // After the releases, so a cast the save cut short reads as
                 // resolved before the save that cut it. SKSE passes the save's
                 // name as the message's data.

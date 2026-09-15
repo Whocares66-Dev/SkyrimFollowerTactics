@@ -46,8 +46,10 @@
 // For each follower: a UseMagic package (a copy of Mercer's cast-at-player
 // record); a Shout package (a copy of Tsun's Clear Skies record), which is how
 // a POWER is performed -- the UseMagic procedure never fires one
-// (docs/ACTIONS.md 7); and a one-word wrapper shout and its word. Each
-// package's condition is GetIsReference(holder).
+// (docs/ACTIONS.md 7); a one-word wrapper shout and its word; and a UseWeapon
+// package (a copy of Edorfin's attack-a-target record), which is how a POWER
+// ATTACK is made (docs/ATTACK.md). Each package's condition is
+// GetIsReference(holder).
 //
 // ONE SET PER FOLLOWER
 // A follower's records are made the first time the tick sees them and kept,
@@ -148,8 +150,10 @@ enum class CastRequest : std::uint8_t
 // fire-and-forget spell.
 // dualCast: from both hands, the procedure's DualCast input; the caller has
 // judged that the follower can.
+// ruleIndex, ruleName: the rule asking, named again in rule.resolved when the
+// lease ends.
 [[nodiscard]] CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId,
-                                      float sustainSeconds, bool dualCast);
+                                      float sustainSeconds, bool dualCast, int ruleIndex, std::string_view ruleName);
 
 // Ask a follower to use a power or a shout. A power (a spell record of type
 // Power or Lesser Power): points their wrapper shout's first word at the
@@ -159,12 +163,27 @@ enum class CastRequest : std::uint8_t
 // has): the same package with the shout itself in its Shout input. targetId
 // as for RequestCast. The lease ends on the voice's fire event for our
 // shout, or at the deadline.
-[[nodiscard]] CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId);
+[[nodiscard]] CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId, int ruleIndex,
+                                       std::string_view ruleName);
 
-// The rule a follower's armed request is for, so that its release can say
-// what came of it (rule.resolved). Called once RequestCast or RequestShout
-// has armed one; a follower holds at most one record, found by their id.
-void NoteRule(std::uint32_t holderId, int ruleIndex, std::string_view ruleName);
+// Ask a follower for one power attack at an enemy, through their UseWeapon
+// record: power attacks only, one attack, damage done, the location near
+// themself, the rule's target. The procedure draws the attack from the race's
+// power attacks, waits for the follower's own swing to end, and retries until
+// the graph takes it (docs/ATTACK.md). The lease ends once the swing has
+// ended, when the AI drops the package, or at the deadline. NoPackages when
+// the follower has no such record: the checks at load failed, or the copy did.
+[[nodiscard]] CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, int ruleIndex,
+                                             std::string_view ruleName);
+
+// Is a power attack's record held by anyone? Any thread: the pacing thread
+// asks it to decide whether the fast tick is wanted.
+[[nodiscard]] bool AnyWeaponLease() noexcept;
+
+// TickPackages for the power attack records alone, for the fast tick: the
+// record goes back as soon as the swing has ended, before the procedure can
+// start a second one. Game thread.
+void TickWeaponLeases(double now);
 
 // Called every tick from the game thread. Watches held records: reports when
 // the AI picks our package up, and releases the record once the cast has

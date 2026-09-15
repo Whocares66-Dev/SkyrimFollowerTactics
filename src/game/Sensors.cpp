@@ -1108,7 +1108,8 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     // same two objects, so the checks below never fail; they are for the
     // reader and the analyser, per case because the analyser does not
     // carry one check across a switch.
-    switch (ft::SwingWith(DescribeHands(actor)))
+    plan.swing = ft::SwingWith(DescribeHands(actor));
+    switch (plan.swing)
     {
     case ft::Swing::Both:
         if (!right || !left)

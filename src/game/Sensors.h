@@ -5,6 +5,7 @@
 // RE::-free and unit tested; everything below is imperative Skyrim code that
 // can only be verified by playing. Keep this file thin and obvious.
 
+#include "core/Blows.h"
 #include "core/Breakdown.h"
 #include "core/Rule.h"
 #include "core/Snapshot.h"
@@ -234,15 +235,18 @@ struct BlowPlan
     const char *event{nullptr};
     float stamina{0.0f};
     float reach{0.0f};
+    // A power attack's hand: the UseWeapon record attacks with the right
+    // alone, so the other swings go by the event.
+    ft::Swing swing{ft::Swing::None};
     [[nodiscard]] bool Possible() const noexcept
     {
         return event != nullptr;
     }
 };
-// A power attack, chosen by the hands: the right hand's blade or
-// two-hander (attackPowerStartInPlace), the left's alone (...LeftHand),
-// both at once (...DualWield), the fists (the right hand's event). None
-// for a bow, a staff or a spell in the hand that would swing.
+// A power attack, chosen by the hands, the right asked first: the right
+// hand's blade or two-hander (attackPowerStartInPlace), both at once
+// (...DualWield), else the left's blade (...LeftHand), else the fists (the
+// right hand's event). None for a bow, a staff, a spell or a shield alone.
 [[nodiscard]] BlowPlan PlanPowerAttack(RE::Actor *actor);
 // A bash (bashStart) or a power bash (bashPowerStart), with what blocks: a
 // shield or a torch in the left hand, or the right hand's weapon with the

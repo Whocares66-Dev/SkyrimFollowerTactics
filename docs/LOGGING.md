@@ -25,7 +25,7 @@ Every prose line names its module, and the module comes from the `ft::log::Modul
 
 so `grep '\[packages\]'` works, and the messages line up in a column whatever the module. There is no `logger` alias any more (`src/PCH.h` says why): `ft::log::<module>.info(...)` is the only way in, and a new call site cannot quietly go back to prose at a hardcoded level with a hand-typed prefix.
 
-The ten modules are one per source file that logs: `actions`, `forms`, `hits`, `packages`, `pins`, `plugin`, `profiles`, `sensors`, `tactics`, `ui`.
+The twelve modules are one per source file that logs: `actions`, `blows`, `customskills`, `forms`, `hits`, `packages`, `pins`, `plugin`, `profiles`, `sensors`, `tactics`, `ui`.
 
 ## Levels
 

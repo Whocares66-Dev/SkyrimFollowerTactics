@@ -3,6 +3,7 @@
 #include "core/Evaluator.h"
 #include "core/Vocabulary.h"
 #include "game/Actions.h"
+#include "game/Blows.h"
 #include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
@@ -208,8 +209,9 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     // Flames" put Flames in the hand half a second into the cast. A list in
     // progress waits on the next tick; a fresh rule yields for this one.
     // Ours only: the AI's own casting, a pinned Flames streaming all fight,
-    // holds nothing up.
-    if (IsMidCast(actor))
+    // holds nothing up. A power attack's record is held the same way, and a
+    // bash in flight holds its block: a pin or a potion would cut either off.
+    if (IsMidCast(actor) || IsMidBash(actor))
         caps.busy.fill(true);
     return caps;
 }
@@ -541,11 +543,9 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
         const std::string &label = decision.rule.label;
         {
             const auto &step = *decision.step;
-            const auto result = Execute(step.action, step.target, actor);
-            // A requested cast's outcome comes when its package is released,
-            // and names the rule that asked for it.
-            if (result == ActionResult::Requested)
-                NoteRule(actor->GetFormID(), decision.ruleIndex, label);
+            // A requested cast's, power attack's or bash's outcome follows
+            // when it is over, as rule.resolved, naming the rule given here.
+            const auto result = Execute(step.action, step.target, actor, decision.ruleIndex, label);
 
             // Whom the condition bound and whom the action went at, by
             // reference and base, and the thing it used: the potion a policy
@@ -918,29 +918,68 @@ std::optional<FollowerView> ObserveFollower(ft::ActorId id)
     return std::nullopt;
 }
 
+namespace
+{
+// The fast tick: every 50 ms while a blow is in flight, and not otherwise. A
+// bash is steps -- the block raised, the bash sent once it is up -- and a power
+// attack's record has to go back the moment its swing ends; at the half-second
+// turn the follower's AI lowers the block between two steps, or the procedure
+// starts a second power attack.
+constexpr double kFastInterval = 0.05;
+std::atomic_bool g_fastQueued{false};
+
+void FastTick()
+{
+    if (EvaluationHeld() || !RE::PlayerCharacter::GetSingleton())
+        return;
+    const double now = TacticsSeconds();
+    TickWeaponLeases(now);
+    TickBashes(now);
+}
+} // namespace
+
 void Install()
 {
     if (g_installed.exchange(true))
         return;
 
-    log::tactics.info("tick {:.0f} ms, rules in a fight and on its farewell", kTickInterval * 1000.0);
+    log::tactics.info("tick {:.0f} ms, rules in a fight and on its farewell; {:.0f} ms while a blow is in flight",
+                      kTickInterval * 1000.0, kFastInterval * 1000.0);
     log::tactics.info("a follower starts with no rules; tactics are kept in the save (SKSE co-save)");
 
     // Detached on purpose: Skyrim never unloads SKSE plugins, and joining a
     // sleeping thread during process teardown is a good way to hang on exit.
     std::thread([] {
+        using clock = std::chrono::steady_clock;
+        const auto turn = std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(kTickInterval));
+        auto nextTurn = clock::now() + turn;
         while (g_installed.load())
         {
-            std::this_thread::sleep_for(std::chrono::duration<double>(kTickInterval));
-            if (g_tickQueued.exchange(true))
-                continue;
-            if (auto *task = SKSE::GetTaskInterface())
-                task->AddTask([] {
+            std::this_thread::sleep_for(std::chrono::duration<double>(kFastInterval));
+            auto *task = SKSE::GetTaskInterface();
+            if (clock::now() >= nextTurn)
+            {
+                nextTurn = clock::now() + turn;
+                if (g_tickQueued.exchange(true))
+                    continue;
+                if (task)
+                    task->AddTask([] {
+                        g_tickQueued.store(false);
+                        Tick();
+                    });
+                else
                     g_tickQueued.store(false);
-                    Tick();
-                });
-            else
-                g_tickQueued.store(false);
+            }
+            else if ((AnyWeaponLease() || AnyBashInFlight()) && !g_fastQueued.exchange(true))
+            {
+                if (task)
+                    task->AddTask([] {
+                        g_fastQueued.store(false);
+                        FastTick();
+                    });
+                else
+                    g_fastQueued.store(false);
+            }
         }
     }).detach();
 }

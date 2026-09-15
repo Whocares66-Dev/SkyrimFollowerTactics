@@ -180,6 +180,7 @@ if(FT_BUILD_PLUGIN)
         src/game/Pins.cpp
         src/game/Hits.cpp
         src/game/Actions.cpp
+        src/game/Blows.cpp
         src/game/Tactics.cpp
         src/game/Util.cpp
         src/game/UI.cpp
