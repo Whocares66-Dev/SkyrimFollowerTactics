@@ -2102,6 +2102,27 @@ float Tempering(RE::InventoryEntryData *entry)
     return 1.0f;
 }
 
+// The health the armour walk rates a piece at: the highest among the
+// entry's copies, and never below 1.0 (id 15990, read from the running game
+// 2026-09-14). Each copy's health is its own list's, worn or not (11703),
+// and the worn-items walk (InventoryChanges::VisitWornItems, 16096) hands
+// it every copy of the form, so a worn piece is rated at the best-tempered
+// copy carried, even one in the bag. The first copy's health, as
+// Tempering takes it, rated the player's boots 10 points short before
+// perks, and the Armor row showed the gap as Other.
+float ArmorHealth(RE::InventoryEntryData *entry)
+{
+    float best = 1.0f;
+    if (!entry || !entry->extraLists)
+        return best;
+    for (auto *list : *entry->extraLists)
+    {
+        if (auto *health = list ? list->GetByType<RE::ExtraHealth>() : nullptr; health && health->health > best)
+            best = health->health;
+    }
+    return best;
+}
+
 } // namespace
 
 namespace
@@ -2550,7 +2571,7 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     const float smithingMax = GameSetting("fSmithingArmorMax", 10.0f);
     if (healthHigh > healthLow)
     {
-        float bonus = 1.0f + (Tempering(entry) - healthLow) / (healthHigh - healthLow) * (smithingMax - 1.0f);
+        float bonus = 1.0f + (ArmorHealth(entry) - healthLow) / (healthHigh - healthLow) * (smithingMax - 1.0f);
         auto *defaults = RE::BGSDefaultObjectManager::GetSingleton();
         // wingdi.h's GetObject macro reaches this file through the
         // precompiled header, after CommonLib's declaration, and renames
