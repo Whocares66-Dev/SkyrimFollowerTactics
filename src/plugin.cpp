@@ -77,7 +77,16 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
             // the packages are runtime forms that the save cannot bring back
             // whole. Every lease ends here, so the save holds nothing of ours.
             if (message->type == SKSE::MessagingInterface::kSaveGame)
+            {
                 ft::game::ReleaseAllLeases("saving");
+                // After the releases, so a cast the save cut short reads as
+                // resolved before the save that cut it. SKSE passes the save's
+                // name as the message's data.
+                const std::string_view name =
+                    message->data ? std::string_view(static_cast<const char *>(message->data), message->dataLen)
+                                  : std::string_view{};
+                ft::log::plugin.event(ft::log::Level::Info, "game.saved", {{"saveName", name}}, "saving \"{}\"", name);
+            }
         });
     if (!listening)
         ft::log::plugin.error("could not register for SKSE's messages -- nothing of the mod will start");

@@ -76,6 +76,7 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 | `session.started` | the first line of every session | — (its `ts` is the session's start) |
 | `session.ceiling` (warn) | the events file has taken its 64 MB for the session; nothing more is written to it | `megabytes` |
 | `game.loaded` | a save loaded or a new game begun | `newGame` |
+| `game.saved` | the game is about to write a save; a cast the save cuts short is resolved just before it, reason `saving` | `saveName` |
 | `combat.entered` / `combat.left` | the follower's fight begins or ends | `allies[]`, `enemies[]` (entered; each an actor) |
 | `follower.down` / `follower.up` | bleeding out, and up again | — |
 | `followers.controlled` | who is under tactics changes | `count`, `followers[]` (each an actor) |
@@ -124,7 +125,7 @@ Prose in `FollowerTactics.log` only: the plugin loading; the tick installing and
 
 ## To verify in play
 
-- A cast rule: `rule.fired` `requested`, then `rule.resolved` `cast`; a save mid-cast gives `not-cast`, `saving`.
+- A cast rule: `rule.fired` `requested`, then `rule.resolved` `cast`; a save mid-cast gives `not-cast`, `saving`, then `game.saved`.
 - A rule true but blocked (the potions gone): one `rule.verdict`, not one a tick.
 - An enemy rule's subject and target ids, and a leveled bandit's base against xEdit.
 - A reorder mid-list: `rule.fired` still names the rule that began.
