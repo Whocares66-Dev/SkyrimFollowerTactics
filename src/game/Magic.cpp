@@ -50,11 +50,7 @@ void AddTimeSection(RE::Actor *actor, const std::vector<const RE::MagicItem *> &
     if (!actor)
         return;
     if (const float recovery = VoiceRecoveryOf(actor); recovery > 0.0f)
-    {
-        SheetRow row = Row("Cooldown", Fmt("%.0f", recovery) + " s");
-        row.breakdown = VoiceRecoveryBreakdown(actor);
-        time.rows.push_back(std::move(row));
-    }
+        time.rows.push_back(Row("Cooldown", Fmt("%.0f", recovery) + " s"));
 
     float remaining = RemainingOn(actor, sources);
     if (auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get())

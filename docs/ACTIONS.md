@@ -44,11 +44,7 @@ shouts through SPID and they are used. The combat AI scores a shout entry
 by `shoutScoreMult` and equips it when the voice recovery time is below a
 game setting.
 
-**The cooldown is per actor**, in the high process data: `voiceRecoveryTime`
-and `voiceTimeElapsed`, read by `Actor::GetVoiceRecoveryTime()`. Each word
-has its own recovery time on the shout record, scaled by the
-ShoutRecoveryMult actor value. CommonLib has no setter; the field can be
-written.
+**The cooldown is per actor**, in the high process data: `voiceRecoveryTime`, read by `Actor::GetVoiceRecoveryTime()`, is the countdown itself, the seconds left, not a recovery with the time since kept beside it. Watched 2026-09-15: a countdown of 220.48 s read 220.48 in `voiceRecoveryTime` and 0 in `voiceTimeElapsed`, which is something else, and `currentShout` was empty once the shout had fired; so once a shout is out the game keeps neither which shout set the countdown nor the recovery it set, and the Magic pages' Cooldown is the countdown alone. Each word has its own recovery time on the shout record, scaled by the ShoutRecoveryMult actor value (the word rows write it out). CommonLib has no setter; the field can be written.
 
 **On demand:** the engine has a `Shout` package procedure (Shout, Target,
 HoldWhenBlocked), used by the Greybeard training; it is the shout twin of
@@ -172,7 +168,7 @@ Four runs settled three things, each by one change per run:
 
 Voice of the Emperor's Pacify is a calm on people. It showed nothing on the cave bear and stopped a bandit, which is why `bat ftman` exists (`docs/TESTING.md`).
 
-**The Shout action** (section 2) rides the same slot with the shout itself in the package's Shout input, no wrapper and no type change: the follower already has the shout, and its words are Voice spells. A shout's delivery, for the menu, is its first word's. Built 2026-09-05, not yet played. The per-actor voice recovery (`Actor::GetVoiceRecoveryTime`, the high process's `voiceRecoveryTime` less `voiceTimeElapsed`, set from the word's recovery when a shout fires, NPCs included) is in the snapshot, and a Shout or Use power rule inside it reports Recovering and waits, spending no cooldown: the engine's own cooldown, not a fixed one of ours. The wrapper's word carries a one-second recovery, so a power is gated by the same number.
+**The Shout action** (section 2) rides the same slot with the shout itself in the package's Shout input, no wrapper and no type change: the follower already has the shout, and its words are Voice spells. A shout's delivery, for the menu, is its first word's. Built 2026-09-05, not yet played. The per-actor voice recovery (`Actor::GetVoiceRecoveryTime`, the high process's `voiceRecoveryTime`, a countdown set from the word's recovery when a shout fires, NPCs included) is in the snapshot, and a Shout or Use power rule inside it reports Recovering and waits, spending no cooldown: the engine's own cooldown, not a fixed one of ours. The wrapper's word carries a one-second recovery, so a power is gated by the same number.
 
 **Equip power is deliberately absent.** A pin is a promise the AI will use the thing, and the vanilla AI never reaches for a power. The Magic tab's Equipped cell for powers and shouts stays read-only. A mod that has NPCs choose between powers would make it one more kind in the pin book.
 
