@@ -551,7 +551,7 @@ Verdict EquipAvailability(const Action &a, const Snapshot &snap, const std::vect
 // multiplier in. A follower mid-cast on a spell of their own is left to
 // finish it: firing our package then interrupts the cast in progress -- a
 // Lightning Bolt rule on "magicka above half" cut off every spell the AI
-// began -- so the rule waits, as it does for a busy pool: no cooldown
+// began -- so the rule waits, as a busy action does: no cooldown
 // spent, the next rule gets its turn. (The risk, stated: an AI that never
 // stops casting never lets the rule through. If that shows in play, the
 // cast cooldown is the next knob, 2 s to 4 s. Our own cast in progress is

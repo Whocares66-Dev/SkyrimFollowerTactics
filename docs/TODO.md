@@ -35,7 +35,7 @@ in `docs/PLAN.md`.
   Whether equipping a potion interrupts an NPC's cast in progress is not
   verified; one log hint says it might. If so: treat "holding a record" as
   busy for potions too.
-- **Shout, in play.** Built 2026-09-05 on the shout pool with the shout itself in the package's input (`docs/ACTIONS.md` 7); not yet run. `bat ftmake` teaches Unrelenting Force; the rule is `IF target: any THEN target: Shout -> Unrelenting Force`. The voice recovery is read (`Actor::GetVoiceRecoveryTime`, per actor, NPCs included) and a shout inside it reports "recovering" instead of firing; not yet seen counting down in play. Open: whether a three-word shout's long animation wants the begin step-back's 3 s or more.
+- **Shout, in play.** Built 2026-09-05 on the Shout package with the shout itself in the package's input (`docs/ACTIONS.md` 7); not yet run. `bat ftmake` teaches Unrelenting Force; the rule is `IF target: any THEN target: Shout -> Unrelenting Force`. The voice recovery is read (`Actor::GetVoiceRecoveryTime`, per actor, NPCs included) and a shout inside it reports "recovering" instead of firing; not yet seen counting down in play. Open: whether a three-word shout's long animation wants the begin step-back's 3 s or more.
 - **A power's Voice type for the lease.** The power's shared record reads Type Voice for the ~2 s of a lease, restored on release (`docs/ACTIONS.md` 7). Works; the clean alternative is Voice spells of our own in the ESP carrying the power's effects, which needs the active-effect check taught which spell stood for which power. Only worth doing if the window ever shows.
 - **Voice pins, in play.** Built 2026-09-05: the Magic tab's Equipped cell for a power or shout readies it in the voice slot, pins it, or puts it away, like a hand cell; one voice pin sets every other power and shout aside with the "<x> is pinned" tooltip; the watchdog puts a pinned one back. Not yet run. Not covered: the combat AI's own shout entries are not in the score hook (only weapon and spell entry classes are), so an AI that shouts its own shout mid-fight is put back by the watchdog a tick later rather than kept from it.
 - **Make-room unequips removed, in play.** 2026-09-05: when a pin displaces another, only the book changes and the engine's equip does the taking-off; the explicit unequip that followed was a leftover from the prevent-removal flag and, for the voice, undid the new equip. To watch for once each: weapon over weapon in one hand, spell over spell, armour over armour, a spell into a hand holding a weapon, a two-hander over sword and shield. If any leaves the old thing on, that case gets its unequip back.
@@ -87,7 +87,7 @@ in `docs/PLAN.md`.
   Attacker: Attack` against a bandit archer, and read the log for
   "already fighting them" on the next tick, or the rule re-firing every
   two seconds. If it snaps back, the fallbacks are a selector vtable hook
-  or a UseWeapon pool. Also whether a hit event's `projectile` is set for
+  or a UseWeapon package. Also whether a hit event's `projectile` is set for
   every arrow and bolt, and never for a thrown or melee hit.
 - **Cast on a chosen target, in play.** A targeted spell now goes at whom
   the rule aimed it (the Then cascade's first level: self, the ally or
@@ -171,7 +171,7 @@ in `docs/PLAN.md`.
 - **Structured log — built 2026-09-09, not yet verified in play.** `docs/LOGGING.md` is what it does. What is left is a session with the game up: that the ini is found under MO2's virtual file system, that `.events.jsonl` lands beside the log, and that a fight's lines read the way the level table says they should at `info` and at `debug`.
 - **Recruiting from the console.** `cqf DialogueFollower SetFollower <refid>`
   should fill the alias without the dialogue; unverified.
-- **Pool tests.** The package pool and lease have no unit tests because they
+- **Package tests.** The cast records and leases have no unit tests because they
   touch the game. A seam that lets the tick and release logic run against a
   fake actor would cover the release paths.
 - **What the core tests never reach** (coverage, 2026-09-09; `.\tools\build.ps1 -Preset core-cov -Coverage`, line-by-line in `build\core-cov\coverage\html`). 98% of `src/core` lines; `Profile.cpp` is complete. What is left is by construction: the resolver's branch for an enemy's attacker (the validity matrix never lets that pair through), the `default:` arms of exhaustive switches, and the `Verdict` words' final `"?"`. Nothing worth a test.

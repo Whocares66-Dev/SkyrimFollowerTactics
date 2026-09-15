@@ -191,24 +191,14 @@ double g_lastCostReport = -1.0e9;
 // install with a follower drinking potions on their own initiative.
 const ft::RuleSet kNoRules;
 
-// What the runtime can do this tick. The casts need the package pool
-// (made in memory at load, game/Forms.h); without it they report
-// Unsupported, a truthful "not available here" rather than a rule that
-// silently never fires.
+// What the runtime can do this tick. The casts need the follower's own
+// records (game/Packages.h); without them they report Unsupported, a
+// truthful "not available here" rather than a rule that silently never
+// fires.
 ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
 {
     ft::Capabilities caps;
-    caps.castingAvailable = PackagesAvailable();
-
-    // Transient, unlike the line above: every slot mid-cast means a cast rule
-    // is skipped for THIS evaluation only, with no cooldown spent, and the
-    // next rule down gets its turn.
-    caps.busy[static_cast<std::size_t>(ft::ActionKind::CastSpell)] = PackagesAvailable() && !HasFreeSlot();
-    caps.busy[static_cast<std::size_t>(ft::ActionKind::UseScroll)] =
-        caps.busy[static_cast<std::size_t>(ft::ActionKind::CastSpell)];
-    caps.busy[static_cast<std::size_t>(ft::ActionKind::UsePower)] = PackagesAvailable() && !HasFreeVoiceSlot();
-    caps.busy[static_cast<std::size_t>(ft::ActionKind::Shout)] =
-        caps.busy[static_cast<std::size_t>(ft::ActionKind::UsePower)];
+    caps.castingAvailable = HasCastForms(actor);
 
     // A cast of OURS still in the air -- the lease is held from the request
     // until the follower's own spell-fire event names the spell -- makes
@@ -717,6 +707,9 @@ void Tick()
     // ended, as if the fight had made them.
     for (auto *follower : followers)
         LoadIfNew(follower);
+    // Before the rules too: a cast rule may fire on a follower's first tick.
+    for (auto *follower : followers)
+        ProvideCastForms(follower);
 
     KeepPins(followers);
 

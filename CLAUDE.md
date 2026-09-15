@@ -272,10 +272,9 @@ UseMagic packages put at the front of the follower's own package stack, gated by
 condition held by a lease (a faction rank until 2026-09-08), released when the follower's own spell-fire animation event
 names our spell. Measured over two cycles: rule fires at 43% health, package selected on
 the same tick, `Fast Healing -- OURS` 1.4 s later, health 75 -> 175, released next tick,
-follower back to fighting. Since 2026-09-08 the records are **made in memory at
-load** (`src/game/Forms.cpp`, `docs/MAGIC.md` "Forms at runtime"): no plugin
+follower back to fighting. Since 2026-09-08 the records are **made in memory** (`src/game/Forms.cpp`, `docs/MAGIC.md` "Forms at runtime"): no plugin
 file, nothing of ours in the save, the DLL is the whole mod. Verified in play
-the same day; the ESP is gone (git history before 2026-09-08 has it).
+the same day; the ESP is gone (git history before 2026-09-08 has it). Since 2026-09-14 they are one set per follower, made when the tick first sees them, instead of a shared pool of sixteen made at load; not yet verified in play.
 Recruit through dialogue (or `cqf DialogueFollower
 SetFollower`), never `setplayerteammate`. Cooldowns and leases run on game time.
 

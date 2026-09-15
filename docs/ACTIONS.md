@@ -56,7 +56,7 @@ UseMagic and splices into the alias the same way. `EquipShout` alone only
 selects the power; the package or the AI fires it. Untested whether the
 procedure honours the recovery time.
 
-So a **Shout action** is: an ESP `Shout` package pool beside the UseMagic
+So a **Shout action** is: a `Shout` package beside each follower's UseMagic
 one, a lease per cast, a snapshot field for the recovery time so the rule
 can report "cooling down" rather than fire into it, and the follower must
 know the shout (a `Learn shout` action, or the player teaches it).
@@ -120,7 +120,7 @@ abilities might too.
    attacker), as the If cascade's names the subject. Heal the player, heal the hurt ally, buff the one about
    to engage. Vanilla spells only.
 2. **Use poison** on the weapon: done, the Apply cascade (below).
-3. **Shout**: the package pool, the recovery time in the snapshot.
+3. **Shout**: a Shout package per follower, the recovery time in the snapshot.
 4. **Dual cast** as a flag on a cast action, needing the perk.
 5. **Transform / Revert**, werewolf first.
 
@@ -140,7 +140,7 @@ Research 2026-09-04. **The engine has no "attack" verb.** An actor in combat att
 
 1. **Assert the target directly.** Each tick while a focus lease is held, write `targetHandle` and `currentCombatTarget` to the enemy and measure whether the standard selector snaps back before the next 500 ms tick. Twenty lines. If it holds, the whole AI stays in charge of everything but the target, which is the "bias, don't puppet" principle exactly.
 2. **Hook the standard selector.** A vtable write like the score hook, returning our target while the lease lives. Cleanest, but the virtual's index and signature are unknown. Unverified.
-3. **A UseWeapon pool**, placed like the cast slots, with UseMagic for casters. Heaviest, class-branching, and it puppets.
+3. **A UseWeapon package per follower**, placed like the cast packages, with UseMagic for casters. Heaviest, class-branching, and it puppets.
 
 Availability: the target is alive, hostile and in the follower's combat group. Release on death, on combat end, or after a timeout, like a cast lease.
 

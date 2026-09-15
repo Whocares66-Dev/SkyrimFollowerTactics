@@ -93,7 +93,7 @@ class Module
         Emit(level, name, who, fields, name_, prose);
     }
 
-    // The same, for an event about no actor in particular (the pool, the
+    // The same, for an event about no actor in particular (the packages, the
     // tick, a hook that failed to install).
     template <class... Args>
     void event(Level level, std::string_view name, Fields fields, fmt::format_string<Args...> f, Args &&...args) const

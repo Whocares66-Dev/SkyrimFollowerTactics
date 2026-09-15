@@ -272,7 +272,7 @@ stateDiagram-v2
   Casting --> Free : her spell fire event names our spell, rank cleared
   Armed --> Free : 2.5 s deadline, never started
   </pre></div>
-  <p class="caption">The UseMagic packages ride the vanilla follower alias's combat-override list, gated by a faction rank the lease holds. Eight package slots, one lease per follower.</p>
+  <p class="caption">A follower's own UseMagic package goes at the front of their package stack, gated by a condition the lease points at them. One set of packages per follower, one cast at a time.</p>
 
   <h2>Pins</h2>
   <p>A pin says "this stays in this hand", or "this stays on" for armour and ammunition. Pins are

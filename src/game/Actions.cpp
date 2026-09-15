@@ -198,7 +198,6 @@ ActionResult ResultOf(CastRequest request)
     case CastRequest::SpellNotInSlot:
     case CastRequest::TargetGone:
         return ActionResult::MissingItem;
-    case CastRequest::PoolBusy:
     case CastRequest::AlreadyCasting:
         return ActionResult::Busy;
     case CastRequest::NoPackages:
@@ -327,14 +326,14 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
 
     case ft::ActionKind::UsePower:
     case ft::ActionKind::Shout: {
-        // A power is performed through a Shout slot: a one-word wrapper shout
+        // A power is performed through the follower's Shout package: a one-word wrapper shout
         // whose word casts the power, fired by the Shout procedure from the
         // voice, which is where a power lives. The UseMagic route was
         // measured first (2026-09-04, Voice of the Emperor): the package was
         // selected on every request and the AI never cast, because that
         // procedure casts from a hand. The instant caster would apply the
-        // effect with no animation; a performance was wanted, so the shout
-        // pool it is (docs/ACTIONS.md 7). A shout goes through the same slot
+        // effect with no animation; a performance was wanted, so the Shout
+        // package it is (docs/ACTIONS.md 7). A shout goes through the same package
         // with the shout itself in the package's input, no wrapper. Aimed as
         // a cast is: a Self power or shout on the follower, anything else at
         // whom the rule aimed it.

@@ -292,7 +292,7 @@ enum class ActionKind : std::uint8_t
 [[nodiscard]] bool IsArrowsPolicy(ActionKind action) noexcept;
 [[nodiscard]] ConsumableKind ConsumableOf(ActionKind action) noexcept;
 
-// The four actions that fire through the package pool: a spell and a
+// The four actions that fire through a follower's cast packages: a spell and a
 // scroll from a hand, a power and a shout from the voice.
 [[nodiscard]] bool IsCast(ActionKind action) noexcept;
 
@@ -592,15 +592,15 @@ struct Extremes
 [[nodiscard]] bool IsResistance(PredicateKind predicate) noexcept;
 
 // What the runtime can do for this evaluation. src/game/ fills it in each
-// tick. Every action is supported but the casts, which need the package
-// pool (game/Packages.h): with it unavailable a cast rule reports
+// tick. Every action is supported but the casts, which need the follower's
+// cast packages (game/Packages.h): without them a cast rule reports
 // Unsupported rather than silently never firing.
 struct Capabilities
 {
     bool castingAvailable{true};
 
-    // Supported in general but not available for THIS evaluation -- a resource
-    // pool that is momentarily exhausted. A busy action is skipped exactly
+    // Supported in general but not available for THIS evaluation -- the
+    // follower mid-cast on one of ours. A busy action is skipped exactly
     // like an unsupported one, so the next rule gets its turn and no cooldown
     // is spent; unlike unsupported, it is expected to clear on its own.
     std::array<bool, static_cast<std::size_t>(ActionKind::COUNT)> busy{};

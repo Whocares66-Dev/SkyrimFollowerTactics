@@ -32,18 +32,18 @@ AI a reason to. That is what AI packages are for, and it is the whole design.
 
 Records say *what* she does; the C++ says *when*. No Papyrus.
 
-### The records (made in memory at load; no plugin file)
+### The records (made in memory, one set per follower; no plugin file)
 
 **Verified in play 2026-09-08**, with no plugin file in the load order: Conjure Flame Atronach through a spell slot, Voice of the Emperor and Unrelenting Force (`variation 2`, all three words) through the shout slots, the list back to vanilla after each. The ESP is gone from the repo; its records are in git history before this date.
 
-Each form takes the next free FormID from FF3F0800 up, in the order made: an ID the form map or the loaded save already holds is skipped ("Forms at runtime" below).
+Each follower gets one of each, made the first time the tick sees them and kept by reference ID until the game quits, so one who rejoins, or turns up in another save, gets theirs back. Each form takes the next free FormID from FF3F0800 up, in the order made: an ID the form map or the loaded save already holds is skipped ("Forms at runtime" below).
 
 | record | contents |
 |---|---|
-| cast slots 1..8 | copies of `TG08BMercerCombatOverrideCastAtPlayer` (UseMagic template): Location NearSelf r10000, HoldWhenBlocked off, CastTime 0.5..1, Cooldown 1..1, NumToCast 1..0, DualCast off. After the copy: Spell = Fast Healing (written and read back, the proof the layout holds on a copy), Target = Self, flags **IgnoreCombat** and nothing else. One condition: `GetIsReference(<holder>) == 1` |
-| power words 1..8 | words of power for the wrappers below; labels, no behaviour |
-| power shouts 1..8 | one-word wrapper shouts: word one's spell = Fast Healing (repointed at the rule's power), recovery 1 |
-| shout slots 1..8 | copies of `MQ305TsunReturnShout` (Shout template), Shout = its wrapper, Target = Self, HoldWhenBlocked off, flags IgnoreCombat and WeaponDrawn. Same condition. How a POWER is performed (`docs/ACTIONS.md` 7) |
+| cast package | a copy of `TG08BMercerCombatOverrideCastAtPlayer` (UseMagic template): Location NearSelf r10000, HoldWhenBlocked off, CastTime 0.5..1, Cooldown 1..1, NumToCast 1..0, DualCast off. After the copy: Spell = Fast Healing (written and read back, the proof the layout holds on a copy), Target = Self, flags **IgnoreCombat** and nothing else. One condition: `GetIsReference(<holder>) == 1` |
+| power word | a word of power for the wrapper below; a label, no behaviour |
+| power shout | a one-word wrapper shout: word one's spell = Fast Healing (repointed at the rule's power), recovery 1 |
+| shout package | a copy of `MQ305TsunReturnShout` (Shout template), Shout = its wrapper, Target = Self, HoldWhenBlocked off, flags IgnoreCombat and WeaponDrawn. Same condition. How a POWER is performed (`docs/ACTIONS.md` 7) |
 
 There is no faction any more. The condition's parameter is a pointer the C++ writes: the holder's actor for the lease, null after. `src/game/Forms.cpp` makes the forms; "Forms at runtime" below is what was established about doing that.
 
@@ -61,8 +61,8 @@ Open: the actor's package extra data is part of the save (`Actor::ChangeFlags::k
 
 ### The C++ (`src/game/Packages.cpp`)
 
-1. **A cast rule fires.** Take a free record from the pool, put it at the
-   front of her package stack (above). Repoint its Spell
+1. **A cast rule fires.** Take the follower's own record, put it at the
+   front of their package stack (above). Repoint its Spell
    input at the rule's spell and its Target input by the spell's **delivery**:
    a Self-delivery spell casts on her, anything else goes at the enemy she is
    engaging (a non-hostile targeted spell such as Healing Hands will need the
@@ -78,7 +78,7 @@ Open: the actor's package extra data is part of the save (`Actor::ChangeFlags::k
    equipped in the firing hand -- her own firebolts are logged and ignored);
    the AI having dropped the package; or a four-second deadline. The
    destructor clears the condition and re-evaluates, so she returns to
-   fighting at once. The record goes back to the pool.
+   fighting at once. The record waits for their next cast.
 
    A **concentration** spell (Flames, vanilla Healing) is a stream, and its
    fire event marks the *start*. Measured: releasing on it cut Flames off at
@@ -89,16 +89,12 @@ Open: the actor's package extra data is part of the save (`Actor::ChangeFlags::k
    says, and the lease ends when the target dies, the AI drops the package, or
    at the deadline.
 
-The **pool** is eight records with one holder each. A record is hers alone
-until released, so nothing in it -- spell now, target later -- can be shared
-by accident. When all eight are held, or she already holds one, her cast rules
-report *busy* for that turn, spend no cooldown, and the next rule gets its
-turn.
+**One set of records per follower.** Every input in a record -- spell, target, cast time -- belongs to one follower, so nothing in it can be shared by accident. While a follower holds one of theirs, their cast rules report *busy* for that turn, spend no cooldown, and the next rule gets its turn.
 
 Every lease is released on SKSE's save message, which arrives before the
 engine writes the file: a save never holds a follower running one of our
 packages, carrying a wrapper, or shouting a re-typed power. A game load drops
-the pool.
+every lease; the records stay.
 
 ### Forms at runtime
 
@@ -130,21 +126,22 @@ alias: quest 000750BA "DialogueFollower" alias 0 "Follower"  <- follower alias
 current package after evaluate: FF3F0800 (OURS)
 anim 000B9986: right hand fired 000C969B "Firebolt" -- her own, ignored
 anim 000B9986: left hand fired 0007231C "Fast Healing" -- OURS
-packages: Marcurio releases slot 0 after 2.0 s: spell fired
+packages: Marcurio releases FF3F0800 after 2.0 s: spell fired
 000B9986 releases the condition (lease ended)
 ```
 
 | if instead | it means |
 |---|---|
 | alias: NO, or "in NO quest alias at all" | Recruited from the console. Only `SetFollower` fills the alias: use "Follow me", or `cqf DialogueFollower SetFollower <refid>` (unverified). |
-| not ours yet -- watching, then deadline | Condition set, package never selected. Check the list order line at load, and that the `forms:` lines at load all read back. |
+| not ours yet -- watching, then deadline | Condition set, package never selected. Check the list order line at load, and that the follower's `forms:` lines all read back. |
 | OURS, then deadline with only her own spells firing | The package never got her hands. `IgnoreCombat` is off the records. |
 | OURS, then deadline with nothing firing | She was staggered or otherwise stuck through the window. |
 
 ### Test procedure
 
-0. The load's `forms:` lines (one per form, "born FF00xxxx", none saying
-   NOT registered) and the `probe:` lines come before any follower exists.
+0. The load's `probe:` lines come before any follower exists. A follower's
+   `forms:` lines (one per form, "born FF00xxxx", none saying NOT
+   registered) and `packages.made` come the first time the tick sees them.
 1. `bat ftspawn`, click her, `bat ftmake` (grants Oakflesh, potions, relationship
    rank -- not teammate status).
 2. **Talk to her, "Follow me."** The alias line in the log is the check.

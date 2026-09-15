@@ -21,7 +21,7 @@ enum class ActionResult : std::uint8_t
     NoSuchAction,   // not implemented in this phase
     MissingItem,    // the potion or spell vanished between snapshot and dispatch
     NoEquipManager, // the game singleton was unavailable
-    Busy,           // the package pool was exhausted between evaluation and dispatch
+    Busy,           // the follower was already mid-cast at dispatch
     NoTarget,       // a targeted spell with no enemy engaged
     // The three ways a blow is refused at dispatch. They were one Busy until
     // 2026-09-09, which printed "every package slot is mid-cast" -- a message

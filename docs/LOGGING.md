@@ -17,7 +17,7 @@ Every prose line names its module, and the module comes from the `ft::log::Modul
 
 ```
 [14:02:11.4] [info] [tactics]   Lydia (000A2C94) FIRED rule 0 "emergency heal" [drink-strongest] -> performed
-[14:02:11.4] [info] [packages]  slot 3 aims at 000A2C94 "Lydia"
+[14:02:11.4] [info] [packages]  FF3F0800 aims at 000A2C94 "Lydia"
 [14:02:11.4] [warn] [pins]      Lydia (000A2C94) the engine would equip Iron Sword over pinned Dagger -- refused
 ```
 
@@ -40,14 +40,14 @@ Every value in the shipped file is its default, so deleting the file changes not
 | level | rule | examples |
 |---|---|---|
 | `error` | a feature is broken until something changes | a package, word or shout that could not be made; the `EquipObject` detour failing to install; a probe that turns cast rules off; a co-save record that could not be written |
-| `warn` | the mod adapted or skipped something on its own | an action that did not take effect; the pool exhausted at dispatch; an item above the follower's skill refused a pin; a saved rule, pin or ban dropped; saved tactics that could not be read |
+| `warn` | the mod adapted or skipped something on its own | an action that did not take effect; an item above the follower's skill refused a pin; a saved rule, pin or ban dropped; saved tactics that could not be read |
 | `info` | a state change worth narrating while playing | entering and leaving a fight; a rule firing; a pin or ban applied, released, restored or refused; a package armed, fired or released; an item consumed; the profile loaded and saved |
 | `debug` | everything else | per-tick health readouts and per-rule verdicts; inventory and active-effect dumps; the `Packages.cpp` calibration probes; the AI score hook's answers; readbacks after an equip |
 
 Two reclassifications the levels forced, both of which had been hiding something:
 
 - `Profiles.cpp`, "the saved tactics could not be read — starting with none", was `error` and is `warn`. It recovers cleanly to an empty rule list, which is the `warn` definition.
-- Every probe line in `Packages.cpp` ending "cast rules stay off" was `info` and is now `error` with a `pool.unavailable` event. The feature is off until something changes; reporting that at `info` beside a hex dump is how it could turn itself off unnoticed.
+- Every probe line in `Packages.cpp` ending "cast rules stay off" was `info` and is now `error` with a `packages.unavailable` event. The feature is off until something changes; reporting that at `info` beside a hex dump is how it could turn itself off unnoticed.
 
 ## The envelope
 
@@ -88,12 +88,12 @@ There is deliberately no log-schema-version field. That problem belongs to the c
 | `equip.applied` / `equip.removed` | pins | `itemFormId`, `hand`, `pinned` |
 | `unequip.applied` | pins | `itemFormId`, `itemName`, `hand` — the player's page, which touches no pin or ban |
 | `dualWield.allowed` | pins | `styleFormId`, `copyFormId` |
-| `package.armed` | packages | `slot`, `formId`, `holderFormId`, `kind`, `targetFormId`, `durationS` |
-| `package.fired` | packages | `slot`, `formId`, `holderFormId`, `kind` |
-| `package.released` | packages | `slot`, `holderFormId`, `durationS`, `reason` |
-| `pool.ready` | packages | `spellSlots`, `voiceSlots` |
-| `pool.exhausted` | packages | `kind`, `slots` — **warn** |
-| `pool.unavailable` / `pool.slotFailed` | packages | `reason`, `slot` — **error** |
+| `package.armed` | packages | `packageFormId`, `formId`, `holderFormId`, `kind`, `targetFormId`, `durationS` |
+| `package.fired` | packages | `packageFormId`, `formId`, `holderFormId`, `kind` |
+| `package.released` | packages | `packageFormId`, `holderFormId`, `durationS`, `reason` |
+| `packages.ready` | packages | (none: the input layout was found at load) |
+| `packages.made` | packages | `castPackageFormId`, `shoutPackageFormId`, `wrapperFormId` — a follower's records, the first time the tick sees them |
+| `packages.unavailable` / `packages.failed` | packages | `reason` — **error**; the first turns casting off for everyone, the second for one follower |
 | `scroll.spent` | packages | `formId`, `by`, `carriedBefore`, `carriedAfter` |
 | `profile.loaded` / `profile.saved` / `profile.claimed` | profiles | `recordCount`, `ruleCount`, `pinCount`, `enabled` |
 | `profile.entryDropped` | profiles, pins | `kind` (`rule`/`pin`/`ban`/`record`), `label`, `reason` — **warn** |

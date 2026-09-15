@@ -1,6 +1,6 @@
 #pragma once
-// The UseMagic package pool: how a rule makes a follower CAST a spell rather
-// than merely hold it.
+// The UseMagic packages: how a rule makes a follower CAST a spell rather than
+// merely hold it.
 //
 // THE MECHANISM, AND WHY IT IS THIS ONE
 // Nothing in the game's API makes an NPC cast a chosen spell at a chosen
@@ -19,12 +19,13 @@
 //
 // So the bridge from a rule to a cast is:
 //
-//     load        sixteen packages are MADE IN MEMORY (game/Forms.h), each
-//                 a copy of a vanilla instance with its own condition
-//     rule fires  repoint the slot's Spell input, put the record at the
-//                 FRONT of the follower's running package array
-//                 (PutOnStack), point the slot's condition at the follower,
-//                 ask the AI to re-evaluate
+//     load        the input layout is read off vanilla records (Calibrate)
+//     first seen  the follower's own records are MADE IN MEMORY
+//                 (game/Forms.h), each a copy of a vanilla instance with its
+//                 own condition
+//     rule fires  repoint their record's Spell input, put it at the FRONT of
+//                 the follower's running package array (PutOnStack), point
+//                 its condition at the follower, ask the AI to re-evaluate
 //     the AI      finds the first entry whose condition passes -- ours --
 //                 and runs the UseMagic procedure: animation, cost, interrupts
 //     afterwards  the tick takes the record out of the array and clears the
@@ -35,26 +36,27 @@
 // the followers that alias holds; docs/MAGIC.md "The list they live in".)
 //
 // NO PLUGIN FILE, NOTHING IN THE SAVE
-// Every record this needs is created at load and forgotten at exit. The load
+// Every record this needs is created in memory and forgotten at exit. The load
 // order does not change, the save never references a form of ours (every
 // lease is released on the save message, before the engine writes), and
 // removing the DLL removes the mod. docs/MAGIC.md "Forms at runtime" has what
 // was read from the executable to establish that.
 //
 // WHAT IS MADE
-// Eight UseMagic packages (copies of Mercer's cast-at-player record), eight
-// Shout packages (copies of Tsun's Clear Skies record), eight one-word wrapper
-// shouts and their words. Slot k's condition is GetIsReference(holder of k).
+// For each follower: a UseMagic package (a copy of Mercer's cast-at-player
+// record); a Shout package (a copy of Tsun's Clear Skies record), which is how
+// a POWER is performed -- the UseMagic procedure never fires one
+// (docs/ACTIONS.md 7); and a one-word wrapper shout and its word. Each
+// package's condition is GetIsReference(holder).
 //
-// THE POOL
-// The sixteen records are a resource pool. A follower takes a free record when
-// a cast rule fires, the record is HERS ALONE until the cast has run (or the
-// window has passed), and then it goes back. Never shared, even for the same
-// spell: every input in the record -- spell, target, cast time -- belongs to
-// the holder. The limit is eight followers mid-cast at the same instant. When
-// that is exceeded, or they already hold one, the rule engine reports their cast
-// rules busy for that turn -- no cooldown is spent, and the next rule in the
-// list gets its turn.
+// ONE SET PER FOLLOWER
+// A follower's records are made the first time the tick sees them and kept,
+// by reference ID, until the game quits: forms are never deleted, so one who
+// leaves keeps theirs, and one who rejoins -- or turns up in another save --
+// gets them back. Every input in a record -- spell, target, cast time --
+// belongs to that follower alone, and one cast at a time: a request while
+// they hold a record reports their cast rules busy for that turn, no cooldown
+// spent, and the next rule in the list gets its turn.
 //
 // THE INPUTS, AND HOW THEY ARE FOUND
 // Three inputs are written per request: Spell, Target (Self for themself, a
@@ -85,33 +87,25 @@ class Actor;
 namespace ft::game
 {
 
-// The pool is sixteen package records. Slots 0..7 are UseMagic and cast a
-// spell from a hand; slots 8..15 are Shout and cast from the voice, which is
-// how a POWER is performed -- the UseMagic procedure never fires one
-// (docs/ACTIONS.md 7). Each Shout slot's record points at its own wrapper
-// shout, a one-word shout whose word's spell is repointed at the rule's
-// power for the lease.
-inline constexpr std::size_t kSpellSlots = 8;
-inline constexpr std::size_t kVoiceSlots = 8;
-inline constexpr std::size_t kPackageSlots = kSpellSlots + kVoiceSlots;
-
-// The spell every slot is pointed at once made, and the check that the
-// layout found on vanilla records holds on the copies. Fast Healing.
+// The spell a fresh record is pointed at, and the check that the layout
+// found on vanilla records holds on the copies. Fast Healing.
 inline constexpr std::uint32_t kCanarySpellID = 0x0002F3B8;
 
-// Find the input layout on vanilla records and make the pool. If any step
-// fails everything reports unavailable and cast rules stay unsupported; the
-// log says which step.
+// Find the input layout on vanilla records. If any step fails casting
+// reports unavailable and cast rules stay unsupported; the log says which
+// step.
 void InitPackages();
 
-[[nodiscard]] bool PackagesAvailable();
+// Make a follower's records if they have none: a UseMagic package for a
+// spell, and a Shout package with its wrapper for a power or a shout. The
+// tick calls it for every follower before they are evaluated. A follower
+// whose set could not be made is not tried again this launch; the log says
+// why. Game thread.
+void ProvideCastForms(RE::Actor *actor);
 
-// Could a cast be started right now? False while every spell slot is
-// mid-cast, so the rule engine can skip cast rules for this evaluation
-// instead of firing one that cannot be honoured. HasFreeVoiceSlot is the
-// same for the shout slots a power goes through.
-[[nodiscard]] bool HasFreeSlot();
-[[nodiscard]] bool HasFreeVoiceSlot();
+// Can this follower be made to cast: the layout was found at load and their
+// records were made?
+[[nodiscard]] bool HasCastForms(const RE::Actor *actor);
 
 // Is this form one of our wrapper shouts? They sit in a follower's shout
 // list only for the length of a lease, and the Magic tab leaves them out.
@@ -136,9 +130,8 @@ void InitPackages();
 enum class CastRequest : std::uint8_t
 {
     Armed,          // their slot's condition now passes; the AI decides the rest
-    NoPackages,     // the pool could not be made at load (see the log)
-    PoolBusy,       // every record is held by a follower mid-cast
-    AlreadyCasting, // this follower already holds a record; one cast at a time
+    NoPackages,     // no layout at load, or their records could not be made (see the log)
+    AlreadyCasting, // this follower is mid-cast; one cast at a time
     SpellNotInSlot, // the Spell input could not be repointed at that spell
     TargetGone      // the rule's target no longer resolves to a loaded actor
 };
@@ -158,24 +151,24 @@ enum class CastRequest : std::uint8_t
                                       float sustainSeconds, bool dualCast);
 
 // Ask a follower to use a power or a shout. A power (a spell record of type
-// Power or Lesser Power): takes a free Shout slot, points its wrapper
-// shout's first word at the power, makes the power a Voice spell for the
-// lease, gives the follower the wrapper (the Shout procedure only fires a
-// shout the actor has), and arms the slot as RequestCast does. A shout (a
-// TESShout the follower has): the same slot with the shout itself in the
-// package's Shout input. targetId as for RequestCast. The lease ends on the
-// voice's fire event for our shout, or at the deadline.
+// Power or Lesser Power): points their wrapper shout's first word at the
+// power, makes the power a Voice spell for the lease, gives the follower the
+// wrapper (the Shout procedure only fires a shout the actor has), and arms
+// their Shout package as RequestCast does. A shout (a TESShout the follower
+// has): the same package with the shout itself in its Shout input. targetId
+// as for RequestCast. The lease ends on the voice's fire event for our
+// shout, or at the deadline.
 [[nodiscard]] CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId);
 
-// Called every tick from the game thread. Watches held slots: reports when
+// Called every tick from the game thread. Watches held records: reports when
 // the AI picks our package up, and releases the record once the cast has
 // run or the window has passed. A record is never held longer than the
-// window while the tick runs; that is the backstop that keeps the pool from
-// draining.
+// window while the tick runs; that is the backstop that keeps a follower
+// from standing held.
 //
 // `followers` is everyone under management. Any of them carrying a wrapper
-// shout while holding no record has one left by a lease that never ended
-// (a crash mid-cast); it is taken back here.
+// shout while casting nothing has one left by a lease that never ended; it
+// is taken back here.
 void TickPackages(double now, const std::vector<RE::Actor *> &followers);
 
 // Release every held record now. For the save message: a follower running

@@ -18,7 +18,7 @@ double MinimumCooldown(ActionKind action) noexcept
     // The casts. Measured: the AI picks the package up on the same tick,
     // and a heal lands 0.9-2.2 s later. Two seconds lets the next
     // evaluation see the result of this one without re-firing into a cast
-    // still in progress; the package pool's lease covers the case where it
+    // still in progress; the cast's lease covers the case where it
     // has not landed. A power or a shout rides a package of its own and
     // takes the same number; the shout's own recovery time is the engine's.
     if (IsCast(action))

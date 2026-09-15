@@ -36,7 +36,7 @@ enum class Verdict : std::uint8_t
     AboveSkill,       // a spell above the follower's skill: neither cast nor pinned, so cast and equip agree
     Outranked,        // a rule above holds the hand or slot this would take
     Unsupported,      // the action cannot be performed on this runtime
-    Busy,             // it can, but not this evaluation: its resource pool is exhausted
+    Busy,             // it can, but not this evaluation: the follower is mid-cast on one of ours
     Casting,          // a cast rule, while the follower is mid-cast on a spell of their own: it waits
     Recovering,       // a shout rule, while the voice is still recovering from the last shout: it waits
     InvalidCondition, // this subject/predicate pair is not answerable at all

@@ -16,9 +16,10 @@ namespace
 
 void OnDataLoaded()
 {
-    // The package pool, made in memory (game/Forms.h): if any step of that
-    // fails it reports unavailable and cast rules stay off, rather than
-    // failing the whole plugin.
+    // The cast packages' input layout, read off vanilla records: if any step
+    // of that fails it reports unavailable and cast rules stay off, rather
+    // than failing the whole plugin. Each follower's records are made when
+    // the tick first sees them.
     ft::game::InitPackages();
 
     ft::game::Install();
@@ -54,8 +55,8 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
             if (message->type == SKSE::MessagingInterface::kDataLoaded)
                 OnDataLoaded();
 
-            // A load or a new game invalidates every handle the package pool
-            // holds. Drop the pool. (The rules, switches and pins are reset by
+            // A load or a new game invalidates every handle a lease holds.
+            // Drop the leases. (The rules, switches and pins are reset by
             // the serialization revert callback, which runs before the save's
             // records load.)
             if (message->type == SKSE::MessagingInterface::kPostLoadGame ||

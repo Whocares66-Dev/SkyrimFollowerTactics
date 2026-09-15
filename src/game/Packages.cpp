@@ -6,11 +6,15 @@
 #include "game/Util.h"
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cstring>
+#include <initializer_list>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -19,8 +23,12 @@ namespace ft::game
 namespace
 {
 
-std::array<RE::TESPackage *, kPackageSlots> g_slots{};
 bool g_available = false;
+// What each follower's records are copied from and first pointed at, looked
+// up at load.
+RE::TESPackage *g_mercer = nullptr;
+RE::TESPackage *g_tsun = nullptr;
+RE::TESForm *g_canary = nullptr;
 
 // How long the AI gets to START the cast before the record is taken back.
 // Measured: every cast that happened fired 0.65-2.2 s after arming; the ones
@@ -109,13 +117,12 @@ class SlotLease
     bool live_ = true;
 };
 
-// A slot is a package record and, while a cast is in flight, exactly one
-// follower's lease on it. One holder per record, always: every input in the
-// record -- spell today, target tomorrow -- is theirs alone for as long as they
-// holds it, so nothing that gets repointed later can be shared by accident.
-// A slot with no lease is free, whatever spell it was last pointed at.
+// A slot is one of a follower's package records and, while a cast is in
+// flight, their lease on it. A slot with no lease is idle, whatever spell it
+// was last pointed at.
 struct Slot
 {
+    RE::TESPackage *package = nullptr;
     std::uint32_t spell = kCanarySpellID; // what the record holds right now
     // A shout slot's wrapper: the one-word shout its package ships pointing
     // at, whose word's spell is repointed per power lease. Null for a spell
@@ -180,7 +187,53 @@ struct Slot
         return lease.has_value();
     }
 };
-std::array<Slot, kPackageSlots> g_pool{};
+// One follower's records: a UseMagic package for a spell, and a Shout
+// package with its wrapper for a power or a shout.
+struct Kit
+{
+    Slot spell;
+    Slot voice;
+};
+
+// Every follower's records by reference ID, until the game quits: forms are
+// never deleted, so the map is never pruned either. Only the game thread
+// inserts, under the lock, and it reads without; a reader on another thread
+// -- the animation sink, an equip detour -- takes the lock shared. A kit
+// never moves once made.
+std::unordered_map<RE::FormID, std::unique_ptr<Kit>> g_kits;
+std::shared_mutex g_kitsMutex;
+// Followers whose records could not be made, so the tick does not make
+// half a set again every half second. Game thread only.
+std::unordered_set<RE::FormID> g_kitsFailed;
+
+// Game thread.
+Kit *KitOf(RE::FormID id)
+{
+    const auto it = g_kits.find(id);
+    return it == g_kits.end() ? nullptr : it->second.get();
+}
+
+// Any thread.
+Kit *SharedKitOf(RE::FormID id)
+{
+    std::shared_lock lock(g_kitsMutex);
+    return KitOf(id);
+}
+
+// Game thread.
+template <class Fn> void ForEachSlot(Fn &&fn)
+{
+    for (auto &entry : g_kits)
+    {
+        fn(entry.second->spell);
+        fn(entry.second->voice);
+    }
+}
+
+std::uint32_t PackageId(const Slot &slot)
+{
+    return slot.package ? slot.package->GetFormID() : 0;
+}
 
 // The release signals come from their animation graph.
 //
@@ -210,8 +263,12 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
                            _stricmp(tag, "BeginCastLeft") == 0;
         const bool stop = _stricmp(tag, "CastStop") == 0;
 
-        for (auto &slot : g_pool)
+        auto *kit = SharedKitOf(who);
+        if (!kit)
+            return RE::BSEventNotifyControl::kContinue;
+        for (auto *slotPtr : {&kit->spell, &kit->voice})
         {
+            auto &slot = *slotPtr;
             if (slot.holder.load(std::memory_order_acquire) != who)
                 continue;
             // A stream that has fired and now stops has ended, whether the
@@ -239,7 +296,7 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
                 const bool ourVoice = high && high->currentShout && high->currentShout->GetFormID() == shoutId;
                 log::packages.event(ourVoice ? log::Level::Info : log::Level::Debug,
                                     ourVoice ? "package.fired" : "package.otherVoice", actor,
-                                    {{"slot", &slot - g_pool.data()},
+                                    {{"packageFormId", log::Id(PackageId(slot))},
                                      {"formId", log::Id(shoutId)},
                                      {"holderFormId", log::Id(who)},
                                      {"kind", "voice"}},
@@ -269,7 +326,7 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
             const bool ours = firedID == slot.spellId.load(std::memory_order_relaxed);
             log::packages.event(ours ? log::Level::Info : log::Level::Debug,
                                 ours ? "package.fired" : "package.otherCast", actor,
-                                {{"slot", &slot - g_pool.data()},
+                                {{"packageFormId", log::Id(PackageId(slot))},
                                  {"formId", log::Id(firedID)},
                                  {"holderFormId", log::Id(who)},
                                  {"kind", right ? "right hand" : "left hand"}},
@@ -566,7 +623,7 @@ bool SetPackageTarget(RE::TESPackage *pkg, RE::Actor *target)
 // are. So a wrapper goes into that list for the lease and comes out after.
 // The base is shared by every actor spawned from it; a wrapper left behind
 // there would be listed under Shouts for all of them, which is why the
-// sweep in the tick removes any wrapper from a follower holding no slot.
+// sweep in the tick removes any idle wrapper from a follower casting nothing.
 RE::TESSpellList::SpellData *ShoutListOf(RE::Actor *actor)
 {
     auto *npc = actor ? actor->GetActorBase() : nullptr;
@@ -601,22 +658,11 @@ void TakeWrapper(RE::Actor *actor, RE::TESShout *wrapper)
                         removed ? "removed" : "NOT removed", actor->GetFormID());
 }
 
-bool IsWrapperForm(std::uint32_t formID)
+// Is this follower already casting through one of their records? A second
+// request before the first resolves would put two records on them.
+bool AlreadyCasting(const Kit *kit)
 {
-    for (const auto &slot : g_pool)
-        if (slot.wrapper && slot.wrapper->GetFormID() == formID)
-            return true;
-    return false;
-}
-
-// Is this actor already casting through some slot? A second request from the
-// same follower before the first resolves would put two records on them.
-bool AlreadyCasting(const RE::Actor *actor)
-{
-    for (const auto &slot : g_pool)
-        if (slot.Busy() && slot.lease->FormID() == actor->GetFormID())
-            return true;
-    return false;
+    return kit && (kit->spell.Busy() || kit->voice.Busy());
 }
 
 // The one way a record comes back. Destroying the lease clears the condition
@@ -641,7 +687,7 @@ constexpr RE::FormID kVoicePowerVoicesList = 0x0010D29D;
 constexpr RE::FormID kFemaleEvenToned = 0x00013ADD;
 constexpr RE::FormID kMaleEvenToned = 0x00013AD2;
 
-void LendShoutVoice(std::size_t i, RE::Actor *actor)
+void LendShoutVoice(Slot &slot, RE::Actor *actor)
 {
     auto *base = actor ? actor->GetActorBase() : nullptr;
     if (!base)
@@ -661,20 +707,20 @@ void LendShoutVoice(std::size_t i, RE::Actor *actor)
         lent = RE::TESForm::LookupByID<RE::BGSVoiceType>(female ? kFemaleEvenToned : kMaleEvenToned);
     if (!lent)
         return;
-    g_pool[i].voiceOf = base;
-    g_pool[i].ownVoice = own;
+    slot.voiceOf = base;
+    slot.ownVoice = own;
     base->voiceType = lent;
-    log::packages.debug("slot {} lends {} the {} voice for the shout (own: {})", i, Describe(actor),
+    log::packages.debug("{:08X} lends {} the {} voice for the shout (own: {})", PackageId(slot), Describe(actor),
                         lent->GetFormEditorID() ? lent->GetFormEditorID() : "?",
                         own && own->GetFormEditorID() ? own->GetFormEditorID() : "none");
 }
 
-void ReturnShoutVoice(std::size_t i)
+void ReturnShoutVoice(Slot &slot)
 {
-    if (g_pool[i].voiceOf)
-        g_pool[i].voiceOf->voiceType = g_pool[i].ownVoice;
-    g_pool[i].voiceOf = nullptr;
-    g_pool[i].ownVoice = nullptr;
+    if (slot.voiceOf)
+        slot.voiceOf->voiceType = slot.ownVoice;
+    slot.voiceOf = nullptr;
+    slot.ownVoice = nullptr;
 }
 
 // How a record reaches a follower: at the front of their own package
@@ -754,9 +800,8 @@ void TakeOffStack(RE::Actor *actor, RE::TESPackage *pkg)
 // A scroll read is spent. If the engine spent it on the package cast the
 // count has dropped by one and nothing is done; if not, one is taken off
 // by hand, so a Scroll rule can never read the same scroll for free.
-void SpendScroll(std::size_t i, RE::Actor *actor)
+void SpendScroll(Slot &slot, RE::Actor *actor)
 {
-    auto &slot = g_pool[i];
     if (slot.scrollsBefore <= 0 || !actor)
         return;
     auto *scroll = RE::TESForm::LookupByID<RE::ScrollItem>(slot.spell);
@@ -789,45 +834,45 @@ void SpendScroll(std::size_t i, RE::Actor *actor)
     slot.scrollsBefore = 0;
 }
 
-void Release(std::size_t i)
+void Release(Slot &slot)
 {
     // The record comes off the stack it was put on, if it was, while the
     // lease still knows whose.
-    if (g_pool[i].onStack && g_pool[i].lease)
+    if (slot.onStack && slot.lease)
     {
-        if (auto actor = g_pool[i].lease->Actor())
-            TakeOffStack(actor.get(), g_slots[i]);
+        if (auto actor = slot.lease->Actor())
+            TakeOffStack(actor.get(), slot.package);
     }
-    g_pool[i].onStack = false;
+    slot.onStack = false;
     // The wrapper comes off before the lease goes: the lease is what still
     // knows whose list it is in.
-    if (g_pool[i].wrapper && g_pool[i].lease)
+    if (slot.wrapper && slot.lease)
     {
-        if (auto actor = g_pool[i].lease->Actor())
-            TakeWrapper(actor.get(), g_pool[i].wrapper);
+        if (auto actor = slot.lease->Actor())
+            TakeWrapper(actor.get(), slot.wrapper);
     }
-    ReturnShoutVoice(i);
-    if (g_pool[i].power)
+    ReturnShoutVoice(slot);
+    if (slot.power)
     {
-        g_pool[i].power->data.spellType = g_pool[i].powerType;
-        g_pool[i].power = nullptr;
+        slot.power->data.spellType = slot.powerType;
+        slot.power = nullptr;
     }
     // The sink stops looking before the lease goes.
-    g_pool[i].holder.store(0, std::memory_order_release);
-    g_pool[i].spellId.store(0, std::memory_order_relaxed);
-    g_pool[i].shoutId.store(0, std::memory_order_relaxed);
-    g_pool[i].shouting = nullptr;
+    slot.holder.store(0, std::memory_order_release);
+    slot.spellId.store(0, std::memory_order_relaxed);
+    slot.shoutId.store(0, std::memory_order_relaxed);
+    slot.shouting = nullptr;
     // The lease's destructor asks the AI to re-evaluate; the record is off
     // the stack by then.
-    g_pool[i].lease.reset();
-    g_pool[i].target = {};
-    SetPackageTarget(g_slots[i], nullptr); // no target handle outlives its lease
-    g_pool[i].fired.store(false, std::memory_order_relaxed);
-    g_pool[i].stopped.store(false, std::memory_order_relaxed);
-    g_pool[i].begun.store(false, std::memory_order_relaxed);
-    g_pool[i].extended = false;
-    g_pool[i].seenRunning = false;
-    g_pool[i].streaming = false;
+    slot.lease.reset();
+    slot.target = {};
+    SetPackageTarget(slot.package, nullptr); // no target handle outlives its lease
+    slot.fired.store(false, std::memory_order_relaxed);
+    slot.stopped.store(false, std::memory_order_relaxed);
+    slot.begun.store(false, std::memory_order_relaxed);
+    slot.extended = false;
+    slot.seenRunning = false;
+    slot.streaming = false;
 }
 
 } // namespace
@@ -839,9 +884,7 @@ const char *ToString(CastRequest r) noexcept
     case CastRequest::Armed:
         return "cast requested";
     case CastRequest::NoPackages:
-        return "the cast packages could not be made at load (see FollowerTactics.log)";
-    case CastRequest::PoolBusy:
-        return "every package slot is mid-cast; skipped this turn";
+        return "no cast packages for this follower (see FollowerTactics.log)";
     case CastRequest::AlreadyCasting:
         return "already mid-cast; skipped this turn";
     case CastRequest::SpellNotInSlot:
@@ -854,79 +897,59 @@ const char *ToString(CastRequest r) noexcept
 
 bool IsMidCast(const RE::Actor *actor)
 {
-    return g_available && actor && AlreadyCasting(actor);
+    return g_available && actor && AlreadyCasting(SharedKitOf(actor->GetFormID()));
 }
 
 bool IsOurCast(const RE::Actor *actor, std::uint32_t formID)
 {
-    if (!g_available || !actor || formID == 0)
+    const Kit *kit = g_available && actor && formID != 0 ? SharedKitOf(actor->GetFormID()) : nullptr;
+    if (!kit)
         return false;
-    for (const auto &slot : g_pool)
+    for (const auto *slot : {&kit->spell, &kit->voice})
     {
-        if (!slot.Busy() || slot.lease->FormID() != actor->GetFormID())
+        if (!slot->Busy())
             continue;
-        if (slot.spell == formID)
+        if (slot->spell == formID)
             return true;
-        if (slot.shouting && slot.shouting->GetFormID() == formID)
+        if (slot->shouting && slot->shouting->GetFormID() == formID)
             return true;
-        if (slot.wrapper && slot.wrapper->GetFormID() == formID)
+        if (slot->wrapper && slot->wrapper->GetFormID() == formID)
             return true;
-        if (slot.power && slot.power->GetFormID() == formID)
+        if (slot->power && slot->power->GetFormID() == formID)
             return true;
     }
     return false;
 }
 
-bool HasFreeSlot()
+bool HasCastForms(const RE::Actor *actor)
 {
-    if (!g_available)
-        return false;
-    for (std::size_t i = 0; i < kSpellSlots; ++i)
-        if (!g_pool[i].Busy())
-            return true;
-    return false;
-}
-
-bool HasFreeVoiceSlot()
-{
-    if (!g_available)
-        return false;
-    for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
-        if (!g_pool[i].Busy())
-            return true;
-    return false;
+    return g_available && actor && SharedKitOf(actor->GetFormID()) != nullptr;
 }
 
 bool IsWrapperShout(std::uint32_t formID)
 {
-    return g_available && IsWrapperForm(formID);
+    std::shared_lock lock(g_kitsMutex);
+    for (const auto &entry : g_kits)
+        if (entry.second->voice.wrapper && entry.second->voice.wrapper->GetFormID() == formID)
+            return true;
+    return false;
 }
 
 bool IsLeasedPower(std::uint32_t formID)
 {
-    for (const auto &slot : g_pool)
-        if (slot.power && slot.power->GetFormID() == formID)
+    std::shared_lock lock(g_kitsMutex);
+    for (const auto &entry : g_kits)
+        if (entry.second->voice.power && entry.second->voice.power->GetFormID() == formID)
             return true;
     return false;
 }
 
 namespace
 {
-// The first free record in [from, to), or kPackageSlots for none.
-std::size_t FreeSlot(std::size_t from, std::size_t to)
-{
-    for (std::size_t i = from; i < to; ++i)
-        if (!g_pool[i].Busy())
-            return i;
-    return kPackageSlots;
-}
-
 // The shared end of a request: the slot is pointed where it should be, and
 // this points the slot's condition at the follower and asks the AI to look.
-CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double window)
+CastRequest Arm(Slot &slot, RE::Actor *actor, float sustain, double window)
 {
-    auto &slot = g_pool[chosen];
-
     slot.armedAt = TacticsSeconds();
     // The window covers the AI's start-up latency. For a stream it is
     // extended when the stream actually starts (see the tick), so a stream
@@ -956,7 +979,7 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
     slot.spellId.store(slot.spell, std::memory_order_relaxed);
     slot.shoutId.store(slot.shouting ? slot.shouting->GetFormID() : 0, std::memory_order_relaxed);
     slot.holder.store(actor->GetFormID(), std::memory_order_release);
-    slot.onStack = PutOnStack(actor, g_slots[chosen]) != nullptr;
+    slot.onStack = PutOnStack(actor, slot.package) != nullptr;
     if (!slot.onStack)
         log::packages.warn("{} fills no alias with packages; the record has no way to them", Describe(actor));
 
@@ -966,8 +989,8 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
 
     const auto *current = actor->GetCurrentPackage();
     log::packages.debug("current package after evaluate: {:08X} ({})", current ? current->GetFormID() : 0,
-                        current == g_slots[chosen] ? "OURS" : "not ours yet -- watching");
-    slot.seenRunning = current == g_slots[chosen];
+                        current == slot.package ? "OURS" : "not ours yet -- watching");
+    slot.seenRunning = current == slot.package;
 
     return CastRequest::Armed;
 }
@@ -976,7 +999,8 @@ CastRequest Arm(std::size_t chosen, RE::Actor *actor, float sustain, double wind
 CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32_t targetId, float sustainSeconds,
                         bool dualCast)
 {
-    if (!g_available || !actor)
+    auto *kit = g_available && actor ? KitOf(actor->GetFormID()) : nullptr;
+    if (!kit)
         return CastRequest::NoPackages;
 
     // Self, or someone else. Anyone else must be a loaded actor right now;
@@ -997,49 +1021,35 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
         }
     }
 
-    if (AlreadyCasting(actor))
+    if (AlreadyCasting(kit))
         return CastRequest::AlreadyCasting;
 
-    // Take any free spell record. Never one in use, even for the same
-    // spell: the record is theirs for the duration, so the pool cannot be
-    // caught out by an input it did not think to compare.
-    const std::size_t chosen = FreeSlot(0, kSpellSlots);
-    if (chosen == kPackageSlots)
-    {
-        // Should be unreachable: the evaluator saw HasFreeSlot() false and
-        // reported Busy instead of firing. Reaching it means two casts fired
-        // in one tick against one free record, which is worth a line.
-        log::packages.event(log::Level::Warn, "pool.exhausted", actor, {{"kind", "spell"}, {"slots", kSpellSlots}},
-                            "pool exhausted at dispatch: all {} spell records held", kSpellSlots);
-        return CastRequest::PoolBusy;
-    }
-
-    auto &slot = g_pool[chosen];
+    auto &slot = kit->spell;
 
     // Two spells can share a display name (Marcurio's heal is 0007231C, the
     // vanilla one 0002F3B8, both "Fast Healing"), so the form is what counts.
     if (slot.spell != spellFormID)
     {
         auto *wanted = RE::TESForm::LookupByID(spellFormID);
-        if (!wanted || !SetPackageSpell(g_slots[chosen], wanted))
+        if (!wanted || !SetPackageSpell(slot.package, wanted))
         {
-            log::packages.debug("slot {} still casts {:08X}; could not repoint to {:08X}", chosen, slot.spell,
+            log::packages.debug("{:08X} still casts {:08X}; could not repoint to {:08X}", PackageId(slot), slot.spell,
                                 spellFormID);
             return CastRequest::SpellNotInSlot;
         }
         slot.spell = spellFormID;
     }
 
-    SetPackageTarget(g_slots[chosen], target);
+    SetPackageTarget(slot.package, target);
     slot.target = target ? target->GetHandle() : RE::ActorHandle{};
 
-    // Both hands or one: set on every request, since the record is shared
-    // and the last lease may have left it either way.
-    if (!SetPackageBool(g_slots[chosen], "DualCast", dualCast))
-        log::packages.debug("slot {} has no DualCast input to set{}", chosen,
+    // Both hands or one: set on every request, since the last lease may have
+    // left it either way.
+    if (!SetPackageBool(slot.package, "DualCast", dualCast))
+        log::packages.debug("{:08X} has no DualCast input to set{}", PackageId(slot),
                             dualCast ? " -- the cast will be one-handed" : "");
     else if (dualCast)
-        log::packages.debug("slot {} casts from both hands", chosen);
+        log::packages.debug("{:08X} casts from both hands", PackageId(slot));
 
     // A concentration spell streams for as long as the procedure's CastTime
     // says. Set that to the sustain, and remember that the fire event is
@@ -1061,32 +1071,33 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
     const float sustain = sustainSeconds > 0.0f ? sustainSeconds : kDefaultSustainSeconds;
     if (slot.sustained)
     {
-        if (SetPackageCastTime(g_slots[chosen], sustain))
-            log::packages.debug("slot {} sustains {} for {:.1f} s", chosen, log::NameOf(spellItem), sustain);
+        if (SetPackageCastTime(slot.package, sustain))
+            log::packages.debug("{:08X} sustains {} for {:.1f} s", PackageId(slot), log::NameOf(spellItem), sustain);
         else
-            log::packages.debug("slot {} cast time not calibrated; the stream will run the authored "
+            log::packages.debug("{:08X} cast time not calibrated; the stream will run the authored "
                                 "{:.1f}-{:.1f} s",
-                                chosen, kAuthoredCastTimeMin, kAuthoredCastTimeMax);
+                                PackageId(slot), kAuthoredCastTimeMin, kAuthoredCastTimeMax);
     }
     else
-        SetPackageCastTime(g_slots[chosen], kAuthoredCastTimeMax);
+        SetPackageCastTime(slot.package, kAuthoredCastTimeMax);
     log::packages.event(log::Level::Info, "package.armed", actor,
-                        {{"slot", chosen},
+                        {{"packageFormId", log::Id(PackageId(slot))},
                          {"formId", log::Id(spellFormID)},
                          {"holderFormId", log::Id(actor->GetFormID())},
                          {"kind", "cast"},
                          {"targetFormId", log::Id(target ? target->GetFormID() : actor->GetFormID())},
                          {"durationS", sustain}},
-                        "slot {} aims at {}", chosen,
+                        "{:08X} aims at {}", PackageId(slot),
                         target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
                                : std::string("self"));
 
-    return Arm(chosen, actor, sustain, kArmWindowSeconds);
+    return Arm(slot, actor, sustain, kArmWindowSeconds);
 }
 
 CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId)
 {
-    if (!g_available || !actor)
+    auto *kit = g_available && actor ? KitOf(actor->GetFormID()) : nullptr;
+    if (!kit)
         return CastRequest::NoPackages;
 
     RE::Actor *target = nullptr;
@@ -1105,23 +1116,16 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
         }
     }
 
-    if (AlreadyCasting(actor))
+    if (AlreadyCasting(kit))
         return CastRequest::AlreadyCasting;
 
-    const std::size_t chosen = FreeSlot(kSpellSlots, kPackageSlots);
-    if (chosen == kPackageSlots)
-    {
-        log::packages.event(log::Level::Warn, "pool.exhausted", actor, {{"kind", "shout"}, {"slots", kVoiceSlots}},
-                            "pool exhausted at dispatch: all {} shout records held", kVoiceSlots);
-        return CastRequest::PoolBusy;
-    }
-    auto &slot = g_pool[chosen];
+    auto &slot = kit->voice;
     auto *form = RE::TESForm::LookupByID(formID);
     auto *shout = form ? form->As<RE::TESShout>() : nullptr;
     auto *power = form ? form->As<RE::SpellItem>() : nullptr;
     if ((!shout && !power) || !slot.wrapper)
     {
-        log::packages.debug("slot {} has nothing to shout for {:08X}", chosen, formID);
+        log::packages.debug("{:08X} has nothing to shout for {:08X}", PackageId(slot), formID);
         return CastRequest::SpellNotInSlot;
     }
 
@@ -1152,24 +1156,25 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
         slot.powerType = power->data.spellType;
         power->data.spellType = RE::MagicSystem::SpellType::kVoicePower;
         slot.shouting = slot.wrapper;
-        log::packages.debug("slot {} wrapper {:08X} word one now casts {:08X} \"{}\" (type {} -> Voice for the "
+        log::packages.debug("{:08X} wrapper {:08X} word one now casts {:08X} \"{}\" (type {} -> Voice for the "
                             "lease)",
-                            chosen, slot.wrapper->GetFormID(), formID, log::NameOf(power),
+                            PackageId(slot), slot.wrapper->GetFormID(), formID, log::NameOf(power),
                             static_cast<int>(slot.powerType));
     }
     else
     {
         slot.shouting = shout;
-        log::packages.debug("slot {} shouts {:08X} \"{}\" itself", chosen, formID, log::NameOf(shout));
+        log::packages.debug("{:08X} shouts {:08X} \"{}\" itself", PackageId(slot), formID, log::NameOf(shout));
     }
 
     // The package's Shout input: the wrapper for a power, the shout itself
     // for a shout. Written only when it changes, as the Spell input is.
     if (slot.spell != formID)
     {
-        if (!SetPackageInput(g_slots[chosen], "Shout", slot.shouting))
+        if (!SetPackageInput(slot.package, "Shout", slot.shouting))
         {
-            log::packages.warn("slot {} could not point its Shout input at {:08X}", chosen, slot.shouting->GetFormID());
+            log::packages.warn("{:08X} could not point its Shout input at {:08X}", PackageId(slot),
+                               slot.shouting->GetFormID());
             if (slot.power)
             {
                 slot.power->data.spellType = slot.powerType;
@@ -1181,16 +1186,16 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
         slot.spell = formID;
     }
 
-    SetPackageTarget(g_slots[chosen], target);
+    SetPackageTarget(slot.package, target);
     slot.target = target ? target->GetHandle() : RE::ActorHandle{};
     slot.sustained = false;
     log::packages.event(log::Level::Info, "package.armed", actor,
-                        {{"slot", chosen},
+                        {{"packageFormId", log::Id(PackageId(slot))},
                          {"formId", log::Id(formID)},
                          {"holderFormId", log::Id(actor->GetFormID())},
                          {"kind", "voice"},
                          {"targetFormId", log::Id(target ? target->GetFormID() : actor->GetFormID())}},
-                        "slot {} aims at {}", chosen,
+                        "{:08X} aims at {}", PackageId(slot),
                         target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
                                : std::string("self"));
 
@@ -1200,22 +1205,20 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
     if (power)
         GiveWrapper(actor, slot.wrapper);
     else
-        LendShoutVoice(chosen, actor);
+        LendShoutVoice(slot, actor);
 
-    return Arm(chosen, actor, 0.0f, kVoiceArmWindowSeconds);
+    return Arm(slot, actor, 0.0f, kVoiceArmWindowSeconds);
 }
 
 void ResetPackages()
 {
-    for (std::size_t i = 0; i < g_pool.size(); ++i)
-    {
-        auto &slot = g_pool[i];
+    ForEachSlot([](Slot &slot) {
         if (slot.power)
         {
             slot.power->data.spellType = slot.powerType;
             slot.power = nullptr;
         }
-        ReturnShoutVoice(i);
+        ReturnShoutVoice(slot);
         // A stack entry is not taken off here: the arrays are the actor's
         // and are rebuilt with them on load; the record's condition is
         // false by then and the entry never passes.
@@ -1229,32 +1232,30 @@ void ResetPackages()
         slot.lease.reset();
         // As Release leaves a slot: no target handle outlives its lease.
         slot.target = {};
-        SetPackageTarget(g_slots[i], nullptr);
+        SetPackageTarget(slot.package, nullptr);
         slot.seenRunning = false;
         slot.streaming = false;
         slot.extended = false;
         slot.fired.store(false, std::memory_order_relaxed);
         slot.stopped.store(false, std::memory_order_relaxed);
         slot.begun.store(false, std::memory_order_relaxed);
-    }
+    });
 }
 
 void ReleaseAllLeases(const char *why)
 {
-    if (!g_available)
-        return;
-    for (std::size_t i = 0; i < kPackageSlots; ++i)
-    {
-        if (!g_pool[i].Busy())
-            continue;
+    ForEachSlot([why](Slot &slot) {
+        if (!slot.Busy())
+            return;
         log::packages.event(log::Level::Info, "package.released",
-                            {{"slot", i},
-                             {"holderFormId", log::Id(g_pool[i].lease ? g_pool[i].lease->FormID() : 0)},
-                             {"durationS", TacticsSeconds() - g_pool[i].armedAt},
+                            {{"packageFormId", log::Id(PackageId(slot))},
+                             {"holderFormId", log::Id(slot.lease->FormID())},
+                             {"durationS", TacticsSeconds() - slot.armedAt},
                              {"reason", why}},
-                            "slot {} released after {:.1f} s: {}", i, TacticsSeconds() - g_pool[i].armedAt, why);
-        Release(i);
-    }
+                            "{:08X} released after {:.1f} s: {}", PackageId(slot), TacticsSeconds() - slot.armedAt,
+                            why);
+        Release(slot);
+    });
 }
 
 void TickPackages(double now, const std::vector<RE::Actor *> &followers)
@@ -1263,40 +1264,40 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         return;
 
     // A wrapper shout left in a base's spell list by a lease that never
-    // ended -- a crash mid-cast, since a save releases every lease first --
-    // would list under Shouts for every actor of that base. Taken back from
-    // any follower holding no record.
+    // ended would list under Shouts for every actor of that base. Any wrapper
+    // not mid-lease is taken back from a follower casting nothing: bases are
+    // shared, so it need not be their own.
     for (auto *follower : followers)
     {
-        if (!follower || AlreadyCasting(follower))
+        if (!follower || AlreadyCasting(KitOf(follower->GetFormID())))
             continue;
-        for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
-            TakeWrapper(follower, g_pool[i].wrapper);
+        for (const auto &entry : g_kits)
+            if (!entry.second->voice.Busy())
+                TakeWrapper(follower, entry.second->voice.wrapper);
     }
 
-    for (std::size_t i = 0; i < kPackageSlots; ++i)
-    {
-        auto &slot = g_pool[i];
+    ForEachSlot([now](Slot &slot) {
         if (!slot.Busy())
-            continue;
+            return;
 
         auto actor = slot.lease->Actor();
         if (!actor)
         {
             // Unloaded or gone. The lease's destructor finds no actor and
             // clears nothing; the sweep above catches them if they come back.
-            log::packages.event(log::Level::Info, "package.released", {{"slot", i}, {"reason", "holder vanished"}},
-                                "slot {} holder vanished -- released", i);
-            Release(i);
-            continue;
+            log::packages.event(log::Level::Info, "package.released",
+                                {{"packageFormId", log::Id(PackageId(slot))}, {"reason", "holder vanished"}},
+                                "{:08X} holder vanished -- released", PackageId(slot));
+            Release(slot);
+            return;
         }
         const std::string name = NameOr(actor.get(), "?");
 
-        const bool running = actor->GetCurrentPackage() == g_slots[i];
+        const bool running = actor->GetCurrentPackage() == slot.package;
         if (running && !slot.seenRunning)
         {
             slot.seenRunning = true;
-            log::packages.debug("{} is RUNNING slot {} (spell {:08X}) after {:.1f} s", name, i, slot.spell,
+            log::packages.debug("{} is RUNNING {:08X} (spell {:08X}) after {:.1f} s", name, PackageId(slot), slot.spell,
                                 now - slot.armedAt);
         }
 
@@ -1311,7 +1312,7 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         {
             slot.streaming = true;
             slot.until = now + slot.sustain + 1.0;
-            log::packages.debug("{} stream started on slot {} -- {:.1f} s to run", name, i, slot.sustain);
+            log::packages.debug("{} stream started on {:08X} -- {:.1f} s to run", name, PackageId(slot), slot.sustain);
         }
         // A cast or shout that has begun is not taken away: the deadline
         // steps back once so the animation, however long this one's is, gets
@@ -1322,15 +1323,15 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         {
             slot.extended = true;
             slot.until = (std::max)(slot.until, now + 3.0);
-            log::packages.debug("{} began the {} on slot {} after {:.1f} s -- deadline stepped back", name,
-                                slot.shouting ? "shout" : "cast", i, now - slot.armedAt);
+            log::packages.debug("{} began the {} on {:08X} after {:.1f} s -- deadline stepped back", name,
+                                slot.shouting ? "shout" : "cast", PackageId(slot), now - slot.armedAt);
         }
 
         const char *why = nullptr;
         if (!slot.sustained && slot.fired.load(std::memory_order_relaxed))
         {
             why = slot.power ? "power fired" : slot.wrapper ? "shout fired" : "spell fired";
-            SpendScroll(i, actor.get());
+            SpendScroll(slot, actor.get());
         }
         else if (slot.sustained && slot.stopped.load(std::memory_order_relaxed))
             why = "stream ended";
@@ -1347,29 +1348,30 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         if (why)
         {
             log::packages.event(log::Level::Info, "package.released", actor.get(),
-                                {{"slot", i},
+                                {{"packageFormId", log::Id(PackageId(slot))},
                                  {"holderFormId", log::Id(actor->GetFormID())},
                                  {"durationS", now - slot.armedAt},
                                  {"reason", why}},
-                                "{} releases slot {} after {:.1f} s: {}", name, i, now - slot.armedAt, why);
-            Release(i);
+                                "{} releases {:08X} after {:.1f} s: {}", name, PackageId(slot), now - slot.armedAt,
+                                why);
+            Release(slot);
         }
-    }
+    });
 }
 
 namespace
 {
 // Find the Spell, Target and CastTime input layout on the vanilla records.
 // Writes nothing; what it fails to find, RequestCast refuses to write. False
-// means the pool cannot be made: a package whose inputs cannot be checked
-// is a package that might cast the wrong thing at the wrong person.
+// means no follower's records are made: a package whose inputs cannot be
+// checked is a package that might cast the wrong thing at the wrong person.
 bool Calibrate()
 {
     auto *mercer = RE::TESForm::LookupByID<RE::TESPackage>(kMercerCastAtPlayerID);
     auto *colette = RE::TESForm::LookupByID<RE::TESPackage>(kColetteHealID);
     if (!mercer || !colette)
     {
-        log::packages.event(log::Level::Error, "pool.unavailable", {{"reason", "vanilla records missing"}},
+        log::packages.event(log::Level::Error, "packages.unavailable", {{"reason", "vanilla records missing"}},
                             "probe: vanilla records missing (Mercer {}, Colette {}) -- cast rules stay off",
                             static_cast<const void *>(mercer), static_cast<const void *>(colette));
         return false;
@@ -1378,7 +1380,7 @@ bool Calibrate()
     auto *custom = skyrim_cast<RE::TESCustomPackageData *>(mercer->data);
     if (!custom)
     {
-        log::packages.event(log::Level::Error, "pool.unavailable",
+        log::packages.event(log::Level::Error, "packages.unavailable",
                             {{"reason", "package data is not TESCustomPackageData"}},
                             "probe: Mercer's package data is not TESCustomPackageData -- template inputs "
                             "unreachable");
@@ -1390,7 +1392,7 @@ bool Calibrate()
     std::int8_t uid = 0;
     if (!FindInputUID(custom, "Spell", uid))
     {
-        log::packages.event(log::Level::Error, "pool.unavailable", {{"reason", "no Spell input in the name map"}},
+        log::packages.event(log::Level::Error, "packages.unavailable", {{"reason", "no Spell input in the name map"}},
                             "probe: no 'Spell' input in the name map -- cast rules stay off");
         return false;
     }
@@ -1425,7 +1427,7 @@ bool Calibrate()
         const std::size_t offset = w * sizeof(std::uintptr_t);
         if (value == canaryAddr)
         {
-            log::packages.event(log::Level::Error, "pool.unavailable",
+            log::packages.event(log::Level::Error, "packages.unavailable",
                                 {{"reason", "Spell input holds its form inline"}},
                                 "probe: canary found inline at +{:02X}, not behind a PackageTarget -- cast rules "
                                 "stay off. Nothing will be written.",
@@ -1441,7 +1443,7 @@ bool Calibrate()
                 continue;
             if (k * sizeof(std::uintptr_t) != kTargetUnionOffset)
             {
-                log::packages.event(log::Level::Error, "pool.unavailable",
+                log::packages.event(log::Level::Error, "packages.unavailable",
                                     {{"reason", "PackageTarget layout differs from the library's"}},
                                     "probe: canary at +{:02X} -> +{:02X}, not +{:02X} -- cast rules stay off. "
                                     "Nothing will be written.",
@@ -1456,7 +1458,8 @@ bool Calibrate()
 
     if (g_spellOuter == kNotCalibrated)
     {
-        log::packages.event(log::Level::Error, "pool.unavailable", {{"reason", "Spell input layout not identified"}},
+        log::packages.event(log::Level::Error, "packages.unavailable",
+                            {{"reason", "Spell input layout not identified"}},
                             "probe: layout NOT identified -- cast rules stay off. Nothing will be written.");
         return false;
     }
@@ -1472,7 +1475,7 @@ bool Calibrate()
     auto *player = RE::PlayerCharacter::GetSingleton();
     if (!cpt || !mpt || !player || mpt->target.handle.native_handle() != player->GetHandle().native_handle())
     {
-        log::packages.event(log::Level::Error, "pool.unavailable", {{"reason", "Target input unreadable"}},
+        log::packages.event(log::Level::Error, "packages.unavailable", {{"reason", "Target input unreadable"}},
                             "probe: Target inputs {} -- cast rules stay off",
                             mpt ? fmt::format("Mercer's type {} handle {:08X}, player handle {:08X}", mpt->targType,
                                               mpt->target.handle.native_handle(),
@@ -1483,7 +1486,7 @@ bool Calibrate()
     if (mpt->targType == cpt->targType)
     {
         log::packages.event(
-            log::Level::Error, "pool.unavailable", {{"reason", "Self and specific-reference read the same type"}},
+            log::Level::Error, "packages.unavailable", {{"reason", "Self and specific-reference read the same type"}},
             "probe: Self and specific-reference read the same type {} -- cast rules stay off", cpt->targType);
         return false;
     }
@@ -1511,27 +1514,59 @@ bool Calibrate()
 // Point a fresh copy at the canary spell through the calibrated layout and
 // read it back: the proof that the layout found on Mercer's record holds on
 // a record the engine copied from it.
-bool ProveCopy(RE::TESPackage *pkg, const char *inputName, RE::TESForm *canary, std::size_t slot)
+bool ProveCopy(RE::TESPackage *pkg, const char *inputName, RE::TESForm *canary)
 {
     if (!SetPackageInput(pkg, inputName, canary))
     {
-        log::packages.event(log::Level::Error, "pool.slotFailed",
-                            {{"slot", slot}, {"input", inputName}, {"reason", "could not write the input"}},
-                            "slot {}: could not write its {} input", slot, inputName);
+        log::packages.error("{:08X}: could not write its {} input", pkg->GetFormID(), inputName);
         return false;
     }
     auto *pt = TargetOfInput(pkg, inputName);
     if (!pt || pt->target.object != canary)
     {
-        log::packages.event(log::Level::Error, "pool.slotFailed",
-                            {{"slot", slot}, {"input", inputName}, {"reason", "the input did not read back"}},
-                            "slot {}: {} input read back {} after writing {:08X}", slot, inputName,
+        log::packages.error("{:08X}: {} input read back {} after writing {:08X}", pkg->GetFormID(), inputName,
                             pt ? fmt::format("{:08X}", pt->target.object ? pt->target.object->GetFormID() : 0)
                                : std::string("nothing"),
                             canary->GetFormID());
         return false;
     }
     return true;
+}
+
+// A follower's records: Mercer's record with Target back to Self and Spell
+// on the canary, read back; a word, a wrapper shout on it, and Tsun's record
+// with its Shout input on the wrapper and Target back to Self. Null when
+// made, otherwise what could not be.
+const char *MakeKit(Kit &kit)
+{
+    auto *pkg = ClonePackage(g_mercer);
+    auto *condition = AddIsReferenceCondition(pkg);
+    if (!pkg || !condition || !ProveCopy(pkg, "Spell", g_canary) || !SetPackageTarget(pkg, nullptr))
+        return "the cast package could not be made";
+    SetPackageCastTime(pkg, kAuthoredCastTimeMax);
+    kit.spell.package = pkg;
+    kit.spell.condition = condition;
+
+    auto *word = CreateWord("Power");
+    auto *wrapper = word ? CreateShout(word, g_canary, "FollowerTactics power") : nullptr;
+    auto *shoutPkg = wrapper ? ClonePackage(g_tsun) : nullptr;
+    auto *shoutCondition = AddIsReferenceCondition(shoutPkg);
+    if (!shoutPkg || !shoutCondition || !ProveCopy(shoutPkg, "Shout", wrapper) || !SetPackageTarget(shoutPkg, nullptr))
+        return "the shout package could not be made";
+    // Weapon Drawn, which the ESP-era records did not have. Tried for
+    // the 0.3 to 1.5 s between arming and BeginCastVoice, on the guess
+    // that the AI was sheathing first. It was not: measured 2026-09-08
+    // with the weapon state logged, "drawn" at arming, at pick-up and at
+    // begin, and the delay unchanged (0.5 to 1.0 s, once 2.9 s, the same
+    // as a hand cast). The delay is the AI's own start-up. The flag is
+    // kept because this is the configuration that was verified, and a
+    // procedure that needs no hands has no use for putting them away.
+    shoutPkg->packData.packFlags.set(RE::PACKAGE_DATA::GeneralFlag::kWeaponDrawn);
+    kit.voice.package = shoutPkg;
+    kit.voice.condition = shoutCondition;
+    kit.voice.wrapper = wrapper;
+    kit.voice.spell = wrapper->GetFormID();
+    return nullptr;
 }
 } // namespace
 
@@ -1541,73 +1576,49 @@ void InitPackages()
     if (!Calibrate())
         return;
 
-    auto *mercer = RE::TESForm::LookupByID<RE::TESPackage>(kMercerCastAtPlayerID);
-    auto *tsun = RE::TESForm::LookupByID<RE::TESPackage>(kTsunShoutID);
-    auto *fastHealing = RE::TESForm::LookupByID(kCanarySpellID);
-    if (!tsun || !fastHealing)
+    g_mercer = RE::TESForm::LookupByID<RE::TESPackage>(kMercerCastAtPlayerID);
+    g_tsun = RE::TESForm::LookupByID<RE::TESPackage>(kTsunShoutID);
+    g_canary = RE::TESForm::LookupByID(kCanarySpellID);
+    if (!g_tsun || !g_canary)
     {
-        log::packages.event(log::Level::Error, "pool.unavailable", {{"reason", "vanilla records missing"}},
+        log::packages.event(log::Level::Error, "packages.unavailable", {{"reason", "vanilla records missing"}},
                             "vanilla records missing (Tsun's shout package {}, Fast Healing {}) -- cast rules "
                             "stay off",
-                            static_cast<const void *>(tsun), static_cast<const void *>(fastHealing));
+                            static_cast<const void *>(g_tsun), static_cast<const void *>(g_canary));
         return;
     }
 
-    // The spell slots: Mercer's record, Target back to Self, Spell to the
-    // canary and read back.
-    for (std::size_t i = 0; i < kSpellSlots; ++i)
-    {
-        auto *pkg = ClonePackage(mercer);
-        auto *condition = AddIsReferenceCondition(pkg);
-        if (!pkg || !condition || !ProveCopy(pkg, "Spell", fastHealing, i) || !SetPackageTarget(pkg, nullptr))
-        {
-            log::packages.event(log::Level::Error, "pool.slotFailed", {{"slot", i}, {"kind", "spell"}},
-                                "spell slot {} could not be made -- cast rules stay off", i);
-            return;
-        }
-        SetPackageCastTime(pkg, kAuthoredCastTimeMax);
-        g_slots[i] = pkg;
-        g_pool[i].condition = condition;
-        g_pool[i].spell = kCanarySpellID;
-    }
-
-    // The voice slots: a word, a wrapper shout on it, and Tsun's record with
-    // its Shout input on the wrapper and Target back to Self.
-    for (std::size_t i = kSpellSlots; i < kPackageSlots; ++i)
-    {
-        auto *word = CreateWord("Power");
-        auto *wrapper = word ? CreateShout(word, fastHealing, "FollowerTactics power") : nullptr;
-        auto *pkg = wrapper ? ClonePackage(tsun) : nullptr;
-        auto *condition = AddIsReferenceCondition(pkg);
-        if (!pkg || !condition || !ProveCopy(pkg, "Shout", wrapper, i) || !SetPackageTarget(pkg, nullptr))
-        {
-            log::packages.event(log::Level::Error, "pool.slotFailed", {{"slot", i}, {"kind", "voice"}},
-                                "voice slot {} could not be made -- cast and power rules stay off", i);
-            return;
-        }
-        // Weapon Drawn, which the ESP-era records did not have. Tried for
-        // the 0.3 to 1.5 s between arming and BeginCastVoice, on the guess
-        // that the AI was sheathing first. It was not: measured 2026-09-08
-        // with the weapon state logged, "drawn" at arming, at pick-up and at
-        // begin, and the delay unchanged (0.5 to 1.0 s, once 2.9 s, the same
-        // as a hand cast). The delay is the AI's own start-up. The flag is
-        // kept because this is the configuration that was verified, and a
-        // procedure that needs no hands has no use for putting them away.
-        pkg->packData.packFlags.set(RE::PACKAGE_DATA::GeneralFlag::kWeaponDrawn);
-        g_slots[i] = pkg;
-        g_pool[i].condition = condition;
-        g_pool[i].wrapper = wrapper;
-        g_pool[i].spell = wrapper->GetFormID();
-    }
-
-    log::packages.event(log::Level::Info, "pool.ready", {{"spellSlots", kSpellSlots}, {"voiceSlots", kVoiceSlots}},
-                        "{} UseMagic slots and {} Shout slots with wrappers made in memory", kSpellSlots, kVoiceSlots);
+    log::packages.event(log::Level::Info, "packages.ready", {},
+                        "input layout found; a follower's cast records are made when the tick first sees them");
     g_available = true;
 }
 
-bool PackagesAvailable()
+void ProvideCastForms(RE::Actor *actor)
 {
-    return g_available;
+    if (!g_available || !actor)
+        return;
+    const RE::FormID id = actor->GetFormID();
+    if (KitOf(id) || g_kitsFailed.contains(id))
+        return;
+
+    auto kit = std::make_unique<Kit>();
+    if (const char *failed = MakeKit(*kit))
+    {
+        // What was made before the failure stays registered: forms are never
+        // deleted, and trying again would only make more.
+        g_kitsFailed.insert(id);
+        log::packages.event(log::Level::Error, "packages.failed", actor, {{"reason", failed}},
+                            "{}: {} -- their cast, power and shout rules stay off", Describe(actor), failed);
+        return;
+    }
+    log::packages.event(log::Level::Info, "packages.made", actor,
+                        {{"castPackageFormId", log::Id(PackageId(kit->spell))},
+                         {"shoutPackageFormId", log::Id(PackageId(kit->voice))},
+                         {"wrapperFormId", log::Id(kit->voice.wrapper->GetFormID())}},
+                        "{}: cast package {:08X}, shout package {:08X}, wrapper {:08X}", Describe(actor),
+                        PackageId(kit->spell), PackageId(kit->voice), kit->voice.wrapper->GetFormID());
+    std::unique_lock lock(g_kitsMutex);
+    g_kits.emplace(id, std::move(kit));
 }
 
 } // namespace ft::game
