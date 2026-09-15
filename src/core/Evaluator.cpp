@@ -605,7 +605,7 @@ Verdict BlowAvailability(const Action &a, const Snapshot &snap, ActorId target)
         return Verdict::NoTarget;
     if (snap.stamina.current < blow.stamina)
         return Verdict::NoStamina;
-    if (enemy->distance > blow.reach)
+    if (enemy->reachDistance > blow.reach)
         return Verdict::OutOfReach;
     return Verdict::Fired;
 }

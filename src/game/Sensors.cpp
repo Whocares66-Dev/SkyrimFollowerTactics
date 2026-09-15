@@ -1080,11 +1080,45 @@ ft::Hands DescribeHands(RE::Actor *actor)
     return hands;
 }
 
-// The margin a blow's reach gets for the enemy's own body, since the
-// snapshot's distances are centre to centre: a humanoid's half-width and a
-// step. A giant's body is wider than that, so a blow at one is judged too
-// far a little before it is.
-constexpr float kBodyMargin = 40.0f;
+namespace
+{
+// A body's radius as the engine's melee test takes it (47276, and 37868,
+// whose cached result 37443 reads, on 1.6.1170): the bound max Y times the
+// scale, 16 for an empty box. Not CommonLib's Actor::GetBoundRadius, which
+// reads another field.
+float BodyRadius(const RE::TESObjectREFR &ref)
+{
+    constexpr float kEmptyBoxRadius = 16.0f;
+    const RE::NiPoint3 max = ref.GetBoundMax();
+    const RE::NiPoint3 min = ref.GetBoundMin();
+    return max.y - min.y > 0.0f ? max.y * ref.GetScale() : kEmptyBoxRadius;
+}
+} // namespace
+
+// The engine's measure (47273 on 1.6.1170): centre to centre, flat when
+// their heights differ by 48 or more and either end of the attacker's
+// bounds lies within the target's, less both radii. Not mirrored: a pair of
+// flags on the two actors that has the engine test the overlap at any
+// difference in height; under 48 the flat and full distances differ by a
+// few units.
+float ReachDistance(const RE::Actor *from, const RE::Actor *to)
+{
+    if (!from || !to)
+        return (std::numeric_limits<float>::max)();
+    constexpr float kFlatFromHeight = 48.0f;
+    const RE::NiPoint3 a = from->GetPosition();
+    const RE::NiPoint3 b = to->GetPosition();
+    float distance = a.GetDistance(b);
+    if (std::abs(a.z - b.z) >= kFlatFromHeight)
+    {
+        const float bottom = b.z + to->GetBoundMin().z;
+        const float top = b.z + to->GetBoundMax().z;
+        const auto within = [bottom, top](float z) { return z >= bottom && z <= top; };
+        if (within(a.z + from->GetBoundMax().z) || within(a.z + from->GetBoundMin().z))
+            distance = std::hypot(a.x - b.x, a.y - b.y);
+    }
+    return distance - (BodyRadius(*from) + BodyRadius(*to));
+}
 
 namespace
 {
@@ -1170,9 +1204,9 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     plan.stamina = (std::max)(0.0f, cost * StaminaMultOf(actor, plan.event));
     // The engine's own reach for the actor and what they hold -- the weapon's
     // reach times fCombatDistance, or the race's unarmed reach, times the
-    // actor's scale (docs/ACTIONS.md 6) -- and the margin for the enemy's
-    // body.
-    plan.reach = actor->GetReach() + kBodyMargin;
+    // actor's scale (docs/ACTIONS.md 6). The bodies are in the enemy's
+    // ReachDistance, as the engine leaves them out of its distance.
+    plan.reach = actor->GetReach();
     return plan;
 }
 
@@ -1188,8 +1222,9 @@ BlowPlan PlanBash(RE::Actor *actor, bool power)
     plan.stamina = (power ? GameSetting("fStaminaPowerBashBase", 55.0f) : GameSetting("fStaminaBashBase", 35.0f)) *
                    StaminaMultOf(actor, plan.event);
     // The bash's own reach setting (fCombatBashReach, 141 in vanilla) at the
-    // actor's scale, with the same margin for the enemy's body as a swing.
-    plan.reach = GameSetting("fCombatBashReach", 141.0f) * actor->GetScale() + kBodyMargin;
+    // actor's scale, held against the same measure as a swing's; that the
+    // engine measures a bash that way was not read.
+    plan.reach = GameSetting("fCombatBashReach", 141.0f) * actor->GetScale();
     return plan;
 }
 
@@ -1471,6 +1506,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         view.magicka = ReadStat(other, RE::ActorValue::kMagicka);
         view.stamina = ReadStat(other, RE::ActorValue::kStamina);
         view.distance = actor->GetPosition().GetDistance(other->GetPosition());
+        view.reachDistance = ReachDistance(actor, other);
         view.target = LiveTargetOf(other);
         view.traits = ReadTraits(other);
         return view;

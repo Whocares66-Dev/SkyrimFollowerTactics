@@ -3266,6 +3266,7 @@ TEST_CASE("a power attack needs a fight, something that swings, and the stamina 
 
     Snapshot s = Healthy();
     s.enemies.push_back({0x101, {50.0f, 100.0f}, 300.0f});
+    s.enemies[0].reachDistance = 300.0f;
     s.stamina = {30.0f, 100.0f};
     EvalContext ctx;
 
@@ -3302,7 +3303,9 @@ TEST_CASE("a power attack needs a fight, something that swings, and the stamina 
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::OutOfReach);
 
-    s.enemies[0].distance = 150.0f;
+    // The reach is held against the engine's measure, which leaves out both
+    // bodies, not the centre-to-centre distance: a large body in reach.
+    s.enemies[0].reachDistance = 150.0f;
     trace.clear();
     const auto d = Evaluate(rs, s, ctx, &trace);
     REQUIRE(d.Fired());

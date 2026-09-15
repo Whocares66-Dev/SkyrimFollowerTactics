@@ -225,11 +225,14 @@ struct SpellOption
     Kind kind{Kind::Spell};
 };
 
+// How far a swing has to reach to strike `to`, as the engine's melee test
+// measures it: centre to centre, less both bodies (docs/ACTIONS.md 6).
+[[nodiscard]] float ReachDistance(const RE::Actor *from, const RE::Actor *to);
+
 // A blow with what the actor holds: the animation event that starts it,
-// the stamina it costs, and how far it reaches, centre to centre, with a
-// margin for the enemy's own body. No event where the hands hold nothing
-// for it. The race record's attack data carries the events and their
-// multipliers (docs/ACTIONS.md 6).
+// the stamina it costs, and how far it reaches, held against an enemy's
+// ReachDistance. No event where the hands hold nothing for it. The race record's attack data carries the events and
+// their multipliers (docs/ACTIONS.md 6).
 struct BlowPlan
 {
     const char *event{nullptr};

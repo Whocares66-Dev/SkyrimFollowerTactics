@@ -142,6 +142,10 @@ struct ActorView
     ActorTraits traits{};
     Stat magicka{};
     Stat stamina{};
+    // How far a swing has to reach to strike them, as the engine's melee
+    // test measures it (docs/ACTIONS.md 6): centre to centre, less both
+    // bodies. What a blow's reach is held against.
+    float reachDistance{0.0f};
 };
 
 // A corpse nearby: dead, not already raised or summoned, loaded. Its level
@@ -358,8 +362,8 @@ struct Snapshot
     bool inCombat{false};
     // A blow the actor could strike with what is in the hands, priced on
     // the game side: whether it is possible at all, the stamina it costs,
-    // and how far it reaches, centre to centre, with a margin for the
-    // enemy's own body. A blow at an enemy further than that lands on
+    // and how far it reaches, held against an enemy's reachDistance. A
+    // blow at an enemy further than that lands on
     // nothing, and the engine charges no stamina for it, so the rule waits
     // for the AI to close. A power attack takes a melee weapon or the
     // fists; a bash takes what blocks: a shield or a torch in the left

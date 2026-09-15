@@ -46,6 +46,7 @@ Each is found or checked at load against vanilla records, and what does not read
 Not addresses: copied into the plugin as logic, and wrong on another build only if Bethesda changed it there.
 
 - The stamina a power attack and a bash cost (26429; `docs/ACTIONS.md` 6).
+- How far a swing has to reach (47273 and 47276; `ReachDistance` and `BodyRadius`, `src/game/Sensors.cpp`): centre to centre, flat from a height difference of 48, less both bodies' radii, each the bound max Y times the scale or 16.
 - What the UseWeapon procedure does: its facing check, its turning out of combat and not in one, and how its inputs map (`docs/ATTACK.md`).
 - The combat animation actions a block is raised and lowered with (3 and 4), and the idle tree's gates on a bash (`docs/ATTACK.md` "How the engine bashes").
 

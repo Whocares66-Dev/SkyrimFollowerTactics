@@ -1121,8 +1121,7 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
         const auto *state = holder ? holder->AsActorState() : nullptr;
         const double staminaNow =
             holder ? static_cast<double>(holder->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina)) : -1.0;
-        const double distanceNow =
-            holder && target ? static_cast<double>(holder->GetPosition().GetDistance(target->GetPosition())) : -1.0;
+        const double distanceNow = holder && target ? static_cast<double>(ReachDistance(holder, target.get())) : -1.0;
         const int attackState = state ? static_cast<int>(state->GetAttackState()) : -1;
         // The procedure attacks only a target within the attack's strike
         // angle of their heading (docs/ATTACK.md).
@@ -1700,7 +1699,7 @@ CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, const B
     slot.staminaCost = plan.stamina;
     slot.reach = plan.reach;
     slot.staminaAtArm = actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
-    slot.distanceAtArm = actor->GetPosition().GetDistance(target->GetPosition());
+    slot.distanceAtArm = ReachDistance(actor, target);
     slot.headingAtArm = actor->GetHeadingAngle(target->GetPosition(), true);
     log::packages.info("{}: {:08X} power attacks {:08X} \"{}\"", log::NameOf(actor), PackageId(slot),
                        target->GetFormID(), log::NameOf(target));
