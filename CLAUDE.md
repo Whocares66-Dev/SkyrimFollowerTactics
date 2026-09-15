@@ -319,6 +319,10 @@ the decrypted code out of the live process instead, with the same modes plus
 "Forms at runtime" and `docs/UNIQUE.md` are what has been read with them so
 far.
 
+## Reading a save
+
+`tools/ess_scan.py <save> npc <form id>` decodes an NPC base record's saved sections straight from a save file, no game needed; `scan` looks for bytes that match our runtime form IDs. Its docstring has what is known of the format and how far to trust it. It found the `addshout` save crash (2026-09-14).
+
 ## Fetching UESP / Nexus pages
 
 `WebFetch` is blocked on `uesp.net` (both subdomains) and `nexusmods.com`. Don't retry it or spoof curl headers at these -- use, respectively, the `search-uesp` skill, the `search-creation-kit-wiki` skill, and houseCARL's keyless Nexus tools (`housecarl_nexus_*`, see its MCP instructions) for the verified working methods.
