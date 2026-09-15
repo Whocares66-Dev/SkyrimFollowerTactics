@@ -1088,6 +1088,34 @@ ft::Hands DescribeHands(RE::Actor *actor)
 // far a little before it is.
 constexpr float kBodyMargin = 40.0f;
 
+namespace
+{
+// Skyrim.esm's Unarmed weapon: what the engine prices a power attack with
+// when the right hand holds no weapon.
+constexpr RE::FormID kUnarmedWeapon = 0x000001F4;
+
+// The stamina multiplier of the attack an event starts: the follower's base
+// record's attack data, where the engine reads it, else the race's; 1 when
+// neither names the event.
+float StaminaMultOf(RE::Actor *actor, const char *event)
+{
+    if (!actor || !event)
+        return 1.0f;
+    const RE::BSFixedString key(event);
+    const auto lookup = [&key](const RE::BGSAttackDataForm *form) -> const RE::BGSAttackData * {
+        const auto *map = form ? form->attackDataMap.get() : nullptr;
+        if (!map)
+            return nullptr;
+        const auto it = map->attackDataMap.find(key);
+        return it != map->attackDataMap.end() ? it->second.get() : nullptr;
+    };
+    const RE::BGSAttackData *attack = lookup(actor->GetActorBase());
+    if (!attack)
+        attack = lookup(actor->GetRace());
+    return attack ? attack->data.staminaMult : 1.0f;
+}
+} // namespace
+
 BlowPlan PlanPowerAttack(RE::Actor *actor)
 {
     BlowPlan plan;
@@ -1098,16 +1126,10 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     auto *right = rightHeld ? rightHeld->As<RE::TESObjectWEAP>() : nullptr;
     auto *left = leftHeld ? leftHeld->As<RE::TESObjectWEAP>() : nullptr;
 
-    // The attack, by the hands (core's rule); its stamina multiplier is the
-    // race record's for that attack (1 for a one-hand or two-hand power
-    // attack, 0.5 for the dual-wield one, vanilla's humanoid races).
-    float weight = 0.0f;
-    float attackMult = 1.0f;
-    const RE::TESObjectWEAP *priced = nullptr;
-    // A swing names a hand with a weapon in it, and DescribeHands read the
-    // same two objects, so the checks below never fail; they are for the
-    // reader and the analyser, per case because the analyser does not
-    // carry one check across a switch.
+    // The attack, by the hands (core's rule). A swing names a hand with a
+    // weapon in it, and DescribeHands read the same two objects, so the
+    // checks below never fail; they are for the reader and the analyser, per
+    // case because the analyser does not carry one check across a switch.
     plan.swing = ft::SwingWith(DescribeHands(actor));
     switch (plan.swing)
     {
@@ -1115,23 +1137,16 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
         if (!right || !left)
             return plan;
         plan.event = "attackPowerStartDualWield";
-        weight = right->GetWeight() + left->GetWeight();
-        attackMult = 0.5f;
-        priced = right;
         break;
     case ft::Swing::Right:
         if (!right)
             return plan;
         plan.event = "attackPowerStartInPlace";
-        weight = right->GetWeight();
-        priced = right;
         break;
     case ft::Swing::Left:
         if (!left)
             return plan;
         plan.event = "attackPowerStartInPlaceLeftHand";
-        weight = left->GetWeight();
-        priced = left;
         break;
     case ft::Swing::Fists:
         plan.event = "attackPowerStartInPlace";
@@ -1140,18 +1155,21 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
         return plan;
     }
 
-    // The cost: (fStaminaAttackWeaponBase + weight * fStaminaAttackWeaponMult)
-    // times the attack's multiplier, then the actor's perks through the Mod
-    // Power Attack Stamina entry point, which takes the weapon. Vanilla's
-    // settings are 20 and 1. The formula is UESP's; not yet checked against
-    // the engine.
-    float cost =
-        (GameSetting("fStaminaAttackWeaponBase", 20.0f) + weight * GameSetting("fStaminaAttackWeaponMult", 1.0f)) *
-        attackMult;
-    if (priced)
-        RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModPowerAttackStamina, actor,
-                                            const_cast<RE::TESObjectWEAP *>(priced), &cost);
-    plan.stamina = (std::max)(0.0f, cost);
+    // The cost as the engine's own routine prices a power attack (26429 on
+    // 1.6.1170, which the UseWeapon procedure asks too; docs/ACTIONS.md 6):
+    // the RIGHT hand's weapon's weight, 1 with none there, times
+    // fStaminaAttackWeaponMult, plus fStaminaAttackWeaponBase, times
+    // fPowerAttackStaminaPenalty -- 1, 20 and 2 in vanilla; then the Mod Power
+    // Attack Stamina entry point with that weapon, or Unarmed; then the
+    // attack's own stamina multiplier. A left-hand swing is priced by the
+    // right hand, as the engine prices it.
+    float cost = ((right ? right->GetWeight() : 1.0f) * GameSetting("fStaminaAttackWeaponMult", 1.0f) +
+                  GameSetting("fStaminaAttackWeaponBase", 20.0f)) *
+                 GameSetting("fPowerAttackStaminaPenalty", 2.0f);
+    if (auto *priced = right ? right : RE::TESForm::LookupByID<RE::TESObjectWEAP>(kUnarmedWeapon))
+        RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModPowerAttackStamina, actor, priced,
+                                            &cost);
+    plan.stamina = (std::max)(0.0f, cost * StaminaMultOf(actor, plan.event));
     // The engine's own reach for the actor and what they hold -- the weapon's
     // reach times fCombatDistance, or the race's unarmed reach, times the
     // actor's scale (docs/ACTIONS.md 6) -- and the margin for the enemy's
@@ -1166,11 +1184,11 @@ BlowPlan PlanBash(RE::Actor *actor, bool power)
     if (!actor || !ft::BashesWith(DescribeHands(actor)))
         return plan;
     plan.event = power ? "bashPowerStart" : "bashStart";
-    // The cost is the setting for the kind of bash -- fStaminaBashBase 35,
-    // fStaminaPowerBashBase 55 in vanilla -- times the attack's multiplier,
-    // 1 for both in the race data. No perk entry point prices a bash. Not
-    // yet checked against the engine.
-    plan.stamina = power ? GameSetting("fStaminaPowerBashBase", 55.0f) : GameSetting("fStaminaBashBase", 35.0f);
+    // The cost as the engine prices a bash (26429): the setting for the kind
+    // -- fStaminaBashBase 35, fStaminaPowerBashBase 55 in vanilla -- times the
+    // attack's own stamina multiplier. No perk entry point prices a bash.
+    plan.stamina = (power ? GameSetting("fStaminaPowerBashBase", 55.0f) : GameSetting("fStaminaBashBase", 35.0f)) *
+                   StaminaMultOf(actor, plan.event);
     // The bash's own reach setting (fCombatBashReach, 141 in vanilla) at the
     // actor's scale, with the same margin for the enemy's body as a swing.
     plan.reach = GameSetting("fCombatBashReach", 141.0f) * actor->GetScale() + kBodyMargin;
