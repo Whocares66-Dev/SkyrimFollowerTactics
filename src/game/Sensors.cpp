@@ -426,19 +426,20 @@ bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
 
 namespace
 {
-// A controller: a spell whose every effect is hidden from the player's
-// active effects, there for its arithmetic and never seen in play. Its name
-// says nothing ("Attack Speed Controller"), so its amount is left to Other.
-// A hidden effect on a spell the player does see (Elfborn's resistance
-// penalties) keeps the spell's name, and an enchantment keeps its item's.
-bool Controller(const RE::MagicItem *spell)
+bool Hidden(const RE::EffectSetting *base)
+{
+    return base && base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI);
+}
+
+// Every effect on the spell hidden from the player's active effects. Never
+// an enchantment's: that is named for its item, which the player sees.
+bool AllHidden(const RE::MagicItem *spell)
 {
     if (!spell || spell->As<RE::EnchantmentItem>() || spell->effects.empty())
         return false;
     for (const RE::Effect *effect : spell->effects)
     {
-        if (!effect || !effect->baseEffect ||
-            !effect->baseEffect->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
+        if (!effect || !Hidden(effect->baseEffect))
             return false;
     }
     return true;
@@ -448,9 +449,23 @@ bool Controller(const RE::MagicItem *spell)
 std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 {
     std::vector<Contribution> out;
+    // A controller -- a spell whose every effect is hidden, there for its
+    // arithmetic and never seen in play -- is not a source by name: "Attack
+    // Speed Controller" says nothing, and its amount is left to Other. Hidden
+    // is not unseen, though. Mundus splits the Apprentice Stone into two
+    // abilities of that name, the Magicka Rate on one and the hidden
+    // resistance penalties on the other, and the penalties read as Other
+    // (2026-09-14). So a hidden-only spell is named where a visible running
+    // effect carries the same spell name, which the player does see. Gathered
+    // in the one walk and settled after it.
+    std::unordered_set<std::string> seen;
+    std::vector<std::pair<std::string, Contribution>> hidden;
     ForEachActiveEffect(actor, [&](RE::ActiveEffect &effect) {
         auto *ae = &effect;
-        if (!ModifiesValue(effect, value) || Controller(ae->spell))
+        const char *spellName = ae->spell ? ae->spell->GetName() : nullptr;
+        if (spellName && *spellName && !Hidden(ae->effect->baseEffect))
+            seen.insert(spellName);
+        if (!ModifiesValue(effect, value))
             return;
         const auto *base = ae->effect->baseEffect;
         std::string source = SourceName(actor, ae);
@@ -469,9 +484,18 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         // record's weight: the Creation Kit's definition, not read off the
         // executable.
         const bool first = base->data.primaryAV == value;
-        out.push_back(
-            {std::move(source), NameOr(base, ""), first ? ae->magnitude : ae->magnitude * base->data.secondAVWeight});
+        Contribution c{std::move(source), NameOr(base, ""),
+                       first ? ae->magnitude : ae->magnitude * base->data.secondAVWeight};
+        if (AllHidden(ae->spell))
+            hidden.emplace_back(spellName ? spellName : "", std::move(c));
+        else
+            out.push_back(std::move(c));
     });
+    for (auto &[name, c] : hidden)
+    {
+        if (!name.empty() && seen.contains(name))
+            out.push_back(std::move(c));
+    }
     // Smallest first: the weaknesses, then the boons, the largest last.
     std::stable_sort(out.begin(), out.end(),
                      [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
