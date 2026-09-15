@@ -5153,14 +5153,23 @@ void DrawSkills(const CharacterView &view)
 // place in its list. EndChild whether or not the region is visible, as ImGui
 // asks.
 //
+// A tab that opens a page in its list's place names it by `detail`, the page
+// open or zeros for the list. The region is ImGui's keeper of the scroll, so a
+// page in the list's own region scrolled it, clamped to the page's shorter
+// height, and the back arrow came back to a list moved up.
+//
 // A borderless child gets no padding, so a table as wide as the region put
 // its right border on the clip edge and lost it, scrollbar or not. A couple
 // of pixels either side keeps the border inside; none top or bottom, where
 // nothing is clipped. Popped before drawing, so the tab's own popups and
 // tooltips keep the style's padding.
-void TabBody(const char *name, ft::ActorId actor, const std::function<void()> &draw)
+void TabBody(const char *name, ft::ActorId actor, const std::function<void()> &draw,
+             std::initializer_list<std::uint64_t> detail = {})
 {
-    const std::string id = std::string("##tab/") + name + "/" + std::to_string(actor);
+    std::string id = std::string("##tab/") + name + "/" + std::to_string(actor);
+    if (std::any_of(detail.begin(), detail.end(), [](std::uint64_t part) { return part != 0; }))
+        for (const std::uint64_t part : detail)
+            id += "/" + std::to_string(part);
     Im::PushStyleVar(Im::ImGuiStyleVar_WindowPadding, Im::ImVec2(2.0f, 0.0f));
     const bool open = Im::BeginChild(id.c_str(), Im::ImVec2(0.0f, 0.0f), Im::ImGuiChildFlags_AlwaysUseWindowPadding, 0);
     Im::PopStyleVar(1);
@@ -5220,12 +5229,12 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
     }
     if (BeginSheetTab("Inventory", Tab::Inventory, select))
     {
-        TabBody("inventory", view.id, [&] { DrawInventory(view); });
+        TabBody("inventory", view.id, [&] { DrawInventory(view); }, {inventoryState.detail});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Magic", Tab::Magic, select))
     {
-        TabBody("magic", view.id, [&] { DrawMagic(view); });
+        TabBody("magic", view.id, [&] { DrawMagic(view); }, {g_magicTabs[view.id].detail});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Summons", Tab::Summons, select))
@@ -5235,15 +5244,19 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
     }
     if (BeginSheetTab("Effects", Tab::Effects, select))
     {
-        TabBody("effects", view.id, [&] { DrawEffects(view); });
+        const EffectsTabState &effects = g_effectsTabs[view.id];
+        TabBody("effects", view.id, [&] { DrawEffects(view); },
+                {effects.detailForm, effects.detailSource, effects.detailLink});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Skills", Tab::Skills, select))
     {
-        TabBody("skills", view.id, [&] {
-            Im::Spacing();
-            DrawSkills(view);
-        });
+        TabBody("skills", view.id,
+                [&] {
+                    Im::Spacing();
+                    DrawSkills(view);
+                },
+                {g_skillsTabs[view.id].detail});
         Im::EndTabItem();
     }
 }
