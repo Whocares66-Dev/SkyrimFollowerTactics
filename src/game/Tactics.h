@@ -48,7 +48,7 @@ struct CharacterView
     float carriedWeight{0.0f};
     float carryCapacity{0.0f};
     // The three bars' maxima and the carry weight written out -- the base,
-    // each effect by name, the perks and race -- as hover text on the bars
+    // each effect by name, what else is in the value -- as hover text on the bars
     // and on the Carrying figure.
     ft::Breakdown healthBreakdown;
     ft::Breakdown staminaBreakdown;

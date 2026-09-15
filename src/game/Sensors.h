@@ -469,36 +469,26 @@ struct SummonView
 [[nodiscard]] std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor);
 
 // Where a number on a sheet comes from. The engine keeps an actor value as
-// a base plus lumps -- what perks and race add, what magic adds -- and
-// names no source; but every running effect says which value it moves, by
-// how much, and what applied it. So the magic lump can be told by source
-// -- "Adept Robes of Destruction: +100" -- and only the perks-and-race
-// lump stays a lump.
+// a base plus modifiers and names no source; but every running effect says
+// which value it moves, by how much, and what applied it. So what magic
+// adds can be told by source -- "Adept Robes of Destruction: +100" -- and
+// what anything else wrote there (a script, another plugin) cannot.
 struct Contribution
 {
     std::string source; // the worn item, the potion, the spell
     std::string effect; // the magic effect's own name, "Fortify Armor Rating"
     float amount{0.0f}; // signed: a detrimental effect takes away
-    // Written by the engine into the permanent value, where perks and race
-    // are, rather than the temporary one: some of the player's effects, never
-    // an NPC's. A source line, and so not counted as perks too.
-    bool permanent{false};
 };
 [[nodiscard]] std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value);
 
 // The sources as lines added to a breakdown, smallest first -- the
 // weaknesses, then the boons, the largest last: "Silver Ruby Ring: +50%".
-// `scale` turns an amount into the line's number where the two differ (a
-// regen multiplier's sources read as the rate they add).
-void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources, float scale = 1.0f);
+void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources);
 
-// A value written out: "Base: 3", the sources, then "Perks and race: +2"
-// when they add anything -- what is permanent beyond the base less the
-// sources the engine wrote there (Contribution::permanent), which is perks
-// and race, and not damage (below the base) -- and the total the row shows,
-// with an Other line where the lines do not make it.
-[[nodiscard]] ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, float perks, float total,
-                                           int decimals, const char *unit, float scale = 1.0f);
+// A value written out: "Base: 3", the sources, and the total the row shows,
+// with an Other line for what the sources do not explain.
+[[nodiscard]] ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, float total, int decimals,
+                                           const char *unit);
 // The same read off an actor value, its running effects as the sources,
 // and the value as it reads now as the total. For a pool (Health, Magicka,
 // Stamina) the total is the maximum, not what is left of it.

@@ -220,9 +220,9 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
     if (!owner)
         return {};
     // Current is the damaged value. The maximum is the permanent value --
-    // base plus the permanent modifiers, perks and race -- plus the
-    // TEMPORARY modifier, where a follower's Fortify enchantment or potion
-    // lands (the player's goes in the permanent one, WritesPermanent): a
+    // base plus the permanent modifier -- plus the TEMPORARY modifier,
+    // where a follower's Fortify enchantment or potion lands (the player's
+    // goes in the permanent one, docs/MODIFIERS.md): a
     // circlet of +50 magicka raises what the bar can show, and reading the
     // permanent value alone put 346 over 246 (2026-09-09). Their ratio is
     // what the rules read, so both are logged in Tactics.cpp to make a
@@ -423,37 +423,6 @@ bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
     return primary || secondary;
 }
 
-namespace
-{
-// Whether the engine wrote this effect's amount into the permanent modifier,
-// where perks and race are, rather than the temporary one. Read off
-// ValueModifierEffect::ModifyActorValue (id 35086) in the running game,
-// 2026-09-13: for the player alone, an effect whose base recovers and that
-// has no conditions, from an ability, a constant-effect enchantment, or a
-// potion that is not a poison on Health, Magicka or Stamina. Every NPC's,
-// and every other of the player's, goes to the temporary modifier.
-bool WritesPermanent(RE::Actor *actor, const RE::ActiveEffect &ae, RE::ActorValue value)
-{
-    using Type = RE::MagicSystem::SpellType;
-    if (!actor->IsPlayerRef() || !ae.spell ||
-        !ae.effect->baseEffect->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kRecover) ||
-        ae.flags.any(RE::ActiveEffect::Flag::kHasConditions))
-        return false;
-    switch (ae.spell->GetSpellType())
-    {
-    case Type::kAbility:
-        return true;
-    case Type::kEnchantment:
-        return ae.spell->GetCastingType() == RE::MagicSystem::CastingType::kConstantEffect;
-    case Type::kPotion:
-        return !ae.spell->IsPoison() && (value == RE::ActorValue::kHealth || value == RE::ActorValue::kMagicka ||
-                                         value == RE::ActorValue::kStamina);
-    default:
-        return false;
-    }
-}
-} // namespace
-
 std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 {
     std::vector<Contribution> out;
@@ -474,7 +443,7 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         // Aura carries a zero here) is not a source; one too small to print, below half a hundredth, is noise.
         if (std::abs(ae->magnitude) < 0.005f)
             return;
-        out.push_back({std::move(source), NameOr(base, ""), ae->magnitude, WritesPermanent(actor, effect, value)});
+        out.push_back({std::move(source), NameOr(base, ""), ae->magnitude});
     });
     // Smallest first: the weaknesses, then the boons, the largest last.
     std::stable_sort(out.begin(), out.end(),
@@ -562,36 +531,29 @@ float EffectiveArmor(RE::Actor *actor)
     return actor ? ArmorValue(actor) + HiddenArmor(actor) : 0.0f;
 }
 
-void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources, float scale)
+void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources)
 {
     std::stable_sort(sources.begin(), sources.end(),
                      [](const Contribution &a, const Contribution &b) { return a.amount < b.amount; });
     for (Contribution &c : sources)
-        ft::Add(b, std::move(c.source), c.amount * scale);
+        ft::Add(b, std::move(c.source), c.amount);
 }
 
-ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, float perks, float total, int decimals,
-                             const char *unit, float scale)
+ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, float total, int decimals, const char *unit)
 {
     ft::Breakdown b;
     b.decimals = decimals;
     b.unit = unit;
     ft::Start(b, "Base", base);
-    // A source the engine wrote into the permanent value is a line of its
-    // own, and not perks as well.
-    for (const Contribution &c : sources)
-        if (c.permanent)
-            perks -= c.amount;
-    AddSourceLines(b, std::move(sources), scale);
-    // Below what prints, it is floating-point noise in the permanent value,
-    // not perks.
-    if (ft::Visible(b, perks * scale))
-        ft::Add(b, "Perks and race", perks * scale);
+    AddSourceLines(b, std::move(sources));
     b.total = total;
-    // An effect on the list but not yet in the value is an Other line:
-    // seen with an enchanted piece equipped from the panel while the clock
-    // is frozen, when the effect is listed at once and the value moves on
-    // the actor's next update (2026-09-11).
+    // What no running effect explains is Other, and it was once a "Perks
+    // and race" line of its own: a guess, and wrong for what a script or
+    // another plugin writes straight into the value. Blade and Blunt's
+    // injuries take 10% off the player's Health that way (2026-09-14). An
+    // effect listed but not yet in the value lands here too: an enchanted
+    // piece equipped from the panel while the clock is frozen is listed at
+    // once, and the value moves on the actor's next update (2026-09-11).
     ft::Close(b);
     return b;
 }
@@ -601,16 +563,15 @@ ft::Breakdown ValueBreakdown(RE::Actor *actor, RE::ActorValue value, const char 
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     if (!owner)
         return {};
-    const float base = owner->GetBaseActorValue(value);
-    const float permanent = owner->GetPermanentActorValue(value);
     // A pool's maximum is the permanent value plus what effects add for
     // now; the damage taken is below it and is not a source. Every other
     // value is what it reads.
     const bool pool =
         value == RE::ActorValue::kHealth || value == RE::ActorValue::kMagicka || value == RE::ActorValue::kStamina;
-    const float total = pool ? permanent + actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, value)
+    const float total = pool ? owner->GetPermanentActorValue(value) +
+                                   actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, value)
                              : owner->GetActorValue(value);
-    return ValueBreakdown(base, Contributions(actor, value), permanent - base, total, 0, unit);
+    return ValueBreakdown(owner->GetBaseActorValue(value), Contributions(actor, value), total, 0, unit);
 }
 
 ft::Breakdown CarryWeightBreakdown(RE::Actor *actor)
@@ -2232,7 +2193,7 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
         // for itself: "Deathbrand Gauntlets x 1.25", not the controller
         // perk that turned the gauntlets' +25 into a factor. One line per
         // source, each with its own share, and one for what the sources
-        // do not explain (perks and race on the value). Two sources'
+        // do not explain. Two sources'
         // factors miss their product by the cross term, an Other line;
         // one source, the common case, is exact.
         std::vector<ft::BreakdownLine> bySource;
@@ -2254,7 +2215,7 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
                 push(std::move(c.source), c.amount);
             }
             if (const float rest = value - explained; std::abs(rest) > 0.05f)
-                push(ValueName(av) + " (perks and race)", rest);
+                push("Other", rest);
         };
         switch (entry->entryData.function.get())
         {
@@ -2754,22 +2715,28 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     }
 
     {
-        // The rate the follower actually regenerates at: the base rate times
-        // its multiplier, which is where every buff lands -- robes of
-        // Destruction's "magicka regenerates 100% faster" is +100 on the
-        // multiplier, and the rate itself stays at 3. The base and the
-        // multiplier are the row's hover text when they differ from plain.
+        // The rate the follower actually regenerates at: the rate times its
+        // multiplier. A buff lands on either: robes of Destruction's
+        // "magicka regenerates 100% faster" is +100 on the multiplier, and
+        // Mundus's Elfborn stone is +3 on the rate itself. Reading the
+        // rate as it stands for the base hid the stone inside it
+        // (2026-09-14).
         SheetSection s{"Regen", {}, {}};
         const auto regen = [&](const char *label, RE::ActorValue rate, RE::ActorValue mult) {
-            const float base = av(rate);
-            const float factor = av(mult) / 100.0f;
-            SheetRow row = Row(label, Fmt("%.2f%%", base * factor));
-            // The base rate, then what speeds it up and by whom.
-            // Each as the rate it adds, not the speed it multiplies by:
-            // "+3.00%" for robes that double a 3% base reads straight off.
-            row.breakdown = ValueBreakdown(base, Contributions(actor, mult),
-                                           owner->GetPermanentActorValue(mult) - owner->GetBaseActorValue(mult),
-                                           base * factor, 2, "%", base / 100.0f);
+            const float current = av(rate);
+            const float total = current * av(mult) / 100.0f;
+            SheetRow row = Row(label, Fmt("%.2f%%", total));
+            // Each source as the rate it adds, not the speed it multiplies
+            // by: "+3.00%" for robes that double a 3% rate reads straight
+            // off. A multiplier's source scales the whole rate, the rate's
+            // own sources included, so the lines sum to the row.
+            std::vector<Contribution> sources = Contributions(actor, rate);
+            for (Contribution &c : Contributions(actor, mult))
+            {
+                c.amount *= current / 100.0f;
+                sources.push_back(std::move(c));
+            }
+            row.breakdown = ValueBreakdown(owner->GetBaseActorValue(rate), std::move(sources), total, 2, "%");
             s.rows.push_back(std::move(row));
         };
         regen("Health Rate", RE::ActorValue::kHealRate, RE::ActorValue::kHealRateMult);
@@ -3625,8 +3592,9 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
 
         // Every modifier is a signed change from normal: "+90% damage",
         // "-17% cost", each its own figure with its own breakdown: the
-        // sources by name -- the gauntlets, the potion -- and what is left
-        // to perks. Power first, then the other, as the two read best.
+        // sources by name -- the gauntlets, the potion -- and what no
+        // effect explains as Other. Power first, then the other, as the
+        // two read best.
         const auto part = [&](const std::string &text, std::initializer_list<std::pair<const Modifier *, float>> from,
                               double total) {
             SheetRow::ModifierPart piece;
@@ -3636,14 +3604,8 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             {
                 if (amount == 0.0f)
                     continue;
-                float explained = 0.0f;
                 for (const Contribution &c : Contributions(actor, mod->value))
-                {
                     ft::Add(piece.breakdown, c.source, mod->sign * c.amount);
-                    explained += c.amount;
-                }
-                if (const float rest = amount - explained; ft::Visible(piece.breakdown, rest))
-                    ft::Add(piece.breakdown, "Perks", mod->sign * rest);
             }
             piece.breakdown.total = total;
             ft::Close(piece.breakdown);
