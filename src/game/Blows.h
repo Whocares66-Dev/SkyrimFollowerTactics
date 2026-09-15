@@ -10,7 +10,8 @@
 // which the tree resolves into bashStart, and which sets the bash attack
 // state; the event sent straight to the graph was taken and set no such
 // state (2026-09-15). The tree offers a power bash to the player alone, so a
-// power bash is still sent to the graph as an event, from the block.
+// power bash is the same action from the block with bashPowerStart set as
+// its event, as the combat AI's melee chooser makes one.
 //
 // So a request is steps: the hands free (the weapon drawn, no swing in
 // progress), the block raised unless it is up already, the bash asked for

@@ -51,6 +51,13 @@ struct Run
     // free with the block up; -1 while they are not.
     double freeSince = -1.0;
     double steadySince = -1.0;
+    // When the bash attack state was first seen, and when it was over; -1
+    // for not yet. A bash is short, and one cut off shorter still.
+    double bashFrom = -1.0;
+    double bashEnd = -1.0;
+    // The follower's stamina when the request was made: what a bash the
+    // engine made was charged against.
+    float staminaAtRequest = -1.0f;
     // Lowered at the end only if this request raised it: a block the
     // follower already held is their AI's to lower.
     bool raised = false;
@@ -64,6 +71,9 @@ struct Run
     int otherAttackState = -1;
     int ruleIndex = -1;
     std::string ruleName;
+    // The event of the attack data current when the bash state was first
+    // seen: bashStart or bashPowerStart.
+    std::string attackEvent;
 };
 
 // Game thread. The count is the pacing thread's, which only asks whether any
@@ -87,6 +97,10 @@ const char *KindOf(const Run &run) noexcept
 void Report(const Run &run, RE::Actor *actor, const char *reason, double now)
 {
     const auto since = [&run](double at) { return at < 0.0 ? -1.0 : at - run.requestedAt; };
+    double bashSeconds = -1.0;
+    if (run.bashFrom >= 0.0)
+        bashSeconds = (run.bashEnd >= 0.0 ? run.bashEnd : now) - run.bashFrom;
+    const float staminaNow = actor ? actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina) : -1.0f;
     std::vector<log::Field> fields;
     if (!actor)
         fields.emplace_back("followerId", log::Id(run.id));
@@ -106,17 +120,21 @@ void Report(const Run &run, RE::Actor *actor, const char *reason, double now)
     fields.emplace_back("blockRefusals", run.blockRefusals);
     fields.emplace_back("bashRefusals", run.bashRefusals);
     fields.emplace_back("attackStateSeen", run.otherAttackState);
+    fields.emplace_back("bashS", bashSeconds);
+    fields.emplace_back("attackEvent", run.attackEvent);
+    fields.emplace_back("staminaAtRequest", static_cast<double>(run.staminaAtRequest));
+    fields.emplace_back("staminaAtEnd", static_cast<double>(staminaNow));
     log::blows.event(log::Level::Info, "rule.resolved", actor, fields,
                      "{} rule {} \"{}\": {} {} -- {}, after {:.2f} s (block {}, up at {:.2f} s, steady at {:.2f} s, "
                      "taken at {:.2f} s{}, "
-                     "refused {} block + {} bash)",
+                     "refused {} block + {} bash; bash state {:.2f} s, stamina {:.0f} -> {:.0f})",
                      actor ? log::NameOf(actor) : log::Id(run.id), run.ruleIndex, run.ruleName, KindOf(run),
                      run.sawBash ? "made" : "not made", reason, now - run.requestedAt,
                      run.alreadyBlocking ? "already up"
                      : run.raised        ? "raised"
                                          : "not raised",
                      since(run.blockUpAt), since(run.steadySince), since(run.sentAt), run.waited ? " after a wait" : "",
-                     run.blockRefusals, run.bashRefusals);
+                     run.blockRefusals, run.bashRefusals, bashSeconds, run.staminaAtRequest, staminaNow);
 }
 
 void Finish(const Run &run, RE::Actor *actor, const char *reason, double now)
@@ -127,6 +145,31 @@ void Finish(const Run &run, RE::Actor *actor, const char *reason, double now)
         log::blows.debug("{}: block lowered{}", Describe(actor), lowered ? "" : " -- the release was turned away");
     }
     Report(run, actor, reason, now);
+}
+
+// A power bash as the combat AI's melee chooser makes one (49170 on
+// 1.6.1170): a CombatAnimation of the right attack action with the attack's
+// event set in its output, then processed, then destroyed. The idle tree
+// offers bashPowerStart to the player alone; the chooser's action carries
+// the event past it.
+bool PerformRightAttackWith(RE::Actor *actor, const char *event)
+{
+    auto *anim = RE::CombatAnimation::Create(actor, RE::CombatAnimation::ANIM::kActionRightAttack);
+    if (!anim)
+        return false;
+    anim->animEvent = event;
+    const bool performed = anim->Execute();
+    anim->~CombatAnimation();
+    RE::free(anim);
+    return performed;
+}
+
+// The attack the engine made current: its event says which bash it was.
+const RE::BGSAttackData *AttackDataOf(RE::Actor *actor)
+{
+    auto *process = actor ? actor->GetActorRuntimeData().currentProcess : nullptr;
+    auto *high = process ? process->high : nullptr;
+    return high ? high->attackData.get() : nullptr;
 }
 
 // One step, where the request can take it; the reason it is over, or null
@@ -199,12 +242,12 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
             run.steadySince = now;
         if (run.waited && now - run.steadySince < kSettleSeconds)
             return nullptr;
-        // A bash is the right attack action from the block, as the combat AI
-        // makes one: the tree resolves it into bashStart, and the action is
-        // what sets the bash attack state.
+        // A bash is the right attack action from the block, which the tree
+        // resolves into bashStart; the action is what sets the bash attack
+        // state. A power bash is the same action carrying bashPowerStart.
         bool taken = false;
         if (run.power)
-            taken = actor->NotifyAnimationGraph(EventOf(run));
+            taken = PerformRightAttackWith(actor, EventOf(run));
         else if (const auto target = run.target.get())
             taken = RE::CombatAnimation::Execute(actor, target.get(), RE::CombatAnimation::ANIM::kActionRightAttack);
         else
@@ -217,15 +260,27 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
         run.sentAt = now;
         run.step = Step::Bashing;
         log::blows.debug("{}: {} taken {:.2f} s after the request", Describe(actor),
-                         run.power ? "bashPowerStart" : "the right attack action from the block",
+                         run.power ? "the right attack action carrying bashPowerStart"
+                                   : "the right attack action from the block",
                          now - run.requestedAt);
         return nullptr;
     }
 
     if (attack == RE::ATTACK_STATE_ENUM::kBash)
+    {
+        if (!run.sawBash)
+        {
+            run.bashFrom = now;
+            if (const auto *data = AttackDataOf(actor))
+                run.attackEvent = data->event.c_str();
+        }
         run.sawBash = true;
+    }
     else if (run.sawBash)
+    {
+        run.bashEnd = now;
         return "bash made";
+    }
     else if (attack != RE::ATTACK_STATE_ENUM::kNone && run.otherAttackState < 0)
         run.otherAttackState = static_cast<int>(attack);
     if (now - run.sentAt >= kWatchSeconds)
@@ -247,6 +302,7 @@ BashRequest RequestBash(RE::Actor *actor, std::uint32_t targetId, bool power, in
     run.actor = actor->GetHandle();
     if (auto *target = targetId != 0 ? RE::TESForm::LookupByID<RE::Actor>(targetId) : nullptr)
         run.target = target->GetHandle();
+    run.staminaAtRequest = actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
     run.id = actor->GetFormID();
     run.power = power;
     run.ruleIndex = ruleIndex;

@@ -49,6 +49,7 @@ Not addresses: copied into the plugin as logic, and wrong on another build only 
 - How far a swing has to reach (47273 and 47276; `ReachDistance` and `BodyRadius`, `src/game/Sensors.cpp`): centre to centre, flat from a height difference of 48, less both bodies' radii, each the bound max Y times the scale or 16.
 - What the UseWeapon procedure does: its facing check, its turning out of combat and not in one, and how its inputs map (`docs/ATTACK.md`).
 - The combat animation actions a block is raised and lowered with (3 and 4), and the idle tree's gates on a bash (`docs/ATTACK.md` "How the engine bashes").
+- A power bash as the combat AI's melee chooser makes one (49170): a right attack `CombatAnimation` with the attack's event in its output (`PerformRightAttackWith`, `src/game/Blows.cpp`). CommonLib maps the constructor and `Execute` for both runtimes; the shape was read from 1.6.1170.
 
 ## Not version-bound
 
