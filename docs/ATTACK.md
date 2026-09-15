@@ -29,8 +29,21 @@ Read 2026-09-15 from the running game with `tools/livedisasm.py`; the IDs are th
 ## So, for our blows
 
 - **Power Attack fits.** AlwaysPowerAttack narrows the draw to power attacks; the engine picks which one (in place, forward, sideways, backward) by the race's chances.
-- **Bash and Power Bash do not.** The flag test excludes them and no input reaches it. The combat AI bashes through its behaviour tree (`CombatBehaviorBash`, vtable 212595, a thin node over code not traced). A bash sent the way the procedure sends a swing -- the action system, an attack action carrying the `bashStart` entry's event -- is the likely shape of the engine's own, and untried.
+- **Bash and Power Bash do not.** The flag test excludes them and no input reaches it; no package procedure bashes. "How the engine bashes" below is the other route.
+- **Attack is not this.** The Attack action points the follower at an enemy and leaves the choice of blow, spell or bow to the AI; a UseWeapon package would force a weapon attack, which is only wanted for Power Attack.
 - **The action system is also a cheaper experiment for all three.** Sending a blow from the tick as the procedure does, rather than with `NotifyAnimationGraph`, changes the route and not the timing: the combat AI still holds the graph, so it may be refused as often.
+
+## Who uses it
+
+Across the load order (2026-09-15), 113 packages are built on the UseWeapon templates, and nearly all are staged: guards and trainees at practice dummies, archery ranges, Helgen's guards shooting at Alduin, Sovngarde, the Civil War barricades, Hearthfire's children sparring. Three override combat (interrupt override Combat): Karliah's and Brynjolf's in Blindsighted and `DLC2KagrumezHoldPositionFight2`. The combat AI never runs the procedure: its melee attacks come from its behaviour tree's chooser (49170), which shares only `GetAttackChance` and the reach check with it. Forcing an attack in a real fight is the rare use, and what we would be relying on.
+
+## How the engine bashes
+
+Read 2026-09-15 the same way; nothing tried in play.
+
+- **A bash is a right-hand attack made while blocking.** In the idle tree, `bashStart` (01B417) is a child of `NonMountedCombatRight`, the branch `ActionRightAttack` resolves through, beside `NormalAttack` (`attackStart`), under three conditions: GetWantBlocking 1, IsBlocking 1, attack state not Bash. `PowerBash` (0E8452, `bashPowerStart`) is under `NonMountedCombatRightPower`, gated on HasPerk Power Bash **and** GetIsID Player: the tree gives a power bash to the player alone. How an NPC's power bash comes about (the race data offers `bashPowerStart` at 0.33) was not read.
+- **The combat AI does it in two moves.** Its Block behaviour raises the block with `CombatAnimation::Execute(actor, 3)` and lowers it with 4. The engine's table behind those numbers, read from the constructor (44436): 0 `ActionRightAttack`, 1 `ActionRightRelease`, 2 `ActionRightPowerAttack`, 3 `ActionLeftAttack`, 4 `ActionLeftRelease`, 5 and 6 right attack and release again, 7 `ActionRightInterrupt`, 8 `ActionSneak`, 9 `ActionActivate`; CommonLibSSE's names for them are right. Two functions beside the Bash node (47866, 47867) lower the block too. The Bash node (47861, through 47841) and the Attack node (49199, through 49178) call the same melee chooser, 49170, each with its own list of candidate attacks, and 49170 performs the drawn entry as a `CombatAnimation` of `ActionRightAttack` carrying the entry's event: the UseWeapon procedure's shape, through `CombatAnimation` instead of 41557. That the Bash node's list holds the bash-flagged entries is inferred from the names, not read.
+- **So the route besides a bare event** is the engine's: raise the block, then a `CombatAnimation` of `ActionRightAttack` with `bashStart` as its event, then lower the block. CommonLibSSE maps `CombatAnimation`, so none of it needs a new address. Our `Execute` sends `bashStart` with no block raised, which the idle tree would not select. Whether the graph refuses a bash from outside a block, and so whether that is part of the refusals measured, is the first thing to test. It is still the animation graph underneath: this changes the order and the gate, not who holds the graph, and the combat AI can take it back between the two moves.
 
 ## What it would take
 
