@@ -626,11 +626,14 @@ namespace
 {
 // A value a line reads, opened out beneath it. In the value's own units,
 // not the breakdown's: a multiplier beneath a recovery time read "+0.2 s".
-// Empty for a base alone, which is the line's own figure again.
-std::vector<ft::BreakdownLine> ValueLines(RE::Actor *actor, RE::ActorValue value, float reading)
+// `scale` turns the value's units into the line's where they differ: a
+// Magicka Rate Mult of 200 is the factor x 2, its terms 1 and 0.5, and
+// `reading` is then in the line's units. Empty for a base alone, which is
+// the line's own figure again.
+std::vector<ft::BreakdownLine> ValueLines(RE::Actor *actor, RE::ActorValue value, float reading, float scale = 1.0f)
 {
     ft::Breakdown b;
-    AddValueLines(b, PartsOf(actor, value));
+    AddValueLines(b, PartsOf(actor, value), scale);
     b.total = reading;
     ft::Close(b);
     if (b.lines.size() == 1 && b.lines.front().op == ft::Op::Start)
@@ -3036,27 +3039,27 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     }
 
     {
-        // The rate the follower actually regenerates at: the rate times its
-        // multiplier. A buff lands on either: robes of Destruction's
-        // "magicka regenerates 100% faster" is +100 on the multiplier, and
-        // Mundus's Elfborn stone is +3 on the rate itself. Reading the
-        // rate as it stands for the base hid the stone inside it
-        // (2026-09-14).
+        // The rate the follower regenerates at: the rate, a share of the pool
+        // a second, times its multiplier, where a Magicka Rate Mult of 200 is
+        // x 2. A buff lands on either: robes of Destruction's "magicka
+        // regenerates 100% faster" is +100 on the multiplier, and Mundus's
+        // Elfborn stone is +3 on the rate itself. Written as the two factors,
+        // each over its terms: as lines of flat rates, each multiplier source
+        // read as the rate it added, and a stone that doubled the rate
+        // doubled them unseen (2026-09-15). Rate times multiplier is UESP's
+        // account, not read off the executable.
         SheetSection s{"Regen", {}, {}};
         const auto regen = [&](const char *label, RE::ActorValue rate, RE::ActorValue mult) {
             const float current = av(rate);
-            const float total = current * av(mult) / 100.0f;
+            const float factor = av(mult) / 100.0f;
+            const float total = current * factor;
             SheetRow row = Row(label, Fmt("%.2f%%", total));
-            // Each source as the rate it adds, not the speed it multiplies
-            // by: "+3.00%" for robes that double a 3% rate reads straight
-            // off. A multiplier's source scales the whole rate, the rate's
-            // own sources included, so the lines sum to the row; its base,
-            // plain speed, is the rate's own lines.
             ft::Breakdown &b = row.breakdown;
             b.decimals = 2;
             b.unit = "%";
-            AddValueLines(b, PartsOf(actor, rate));
-            AddValueLines(b, {.base = 0.0f, .sources = Contributions(actor, mult)}, current / 100.0f);
+            ft::Start(b, ValueName(rate), current).detail = ValueLines(actor, rate, current);
+            if (factor != 1.0f)
+                ft::Multiply(b, ValueName(mult), factor).detail = ValueLines(actor, mult, factor, 0.01f);
             b.total = total;
             ft::Close(b);
             s.rows.push_back(std::move(row));
