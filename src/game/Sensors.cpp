@@ -2025,10 +2025,10 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
             row.value = Fmt("%.0f", damage);
             rows.push_back(std::move(row));
         }
-        // The critical pair in the details page's words and order. Speed,
-        // reach and stagger are on that page. A critical
-        // that never lands or lands for nothing is no critical: neither
-        // row, rather than one of them beside a 0.
+        // The critical pair and the speed in the details page's words and
+        // order. Reach and stagger are the record's and on that page. A
+        // critical that never lands or lands for nothing is no critical:
+        // neither row, rather than one of them beside a 0.
         {
             SheetRow chance;
             const float percent = CritChance(actor, weapon, &chance.breakdown);
@@ -2039,6 +2039,13 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
                 chance.value = Fmt("%.0f%%", percent);
                 rows.push_back(std::move(chance));
             }
+        }
+        {
+            SheetRow row;
+            const float speed = WeaponSpeed(actor, weapon, left, &row.breakdown);
+            row.label = "Speed";
+            row.value = Fmt("%.2f", speed);
+            rows.push_back(std::move(row));
         }
         if (weapon->IsBow() || weapon->IsCrossbow())
         {
