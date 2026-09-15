@@ -58,6 +58,11 @@ namespace ft::game
 inline constexpr std::uint32_t kFirstFormId = 0xFF3F0800;
 inline constexpr std::uint32_t kLastFormId = 0xFF3FFFFF;
 
+// Whether this file made the form with this ID. Not the same as an ID in the
+// range above: one the walk skipped belongs to someone else. Game thread only,
+// as the forms are made there.
+[[nodiscard]] bool MadeByUs(std::uint32_t formId);
+
 // A package with the same inputs as `source`, its own copy of each, at the
 // next free ID. packData is set to what the ESP-era records carried:
 // IgnoreCombat, Run, no interrupt override, no interrupt flags. No

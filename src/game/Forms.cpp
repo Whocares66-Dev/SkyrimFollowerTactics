@@ -2,6 +2,9 @@
 
 #include "game/Log.h"
 
+#include <algorithm>
+#include <vector>
+
 namespace ft::game
 {
 namespace
@@ -23,6 +26,9 @@ RE::TESPackage *CreatePackage(RE::PACKAGE_TYPE type)
     static REL::Relocation<func_t> func{RELOCATION_ID(28732, 29496)};
     return func(type);
 }
+
+// Every ID Place has given a form, ascending, since the walk only counts up.
+std::vector<std::uint32_t> g_made;
 
 // Move a fresh form from the engine's dynamic ID to the next free one of
 // ours. The constructor registered it under the dynamic one; SetFormID takes
@@ -55,11 +61,17 @@ bool Place(RE::TESForm *form, const char *what)
         log::forms.error("{} {:08X} (born {:08X}) -- NOT registered", what, form->GetFormID(), born);
         return false;
     }
+    g_made.push_back(id);
     log::forms.debug("{} {:08X} (born {:08X})", what, form->GetFormID(), born);
     return ok;
 }
 
 } // namespace
+
+bool MadeByUs(std::uint32_t formId)
+{
+    return std::binary_search(g_made.begin(), g_made.end(), formId);
+}
 
 RE::TESPackage *ClonePackage(RE::TESPackage *source)
 {

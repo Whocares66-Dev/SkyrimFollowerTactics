@@ -647,7 +647,22 @@ void GiveWrapper(RE::Actor *actor, RE::TESShout *wrapper)
 
 void TakeWrapper(RE::Actor *actor, RE::TESShout *wrapper)
 {
-    auto *list = actor ? (actor->GetActorBase() ? actor->GetActorBase()->actorEffects : nullptr) : nullptr;
+    if (!actor)
+        return;
+    // The Shout procedure readies what it fires, and a save writes the voice
+    // slot as a bare form ID that a load looks up again with no type check
+    // (docs/MAGIC.md "Forms at runtime"). So a power's wrapper does not stay
+    // there once the list gives it up, nor does anything of ours an old save
+    // put back; a real shout or power is the follower's and stays. A plain
+    // write: Papyrus's UnequipShout runs a frame later, after the save
+    // message's release has already let the file be written.
+    auto &voice = actor->GetActorRuntimeData().selectedPower;
+    if (voice && MadeByUs(voice->GetFormID()))
+    {
+        log::packages.debug("{:08X}'s voice slot held {:08X}, ours -- cleared", actor->GetFormID(), voice->GetFormID());
+        voice = nullptr;
+    }
+    auto *list = actor->GetActorBase() ? actor->GetActorBase()->actorEffects : nullptr;
     if (!list || !wrapper || !list->GetIndex(wrapper).has_value())
         return;
     const bool removed = list->RemoveShout(wrapper);

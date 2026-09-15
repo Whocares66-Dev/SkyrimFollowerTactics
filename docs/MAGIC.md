@@ -57,7 +57,7 @@ This reaches every follower the same way, whatever drives them: one in the vanil
 
 The game's own example of a package cast mid-fight is Mercer Frey in *Blindsighted*: a UseMagic package gated on quest stage makes him cast Nightingale Strife at the player. Ours is the same package with `GetIsReference` as the trigger, on the actor's stack.
 
-Open: the actor's package extra data is part of the save (`Actor::ChangeFlags::kPackageExtraData`), so a save inside a lease may reference the record by its form ID, which is recreated at load with its condition pointing at nobody; what the engine does with that on load is not known.
+The actor's package extra data is part of the save (`Actor::ChangeFlags::kPackageExtraData`), and the engine does save a runtime package an actor is running ("Forms at runtime" below). No save is made inside a lease: every lease is released on the save message, before the engine writes, and the release re-evaluates the follower's package at once.
 
 ### The C++ (`src/game/Packages.cpp`)
 
@@ -91,10 +91,7 @@ Open: the actor's package extra data is part of the save (`Actor::ChangeFlags::k
 
 **One set of records per follower.** Every input in a record -- spell, target, cast time -- belongs to one follower, so nothing in it can be shared by accident. While a follower holds one of theirs, their cast rules report *busy* for that turn, spend no cooldown, and the next rule gets its turn.
 
-Every lease is released on SKSE's save message, which arrives before the
-engine writes the file: a save never holds a follower running one of our
-packages, carrying a wrapper, or shouting a re-typed power. A game load drops
-every lease; the records stay.
+Every lease is released on SKSE's save message, which arrives before the engine writes the file: a save never holds a follower running one of our packages, carrying a wrapper in their shout list or their voice slot, or shouting a re-typed power. A game load drops every lease; the records stay.
 
 ### Forms at runtime
 
@@ -106,6 +103,7 @@ What `src/game/Forms.cpp` relies on, read from the **1.6.1170** executable rathe
 - **`TESCustomPackageData::InitItem`** (29658) resolves the template link from a FormID, shares the template's tree and name map, and creates **no inputs**. A file-loaded instance's inputs come from the file. So a runtime package copies its inputs from a finished vanilla instance (Mercer's; Tsun's for the Shout template), not from the template record, whose defaults differ anyway (radius 500, HoldWhenBlocked on, CastTime 2..3, Spell as an object *type*).
 - **`GetIsReference`'s condition function** (at 0x32DB20 in that build; found through the script-command table entry, which is what the engine's condition evaluator dispatches through): result 0; if the parameter is non-null and its form type is a reference type (0x3D..0x46) and equals the evaluating reference, result 1. Null-safe, so a slot's "off" state is a null parameter. `GetFactionRank`'s (0x32DBB0) likewise takes a faction *pointer*: condition parameters are resolved to pointers at load.
 - **The engine saves a runtime package an actor is running.** The actor loader (38966, an `Actor::LoadGame` helper) creates a package of the saved type with `CreatePackage` and fills it from the buffer when the saved ID is a created one -- for a custom package, a hollow one with no inputs and no conditions. SKSE's `kSaveGame` message is dispatched from its `SaveGame_Hook` **before** the original save routine runs, so every lease is released there.
+- **The voice slot is saved as a bare form ID.** Read from the running 1.6.1170 process (2026-09-14). `Actor::SaveGame` (37649; `Character`'s slot jumps to it) writes the four `selectedSpells` and then `selectedPower` (+1E8 on AE) through 36048, which takes the form's ID and writes a 3-byte reference (35928): a Skyrim.esm ID as `400000 | id`, a created one as `800000 | id`, the rest through the save's plugin table. `Actor::LoadGame` (37650) decodes it (36000, 35927: a created reference comes back as `FF000000` with its low 22 bits), looks the ID up (14617, which Engine Fixes hooks) and stores the result: a hand slot through `dynamic_cast` to a spell (109689), the voice slot with no check at all. `Actor::FinishLoadGame` (37652) then prepares what the voice slot holds if it is a spell (type 16) or a shout (77: each variation's spell, through 23367), and leaves anything else where it is. The Shout procedure readies what it fires, so a power's lease left its wrapper in the slot after the wrapper came out of the shout list, and a save wrote `FF3F0802` as `BF 08 02`. Loaded after a restart, that finds nothing, since our forms are made after the load; loaded without quitting, it finds a live form of ours, perhaps another follower's (IDs go out in the order the tick first sees followers) and, after a skipped ID, perhaps not a shout. So `TakeWrapper` clears the voice slot of any form `Forms.cpp` made (`MadeByUs`), when a lease is released, and so on the save message, and in the tick's sweep. By a plain write: the panel's unequip is Papyrus's `UnequipShout`, which the VM runs a frame later, after the save is written. A shout rule leaves the real shout readied, as the AI's own shouts do, and a hand holds the spell itself: neither is ours.
 - **PKDT, byte for byte, of the proven ESP records**: flags `00100000` (IgnoreCombat), type 18, interrupt override **0** ("None" in the file; the header's enum names 0 `kSpectator` and -1 `kNone`, so do not go by the names), speed 2 (Run), interrupt flags 0. Mercer's record differs in interrupt override (Combat) and combat style; the copies are set to the proven values.
 
 ### Clocks
