@@ -3,8 +3,10 @@
 #include "game/Sheet.h"
 
 #include "core/Blows.h"
+#include "core/CustomSkills.h"
 #include "core/Effects.h"
 
+#include "game/CustomSkillsFramework.h"
 #include "game/Hits.h"
 #include "game/Inventory.h"
 #include "game/Log.h"
@@ -426,10 +428,10 @@ bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
 
 namespace
 {
-bool Hidden(const RE::EffectSetting *base)
-{
 bool HeldPerkGrants(RE::Actor *actor, const RE::MagicItem *spell); // below, with the perks
 
+bool Hidden(const RE::EffectSetting *base)
+{
     return base && base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI);
 }
 
@@ -1804,6 +1806,7 @@ struct TreePerk
     int ranks;         // length of that chain
     float requirement; // the skill level the perk asks for; 0 if it asks nothing
     std::string description;
+    int order{0}; // its node's place in the tree's own order (ft::TreeOrder)
 };
 
 // The skill level a perk requires, read from its own conditions. It is not a
@@ -1847,15 +1850,40 @@ const std::vector<TreePerk> &TreePerks(RE::ActorValue skill)
     auto *info = list ? list->GetActorValueInfo(skill) : nullptr;
     if (info && info->perkTree)
     {
+        std::vector<RE::BGSSkillPerkTreeNode *> nodes;
+        std::unordered_map<const RE::BGSSkillPerkTreeNode *, std::size_t> index;
         std::vector<RE::BGSSkillPerkTreeNode *> stack{info->perkTree};
-        std::unordered_set<const RE::BGSSkillPerkTreeNode *> seen;
         while (!stack.empty())
         {
             auto *node = stack.back();
             stack.pop_back();
-            if (!node || !seen.insert(node).second)
+            if (!node || index.contains(node))
                 continue;
+            index.emplace(node, nodes.size());
+            nodes.push_back(node);
+            for (auto *child : node->children)
+                stack.push_back(child);
+        }
 
+        // Where the menu draws each node across -- its grid column plus its
+        // offset within it -- and whom it leads to, for the tree's order.
+        // The first node of a tree is a root with no perk and nonsense in its
+        // grid; it lists nothing, so its place is harmless.
+        std::vector<ft::TreeNodePlace> places(nodes.size());
+        for (std::size_t i = 0; i < nodes.size(); ++i)
+        {
+            places[i].x = static_cast<double>(nodes[i]->perkGridX) + nodes[i]->horizontalPosition;
+            for (auto *child : nodes[i]->children)
+            {
+                if (const auto it = index.find(child); it != index.end())
+                    places[i].children.push_back(it->second);
+            }
+        }
+        const std::vector<std::size_t> order = ft::TreeOrder(places);
+
+        for (std::size_t place = 0; place < order.size(); ++place)
+        {
+            const auto *node = nodes[order[place]];
             // A node names the first rank; the rest chain through nextPerk.
             // Bounded, because a malformed chain that loops would hang the
             // game thread, and a chain longer than this is not a rank chain.
@@ -1867,19 +1895,21 @@ const std::vector<TreePerk> &TreePerks(RE::ActorValue skill)
                 RE::BSString text;
                 chain[i]->GetDescription(text, chain[i]);
                 out.push_back({chain[i], static_cast<int>(i) + 1, static_cast<int>(chain.size()),
-                               SkillRequirement(chain[i], skill), text.c_str() ? text.c_str() : ""});
+                               SkillRequirement(chain[i], skill), text.c_str() ? text.c_str() : "",
+                               static_cast<int>(place)});
             }
-
-            for (auto *child : node->children)
-                stack.push_back(child);
         }
     }
 
     // Least demanding first: the requirement is the game's own statement of
-    // how strong a perk is, so the list reads weakest to strongest.
+    // how strong a perk is, so the list reads weakest to strongest. Perks
+    // asking the same read as the tree does, by depth and then left to right
+    // as the menu draws them (ft::TreeOrder); a chain's ranks in turn.
     std::sort(out.begin(), out.end(), [](const TreePerk &a, const TreePerk &b) {
         if (a.requirement != b.requirement)
             return a.requirement < b.requirement;
+        if (a.order != b.order)
+            return a.order < b.order;
         return a.rank < b.rank;
     });
     return cache.emplace(skill, std::move(out)).first->second;
@@ -1954,36 +1984,6 @@ std::string PerkName(const RE::BGSPerk *perk)
 }
 } // namespace
 
-// The records whose conditions ask HasPerk of a perk -- other perks'
-// entries on any tab, spells' effects, magic effects -- by name, so a
-// perk with no entries can say who reads it, or that nobody does. The
-// whole load order once, on first use: a few thousand records, a few
-// milliseconds, and the answer does not change while the game runs.
-const std::vector<std::string> &PerkReaders(const RE::BGSPerk *perk)
-{
-    static const std::unordered_map<RE::FormID, std::vector<std::string>> readers = [] {
-        std::unordered_map<RE::FormID, std::vector<std::string>> out;
-        auto *handler = RE::TESDataHandler::GetSingleton();
-        if (!handler)
-            return out;
-        const auto note = [&out](const RE::TESCondition &condition, const std::string &who) {
-            for (const auto *item = condition.head; item; item = item->next)
-            {
-                if (item->data.functionData.function.get() != RE::FUNCTION_DATA::FunctionID::kHasPerk)
-                    continue;
-                const auto *asked = static_cast<const RE::BGSPerk *>(item->data.functionData.params[0]);
-                if (!asked || who.empty())
-                    continue;
-                auto &names = out[asked->GetFormID()];
-                if (std::find(names.begin(), names.end(), who) == names.end())
-                    names.push_back(who);
-            }
-        };
-        for (const auto *other : handler->GetFormArray<RE::BGSPerk>())
-        {
-            if (!other)
-                continue;
-            for (const auto *entry : other->perkEntries)
 // Whether a perk the actor holds grants this ability under the ability's own
 // name. Which perks grant which abilities is the load order's, read once.
 bool HeldPerkGrants(RE::Actor *actor, const RE::MagicItem *spell)
@@ -2021,6 +2021,36 @@ bool HeldPerkGrants(RE::Actor *actor, const RE::MagicItem *spell)
                        [&](RE::BGSPerk *perk) { return actor->HasPerk(perk) && PerkName(perk) == name; });
 }
 
+// The records whose conditions ask HasPerk of a perk -- other perks'
+// entries on any tab, spells' effects, magic effects -- by name, so a
+// perk with no entries can say who reads it, or that nobody does. The
+// whole load order once, on first use: a few thousand records, a few
+// milliseconds, and the answer does not change while the game runs.
+const std::vector<std::string> &PerkReaders(const RE::BGSPerk *perk)
+{
+    static const std::unordered_map<RE::FormID, std::vector<std::string>> readers = [] {
+        std::unordered_map<RE::FormID, std::vector<std::string>> out;
+        auto *handler = RE::TESDataHandler::GetSingleton();
+        if (!handler)
+            return out;
+        const auto note = [&out](const RE::TESCondition &condition, const std::string &who) {
+            for (const auto *item = condition.head; item; item = item->next)
+            {
+                if (item->data.functionData.function.get() != RE::FUNCTION_DATA::FunctionID::kHasPerk)
+                    continue;
+                const auto *asked = static_cast<const RE::BGSPerk *>(item->data.functionData.params[0]);
+                if (!asked || who.empty())
+                    continue;
+                auto &names = out[asked->GetFormID()];
+                if (std::find(names.begin(), names.end(), who) == names.end())
+                    names.push_back(who);
+            }
+        };
+        for (const auto *other : handler->GetFormArray<RE::BGSPerk>())
+        {
+            if (!other)
+                continue;
+            for (const auto *entry : other->perkEntries)
             {
                 if (!entry || entry->GetType() != RE::PERK_ENTRY_TYPE::kEntryPoint)
                     continue;
@@ -2049,27 +2079,51 @@ bool HeldPerkGrants(RE::Actor *actor, const RE::MagicItem *spell)
     return found == readers.end() ? none : found->second;
 }
 
+namespace
+{
+// Held, and the rank a held chain shows: no higher rank held, which would
+// get the row instead.
+bool TopRankHeld(RE::Actor *actor, RE::BGSPerk *perk)
+{
+    return actor->HasPerk(perk) && !(perk->nextPerk && actor->HasPerk(perk->nextPerk));
+}
+
+SheetRow PerkRow(RE::Actor *actor, RE::BGSPerk *perk, int rank, int ranks, std::string description)
+{
+    std::string label = PerkName(perk);
+    if (label.empty())
+        label = "?";
+    SheetRow row = Row(std::move(label), ranks > 1 ? std::to_string(rank) + "/" + std::to_string(ranks) : "");
+    row.modifiers = std::move(description);
+    row.form = perk->GetFormID(); // the name opens the perk's page
+    if (const char *aside = PerkAside(actor, perk))
+        row.aside = aside;
+    return row;
+}
+} // namespace
+
 std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
 {
     std::vector<SheetRow> rows;
     for (const TreePerk &entry : TreePerks(skill))
     {
-        if (!actor->HasPerk(entry.perk))
+        if (TopRankHeld(actor, entry.perk))
+            rows.push_back(PerkRow(actor, entry.perk, entry.rank, entry.ranks, entry.description));
+    }
+    return rows;
+}
+
+// The same for a Custom Skills Framework tree, in the tree's order.
+std::vector<SheetRow> OwnedPerks(RE::Actor *actor, const CustomSkillTree &tree)
+{
+    std::vector<SheetRow> rows;
+    for (const CustomSkillPerk &entry : tree.perks)
+    {
+        if (!TopRankHeld(actor, entry.perk))
             continue;
-        if (entry.perk->nextPerk && actor->HasPerk(entry.perk->nextPerk))
-            continue; // a higher rank is held; that one gets the row
-
-        std::string label = PerkName(entry.perk);
-        if (label.empty())
-            label = "?";
-
-        const std::string rank = entry.ranks > 1 ? std::to_string(entry.rank) + "/" + std::to_string(entry.ranks) : "";
-        SheetRow row = Row(std::move(label), rank);
-        row.modifiers = entry.description;
-        row.form = entry.perk->GetFormID(); // the name opens the perk's page
-        if (const char *aside = PerkAside(actor, entry.perk))
-            row.aside = aside;
-        rows.push_back(std::move(row));
+        RE::BSString text;
+        entry.perk->GetDescription(text, entry.perk);
+        rows.push_back(PerkRow(actor, entry.perk, entry.rank, entry.ranks, text.c_str() ? text.c_str() : ""));
     }
     return rows;
 }
@@ -3795,6 +3849,12 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
             }
         }
     }
+    for (const CustomSkillTree &tree : CustomSkillTrees())
+    {
+        for (const CustomSkillPerk &entry : tree.perks)
+            if (TopRankHeld(actor, entry.perk))
+                page(entry.perk, entry.rank, entry.ranks, tree.name);
+    }
     for (const HeldPerk &held : PerksOutsideTrees(actor))
         page(held.perk, held.rank, 1, "");
     return out;
@@ -4007,6 +4067,21 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             skill(s, {f.name.c_str(), f.value, pair != kPairs.end() ? pair->second.mod : none,
                       pair != kPairs.end() ? pair->second.power : none});
         }
+        // Custom Skills Framework's trees sit with the other skills: a row
+        // each with its perks held, and its level where the tree keeps one,
+        // for the player alone, whose level the framework's globals are. A
+        // tree with nothing to show says nothing, as a vanilla skill at zero.
+        if (category.code == 0)
+        {
+            for (const CustomSkillTree &tree : CustomSkillTrees())
+            {
+                const bool level = tree.level && actor->IsPlayerRef();
+                SheetRow row = Row(tree.name, level ? Fmt("%.0f", tree.level->value) : std::string{});
+                row.detail = OwnedPerks(actor, tree);
+                if (!row.detail.empty() || (level && tree.level->value > 0.0f))
+                    s.rows.push_back(std::move(row));
+            }
+        }
         if (!s.rows.empty())
             out.push_back(std::move(s));
     }
@@ -4017,6 +4092,9 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         std::unordered_set<const RE::BGSPerk *> inTrees;
         for (const Found &f : found)
             for (const TreePerk &entry : TreePerks(f.value))
+                inTrees.insert(entry.perk);
+        for (const CustomSkillTree &tree : CustomSkillTrees())
+            for (const CustomSkillPerk &entry : tree.perks)
                 inTrees.insert(entry.perk);
         SheetSection s{"Other Perks", {}, {}};
         for (const HeldPerk &held : PerksOutsideTrees(actor))

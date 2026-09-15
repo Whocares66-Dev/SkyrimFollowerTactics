@@ -104,6 +104,7 @@ include(ClangTools)
 add_library(ft_core STATIC
     src/core/Blows.cpp
     src/core/Breakdown.cpp
+    src/core/CustomSkills.cpp
     src/core/Editor.cpp
     src/core/Effects.cpp
     src/core/Evaluator.cpp
@@ -184,7 +185,8 @@ if(FT_BUILD_PLUGIN)
         src/game/UI.cpp
         src/game/Packages.cpp
         src/game/Forms.cpp
-        src/game/Profiles.cpp)
+        src/game/Profiles.cpp
+        src/game/CustomSkillsFramework.cpp)
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
     # These are Skyrim/Windows-API concerns and belong to THIS target only.

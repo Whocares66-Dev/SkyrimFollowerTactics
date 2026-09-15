@@ -21,6 +21,7 @@ add_executable(ft_tests
     test_blows.cpp
     test_breakdown.cpp
     test_conditions.cpp
+    test_customskills.cpp
     test_editor.cpp
     test_evaluator.cpp
     test_eventring.cpp
