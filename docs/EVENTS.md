@@ -64,6 +64,7 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 
 - **Every event about a follower** carries `followerId` and `followerName` first, as the envelope always has.
 - **An actor** a rule was about or aimed at: the reference FormID, the base FormID, and the display name. The base is `Actor::GetTemplateBase()`, the leveled template's base where there is one, else `GetActorBase()`; which of the two matches the record in the plugin is to be checked on a leveled bandit against xEdit. Both are captured when the rule acts, since the actor may be unloaded by the time an outcome arrives.
+- **A list of actors** -- `allies`, `enemies`, `followers` -- is an array of objects, each with `formId`, `baseFormId` and `name`: the three an actor field carries, so an actor reads alike wherever an event names one.
 - **An item or a spell**: the base FormID and the name, and for an item the variant as one string -- `any`, `plain`, or for example `tempered 1.20; enchanted 0x0001A2B3@25/60/0; named "Frost Fang"` -- from `VariantText` in core. An item in a bag has no reference and no FormID of its own; a copy is told from another by its variant (`docs/UNIQUE.md`).
 - **The item in a pin or ban event** is `itemFormId` and `itemName`, with `hand` -- `[L]`, `[R]`, `[LR]`, or empty for armour, ammunition, the voice and a ban -- and `variant`.
 - **A field's key is a string literal.** A helper that appends an actor's three fields takes its three keys as arguments, `AppendActor(out, "subjectFormId", "subjectBaseFormId", "subjectName", id)`; a key built at run time would dangle.
@@ -75,9 +76,9 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 | `session.started` | the first line of every session | — (its `ts` is the session's start) |
 | `session.ceiling` (warn) | the events file has taken its 64 MB for the session; nothing more is written to it | `megabytes` |
 | `game.loaded` | a save loaded or a new game begun | `newGame` |
-| `combat.entered` / `combat.left` | the follower's fight begins or ends | `allies[]`, `enemies[]` (entered) |
+| `combat.entered` / `combat.left` | the follower's fight begins or ends | `allies[]`, `enemies[]` (entered; each an actor) |
 | `follower.down` / `follower.up` | bleeding out, and up again | — |
-| `followers.controlled` | who is under tactics changes | `count`, `followers[]` |
+| `followers.controlled` | who is under tactics changes | `count`, `followers[]` (each an actor) |
 | `tactics.switched` | the master switch | `enabled` |
 | `rule.fired` | a rule's action is dispatched | `ruleIndex`, `ruleName` (the rule as it began), `subjectKind` and the subject's ids, `action`, the target's ids, the form and variant, `outcome`, `healthPct` |
 | `rule.actionFailed` (warn) | the outcome is neither `performed` nor `requested`, a refused pin included | `ruleIndex`, `ruleName`, `action`, `reason` |

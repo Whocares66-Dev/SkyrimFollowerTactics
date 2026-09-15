@@ -54,6 +54,16 @@ enum class Level : std::uint8_t
 // written 2.0060348510742188 -- which reads badly and diffs worse.
 [[nodiscard]] double Rounded(double value) noexcept;
 
+// An actor in a list, named as an event names any actor: the reference id,
+// the base id and the name (src/game/Log.h, AppendActor), so a party reads
+// the same as a rule's subject.
+struct NamedActor
+{
+    std::uint32_t formId{0};
+    std::uint32_t baseFormId{0};
+    std::string name;
+};
+
 // One key and its value. The constructors are what decide how a value is
 // spelled in JSON -- an id is a string, a count is a number, a list of actors
 // is an array of ids -- so a call site writes the value it has and never a
@@ -81,16 +91,16 @@ class Field
     {
     }
 
-    // A list of actors or forms, as an array of ids. Taken already-encoded so
-    // that core never has to know an id from a count.
-    Field(std::string_view key, const std::vector<std::uint32_t> &formIDs);
+    // A list of actors -- a party, the followers under tactics -- as an array
+    // of objects, each with formId, baseFormId and name.
+    Field(std::string_view key, std::vector<NamedActor> actors);
 
     [[nodiscard]] std::string_view key() const noexcept
     {
         return key_;
     }
 
-    using Value = std::variant<std::int64_t, double, bool, std::string, std::vector<std::string>>;
+    using Value = std::variant<std::int64_t, double, bool, std::string, std::vector<NamedActor>>;
 
     [[nodiscard]] const Value &value() const noexcept
     {

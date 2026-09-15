@@ -488,10 +488,11 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
                 out.push_back(v.id);
             return out;
         };
-        log::tactics.event(log::Level::Info, "combat.entered", actor,
-                           {{"allies", ids(snapshot.allies)}, {"enemies", ids(snapshot.enemies)}},
-                           "{} entered combat -- tactics engaged; allies: {} -- enemies: {}", Describe(actor),
-                           names(snapshot.allies), names(snapshot.enemies));
+        log::tactics.event(
+            log::Level::Info, "combat.entered", actor,
+            {{"allies", log::Actors(ids(snapshot.allies))}, {"enemies", log::Actors(ids(snapshot.enemies))}},
+            "{} entered combat -- tactics engaged; allies: {} -- enemies: {}", Describe(actor), names(snapshot.allies),
+            names(snapshot.enemies));
     }
     snapshot.combatBegan = began;
     snapshot.combatEnded = ended;
@@ -717,8 +718,8 @@ void Tick()
             for (auto *f : followers)
                 ids.push_back(f->GetFormID());
             log::tactics.event(log::Level::Info, "followers.controlled",
-                               {{"count", followers.size()}, {"followers", ids}}, "{} follower(s) under control: {}",
-                               followers.size(), names);
+                               {{"count", followers.size()}, {"followers", log::Actors(ids)}},
+                               "{} follower(s) under control: {}", followers.size(), names);
         }
     }
 

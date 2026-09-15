@@ -69,6 +69,9 @@ void Init();
 void AppendActor(std::vector<Field> &fields, std::string_view idKey, std::string_view baseKey, std::string_view nameKey,
                  std::uint32_t actorId);
 
+// Actors for a list field, each named as AppendActor names one.
+[[nodiscard]] std::vector<NamedActor> Actors(const std::vector<std::uint32_t> &actorIds);
+
 // A form's id and name, likewise.
 void AppendForm(std::vector<Field> &fields, std::string_view idKey, std::string_view nameKey, std::uint32_t formId);
 

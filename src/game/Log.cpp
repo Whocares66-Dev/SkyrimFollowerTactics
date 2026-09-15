@@ -321,14 +321,32 @@ std::string NameOf(const RE::TESForm *form)
     return (name && *name) ? name : "<unnamed>";
 }
 
-void AppendActor(std::vector<Field> &fields, std::string_view idKey, std::string_view baseKey, std::string_view nameKey,
-                 std::uint32_t actorId)
+namespace
+{
+[[nodiscard]] NamedActor NameActor(std::uint32_t actorId)
 {
     auto *actor = actorId != 0 ? RE::TESForm::LookupByID<RE::Actor>(actorId) : nullptr;
     const auto *base = actor ? actor->GetTemplateBase() : nullptr;
-    fields.emplace_back(idKey, Id(actorId));
-    fields.emplace_back(baseKey, Id(base ? base->GetFormID() : 0));
-    fields.emplace_back(nameKey, actor ? NameOf(actor) : std::string{});
+    return {actorId, base ? base->GetFormID() : 0, actor ? NameOf(actor) : std::string{}};
+}
+} // namespace
+
+void AppendActor(std::vector<Field> &fields, std::string_view idKey, std::string_view baseKey, std::string_view nameKey,
+                 std::uint32_t actorId)
+{
+    NamedActor named = NameActor(actorId);
+    fields.emplace_back(idKey, Id(named.formId));
+    fields.emplace_back(baseKey, Id(named.baseFormId));
+    fields.emplace_back(nameKey, std::move(named.name));
+}
+
+std::vector<NamedActor> Actors(const std::vector<std::uint32_t> &actorIds)
+{
+    std::vector<NamedActor> out;
+    out.reserve(actorIds.size());
+    for (const std::uint32_t id : actorIds)
+        out.push_back(NameActor(id));
+    return out;
 }
 
 void AppendForm(std::vector<Field> &fields, std::string_view idKey, std::string_view nameKey, std::uint32_t formId)

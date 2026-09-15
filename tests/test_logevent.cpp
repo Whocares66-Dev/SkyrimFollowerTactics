@@ -94,16 +94,22 @@ TEST_CASE("an id is one spelling: eight digits, upper case, 0x", "[logevent]")
     CHECK(log::Id(0) == "0x00000000");
 }
 
-TEST_CASE("a party is an array of ids, not a joined string", "[logevent]")
+TEST_CASE("a party is an array of actors, each with its ids and name", "[logevent]")
 {
-    const std::vector<std::uint32_t> enemies{0x101, 0x102};
+    // The name is free text from the game's records: a quote in one must not
+    // break the line, as a rule label's must not.
+    const std::vector<log::NamedActor> enemies{{0xFF000E7C, 0x00023A8B, "Cave Bear"},
+                                               {0x00000101, 0x00000102, R"(Krev "the Skinner")"}};
     const auto j = Parse(log::FormatEvent(log::Level::Info, "combat.entered", kVersion, kStamp,
-                                          {{"allies", std::vector<std::uint32_t>{}}, {"enemies", enemies}}));
+                                          {{"allies", std::vector<log::NamedActor>{}}, {"enemies", enemies}}));
 
     REQUIRE(j["enemies"].is_array());
-    CHECK(j["enemies"].size() == 2);
-    CHECK(j["enemies"][0] == "0x00000101");
-    CHECK(j["enemies"][1] == "0x00000102");
+    REQUIRE(j["enemies"].size() == 2);
+    CHECK(j["enemies"][0]["formId"] == "0xFF000E7C");
+    CHECK(j["enemies"][0]["baseFormId"] == "0x00023A8B");
+    CHECK(j["enemies"][0]["name"] == "Cave Bear");
+    CHECK(j["enemies"][1]["formId"] == "0x00000101");
+    CHECK(j["enemies"][1]["name"] == R"(Krev "the Skinner")");
 
     CHECK(j["allies"].is_array());
     CHECK(j["allies"].empty());

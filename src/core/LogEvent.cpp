@@ -17,6 +17,19 @@ using json = nlohmann::ordered_json;
 
 constexpr std::string_view kPluginName = "FollowerTactics";
 
+template <class T> json ToJson(const T &value)
+{
+    return value;
+}
+
+json ToJson(const std::vector<NamedActor> &actors)
+{
+    json out = json::array();
+    for (const auto &actor : actors)
+        out.push_back({{"formId", Id(actor.formId)}, {"baseFormId", Id(actor.baseFormId)}, {"name", actor.name}});
+    return out;
+}
+
 } // namespace
 
 const char *ToString(Level level) noexcept
@@ -97,13 +110,8 @@ Field::Field(std::string_view key, bool value) : key_(key), value_(value)
 {
 }
 
-Field::Field(std::string_view key, const std::vector<std::uint32_t> &formIDs) : key_(key)
+Field::Field(std::string_view key, std::vector<NamedActor> actors) : key_(key), value_(std::move(actors))
 {
-    std::vector<std::string> ids;
-    ids.reserve(formIDs.size());
-    for (const std::uint32_t id : formIDs)
-        ids.push_back(Id(id));
-    value_ = std::move(ids);
 }
 
 std::string FormatEvent(Level level, std::string_view event, std::string_view version, std::string_view timestamp,
@@ -119,7 +127,7 @@ std::string FormatEvent(Level level, std::string_view event, std::string_view ve
     for (const auto &field : fields)
     {
         const std::string key(field.key());
-        std::visit([&](const auto &value) { line[key] = value; }, field.value());
+        std::visit([&](const auto &value) { line[key] = ToJson(value); }, field.value());
     }
 
     // dump() with no indent is one line; nlohmann escapes what has to be
