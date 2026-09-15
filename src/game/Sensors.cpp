@@ -2066,7 +2066,23 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
         }
         {
             SheetRow row;
-            const float speed = WeaponSpeed(actor, weapon, left, &row.breakdown);
+            float speed = WeaponSpeed(actor, weapon, left, &row.breakdown);
+            // The speed the swing plays at, where the animation graph holds
+            // it: the engine's figure after every plugin between, which no
+            // actor value keeps (Comprehensive Attack Rate Patch caps and
+            // tapers it in its detour of the engine's speed, 2026-09-14). The
+            // formula stays as the lines and the fallback, and what it misses
+            // is Other. Not yet watched: that the variable is the whole
+            // speed and not the multiplier alone, which a dagger with no
+            // speed effects shows by reading its record's figure.
+            if (float live = 0.0f; actor->GetGraphVariableFloat(left ? "leftWeaponSpeedMult" : "weaponSpeedMult", live))
+            {
+                log::sensors.debug("{} {} speed: graph {:.3f}, formula {:.3f}", Describe(actor), NameOr(weapon, "?"),
+                                   live, speed);
+                speed = live;
+                row.breakdown.total = live;
+                ft::Close(row.breakdown);
+            }
             row.label = "Speed";
             row.value = Fmt("%.2f", speed);
             rows.push_back(std::move(row));
