@@ -4052,6 +4052,9 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                     s.rows.push_back(std::move(row));
             }
         }
+        // By name within a section, the custom trees among the game's own.
+        std::stable_sort(s.rows.begin(), s.rows.end(),
+                         [](const SheetRow &a, const SheetRow &b) { return a.label < b.label; });
         if (!s.rows.empty())
             out.push_back(std::move(s));
     }
