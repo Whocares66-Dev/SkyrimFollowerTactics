@@ -2002,6 +2002,136 @@ bool CalibrateWeapon()
     return true;
 }
 
+// A quest alias's override package lists are not on the alias: its loader
+// (24013) files a BGSOverridePackCollection for it in a global map keyed by
+// the alias, and the follower alias's combat override list is where a
+// follower's package in a fight comes from (docs/ATTACK.md "Facing").
+// CommonLib has the table's layout (BSTScatterTable, RE/B/BSTHashMap.h) but
+// not this global, so the table is read through a copy of that layout,
+// anchored on the capacity the loader reads (Address Library 369298, 0x0C
+// into the table): an address known for 1.6.1170 alone (docs/VERSIONS.md).
+struct AliasOverrideEntry
+{
+    const RE::BGSRefAlias *alias;
+    const RE::BGSOverridePackCollection *lists;
+    const AliasOverrideEntry *next; // null in an empty slot; the sentinel ends a chain
+};
+struct AliasOverrideMap
+{
+    std::uint64_t pad00;
+    std::uint32_t pad08;
+    std::uint32_t capacity;
+    std::uint32_t free;
+    std::uint32_t good;
+    const AliasOverrideEntry *sentinel;
+    std::uint64_t pad20;
+    const AliasOverrideEntry *entries;
+};
+static_assert(sizeof(AliasOverrideEntry) == 0x18);
+static_assert(offsetof(AliasOverrideMap, capacity) == 0x0C && offsetof(AliasOverrideMap, sentinel) == 0x18 &&
+              offsetof(AliasOverrideMap, entries) == 0x28);
+constexpr std::uint32_t kDialogueFollowerID = 0x000750BA;
+constexpr std::uint32_t kFollowerCombatOverrideListID = 0x0005C852; // PlayerFollowerCombatOverridePackageList
+constexpr std::uint32_t kMostAliasesFiled = 1U << 20;
+// Nothing reads the map unless CheckAliasOverrideLists found it as expected.
+bool g_aliasOverrideListsRead = false;
+
+bool InGameData(std::uintptr_t address)
+{
+    const auto &module = REL::Module::get();
+    for (const auto name : {REL::Segment::rdata, REL::Segment::data})
+    {
+        const auto segment = module.segment(name);
+        if (address >= segment.address() && address < segment.address() + segment.size())
+            return true;
+    }
+    return false;
+}
+
+// The map where it should be and shaped as the table is, and vanilla's
+// follower alias (DialogueFollower's Follower) filed in it with its combat
+// override list at +20 as a list form, not the form ID the loader reads.
+// The header is checked before the entries pointer is followed, and every
+// chain link against the entries before it is trusted; a wrong address stops
+// at a header that does not add up. False leaves the lists unread.
+bool CheckAliasOverrideLists()
+{
+    if (!REL::Module::IsAE())
+    {
+        log::packages.info("alias override lists: their address is known for 1.6.1170 alone -- not read on this "
+                           "runtime");
+        return false;
+    }
+    auto *quest = RE::TESForm::LookupByID<RE::TESQuest>(kDialogueFollowerID);
+    const auto *expected = RE::TESForm::LookupByID<RE::BGSListForm>(kFollowerCombatOverrideListID);
+    const RE::BGSRefAlias *follower = nullptr;
+    if (quest)
+    {
+        for (auto *alias : quest->aliases)
+            if (alias && alias->aliasID == 0)
+                follower = skyrim_cast<RE::BGSRefAlias *>(alias);
+    }
+    if (!follower || !expected)
+    {
+        log::packages.warn("probe: alias override lists not read: DialogueFollower's Follower alias {}, its combat "
+                           "override list {}",
+                           follower ? "found" : "missing", expected ? "found" : "missing");
+        return false;
+    }
+
+    static REL::Relocation<const AliasOverrideMap *> at{REL::ID(369298), -0x0C};
+    const auto *map = at.get();
+    const std::uint32_t capacity = map->capacity;
+    const bool powerOfTwo = capacity != 0 && (capacity & (capacity - 1)) == 0;
+    const auto entriesAt = reinterpret_cast<std::uintptr_t>(map->entries);
+    if (!powerOfTwo || capacity > kMostAliasesFiled || map->free > capacity ||
+        !InGameData(reinterpret_cast<std::uintptr_t>(map->sentinel)) || !LooksLikePointer(entriesAt))
+    {
+        log::packages.warn("probe: alias override lists not read: the table's header does not add up (capacity {}, "
+                           "free {}, sentinel {}, entries {:X})",
+                           capacity, map->free, static_cast<const void *>(map->sentinel), entriesAt);
+        return false;
+    }
+
+    const auto entriesEnd = entriesAt + std::size_t{capacity} * sizeof(AliasOverrideEntry);
+    std::uint32_t filed = 0;
+    const RE::BGSOverridePackCollection *followerLists = nullptr;
+    for (std::uint32_t i = 0; i < capacity; ++i)
+    {
+        const AliasOverrideEntry &entry = map->entries[i];
+        if (!entry.next)
+            continue;
+        const auto next = reinterpret_cast<std::uintptr_t>(entry.next);
+        if (entry.next != map->sentinel &&
+            (next < entriesAt || next >= entriesEnd || (next - entriesAt) % sizeof(AliasOverrideEntry) != 0))
+        {
+            log::packages.warn("probe: alias override lists not read: slot {} chains to {:X}, outside the table", i,
+                               next);
+            return false;
+        }
+        ++filed;
+        if (entry.alias == follower)
+            followerLists = entry.lists;
+    }
+    if (filed != capacity - map->free)
+    {
+        log::packages.warn("probe: alias override lists not read: {} slots filled, the header counts {}", filed,
+                           capacity - map->free);
+        return false;
+    }
+    if (!followerLists || followerLists->enterCombatOverRidePackList != expected)
+    {
+        log::packages.warn("probe: alias override lists not read: DialogueFollower's Follower alias {}",
+                           followerLists ? "does not have PlayerFollowerCombatOverridePackageList at +20"
+                                         : "is not filed");
+        return false;
+    }
+    log::packages.debug("probe: alias override lists readable: {} aliases filed, DialogueFollower's Follower alias "
+                        "with PlayerFollowerCombatOverridePackageList",
+                        filed);
+    return true;
+}
+
 // A fresh copy of Edorfin's record made into a power attack's. Everything but
 // the target is the same for every request, so it is set once, here. Null
 // when made, otherwise what could not be.
@@ -2137,6 +2267,7 @@ const char *MakeKit(Kit &kit)
 void InitPackages()
 {
     g_available = false;
+    g_aliasOverrideListsRead = CheckAliasOverrideLists();
     if (!Calibrate())
         return;
 
