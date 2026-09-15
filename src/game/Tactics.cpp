@@ -70,6 +70,9 @@ struct FollowerState
     // In combat on the last tick, for the edges: the first evaluation of a
     // fight, and the one farewell evaluation after it.
     bool fighting{false};
+    // The requested action in flight -- a cast, a shout, a power attack, a
+    // bash -- whose cooldown starts again when it is over.
+    std::optional<ft::Decision::Step> inFlight;
 };
 
 std::unordered_map<ft::ActorId, FollowerState> g_followers;
@@ -546,6 +549,8 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
             // A requested cast's, power attack's or bash's outcome follows
             // when it is over, as rule.resolved, naming the rule given here.
             const auto result = Execute(step.action, step.target, actor, decision.ruleIndex, label);
+            if (result == ActionResult::Requested)
+                state.inFlight = step;
 
             // Whom the condition bound and whom the action went at, by
             // reference and base, and the thing it used: the potion a policy
@@ -779,6 +784,13 @@ void Tick()
         // evaluation, or the farewell one -- a heal-after-the-fight rule is
         // exactly what someone just up from bleeding out needs.
         auto &state = g_followers[follower->GetFormID()];
+        // A request ended since the last tick: its cooldown runs from now,
+        // the end, not from the decision (MinimumCooldown in core/Rule.h).
+        if (state.inFlight && !IsMidCast(follower) && !IsMidBash(follower))
+        {
+            ft::RestartCooldown(state.eval, state.inFlight->action, state.inFlight->target, now);
+            state.inFlight.reset();
+        }
         const bool began = fighting && !state.fighting;
         const bool ended = !fighting && state.fighting;
 

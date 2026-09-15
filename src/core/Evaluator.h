@@ -235,6 +235,13 @@ using ActionTrace = std::vector<std::vector<Verdict>>;
 Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace = nullptr,
                   ActionTrace *actionTrace = nullptr);
 
+// Start an action's cooldown again from `now`: the moment it is over. A
+// drink or an equip is over when it is dispatched, and Evaluate's own stamp
+// stands; a cast, a shout, a power attack or a bash is over when its lease
+// or its request ends, and the game side calls this then, so the next
+// firing waits for the result and not only for the decision.
+void RestartCooldown(EvalContext &ctx, const Action &a, ActorId target, double now);
+
 // Evaluate one rule's condition and report which actor satisfied it.
 //
 // For a group subject, when several members satisfy the predicate the binding

@@ -789,6 +789,11 @@ Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, Actor
 
 } // namespace
 
+void RestartCooldown(EvalContext &ctx, const Action &a, ActorId target, double now)
+{
+    ctx.Block(CooldownKey(a, target), now + MinimumCooldown(a.kind));
+}
+
 Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace, ActionTrace *actionTrace)
 {
     if (trace)

@@ -224,6 +224,40 @@ TEST_CASE("a cooldown is as fine as the spell and the target", "[cooldown]")
     REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0); // heal self is back
 }
 
+TEST_CASE("a cooldown restarted when the action is over runs from then", "[cooldown]")
+{
+    // A cast's lease can outlast its cooldown. Counted from the decision, the
+    // rule would fire again the moment the lease ended; restarted then, it
+    // waits the whole cooldown after the cast.
+    constexpr std::uint32_t kHeal = 0x0002F3B8;
+    Rule rule;
+    rule.subject = SubjectKind::Self;
+    rule.predicate = PredicateKind::Any;
+    rule.actionTarget = ActionTargetKind::Self;
+    rule.FirstAction().kind = ActionKind::CastSpell;
+    rule.FirstAction().form = kHeal;
+    RuleSet rs;
+    rs.rules.push_back(rule);
+
+    Snapshot s = Healthy();
+    s.spells.known.push_back(kHeal);
+    EvalContext ctx;
+
+    const Decision d = Evaluate(rs, s, ctx);
+    REQUIRE(d.Fired());
+    const double cooldown = MinimumCooldown(ActionKind::CastSpell);
+    const double over = s.now + cooldown + 1.0; // the lease ended a second after the cooldown would have
+    RestartCooldown(ctx, d.step->action, d.step->target, over);
+
+    s.now = over + cooldown - 0.1;
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::ActionCooldown);
+
+    s.now = over + cooldown;
+    REQUIRE(Evaluate(rs, s, ctx).ruleIndex == 0);
+}
+
 TEST_CASE("an unsupported action never fires", "[evaluator]")
 {
     // The casts are the actions a runtime can lack: without the package

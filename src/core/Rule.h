@@ -434,9 +434,15 @@ struct RuleSet
 
 // How long the world takes to reflect this action, in seconds.
 //
-// After a rule fires, the same ACTION cannot be repeated until this has passed
-// -- "the same action" as EvalContext::ActionKey defines it. The reason is not
-// a policy about remedies:
+// After an action is over, the same ACTION cannot be repeated until this has
+// passed -- "the same action" as EvalContext::ActionKey defines it. Over is at
+// dispatch for a drink, a poison or an equip, and when its lease or request
+// ends for a cast, a shout or power, a power attack or a bash: Evaluate stamps
+// the cooldown when it decides, and the game side restarts it at the end
+// (RestartCooldown). Counted from the decision, a power attack's 1.5 s ran
+// out inside its 2 s lease and the rule fired again into the follower's
+// recovery (2026-09-15). The reason for the number is not a policy about
+// remedies:
 //
 //     we acted, the world has not caught up, so do not decide again on
 //     numbers that predate what we just did.

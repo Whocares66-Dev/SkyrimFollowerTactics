@@ -32,7 +32,8 @@ double MinimumCooldown(ActionKind action) noexcept
     {
     case ActionKind::PowerAttack:
     case ActionKind::PowerBash:
-        // One swing takes about this long; the next firing waits for it.
+        // After the swing: the lease or the request covers the swing itself,
+        // and this is the recovery before the next.
         return 1.5;
     case ActionKind::Bash:
         return 1.0;
