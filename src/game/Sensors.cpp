@@ -407,6 +407,8 @@ std::string SourceName(RE::Actor *actor, const RE::ActiveEffect *ae)
     return source;
 }
 
+bool MovesValue(const RE::EffectSetting *base); // below, with the effect rows
+
 // Whether a running effect moves this actor value: a value modifier on
 // it, or a dual modifier with it as either half.
 bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
@@ -414,12 +416,11 @@ bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
     using Archetype = RE::EffectArchetypes::ArchetypeID;
     const auto *base = ae.effect->baseEffect;
     const auto archetype = base->GetArchetype();
-    const bool moves = archetype == Archetype::kValueModifier || archetype == Archetype::kPeakValueModifier ||
-                       archetype == Archetype::kDualValueModifier;
-    if (!moves)
+    if (!MovesValue(base))
         return false;
+    const bool dual = archetype == Archetype::kDualValueModifier || archetype == Archetype::kEnhanceWeapon;
     const bool primary = base->data.primaryAV == value;
-    const bool secondary = archetype == Archetype::kDualValueModifier && base->data.secondaryAV == value;
+    const bool secondary = dual && base->data.secondaryAV == value;
     return primary || secondary;
 }
 
@@ -443,7 +444,12 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         // Aura carries a zero here) is not a source; one too small to print, below half a hundredth, is noise.
         if (std::abs(ae->magnitude) < 0.005f)
             return;
-        out.push_back({std::move(source), NameOr(base, ""), ae->magnitude});
+        // A dual effect's second value takes the magnitude times the
+        // record's weight: the Creation Kit's definition, not read off the
+        // executable.
+        const bool first = base->data.primaryAV == value;
+        out.push_back(
+            {std::move(source), NameOr(base, ""), first ? ae->magnitude : ae->magnitude * base->data.secondAVWeight});
     });
     // Smallest first: the weaknesses, then the boons, the largest last.
     std::stable_sort(out.begin(), out.end(),
@@ -539,39 +545,65 @@ void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources)
         ft::Add(b, std::move(c.source), c.amount);
 }
 
-ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, float total, int decimals, const char *unit)
+ValueParts PartsOf(RE::Actor *actor, RE::ActorValue value)
+{
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    return {owner ? owner->GetBaseActorValue(value) : 0.0f, Contributions(actor, value)};
+}
+
+void AddValueLines(ft::Breakdown &b, const ValueParts &parts, float scale)
+{
+    if (parts.base != 0.0f)
+    {
+        if (b.lines.empty())
+            ft::Start(b, "Base", parts.base * scale);
+        else
+            ft::Add(b, "Base", parts.base * scale);
+    }
+    for (const Contribution &c : parts.sources)
+        ft::Add(b, c.source, c.amount * scale);
+}
+
+namespace
+{
+// A value a line reads, opened out beneath it. In the value's own units,
+// not the breakdown's: a multiplier beneath a recovery time read "+0.2 s".
+// Empty for a base alone, which is the line's own figure again.
+std::vector<ft::BreakdownLine> ValueLines(RE::Actor *actor, RE::ActorValue value, float reading)
 {
     ft::Breakdown b;
-    b.decimals = decimals;
-    b.unit = unit;
-    ft::Start(b, "Base", base);
-    AddSourceLines(b, std::move(sources));
-    b.total = total;
-    // What no running effect explains is Other, and it was once a "Perks
-    // and race" line of its own: a guess, and wrong for what a script or
-    // another plugin writes straight into the value. Blade and Blunt's
-    // injuries take 10% off the player's Health that way (2026-09-14). An
-    // effect listed but not yet in the value lands here too: an enchanted
-    // piece equipped from the panel while the clock is frozen is listed at
-    // once, and the value moves on the actor's next update (2026-09-11).
+    AddValueLines(b, PartsOf(actor, value));
+    b.total = reading;
     ft::Close(b);
-    return b;
+    if (b.lines.size() == 1 && b.lines.front().op == ft::Op::Start)
+        return {};
+    for (ft::BreakdownLine &line : b.lines)
+        line.unit = std::string{};
+    return std::move(b.lines);
 }
+} // namespace
 
 ft::Breakdown ValueBreakdown(RE::Actor *actor, RE::ActorValue value, const char *unit)
 {
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     if (!owner)
         return {};
+    ft::Breakdown b;
+    b.unit = unit;
+    AddValueLines(b, PartsOf(actor, value));
     // A pool's maximum is the permanent value plus what effects add for
     // now; the damage taken is below it and is not a source. Every other
     // value is what it reads.
     const bool pool =
         value == RE::ActorValue::kHealth || value == RE::ActorValue::kMagicka || value == RE::ActorValue::kStamina;
-    const float total = pool ? owner->GetPermanentActorValue(value) +
-                                   actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, value)
-                             : owner->GetActorValue(value);
-    return ValueBreakdown(owner->GetBaseActorValue(value), Contributions(actor, value), total, 0, unit);
+    b.total = pool ? owner->GetPermanentActorValue(value) +
+                         actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, value)
+                   : owner->GetActorValue(value);
+    // An effect listed but not yet in the value is Other too: an enchanted
+    // piece equipped from the panel while the clock is frozen is listed at
+    // once, and the value moves on the actor's next update (2026-09-11).
+    ft::Close(b);
+    return b;
 }
 
 ft::Breakdown CarryWeightBreakdown(RE::Actor *actor)
@@ -605,8 +637,11 @@ bool MovesValue(const RE::EffectSetting *base)
 {
     using Archetype = RE::EffectArchetypes::ArchetypeID;
     const auto archetype = base->GetArchetype();
+    // Enhance Weapon is a dual value modifier underneath (its active effect
+    // derives from DualValueModifierEffect in CommonLibSSE), and vanilla's
+    // Elemental Fury is one, on Weapon Speed Mult.
     return archetype == Archetype::kValueModifier || archetype == Archetype::kPeakValueModifier ||
-           archetype == Archetype::kDualValueModifier;
+           archetype == Archetype::kDualValueModifier || archetype == Archetype::kEnhanceWeapon;
 }
 
 // One effect of a spell, an enchantment or a potion as a row, as a perk's
@@ -2192,16 +2227,14 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
         // A perk that reads a value is named for the value's sources, not
         // for itself: "Deathbrand Gauntlets x 1.25", not the controller
         // perk that turned the gauntlets' +25 into a factor. One line per
-        // source, each with its own share, and one for what the sources
-        // do not explain. Two sources'
+        // source, each with its own share, one for the value's base, and
+        // one for what neither explains. Two sources'
         // factors miss their product by the cross term, an Other line;
         // one source, the common case, is exact.
         std::vector<ft::BreakdownLine> bySource;
         const auto withValue = [&](bool multiply, bool onePlus) {
-            std::vector<Contribution> sources = Contributions(actor, av);
-            std::stable_sort(sources.begin(), sources.end(),
-                             [](const Contribution &x, const Contribution &y) { return x.amount < y.amount; });
-            float explained = 0.0f;
+            const ValueParts parts = PartsOf(actor, av);
+            float explained = parts.base;
             const auto push = [&](std::string label, float amount) {
                 ft::BreakdownLine each;
                 each.op = multiply ? ft::Op::Multiply : ft::Op::Add;
@@ -2209,10 +2242,14 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
                 each.amount = (onePlus ? 1.0 : 0.0) + static_cast<double>(amount) * mult;
                 bySource.push_back(std::move(each));
             };
-            for (Contribution &c : sources)
+            // Named for the value: a bare "Base" beside the weapon's own
+            // read as the same thing.
+            if (std::abs(parts.base) > 0.05f)
+                push("Base " + ValueName(av), parts.base);
+            for (const Contribution &c : parts.sources)
             {
                 explained += c.amount;
-                push(std::move(c.source), c.amount);
+                push(c.source, c.amount);
             }
             if (const float rest = value - explained; std::abs(rest) > 0.05f)
                 push("Other", rest);
@@ -2338,7 +2375,8 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     const float hi = player ? pcMax : npcMax;
     const float curve = lo + (hi - lo) * skillLevel / 100.0f;
     damage *= curve;
-    ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve);
+    ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve).detail =
+        ValueLines(actor, skill, skillLevel);
 
     // Perks, through the engine's own entry point, so Armsman and the rest
     // count exactly as they do in a swing. The entry point wants a target,
@@ -2365,18 +2403,12 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
         if (const float mult = owner->GetActorValue(AV::kAttackDamageMult); mult > 0.0f && mult != 1.0f)
         {
             damage *= mult;
-            ft::BreakdownLine &line = ft::Multiply(b, "Attack Damage Mult", mult);
-            ft::Breakdown sources;
-            AddSourceLines(sources, Contributions(actor, AV::kAttackDamageMult));
-            line.detail = std::move(sources.lines);
+            ft::Multiply(b, "Attack Damage Mult", mult).detail = ValueLines(actor, AV::kAttackDamageMult, mult);
         }
         if (const float flat = owner->GetActorValue(AV::kMeleeDamage); flat != 0.0f)
         {
             damage += flat;
-            ft::BreakdownLine &line = ft::Add(b, "Melee Damage", flat);
-            ft::Breakdown sources;
-            AddSourceLines(sources, Contributions(actor, AV::kMeleeDamage));
-            line.detail = std::move(sources.lines);
+            ft::Add(b, "Melee Damage", flat).detail = ValueLines(actor, AV::kMeleeDamage, flat);
         }
     }
 
@@ -2395,7 +2427,7 @@ float CritChance(RE::Actor *actor, RE::TESObjectWEAP *weapon, ft::Breakdown *out
     b.unit = "%";
     auto *owner = actor->AsActorValueOwner();
     float chance = owner ? owner->GetActorValue(RE::ActorValue::kCriticalChance) : 0.0f;
-    ft::Start(b, "Base", chance);
+    AddValueLines(b, PartsOf(actor, RE::ActorValue::kCriticalChance));
     // Bladesman and its kin set or add to it here. The entry point takes
     // the weapon and a target; they stand in for the target, as for
     // damage. Where the engine starts its own figure from is not yet read
@@ -2420,10 +2452,8 @@ float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out)
         mult > 0.0f && mult != 1.0f)
     {
         recovery *= mult;
-        ft::BreakdownLine &line = ft::Multiply(b, "Shout Recovery Mult", mult);
-        ft::Breakdown sources;
-        AddSourceLines(sources, Contributions(actor, RE::ActorValue::kShoutRecoveryMult));
-        line.detail = std::move(sources.lines);
+        ft::Multiply(b, "Shout Recovery Mult", mult).detail =
+            ValueLines(actor, RE::ActorValue::kShoutRecoveryMult, mult);
     }
     b.total = recovery;
     ft::Close(b);
@@ -2480,7 +2510,8 @@ ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
         const float level = (std::max)(0.0f, owner->GetActorValue(skill));
         const float factor = player ? pcMult * (1.0f - std::pow(pcBase * level, pcScale))
                                     : npcMult * (1.0f - std::pow(npcBase * level, npcScale));
-        ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", level) + ")", factor);
+        ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", level) + ")", factor).detail =
+            ValueLines(actor, skill, level);
         AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kModSpellCost,
                            {const_cast<RE::SpellItem *>(spell)});
     }
@@ -2572,6 +2603,7 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
             ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve + perks);
         if (perks != 0.0f)
             line.amountText = "x (" + Fmt("%.2f", curve) + " + " + Fmt("%.2f", perks) + ")";
+        line.detail = ValueLines(actor, skill, skillLevel);
     }
     // Rounded up to whole points before the perks.
     if (const float up = std::ceil(rating) - rating; up > 0.0f)
@@ -2729,14 +2761,15 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
             // Each source as the rate it adds, not the speed it multiplies
             // by: "+3.00%" for robes that double a 3% rate reads straight
             // off. A multiplier's source scales the whole rate, the rate's
-            // own sources included, so the lines sum to the row.
-            std::vector<Contribution> sources = Contributions(actor, rate);
-            for (Contribution &c : Contributions(actor, mult))
-            {
-                c.amount *= current / 100.0f;
-                sources.push_back(std::move(c));
-            }
-            row.breakdown = ValueBreakdown(owner->GetBaseActorValue(rate), std::move(sources), total, 2, "%");
+            // own sources included, so the lines sum to the row; its base,
+            // plain speed, is the rate's own lines.
+            ft::Breakdown &b = row.breakdown;
+            b.decimals = 2;
+            b.unit = "%";
+            AddValueLines(b, PartsOf(actor, rate));
+            AddValueLines(b, {.base = 0.0f, .sources = Contributions(actor, mult)}, current / 100.0f);
+            b.total = total;
+            ft::Close(b);
             s.rows.push_back(std::move(row));
         };
         regen("Health Rate", RE::ActorValue::kHealRate, RE::ActorValue::kHealRateMult);
@@ -3604,8 +3637,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             {
                 if (amount == 0.0f)
                     continue;
-                for (const Contribution &c : Contributions(actor, mod->value))
-                    ft::Add(piece.breakdown, c.source, mod->sign * c.amount);
+                AddValueLines(piece.breakdown, PartsOf(actor, mod->value), static_cast<float>(mod->sign));
             }
             piece.breakdown.total = total;
             ft::Close(piece.breakdown);

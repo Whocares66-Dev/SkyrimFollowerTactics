@@ -485,13 +485,29 @@ struct Contribution
 // weaknesses, then the boons, the largest last: "Silver Ruby Ring: +50%".
 void AddSourceLines(ft::Breakdown &b, std::vector<Contribution> sources);
 
-// A value written out: "Base: 3", the sources, and the total the row shows,
-// with an Other line for what the sources do not explain.
-[[nodiscard]] ft::Breakdown ValueBreakdown(float base, std::vector<Contribution> sources, float total, int decimals,
-                                           const char *unit);
-// The same read off an actor value, its running effects as the sources,
-// and the value as it reads now as the total. For a pool (Health, Magicka,
-// Stamina) the total is the maximum, not what is left of it.
+// A value as the parts a sheet can name: the engine's base, which no effect
+// moves, and each running effect on it by source, smallest first. Every
+// figure that reads a value opens it out from these, so none shows a buff
+// folded into its base: the value as it reads was once the base, and hid
+// Mundus's Elfborn stone in the Magicka Rate (2026-09-14). Whatever else
+// is in the value -- a script's ModActorValue, another plugin's write, as
+// Blade and Blunt's injuries are -- has no name, and is the Other line
+// wherever the parts are summed against the value.
+struct ValueParts
+{
+    float base{0.0f};
+    std::vector<Contribution> sources;
+};
+[[nodiscard]] ValueParts PartsOf(RE::Actor *actor, RE::ActorValue value);
+
+// The parts as lines, each amount times `scale`: "Base" where the base is
+// not zero, starting the calculation when it is the first line, then each
+// source.
+void AddValueLines(ft::Breakdown &b, const ValueParts &parts, float scale = 1.0f);
+
+// A value written out: its parts, and the value as it reads now as the
+// total, with Other for the rest. For a pool (Health, Magicka, Stamina) the
+// total is the maximum, not what is left of it.
 [[nodiscard]] ft::Breakdown ValueBreakdown(RE::Actor *actor, RE::ActorValue value, const char *unit);
 
 // The carry weight the engine holds them to: the Carry Weight value written

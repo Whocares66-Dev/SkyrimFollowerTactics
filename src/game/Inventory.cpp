@@ -200,7 +200,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.handItem = true;
         item.grip = DescribeHoldable(actor, weapon).grip;
         // In their hands, as the inventory menu would show it; the record's
-        // own figure beneath it, for the curious.
+        // own figure is the first line of its hover.
         {
             SheetRow row;
             item.damage = WeaponDamage(actor, weapon, entry, &row.breakdown);
@@ -208,7 +208,6 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
             row.value = Fmt("%.0f", item.damage);
             stats.rows.push_back(std::move(row));
         }
-        stats.rows.push_back(Row("Base Damage", Fmt("%.0f", weapon->GetAttackDamage())));
         stats.rows.push_back(Row("Critical Damage", std::to_string(weapon->GetCritDamage())));
         {
             SheetRow row;
@@ -247,7 +246,6 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
             row.label = "Armor";
             row.value = Fmt("%.0f", item.armor);
             stats.rows.push_back(std::move(row));
-            stats.rows.push_back(Row("Base Armor", Fmt("%.0f", armor->GetArmorRating())));
         }
         item.description = DescriptionOf(armor);
         return;
