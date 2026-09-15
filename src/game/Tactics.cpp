@@ -46,7 +46,11 @@ constexpr double kCostReportInterval = 5.0;
 std::atomic_bool g_enabled{true};
 std::atomic_bool g_installed{false};
 
-double g_lastTick = -1.0e9;
+// A tick is waiting in SKSE's task queue. The pacing thread keeps time while
+// the game thread is held up -- a load screen, a long frame -- and SKSE runs
+// every queued task in one frame, so without this a stall would come back as
+// a burst of ticks with no time between them.
+std::atomic_bool g_tickQueued{false};
 
 // Last reported follower count, so a change is logged once rather than every
 // tick. Without this there is no way to tell a tick that is running and finding
@@ -684,9 +688,6 @@ void Tick()
     // Game time, in real seconds: it does not advance while the game is
     // paused, so nothing below is aged by a menu.
     const double now = TacticsSeconds();
-    if ((now - g_lastTick) < kTickInterval)
-        return;
-    g_lastTick = now;
 
     // No player means main menu or a load screen. Walking the process lists
     // then is pointless at best.
@@ -931,8 +932,15 @@ void Install()
         while (g_installed.load())
         {
             std::this_thread::sleep_for(std::chrono::duration<double>(kTickInterval));
+            if (g_tickQueued.exchange(true))
+                continue;
             if (auto *task = SKSE::GetTaskInterface())
-                task->AddTask([] { Tick(); });
+                task->AddTask([] {
+                    g_tickQueued.store(false);
+                    Tick();
+                });
+            else
+                g_tickQueued.store(false);
         }
     }).detach();
 }
