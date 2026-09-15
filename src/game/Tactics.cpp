@@ -367,7 +367,16 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
     for (const auto &option : v.consumables)
         v.holdings.consumables.push_back({option.form, option.kind, option.effects});
     for (const auto &option : v.spells)
+    {
         v.holdings.castable.push_back(option.form);
+        if (option.dualCast)
+            v.holdings.dualCastable.push_back(option.form);
+    }
+    // Asked here rather than of the snapshot: out of a fight there is no
+    // snapshot to speak of, and the editor greys a rule then as much as in
+    // one. The perk alone, not what is in the hands: a follower with no
+    // shield still has the perk or has not.
+    v.holdings.powerBashPerk = PowerBashPerkMet(actor);
     for (const auto &item : v.inventory)
     {
         const ft::Kind kind = item.category == ItemCategory::Arrows    ? ft::Kind::Ammo

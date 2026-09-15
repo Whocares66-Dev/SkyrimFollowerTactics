@@ -604,6 +604,12 @@ struct PerkPage
 // it (core/Loadout.h WouldDualWield).
 [[nodiscard]] bool DualWieldAllowed(RE::Actor *actor);
 
+// Does the actor meet what the Settings page asks before a power bash: the
+// Block tree's Power Bash perk, where it asks for one. True when it asks
+// none, whatever is in the hands -- what they hold is a separate question,
+// and PlanBash asks it.
+[[nodiscard]] bool PowerBashPerkMet(RE::Actor *actor);
+
 // The damage a weapon does in their hands, as the inventory menu would show
 // it: base, times tempering, times the skill curve, through their perks
 // (which is where a Fortify effect on the skill counts, read by the hidden

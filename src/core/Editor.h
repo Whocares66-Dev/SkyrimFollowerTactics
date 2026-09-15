@@ -38,6 +38,12 @@ struct Holdings
     // The spells, powers, shouts and scrolls the cast menu offers (a spell
     // above the follower's skill is not among them).
     std::vector<std::uint32_t> castable;
+    // Of those, the ones the Dual Cast menu offers: a record that leaves a
+    // hand free, and the school's perk where the Settings page asks for one.
+    std::vector<std::uint32_t> dualCastable;
+    // Whether they have the Power Bash perk, where the Settings page asks
+    // for it. True when it does not, which is the default.
+    bool powerBashPerk{true};
     // The items carried and the spells known, as the equip menus offer
     // them: a row each, by form and variant (none for a spell).
     struct Thing
@@ -52,7 +58,9 @@ struct Holdings
 // Does the follower have what the action names? A drink or eat policy
 // names an effect, and has it while some carried thing of its kind does;
 // a named consumable, an equip, a cast names a form. An action naming
-// nothing -- an equip of "none", a blow -- always does.
+// nothing -- an equip of "none", a blow -- always does, except where the
+// Settings page asks a perk of it: a power bash without the perk, or a dual
+// cast of a spell that is not among those it may be cast from both hands.
 [[nodiscard]] bool ActionHad(const Action &action, const Holdings &has);
 
 // Is the follower the condition names with us: the subject, or the party

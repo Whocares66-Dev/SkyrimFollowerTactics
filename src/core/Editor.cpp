@@ -21,6 +21,10 @@ bool With(const Holdings &has, ActorId id)
 
 bool ActionHad(const Action &action, const Holdings &has)
 {
+    // A blow names no form, so it would pass below; this one is asked for
+    // the perk the Settings page may require of it.
+    if (action.kind == ActionKind::PowerBash)
+        return has.powerBashPerk;
     if (IsPolicy(action.kind) && IsConsume(action.kind))
     {
         const auto kind = ConsumableOf(action.kind);
@@ -45,7 +49,7 @@ bool ActionHad(const Action &action, const Holdings &has)
             return t.form == action.form && SameVariant(t.variant, action.variant);
         });
     if (IsCast(action.kind))
-        return Has(has.castable, action.form);
+        return Has(has.castable, action.form) && (!action.dual || Has(has.dualCastable, action.form));
     return true;
 }
 

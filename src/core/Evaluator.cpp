@@ -1020,7 +1020,7 @@ const char *ToString(Verdict v) noexcept
     case Verdict::CannotAfford:
         return "not enough magicka";
     case Verdict::CannotDualCast:
-        return "cannot dual cast it: no perk for the school";
+        return "cannot dual cast that spell";
     case Verdict::NoMeleeWeapon:
         return "nothing in hand for that blow";
     case Verdict::NoPerk:

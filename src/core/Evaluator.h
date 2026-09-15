@@ -28,7 +28,7 @@ enum class Verdict : std::uint8_t
     NothingToPoison,  // an Apply rule with no weapon in hand that takes a poison
     NothingToCharge,  // a Charge rule with no enchanted weapon in hand
     CannotAfford,     // knows the spell, cannot pay for it right now
-    CannotDualCast,   // a dual cast of a spell the follower cannot dual cast: no perk for its school
+    CannotDualCast,   // a dual cast of a spell that takes both hands, or whose school's perk Settings asks for
     NoMeleeWeapon,    // a blow with nothing in hand for it: a swing without a blade, a bash without a shield
     NoPerk,           // a blow the Settings page asks a perk for, which this follower has not got
     NoStamina,        // a blow the follower cannot pay for right now

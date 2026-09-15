@@ -53,4 +53,4 @@ Not addresses: copied into the plugin as logic, and wrong on another build only 
 
 ## Not version-bound
 
-Vanilla form IDs (Mercer's, Colette's, Tsun's, Edorfin's, the Sovngarde heroes' and Vilkas's packages; `DialogueFollower` and its combat override list; Fast Healing; the hand slots) are the same in every build of `Skyrim.esm`. Game settings are read by name. A load order that edits or removes one of these fails the matching load-time check and turns its feature off.
+Vanilla form IDs (Mercer's, Colette's, Tsun's, Edorfin's, the Sovngarde heroes' and Vilkas's packages; `DialogueFollower` and its combat override list; Fast Healing; the hand slots; the Block tree's Power Bash perk, 058F67) are the same in every build of `Skyrim.esm`. The school's Dual Casting perks are not named by id at all: the engine's own `CanDualCastSpell` entry point answers for the spell, so a mod's perk counts too. Game settings are read by name. A load order that edits or removes one of these fails the matching load-time check and turns its feature off.

@@ -110,6 +110,30 @@ TEST_CASE("a named thing is had by form and kind; a form of none always is", "[e
     REQUIRE(ActionHad(attack, has));
 }
 
+TEST_CASE("what the settings require is part of what a follower has", "[editor]")
+{
+    Holdings has;
+    has.castable.push_back(0x111);
+
+    // A blow names no form, so nothing else would ever set it aside.
+    Action bash;
+    bash.kind = ActionKind::PowerBash;
+    REQUIRE(ActionHad(bash, has)); // no perk asked for: the default
+    has.powerBashPerk = false;
+    REQUIRE_FALSE(ActionHad(bash, has));
+
+    // A plain cast is asked only whether the spell is known; a dual cast is
+    // asked whether it is one they may cast from both hands.
+    Action cast;
+    cast.kind = ActionKind::CastSpell;
+    cast.form = 0x111;
+    REQUIRE(ActionHad(cast, has));
+    cast.dual = true;
+    REQUIRE_FALSE(ActionHad(cast, has));
+    has.dualCastable.push_back(0x111);
+    REQUIRE(ActionHad(cast, has));
+}
+
 TEST_CASE("a follower away sets the rule aside, and is said before what is not had", "[editor]")
 {
     const Holdings has = Bag();

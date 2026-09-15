@@ -1214,17 +1214,16 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     return plan;
 }
 
-namespace
+bool PowerBashPerkMet(RE::Actor *actor)
 {
-// The Block tree's Power Bash perk (058F67). The tree asks it of the player
-// alone, so a follower needs it only where Settings says so.
-bool HasPowerBashPerk(RE::Actor *actor)
-{
+    // The Block tree's Power Bash perk (058F67). The idle tree asks it of
+    // the player alone, so a follower needs it only where Settings says so.
+    if (!CurrentSettings().requirePowerBashPerk)
+        return true;
     constexpr std::uint32_t kPowerBashPerk = 0x00058F67;
     auto *perk = RE::TESForm::LookupByID<RE::BGSPerk>(kPowerBashPerk);
-    return perk && actor->HasPerk(perk);
+    return actor && perk && actor->HasPerk(perk);
 }
-} // namespace
 
 BlowPlan PlanBash(RE::Actor *actor, bool power)
 {
@@ -1232,8 +1231,8 @@ BlowPlan PlanBash(RE::Actor *actor, bool power)
     if (!actor || !ft::BashesWith(DescribeHands(actor)))
         return plan;
     plan.event = power ? "bashPowerStart" : "bashStart";
-    if (power && CurrentSettings().requirePowerBashPerk)
-        plan.perk = HasPowerBashPerk(actor);
+    if (power)
+        plan.perk = PowerBashPerkMet(actor);
     // The cost as the engine prices a bash (26429): the setting for the kind
     // -- fStaminaBashBase 35, fStaminaPowerBashBase 55 in vanilla -- times the
     // attack's own stamina multiplier. No perk entry point prices a bash.

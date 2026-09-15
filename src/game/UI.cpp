@@ -1223,14 +1223,9 @@ std::string LastName(const ft::Action &act)
 // what the tick found the follower to have; the words are the panel's.
 bool ActionAvailable(const ft::Action &act, const FollowerView &view)
 {
-    // What Settings requires of the follower, as the menus no longer offer
-    // it: a written rule for it reads as unavailable rather than firing and
-    // being refused every time.
-    if (act.kind == ft::ActionKind::PowerBash && !view.snapshot.powerBash.perk)
-        return false;
-    if (act.kind == ft::ActionKind::CastSpell && act.dual && act.form != 0 &&
-        !view.snapshot.spells.CanDualCast(act.form))
-        return false;
+    // What Settings requires of the follower is part of what they have
+    // (core/Editor.h): a power bash without the perk, or a dual cast of a
+    // spell they may not cast from both hands, reads as unavailable.
     return ft::ActionHad(act, view.holdings);
 }
 
@@ -1624,7 +1619,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             continue;
         // Where Settings asks the Power Bash perk of a follower who has not
         // got it, a power bash is not offered at all.
-        if (kind == ft::ActionKind::PowerBash && !view.snapshot.powerBash.perk)
+        if (kind == ft::ActionKind::PowerBash && !view.holdings.powerBashPerk)
             continue;
         group(kind == ft::ActionKind::Attack || ft::ActionKind::PowerAttack == kind ? 0 : 1);
         const bool selected = here && act.kind == kind;
@@ -5397,9 +5392,9 @@ void DrawSettings()
         return clicked;
     };
 
-    CentredHeading("Tactics");
     // The same switch as each follower's on their Tactics tab, and read
-    // live the same way.
+    // live the same way. No heading over it: the page's title is above it
+    // and it is the only switch there.
     const bool enabled = IsEnabled();
     if (toggle("enabledAll", enabled, "Enable tactics for all followers", "Click to turn on tactics for all followers",
                "Click to turn off tactics for all followers"))
@@ -5415,11 +5410,11 @@ void DrawSettings()
                "Click to require dual wield combat style for dual wielding",
                "Click to not require dual wield combat style for dual wielding"))
         settings.requireDualWieldStyle = !settings.requireDualWieldStyle;
-    if (toggle("requireDualCastPerks", settings.requireDualCastPerks, "Require dual casting perks",
+    if (toggle("requireDualCastPerks", settings.requireDualCastPerks, "Require Dual Casting perks",
                "Click to require the school's Dual Casting perk for dual casting",
                "Click to not require the school's Dual Casting perk for dual casting"))
         settings.requireDualCastPerks = !settings.requireDualCastPerks;
-    if (toggle("requirePowerBashPerk", settings.requirePowerBashPerk, "Require power bash perk",
+    if (toggle("requirePowerBashPerk", settings.requirePowerBashPerk, "Require Power Bash perk",
                "Click to require the Power Bash perk for power bashing",
                "Click to not require the Power Bash perk for power bashing"))
         settings.requirePowerBashPerk = !settings.requirePowerBashPerk;
