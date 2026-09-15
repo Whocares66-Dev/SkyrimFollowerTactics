@@ -478,6 +478,10 @@ struct Contribution
     std::string source; // the worn item, the potion, the spell
     std::string effect; // the magic effect's own name, "Fortify Armor Rating"
     float amount{0.0f}; // signed: a detrimental effect takes away
+    // The effect's record has Recover: the value moves while it runs and
+    // back when it ends. Without it a pool moves every second, a
+    // regeneration or a poison, and its maximum does not.
+    bool recovers{true};
 };
 [[nodiscard]] std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value);
 

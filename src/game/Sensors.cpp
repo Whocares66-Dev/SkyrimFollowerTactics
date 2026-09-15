@@ -499,6 +499,7 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         const bool first = base->data.primaryAV == value;
         Contribution c{std::move(source), NameOr(base, ""),
                        first ? ae->magnitude : ae->magnitude * base->data.secondAVWeight};
+        c.recovers = base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kRecover);
         if (AllHidden(ae->spell))
             hidden.push_back({spellName ? spellName : "", ae->spell, std::move(c)});
         else
@@ -649,14 +650,19 @@ ft::Breakdown ValueBreakdown(RE::Actor *actor, RE::ActorValue value, const char 
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     if (!owner)
         return {};
-    ft::Breakdown b;
-    b.unit = unit;
-    AddValueLines(b, PartsOf(actor, value));
     // A pool's maximum is the permanent value plus what effects add for
     // now; the damage taken is below it and is not a source. Every other
-    // value is what it reads.
+    // value is what it reads. An effect that does not recover moves the pool
+    // every second and never its maximum, so it is no source of one: listed,
+    // Mutagen's regeneration read +8.8 Health against an Other of -8.8.
     const bool pool =
         value == RE::ActorValue::kHealth || value == RE::ActorValue::kMagicka || value == RE::ActorValue::kStamina;
+    ValueParts parts = PartsOf(actor, value);
+    if (pool)
+        std::erase_if(parts.sources, [](const Contribution &c) { return !c.recovers; });
+    ft::Breakdown b;
+    b.unit = unit;
+    AddValueLines(b, parts);
     b.total = pool ? owner->GetPermanentActorValue(value) +
                          actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, value)
                    : owner->GetActorValue(value);
