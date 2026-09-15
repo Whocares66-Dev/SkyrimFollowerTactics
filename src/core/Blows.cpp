@@ -20,7 +20,8 @@ bool IsWeapon(Held held) noexcept
 
 Swing SwingWith(Hands hands) noexcept
 {
-    // A two-hander fills both hands; it is the right hand's swing.
+    // The right hand first, then the left, as a poison goes on: a two-hander
+    // fills both hands and is the right hand's swing.
     if (hands.right == Held::TwoHander)
         return Swing::Right;
     const bool right = SwingsItself(hands.right);
@@ -29,7 +30,9 @@ Swing SwingWith(Hands hands) noexcept
         return Swing::Both;
     if (right)
         return Swing::Right;
-    if (left && hands.right == Held::Nothing)
+    // Whatever the right holds that does not swing -- a spell, a staff --
+    // the left's blade swings alone, as the player's left attack does.
+    if (left)
         return Swing::Left;
     if (hands.right == Held::Nothing && hands.left == Held::Nothing)
         return Swing::Fists;

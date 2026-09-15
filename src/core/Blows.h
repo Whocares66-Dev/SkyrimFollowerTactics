@@ -30,9 +30,11 @@ struct Hands
     Held left{Held::Nothing};
 };
 
-// The power attack the hands allow, if any: the right hand's blade or
-// two-hander, the left's alone, both at once, or the fists. A bow, a
-// staff or a spell in the hand that would swing allows none.
+// The power attack the hands allow, if any, the right hand asked first and
+// then the left: the right hand's blade or two-hander (both at once when the
+// left holds a blade too), else the left's blade whatever the right holds,
+// else the fists when both hands are empty. A bow, a staff, a spell or a
+// shield swings nothing.
 enum class Swing : std::uint8_t
 {
     None,

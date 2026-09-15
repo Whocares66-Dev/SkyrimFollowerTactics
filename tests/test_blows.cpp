@@ -6,26 +6,27 @@
 
 using namespace ft;
 
-TEST_CASE("a power attack is the right hand's blade, the left's alone, both, or the fists", "[blows]")
+TEST_CASE("a power attack is the right hand's blade, else the left's, else the fists", "[blows]")
 {
     REQUIRE(SwingWith({Held::OneHander, Held::Nothing}) == Swing::Right);
     REQUIRE(SwingWith({Held::TwoHander, Held::Nothing}) == Swing::Right);
     REQUIRE(SwingWith({Held::OneHander, Held::Shield}) == Swing::Right);
     REQUIRE(SwingWith({Held::OneHander, Held::Spell}) == Swing::Right);
     REQUIRE(SwingWith({Held::OneHander, Held::OneHander}) == Swing::Both);
-    // A weapon in the left hand alone swings with the left.
+    // The right hand swinging nothing, the left's blade swings, whatever the
+    // right holds.
     REQUIRE(SwingWith({Held::Nothing, Held::OneHander}) == Swing::Left);
+    REQUIRE(SwingWith({Held::Spell, Held::OneHander}) == Swing::Left);
+    REQUIRE(SwingWith({Held::Staff, Held::OneHander}) == Swing::Left);
     REQUIRE(SwingWith({Held::Nothing, Held::Nothing}) == Swing::Fists);
-    // A bow, a staff or a spell in the hand that would swing allows none;
-    // a shield alone is not a weapon.
+    // A bow, a staff, a spell or a shield swings nothing, and a hand holding
+    // one is not a fist.
     REQUIRE(SwingWith({Held::Bow, Held::Nothing}) == Swing::None);
     REQUIRE(SwingWith({Held::Staff, Held::Nothing}) == Swing::None);
     REQUIRE(SwingWith({Held::Spell, Held::Shield}) == Swing::None);
     REQUIRE(SwingWith({Held::Spell, Held::Spell}) == Swing::None);
     REQUIRE(SwingWith({Held::Nothing, Held::Shield}) == Swing::None);
-    // A spell in the right with a blade in the left: the blade is in the
-    // wrong hand for a lone swing, and the spell does not swing.
-    REQUIRE(SwingWith({Held::Spell, Held::OneHander}) == Swing::None);
+    REQUIRE(SwingWith({Held::Nothing, Held::Staff}) == Swing::None);
 }
 
 TEST_CASE("a bash is what blocks: a shield or torch, or the right hand's weapon with the left empty", "[blows]")
