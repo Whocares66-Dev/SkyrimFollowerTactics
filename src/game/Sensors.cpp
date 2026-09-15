@@ -2273,35 +2273,62 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
         const auto av = two ? static_cast<RE::ActorValue>(static_cast<int>(two[0])) : RE::ActorValue::kNone;
         const float value = two && owner ? owner->GetActorValue(av) : 0.0f;
         const float mult = two ? two[1] : 0.0f;
-        // A perk that reads a value is named for the value's sources, not
-        // for itself: "Deathbrand Gauntlets x 1.25", not the controller
-        // perk that turned the gauntlets' +25 into a factor. One line per
-        // source, each with its own share, one for the value's base, and
-        // one for what neither explains. Two sources'
-        // factors miss their product by the cross term, an Other line;
-        // one source, the common case, is exact.
+        // A perk that reads a value is named for what feeds the value, not
+        // for itself: not the controller perk that turned the gauntlets'
+        // +25 into a factor. Added, each share of the value -- a source, the
+        // base, what neither explains -- is a line of its own, and the lines
+        // sum exactly. Multiplied, the engine takes one factor of the whole
+        // value, so the line is that factor, named for the sources' effect,
+        // with its terms beneath: "Fortify One-handed x 1.5" over Base 1,
+        // the gauntlets +0.25 and the ring +0.25. A factor per source,
+        // x 1.25 x 1.25, overstated it by their cross term (2026-09-14).
         std::vector<ft::BreakdownLine> bySource;
         const auto withValue = [&](bool multiply, bool onePlus) {
             const ValueParts parts = PartsOf(actor, av);
+            std::vector<std::pair<std::string, float>> shares;
             float explained = parts.base;
-            const auto push = [&](std::string label, float amount) {
-                ft::BreakdownLine each;
-                each.op = multiply ? ft::Op::Multiply : ft::Op::Add;
-                each.label = std::move(label);
-                each.amount = (onePlus ? 1.0 : 0.0) + static_cast<double>(amount) * mult;
-                bySource.push_back(std::move(each));
-            };
             // Named for the value: a bare "Base" beside the weapon's own
             // read as the same thing.
             if (std::abs(parts.base) > 0.05f)
-                push("Base " + ValueName(av), parts.base);
+                shares.emplace_back("Base " + ValueName(av), parts.base);
             for (const Contribution &c : parts.sources)
             {
                 explained += c.amount;
-                push(c.source, c.amount);
+                shares.emplace_back(c.source, c.amount);
             }
             if (const float rest = value - explained; std::abs(rest) > 0.05f)
-                push("Other", rest);
+                shares.emplace_back("Other", rest);
+            const auto push = [&](std::string label, double amount) {
+                ft::BreakdownLine each;
+                each.op = multiply ? ft::Op::Multiply : ft::Op::Add;
+                each.label = std::move(label);
+                each.amount = amount;
+                bySource.push_back(std::move(each));
+            };
+            if (!multiply)
+            {
+                for (auto &[label, amount] : shares)
+                    push(std::move(label), static_cast<double>(amount) * mult);
+                return;
+            }
+            // The sources' effect where they share one, "Fortify
+            // One-handed"; else the value's own name.
+            std::string named = parts.sources.empty() ? std::string{} : parts.sources.front().effect;
+            for (const Contribution &c : parts.sources)
+            {
+                if (c.effect != named)
+                    named.clear();
+            }
+            push(named.empty() ? ValueName(av) : named, (onePlus ? 1.0 : 0.0) + static_cast<double>(value) * mult);
+            // The factor's terms, in the factor's own units.
+            ft::Breakdown terms;
+            if (onePlus)
+                ft::Start(terms, "Base", 1.0);
+            for (auto &[label, amount] : shares)
+                ft::Add(terms, std::move(label), static_cast<double>(amount) * mult);
+            for (ft::BreakdownLine &term : terms.lines)
+                term.unit = std::string{};
+            bySource.back().detail = std::move(terms.lines);
         };
         switch (entry->entryData.function.get())
         {
