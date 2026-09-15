@@ -255,6 +255,11 @@ struct BlowPlan
 // The blow a kind of action strikes; an empty plan for any other kind.
 [[nodiscard]] BlowPlan PlanBlow(RE::Actor *actor, ft::ActionKind kind);
 
+// A game setting by name, looked up on every call (a mod may change one
+// mid-session), or `vanilla` where the game has no such setting.
+[[nodiscard]] float GameSetting(const char *name, float vanilla);
+[[nodiscard]] std::int32_t GameSetting(const char *name, std::int32_t vanilla);
+
 // One consumable they carry -- a potion, a food, an ingredient -- for the
 // editor's Consume menu.
 struct ConsumableOption

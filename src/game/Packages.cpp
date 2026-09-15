@@ -1003,10 +1003,44 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
                         log::NameOf(RE::TESForm::LookupByID(slot.spell)), outcome, reason, seconds, blowNote);
 }
 
+// Turning an actor toward a point, the engine's own way: the UseWeapon
+// procedure asks it on every update out of combat and never in one, where it
+// leaves turning to the combat controller (docs/ATTACK.md "Facing") -- which
+// a record with IgnoreCombat suspends. 37834 hands the actor's movement
+// controller the point, a tolerance in radians (the procedure's,
+// fCombatAngleTolerance degrees) and two factors of 1; 37839 takes the point
+// back. Both read from 1.6.1170. The Special Edition addresses are not known,
+// so off AE neither is called, and a power attack still needs the follower
+// to be facing the enemy already.
+void TurnToward(RE::Actor *actor, RE::TESObjectREFR *target)
+{
+    if (!actor || !target || !REL::Module::IsAE())
+        return;
+    using func_t = void (*)(RE::Actor *, const RE::NiPoint3 *, float, float, float);
+    static REL::Relocation<func_t> turn{REL::ID(37834)};
+    constexpr float kRadiansPerDegree = 0.017453292f;
+    // The target's own position, as the procedure passes it, not a copy: the
+    // controller may keep the pointer until StopTurning.
+    turn(actor, &target->data.location, GameSetting("fCombatAngleTolerance", 1.0f) * kRadiansPerDegree, 1.0f, 1.0f);
+}
+
+void StopTurning(RE::Actor *actor)
+{
+    if (!actor || !REL::Module::IsAE())
+        return;
+    using func_t = void (*)(RE::Actor *);
+    static REL::Relocation<func_t> stop{REL::ID(37839)};
+    stop(actor);
+}
+
 void Release(Slot &slot)
 {
     if (slot.weapon && slot.lease)
+    {
         g_weaponLeases.fetch_sub(1, std::memory_order_relaxed);
+        if (auto holder = slot.lease->Actor())
+            StopTurning(holder.get());
+    }
     // The record comes off the stack it was put on, if it was, while the
     // lease still knows whose.
     if (slot.onStack && slot.lease)
@@ -1428,6 +1462,15 @@ void TickWeaponSlot(Slot &slot, double now)
                            now - slot.armedAt);
     }
 
+    // Turned toward the target while no swing of ours is under way: the
+    // procedure attacks only a target in front, and in a fight it does not
+    // turn the follower itself.
+    if (!slot.swinging)
+    {
+        if (const auto target = slot.target.get())
+            TurnToward(actor.get(), target.get());
+    }
+
     const char *why = nullptr;
     if (slot.swinging && attack == RE::ATTACK_STATE_ENUM::kNone)
         why = "power attack made";
@@ -1846,9 +1889,6 @@ constexpr std::uint32_t kEdorfinAttackTargetID = 0x00055D48;
 // training package (C00VilkasTrainInTrainingYard) aims at one reference.
 constexpr std::uint32_t kHeroAttackAlduinID = 0x000CD9F9;
 constexpr std::uint32_t kVilkasTrainID = 0x000F7952;
-// Karliah's combat override in Blindsighted (TG08BKarliahUseWeaponCombatOverride):
-// the package data a power attack's record takes (ConfigureWeapon).
-constexpr std::uint32_t kKarliahCombatOverrideID = 0x000FCC2A;
 constexpr const char *kTargetToAttack = "Target to Attack";
 constexpr const char *kUseWeaponLocation = "Use Weapon Location";
 RE::TESPackage *g_weaponSource = nullptr;
@@ -2029,25 +2069,11 @@ const char *ConfigureWeapon(RE::TESPackage *pkg, RE::TESPackage *source)
     if (!TargetOfInput(pkg, kWeaponTypeInput))
         return "its Weapon Type input is not reachable";
 
-    // Karliah's combat override's package data, not the cast records': Weapon
-    // Drawn and interrupt override Combat, without IgnoreCombat. In a fight
-    // the procedure leaves turning toward the target to the combat
-    // controller, and attacks only a target in front; with IgnoreCombat
-    // suspending that controller, a power attack came only when the follower
-    // already faced the enemy (docs/ATTACK.md "Facing", 2026-09-15). Copied
-    // from her record rather than written: the file's interrupt override
-    // values and the library's names for them do not agree (docs/MAGIC.md
-    // "Forms at runtime").
-    auto *karliah = RE::TESForm::LookupByID<RE::TESPackage>(kKarliahCombatOverrideID);
-    if (!karliah)
-        return "Karliah's combat override record is missing";
-    pkg->packData.packFlags = karliah->packData.packFlags;
-    pkg->packData.interruptOverrideType = karliah->packData.interruptOverrideType;
-    pkg->packData.foBehaviorFlags = karliah->packData.foBehaviorFlags;
-    log::packages.debug("{:08X}: Karliah's package data -- flags {:08X}, interrupt override {}, interrupt flags {:04X}",
-                        pkg->GetFormID(), pkg->packData.packFlags.underlying(),
-                        static_cast<int>(pkg->packData.interruptOverrideType.underlying()),
-                        pkg->packData.foBehaviorFlags.underlying());
+    // IgnoreCombat, from ClonePackage, as the cast records: without it the
+    // record is passed over in a fight for the alias's combat override
+    // (docs/ATTACK.md "Facing"). Facing the target is then ours to do
+    // (TurnToward).
+    pkg->packData.packFlags.set(RE::PACKAGE_DATA::GeneralFlag::kWeaponDrawn);
     return nullptr;
 }
 

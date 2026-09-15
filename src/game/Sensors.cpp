@@ -167,8 +167,6 @@ bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base)
         return ReadsSkillPowerMods(actor);
     return true;
 }
-float GameSetting(const char *name, float vanilla);
-std::int32_t GameSetting(const char *name, std::int32_t vanilla);
 
 } // namespace
 
@@ -1798,6 +1796,8 @@ template <class T> const RE::Setting *FindSetting(const char *name, T vanilla)
     return nullptr;
 }
 
+} // namespace
+
 // A float game setting ("f" names), or the vanilla value where the collection
 // has none. The fallbacks are vanilla's numbers so a missing setting degrades
 // to what the unmodded game does, not to a zero that reads as a broken sheet.
@@ -1813,6 +1813,9 @@ std::int32_t GameSetting(const char *name, std::int32_t vanilla)
     const auto *setting = FindSetting(name, vanilla);
     return setting ? setting->GetInteger() : vanilla;
 }
+
+namespace
+{
 
 // "83%", or past the engine's cap "110% (85%)": what the gear adds up to
 // first, and in brackets what is actually applied. The gap between them says
