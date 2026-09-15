@@ -172,7 +172,8 @@ struct Slot
     float reach = 0.0f;
     float staminaAtArm = -1.0f;
     float distanceAtArm = -1.0f;
-    bool streaming = false; // our fire event has been seen
+    float headingAtArm = -1.0f; // degrees between their facing and the target
+    bool streaming = false;     // our fire event has been seen
     // Whom the stream is aimed at, so it can stop when they are dead.
     RE::ActorHandle target;
 
@@ -975,6 +976,10 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
         const double distanceNow =
             holder && target ? static_cast<double>(holder->GetPosition().GetDistance(target->GetPosition())) : -1.0;
         const int attackState = state ? static_cast<int>(state->GetAttackState()) : -1;
+        // The procedure attacks only a target within the attack's strike
+        // angle of their heading (docs/ATTACK.md).
+        const double headingNow =
+            holder && target ? static_cast<double>(holder->GetHeadingAngle(target->GetPosition(), true)) : -1.0;
         fields.emplace_back("attackEvent", slot.attackEvent);
         fields.emplace_back("staminaCost", static_cast<double>(slot.staminaCost));
         fields.emplace_back("staminaAtRequest", static_cast<double>(slot.staminaAtArm));
@@ -982,11 +987,13 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
         fields.emplace_back("reach", static_cast<double>(slot.reach));
         fields.emplace_back("distanceAtRequest", static_cast<double>(slot.distanceAtArm));
         fields.emplace_back("distanceAtEnd", distanceNow);
+        fields.emplace_back("headingAtRequest", static_cast<double>(slot.headingAtArm));
+        fields.emplace_back("headingAtEnd", headingNow);
         fields.emplace_back("attackStateAtEnd", attackState);
-        blowNote = fmt::format(" (stamina {:.0f} -> {:.0f} for {:.0f}; distance {:.0f} -> {:.0f} of {:.0f}; attack "
-                               "state {})",
+        blowNote = fmt::format(" (stamina {:.0f} -> {:.0f} for {:.0f}; distance {:.0f} -> {:.0f} of {:.0f}; facing "
+                               "{:.0f} -> {:.0f} deg off; attack state {})",
                                slot.staminaAtArm, staminaNow, slot.staminaCost, slot.distanceAtArm, distanceNow,
-                               slot.reach, attackState);
+                               slot.reach, slot.headingAtArm, headingNow, attackState);
     }
     fields.emplace_back("reason", reason);
     fields.emplace_back("durationS", seconds);
@@ -1488,6 +1495,7 @@ CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, const B
     slot.reach = plan.reach;
     slot.staminaAtArm = actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
     slot.distanceAtArm = actor->GetPosition().GetDistance(target->GetPosition());
+    slot.headingAtArm = actor->GetHeadingAngle(target->GetPosition(), true);
     log::packages.info("{}: {:08X} power attacks {:08X} \"{}\"", log::NameOf(actor), PackageId(slot),
                        target->GetFormID(), log::NameOf(target));
     g_weaponLeases.fetch_add(1, std::memory_order_relaxed);
@@ -1838,6 +1846,9 @@ constexpr std::uint32_t kEdorfinAttackTargetID = 0x00055D48;
 // training package (C00VilkasTrainInTrainingYard) aims at one reference.
 constexpr std::uint32_t kHeroAttackAlduinID = 0x000CD9F9;
 constexpr std::uint32_t kVilkasTrainID = 0x000F7952;
+// Karliah's combat override in Blindsighted (TG08BKarliahUseWeaponCombatOverride):
+// the package data a power attack's record takes (ConfigureWeapon).
+constexpr std::uint32_t kKarliahCombatOverrideID = 0x000FCC2A;
 constexpr const char *kTargetToAttack = "Target to Attack";
 constexpr const char *kUseWeaponLocation = "Use Weapon Location";
 RE::TESPackage *g_weaponSource = nullptr;
@@ -2018,7 +2029,25 @@ const char *ConfigureWeapon(RE::TESPackage *pkg, RE::TESPackage *source)
     if (!TargetOfInput(pkg, kWeaponTypeInput))
         return "its Weapon Type input is not reachable";
 
-    pkg->packData.packFlags.set(RE::PACKAGE_DATA::GeneralFlag::kWeaponDrawn);
+    // Karliah's combat override's package data, not the cast records': Weapon
+    // Drawn and interrupt override Combat, without IgnoreCombat. In a fight
+    // the procedure leaves turning toward the target to the combat
+    // controller, and attacks only a target in front; with IgnoreCombat
+    // suspending that controller, a power attack came only when the follower
+    // already faced the enemy (docs/ATTACK.md "Facing", 2026-09-15). Copied
+    // from her record rather than written: the file's interrupt override
+    // values and the library's names for them do not agree (docs/MAGIC.md
+    // "Forms at runtime").
+    auto *karliah = RE::TESForm::LookupByID<RE::TESPackage>(kKarliahCombatOverrideID);
+    if (!karliah)
+        return "Karliah's combat override record is missing";
+    pkg->packData.packFlags = karliah->packData.packFlags;
+    pkg->packData.interruptOverrideType = karliah->packData.interruptOverrideType;
+    pkg->packData.foBehaviorFlags = karliah->packData.foBehaviorFlags;
+    log::packages.debug("{:08X}: Karliah's package data -- flags {:08X}, interrupt override {}, interrupt flags {:04X}",
+                        pkg->GetFormID(), pkg->packData.packFlags.underlying(),
+                        static_cast<int>(pkg->packData.interruptOverrideType.underlying()),
+                        pkg->packData.foBehaviorFlags.underlying());
     return nullptr;
 }
 
