@@ -62,6 +62,11 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
 // keeps this per actor, NPCs too; negative or nonsense (an hour or more)
 // reads as "can shout".
 [[nodiscard]] float VoiceRecoveryOf(RE::Actor *actor);
+// That countdown written out: the recovery the last shout set -- its word's
+// own time through Shout Recovery Mult, where the process still names the
+// shout -- less the time since, with the engine's figure as the total.
+// Empty when the voice is ready.
+[[nodiscard]] ft::Breakdown VoiceRecoveryBreakdown(RE::Actor *actor);
 
 // The hands are asked one at a time, and answered per COPY: with the same
 // dagger in each hand -- two entries of one record -- the left's poison and

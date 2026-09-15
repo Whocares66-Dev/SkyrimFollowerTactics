@@ -2614,6 +2614,39 @@ float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out)
     return recovery;
 }
 
+ft::Breakdown VoiceRecoveryBreakdown(RE::Actor *actor)
+{
+    ft::Breakdown b;
+    const auto *process = actor ? actor->GetActorRuntimeData().currentProcess : nullptr;
+    const auto *high = process ? process->high : nullptr;
+    const float remaining = VoiceRecoveryOf(actor);
+    if (!high || remaining <= 0.0f)
+        return b;
+    // The high process keeps the recovery the shout set and the time since
+    // (docs/ACTIONS.md 2), and the shout and word that set it. Where it still
+    // names them, the recovery is the word's own time through Shout Recovery
+    // Mult, the formula the word rows use; a recovery the formula misses (a
+    // plugin's, or a multiplier changed since the shout) is Other. Whether
+    // the shout is still named once it has fired is not yet watched.
+    const auto *shout = high->currentShout;
+    const auto index = static_cast<std::uint32_t>(high->currentShoutVariation);
+    if (shout && index < RE::TESShout::VariationIDs::kTotal && shout->variations[index].word)
+    {
+        (void)WordRecovery(actor, shout->variations[index].recoveryTime, &b);
+        b.lines.front().label = NameOr(shout, "?") + ", word " + std::to_string(index + 1);
+    }
+    else
+    {
+        b.unit = " s";
+        ft::Start(b, "Recovery", high->voiceRecoveryTime);
+    }
+    ft::Add(b, "Elapsed", -high->voiceTimeElapsed);
+    b.totalLabel = "Remaining";
+    b.total = remaining;
+    ft::Close(b);
+    return b;
+}
+
 ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
 {
     // The engine's own cost, read off the executable (docs/MODIFIERS.md):
