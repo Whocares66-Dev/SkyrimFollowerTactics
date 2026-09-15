@@ -3324,7 +3324,15 @@ void NoteTooltip(const std::string &note)
 void BreakdownTooltip(const ft::Breakdown &b)
 {
     Im::BeginTooltip();
-    if (Im::BeginTable("breakdown", 2, Im::ImGuiTableFlags_SizingFixedFit, Im::ImVec2(0.0f, 0.0f), 0.0f))
+    // A detail line's amount goes in a column of its own, inset from the
+    // lines' amounts: lined up with them, a multiplier's Base 1.00 read as
+    // another term of the weapon's sum (2026-09-14). Two columns where no
+    // line opens.
+    const bool opens =
+        std::any_of(b.lines.begin(), b.lines.end(), [](const ft::BreakdownLine &line) { return !line.detail.empty(); });
+    const int columns = opens ? 3 : 2;
+    const int amounts = columns - 1;
+    if (Im::BeginTable("breakdown", columns, Im::ImGuiTableFlags_SizingFixedFit, Im::ImVec2(0.0f, 0.0f), 0.0f))
     {
         const auto lines = [&](const auto &self, const std::vector<ft::BreakdownLine> &list, int depth) -> void {
             for (const ft::BreakdownLine &line : list)
@@ -3336,7 +3344,7 @@ void BreakdownTooltip(const ft::Breakdown &b)
                 std::string label(static_cast<std::size_t>(depth) * 3, ' ');
                 label += line.label;
                 Im::Text("%s", label.c_str());
-                Im::TableSetColumnIndex(1);
+                Im::TableSetColumnIndex(depth == 0 ? amounts : 1);
                 TextRightInCell(ft::AmountText(b, line));
                 self(self, line.detail, depth + 1);
             }
@@ -3348,14 +3356,15 @@ void BreakdownTooltip(const ft::Breakdown &b)
         if (!onlyBase)
         {
             Im::TableNextRow(0, 0.0f);
-            Im::TableSetColumnIndex(0);
-            Im::Separator();
-            Im::TableSetColumnIndex(1);
-            Im::Separator();
+            for (int column = 0; column < columns; ++column)
+            {
+                Im::TableSetColumnIndex(column);
+                Im::Separator();
+            }
             Im::TableNextRow(0, 0.0f);
             Im::TableSetColumnIndex(0);
             Im::Text("%s", b.totalLabel.c_str());
-            Im::TableSetColumnIndex(1);
+            Im::TableSetColumnIndex(amounts);
             TextRightInCell(ft::TotalText(b));
         }
         Im::EndTable();
