@@ -403,6 +403,11 @@ bool g_castTimeCalibrated = false;
 constexpr float kDefaultSustainSeconds = 3.0f;
 std::int8_t g_typeSpecificReference = -1;
 std::int8_t g_typeSelf = -1;
+// The type of a target input that names one form, as a Spell input names its
+// spell (Mercer's Nightingale Strife): what a power attack's Weapon Type is
+// set to, naming the weapon in the right hand.
+std::int8_t g_typeObjectId = -1;
+constexpr const char *kWeaponTypeInput = "Weapon Type";
 bool g_targetCalibrated = false;
 
 bool LooksLikePointer(std::uintptr_t value)
@@ -676,6 +681,19 @@ bool SetPackageTarget(RE::TESPackage *pkg, RE::Actor *target, const char *inputN
         pt->targType = g_typeSelf;
         pt->target.object = nullptr;
     }
+    return true;
+}
+
+// Point a named target input at one form, its type included: a Spell input
+// holds that type already, a power attack's Weapon Type holds an object type
+// until this names the weapon.
+bool SetPackageObject(RE::TESPackage *pkg, const char *inputName, RE::TESForm *form)
+{
+    auto *pt = g_typeObjectId >= 0 && form ? TargetOfInput(pkg, inputName) : nullptr;
+    if (!pt)
+        return false;
+    pt->targType = g_typeObjectId;
+    pt->target.object = form;
     return true;
 }
 
@@ -1417,8 +1435,19 @@ CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, int rul
     }
     slot.target = target->GetHandle();
     slot.targetId = target->GetFormID();
-    const auto *inHand = actor->GetEquippedObject(false);
-    slot.spell = inHand ? inHand->GetFormID() : 0;
+    // The weapon in the right hand, by name. With the object type the record
+    // was copied with, the procedure's Find step took the first of that type
+    // in the bag -- a Staff of Flames over Jenassa's pinned sword -- and tried
+    // to equip it every frame; the pin refused, and no attack came
+    // (2026-09-15). Named, Find finds the weapon already held.
+    auto *inHand = actor->GetEquippedObject(false);
+    auto *weapon = inHand ? inHand->As<RE::TESObjectWEAP>() : nullptr;
+    if (!weapon || !SetPackageObject(slot.package, kWeaponTypeInput, weapon))
+    {
+        log::packages.warn("{:08X} could not name {} as its weapon", PackageId(slot), log::NameOf(inHand));
+        return CastRequest::SpellNotInSlot;
+    }
+    slot.spell = weapon->GetFormID();
     slot.sustained = false;
     slot.swinging = false;
     slot.attackEvent.clear();
@@ -1860,6 +1889,20 @@ bool CalibrateWeapon()
         return false;
     }
 
+    // A named form's type, off Mercer's Spell input; Edorfin's Weapon Type is
+    // an object type and must read otherwise.
+    const auto *spell = TargetOfInput(RE::TESForm::LookupByID<RE::TESPackage>(kMercerCastAtPlayerID), "Spell");
+    const auto *weaponType = TargetOfInput(edorfin, kWeaponTypeInput);
+    if (!spell || !weaponType || spell->targType == weaponType->targType ||
+        spell->targType == g_typeSpecificReference || spell->targType == g_typeSelf)
+    {
+        log::packages.error("probe: a named form's target type not identified (Mercer's Spell {}, Edorfin's {} {})",
+                            spell ? static_cast<int>(spell->targType) : -1, kWeaponTypeInput,
+                            weaponType ? static_cast<int>(weaponType->targType) : -1);
+        return false;
+    }
+    g_typeObjectId = spell->targType;
+
     const auto *aim = TargetOfInput(vilkas, kTargetToAttack);
     if (!aim || aim->targType != g_typeSpecificReference)
     {
@@ -1935,6 +1978,9 @@ const char *ConfigureWeapon(RE::TESPackage *pkg, RE::TESPackage *source)
     SetPackageTarget(pkg, nullptr, kTargetToAttack);
     if (!aimed)
         return "its Target to Attack did not read back";
+
+    if (!TargetOfInput(pkg, kWeaponTypeInput))
+        return "its Weapon Type input is not reachable";
 
     pkg->packData.packFlags.set(RE::PACKAGE_DATA::GeneralFlag::kWeaponDrawn);
     return nullptr;
