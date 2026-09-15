@@ -604,6 +604,11 @@ struct PerkPage
 // chance value, through the perks on the critical hit chance entry point.
 [[nodiscard]] float CritChance(RE::Actor *actor, RE::TESObjectWEAP *weapon, ft::Breakdown *out = nullptr);
 
+// A weapon's attack speed in their hands: the record's speed, the two-handed
+// setting for a greatsword or battleaxe, and the multiplier of the hand it
+// swings in, the left where `left`.
+[[nodiscard]] float WeaponSpeed(RE::Actor *actor, RE::TESObjectWEAP *weapon, bool left, ft::Breakdown *out = nullptr);
+
 // A shout word's recovery as it applies to them: the word's own time,
 // times their shout recovery multiplier.
 [[nodiscard]] float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out = nullptr);

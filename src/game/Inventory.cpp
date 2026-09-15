@@ -216,7 +216,26 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
             row.value = Fmt("%.0f%%", chance);
             stats.rows.push_back(std::move(row));
         }
-        stats.rows.push_back(Row("Speed", Fmt("%.2f", weapon->GetSpeed())));
+        {
+            // The left hand's multiplier for a copy worn there alone, the
+            // right hand's otherwise: the hand a carried weapon swings in
+            // is not known until it is drawn.
+            bool wornLeft = false;
+            bool wornRight = false;
+            if (entry && entry->extraLists)
+            {
+                for (auto *list : *entry->extraLists)
+                {
+                    wornLeft = wornLeft || (list && list->HasType(RE::ExtraDataType::kWornLeft));
+                    wornRight = wornRight || (list && list->HasType(RE::ExtraDataType::kWorn));
+                }
+            }
+            SheetRow row;
+            const float speed = WeaponSpeed(actor, weapon, wornLeft && !wornRight, &row.breakdown);
+            row.label = "Speed";
+            row.value = Fmt("%.2f", speed);
+            stats.rows.push_back(std::move(row));
+        }
         stats.rows.push_back(Row("Reach", Fmt("%.2f", weapon->GetReach())));
         stats.rows.push_back(Row("Stagger", Fmt("%.2f", weapon->GetStagger())));
         item.description = DescriptionOf(weapon);

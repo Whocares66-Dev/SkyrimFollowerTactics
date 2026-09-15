@@ -2026,7 +2026,7 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
             rows.push_back(std::move(row));
         }
         // The critical pair in the details page's words and order. Speed,
-        // reach and stagger are the record's and on that page. A critical
+        // reach and stagger are on that page. A critical
         // that never lands or lands for nothing is no critical: neither
         // row, rather than one of them beside a 0.
         {
@@ -2480,6 +2480,41 @@ float CritChance(RE::Actor *actor, RE::TESObjectWEAP *weapon, ft::Breakdown *out
     b.total = chance;
     ft::Close(b);
     return chance;
+}
+
+float WeaponSpeed(RE::Actor *actor, RE::TESObjectWEAP *weapon, bool left, ft::Breakdown *out)
+{
+    if (!weapon)
+        return 0.0f;
+    ft::Breakdown local;
+    ft::Breakdown &b = out ? *out : local;
+    b = {};
+    b.decimals = 2;
+    // The engine's figure (id 26417, read from the running game 2026-09-14):
+    // the record's speed, times fWeaponTwoHandedAnimationSpeedMult for a
+    // two-handed sword or axe -- not a bow or a crossbow -- times the hand's
+    // multiplier, where zero or less is none. A plugin that rewrites the
+    // multiplier's read (Comprehensive Attack Rate Patch) is Other beneath it.
+    float speed = weapon->GetSpeed();
+    ft::Start(b, "Base", speed);
+    if (weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe())
+    {
+        if (const float twoHanded = GameSetting("fWeaponTwoHandedAnimationSpeedMult", 1.0f); twoHanded != 1.0f)
+        {
+            speed *= twoHanded;
+            ft::Multiply(b, "Two-handed", twoHanded);
+        }
+    }
+    const auto value = left ? RE::ActorValue::kLeftWeaponSpeedMultiply : RE::ActorValue::kWeaponSpeedMult;
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    if (const float mult = owner ? owner->GetActorValue(value) : 0.0f; mult > 0.0f && mult != 1.0f)
+    {
+        speed *= mult;
+        ft::Multiply(b, ValueName(value), mult).detail = ValueLines(actor, value, mult);
+    }
+    b.total = speed;
+    ft::Close(b);
+    return speed;
 }
 
 float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out)
