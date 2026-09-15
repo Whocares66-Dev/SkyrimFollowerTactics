@@ -93,6 +93,7 @@ Beside the follower records the co-save holds one `SETT` record: the player's ow
 | key | what |
 |---|---|
 | `schema` | as a follower record's |
+| `tacticsEnabled` | the Settings page's switch over every follower at once. On by default; a follower's own switch is theirs and lives in their record, as `enabled` above |
 | `requireDualWieldStyle` | a follower must have a combat style that allows dual wielding before a weapon is put in the second hand. On by default, which is what the mod did before the setting existed |
 | `requireDualCastPerks` | a follower must have the school's Dual Casting perk before a spell of that school is offered, or fired, as a dual cast. Off by default: the game asks this of the player, not of an NPC |
 | `requirePowerBashPerk` | a follower must have the Block tree's Power Bash perk before a power bash is offered or fired. Off by default, for the same reason: the idle tree asks it of the player alone (`docs/ATTACK.md`) |

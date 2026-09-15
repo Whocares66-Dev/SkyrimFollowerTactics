@@ -55,8 +55,12 @@ bool WriteFollower(const SKSE::SerializationInterface *intfc, const std::string 
 
 void OnSave(SKSE::SerializationInterface *intfc)
 {
+    // The switch over all followers is the Settings page's too, and is kept
+    // where the tick reads it (game/Tactics.h); it goes in the same record.
+    ft::Settings settings = CurrentSettings();
+    settings.tacticsEnabled = IsEnabled();
     if (!intfc->OpenRecord(kSettingsRecord, static_cast<std::uint32_t>(ft::kProfileSchema)) ||
-        !WriteString(intfc, ft::WriteSettings(CurrentSettings())))
+        !WriteString(intfc, ft::WriteSettings(settings)))
         log::profiles.error("could not write the settings to the save");
 
     std::size_t live = 0;
@@ -99,7 +103,10 @@ void OnLoad(SKSE::SerializationInterface *intfc)
                 continue;
             }
             if (const auto settings = ft::ReadSettings(text))
+            {
                 SetSettings(*settings);
+                SetEnabled(settings->tacticsEnabled);
+            }
             else
                 log::profiles.warn("the settings record could not be read -- the defaults stand");
             continue;
@@ -132,7 +139,9 @@ void OnRevert(SKSE::SerializationInterface *)
     // The defaults, so a save with no settings record -- one made before
     // they existed, or by a build without them -- does not inherit the last
     // session's.
-    SetSettings(ft::Settings{});
+    const ft::Settings defaults;
+    SetSettings(defaults);
+    SetEnabled(defaults.tacticsEnabled);
     ForgetSession();
 }
 

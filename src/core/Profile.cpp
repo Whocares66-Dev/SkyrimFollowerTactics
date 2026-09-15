@@ -456,6 +456,7 @@ std::string WriteSettings(const Settings &settings)
 {
     json j;
     j["schema"] = kProfileSchema;
+    j["tacticsEnabled"] = settings.tacticsEnabled;
     j["requireDualWieldStyle"] = settings.requireDualWieldStyle;
     j["requireDualCastPerks"] = settings.requireDualCastPerks;
     j["requirePowerBashPerk"] = settings.requirePowerBashPerk;
@@ -468,6 +469,7 @@ std::optional<Settings> ReadSettings(std::string_view text)
     if (j.is_discarded() || !j.is_object())
         return std::nullopt;
     Settings s;
+    s.tacticsEnabled = Bool(j, "tacticsEnabled").value_or(s.tacticsEnabled);
     s.requireDualWieldStyle = Bool(j, "requireDualWieldStyle").value_or(s.requireDualWieldStyle);
     s.requireDualCastPerks = Bool(j, "requireDualCastPerks").value_or(s.requireDualCastPerks);
     s.requirePowerBashPerk = Bool(j, "requirePowerBashPerk").value_or(s.requirePowerBashPerk);

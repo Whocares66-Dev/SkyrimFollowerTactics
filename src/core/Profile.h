@@ -110,6 +110,9 @@ struct ReadResult
 // Saved once per game, beside the follower records (game/Profiles.h).
 struct Settings
 {
+    // The switch on the Settings page, over every follower at once. A
+    // follower's own switch is theirs and lives in their record.
+    bool tacticsEnabled{true};
     bool requireDualWieldStyle{true};
     bool requireDualCastPerks{false};
     bool requirePowerBashPerk{false};

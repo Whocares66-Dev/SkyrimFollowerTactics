@@ -195,15 +195,18 @@ const std::string kHealRule = R"({
 TEST_CASE("the settings round-trip, and a document missing them keeps the defaults", "[profile]")
 {
     Settings s;
+    REQUIRE(s.tacticsEnabled);        // an empty rule list does nothing, so on is safe
     REQUIRE(s.requireDualWieldStyle); // vanilla's own answer: the style decides
     REQUIRE_FALSE(s.requireDualCastPerks);
     REQUIRE_FALSE(s.requirePowerBashPerk);
 
+    s.tacticsEnabled = false;
     s.requireDualWieldStyle = false;
     s.requireDualCastPerks = true;
     s.requirePowerBashPerk = true;
     const auto back = ReadSettings(WriteSettings(s));
     REQUIRE(back);
+    REQUIRE_FALSE(back->tacticsEnabled);
     REQUIRE_FALSE(back->requireDualWieldStyle);
     REQUIRE(back->requireDualCastPerks);
     REQUIRE(back->requirePowerBashPerk);
@@ -212,6 +215,7 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     // document does not carry keeps its default.
     const auto partial = ReadSettings(R"({"schema":1,"requirePowerBashPerk":true,"somethingElse":7})");
     REQUIRE(partial);
+    REQUIRE(partial->tacticsEnabled);
     REQUIRE(partial->requireDualWieldStyle);
     REQUIRE_FALSE(partial->requireDualCastPerks);
     REQUIRE(partial->requirePowerBashPerk);
