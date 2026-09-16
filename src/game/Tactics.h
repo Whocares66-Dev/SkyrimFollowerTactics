@@ -148,14 +148,10 @@ void ForgetSession();
 // at is not built, and with the panel closed nothing is built at all.
 //
 // Called when the panel changes page, and after something is done to the
-// follower from it. NOT on a beat: a page's content does not change while it
-// sits open, and the player's magic page costs ~92 ms to build. Game thread.
+// follower from it. Never on a beat: a page's content does not change while
+// it sits open -- the clock is frozen behind the panel -- and the player's
+// magic page costs ~92 ms to build. Game thread.
 void RefreshShownPage();
-
-// The bars on the page on screen, and nothing else: actor values and their
-// breakdowns, no scan of anything. This is the part that moves while a page
-// is open, so it is the part the tick refreshes. Game thread.
-void RefreshShownVitals();
 
 [[nodiscard]] std::optional<CharacterView> ObservePlayer();
 
