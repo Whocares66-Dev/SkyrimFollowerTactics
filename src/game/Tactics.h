@@ -136,21 +136,16 @@ struct Filed
 // callback.
 void ForgetSession();
 
-// Rebuild and publish one follower's view now, out of turn: for a request
-// that has just changed them, so the panel answers before the next tick --
-// which the frozen clock holds while the panel is open.
-void PublishFollower(RE::Actor *actor);
+// Rebuild what the panel is drawing -- that character, that page -- and
+// publish it. Everything else is left as it was: a page nobody is looking
+// at is not built, and with the panel closed nothing is built at all.
+//
+// Called from the tick ahead of every hold, so a page left open stays live
+// while the clock is frozen behind it, and out of turn the moment the panel
+// changes page, so a tab click answers at once rather than on the next beat.
+// Game thread.
+void RefreshShownPage();
 
-// Every managed follower's view, fresh. For the panel's open: the tick
-// stops with the clock the moment it opens, so what the panel shows is
-// otherwise the last tick's view. Game thread.
-void PublishAllFollowers();
-
-// The player's page, the same sheet as a follower's: read when the panel
-// opens and after a click on it, on the game thread, and not on the tick,
-// since the page is only read with the panel up and the player's bag is
-// the largest there is. None before the first open.
-void PublishPlayer();
 [[nodiscard]] std::optional<CharacterView> ObservePlayer();
 
 // Start ticking. Safe to call once, after kDataLoaded.

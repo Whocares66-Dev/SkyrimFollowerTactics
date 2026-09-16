@@ -315,52 +315,73 @@ void ReportVerdicts(RE::Actor *actor, const ft::RuleSet &rules, const ft::Trace 
     }
 }
 
-// Every sheet tab's content, read off the actor. Not rule inputs, so done on
-// both the in-combat and idle paths: the panel does not go blank when a fight
-// ends.
-void FillCharacterView(RE::Actor *actor, CharacterView &v)
+// --- the pages --------------------------------------------------------------
+//
+// The panel draws one page of one character at a time, and that page is the
+// only thing anyone can be reading, so it is the only thing built. Each
+// filler below names the fields of one page; what a page does not draw is
+// left as the last build of it left it. Game thread, and none of it under
+// the views' lock: the scans are the slow part and the lock is taken only
+// to hand the finished page over.
+
+// What every page carries above its own content: who they are and the three
+// bars with what they are made of. Actor values and their breakdowns, no
+// scan of anything.
+void FillVitals(RE::Actor *actor, CharacterView &v, bool inCombat)
 {
     v.id = actor->GetFormID();
     v.name = DisplayNameOf(actor);
+    v.inCombat = inCombat;
     v.level = actor->GetLevel();
     v.health = ReadStat(actor, RE::ActorValue::kHealth);
     v.stamina = ReadStat(actor, RE::ActorValue::kStamina);
     v.magicka = ReadStat(actor, RE::ActorValue::kMagicka);
     v.carriedWeight = actor->GetWeightInContainer();
+    v.carryCapacity = actor->GetTotalCarryWeight();
     v.healthBreakdown = ValueBreakdown(actor, RE::ActorValue::kHealth, "");
     v.staminaBreakdown = ValueBreakdown(actor, RE::ActorValue::kStamina, "");
     v.magickaBreakdown = ValueBreakdown(actor, RE::ActorValue::kMagicka, "");
-    v.carryCapacity = actor->GetTotalCarryWeight();
     v.carryBreakdown = CarryWeightBreakdown(actor);
-    v.sheet = BuildCharacterSheet(actor);
-    v.skills = BuildSkillSheet(actor);
-    v.perks = BuildPerkPages(actor);
-    v.summons = ScanSummons(actor);
-    v.inventory = ScanInventory(actor);
-    v.magic = ScanMagic(actor);
-    v.effects = ScanActiveEffects(actor);
 }
 
-// The sheet, and what the rule editor and its menus read beside it.
-void FillDisplayFields(RE::Actor *actor, FollowerView &v)
+// The bag and the spell list, each marked with the player's pins and bans.
+// MarkPins reads only the list it is marking -- a spell entry's pin is
+// answered from the pin list itself, never from the bag -- so each goes in
+// with an empty stand-in for the other rather than the other being scanned
+// as well.
+void FillInventory(RE::Actor *actor, CharacterView &v)
 {
-    FillCharacterView(actor, v);
+    v.inventory = ScanInventory(actor);
+    std::vector<MagicEntry> noMagic;
+    MarkPins(actor, v.inventory, noMagic);
+}
 
-    // Scanned on the idle path too, so the spell menu is populated while rules
-    // are being written -- which is the only time anyone opens it. A follower's
-    // spell list changes rarely, but it does change (the console addspell that
-    // set this test up is exactly such a change), so it is re-read rather than
-    // cached until something invalidates it.
+void FillMagic(RE::Actor *actor, CharacterView &v)
+{
+    v.magic = ScanMagic(actor);
+    std::vector<InventoryItem> noItems;
+    MarkPins(actor, noItems, v.magic);
+}
+
+// The rules' own page: the menus the editor offers and what it greys a rule
+// by. The one page that needs both scans, since a rule may name anything
+// they carry or know. A follower's spell list changes rarely, but it does
+// change (a console addspell is exactly such a change), so it is re-read
+// rather than kept until something says otherwise.
+void FillTactics(RE::Actor *actor, FollowerView &v)
+{
+    FillInventory(actor, v);
+    FillMagic(actor, v);
     v.spells = ScanCastableSpells(actor);
     v.consumables = ScanCarriedConsumables(actor);
+    v.peers.clear();
     for (auto *other : CollectManagedFollowers())
     {
         if (other && other != actor)
             v.peers.push_back({other->GetFormID(), DisplayNameOf(other)});
     }
-    MarkPins(actor, v.inventory, v.magic);
-    v.combatStyle = BuildCombatStyleSheet(actor);
 
+    v.holdings = {};
     v.holdings.self = v.id;
     for (const auto &peer : v.peers)
         v.holdings.peers.push_back(peer.id);
@@ -436,6 +457,55 @@ void FillDisplayFields(RE::Actor *actor, FollowerView &v)
         SetRules(v.id, std::move(rules));
 }
 
+// One page of the sheet, the six a follower and the player both have. The
+// Character page reads the spell list too, but only to tell a spell in hand
+// from an item when its sheet is clicked through to a page.
+void FillPage(RE::Actor *actor, CharacterView &v, ui::Tab tab)
+{
+    switch (tab)
+    {
+    case ui::Tab::Character:
+        v.sheet = BuildCharacterSheet(actor);
+        FillMagic(actor, v);
+        break;
+    case ui::Tab::Inventory:
+        FillInventory(actor, v);
+        break;
+    case ui::Tab::Magic:
+        FillMagic(actor, v);
+        break;
+    case ui::Tab::Summons:
+        v.summons = ScanSummons(actor);
+        break;
+    case ui::Tab::Effects:
+        v.effects = ScanActiveEffects(actor);
+        break;
+    case ui::Tab::Skills:
+        v.skills = BuildSkillSheet(actor);
+        v.perks = BuildPerkPages(actor);
+        break;
+    default:
+        break;
+    }
+}
+
+// And the two a follower has beyond them.
+void FillPage(RE::Actor *actor, FollowerView &v, ui::Tab tab)
+{
+    switch (tab)
+    {
+    case ui::Tab::CombatStyle:
+        v.combatStyle = BuildCombatStyleSheet(actor);
+        break;
+    case ui::Tab::Tactics:
+        FillTactics(actor, v);
+        break;
+    default:
+        FillPage(actor, static_cast<CharacterView &>(v), tab);
+        break;
+    }
+}
+
 void PublishOne(FollowerView v)
 {
     std::scoped_lock lock(g_viewMutex);
@@ -450,16 +520,21 @@ void PublishOne(FollowerView v)
     g_view.push_back(std::move(v));
 }
 
-// One follower's page. The tick in a fight, the tick out of one and a
-// request that has just changed them all want the same thing, so there is
-// one builder rather than a fighting one and an idle one: what the panel
-// reads does not depend on which brought us here.
-void PublishFollowerView(RE::Actor *actor, bool inCombat)
+// Everyone under tactics has an entry, so the panel can list them and open a
+// page: their name and whether they are fighting, nothing scanned. A page is
+// built when someone opens it, not because the follower exists.
+void RefreshRoster(const std::vector<RE::Actor *> &followers)
 {
-    FollowerView v;
-    v.inCombat = inCombat;
-    FillDisplayFields(actor, v);
-    PublishOne(std::move(v));
+    std::scoped_lock lock(g_viewMutex);
+    for (auto *follower : followers)
+    {
+        const ft::ActorId id = follower->GetFormID();
+        const auto it = std::find_if(g_view.begin(), g_view.end(), [id](const FollowerView &v) { return v.id == id; });
+        FollowerView &v = it != g_view.end() ? *it : g_view.emplace_back();
+        v.id = id;
+        v.name = DisplayNameOf(follower);
+        v.inCombat = follower->IsInCombat();
+    }
 }
 
 void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
@@ -519,12 +594,9 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
 
     // The cost measured is the snapshot and the evaluation -- the rules'
-    // own -- not the panel's sheets, which the publish below builds after.
+    // own. The panel's pages are not in it: they are built when someone is
+    // looking at one, not from here.
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
-
-    // Evaluated is not the same as fighting: the Combat end lists run on
-    // after the fight.
-    PublishFollowerView(actor, snapshot.inCombat);
 
     // New rules, or a new fight, report every rule's verdict afresh. The
     // farewell evaluation reports nothing: every standing rule turns false on
@@ -667,13 +739,17 @@ bool EvaluationHeld()
 // deadlock. This cost one hung startup to learn.
 void Tick()
 {
-    RepublishOwed();
+    // The page the panel is drawing, ahead of every hold below: the clock is
+    // frozen while the panel is open, so nothing past this line runs, and
+    // that page is the one thing anyone is looking at. With the panel closed
+    // nothing is shown and nothing is built.
+    RefreshShownPage();
 
     // Not an early return on the tactics switch: the switch gates rule
-    // EVALUATION, and the rest of this -- the views behind the Character,
-    // Skills and Inventory tabs, the pin watchdog -- is not tactics and runs
-    // whether or not they are being told what to do. The frozen clock still
-    // holds everything, since nothing below can act on a stopped world.
+    // EVALUATION, and the rest of this -- the roster behind the panel's list,
+    // the pin watchdog -- is not tactics and runs whether or not they are
+    // being told what to do. The frozen clock still holds everything, since
+    // nothing below can act on a stopped world.
     if (EvaluationHeld())
         return;
 
@@ -687,6 +763,7 @@ void Tick()
         return;
 
     const auto followers = CollectManagedFollowers();
+    RefreshRoster(followers);
 
     if (static_cast<int>(followers.size()) != g_lastFollowerCount)
     {
@@ -787,8 +864,6 @@ void Tick()
             state.fighting = fighting;
             EvaluateFollower(follower, now, began, ended);
         }
-        else
-            PublishFollowerView(follower, fighting);
     }
 
     // Armed cast requests are withdrawn from here, whether or not anyone is
@@ -833,42 +908,76 @@ ft::RuleSet GetRules(ft::ActorId id)
     return it == g_ruleSets.end() ? kNoRules : it->second;
 }
 
-void PublishFollower(RE::Actor *actor)
-{
-    PublishFollowerView(actor, actor->IsInCombat());
-}
-
-void PublishAllFollowers()
-{
-    const auto followers = CollectManagedFollowers();
-    for (auto *follower : followers)
-        PublishFollower(follower);
-    log::tactics.debug("panel opened -- {} follower view(s) refreshed", followers.size());
-}
-
 namespace
 {
 // The player's page. Guarded by the views' lock.
 std::optional<CharacterView> g_playerView;
+
+// The page as it stands, into `out`; left as it is where there is no page
+// yet, which is a blank one and the right thing to build onto. Copied into a
+// reference rather than handed back in an optional because a page is rebuilt
+// from what it already holds: through an optional that is a second copy and
+// a move for nothing. It also keeps the analyser out of MSVC's optional,
+// whose constructed storage it reads as uninitialised and then reports the
+// move that follows as an assignment of garbage.
+void CopyPlayerPage(CharacterView &out)
+{
+    std::scoped_lock lock(g_viewMutex);
+    if (g_playerView)
+        out = *g_playerView;
+}
+
+void CopyFollowerPage(ft::ActorId id, FollowerView &out)
+{
+    std::scoped_lock lock(g_viewMutex);
+    for (const auto &view : g_view)
+    {
+        if (view.id == id)
+        {
+            out = view;
+            return;
+        }
+    }
+}
 } // namespace
 
-void PublishPlayer()
+void RefreshShownPage()
 {
-    auto *player = RE::PlayerCharacter::GetSingleton();
-    if (!player)
+    const ui::ShownPage shown = ui::Shown();
+    if (shown.tab == ui::Tab::None || shown.actor == 0)
         return;
+    auto *actor = RE::TESForm::LookupByID<RE::Actor>(shown.actor);
+    if (!actor)
+        return;
+
+    // The page as it stands, so the fields this one does not draw keep what
+    // the last build of them left: each filler writes its own and no more.
+    // Copied out rather than built in place, so the scans below -- the slow
+    // part, and the whole reason only one page is built -- run with no lock
+    // held and the panel keeps drawing through them.
     const auto started = std::chrono::steady_clock::now();
-    CharacterView v;
-    FillCharacterView(player, v);
-    v.player = true;
-    v.inCombat = player->IsInCombat();
-    // A follower's scans, over a bag often many times the size of theirs,
-    // on the frame the panel opens: measured, so a hitch there has a number.
-    log::tactics.debug("player page built in {:.1f} ms: {} items, {} spells, {} effects",
-                       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count(),
-                       v.inventory.size(), v.magic.size(), v.effects.size());
-    std::scoped_lock lock(g_viewMutex);
-    g_playerView = std::move(v);
+    if (actor->IsPlayerRef())
+    {
+        CharacterView v;
+        CopyPlayerPage(v);
+        v.player = true;
+        FillVitals(actor, v, actor->IsInCombat());
+        FillPage(actor, v, shown.tab);
+        std::scoped_lock lock(g_viewMutex);
+        g_playerView = std::move(v);
+    }
+    else
+    {
+        FollowerView v;
+        CopyFollowerPage(shown.actor, v);
+        FillVitals(actor, v, actor->IsInCombat());
+        FillPage(actor, v, shown.tab);
+        PublishOne(std::move(v));
+    }
+    // What a page costs, measured rather than assumed: the player's bag is
+    // the largest there is, and this is the line that says so.
+    log::tactics.debug("{} page built for {} in {:.1f} ms", ui::Name(shown.tab), Describe(actor),
+                       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
 }
 
 std::optional<CharacterView> ObservePlayer()

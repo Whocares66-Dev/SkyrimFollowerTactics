@@ -3069,21 +3069,11 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
 
 // --- inventory ---------------------------------------------------------------
 
-// What each follower's Inventory tab is showing: the list narrowed to one
-// category, or one item in detail. Keyed by follower so switching pages does
-// not lose the place. Render thread only, like g_openRows.
-enum class Tab
-{
-    None,
-    Character,
-    Inventory,
-    Magic,
-    Summons,
-    Effects,
-    Skills,
-    CombatStyle, // a follower's page only
-    Tactics,     // a follower's page only
-};
+// What each follower's Inventory tab is showing -- the list narrowed to one
+// category, or one item in detail -- is kept per follower so switching pages
+// does not lose the place. Render thread only, like g_openRows. The Tab enum
+// itself is in the header: the game thread reads it to know which page to
+// build.
 
 // The Inventory and Magic categories are one for every page, as the filters
 // are: Weapons on one follower is Weapons on the next and on the player.
@@ -5190,10 +5180,42 @@ void DrawSkills(const CharacterView &view)
 // of pixels either side keeps the border inside; none top or bottom, where
 // nothing is clipped. Popped before drawing, so the tab's own popups and
 // tooltips keep the style's padding.
-void TabBody(const char *name, ft::ActorId actor, const std::function<void()> &draw,
+// Whose page is being drawn and which tab of it, packed into one word so the
+// game thread always reads a pair that belongs together, and when it was
+// last drawn. Written here on the render thread, read by the tick through
+// Shown().
+//
+// The stamp is what says the panel is still up. A page is drawn every frame
+// it is open, so a stamp that has stopped moving means nobody is looking --
+// which is the one thing the game thread must not get wrong, since it is
+// what stops it building pages for a closed panel. Asking the framework
+// instead would mean trusting a close event to never be missed, or reading
+// "is any blocking window open", which is true of another mod's panel too.
+std::atomic<std::uint64_t> g_shownNow{0};
+std::atomic<std::int64_t> g_shownAt{0};
+
+std::uint64_t Packed(ft::ActorId actor, Tab tab)
+{
+    return (static_cast<std::uint64_t>(actor) << 8) | static_cast<std::uint64_t>(tab);
+}
+
+void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
              std::initializer_list<std::uint64_t> detail = {})
 {
-    std::string id = std::string("##tab/") + name + "/" + std::to_string(actor);
+    // This is the page on screen: the framework calls only the visible
+    // section's renderer, and a tab's body only while that tab is selected.
+    // A page that has just come up is built at once rather than on the next
+    // beat, which is what makes a tab click answer immediately; the stamp
+    // goes down every frame, open or not.
+    const std::uint64_t packed = Packed(actor, tab);
+    g_shownAt.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
+    if (g_shownNow.exchange(packed, std::memory_order_relaxed) != packed)
+    {
+        if (auto *task = SKSE::GetTaskInterface())
+            task->AddTask([] { RefreshShownPage(); });
+    }
+
+    std::string id = std::string("##tab/") + Name(tab) + "/" + std::to_string(actor);
     if (std::any_of(detail.begin(), detail.end(), [](std::uint64_t part) { return part != 0; }))
         for (const std::uint64_t part : detail)
             id += "/" + std::to_string(part);
@@ -5251,34 +5273,34 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
 
     if (BeginSheetTab("Character", Tab::Character, select))
     {
-        TabBody("character", view.id, [&] { DrawCharacter(view); });
+        TabBody(Tab::Character, view.id, [&] { DrawCharacter(view); });
         Im::EndTabItem();
     }
     if (BeginSheetTab("Inventory", Tab::Inventory, select))
     {
-        TabBody("inventory", view.id, [&] { DrawInventory(view); }, {inventoryState.detail});
+        TabBody(Tab::Inventory, view.id, [&] { DrawInventory(view); }, {inventoryState.detail});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Magic", Tab::Magic, select))
     {
-        TabBody("magic", view.id, [&] { DrawMagic(view); }, {g_magicTabs[view.id].detail});
+        TabBody(Tab::Magic, view.id, [&] { DrawMagic(view); }, {g_magicTabs[view.id].detail});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Summons", Tab::Summons, select))
     {
-        TabBody("summons", view.id, [&] { DrawSummons(view); });
+        TabBody(Tab::Summons, view.id, [&] { DrawSummons(view); });
         Im::EndTabItem();
     }
     if (BeginSheetTab("Effects", Tab::Effects, select))
     {
         const EffectsTabState &effects = g_effectsTabs[view.id];
-        TabBody("effects", view.id, [&] { DrawEffects(view); },
+        TabBody(Tab::Effects, view.id, [&] { DrawEffects(view); },
                 {effects.detailForm, effects.detailSource, effects.detailLink});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Skills", Tab::Skills, select))
     {
-        TabBody("skills", view.id,
+        TabBody(Tab::Skills, view.id,
                 [&] {
                     Im::Spacing();
                     DrawSkills(view);
@@ -5307,7 +5329,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     // with, or against, these numbers.
     if (BeginSheetTab("Combat Style", Tab::CombatStyle, carried))
     {
-        TabBody("combatstyle", view.id, [&] {
+        TabBody(Tab::CombatStyle, view.id, [&] {
             Im::Spacing();
             DrawSections(view.combatStyle, false);
         });
@@ -5315,7 +5337,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     }
     if (BeginSheetTab("Tactics", Tab::Tactics, carried))
     {
-        TabBody("tactics", view.id, [&] { DrawTactics(rules, view); });
+        TabBody(Tab::Tactics, view.id, [&] { DrawTactics(rules, view); });
         Im::EndTabItem();
     }
 
@@ -5441,13 +5463,6 @@ void DrawSettings()
         settings.requirePowerBashPerk != was.requirePowerBashPerk)
     {
         SetSettings(settings);
-        // What a follower has changes with the requirement, and the views
-        // the other pages read are the tick's -- which the frozen clock
-        // holds while the panel is open. Fresh ones on the game thread, as
-        // the panel's own open does, so the Tactics tab greys a rule as
-        // soon as the switch is clicked rather than on the next open.
-        if (auto *task = SKSE::GetTaskInterface())
-            task->AddTask([]() { PublishAllFollowers(); });
     }
 }
 
@@ -5460,29 +5475,12 @@ void __stdcall RenderSettings()
 // the tab carried from the last page drawn.
 void __stdcall RenderPlayer()
 {
-    // Nothing until the open's task has read the player: a frame.
+    // Nothing until the first frame's refresh has built the page: a frame.
     const auto view = ObservePlayer();
     if (!view || !Im::BeginTabBar("player##tabs"))
         return;
     DrawSheetTabs(*view, CarriedTab(*view));
     Im::EndTabBar();
-}
-
-// The framework's own open event. The views behind every page are the
-// tick's, and the tick stops with the clock the moment the panel opens,
-// so what a page shows is otherwise whatever the last tick saw -- up to
-// half a second old, or older after a paused menu held the tick. One
-// fresh publish of every follower and of the player on the game thread,
-// at the open, so the charge a fight just drew down reads right away.
-void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
-{
-    if (type != SKSEMenuFramework::Model::EventType::kOpenMenu)
-        return;
-    if (auto *task = SKSE::GetTaskInterface())
-        task->AddTask([]() {
-            PublishAllFollowers();
-            PublishPlayer();
-        });
 }
 
 // One trampoline per slot: a render callback takes no argument, so the
@@ -5500,6 +5498,45 @@ constexpr std::array<SKSEMenuFramework::Model::RenderFunction, sizeof...(N)> Ren
 }
 
 } // namespace
+
+ShownPage Shown()
+{
+    // Stale: the panel is not drawing, so nothing is on screen and nothing
+    // is to be built. A page is redrawn every frame it is open, so a tenth
+    // of a second of silence is many frames' worth.
+    const auto drawn = std::chrono::steady_clock::time_point(
+        std::chrono::steady_clock::duration(g_shownAt.load(std::memory_order_relaxed)));
+    if (std::chrono::steady_clock::now() - drawn > std::chrono::milliseconds(100))
+        return {};
+    const std::uint64_t packed = g_shownNow.load(std::memory_order_relaxed);
+    return {static_cast<ft::ActorId>(packed >> 8), static_cast<Tab>(packed & 0xFF)};
+}
+
+const char *Name(Tab tab)
+{
+    switch (tab)
+    {
+    case Tab::Character:
+        return "character";
+    case Tab::Inventory:
+        return "inventory";
+    case Tab::Magic:
+        return "magic";
+    case Tab::Summons:
+        return "summons";
+    case Tab::Effects:
+        return "effects";
+    case Tab::Skills:
+        return "skills";
+    case Tab::CombatStyle:
+        return "combatstyle";
+    case Tab::Tactics:
+        return "tactics";
+    case Tab::None:
+    default:
+        return "none";
+    }
+}
 
 void SyncFollowers()
 {
@@ -5621,10 +5658,6 @@ void Install()
     // Before the Followers subsection the tick fills as followers are
     // recruited: an entry cannot be moved once added.
     SKSEMenuFramework::AddSectionItem("Player", RenderPlayer);
-    // Kept for the life of the process; the framework unregisters on
-    // destruction, which never comes.
-    static auto *const openEvent = SKSEMenuFramework::AddEvent(OnMenuEvent, 0.0f);
-    (void)openEvent;
 
     log::ui.info("registered with SKSE Menu Framework (F1). Follower entries appear as followers do.");
 }

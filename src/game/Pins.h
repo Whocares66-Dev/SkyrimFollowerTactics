@@ -197,9 +197,4 @@ void WatchCombatScores();
 // tried (2026-09-04). The approach Follower Equip Control ships.
 void RefuseEquipsAgainstPins();
 
-// Republish the views owed after a spell left a hand: the Papyrus native
-// that does it runs a frame after the request. Called first thing in the
-// tick, ahead of every hold.
-void RepublishOwed();
-
 } // namespace ft::game

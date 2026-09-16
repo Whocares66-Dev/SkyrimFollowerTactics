@@ -1199,13 +1199,6 @@ void ProbeCombatInventory(RE::Actor *actor)
                     owner ? owner->GetPermanentActorValue(RE::ActorValue::kMagicka) : 0.0f);
 }
 
-// Followers whose view is to be republished on the next pacing beat, whether
-// or not the clock is running. A spell leaves a hand through the Papyrus
-// native, which the script VM runs a frame or so after the request, so
-// the view republished in the request still showed the spell in hand and a
-// second click was needed to see it gone (04:15). Game thread only.
-std::unordered_set<ft::ActorId> g_republish;
-
 } // namespace
 
 // Mark the scanned items and spells that are pinned, and those the AI is
@@ -1395,34 +1388,6 @@ void WatchCombatScores()
     }
 }
 
-namespace
-{
-// Their page, fresh: the player's, or a follower's.
-void Republish(RE::Actor *actor)
-{
-    if (actor->IsPlayerRef())
-        PublishPlayer();
-    else
-        PublishFollower(actor);
-}
-} // namespace
-
-void RepublishOwed()
-{
-    // Views owed after a spell unequip: the
-    // clock is frozen while the panel is open, and this is what the panel
-    // is waiting on.
-    for (const ft::ActorId id : g_republish)
-    {
-        if (auto *actor = RE::TESForm::LookupByID<RE::Actor>(id))
-        {
-            log::pins.debug("{} time running again -- {}", Describe(actor), CasterState(actor));
-            Republish(actor);
-        }
-    }
-    g_republish.clear();
-}
-
 void KeepPins(const std::vector<RE::Actor *> &followers)
 {
     EnforcePins(followers);
@@ -1556,21 +1521,15 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         if (moving)
             UnequipForm(actor, thing, Without(Hand::Both, hands), true, variant);
         EquipPinned(actor, thing, hands, true, variant, row, fromPanel);
-        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
-            g_republish.insert(id);
         break;
     case WearRequest::Unequip:
         log::pins.info("{} told to put away {}{}", Describe(actor), name, HandTag(hands));
         UnequipForm(actor, thing, hands, true, variant);
-        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
-            g_republish.insert(id);
         break;
     case WearRequest::Ban:
         log::pins.event(log::Level::Info, "ban.applied", actor, ItemFields(described.form, variant, Hand::None, by),
                         "{} told never to use {} (banned)", Describe(actor), name);
         TakeOffEverywhere(actor, thing, described, true);
-        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
-            g_republish.insert(id);
         break;
     case WearRequest::Unban:
         log::pins.event(log::Level::Info, "ban.released", actor, ItemFields(described.form, variant, Hand::None, by),
@@ -1599,14 +1558,9 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
                             name, static_cast<int>(hands), slot ? slot->GetFormID() : 0,
                             data.selectedSpells[RE::Actor::SlotTypes::kLeftHand] == spell,
                             data.selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell, CasterState(actor));
-            // Look again once time runs, to see what the engine finishes.
-            g_republish.insert(id);
         }
         if (thing->Is(RE::FormType::Shout))
-        {
             log::pins.debug("{} shout {} -- {}", Describe(actor), name, CasterState(actor));
-            g_republish.insert(id);
-        }
         break;
     }
 
@@ -1644,7 +1598,12 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         if (!actor || !thing)
             return;
         Wear(actor, thing, request, hand, true, variant, row);
-        Republish(actor);
+        // The page the panel is on, at once: the clock is frozen while it is
+        // open, so the tick's own refresh is held and the cell would
+        // otherwise answer only when the panel closed. What the engine
+        // finishes a frame later -- a spell leaving a hand goes through the
+        // Papyrus native -- is caught by the next beat's refresh.
+        RefreshShownPage();
     });
 }
 
@@ -1814,8 +1773,6 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
                             HandTag(pin.hands));
         }
         UnequipForm(actor, thing, pin.hands, true, pin.thing.variant);
-        if (thing->Is(RE::FormType::Spell))
-            g_republish.insert(actor->GetFormID());
     }
     // And whatever of the kind is on, pinned or not: an unequip is an
     // unequip. The AI decides again from empty, as it does after the pins.
@@ -1826,8 +1783,6 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
         if (!thing)
             return;
         UnequipForm(actor, thing, hand, true);
-        if (thing->Is(RE::FormType::Spell))
-            g_republish.insert(actor->GetFormID());
         bared = true;
     };
     switch (kind)
