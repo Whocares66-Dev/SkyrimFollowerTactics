@@ -5392,6 +5392,16 @@ void DrawSlot(std::size_t slot)
 
     if (const auto view = ObserveFollower(id))
     {
+        // Still theirs, just not here. The page is what was read when they
+        // were last nearby -- said plainly, since numbers that cannot move
+        // would otherwise read as live ones -- and the rules below it are
+        // still the player's to write for when they catch up.
+        if (!view->nearby)
+        {
+            Im::TextDisabled("Not nearby -- in another cell. What is shown was read when they were last "
+                             "with you; their rules can still be written.");
+            Im::Spacing();
+        }
         DrawFollower(GetRules(view->id), *view);
         return;
     }

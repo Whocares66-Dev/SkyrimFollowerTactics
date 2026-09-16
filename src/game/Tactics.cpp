@@ -534,6 +534,7 @@ void RefreshRoster(const std::vector<RE::Actor *> &followers)
         v.id = id;
         v.name = DisplayNameOf(follower);
         v.inCombat = follower->IsInCombat();
+        v.nearby = true; // collected above, so with the player by definition
     }
 }
 
@@ -870,17 +871,23 @@ void Tick()
     // still fighting: a request must not outlive the moment it was made for.
     TickPackages(now, followers);
 
-    // Drop anyone who is no longer a managed follower -- dismissed, dead, or out
-    // of range -- so the panel reflects the present rather than a history.
+    // Who is still theirs, and who of those is here. The walk above finds
+    // high actors only, so a follower in another cell is absent from it
+    // while still being a follower: away and dismissed are different things,
+    // and reading the first as the second is what put "Dismissed" on the page
+    // of a follower waiting in another hold. Only the genuinely gone -- no
+    // longer a teammate, or dead -- are forgotten; the rest keep their page,
+    // marked, so it can still be read and their rules written.
     {
         std::scoped_lock lock(g_viewMutex);
-        std::erase_if(g_view, [&](const FollowerView &v) {
-            for (auto *f : followers)
-            {
-                if (f->GetFormID() == v.id)
-                    return false;
-            }
-            return true;
+        for (auto &v : g_view)
+            v.nearby = std::any_of(followers.begin(), followers.end(),
+                                   [&v](const RE::Actor *f) { return f->GetFormID() == v.id; });
+        std::erase_if(g_view, [](const FollowerView &v) {
+            if (v.nearby)
+                return false;
+            const auto *actor = RE::TESForm::LookupByID<RE::Actor>(v.id);
+            return !actor || !actor->IsPlayerTeammate() || actor->IsDead();
         });
     }
 
@@ -970,6 +977,11 @@ void RefreshShownPage()
     {
         FollowerView v;
         CopyFollowerPage(shown.actor, v);
+        // Away: the page stands as it was when they were last nearby. The
+        // scans want an actor the engine is simulating, and one in another
+        // cell has no high process for the sheets to read.
+        if (!v.nearby)
+            return;
         FillVitals(actor, v, actor->IsInCombat());
         FillPage(actor, v, shown.tab);
         PublishOne(std::move(v));
