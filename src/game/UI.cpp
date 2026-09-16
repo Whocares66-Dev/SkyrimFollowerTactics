@@ -3552,33 +3552,46 @@ void DrawChips(const std::vector<Chip> &chips, int &selected)
     }
 }
 
-// The category strip: All, then every category they have something in.
-// Empty categories are left out -- a tab promising nothing is noise.
+// The category strip a list draws above its table: All, then every category
+// this page has something in. Empty categories are left out -- a tab
+// promising nothing is noise -- and a category with nothing in it *here*,
+// the last potion drunk or a follower with no keys, falls back to All for
+// this page while the choice itself stands for the pages that do have it.
+// Returns the category to draw by: the one picked, or -1 for All.
+//
+// `name` and `icon` word a chip for a category's index. They are passed
+// rather than called by name because the two callers' categories are
+// different enums with their own overloads, and one of those overloads is
+// declared further down this file than this template.
+template <std::size_t N, typename Name, typename Icon>
+int DrawCategoryChips(const std::array<int, N> &counts, unsigned allIcon, ListView &shared, Name name, Icon icon)
+{
+    std::vector<Chip> chips{{"All", allIcon, -1}};
+    for (std::size_t i = 0; i < counts.size(); ++i)
+    {
+        if (counts[i] == 0)
+            continue;
+        chips.push_back({name(i), icon(i), static_cast<int>(i)});
+    }
+
+    const int picked =
+        shared.category >= 0 && counts[static_cast<std::size_t>(shared.category)] > 0 ? shared.category : -1;
+    int chosen = picked;
+    DrawChips(chips, chosen);
+    if (chosen != picked)
+        shared.category = chosen;
+    return chosen;
+}
+
 void DrawCategoryRow(const CharacterView &view, InventoryTabState &state)
 {
     std::array<int, static_cast<std::size_t>(ItemCategory::COUNT)> counts{};
     for (const auto &item : view.inventory)
         ++counts[static_cast<std::size_t>(item.category)];
 
-    std::vector<Chip> chips{{"All", kIconAll, -1}};
-    for (std::size_t i = 0; i < counts.size(); ++i)
-    {
-        if (counts[i] == 0)
-            continue;
-        const auto category = static_cast<ItemCategory>(i);
-        chips.push_back({DisplayName(category), IconFor(category), static_cast<int>(i)});
-    }
-
-    // A category with nothing in it here -- the last potion drunk, or a
-    // follower with no keys -- shows All rather than an empty table under a
-    // tab that is not there, and leaves the choice standing for the pages
-    // that have it.
-    const int shared = g_inventoryList.category;
-    state.category = shared >= 0 && counts[static_cast<std::size_t>(shared)] > 0 ? shared : -1;
-    int chosen = state.category;
-    DrawChips(chips, chosen);
-    if (chosen != state.category)
-        g_inventoryList.category = state.category = chosen;
+    state.category = DrawCategoryChips(
+        counts, kIconAll, g_inventoryList, [](std::size_t i) { return DisplayName(static_cast<ItemCategory>(i)); },
+        [](std::size_t i) { return IconFor(static_cast<ItemCategory>(i)); });
 }
 
 // The inventory table's columns, by id rather than by position: which of
@@ -4363,22 +4376,10 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
             if (VoiceEntry(entry) == voice)
                 ++counts[static_cast<std::size_t>(entry.category)];
         }
-        std::vector<Chip> chips{{"All", kIconMagicAll, -1}};
-        for (std::size_t i = 0; i < counts.size(); ++i)
-        {
-            if (counts[i] == 0)
-                continue;
-            const auto category = static_cast<MagicCategory>(i);
-            chips.push_back({DisplayName(category), IconFor(category), static_cast<int>(i)});
-        }
-        // As the Inventory tab's (DrawCategoryRow): All where the shared
-        // category has nothing, the choice kept for the pages that have it.
-        const int shared = list.shared.category;
-        state.category = shared >= 0 && counts[static_cast<std::size_t>(shared)] > 0 ? shared : -1;
-        int chosen = state.category;
-        DrawChips(chips, chosen);
-        if (chosen != state.category)
-            list.shared.category = state.category = chosen;
+        state.category = DrawCategoryChips(
+            counts, kIconMagicAll, list.shared,
+            [](std::size_t i) { return DisplayName(static_cast<MagicCategory>(i)); },
+            [](std::size_t i) { return IconFor(static_cast<MagicCategory>(i)); });
     }
     Im::Spacing();
 
