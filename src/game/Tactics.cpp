@@ -457,7 +457,7 @@ void FillTactics(RE::Actor *actor, FollowerView &v)
         SetRules(v.id, std::move(rules));
 }
 
-// One page of the sheet, the six a follower and the player both have. The
+// One page of the sheet, the seven a follower and the player both have. The
 // Character page reads the spell list too, but only to tell a spell in hand
 // from an item when its sheet is clicked through to a page.
 void FillPage(RE::Actor *actor, CharacterView &v, ui::Tab tab)
@@ -471,7 +471,10 @@ void FillPage(RE::Actor *actor, CharacterView &v, ui::Tab tab)
     case ui::Tab::Inventory:
         FillInventory(actor, v);
         break;
+    // One scan feeds both: the Magic tab draws the spells of it, the Shouts
+    // tab the powers and shouts.
     case ui::Tab::Magic:
+    case ui::Tab::Shouts:
         FillMagic(actor, v);
         break;
     case ui::Tab::Summons:

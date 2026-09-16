@@ -3075,11 +3075,14 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
 // itself is in the header: the game thread reads it to know which page to
 // build.
 
-// The Inventory and Magic categories are one for every page, as the filters
-// are: Weapons on one follower is Weapons on the next and on the player.
-// Render thread only.
+// The Inventory, Magic and Shouts categories are one for every page, as the
+// filters are: Weapons on one follower is Weapons on the next and on the
+// player. The Magic and Shouts tabs keep theirs apart -- no category is on
+// both lists, so one shared int would drop each tab's choice on the way to
+// the other. Render thread only.
 int g_inventoryCategory = -1;
 int g_magicCategory = -1;
+int g_shoutCategory = -1;
 
 struct InventoryTabState
 {
@@ -4113,18 +4116,49 @@ void DrawInventory(const CharacterView &view)
 
 // --- magic -------------------------------------------------------------------
 
-// SkyUI's Magic menu: All, the five schools, Shouts, Powers.
+// The magic lists, in two tabs: Magic is All and the five schools, and
+// Shouts is All, Shouts and Powers -- what rides the one voice slot rather
+// than a hand, which is a different list with different columns, not a
+// school. One scan (view.magic) feeds both, and VoiceEntry says which tab a
+// row is on.
 struct MagicTabState
 {
     std::uint32_t detail{0}; // the entry open in detail; 0 for the list
-    // This frame's category: g_magicCategory, or All on a page with nothing
-    // in it.
+    // This frame's category: the tab's shared category, or All on a page
+    // with nothing in it.
     int category{-1};
-    Tab openedFrom{Tab::Magic}; // where the detail page returns to: the list, or the Character sheet
+    // Where the detail page returns to: the tab's own list, or the sheet it
+    // was opened from. Written wherever `detail` is, so the value here is
+    // never read before one of those has set it.
+    Tab openedFrom{Tab::Magic};
 };
 
 std::unordered_map<ft::ActorId, MagicTabState> g_magicTabs;
+std::unordered_map<ft::ActorId, MagicTabState> g_shoutTabs;
 char g_magicFilter[64]{};
+// The same size as the Magic tab's, which is what the filter row is told:
+// the two are one buffer to every caller but the one that picks between
+// them.
+char g_shoutFilter[sizeof(g_magicFilter)]{};
+
+// Which of the two a form's page is on -- Shouts for a power or a shout,
+// Magic for a spell -- and None for a form the follower does not have.
+// Every link into either tab asks this, so the split is stated once.
+Tab MagicPageOf(const CharacterView &view, std::uint32_t form)
+{
+    for (const auto &entry : view.magic)
+    {
+        if (entry.form == form)
+            return VoiceEntry(entry) ? Tab::Shouts : Tab::Magic;
+    }
+    return Tab::None;
+}
+
+// And that page's state.
+MagicTabState &MagicPageState(ft::ActorId id, Tab page)
+{
+    return page == Tab::Shouts ? g_shoutTabs[id] : g_magicTabs[id];
+}
 
 unsigned IconFor(MagicCategory category)
 {
@@ -4155,49 +4189,47 @@ constexpr unsigned kIconMagicAll = 0xF6E8; // hat-wizard
 constexpr unsigned kIconSummoned = 0xF6D5; // dragon
 constexpr unsigned kIconRaised = 0xF54C;   // skull
 
-// A list of powers or shouts, which are readied rather than held: no school,
-// level or cost columns, and one Equipped cell.
-bool VoiceList(const MagicTabState &state)
+// What the count above a list counts: "25 shouts", "25 powers", both
+// together on the Shouts tab's All, and spells on every Magic list.
+const char *MagicNoun(int category, bool voice)
 {
-    return state.category == static_cast<int>(MagicCategory::Shouts) ||
-           state.category == static_cast<int>(MagicCategory::Powers);
+    if (category == static_cast<int>(MagicCategory::Shouts))
+        return "shouts";
+    if (category == static_cast<int>(MagicCategory::Powers))
+        return "powers";
+    return voice ? "shouts and powers" : "spells";
 }
 
-// What the count above a list counts: "25 shouts", "25 powers", and spells
-// on every other list, All included, where the rows are mostly spells.
-const char *MagicNoun(int category)
+// Is the entry on this tab's list: on the tab at all, in its category, and
+// with the filter's text in a cell the list shows for it.
+bool MagicShown(const MagicEntry &entry, const MagicTabState &state, bool voice, const char *filter)
 {
-    return category == static_cast<int>(MagicCategory::Shouts)   ? "shouts"
-           : category == static_cast<int>(MagicCategory::Powers) ? "powers"
-                                                                 : "spells";
-}
-
-// Is the entry on the list: in its category, with the filter's text in a
-// cell the list shows for it.
-bool MagicShown(const MagicEntry &entry, const MagicTabState &state)
-{
+    if (VoiceEntry(entry) != voice)
+        return false;
     if (state.category >= 0 && static_cast<int>(entry.category) != state.category)
         return false;
-    const bool voice = VoiceEntry(entry);
     std::vector<std::string> cells{entry.name, entry.type, entry.cast};
-    if (state.category < 0 && !voice)
-        cells.push_back(entry.school);
-    if (!VoiceList(state) && !voice)
+    // The three a voice list has no room for; School only where the All
+    // list shows it.
+    if (!voice)
     {
+        if (state.category < 0)
+            cells.push_back(entry.school);
         cells.push_back(entry.level);
         cells.push_back(entry.cost);
     }
     if (entry.magnitude > 0.0f)
         cells.push_back(Fmt("%.0f", entry.magnitude));
-    return AnyContains(cells, g_magicFilter);
+    return AnyContains(cells, filter);
 }
 
-std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const MagicTabState &state)
+std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const MagicTabState &state, bool voice,
+                                             const char *filter)
 {
     std::vector<const MagicEntry *> rows;
     for (const auto &entry : view.magic)
     {
-        if (MagicShown(entry, state))
+        if (MagicShown(entry, state, voice, filter))
             rows.push_back(&entry);
     }
 
@@ -4245,13 +4277,21 @@ std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const Ma
     return rows;
 }
 
-void DrawMagicList(const CharacterView &view, MagicTabState &state)
+// `home` is the tab being drawn: Magic, or Shouts for the voice list.
+void DrawMagicList(const CharacterView &view, MagicTabState &state, Tab home)
 {
+    const bool voice = home == Tab::Shouts;
+    int &shared = voice ? g_shoutCategory : g_magicCategory;
+    char *filter = voice ? g_shoutFilter : g_magicFilter;
+
     Im::Spacing();
     {
         std::array<int, static_cast<std::size_t>(MagicCategory::COUNT)> counts{};
         for (const auto &entry : view.magic)
-            ++counts[static_cast<std::size_t>(entry.category)];
+        {
+            if (VoiceEntry(entry) == voice)
+                ++counts[static_cast<std::size_t>(entry.category)];
+        }
         std::vector<Chip> chips{{"All", kIconMagicAll, -1}};
         for (std::size_t i = 0; i < counts.size(); ++i)
         {
@@ -4262,12 +4302,11 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
         }
         // As the Inventory tab's (DrawCategoryRow): All where the shared
         // category has nothing, the choice kept for the pages that have it.
-        const int shared = g_magicCategory;
         state.category = shared >= 0 && counts[static_cast<std::size_t>(shared)] > 0 ? shared : -1;
         int chosen = state.category;
         DrawChips(chips, chosen);
         if (chosen != state.category)
-            g_magicCategory = state.category = chosen;
+            shared = state.category = chosen;
     }
     Im::Spacing();
 
@@ -4275,25 +4314,26 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
     // Destruction, "3 of 3" until the filter box takes some away.
     std::size_t inCategory = 0;
     for (const auto &entry : view.magic)
-        inCategory += (state.category < 0 || static_cast<int>(entry.category) == state.category) ? 1 : 0;
+    {
+        if (VoiceEntry(entry) == voice && (state.category < 0 || static_cast<int>(entry.category) == state.category))
+            ++inCategory;
+    }
     FilterRow(
-        "##magicfilter", g_magicFilter, sizeof(g_magicFilter),
+        voice ? "##shoutfilter" : "##magicfilter", filter, sizeof(g_magicFilter),
         [&] {
             return static_cast<std::size_t>(
                 std::count_if(view.magic.begin(), view.magic.end(),
-                              [&](const MagicEntry &entry) { return MagicShown(entry, state); }));
+                              [&](const MagicEntry &entry) { return MagicShown(entry, state, voice, filter); }));
         },
-        inCategory, MagicNoun(state.category));
+        inCategory, MagicNoun(state.category, voice));
     Im::Spacing();
 
-    // Which columns. Only the All list has a School column; every list has
-    // the Type. Spells show a cell per hand;
-    // powers and shouts, which are selected rather than held, show one
-    // Equipped cell for the voice slot, clicked like a hand cell: ready
-    // it, pin it, put it away. One voice pin sets every other power and
-    // shout aside, as a pinned quiver does the arrows.
-    const bool voiceList = VoiceList(state);
-
+    // Which columns. Only the Magic tab's All list has a School column;
+    // every list has the Type. Spells show a cell per hand; powers and
+    // shouts, which are selected rather than held, show one Equipped cell
+    // for the voice slot, clicked like a hand cell: ready it, pin it, put
+    // it away. One voice pin sets every other power and shout aside, as a
+    // pinned quiver does the arrows.
     constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg | Im::ImGuiTableFlags_Sortable;
     const float gutter = kCellPadX * 2.0f;
     const auto *tableStyle = Im::GetStyle();
@@ -4315,14 +4355,15 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
     const float handWidth = (std::max)(TextWidth("Right") + arrow, Im::GetFontSize() * 2.0f) + gutter;
     const float wornWidth = (std::max)(TextWidth("Equipped") + arrow, Im::GetFontSize()) + gutter;
 
-    // No equip columns on All, as the Inventory tab has it: equipping is
-    // done from the school lists.
-    const bool allList = state.category < 0;
+    // No equip columns on the Magic tab's All, as the Inventory tab has it:
+    // equipping is done from the school lists. The Shouts tab's All is
+    // shouts and powers together, readied the same way as each is on its
+    // own, so it keeps the Equipped cell.
+    const bool allList = !voice && state.category < 0;
     // All: Name, School, Type, Level, Mag, Cost, Cast. A school's list: the
-    // same less School, plus the two hand cells. A voice list (shouts,
-    // powers) has no school, level or cost to show: Name, Type, Mag, Cast,
-    // Equipped.
-    const int columnCount = voiceList ? 5 : allList ? 7 : 8;
+    // same less School, plus the two hand cells. The voice list has no
+    // school, level or cost to show: Name, Type, Mag, Cast, Equipped.
+    const int columnCount = voice ? 5 : allList ? 7 : 8;
 
     Im::PushStyleVar(Im::ImGuiStyleVar_CellPadding, Im::ImVec2(kCellPadX, kCellPadY));
     if (!Im::BeginTable("magic", columnCount, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
@@ -4337,12 +4378,12 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
                              static_cast<Im::ImGuiID>(Column::School));
     Im::TableSetupColumn("Type", Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
                          static_cast<Im::ImGuiID>(Column::Type));
-    if (!voiceList)
+    if (!voice)
         Im::TableSetupColumn("Level", Im::ImGuiTableColumnFlags_WidthFixed, levelWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::Level));
     Im::TableSetupColumn("Mag", Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                          magnitudeWidth, static_cast<Im::ImGuiID>(Column::Magnitude));
-    if (!voiceList)
+    if (!voice)
         Im::TableSetupColumn("Cost", Im::ImGuiTableColumnFlags_WidthFixed, costWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::Cost));
     // Cast: what it does when cast -- Self, Touch, Spray, Projectile, Target,
@@ -4353,7 +4394,7 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
     {
         // no equip columns
     }
-    else if (voiceList)
+    else if (voice)
     {
         Im::TableSetupColumn("Equipped", Im::ImGuiTableColumnFlags_WidthFixed, wornWidth,
                              static_cast<Im::ImGuiID>(Column::Equipped));
@@ -4367,7 +4408,7 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
     }
     Im::TableHeadersRow();
 
-    const std::vector<const MagicEntry *> rows = VisibleMagic(view, state);
+    const std::vector<const MagicEntry *> rows = VisibleMagic(view, state, voice, filter);
     for (const MagicEntry *entry : rows)
     {
         char buf[32];
@@ -4385,7 +4426,7 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
         if (CellClicked(buf))
         {
             state.detail = entry->form;
-            state.openedFrom = Tab::Magic; // back to the list, wherever the last page was opened from
+            state.openedFrom = home; // back to the list, wherever the last page was opened from
         }
         // Why the row is dimmed, over the whole cell: asked of the
         // Selectable, before the name is drawn over it. A spell above the
@@ -4417,22 +4458,17 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", entry->name.c_str());
 
-        // A power or a shout has no school, level or cost: those cells stay
-        // empty rather than saying "Power" or "0".
-        const bool voice = VoiceEntry(*entry);
         if (allList)
         {
             Im::TableNextColumn();
-            if (!voice)
-                Im::Text("%s", entry->school.c_str());
+            Im::Text("%s", entry->school.c_str());
         }
         Im::TableNextColumn();
         Im::Text("%s", entry->type.c_str());
-        if (!voiceList)
+        if (!voice)
         {
             Im::TableNextColumn();
-            if (!voice)
-                Im::Text("%s", entry->level.c_str());
+            Im::Text("%s", entry->level.c_str());
         }
         Im::TableNextColumn();
         if (entry->magnitude > 0.0f)
@@ -4441,16 +4477,13 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
             std::snprintf(num, sizeof(num), "%.0f", entry->magnitude);
             TextRightInCell(num);
         }
-        if (!voiceList)
+        if (!voice)
         {
             Im::TableNextColumn();
-            if (!voice)
-            {
-                TextRightInCell(entry->cost);
-                // What the follower pays and why, on the number.
-                if (!entry->costBreakdown.empty() && Im::IsItemHovered(0))
-                    BreakdownTooltip(entry->costBreakdown);
-            }
+            TextRightInCell(entry->cost);
+            // What the follower pays and why, on the number.
+            if (!entry->costBreakdown.empty() && Im::IsItemHovered(0))
+                BreakdownTooltip(entry->costBreakdown);
         }
         Im::TableNextColumn();
         Im::Text("%s", entry->cast.c_str());
@@ -4459,7 +4492,7 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
         {
             // no equip cells
         }
-        else if (voiceList)
+        else if (voice)
         {
             std::snprintf(buf, sizeof(buf), "##voice%08X", entry->form);
             Im::TableNextColumn();
@@ -4469,10 +4502,10 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
         {
             std::snprintf(buf, sizeof(buf), "##left%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view, entry->form, LeftCell(*entry), Hand::Left, !voice);
+            OnCell(buf, view, entry->form, LeftCell(*entry), Hand::Left, true);
             std::snprintf(buf, sizeof(buf), "##right%08X", entry->form);
             Im::TableNextColumn();
-            OnCell(buf, view, entry->form, RightCell(*entry), Hand::Right, !voice);
+            OnCell(buf, view, entry->form, RightCell(*entry), Hand::Right, true);
         }
     }
     Im::EndTable();
@@ -4589,9 +4622,10 @@ std::vector<const EffectRow *> VisibleEffects(const CharacterView &view)
 }
 
 // The page an effect's source opens, if it has one: the worn piece on the
-// Inventory tab, the spell on the Magic tab; None for a source with no
-// page of its own -- a racial ability, a potion drunk up. The tabs' own
-// lists are the rule for what has a page.
+// Inventory tab, the spell on the Magic tab, the power or shout on the
+// Shouts tab; None for a source with no page of its own -- a racial
+// ability, a potion drunk up. The tabs' own lists are the rule for what has
+// a page.
 Tab SourcePage(const CharacterView &view, std::uint32_t form)
 {
     if (form == 0)
@@ -4599,10 +4633,7 @@ Tab SourcePage(const CharacterView &view, std::uint32_t form)
     if (std::any_of(view.inventory.begin(), view.inventory.end(),
                     [form](const InventoryItem &item) { return item.form == form; }))
         return Tab::Inventory;
-    if (std::any_of(view.magic.begin(), view.magic.end(),
-                    [form](const MagicEntry &entry) { return entry.form == form; }))
-        return Tab::Magic;
-    return Tab::None;
+    return MagicPageOf(view, form);
 }
 
 // The page a link to a form opens on the Inventory tab: of the form's
@@ -4623,7 +4654,8 @@ std::uint64_t ItemPageOf(const CharacterView &view, std::uint32_t form)
 void OpenSourcePage(const CharacterView &view, std::uint32_t form)
 {
     auto &inventory = g_inventoryTabs[view.id];
-    switch (SourcePage(view, form))
+    const Tab page = SourcePage(view, form);
+    switch (page)
     {
     case Tab::Inventory:
         inventory.detail = ItemPageOf(view, form);
@@ -4631,10 +4663,13 @@ void OpenSourcePage(const CharacterView &view, std::uint32_t form)
         inventory.select = Tab::Inventory;
         break;
     case Tab::Magic:
-        g_magicTabs[view.id].detail = form;
-        g_magicTabs[view.id].openedFrom = Tab::Effects;
-        inventory.select = Tab::Magic;
+    case Tab::Shouts: {
+        MagicTabState &magic = MagicPageState(view.id, page);
+        magic.detail = form;
+        magic.openedFrom = Tab::Effects;
+        inventory.select = page;
         break;
+    }
     default:
         break;
     }
@@ -4798,9 +4833,11 @@ void DrawEffects(const CharacterView &view)
     Im::PopStyleVar(1);
 }
 
-void DrawMagic(const CharacterView &view)
+// The Magic tab and the Shouts tab: one list drawn twice, `home` saying
+// which half of view.magic it is.
+void DrawMagicPage(const CharacterView &view, MagicTabState &state, Tab home)
 {
-    MagicTabState &state = g_magicTabs[view.id];
+    const bool voice = home == Tab::Shouts;
 
     if (state.detail != 0)
     {
@@ -4811,10 +4848,10 @@ void DrawMagic(const CharacterView &view)
                 DrawMagicDetail(entry, state);
                 // Back to wherever this was opened from: the list, or the
                 // sheet, whose tab is selected again.
-                if (state.detail == 0 && state.openedFrom != Tab::Magic)
+                if (state.detail == 0 && state.openedFrom != home)
                 {
                     g_inventoryTabs[view.id].select = state.openedFrom;
-                    state.openedFrom = Tab::Magic;
+                    state.openedFrom = home;
                 }
                 return;
             }
@@ -4822,13 +4859,25 @@ void DrawMagic(const CharacterView &view)
         state.detail = 0;
     }
 
-    if (view.magic.empty())
+    const bool any = std::any_of(view.magic.begin(), view.magic.end(),
+                                 [voice](const MagicEntry &entry) { return VoiceEntry(entry) == voice; });
+    if (!any)
     {
         Im::Spacing();
-        Im::TextDisabled("Knows no spells.");
+        Im::TextDisabled(voice ? "Knows no shouts or powers." : "Knows no spells.");
         return;
     }
-    DrawMagicList(view, state);
+    DrawMagicList(view, state, home);
+}
+
+void DrawMagic(const CharacterView &view)
+{
+    DrawMagicPage(view, g_magicTabs[view.id], Tab::Magic);
+}
+
+void DrawShouts(const CharacterView &view)
+{
+    DrawMagicPage(view, g_shoutTabs[view.id], Tab::Shouts);
 }
 
 // One summon or raised corpse, laid out as the Character tab is: the three
@@ -4987,16 +5036,16 @@ void DrawCharacter(const CharacterView &view)
     // page on the Inventory tab.
     const ft::ActorId id = view.id;
     DrawSections(view.sheet, false, [id, &view](std::uint32_t form) {
-        // A spell in hand has its page on the Magic tab; anything else on
-        // the Inventory tab.
-        const bool spell = std::any_of(view.magic.begin(), view.magic.end(),
-                                       [form](const MagicEntry &entry) { return entry.form == form; });
+        // A spell in hand has its page on the Magic tab, a power or shout
+        // on the Shouts tab; anything else on the Inventory tab.
+        const Tab page = MagicPageOf(view, form);
         auto &state = g_inventoryTabs[id];
-        if (spell)
+        if (page != Tab::None)
         {
-            g_magicTabs[id].detail = form;
-            g_magicTabs[id].openedFrom = Tab::Character;
-            state.select = Tab::Magic;
+            MagicTabState &magic = MagicPageState(id, page);
+            magic.detail = form;
+            magic.openedFrom = Tab::Character;
+            state.select = page;
             return;
         }
         // Of the form's rows, the worn one: what the sheet names is the
@@ -5263,9 +5312,10 @@ bool BeginSheetTab(const char *label, Tab tab, Tab select)
 }
 
 // The sheet's tabs, inside the caller's tab bar, reading left to right as
-// who they are, what they carry, what they can cast, what they command,
-// what is running on them and what they can do: a follower's page and the
-// player's alike. `carried` is CarriedTab's answer for this page.
+// who they are, what they carry, what they can cast, what they can shout,
+// what they command, what is running on them and what they can do: a
+// follower's page and the player's alike. `carried` is CarriedTab's answer
+// for this page.
 void DrawSheetTabs(const CharacterView &view, Tab carried)
 {
     // A pending switch, from a link on the sheet or the back arrow on an
@@ -5288,6 +5338,11 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
     if (BeginSheetTab("Magic", Tab::Magic, select))
     {
         TabBody(Tab::Magic, view.id, [&] { DrawMagic(view); }, {g_magicTabs[view.id].detail});
+        Im::EndTabItem();
+    }
+    if (BeginSheetTab("Shouts", Tab::Shouts, select))
+    {
+        TabBody(Tab::Shouts, view.id, [&] { DrawShouts(view); }, {g_shoutTabs[view.id].detail});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Summons", Tab::Summons, select))
@@ -5568,6 +5623,8 @@ const char *Name(Tab tab)
         return "inventory";
     case Tab::Magic:
         return "magic";
+    case Tab::Shouts:
+        return "shouts";
     case Tab::Summons:
         return "summons";
     case Tab::Effects:

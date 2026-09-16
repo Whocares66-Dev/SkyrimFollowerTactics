@@ -174,7 +174,7 @@ form, listed by name in the menu after the player.
 
 **Not yet seen in play:** the UseMagic package aiming at a dead actor (every target so far has been alive), the engine's own level check agreeing with ours, and a raised corpse counting in `commandedActors` for the follower rather than for nobody.
 
-**The Summons tab**, after Magic, shows what the follower commands: a chip per summon carrying its name, then health, stamina and magicka bars, level, whether summoned or raised, seconds remaining on the commanding effect, the reference and base FormIDs, and the same sheet the Character tab builds for the follower.
+**The Summons tab**, after Shouts, shows what the follower commands: a chip per summon carrying its name, then health, stamina and magicka bars, level, whether summoned or raised, seconds remaining on the commanding effect, the reference and base FormIDs, and the same sheet the Character tab builds for the follower.
 
 ## 7. What was built, where
 

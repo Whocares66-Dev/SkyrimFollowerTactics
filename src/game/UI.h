@@ -17,6 +17,7 @@ enum class Tab
     Character,
     Inventory,
     Magic,
+    Shouts,
     Summons,
     Effects,
     Skills,
