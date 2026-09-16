@@ -5320,6 +5320,11 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
 // the last one showed (CarriedTab).
 void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 {
+    // Where the tab row begins and ends, kept for the status put at its
+    // right below.
+    const Im::ImVec2 barPos = Im::GetCursorScreenPos();
+    const float barRight = barPos.x + Im::GetContentRegionAvail().x;
+
     if (!Im::BeginTabBar("follower##tabs"))
         return;
 
@@ -5346,6 +5351,25 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     }
 
     Im::EndTabBar();
+
+    // Still theirs, just not here. A status at the right of the tab row
+    // rather than a line of its own above it: it is the state of the whole
+    // page, true of every tab, and not a heading for one. Said in two words
+    // and not explained -- the page below is the answer to what it shows,
+    // and the rules on it are the player's to write either way. Drawn after
+    // the bar so it lands on the bar's line: the cursor goes back up to the
+    // row it was on, and a frame's padding centres the text against the
+    // height of a tab.
+    if (!view.nearby)
+    {
+        const Im::ImVec2 resume = Im::GetCursorScreenPos();
+        const auto *style = Im::GetStyle();
+        const char *away = "Not nearby";
+        Im::SetCursorScreenPos(
+            Im::ImVec2(barRight - TextWidth(away), barPos.y + (style ? style->FramePadding.y : 0.0f)));
+        Im::TextDisabled("%s", away);
+        Im::SetCursorScreenPos(resume);
+    }
 }
 
 // --- menu entries -----------------------------------------------------------
@@ -5396,14 +5420,6 @@ void DrawSlot(std::size_t slot)
 
     if (const auto view = ObserveFollower(id))
     {
-        // Still theirs, just not here. Said in two words, not explained: the
-        // page below is the answer to what it shows, and the rules on it are
-        // the player's to write either way.
-        if (!view->nearby)
-        {
-            Im::TextDisabled("Not nearby");
-            Im::Spacing();
-        }
         DrawFollower(GetRules(view->id), *view);
         return;
     }
