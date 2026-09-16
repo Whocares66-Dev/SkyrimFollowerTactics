@@ -4115,31 +4115,56 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
         Im::Text("%s", carried);
 }
 
+// The head of a detail page, which every tab that has one draws the same
+// way: a back arrow, borderless as the panel's other glyph buttons, the
+// name beside it, and a word after the name where the page has one.
+//
+// The arrow only reports the click. Where it goes back TO is the tab's own
+// business -- the list, the sheet it was opened from, or a whole state
+// cleared -- and no two of them answer that the same way.
+bool BackButton()
+{
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    const bool clicked = GlyphButton("back", Im::GetFrameHeight(), Glyph::Back);
+    Im::PopStyleVar(1);
+    return clicked;
+}
+
+// `tint` colours the name where the row's own colour says something about
+// it, and is null for a name drawn plainly.
+void DetailName(const std::string &name, const Im::ImVec4 *tint = nullptr)
+{
+    Im::SameLine(0.0f, kCellPadX);
+    Im::AlignTextToFramePadding();
+    if (tint)
+        Im::TextColored(*tint, "%s", name.c_str());
+    else
+        Im::Text("%s", name.c_str());
+}
+
+// The word after the name: what kind of thing the page is about.
+void DetailSubtitle(const std::string &text)
+{
+    Im::SameLine(0.0f, kCellPadX * 2.0f);
+    Im::AlignTextToFramePadding();
+    Im::TextDisabled("%s", text.c_str());
+}
+
 // One item: a back arrow, the name, then the numbers as sheet sections and
 // the prose beneath, each under its own heading only when there is any.
 void DrawItemDetail(const InventoryItem &item, PanelState &panel)
 {
     Im::Spacing();
-    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-    if (GlyphButton("back", Im::GetFrameHeight(), Glyph::Back))
+    if (BackButton())
     {
         // Back to wherever this was opened from: the list, or the sheet.
         panel.inventory.detail = 0;
         if (panel.inventory.openedFrom != Tab::Inventory)
             panel.select = panel.inventory.openedFrom;
     }
-    Im::PopStyleVar(1);
-
-    Im::SameLine(0.0f, kCellPadX);
-    Im::AlignTextToFramePadding();
-    if (const Im::ImVec4 *tint = NameTint(item))
-        Im::TextColored(*tint, "%s", item.name.c_str());
-    else
-        Im::Text("%s", item.name.c_str());
+    DetailName(item.name, NameTint(item));
     NameBadges(item, false, true);
-    Im::SameLine(0.0f, kCellPadX * 2.0f);
-    Im::AlignTextToFramePadding();
-    Im::TextDisabled("%s", item.type.c_str());
+    DetailSubtitle(item.type);
 
     Im::Spacing();
     DrawSections(item.detail, false);
@@ -4588,17 +4613,10 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
 void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
 {
     Im::Spacing();
-    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-    if (GlyphButton("back", Im::GetFrameHeight(), Glyph::Back))
+    if (BackButton())
         state.detail = 0;
-    Im::PopStyleVar(1);
-
-    Im::SameLine(0.0f, kCellPadX);
-    Im::AlignTextToFramePadding();
-    Im::Text("%s", entry.name.c_str());
-    Im::SameLine(0.0f, kCellPadX * 2.0f);
-    Im::AlignTextToFramePadding();
-    Im::TextDisabled("%s", entry.school.c_str());
+    DetailName(entry.name);
+    DetailSubtitle(entry.school);
 
     Im::Spacing();
     DrawSections(entry.detail, false);
@@ -4723,14 +4741,9 @@ void OpenSourcePage(const CharacterView &view, std::uint32_t form)
 void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const CharacterView &view)
 {
     Im::Spacing();
-    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-    if (GlyphButton("back", Im::GetFrameHeight(), Glyph::Back))
+    if (BackButton())
         state = {};
-    Im::PopStyleVar(1);
-
-    Im::SameLine(0.0f, kCellPadX);
-    Im::AlignTextToFramePadding();
-    Im::Text("%s", row.name.c_str());
+    DetailName(row.name);
 
     Im::Spacing();
     // One row, in the table the item page lists its effects in, with the
@@ -5182,13 +5195,9 @@ void DrawSkills(const CharacterView &view)
         }
         else
         {
-            Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-            if (GlyphButton("back", Im::GetFrameHeight(), Glyph::Back))
+            if (BackButton())
                 state.detail = 0;
-            Im::PopStyleVar(1);
-            Im::SameLine(0.0f, kCellPadX);
-            Im::AlignTextToFramePadding();
-            Im::Text("%s", page->name.c_str());
+            DetailName(page->name);
             Im::Spacing();
             // The perk's facts; then its effects, each with the conditions
             // that gate it beneath, in the table the skills open into.
