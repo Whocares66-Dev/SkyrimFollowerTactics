@@ -3067,38 +3067,105 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
     Im::PopStyleVar(1); // cell padding
 }
 
-// --- inventory ---------------------------------------------------------------
+// --- the panel's memory -------------------------------------------------------
+//
+// Two kinds of state, kept apart here so neither is looked for in the other:
+//
+//  - per follower, in PanelState: which page of theirs is open and what is
+//    open on it, so moving between followers does not lose anyone's place.
+//  - per panel, in the ListView beside each list: the chip picked and the
+//    text typed. Shared across followers on purpose -- "where are the
+//    lockpicks" is a question about the party, not about one bag, and
+//    Weapons on one follower is Weapons on the next and on the player.
+//
+// Render thread only, like g_openRows. The Tab enum itself is in the header:
+// the game thread reads it to know which page to build.
 
-// What each follower's Inventory tab is showing -- the list narrowed to one
-// category, or one item in detail -- is kept per follower so switching pages
-// does not lose the place. Render thread only, like g_openRows. The Tab enum
-// itself is in the header: the game thread reads it to know which page to
-// build.
+constexpr std::size_t kFilterLen = 64;
 
-// The Inventory, Magic and Shouts categories are one for every page, as the
-// filters are: Weapons on one follower is Weapons on the next and on the
-// player. The Magic and Shouts tabs keep theirs apart -- no category is on
-// both lists, so one shared int would drop each tab's choice on the way to
-// the other. Render thread only.
-int g_inventoryCategory = -1;
-int g_magicCategory = -1;
-int g_shoutCategory = -1;
+// What a list remembers for every follower at once.
+struct ListView
+{
+    int category{-1}; // the chip picked; -1: All, and what a list with no chip row stays at
+    char filter[kFilterLen]{};
+};
+
+// The three lists with a chip row. Magic and Shouts keep theirs apart: no
+// category is on both, so one shared int would drop each list's choice on
+// the way to the other.
+ListView g_inventoryList;
+ListView g_magicList;
+ListView g_shoutList;
+// And the two that only filter.
+char g_effectsFilter[kFilterLen]{};
+char g_perksFilter[kFilterLen]{};
 
 struct InventoryTabState
 {
     std::uint64_t detail{0}; // the row open in detail, by InventoryItem::Key; 0 for the list
-    // This frame's category: g_inventoryCategory, or All on a page with
+    // This frame's category: the list's shared one, or All on a page with
     // nothing in it.
     int category{-1};
     Tab openedFrom{Tab::Inventory}; // where the detail page returns to
-    Tab select{Tab::None};          // a tab to switch to on the next frame
 };
 
-std::unordered_map<ft::ActorId, InventoryTabState> g_inventoryTabs;
+// The Magic tab's and the Shouts tab's, one each: two halves of one list
+// (VoiceEntry says which), so they remember the same things.
+struct MagicTabState
+{
+    std::uint32_t detail{0}; // the entry open in detail; 0 for the list
+    int category{-1};        // this frame's, as the Inventory tab's
+    // Where the detail page returns to: the tab's own list, or the sheet it
+    // was opened from. Written wherever `detail` is, so the value here is
+    // never read before one of those has set it.
+    Tab openedFrom{Tab::Magic};
+};
 
-// One filter for every follower. Shared on purpose: "where are the lockpicks"
-// is a question about the party, not about one bag.
-char g_inventoryFilter[64]{};
+struct EffectsTabState
+{
+    // The row open in detail, by effect, source and the worn item behind
+    // the source; 0 for the list. The item is part of it because two
+    // pieces enchanted alike share one enchantment form, and their rows
+    // were one row to the panel: the necklace's clicks went to the ring's
+    // (Remiel's Silver Ruby pair, 2026-09-11).
+    std::uint32_t detailForm{0};
+    std::uint32_t detailSource{0};
+    std::uint32_t detailLink{0};
+};
+
+struct SkillsTabState
+{
+    std::uint32_t detail{0}; // the perk open in detail; 0 for the skills
+};
+
+// Everything the panel remembers about one follower's page: a state for each
+// tab that keeps one, and the switch the page itself owns. One map, so there
+// is one lookup, one place to read what a page remembers, and one place to
+// clear when a follower goes.
+struct PanelState
+{
+    InventoryTabState inventory;
+    MagicTabState magic;
+    MagicTabState shouts;
+    EffectsTabState effects;
+    SkillsTabState skills;
+    // The Summons tab's chip: the summon chosen, by its reference.
+    int summon{0};
+    // The tab to show on the next frame, asked for by a link on a sheet or
+    // by a detail page's back arrow. The page's own and not any one tab's --
+    // four of them write it -- though it lived in the Inventory tab's state
+    // until 2026-09-16. None: leave the bar as it is.
+    Tab select{Tab::None};
+};
+
+std::unordered_map<ft::ActorId, PanelState> g_panels;
+
+PanelState &Panel(ft::ActorId id)
+{
+    return g_panels[id];
+}
+
+// --- inventory ---------------------------------------------------------------
 
 // The category row's icons. Font Awesome's free set has no sword, so
 // Weapons gets a hammer; swap the codepoint here if a better one turns up.
@@ -3506,12 +3573,12 @@ void DrawCategoryRow(const CharacterView &view, InventoryTabState &state)
     // follower with no keys -- shows All rather than an empty table under a
     // tab that is not there, and leaves the choice standing for the pages
     // that have it.
-    const int shared = g_inventoryCategory;
+    const int shared = g_inventoryList.category;
     state.category = shared >= 0 && counts[static_cast<std::size_t>(shared)] > 0 ? shared : -1;
     int chosen = state.category;
     DrawChips(chips, chosen);
     if (chosen != state.category)
-        g_inventoryCategory = state.category = chosen;
+        g_inventoryList.category = state.category = chosen;
 }
 
 // The inventory table's columns, by id rather than by position: which of
@@ -3708,7 +3775,7 @@ bool ItemShown(const InventoryItem &item, const InventoryTabState &state)
         if (item.magnitude > 0.0f)
             cells.push_back(Fmt("%.0f", item.magnitude));
     }
-    return AnyContains(cells, g_inventoryFilter);
+    return AnyContains(cells, g_inventoryList.filter);
 }
 
 // The rows to show, in the order the table's header asks for. Sorted every
@@ -3784,7 +3851,7 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
     for (const auto &item : view.inventory)
         inCategory += (state.category < 0 || static_cast<int>(item.category) == state.category) ? 1 : 0;
     FilterRow(
-        "##invfilter", g_inventoryFilter, sizeof(g_inventoryFilter),
+        "##invfilter", g_inventoryList.filter, sizeof(g_inventoryList.filter),
         [&] {
             return static_cast<std::size_t>(
                 std::count_if(view.inventory.begin(), view.inventory.end(),
@@ -4021,16 +4088,16 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
 
 // One item: a back arrow, the name, then the numbers as sheet sections and
 // the prose beneath, each under its own heading only when there is any.
-void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
+void DrawItemDetail(const InventoryItem &item, PanelState &panel)
 {
     Im::Spacing();
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
     if (GlyphButton("back", Im::GetFrameHeight(), Glyph::Back))
     {
         // Back to wherever this was opened from: the list, or the sheet.
-        state.detail = 0;
-        if (state.openedFrom != Tab::Inventory)
-            state.select = state.openedFrom;
+        panel.inventory.detail = 0;
+        if (panel.inventory.openedFrom != Tab::Inventory)
+            panel.select = panel.inventory.openedFrom;
     }
     Im::PopStyleVar(1);
 
@@ -4089,7 +4156,8 @@ void DrawItemDetail(const InventoryItem &item, InventoryTabState &state)
 // arrow is a gesture everyone already knows.
 void DrawInventory(const CharacterView &view)
 {
-    InventoryTabState &state = g_inventoryTabs[view.id];
+    PanelState &panel = Panel(view.id);
+    InventoryTabState &state = panel.inventory;
 
     if (state.detail != 0)
     {
@@ -4097,7 +4165,7 @@ void DrawInventory(const CharacterView &view)
         {
             if (item.Key() == state.detail)
             {
-                DrawItemDetail(item, state);
+                DrawItemDetail(item, panel);
                 return;
             }
         }
@@ -4121,25 +4189,26 @@ void DrawInventory(const CharacterView &view)
 // than a hand, which is a different list with different columns, not a
 // school. One scan (view.magic) feeds both, and VoiceEntry says which tab a
 // row is on.
-struct MagicTabState
+//
+// One of those two lists, as everything that draws one is told it: which
+// half of view.magic it is, the state this follower keeps for it, and the
+// chip and filter it shares with every other page. Built by MagicListFor,
+// so "which list is this" is answered once and then carried, rather than
+// re-derived from a bool at each call.
+struct MagicList
 {
-    std::uint32_t detail{0}; // the entry open in detail; 0 for the list
-    // This frame's category: the tab's shared category, or All on a page
-    // with nothing in it.
-    int category{-1};
-    // Where the detail page returns to: the tab's own list, or the sheet it
-    // was opened from. Written wherever `detail` is, so the value here is
-    // never read before one of those has set it.
-    Tab openedFrom{Tab::Magic};
+    Tab home; // Magic, or Shouts for the voice list
+    bool voice;
+    MagicTabState &state;
+    ListView &shared;
 };
 
-std::unordered_map<ft::ActorId, MagicTabState> g_magicTabs;
-std::unordered_map<ft::ActorId, MagicTabState> g_shoutTabs;
-char g_magicFilter[64]{};
-// The same size as the Magic tab's, which is what the filter row is told:
-// the two are one buffer to every caller but the one that picks between
-// them.
-char g_shoutFilter[sizeof(g_magicFilter)]{};
+MagicList MagicListFor(ft::ActorId id, Tab home)
+{
+    PanelState &panel = Panel(id);
+    return home == Tab::Shouts ? MagicList{Tab::Shouts, true, panel.shouts, g_shoutList}
+                               : MagicList{Tab::Magic, false, panel.magic, g_magicList};
+}
 
 // Which of the two a form's page is on -- Shouts for a power or a shout,
 // Magic for a spell -- and None for a form the follower does not have.
@@ -4157,7 +4226,8 @@ Tab MagicPageOf(const CharacterView &view, std::uint32_t form)
 // And that page's state.
 MagicTabState &MagicPageState(ft::ActorId id, Tab page)
 {
-    return page == Tab::Shouts ? g_shoutTabs[id] : g_magicTabs[id];
+    PanelState &panel = Panel(id);
+    return page == Tab::Shouts ? panel.shouts : panel.magic;
 }
 
 unsigned IconFor(MagicCategory category)
@@ -4202,34 +4272,34 @@ const char *MagicNoun(int category, bool voice)
 
 // Is the entry on this tab's list: on the tab at all, in its category, and
 // with the filter's text in a cell the list shows for it.
-bool MagicShown(const MagicEntry &entry, const MagicTabState &state, bool voice, const char *filter)
+bool MagicShown(const MagicEntry &entry, const MagicList &list)
 {
-    if (VoiceEntry(entry) != voice)
+    if (VoiceEntry(entry) != list.voice)
         return false;
-    if (state.category >= 0 && static_cast<int>(entry.category) != state.category)
+    const int category = list.state.category;
+    if (category >= 0 && static_cast<int>(entry.category) != category)
         return false;
     std::vector<std::string> cells{entry.name, entry.type, entry.cast};
     // The three a voice list has no room for; School only where the All
     // list shows it.
-    if (!voice)
+    if (!list.voice)
     {
-        if (state.category < 0)
+        if (category < 0)
             cells.push_back(entry.school);
         cells.push_back(entry.level);
         cells.push_back(entry.cost);
     }
     if (entry.magnitude > 0.0f)
         cells.push_back(Fmt("%.0f", entry.magnitude));
-    return AnyContains(cells, filter);
+    return AnyContains(cells, list.shared.filter);
 }
 
-std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const MagicTabState &state, bool voice,
-                                             const char *filter)
+std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const MagicList &list)
 {
     std::vector<const MagicEntry *> rows;
     for (const auto &entry : view.magic)
     {
-        if (MagicShown(entry, state, voice, filter))
+        if (MagicShown(entry, list))
             rows.push_back(&entry);
     }
 
@@ -4277,12 +4347,10 @@ std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const Ma
     return rows;
 }
 
-// `home` is the tab being drawn: Magic, or Shouts for the voice list.
-void DrawMagicList(const CharacterView &view, MagicTabState &state, Tab home)
+void DrawMagicList(const CharacterView &view, const MagicList &list)
 {
-    const bool voice = home == Tab::Shouts;
-    int &shared = voice ? g_shoutCategory : g_magicCategory;
-    char *filter = voice ? g_shoutFilter : g_magicFilter;
+    MagicTabState &state = list.state;
+    const bool voice = list.voice;
 
     Im::Spacing();
     {
@@ -4302,11 +4370,12 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state, Tab home)
         }
         // As the Inventory tab's (DrawCategoryRow): All where the shared
         // category has nothing, the choice kept for the pages that have it.
+        const int shared = list.shared.category;
         state.category = shared >= 0 && counts[static_cast<std::size_t>(shared)] > 0 ? shared : -1;
         int chosen = state.category;
         DrawChips(chips, chosen);
         if (chosen != state.category)
-            shared = state.category = chosen;
+            list.shared.category = state.category = chosen;
     }
     Im::Spacing();
 
@@ -4319,11 +4388,11 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state, Tab home)
             ++inCategory;
     }
     FilterRow(
-        voice ? "##shoutfilter" : "##magicfilter", filter, sizeof(g_magicFilter),
+        voice ? "##shoutfilter" : "##magicfilter", list.shared.filter, sizeof(list.shared.filter),
         [&] {
             return static_cast<std::size_t>(
                 std::count_if(view.magic.begin(), view.magic.end(),
-                              [&](const MagicEntry &entry) { return MagicShown(entry, state, voice, filter); }));
+                              [&](const MagicEntry &entry) { return MagicShown(entry, list); }));
         },
         inCategory, MagicNoun(state.category, voice));
     Im::Spacing();
@@ -4408,7 +4477,7 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state, Tab home)
     }
     Im::TableHeadersRow();
 
-    const std::vector<const MagicEntry *> rows = VisibleMagic(view, state, voice, filter);
+    const std::vector<const MagicEntry *> rows = VisibleMagic(view, list);
     for (const MagicEntry *entry : rows)
     {
         char buf[32];
@@ -4426,7 +4495,7 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state, Tab home)
         if (CellClicked(buf))
         {
             state.detail = entry->form;
-            state.openedFrom = home; // back to the list, wherever the last page was opened from
+            state.openedFrom = list.home; // back to the list, wherever the last page was opened from
         }
         // Why the row is dimmed, over the whole cell: asked of the
         // Selectable, before the name is drawn over it. A spell above the
@@ -4554,21 +4623,6 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
 // comes from. Read on the tick, so with the clock frozen behind the panel
 // the times stand still, as they do in the game's own menu. A name opens
 // the effect's page, as on the Inventory and Magic tabs.
-struct EffectsTabState
-{
-    // The row open in detail, by effect, source and the worn item behind
-    // the source; 0 for the list. The item is part of it because two
-    // pieces enchanted alike share one enchantment form, and their rows
-    // were one row to the panel: the necklace's clicks went to the ring's
-    // (Remiel's Silver Ruby pair, 2026-09-11).
-    std::uint32_t detailForm{0};
-    std::uint32_t detailSource{0};
-    std::uint32_t detailLink{0};
-};
-
-std::unordered_map<ft::ActorId, EffectsTabState> g_effectsTabs;
-char g_effectsFilter[64]{};
-
 // Does the row hold the filter's text in a cell the table shows?
 bool EffectShown(const EffectRow &row)
 {
@@ -4653,21 +4707,21 @@ std::uint64_t ItemPageOf(const CharacterView &view, std::uint32_t form)
 // Open it, with the back arrow returning to the Effects tab.
 void OpenSourcePage(const CharacterView &view, std::uint32_t form)
 {
-    auto &inventory = g_inventoryTabs[view.id];
+    PanelState &panel = Panel(view.id);
     const Tab page = SourcePage(view, form);
     switch (page)
     {
     case Tab::Inventory:
-        inventory.detail = ItemPageOf(view, form);
-        inventory.openedFrom = Tab::Effects;
-        inventory.select = Tab::Inventory;
+        panel.inventory.detail = ItemPageOf(view, form);
+        panel.inventory.openedFrom = Tab::Effects;
+        panel.select = Tab::Inventory;
         break;
     case Tab::Magic:
     case Tab::Shouts: {
         MagicTabState &magic = MagicPageState(view.id, page);
         magic.detail = form;
         magic.openedFrom = Tab::Effects;
-        inventory.select = page;
+        panel.select = page;
         break;
     }
     default:
@@ -4718,7 +4772,7 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Charac
 
 void DrawEffects(const CharacterView &view)
 {
-    auto &state = g_effectsTabs[view.id];
+    auto &state = Panel(view.id).effects;
     if (state.detailForm != 0)
     {
         for (const auto &row : view.effects)
@@ -4835,9 +4889,10 @@ void DrawEffects(const CharacterView &view)
 
 // The Magic tab and the Shouts tab: one list drawn twice, `home` saying
 // which half of view.magic it is.
-void DrawMagicPage(const CharacterView &view, MagicTabState &state, Tab home)
+void DrawMagicPage(const CharacterView &view, const MagicList &list)
 {
-    const bool voice = home == Tab::Shouts;
+    MagicTabState &state = list.state;
+    const bool voice = list.voice;
 
     if (state.detail != 0)
     {
@@ -4848,10 +4903,10 @@ void DrawMagicPage(const CharacterView &view, MagicTabState &state, Tab home)
                 DrawMagicDetail(entry, state);
                 // Back to wherever this was opened from: the list, or the
                 // sheet, whose tab is selected again.
-                if (state.detail == 0 && state.openedFrom != home)
+                if (state.detail == 0 && state.openedFrom != list.home)
                 {
-                    g_inventoryTabs[view.id].select = state.openedFrom;
-                    state.openedFrom = home;
+                    Panel(view.id).select = state.openedFrom;
+                    state.openedFrom = list.home;
                 }
                 return;
             }
@@ -4867,17 +4922,17 @@ void DrawMagicPage(const CharacterView &view, MagicTabState &state, Tab home)
         Im::TextDisabled(voice ? "Knows no shouts or powers." : "Knows no spells.");
         return;
     }
-    DrawMagicList(view, state, home);
+    DrawMagicList(view, list);
 }
 
 void DrawMagic(const CharacterView &view)
 {
-    DrawMagicPage(view, g_magicTabs[view.id], Tab::Magic);
+    DrawMagicPage(view, MagicListFor(view.id, Tab::Magic));
 }
 
 void DrawShouts(const CharacterView &view)
 {
-    DrawMagicPage(view, g_shoutTabs[view.id], Tab::Shouts);
+    DrawMagicPage(view, MagicListFor(view.id, Tab::Shouts));
 }
 
 // One summon or raised corpse, laid out as the Character tab is: the three
@@ -4934,8 +4989,6 @@ void DrawSummon(const SummonView &summon)
 // The Summons tab: what they command right now. A chip per summon above the
 // page, as the Inventory tab has categories -- always, one summon included,
 // since the chip is where its name is.
-std::unordered_map<ft::ActorId, int> g_summonTabs;
-
 void DrawSummons(const CharacterView &view)
 {
     if (view.summons.empty())
@@ -4946,7 +4999,7 @@ void DrawSummons(const CharacterView &view)
     }
     // The summon chosen, by its reference: two of one creature share a
     // name, and a place in the list moves when one ahead of it expires.
-    int &chosen = g_summonTabs[view.id];
+    int &chosen = Panel(view.id).summon;
     const auto isChosen = [&chosen](const SummonView &summon) { return static_cast<int>(summon.id) == chosen; };
     if (std::none_of(view.summons.begin(), view.summons.end(), isChosen))
         chosen = static_cast<int>(view.summons.front().id);
@@ -5039,20 +5092,20 @@ void DrawCharacter(const CharacterView &view)
         // A spell in hand has its page on the Magic tab, a power or shout
         // on the Shouts tab; anything else on the Inventory tab.
         const Tab page = MagicPageOf(view, form);
-        auto &state = g_inventoryTabs[id];
+        PanelState &panel = Panel(id);
         if (page != Tab::None)
         {
             MagicTabState &magic = MagicPageState(id, page);
             magic.detail = form;
             magic.openedFrom = Tab::Character;
-            state.select = page;
+            panel.select = page;
             return;
         }
         // Of the form's rows, the worn one: what the sheet names is the
         // copy in hand, and a row of the form that is not worn is a spare.
-        state.detail = ItemPageOf(view, form);
-        state.openedFrom = Tab::Character;
-        state.select = Tab::Inventory;
+        panel.inventory.detail = ItemPageOf(view, form);
+        panel.inventory.openedFrom = Tab::Character;
+        panel.select = Tab::Inventory;
     });
 }
 
@@ -5117,16 +5170,6 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     EndDimmed();
 }
 
-// The Skills tab: the skills, or one perk's page. Keyed by follower, as the
-// other tabs' states are. Render thread only.
-struct SkillsTabState
-{
-    std::uint32_t detail{0}; // the perk open in detail; 0 for the skills
-};
-std::unordered_map<ft::ActorId, SkillsTabState> g_skillsTabs;
-// The Other Perks table's filter, one for every page as the list tabs' are.
-char g_perksFilter[64]{};
-
 // Does a perk's row hold the filter's text: its name, rank or description?
 bool PerkShown(const SheetRow &row)
 {
@@ -5135,7 +5178,7 @@ bool PerkShown(const SheetRow &row)
 
 void DrawSkills(const CharacterView &view)
 {
-    SkillsTabState &state = g_skillsTabs[view.id];
+    SkillsTabState &state = Panel(view.id).skills;
     if (state.detail != 0)
     {
         const PerkPage *page = nullptr;
@@ -5321,9 +5364,9 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
     // A pending switch, from a link on the sheet or the back arrow on an
     // item page, consumed here so it acts for one frame only; else the tab
     // carried from the last page.
-    auto &inventoryState = g_inventoryTabs[view.id];
-    const Tab select = inventoryState.select != Tab::None ? inventoryState.select : carried;
-    inventoryState.select = Tab::None;
+    PanelState &panel = Panel(view.id);
+    const Tab select = panel.select != Tab::None ? panel.select : carried;
+    panel.select = Tab::None;
 
     if (BeginSheetTab("Character", Tab::Character, select))
     {
@@ -5332,17 +5375,17 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
     }
     if (BeginSheetTab("Inventory", Tab::Inventory, select))
     {
-        TabBody(Tab::Inventory, view.id, [&] { DrawInventory(view); }, {inventoryState.detail});
+        TabBody(Tab::Inventory, view.id, [&] { DrawInventory(view); }, {panel.inventory.detail});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Magic", Tab::Magic, select))
     {
-        TabBody(Tab::Magic, view.id, [&] { DrawMagic(view); }, {g_magicTabs[view.id].detail});
+        TabBody(Tab::Magic, view.id, [&] { DrawMagic(view); }, {panel.magic.detail});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Shouts", Tab::Shouts, select))
     {
-        TabBody(Tab::Shouts, view.id, [&] { DrawShouts(view); }, {g_shoutTabs[view.id].detail});
+        TabBody(Tab::Shouts, view.id, [&] { DrawShouts(view); }, {panel.shouts.detail});
         Im::EndTabItem();
     }
     if (BeginSheetTab("Summons", Tab::Summons, select))
@@ -5352,7 +5395,7 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
     }
     if (BeginSheetTab("Effects", Tab::Effects, select))
     {
-        const EffectsTabState &effects = g_effectsTabs[view.id];
+        const EffectsTabState &effects = panel.effects;
         TabBody(Tab::Effects, view.id, [&] { DrawEffects(view); },
                 {effects.detailForm, effects.detailSource, effects.detailLink});
         Im::EndTabItem();
@@ -5364,7 +5407,7 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
                     Im::Spacing();
                     DrawSkills(view);
                 },
-                {g_skillsTabs[view.id].detail});
+                {panel.skills.detail});
         Im::EndTabItem();
     }
 }
