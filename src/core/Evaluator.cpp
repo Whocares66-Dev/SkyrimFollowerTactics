@@ -431,9 +431,17 @@ std::uint32_t ChosenForm(const Action &a, const Snapshot &snap)
     }
     if (IsArrowsPolicy(a.kind))
         return ChooseArrows(snap.loadout, a.kind == ActionKind::EquipStrongestArrows);
+    // An "any" rolls the thing itself; a policy with no effect named rolls
+    // the EFFECT and then picks by it, since magnitudes do not compare
+    // across effects. Both index with the snapshot's roll, so this answers
+    // the same for every call within one evaluation.
+    if (IsAny(a.kind))
+        return snap.potions.AnyForm(ConsumableOf(a.kind), snap.roll);
     if (!IsPolicy(a.kind))
         return a.form;
-    return snap.potions.Choose(ConsumableOf(a.kind), a.effect, IsStrongest(a.kind));
+    const ConsumableKind kind = ConsumableOf(a.kind);
+    const std::string effect = a.effect.empty() ? snap.potions.AnyEffect(kind, snap.roll) : a.effect;
+    return snap.potions.Choose(kind, effect, IsStrongest(a.kind));
 }
 
 namespace
@@ -444,9 +452,8 @@ namespace
 // how the two drift apart.
 bool HasResource(const Action &a, const Snapshot &s)
 {
-    // A policy has what it chooses, or nothing.
-    if (IsPolicy(a.kind) || IsArrowsPolicy(a.kind) || a.kind == ActionKind::ChargeStrongestSoulGem ||
-        a.kind == ActionKind::ChargeWeakestSoulGem)
+    // An action that works out its own thing has what it chooses, or nothing.
+    if (ChoosesForm(a.kind))
         return ChosenForm(a, s) != 0;
     if (a.kind == ActionKind::ChargeSoulGem)
         return a.form != 0 && std::any_of(s.soulGems.begin(), s.soulGems.end(),
@@ -485,8 +492,19 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
     // the follower has plenty, and is simply still absorbing the last one.
     // A named consumable could restore anything or nothing; only the
     // per-form cooldown spaces it.
+    //
+    // The question is asked of what the action CHOSE, which for an "any" is
+    // what this tick's roll landed on -- the same roll ChosenForm reads, so
+    // the two agree. A roll that lands on a buff already up therefore
+    // reports this rather than drinking a second bottle of it, and the rule
+    // falls through; the next tick rolls again and may land elsewhere.
+    // Deliberately not "roll only among what is not running": that would
+    // have to be threaded through both ChosenForm and here, and a fight
+    // lasts many ticks -- letting the odd tick pass is the cheaper answer.
+    if (IsConsume(a.kind) && IsAny(a.kind))
+        return s.potions.WantedEffectsRunning(ChosenForm(a, s), ConsumableOf(a.kind));
     if (IsPolicy(a.kind) && IsConsume(a.kind))
-        return s.potions.IsRunning(a.effect);
+        return s.potions.IsRunning(a.effect.empty() ? s.potions.AnyEffect(ConsumableOf(a.kind), s.roll) : a.effect);
     // A poison goes on a clean weapon; a gem into one that cannot pay for
     // its next hit. None such in hand, and the rule waits, as a buff rule
     // waits on the buff.
@@ -936,10 +954,15 @@ const char *Explain(Verdict v, ActionKind action) noexcept
     {
     case Verdict::NoResource:
         // The consumables read the way the Consume menu shows them, by count.
+        // An "any" is narrower than the bag: a follower with six health
+        // potions and no Fortify carries plenty and still has nothing this
+        // rule can drink, so it says which.
         if (IsConsume(action))
-            return "none in inventory";
+            return IsAny(action) ? "carries nothing that buffs" : "none in inventory";
         switch (action)
         {
+        case ActionKind::ApplyAny:
+            return "carries no poison";
         case ActionKind::CastSpell:
         case ActionKind::EquipSpell:
             return "does not know that spell";
@@ -988,6 +1011,11 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "every weapon in hand is already poisoned";
         if (IsCharge(action))
             return "no weapon in hand needs a charge";
+        // Only Drink reaches here; Apply is answered above. What the roll
+        // landed on this tick is up, which is not the same as every buff
+        // carried being up -- the next tick rolls again.
+        if (IsAny(action))
+            return "that buff is already up";
         return action == ActionKind::CastSpell ? "that spell is still running" : "previous dose still active";
 
     default:

@@ -33,6 +33,11 @@ struct Holdings
         std::uint32_t form{0};
         ConsumableKind kind{ConsumableKind::Potion};
         std::vector<std::string> effects;
+        // Whether an "any" rule could roll this one: every poison, and
+        // anything drunk or eaten that carries a buff. The game side judges
+        // it (PotionStock::WantedByAny); here it answers whether a rule
+        // that names no effect has anything to work with.
+        bool any{false};
     };
     std::vector<Consumable> consumables;
     // The spells, powers, shouts and scrolls the cast menu offers (a spell

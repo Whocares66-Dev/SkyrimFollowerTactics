@@ -114,7 +114,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 30> kActions{{
+constexpr std::array<Entry<ActionKind>, 32> kActions{{
     // The consumable slugs name the SELECTION POLICY, not just the item
     // type, because that is part of the behaviour a profile is asking for:
     // "drink-weakest" -- don't burn a strong potion on a scratch -- beside
@@ -135,9 +135,11 @@ constexpr std::array<Entry<ActionKind>, 30> kActions{{
     {ActionKind::ChargeSoulGem, "charge-soul-gem", "Charge with soul gem"},
     {ActionKind::ApplyStrongest, "apply-strongest", "Apply strongest poison"},
     {ActionKind::ApplyWeakest, "apply-weakest", "Apply weakest poison"},
+    {ActionKind::ApplyAny, "apply-any", "Apply any poison"},
     {ActionKind::ApplyPoison, "apply-poison", "Apply poison"},
     {ActionKind::DrinkStrongest, "drink-strongest", "Drink strongest potion"},
     {ActionKind::DrinkWeakest, "drink-weakest", "Drink weakest potion"},
+    {ActionKind::DrinkAny, "drink-any", "Drink any buff"},
     {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
     {ActionKind::EatStrongestFood, "eat-strongest-food", "Eat strongest food"},
     {ActionKind::EatWeakestFood, "eat-weakest-food", "Eat weakest food"},
@@ -502,6 +504,11 @@ std::string_view Describe(ActionKind v) noexcept
         return "Put the strongest poison with this effect on the weapon in hand.";
     case ActionKind::ApplyWeakest:
         return "Put the weakest poison with this effect on the weapon in hand.";
+    case ActionKind::ApplyAny:
+        return "Put any poison carried on the weapon in hand, a different one each time.";
+    case ActionKind::DrinkAny:
+        return "Drink any buff carried -- a Fortify, a Resist, a Regenerate -- a different one each time. Never a "
+               "Restore.";
     case ActionKind::ApplyPoison:
         return "Put this poison on the weapon in hand.";
     case ActionKind::DrinkPotion:

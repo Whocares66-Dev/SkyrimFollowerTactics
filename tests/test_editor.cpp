@@ -63,6 +63,42 @@ TEST_CASE("a policy is had while something carried of its kind has its effect", 
     REQUIRE(RuleSetAside(With(drink), has) == Aside::NotHad);
 }
 
+TEST_CASE("an 'any' rule is had while something carried is worth rolling", "[editor]")
+{
+    Holdings has = Bag(); // a health potion and a food, neither a buff
+
+    Action drinkAny;
+    drinkAny.kind = ActionKind::DrinkAny;
+    // A policy with no effect named is the other "any", and asks the same.
+    Action strongestAny;
+    strongestAny.kind = ActionKind::DrinkStrongest;
+
+    // Six health potions answer "Restore Health" and answer nothing at all
+    // for a rule that wants a buff.
+    REQUIRE_FALSE(ActionHad(drinkAny, has));
+    REQUIRE_FALSE(ActionHad(strongestAny, has));
+    REQUIRE(RuleSetAside(With(drinkAny), has) == Aside::NotHad);
+
+    // One fortify in the bag and both are had.
+    has.consumables.push_back({0x301, ConsumableKind::Potion, {"Fortify One-handed"}, true});
+    REQUIRE(ActionHad(drinkAny, has));
+    REQUIRE(ActionHad(strongestAny, has));
+
+    // It is the kind's own bag that is asked: a buff FOOD is no buff potion.
+    Action eatAny;
+    eatAny.kind = ActionKind::EatStrongestFood;
+    REQUIRE_FALSE(ActionHad(eatAny, has));
+    has.consumables.push_back({0x302, ConsumableKind::Food, {"Fortify Health"}, true});
+    REQUIRE(ActionHad(eatAny, has));
+
+    // A poison names no form and is had regardless, as every apply rule is:
+    // whether a weapon in hand takes one is the evaluator's question, not
+    // the editor's.
+    Action applyAny;
+    applyAny.kind = ActionKind::ApplyAny;
+    REQUIRE(ActionHad(applyAny, has));
+}
+
 TEST_CASE("a named thing is had by form and kind; a form of none always is", "[editor]")
 {
     const Holdings has = Bag();

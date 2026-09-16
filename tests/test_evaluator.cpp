@@ -8,7 +8,9 @@
 #include "core/Evaluator.h"
 #include "core/Vocabulary.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 using namespace ft;
 using namespace ft::test;
@@ -49,6 +51,34 @@ Action Apply(const char *effect, bool strongest = true)
     a.kind = strongest ? ActionKind::ApplyStrongest : ActionKind::ApplyWeakest;
     a.effect = effect;
     return a;
+}
+
+// The two shapes of "any". An action of the ApplyAny/DrinkAny kind rolls the
+// thing outright; a policy left with NO effect rolls the effect first and
+// then takes the strongest or weakest of that one.
+Action AnyOf(ActionKind kind)
+{
+    Action a;
+    a.kind = kind;
+    return a;
+}
+
+// IF self health below 200% (always) THEN self: <action>.
+Rule Always(const Action &action)
+{
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::HealthPctBelow;
+    r.conditionArg = 2.0f;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction() = action;
+    return r;
+}
+
+// A buff: what the game side flags as a lingering boon.
+PotionStock::Effect Buff(const char *name, float magnitude, float duration = 60.0f)
+{
+    return {name, magnitude, duration, true};
 }
 
 } // namespace
@@ -3169,6 +3199,283 @@ TEST_CASE("a policy chooses the bottle by its effect, strongest or weakest", "[e
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx2, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::NoResource);
+}
+
+// --- "Any": the rolled choices -------------------------------------------
+//
+// Every one of these sets Snapshot::roll rather than running the case until
+// the shape it wants appears. That is the whole reason the roll is a value
+// on the snapshot: the engine stays a pure function of it, so a test names
+// the outcome instead of sampling for it.
+
+TEST_CASE("apply any poison rolls one of those carried", "[evaluator][any]")
+{
+    RuleSet rs;
+    rs.rules.push_back(Always(AnyOf(ActionKind::ApplyAny)));
+
+    Snapshot s = Healthy(); // three restore POTIONS, which no poison rule sees
+    s.rightWeapon = {true, false};
+    s.potions.Add(0x301, 1, ConsumableKind::Poison, {"Damage Health", 5.0f, 0.0f});
+    s.potions.Add(0x302, 9, ConsumableKind::Poison, {"Damage Stamina", 5.0f, 0.0f});
+    s.potions.Add(0x303, 1, ConsumableKind::Poison, {"Paralysis", 0.0f, 3.0f});
+
+    SECTION("three rolls cover all three, and the stack of nine is no likelier")
+    {
+        // Uniform over the FORMS carried, not over the bottles: nine of the
+        // stamina poison come up exactly as often as one of the others,
+        // which is what makes emptying a bag of odds and ends into a
+        // follower work as a tactic.
+        std::vector<std::uint32_t> seen;
+        for (std::uint32_t roll = 0; roll < 3; ++roll)
+        {
+            s.roll = roll;
+            EvalContext ctx;
+            const auto d = Evaluate(rs, s, ctx);
+            REQUIRE(d.Fired());
+            REQUIRE(d.action() == ActionKind::ApplyAny);
+            seen.push_back(d.actionForm());
+        }
+        std::ranges::sort(seen);
+        REQUIRE(seen == std::vector<std::uint32_t>{0x301, 0x302, 0x303});
+    }
+
+    SECTION("the roll wraps, so any number the game draws is a choice")
+    {
+        s.roll = 0;
+        REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyAny), s) == ChosenForm(AnyOf(ActionKind::ApplyAny), s));
+        const std::uint32_t first = ChosenForm(AnyOf(ActionKind::ApplyAny), s);
+        s.roll = 3;
+        REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyAny), s) == first);
+        s.roll = 0xFFFFFFFFu;
+        REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyAny), s) != 0);
+    }
+
+    SECTION("the step carries what the availability check chose, not a second roll")
+    {
+        // ChosenForm is asked twice per evaluation -- once for "has it got
+        // one", once to fill the step. An evaluator that rolled afresh each
+        // call would answer those about two different bottles.
+        for (std::uint32_t roll = 0; roll < 6; ++roll)
+        {
+            s.roll = roll;
+            EvalContext ctx;
+            const auto d = Evaluate(rs, s, ctx);
+            REQUIRE(d.Fired());
+            REQUIRE(d.actionForm() == ChosenForm(AnyOf(ActionKind::ApplyAny), s));
+        }
+    }
+
+    SECTION("a potion is never rolled, whatever the bag holds")
+    {
+        for (std::uint32_t roll = 0; roll < 12; ++roll)
+        {
+            s.roll = roll;
+            const std::uint32_t form = ChosenForm(AnyOf(ActionKind::ApplyAny), s);
+            REQUIRE((form == 0x301 || form == 0x302 || form == 0x303));
+        }
+    }
+
+    SECTION("a poison needs a weapon that takes one, and a clean one")
+    {
+        s.rightWeapon = {};
+        Trace trace;
+        EvalContext ctx;
+        REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::NothingToPoison);
+
+        s.rightWeapon = {true, true};
+        Trace poisoned;
+        EvalContext ctx2;
+        REQUIRE_FALSE(Evaluate(rs, s, ctx2, &poisoned).Fired());
+        REQUIRE(poisoned.at(0) == Verdict::EffectActive);
+    }
+
+    SECTION("no poison carried: its own wording, not the bag's")
+    {
+        s.potions.carried.clear();
+        Trace trace;
+        EvalContext ctx;
+        REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::NoResource);
+        REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::ApplyAny)) == "carries no poison");
+    }
+
+    SECTION("a bottle the follower has run out of is not a choice")
+    {
+        s.potions.carried.clear();
+        s.potions.Add(0x301, 0, ConsumableKind::Poison, {"Damage Health", 5.0f, 0.0f});
+        REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyAny), s) == 0);
+    }
+}
+
+TEST_CASE("a policy with no effect named rolls the effect, then chooses by it", "[evaluator][any]")
+{
+    Snapshot s = Healthy();
+    s.rightWeapon = {true, false};
+    s.potions.carried.clear();
+    s.potions.Add(0x401, 1, ConsumableKind::Poison, {"Damage Health", 3.0f, 0.0f});
+    s.potions.Add(0x402, 1, ConsumableKind::Poison, {"Damage Health", 9.0f, 0.0f});
+    s.potions.Add(0x403, 1, ConsumableKind::Poison, {"Damage Stamina", 20.0f, 0.0f});
+
+    // Two effects carried, not three: two bottles of Damage Health are one
+    // effect, and do not make it twice as likely as Damage Stamina.
+    Action strongest = AnyOf(ActionKind::ApplyStrongest);
+    Action weakest = AnyOf(ActionKind::ApplyWeakest);
+
+    SECTION("the effect first, then the strongest or weakest bottle OF THAT effect")
+    {
+        // Magnitudes do not compare across effects -- 9 points of Damage
+        // Health against 20 of Damage Stamina is not a question with an
+        // answer -- which is why the effect is rolled before the bottle.
+        s.roll = 0; // Damage Health
+        REQUIRE(ChosenForm(strongest, s) == 0x402);
+        REQUIRE(ChosenForm(weakest, s) == 0x401);
+        s.roll = 1; // Damage Stamina: one bottle, either way
+        REQUIRE(ChosenForm(strongest, s) == 0x403);
+        REQUIRE(ChosenForm(weakest, s) == 0x403);
+        s.roll = 2; // wraps back to Damage Health
+        REQUIRE(ChosenForm(strongest, s) == 0x402);
+    }
+
+    SECTION("it fires, and the step carries the bottle the roll ended on")
+    {
+        RuleSet rs;
+        rs.rules.push_back(Always(strongest));
+        s.roll = 1;
+        EvalContext ctx;
+        const auto d = Evaluate(rs, s, ctx);
+        REQUIRE(d.Fired());
+        REQUIRE(d.action() == ActionKind::ApplyStrongest);
+        REQUIRE(d.actionForm() == 0x403);
+    }
+
+    SECTION("nothing of the kind carried: no resource, as a named effect would be")
+    {
+        s.potions.carried.clear();
+        REQUIRE(ChosenForm(strongest, s) == 0);
+        RuleSet rs;
+        rs.rules.push_back(Always(strongest));
+        Trace trace;
+        EvalContext ctx;
+        REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::NoResource);
+    }
+
+    SECTION("a named effect still names it: an empty one is the only 'any'")
+    {
+        s.roll = 1; // would roll Damage Stamina
+        REQUIRE(ChosenForm(Apply("Damage Health"), s) == 0x402);
+    }
+}
+
+TEST_CASE("an any-drink reaches for a buff and never for a restore", "[evaluator][any]")
+{
+    RuleSet rs;
+    rs.rules.push_back(Always(AnyOf(ActionKind::DrinkAny)));
+    Snapshot s = Healthy(); // Restore Health, Magicka, Stamina: none a buff
+
+    SECTION("a bag of nothing but restores has nothing this rule can drink")
+    {
+        Trace trace;
+        EvalContext ctx;
+        REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::NoResource);
+        // Said in its own words: the follower carries plenty, and still
+        // nothing this rule wants.
+        REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkAny)) == "carries nothing that buffs");
+    }
+
+    SECTION("one fortify among the restores: that is what is drunk, every roll")
+    {
+        s.potions.Add(0x501, 1, ConsumableKind::Potion, Buff("Fortify One-handed", 20.0f));
+        for (std::uint32_t roll = 0; roll < 5; ++roll)
+        {
+            s.roll = roll;
+            EvalContext ctx;
+            const auto d = Evaluate(rs, s, ctx);
+            REQUIRE(d.Fired());
+            REQUIRE(d.actionForm() == 0x501);
+        }
+    }
+
+    SECTION("a buff already up is not drunk again; the next roll finds the other")
+    {
+        s.potions.Add(0x501, 1, ConsumableKind::Potion, Buff("Fortify One-handed", 20.0f));
+        s.potions.Add(0x502, 1, ConsumableKind::Potion, Buff("Resist Fire", 30.0f));
+        s.potions.running.emplace_back("Fortify One-handed");
+
+        s.roll = 0;
+        Trace trace;
+        EvalContext ctx;
+        REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::EffectActive);
+        REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkAny)) == "that buff is already up");
+
+        s.roll = 1;
+        EvalContext ctx2;
+        const auto d = Evaluate(rs, s, ctx2);
+        REQUIRE(d.Fired());
+        REQUIRE(d.actionForm() == 0x502);
+    }
+
+    SECTION("a bottle that both restores and fortifies is a buff, judged on the fortify")
+    {
+        s.potions.Add(0x503, 1, ConsumableKind::Potion, {"Restore Health", 50.0f, 0.0f, false});
+        s.potions.Add(0x503, 1, ConsumableKind::Potion, Buff("Fortify Health", 20.0f));
+        REQUIRE(ChosenForm(AnyOf(ActionKind::DrinkAny), s) == 0x503);
+
+        // Its restore running is beside the point; its fortify running
+        // holds it back, as the buff it was chosen for.
+        s.potions.running.emplace_back("Restore Health");
+        EvalContext ctx;
+        REQUIRE(Evaluate(rs, s, ctx).Fired());
+        s.potions.running.emplace_back("Fortify Health");
+        Trace trace;
+        EvalContext ctx2;
+        REQUIRE_FALSE(Evaluate(rs, s, ctx2, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::EffectActive);
+    }
+}
+
+TEST_CASE("a drink policy with no effect named rolls among the buffs only", "[evaluator][any]")
+{
+    Snapshot s = Healthy(); // three restores
+    s.potions.Add(0x601, 1, ConsumableKind::Potion, Buff("Resist Fire", 20.0f));
+    s.potions.Add(0x602, 1, ConsumableKind::Potion, Buff("Resist Fire", 50.0f));
+    s.potions.Add(0x603, 1, ConsumableKind::Potion, Buff("Fortify Health", 10.0f));
+
+    Action strongest = AnyOf(ActionKind::DrinkStrongest);
+    Action weakest = AnyOf(ActionKind::DrinkWeakest);
+
+    // Two buff effects carried. A Restore is never one of them, however
+    // many bottles of it are in the bag, so no roll can land there.
+    s.roll = 0; // Resist Fire
+    REQUIRE(ChosenForm(strongest, s) == 0x602);
+    REQUIRE(ChosenForm(weakest, s) == 0x601);
+    s.roll = 1; // Fortify Health
+    REQUIRE(ChosenForm(strongest, s) == 0x603);
+    s.roll = 2; // wraps
+    REQUIRE(ChosenForm(strongest, s) == 0x602);
+
+    // A poison is not narrowed this way: every bane goes at the enemy, so
+    // all of them are choices though none is flagged a buff.
+    s.potions.Add(0x604, 1, ConsumableKind::Poison, {"Damage Health", 5.0f, 0.0f});
+    s.roll = 0;
+    REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyAny), s) == 0x604);
+    REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyStrongest), s) == 0x604);
+
+    // And food and ingredients read the same rule as potions do.
+    s.potions.Add(0x605, 1, ConsumableKind::Food, {"Restore Health", 2.0f, 0.0f});
+    REQUIRE(ChosenForm(AnyOf(ActionKind::EatStrongestFood), s) == 0);
+    s.potions.Add(0x606, 1, ConsumableKind::Food, Buff("Fortify Health", 5.0f));
+    REQUIRE(ChosenForm(AnyOf(ActionKind::EatStrongestFood), s) == 0x606);
+
+    // A form the bag has not got has no buff up, whatever else is running:
+    // the answer for a roll that found nothing to choose.
+    s.potions.running.emplace_back("Resist Fire");
+    REQUIRE_FALSE(s.potions.WantedEffectsRunning(0, ConsumableKind::Potion));
+    REQUIRE_FALSE(s.potions.WantedEffectsRunning(0x601, ConsumableKind::Food)); // right form, wrong kind
+    REQUIRE(s.potions.WantedEffectsRunning(0x601, ConsumableKind::Potion));
 }
 
 TEST_CASE("a potion whose effect is still running is not drunk again", "[cooldown]")

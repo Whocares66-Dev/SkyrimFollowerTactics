@@ -235,14 +235,31 @@ enum class ActionKind : std::uint8_t
     // or one named by actionForm. Needs a weapon that takes a poison in
     // hand (anything but a staff) and not already poisoned; the evaluator
     // reports each.
+    //
+    // With NO effect named (Action::effect empty) the two policies roll an
+    // effect from what is carried and then take the strongest or weakest of
+    // that one, because magnitudes do not compare across effects.
+    // ApplyAny skips the effect and rolls a poison outright. All three are
+    // for the player who empties a bag of odds and ends into a follower and
+    // wants them used, rather than naming each.
     ApplyStrongest,
     ApplyWeakest,
+    ApplyAny,
     ApplyPoison,
     // Consume: the strongest potion carried with Action::effect, the
     // weakest, then one named thing of each consumable kind. All go
     // through the game's own equip routine, which is what consumes an item.
+    //
+    // The same two "any" shapes as the poisons, and with the same meaning,
+    // except that what is drunk or eaten is narrowed to the BUFFS -- the
+    // lingering boons, a Fortify, a Resist, a Regenerate. A rule that says
+    // "drink something at the start of the fight" must not reach for the
+    // health potion being kept for the emergency, so a Restore is never an
+    // "any" choice. Snapshot::PotionStock::WantedByAny is the one place
+    // that says so; the game side judges each effect.
     DrinkStrongest,
     DrinkWeakest,
+    DrinkAny,
     DrinkPotion, // one specific potion, named by actionForm
     // Food, and the few ingredients that are food (a follower does not
     // taste the rest to learn them), the same three ways each.
@@ -283,6 +300,15 @@ enum class ActionKind : std::uint8_t
 [[nodiscard]] bool IsPolicy(ActionKind action) noexcept;
 // Of the policies, the four that take the strongest; the rest the weakest.
 [[nodiscard]] bool IsStrongest(ActionKind action) noexcept;
+// The two that roll a thing outright rather than choose by an effect: any
+// poison, any buff. (A POLICY rolls too when its effect is empty, which is
+// the other half of "any" -- an effect first, then the strongest or weakest
+// of it.)
+[[nodiscard]] bool IsAny(ActionKind action) noexcept;
+// Every action that works out WHICH thing at evaluation instead of carrying
+// its form: the policies, the two "any" rolls, the arrow pins and the two
+// soul-gem sizes. What HasResource asks ChosenForm about.
+[[nodiscard]] bool ChoosesForm(ActionKind action) noexcept;
 // The apply-a-poison actions and the charge-with-a-soul-gem actions, which
 // the Then cascade groups under Weapon.
 [[nodiscard]] bool IsApply(ActionKind action) noexcept;

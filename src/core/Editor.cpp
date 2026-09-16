@@ -25,11 +25,18 @@ bool ActionHad(const Action &action, const Holdings &has)
     // the perk the Settings page may require of it.
     if (action.kind == ActionKind::PowerBash)
         return has.powerBashPerk;
-    if (IsPolicy(action.kind) && IsConsume(action.kind))
+    if (IsConsume(action.kind) && (IsPolicy(action.kind) || IsAny(action.kind)))
     {
+        // A rule that names an effect is had when a bottle carries it; one
+        // that names none -- an "any" -- when a bottle is worth rolling at
+        // all, which for anything drunk or eaten means it buffs. A bag of
+        // six health potions answers the first for "Restore Health" and the
+        // second for nothing.
         const auto kind = ConsumableOf(action.kind);
+        const bool any = IsAny(action.kind) || action.effect.empty();
         return std::any_of(has.consumables.begin(), has.consumables.end(), [&](const Holdings::Consumable &c) {
-            return c.kind == kind && std::find(c.effects.begin(), c.effects.end(), action.effect) != c.effects.end();
+            return c.kind == kind &&
+                   (any ? c.any : std::find(c.effects.begin(), c.effects.end(), action.effect) != c.effects.end());
         });
     }
     // An arrow policy has what it would choose: any ammunition carried.

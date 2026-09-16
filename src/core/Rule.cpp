@@ -64,6 +64,7 @@ bool IsConsume(ActionKind action) noexcept
     {
     case ActionKind::DrinkStrongest:
     case ActionKind::DrinkWeakest:
+    case ActionKind::DrinkAny:
     case ActionKind::DrinkPotion:
     case ActionKind::EatStrongestFood:
     case ActionKind::EatWeakestFood:
@@ -101,10 +102,21 @@ bool IsStrongest(ActionKind action) noexcept
            action == ActionKind::EatStrongestIngredient || action == ActionKind::ApplyStrongest;
 }
 
+bool IsAny(ActionKind action) noexcept
+{
+    return action == ActionKind::ApplyAny || action == ActionKind::DrinkAny;
+}
+
+bool ChoosesForm(ActionKind action) noexcept
+{
+    return IsPolicy(action) || IsAny(action) || IsArrowsPolicy(action) ||
+           action == ActionKind::ChargeStrongestSoulGem || action == ActionKind::ChargeWeakestSoulGem;
+}
+
 bool IsApply(ActionKind action) noexcept
 {
     return action == ActionKind::ApplyStrongest || action == ActionKind::ApplyWeakest ||
-           action == ActionKind::ApplyPoison;
+           action == ActionKind::ApplyAny || action == ActionKind::ApplyPoison;
 }
 
 bool IsCharge(ActionKind action) noexcept

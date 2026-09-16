@@ -269,8 +269,10 @@ struct FormField
     a.kind = *kind;
     if (IsPolicy(a.kind))
     {
+        // An empty effect is "any", and written that way; a MISSING one is
+        // a malformed record, so the key itself must be there.
         const auto effect = Str(j, "effect");
-        if (!effect || effect->empty())
+        if (!effect)
         {
             why = "no effect for \"" + *name + "\"";
             return std::nullopt;

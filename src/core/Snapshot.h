@@ -173,6 +173,14 @@ struct PotionStock
         std::string name;
         float magnitude{0.0f};
         float duration{0.0f};
+        // A lingering boon: a Fortify, a Resist, a Regenerate -- what a
+        // follower is worth buffing with before the swords come out, as
+        // against a Restore, which is the emergency being saved for. Judged
+        // on the game side from the effect record, not from its name, so a
+        // mod's own Fortify counts (src/game/Sensors.cpp, docs/ACTIONS.md).
+        // Meaningless on a poison, where every bane goes at the enemy and
+        // WantedByAny takes the lot.
+        bool buff{false};
 
         [[nodiscard]] bool StrongerThan(const Effect &o) const noexcept
         {
@@ -246,6 +254,78 @@ struct PotionStock
             }
         }
         return best ? best->form : 0;
+    }
+
+    // What an "any" action may take of a kind: every bane a poison carries
+    // -- they all go at the enemy, so "put something on the blade" needs no
+    // further judgement -- but only the lingering boons of anything drunk
+    // or eaten. "Drink any potion" would as happily pick the health potion
+    // being kept for the emergency, which is the opposite of what a
+    // buff-before-the-fight rule is for.
+    [[nodiscard]] static constexpr bool WantedByAny(ConsumableKind kind, const Effect &e) noexcept
+    {
+        return kind == ConsumableKind::Poison || e.buff;
+    }
+
+    [[nodiscard]] bool WantedByAny(ConsumableKind kind, const Carried &c) const
+    {
+        return c.kind == kind && c.count > 0 &&
+               std::any_of(c.effects.begin(), c.effects.end(), [&](const Effect &e) { return WantedByAny(kind, e); });
+    }
+
+    // One thing of the kind carried, by the snapshot's roll: what an "any"
+    // action chooses. Uniform over the FORMS carried and not over the
+    // bottles, so twenty of one poison and one of another are equally
+    // likely -- which is what makes emptying a bag of odds and ends into a
+    // follower work as a tactic rather than as twenty of the commonest.
+    // 0 for none carried.
+    [[nodiscard]] std::uint32_t AnyForm(ConsumableKind kind, std::uint32_t roll) const
+    {
+        const auto total = static_cast<std::uint32_t>(
+            std::count_if(carried.begin(), carried.end(), [&](const Carried &c) { return WantedByAny(kind, c); }));
+        if (total == 0)
+            return 0;
+        std::uint32_t wanted = roll % total;
+        for (const auto &c : carried)
+            if (WantedByAny(kind, c) && wanted-- == 0)
+                return c.form;
+        return 0;
+    }
+
+    // One EFFECT of the kind carried, by the same roll: what a Strongest or
+    // a Weakest with no effect named chooses by, before choosing the bottle.
+    // Effects, not magnitudes, because magnitudes across effects do not
+    // compare -- 3 points of Damage Health against 10 of Damage Stamina is
+    // not a question with an answer -- so "the strongest poison" has to mean
+    // "the strongest of one effect". Distinct names only: two bottles of
+    // Damage Health do not make it twice as likely. Empty for none carried.
+    [[nodiscard]] std::string AnyEffect(ConsumableKind kind, std::uint32_t roll) const
+    {
+        std::vector<std::string_view> names;
+        for (const auto &c : carried)
+        {
+            if (c.kind != kind || c.count <= 0)
+                continue;
+            for (const auto &e : c.effects)
+                if (WantedByAny(kind, e) && std::find(names.begin(), names.end(), e.name) == names.end())
+                    names.emplace_back(e.name);
+        }
+        return names.empty() ? std::string{} : std::string(names[roll % names.size()]);
+    }
+
+    // Whether every effect an "any" action would have taken this bottle for
+    // is already up: the availability a named policy gets from IsRunning,
+    // asked of a bottle rather than of an effect.
+    [[nodiscard]] bool WantedEffectsRunning(std::uint32_t form, ConsumableKind kind) const
+    {
+        for (const auto &c : carried)
+        {
+            if (c.form != form || c.kind != kind)
+                continue;
+            return std::all_of(c.effects.begin(), c.effects.end(),
+                               [&](const Effect &e) { return !WantedByAny(kind, e) || IsRunning(e.name); });
+        }
+        return false;
     }
 
     // Add a bottle, or one effect to a bottle already listed.
@@ -354,6 +434,19 @@ struct Snapshot
 {
     ActorId self{0};
     double now{0.0}; // seconds, monotonic
+
+    // One random number for this evaluation, drawn on the game side. Every
+    // "any" choice indexes with it -- which poison, which effect -- so the
+    // engine stays a pure function of its snapshot and a test pins the
+    // choice by setting this.
+    //
+    // Deliberately a value on the snapshot rather than an RNG inside the
+    // evaluator: ChosenForm is called more than once per evaluation (once
+    // to ask whether the action has what it needs, once to fill the step),
+    // and an evaluator that rolled afresh each call would answer those two
+    // questions about two different bottles. Fresh each tick, so a rule
+    // that fires repeatedly spreads over what is carried.
+    std::uint32_t roll{0};
 
     Stat health{};
     Stat magicka{};
