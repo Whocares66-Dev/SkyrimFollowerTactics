@@ -2755,6 +2755,11 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             lastHeading = heading;
             firstInGroup = true;
         }
+        // A section set aside is greyed whole, its label and its rows, from
+        // here to the end of the section; the heading above it is not, since
+        // a group's other sections count. Live throughout, as a row set
+        // aside is: the drawers still open.
+        const DimText greySection(!section.aside.empty());
         if (!section.group.empty())
         {
             // Air between one table and the next label under a shared
@@ -3606,10 +3611,12 @@ bool VoiceEntry(const MagicEntry &entry)
 }
 // A spell above the follower's skill is disabled, and takes no hand at
 // all, as the tactics menus offer it for neither casting nor pinning: one
-// rule, not an equip-only state beside it.
+// rule, not an equip-only state beside it. A shout with no word unlocked
+// is disabled the same way, and for the same reason: nothing the panel
+// does to it can make the follower shout it.
 bool Disabled(const MagicEntry &entry)
 {
-    return entry.setAside || entry.aboveSkill;
+    return entry.setAside || entry.aboveSkill || entry.locked;
 }
 EquipCell LeftCell(const MagicEntry &entry)
 {
@@ -3623,7 +3630,7 @@ EquipCell RightCell(const MagicEntry &entry)
 }
 EquipCell VoiceCell(const MagicEntry &entry)
 {
-    return {true, Disabled(entry), entry.equipped, entry.pinned, entry.banned};
+    return {!entry.locked, Disabled(entry), entry.equipped, entry.pinned, entry.banned};
 }
 
 // A click walks the cell round: unequipped, equipped, pinned, banned, and
@@ -4167,6 +4174,15 @@ bool VoiceList(const MagicTabState &state)
            state.category == static_cast<int>(MagicCategory::Powers);
 }
 
+// What the count above a list counts: "25 shouts", "25 powers", and spells
+// on every other list, All included, where the rows are mostly spells.
+const char *MagicNoun(int category)
+{
+    return category == static_cast<int>(MagicCategory::Shouts)   ? "shouts"
+           : category == static_cast<int>(MagicCategory::Powers) ? "powers"
+                                                                 : "spells";
+}
+
 // Is the entry on the list: in its category, with the filter's text in a
 // cell the list shows for it.
 bool MagicShown(const MagicEntry &entry, const MagicTabState &state)
@@ -4278,7 +4294,7 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
                 std::count_if(view.magic.begin(), view.magic.end(),
                               [&](const MagicEntry &entry) { return MagicShown(entry, state); }));
         },
-        inCategory, "spells");
+        inCategory, MagicNoun(state.category));
     Im::Spacing();
 
     // Which columns. Only the All list has a School column; every list has
@@ -4403,6 +4419,8 @@ void DrawMagicList(const CharacterView &view, MagicTabState &state)
             line("Has:", entry->skill);
             Im::EndTooltip();
         }
+        else if (dim && entry->locked && Im::IsItemHovered(0))
+            Im::SetTooltip("%s", "No word unlocked");
         else if (dim && entry->banned && Im::IsItemHovered(0))
             Im::SetTooltip("%s", "Banned");
         else if (dim && entry->setAside && Im::IsItemHovered(0))

@@ -50,6 +50,7 @@ Not addresses: copied into the plugin as logic, and wrong on another build only 
 - What the UseWeapon procedure does: its facing check, its turning out of combat and not in one, and how its inputs map (`docs/ATTACK.md`).
 - The combat animation actions a block is raised and lowered with (3 and 4), and the idle tree's gates on a bash (`docs/ATTACK.md` "How the engine bashes").
 - A power bash as the combat AI's melee chooser makes one (49170): a right attack `CombatAnimation` with the attack's event in its output (`PerformRightAttackWith`, `src/game/Blows.cpp`). CommonLib maps the constructor and `Execute` for both runtimes; the shape was read from 1.6.1170.
+- Which word of power the player has unlocked: bit 16 of the word's own form flags. `PlayerCharacter::UnlockWord` (vtable 0xD0) tail-calls the flag setter (14640), which sets that bit at `form + 0x10` and notifies through vtable slot 0x50; `TESShout::GetKnown` (vtable 0x17) reads the same bit off the first variation that has a word, and answers false for a shout with no word at all. Read out of the running process with `tools/livedisasm.py`. Used by `Unlocked`, `src/game/Magic.cpp`, which greys a shout with no word unlocked on the Magic tab and refuses its voice cell. CommonLib names no accessor for it on a word: `GetRandomAnim` is that bit on other form types.
 
 ## Not version-bound
 

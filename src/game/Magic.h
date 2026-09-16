@@ -95,6 +95,10 @@ struct MagicEntry
     bool rightAllowed{true};
     // The same, as the pin book words it, for the equip menu's hand lists.
     ft::Grip grip{ft::Grip::None};
+    // A shout the player has unlocked no word of: the follower has it in
+    // their list and cannot shout a word of it, so it is listed dimmed and
+    // its voice cell takes no click. Never a spell's or a power's.
+    bool locked{false};
     // Kept from the combat AI in a fight because it would take a hand a
     // pin holds: it scores zero whenever the combat AI asks. Still known, and a
     // cast rule can still make them cast it. Listed dimmed.

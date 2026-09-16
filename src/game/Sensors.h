@@ -384,6 +384,14 @@ struct SheetSection
     // over a Right Hand table and a Left Hand table. Empty means the title
     // is the heading.
     std::string group;
+    // Why the whole section is set aside -- a shout's word the player has
+    // not unlocked -- shown on its label, which is greyed with its rows.
+    // The heading over a group is not: it covers the sections that count
+    // too. Empty for a section that counts. Initialised here rather than
+    // left bare so the sections brace-built from their first three fields
+    // stay as they are: clang-tidy makes a field with no initializer of
+    // its own a missing-field-initializer error at every one of them.
+    std::string aside{};
 };
 
 // Who a record's conditions are asked of: the Subject and the Target the
