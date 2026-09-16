@@ -3778,6 +3778,36 @@ bool ItemShown(const InventoryItem &item, const InventoryTabState &state)
     return AnyContains(cells, g_inventoryList.filter);
 }
 
+// Which of two numbers comes first, as a column's compare answers it: -1, 0
+// or 1.
+int Compare(double a, double b)
+{
+    return a < b ? -1 : (a > b ? 1 : 0);
+}
+
+// Put the rows in the order the table's header asks for. Every list sorts
+// the same way and only the column differs, so the column is all a list
+// says: `compare` answers -1, 0 or 1 for two rows in the column named.
+// Ties go by name whichever way the column points, so rows that are equal
+// under it keep one order rather than shuffling as the sort runs again; a
+// table whose header has not been clicked yet has no spec, and its rows are
+// left in the order they came.
+template <typename Row, typename Compared> void SortRows(std::vector<const Row *> &rows, const Compared &compare)
+{
+    const auto *specs = Im::TableGetSortSpecs();
+    if (!specs || specs->SpecsCount < 1 || !specs->Specs)
+        return;
+    const auto &spec = specs->Specs[0];
+    const auto column = static_cast<Column>(spec.ColumnUserID);
+    const bool ascending = spec.SortDirection != Im::ImGuiSortDirection_Descending;
+    std::stable_sort(rows.begin(), rows.end(), [&](const Row *a, const Row *b) {
+        const int c = compare(*a, *b, column);
+        if (c == 0)
+            return a->name < b->name;
+        return ascending ? c < 0 : c > 0;
+    });
+}
+
 // The rows to show, in the order the table's header asks for. Sorted every
 // frame rather than on change: a hundred pointers is nothing, and the set
 // itself changes with the filter and with what they pick up.
@@ -3790,48 +3820,34 @@ std::vector<const InventoryItem *> VisibleItems(const CharacterView &view, const
             rows.push_back(&item);
     }
 
-    const auto *specs = Im::TableGetSortSpecs();
-    if (!specs || specs->SpecsCount < 1 || !specs->Specs)
-        return rows;
-    const auto &spec = specs->Specs[0];
-    const bool ascending = spec.SortDirection != Im::ImGuiSortDirection_Descending;
-
-    const auto compare = [&](const InventoryItem &a, const InventoryItem &b) -> int {
-        const auto number = [](float x, float y) { return x < y ? -1 : (x > y ? 1 : 0); };
-        const auto rank = [&](auto of) { return number(static_cast<float>(of(a)), static_cast<float>(of(b))); };
-        switch (static_cast<Column>(spec.ColumnUserID))
+    SortRows(rows, [](const InventoryItem &a, const InventoryItem &b, Column column) -> int {
+        switch (column)
         {
         case Column::Type:
             // The consumables' lists show the effect in this column.
             return a.effect.empty() && b.effect.empty() ? a.type.compare(b.type) : a.effect.compare(b.effect);
         case Column::Damage:
-            return number(a.damage, b.damage);
+            return Compare(a.damage, b.damage);
         case Column::Armor:
-            return number(a.armor, b.armor);
+            return Compare(a.armor, b.armor);
         case Column::Cast:
             return a.cast.compare(b.cast);
         case Column::Magnitude:
-            return number(a.magnitude, b.magnitude);
+            return Compare(a.magnitude, b.magnitude);
         case Column::Weight:
-            return number(a.weight, b.weight);
+            return Compare(a.weight, b.weight);
         case Column::Value:
-            return number(static_cast<float>(a.value), static_cast<float>(b.value));
+            return Compare(a.value, b.value);
         case Column::Equipped:
-            return rank([](const InventoryItem &i) { return CellRank(WornCell(i)); });
+            return Compare(CellRank(WornCell(a)), CellRank(WornCell(b)));
         case Column::Left:
-            return rank([](const InventoryItem &i) { return CellRank(LeftCell(i)); });
+            return Compare(CellRank(LeftCell(a)), CellRank(LeftCell(b)));
         case Column::Right:
-            return rank([](const InventoryItem &i) { return CellRank(RightCell(i)); });
+            return Compare(CellRank(RightCell(a)), CellRank(RightCell(b)));
         case Column::Name:
         default:
             return a.name.compare(b.name);
         }
-    };
-    std::stable_sort(rows.begin(), rows.end(), [&](const InventoryItem *a, const InventoryItem *b) {
-        const int c = compare(*a, *b);
-        if (c == 0)
-            return a->name < b->name; // ties by name, whichever way the column goes
-        return ascending ? c < 0 : c > 0;
     });
     return rows;
 }
@@ -4303,46 +4319,33 @@ std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const Ma
             rows.push_back(&entry);
     }
 
-    const auto *specs = Im::TableGetSortSpecs();
-    if (!specs || specs->SpecsCount < 1 || !specs->Specs)
-        return rows;
-    const auto &spec = specs->Specs[0];
-    const bool ascending = spec.SortDirection != Im::ImGuiSortDirection_Descending;
-
-    const auto compare = [&](const MagicEntry &a, const MagicEntry &b) -> int {
-        const auto number = [](float x, float y) { return x < y ? -1 : (x > y ? 1 : 0); };
-        const auto rank = [&](auto of) { return number(static_cast<float>(of(a)), static_cast<float>(of(b))); };
-        switch (static_cast<Column>(spec.ColumnUserID))
+    SortRows(rows, [](const MagicEntry &a, const MagicEntry &b, Column column) -> int {
+        switch (column)
         {
         case Column::School:
             return a.school.compare(b.school);
         case Column::Type:
             return a.type.compare(b.type);
         case Column::Level:
-            return number(static_cast<float>(a.levelValue), static_cast<float>(b.levelValue));
+            return Compare(a.levelValue, b.levelValue);
         case Column::Cast:
-            return a.castValue != b.castValue ? number(static_cast<float>(a.castValue), static_cast<float>(b.castValue))
-                                              : a.cast.compare(b.cast);
+            // The delivery behind the word first, so Self, Touch and Target
+            // group; the word itself only tells two of one delivery apart.
+            return a.castValue != b.castValue ? Compare(a.castValue, b.castValue) : a.cast.compare(b.cast);
         case Column::Cost:
-            return number(a.costValue, b.costValue);
+            return Compare(a.costValue, b.costValue);
         case Column::Magnitude:
-            return number(a.magnitude, b.magnitude);
+            return Compare(a.magnitude, b.magnitude);
         case Column::Equipped:
-            return rank([](const MagicEntry &e) { return CellRank(VoiceCell(e)); });
+            return Compare(CellRank(VoiceCell(a)), CellRank(VoiceCell(b)));
         case Column::Left:
-            return rank([](const MagicEntry &e) { return CellRank(LeftCell(e)); });
+            return Compare(CellRank(LeftCell(a)), CellRank(LeftCell(b)));
         case Column::Right:
-            return rank([](const MagicEntry &e) { return CellRank(RightCell(e)); });
+            return Compare(CellRank(RightCell(a)), CellRank(RightCell(b)));
         case Column::Name:
         default:
             return a.name.compare(b.name);
         }
-    };
-    std::stable_sort(rows.begin(), rows.end(), [&](const MagicEntry *a, const MagicEntry *b) {
-        const int c = compare(*a, *b);
-        if (c == 0)
-            return a->name < b->name;
-        return ascending ? c < 0 : c > 0;
     });
     return rows;
 }
@@ -4642,35 +4645,22 @@ std::vector<const EffectRow *> VisibleEffects(const CharacterView &view)
             rows.push_back(&row);
     }
 
-    const auto *specs = Im::TableGetSortSpecs();
-    if (!specs || specs->SpecsCount < 1 || !specs->Specs)
-        return rows;
-    const auto &spec = specs->Specs[0];
-    const bool ascending = spec.SortDirection != Im::ImGuiSortDirection_Descending;
-
-    const auto compare = [&](const EffectRow &a, const EffectRow &b) -> int {
-        const auto number = [](float x, float y) { return x < y ? -1 : (x > y ? 1 : 0); };
+    SortRows(rows, [](const EffectRow &a, const EffectRow &b, Column column) -> int {
         // No duration sorts after every duration: it is the one that never
         // runs out.
         const auto left = [](const EffectRow &e) { return e.remaining < 0.0f ? 1.0e9f : e.remaining; };
-        switch (static_cast<Column>(spec.ColumnUserID))
+        switch (column)
         {
         case Column::Magnitude:
-            return number(a.magnitude, b.magnitude);
+            return Compare(a.magnitude, b.magnitude);
         case Column::Remaining:
-            return number(left(a), left(b));
+            return Compare(left(a), left(b));
         case Column::Source:
             return a.source.compare(b.source);
         case Column::Name:
         default:
             return a.name.compare(b.name);
         }
-    };
-    std::stable_sort(rows.begin(), rows.end(), [&](const EffectRow *a, const EffectRow *b) {
-        const int c = compare(*a, *b);
-        if (c == 0)
-            return a->name < b->name;
-        return ascending ? c < 0 : c > 0;
     });
     return rows;
 }
