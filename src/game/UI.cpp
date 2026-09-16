@@ -1262,15 +1262,19 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     // Fire potion", "Strongest Fear poison".
     if (ft::IsPolicy(act.kind))
     {
-        if (act.effect.empty())
-            return base + "...";
         const auto kind = ft::ConsumableOf(act.kind);
         const char *noun = kind == ft::ConsumableKind::Poison       ? " poison"
                            : kind == ft::ConsumableKind::Food       ? " food"
                            : kind == ft::ConsumableKind::Ingredient ? " ingredient"
                                                                     : " potion";
-        return std::string(ft::IsStrongest(act.kind) ? "Strongest " : "Weakest ") +
-               std::string(ft::EffectLabel(act.effect)) + noun;
+        const std::string lead = ft::IsStrongest(act.kind) ? "Strongest " : "Weakest ";
+        // No effect named is "any": the strongest of whichever effect the
+        // roll lands on. "Buff" stands where the effect would, because that
+        // is what narrows the roll for anything drunk or eaten; a poison
+        // rolls among the lot and needs no word for it.
+        if (act.effect.empty())
+            return kind == ft::ConsumableKind::Poison ? lead + "poison" : lead + "buff" + noun;
+        return lead + std::string(ft::EffectLabel(act.effect)) + noun;
     }
 
     if (ft::NamesConsumable(act.kind))
@@ -1637,17 +1641,59 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // a divider between, the rest by name at the end -- so a follower with
     // no potion of an effect is not offered it. Then, after a divider,
     // every bottle of the kind by name. Under a menu already open.
+    // Anything of the kind an "any" rule could roll, and what such a choice
+    // is called for it: a poison rolls among the lot, everything else among
+    // its buffs alone (core's PotionStock::WantedByAny says which).
+    const auto rollable = [&](ft::ConsumableKind ckind) {
+        return std::any_of(view.consumables.begin(), view.consumables.end(),
+                           [&](const ConsumableOption &o) { return o.kind == ckind && o.any; });
+    };
+    const auto anyLabel = [](ft::ConsumableKind ckind) {
+        return ckind == ft::ConsumableKind::Poison ? "Any" : "Any buff";
+    };
     const auto byEffect = [&](ft::ConsumableKind ckind, ft::ActionKind strongestKind, ft::ActionKind weakestKind,
-                              ft::ActionKind namedKind) {
+                              ft::ActionKind namedKind, ft::ActionKind anyKind = ft::ActionKind::None) {
         std::vector<std::string> names;
         for (const auto &option : view.consumables)
             if (option.kind == ckind)
                 names.insert(names.end(), option.effects.begin(), option.effects.end());
         const auto arranged = ft::ArrangeEffects(ckind, std::move(names));
+        // The roll that names nothing at all, at the head of the menu:
+        // "Poison: Any" puts SOMETHING on the blade. Left out when nothing
+        // carried would answer it, as an effect nothing has is left out.
+        const bool any = rollable(ckind);
+        if (any && anyKind != ft::ActionKind::None)
+        {
+            const bool selected = here && act.kind == anyKind;
+            if (CascadeItem(anyLabel(ckind), selected))
+            {
+                act.kind = anyKind;
+                act.form = 0;
+                act.effect.clear();
+                choose();
+            }
+            if (Im::IsItemHovered(0))
+                Im::SetTooltip("%s", std::string(ft::Describe(anyKind)).c_str());
+        }
         for (const auto [label, kind] : {std::pair{"Strongest", strongestKind}, std::pair{"Weakest", weakestKind}})
         {
             if (arranged.empty() || !BeginCascade(label))
                 continue;
+            // "Strongest: Any" rolls the EFFECT and then takes the strongest
+            // of that one, since magnitudes do not compare across effects.
+            // An empty effect is what carries that on the wire.
+            if (any)
+            {
+                const bool selected = here && act.kind == kind && act.effect.empty();
+                if (CascadeItem(anyLabel(ckind), selected))
+                {
+                    act.kind = kind;
+                    act.form = 0;
+                    act.effect.clear();
+                    choose();
+                }
+                Im::Separator();
+            }
             int last = -1;
             for (const auto &entry : arranged)
             {
@@ -1684,7 +1730,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             if (BeginCascade("Potion"))
             {
                 byEffect(ft::ConsumableKind::Potion, ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest,
-                         ft::ActionKind::DrinkPotion);
+                         ft::ActionKind::DrinkPotion, ft::ActionKind::DrinkAny);
                 Im::EndMenu();
             }
         }
@@ -1794,7 +1840,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         if (carried(ft::ConsumableKind::Poison) && BeginCascade("Poison"))
         {
             byEffect(ft::ConsumableKind::Poison, ft::ActionKind::ApplyStrongest, ft::ActionKind::ApplyWeakest,
-                     ft::ActionKind::ApplyPoison);
+                     ft::ActionKind::ApplyPoison, ft::ActionKind::ApplyAny);
             Im::EndMenu();
         }
     }

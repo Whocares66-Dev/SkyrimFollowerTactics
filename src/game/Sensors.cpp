@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <initializer_list>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -45,6 +46,38 @@ constexpr std::uint32_t kMagicNoReanimateKeyword = 0x0006F6FB;
 // it, and a poison is chosen for what it does to the enemy.
 // An ingredient eaten gives its FIRST effect and no other (the rest are for
 // the alchemy table), so that one is the ingredient's effect here.
+// A bane rather than a boon: the two flags the Creation Kit shows as
+// Detrimental and Hostile. What tells a poison's effects from a potion's,
+// and a Weakness to Fire from a Resist Fire.
+bool Harmful(const RE::EffectSetting *base)
+{
+    return base->IsDetrimental() || base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHostile);
+}
+
+// A BUFF: a lingering boon an "any" drink or eat rule may reach for, as
+// against a Restore, which is the emergency being kept back (Rule.h,
+// ActionKind::DrinkAny).
+//
+// Read off the effect RECORD and not its name, so a mod's own Fortify
+// counts and no table of names has to be maintained: the archetype is
+// PeakValueModifier -- the engine's word for a temporary modifier it takes
+// back when the effect ends -- and the effect is a boon. Held against every
+// vanilla alchemy effect (2026-09-16): every Fortify, Resist and Regenerate
+// answers yes; every Restore is a plain ValueModifier flagged No Duration
+// and answers no; Cure Disease and Cure Poison have archetypes of their
+// own; a Weakness or a Slow is a PeakValueModifier and is caught as harmful.
+//
+// Two edges, stated rather than guarded: an effect the BOTTLE gives no
+// duration is no buff whatever its record says, which is the check that
+// keeps a constant-effect record out; and a record that forgets the
+// detrimental flag on a bane reads as a buff (ccASVSSE001's Slow does).
+// Invisibility, Waterbreathing and Muffle are archetypes of their own and
+// are not buffs here -- none of them wins a fight.
+bool Buffs(const RE::EffectSetting *base, const RE::Effect::EffectItem &item)
+{
+    return item.duration > 0 && !Harmful(base) && base->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier);
+}
+
 std::vector<ft::PotionStock::Effect> EffectsOf(RE::MagicItem *item, ft::ConsumableKind kind)
 {
     std::vector<ft::PotionStock::Effect> out;
@@ -57,11 +90,11 @@ std::vector<ft::PotionStock::Effect> EffectsOf(RE::MagicItem *item, ft::Consumab
         if (!effect || !effect->baseEffect)
             continue;
         const auto *base = effect->baseEffect;
-        const bool harmful =
-            base->IsDetrimental() || base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHostile);
+        const bool harmful = Harmful(base);
         const char *name = base->GetFullName();
         if (harmful == poison && name && *name && !ft::EffectUseless(name))
-            out.push_back({name, effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration)});
+            out.push_back({name, effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration),
+                           Buffs(base, effect->effectItem)});
         if (firstOnly)
             break;
     }
@@ -1482,6 +1515,21 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     return traits;
 }
 
+// One random number for one evaluation: what every "any" action indexes
+// with (Snapshot::roll). Drawn here, on the game side, so that the rule
+// engine stays a pure function of its snapshot and a test names the choice
+// instead of sampling for it.
+//
+// A generator of our own rather than the engine's: this is asked once per
+// follower per tick, nothing in the game depends on the sequence, and a
+// thread_local one needs no lock. Seeded from the platform's entropy, so
+// two followers evaluated on the same tick do not choose in step.
+std::uint32_t Roll()
+{
+    static thread_local std::mt19937 gen{std::random_device{}()};
+    return gen();
+}
+
 ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
 {
     ft::Snapshot s;
@@ -1491,6 +1539,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
 
     s.self = actor->GetFormID();
     s.now = now;
+    s.roll = Roll();
 
     s.health = ReadStat(actor, RE::ActorValue::kHealth);
     s.magicka = ReadStat(actor, RE::ActorValue::kMagicka);
@@ -1747,9 +1796,14 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
         if (!kind)
             continue;
         std::vector<std::string> effects;
+        bool any = false;
         for (const auto &effect : EffectsOf(object->As<RE::MagicItem>(), *kind))
+        {
             effects.push_back(effect.name);
-        out.push_back({object->GetFormID(), NameOr(object, "?"), static_cast<int>(count), *kind, std::move(effects)});
+            any = any || ft::PotionStock::WantedByAny(*kind, effect);
+        }
+        out.push_back(
+            {object->GetFormID(), NameOr(object, "?"), static_cast<int>(count), *kind, std::move(effects), any});
     }
     std::sort(out.begin(), out.end(),
               [](const ConsumableOption &a, const ConsumableOption &b) { return a.name < b.name; });

@@ -386,7 +386,7 @@ void FillTactics(RE::Actor *actor, FollowerView &v)
     for (const auto &peer : v.peers)
         v.holdings.peers.push_back(peer.id);
     for (const auto &option : v.consumables)
-        v.holdings.consumables.push_back({option.form, option.kind, option.effects});
+        v.holdings.consumables.push_back({option.form, option.kind, option.effects, option.any});
     for (const auto &option : v.spells)
     {
         v.holdings.castable.push_back(option.form);

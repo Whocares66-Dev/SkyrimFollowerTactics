@@ -309,12 +309,14 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         return ChargeWeapon(actor, action.form);
     case ft::ActionKind::ApplyStrongest:
     case ft::ActionKind::ApplyWeakest:
+    case ft::ActionKind::ApplyAny:
     case ft::ActionKind::ApplyPoison: {
         auto *poison = RE::TESForm::LookupByID<RE::AlchemyItem>(action.form);
         return ApplyPoison(actor, poison && poison->IsPoison() ? poison : nullptr);
     }
     case ft::ActionKind::DrinkStrongest:
     case ft::ActionKind::DrinkWeakest:
+    case ft::ActionKind::DrinkAny:
     case ft::ActionKind::DrinkPotion:
     case ft::ActionKind::EatStrongestFood:
     case ft::ActionKind::EatWeakestFood:

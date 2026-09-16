@@ -277,6 +277,11 @@ struct ConsumableOption
     // The effects a policy could choose this by: a potion's boons, a
     // poison's banes, by name. What the Strongest and Weakest menus list.
     std::vector<std::string> effects;
+    // Whether an "any" rule could roll this one: every poison, and anything
+    // drunk or eaten that carries a buff. The same question core's
+    // PotionStock::WantedByAny answers, asked here only so the menu can
+    // leave "Any" out when nothing would answer it.
+    bool any{false};
 };
 
 // Every consumable they carry, sorted by name. Menu content only. Poisons
