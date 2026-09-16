@@ -450,28 +450,17 @@ void PublishOne(FollowerView v)
     g_view.push_back(std::move(v));
 }
 
-// Out of combat: read what is cheap and skip what is not.
-//
-// Three actor-value reads and a couple of flags -- no inventory scan, no
-// evaluation. That keeps "tactics only run in combat" true while still letting
-// the panel show who is under control and what shape they are in.
-void PublishIdle(RE::Actor *actor, double now, bool inCombat)
+// One follower's page. The tick in a fight, the tick out of one and a
+// request that has just changed them all want the same thing, so there is
+// one builder rather than a fighting one and an idle one: what the panel
+// reads does not depend on which brought us here.
+void PublishFollowerView(RE::Actor *actor, bool inCombat)
 {
-    ft::Snapshot snapshot;
-    snapshot.self = actor->GetFormID();
-    snapshot.now = now;
-    snapshot.health = ReadStat(actor, RE::ActorValue::kHealth);
-    snapshot.magicka = ReadStat(actor, RE::ActorValue::kMagicka);
-    snapshot.stamina = ReadStat(actor, RE::ActorValue::kStamina);
-
     FollowerView v;
-    v.snapshot = snapshot;
     v.inCombat = inCombat;
     FillDisplayFields(actor, v);
     PublishOne(std::move(v));
 }
-
-void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot);
 
 void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 {
@@ -530,10 +519,12 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
 
     // The cost measured is the snapshot and the evaluation -- the rules'
-    // own -- not the panel's sheets, which PublishView builds after.
+    // own -- not the panel's sheets, which the publish below builds after.
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
-    PublishView(actor, snapshot);
+    // Evaluated is not the same as fighting: the Combat end lists run on
+    // after the fight.
+    PublishFollowerView(actor, snapshot.inCombat);
 
     // New rules, or a new fight, report every rule's verdict afresh. The
     // farewell evaluation reports nothing: every standing rule turns false on
@@ -599,19 +590,6 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 
         return;
     }
-}
-
-// Replace this follower's entry in the observable view, every tick the
-// follower is evaluated, whether or not a rule fired.
-void PublishView(RE::Actor *actor, const ft::Snapshot &snapshot)
-{
-    FollowerView v;
-    v.snapshot = snapshot;
-    // Evaluated is not the same as fighting: the Combat end lists run on
-    // after the fight.
-    v.inCombat = snapshot.inCombat;
-    FillDisplayFields(actor, v);
-    PublishOne(std::move(v));
 }
 
 // --- the tick ---------------------------------------------------------------
@@ -810,7 +788,7 @@ void Tick()
             EvaluateFollower(follower, now, began, ended);
         }
         else
-            PublishIdle(follower, now, fighting);
+            PublishFollowerView(follower, fighting);
     }
 
     // Armed cast requests are withdrawn from here, whether or not anyone is
@@ -857,7 +835,7 @@ ft::RuleSet GetRules(ft::ActorId id)
 
 void PublishFollower(RE::Actor *actor)
 {
-    PublishIdle(actor, TacticsSeconds(), actor->IsInCombat());
+    PublishFollowerView(actor, actor->IsInCombat());
 }
 
 void PublishAllFollowers()

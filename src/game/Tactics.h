@@ -81,7 +81,6 @@ struct FollowerView : CharacterView
         std::string name;
     };
     std::vector<Peer> peers;
-    ft::Snapshot snapshot;
 
     // The spells this follower can be told to cast or equip, sorted by name.
     // Lives on the view rather than in Snapshot because it is menu content, not
