@@ -148,6 +148,18 @@ struct ActorView
     float reachDistance{0.0f};
 };
 
+// An effect in force on someone right now, by the name the game shows, and
+// how strongly. The strength is the point: alchemy effects do not add to
+// one another -- only the strongest of a name is in force (UESP,
+// Skyrim:Alchemy_Effects) -- so a second bottle is worth taking only when it
+// would beat what is already there. Different effects stack freely: a
+// Fortify Health up is no reason not to drink a Resist Fire.
+struct RunningEffect
+{
+    std::string name;
+    float magnitude{0.0f};
+};
+
 // A corpse nearby: dead, not already raised or summoned, loaded. Its level
 // is what a Reanimate's cap is measured against.
 struct CorpseView
@@ -188,6 +200,25 @@ struct PotionStock
         }
     };
 
+    // Whether an effect would gain nothing: one of its name is already in
+    // force at least as strongly. Magnitude alone, not duration -- a
+    // second dose of equal strength only lengthens what is up, which is not
+    // worth a bottle mid-fight. An effect with no magnitude (Paralysis) is
+    // outdone by any of its name. What is in force against a bottle that
+    // gives the same effect weaker is a bottle spent for nothing; against
+    // one that gives it stronger, a real gain, the weaker still running.
+    //
+    // Known exception, not modelled: Weakness to Magic and Weakness to
+    // Poison DO stack with themselves (the same UESP note). Telling them
+    // apart would take their names, and a table of names is what the effect
+    // record route exists to avoid; the cost is a follower passing over a
+    // second Weakness it could have stacked.
+    [[nodiscard]] static bool Outdone(const std::vector<RunningEffect> &inForce, const Effect &e)
+    {
+        return std::any_of(inForce.begin(), inForce.end(),
+                           [&](const RunningEffect &r) { return r.name == e.name && r.magnitude >= e.magnitude; });
+    }
+
     // Every consumable carried -- potion, food, ingredient, poison -- by
     // form, with its count, kind and effects: what a named consume rule
     // checks against, and what a policy chooses from. Names are display
@@ -204,9 +235,8 @@ struct PotionStock
     };
     std::vector<Carried> carried;
 
-    // The effects running on the follower right now, by name: a potion
-    // whose effect is still up is not drunk again, as a buff is not
-    // re-cast.
+    // The effects in force on the follower right now: a bottle that would
+    // not beat one of them is not drunk, as a buff is not re-cast.
     //
     // Vanilla alchemy Restore Health is INSTANT -- duration 0, nothing
     // lingers -- so on an unmodded game it is never here and the settle
@@ -217,7 +247,7 @@ struct PotionStock
     // dose is still working is exact, and it costs one walk of the
     // active-effect list we already have. A Fortify or a Resist runs for
     // a minute and is here throughout.
-    std::vector<std::string> running;
+    std::vector<RunningEffect> running;
 
     [[nodiscard]] int CountOf(std::uint32_t form, ConsumableKind kind) const
     {
@@ -227,14 +257,14 @@ struct PotionStock
         return 0;
     }
 
-    [[nodiscard]] bool IsRunning(std::string_view effect) const
-    {
-        return std::any_of(running.begin(), running.end(), [&](const std::string &r) { return r == effect; });
-    }
-
     // The bottle a policy chooses: of that kind, with that effect, the
-    // strongest or the weakest by it. 0 for none carried.
-    [[nodiscard]] std::uint32_t Choose(ConsumableKind kind, std::string_view effect, bool strongest) const
+    // strongest or the weakest by it -- of those that would still do
+    // something against what is in force. So Weakest is the weakest bottle
+    // that is a GAIN: the cheap one kept back is cheaper only when it
+    // works, and a 25 drunk under a 30 already running is a bottle spent
+    // for nothing. 0 for none.
+    [[nodiscard]] std::uint32_t Choose(ConsumableKind kind, std::string_view effect, bool strongest,
+                                       const std::vector<RunningEffect> &inForce) const
     {
         const Carried *best = nullptr;
         const Effect *bestEffect = nullptr;
@@ -244,7 +274,7 @@ struct PotionStock
                 continue;
             for (const auto &e : c.effects)
             {
-                if (e.name != effect)
+                if (e.name != effect || Outdone(inForce, e))
                     continue;
                 if (!bestEffect || (strongest ? e.StrongerThan(*bestEffect) : bestEffect->StrongerThan(e)))
                 {
@@ -267,10 +297,15 @@ struct PotionStock
         return kind == ConsumableKind::Poison || e.buff;
     }
 
-    [[nodiscard]] bool WantedByAny(ConsumableKind kind, const Carried &c) const
+    // A bottle an "any" may roll: of the kind, carried, and with at least
+    // one effect it would be taken for that nothing in force already beats.
+    // The roll therefore never lands on a bottle that would do nothing, and
+    // a follower with a Fortify Health up still rolls among the rest.
+    [[nodiscard]] bool Rollable(ConsumableKind kind, const Carried &c, const std::vector<RunningEffect> &inForce) const
     {
-        return c.kind == kind && c.count > 0 &&
-               std::any_of(c.effects.begin(), c.effects.end(), [&](const Effect &e) { return WantedByAny(kind, e); });
+        return c.kind == kind && c.count > 0 && std::any_of(c.effects.begin(), c.effects.end(), [&](const Effect &e) {
+                   return WantedByAny(kind, e) && !Outdone(inForce, e);
+               });
     }
 
     // One thing of the kind carried, by the snapshot's roll: what an "any"
@@ -278,16 +313,17 @@ struct PotionStock
     // bottles, so twenty of one poison and one of another are equally
     // likely -- which is what makes emptying a bag of odds and ends into a
     // follower work as a tactic rather than as twenty of the commonest.
-    // 0 for none carried.
-    [[nodiscard]] std::uint32_t AnyForm(ConsumableKind kind, std::uint32_t roll) const
+    // 0 for none.
+    [[nodiscard]] std::uint32_t AnyForm(ConsumableKind kind, std::uint32_t roll,
+                                        const std::vector<RunningEffect> &inForce) const
     {
-        const auto total = static_cast<std::uint32_t>(
-            std::count_if(carried.begin(), carried.end(), [&](const Carried &c) { return WantedByAny(kind, c); }));
+        const auto total = static_cast<std::uint32_t>(std::count_if(
+            carried.begin(), carried.end(), [&](const Carried &c) { return Rollable(kind, c, inForce); }));
         if (total == 0)
             return 0;
         std::uint32_t wanted = roll % total;
         for (const auto &c : carried)
-            if (WantedByAny(kind, c) && wanted-- == 0)
+            if (Rollable(kind, c, inForce) && wanted-- == 0)
                 return c.form;
         return 0;
     }
@@ -298,8 +334,11 @@ struct PotionStock
     // compare -- 3 points of Damage Health against 10 of Damage Stamina is
     // not a question with an answer -- so "the strongest poison" has to mean
     // "the strongest of one effect". Distinct names only: two bottles of
-    // Damage Health do not make it twice as likely. Empty for none carried.
-    [[nodiscard]] std::string AnyEffect(ConsumableKind kind, std::uint32_t roll) const
+    // Damage Health do not make it twice as likely. Only an effect some
+    // bottle would still gain: the name Choose then finds a bottle for.
+    // Empty for none.
+    [[nodiscard]] std::string AnyEffect(ConsumableKind kind, std::uint32_t roll,
+                                        const std::vector<RunningEffect> &inForce) const
     {
         std::vector<std::string_view> names;
         for (const auto &c : carried)
@@ -307,25 +346,11 @@ struct PotionStock
             if (c.kind != kind || c.count <= 0)
                 continue;
             for (const auto &e : c.effects)
-                if (WantedByAny(kind, e) && std::find(names.begin(), names.end(), e.name) == names.end())
+                if (WantedByAny(kind, e) && !Outdone(inForce, e) &&
+                    std::find(names.begin(), names.end(), e.name) == names.end())
                     names.emplace_back(e.name);
         }
         return names.empty() ? std::string{} : std::string(names[roll % names.size()]);
-    }
-
-    // Whether every effect an "any" action would have taken this bottle for
-    // is already up: the availability a named policy gets from IsRunning,
-    // asked of a bottle rather than of an effect.
-    [[nodiscard]] bool WantedEffectsRunning(std::uint32_t form, ConsumableKind kind) const
-    {
-        for (const auto &c : carried)
-        {
-            if (c.form != form || c.kind != kind)
-                continue;
-            return std::all_of(c.effects.begin(), c.effects.end(),
-                               [&](const Effect &e) { return !WantedByAny(kind, e) || IsRunning(e.name); });
-        }
-        return false;
     }
 
     // Add a bottle, or one effect to a bottle already listed.
@@ -558,6 +583,18 @@ struct Snapshot
     ActorTraits traits{};
 
     ActorId currentTarget{0};
+    // The effects in force on currentTarget, empty with none: what a poison
+    // is chosen against, since its banes land on whoever is struck.
+    //
+    // A guess, and treated as one. The dose goes on the blade now and lands
+    // when a blow does -- perhaps seconds later, perhaps on someone else, by
+    // when the Slow already on the target may have worn off. So this only
+    // STEERS the choice toward a poison the target is not already under,
+    // and never withholds the poison: with every one carried already beaten
+    // on the target, one is put on regardless (Evaluator.cpp, ChosenForm).
+    // A potion drunk for an effect already in force is certainly wasted; a
+    // poison is only probably so.
+    std::vector<RunningEffect> targetRunning;
 
     // The party and the enemies, by definition (docs/CONDITIONS.md 6): the
     // allies are the player and every other teammate, so the player is

@@ -421,7 +421,24 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
     }
 }
 
-std::uint32_t ChosenForm(const Action &a, const Snapshot &snap)
+namespace
+{
+
+const std::vector<RunningEffect> kNothingInForce;
+
+// What is in force where a consumable's effects would land: a poison's on
+// whoever is struck, the follower's current target being the best guess
+// there is; everything else on the follower.
+const std::vector<RunningEffect> &InForceFor(ConsumableKind kind, const Snapshot &s)
+{
+    return kind == ConsumableKind::Poison ? s.targetRunning : s.potions.running;
+}
+
+// The thing an action chooses, against what is in force. Asked with
+// nothing in force it answers "is there anything in the bag this rule could
+// ever use"; asked with what is, "anything worth taking now". The two apart
+// are what tell NoResource from EffectActive.
+std::uint32_t ChooseAgainst(const Action &a, const Snapshot &snap, const std::vector<RunningEffect> &inForce)
 {
     if (IsCharge(a.kind) && a.kind != ActionKind::ChargeSoulGem)
     {
@@ -436,12 +453,30 @@ std::uint32_t ChosenForm(const Action &a, const Snapshot &snap)
     // across effects. Both index with the snapshot's roll, so this answers
     // the same for every call within one evaluation.
     if (IsAny(a.kind))
-        return snap.potions.AnyForm(ConsumableOf(a.kind), snap.roll);
+        return snap.potions.AnyForm(ConsumableOf(a.kind), snap.roll, inForce);
     if (!IsPolicy(a.kind))
         return a.form;
     const ConsumableKind kind = ConsumableOf(a.kind);
-    const std::string effect = a.effect.empty() ? snap.potions.AnyEffect(kind, snap.roll) : a.effect;
-    return snap.potions.Choose(kind, effect, IsStrongest(a.kind));
+    const std::string effect = a.effect.empty() ? snap.potions.AnyEffect(kind, snap.roll, inForce) : a.effect;
+    return snap.potions.Choose(kind, effect, IsStrongest(a.kind), inForce);
+}
+
+} // namespace
+
+std::uint32_t ChosenForm(const Action &a, const Snapshot &snap)
+{
+    if (!IsConsume(a.kind) && !IsApply(a.kind))
+        return ChooseAgainst(a, snap, kNothingInForce);
+    const ConsumableKind kind = ConsumableOf(a.kind);
+    const std::uint32_t worthIt = ChooseAgainst(a, snap, InForceFor(kind, snap));
+    // A poison already on the target is second best, not useless: the dose
+    // lands when a blow does, perhaps after the one in force has worn off,
+    // perhaps on someone else. So a poison falls back to the plain choice;
+    // a potion drunk for an effect already in force is simply a potion gone,
+    // and does not.
+    if (worthIt != 0 || kind != ConsumableKind::Poison)
+        return worthIt;
+    return ChooseAgainst(a, snap, kNothingInForce);
 }
 
 namespace
@@ -452,9 +487,11 @@ namespace
 // how the two drift apart.
 bool HasResource(const Action &a, const Snapshot &s)
 {
-    // An action that works out its own thing has what it chooses, or nothing.
+    // An action that works out its own thing has what it chooses, or
+    // nothing -- asked with nothing in force, so that a bag of buffs all
+    // already up reads as "already up" further on, not as an empty bag.
     if (ChoosesForm(a.kind))
-        return ChosenForm(a, s) != 0;
+        return ChooseAgainst(a, s, kNothingInForce) != 0;
     if (a.kind == ActionKind::ChargeSoulGem)
         return a.form != 0 && std::any_of(s.soulGems.begin(), s.soulGems.end(),
                                           [&](const Snapshot::SoulGemView &g) { return g.form == a.form; });
@@ -493,18 +530,13 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
     // A named consumable could restore anything or nothing; only the
     // per-form cooldown spaces it.
     //
-    // The question is asked of what the action CHOSE, which for an "any" is
-    // what this tick's roll landed on -- the same roll ChosenForm reads, so
-    // the two agree. A roll that lands on a buff already up therefore
-    // reports this rather than drinking a second bottle of it, and the rule
-    // falls through; the next tick rolls again and may land elsewhere.
-    // Deliberately not "roll only among what is not running": that would
-    // have to be threaded through both ChosenForm and here, and a fight
-    // lasts many ticks -- letting the odd tick pass is the cheaper answer.
-    if (IsConsume(a.kind) && IsAny(a.kind))
-        return s.potions.WantedEffectsRunning(ChosenForm(a, s), ConsumableOf(a.kind));
-    if (IsPolicy(a.kind) && IsConsume(a.kind))
-        return s.potions.IsRunning(a.effect.empty() ? s.potions.AnyEffect(ConsumableOf(a.kind), s.roll) : a.effect);
+    // Asked of what is in force against what the bag holds, so it is
+    // exact: nothing left that would beat an effect already up -- the same
+    // dose still working, or every buff carried already on at least as
+    // strongly. A stronger bottle over a weaker dose is a gain and is not
+    // this. HasResource has already said the bag is not empty.
+    if (IsConsume(a.kind) && ChoosesForm(a.kind))
+        return ChosenForm(a, s) == 0;
     // A poison goes on a clean weapon; a gem into one that cannot pay for
     // its next hit. None such in hand, and the rule waits, as a buff rule
     // waits on the buff.
@@ -1011,11 +1043,11 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "every weapon in hand is already poisoned";
         if (IsCharge(action))
             return "no weapon in hand needs a charge";
-        // Only Drink reaches here; Apply is answered above. What the roll
-        // landed on this tick is up, which is not the same as every buff
-        // carried being up -- the next tick rolls again.
+        // Only Drink reaches here; Apply is answered above. The roll only
+        // lands on a buff that would gain something, so reaching this means
+        // none carried would.
         if (IsAny(action))
-            return "that buff is already up";
+            return "every buff carried is already up";
         return action == ActionKind::CastSpell ? "that spell is still running" : "previous dose still active";
 
     default:

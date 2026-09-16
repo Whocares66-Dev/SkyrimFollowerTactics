@@ -2610,7 +2610,7 @@ TEST_CASE("a lingering dose blocks past the minimum cooldown", "[cooldown]")
 
     // Well past the settle time, but the dose is still working.
     s.now += MinimumCooldown(ActionKind::DrinkStrongest) + 5.0;
-    s.potions.running = {"Restore Health"};
+    s.potions.running = {{"Restore Health", 50.0f}};
 
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
@@ -2666,7 +2666,7 @@ TEST_CASE("having no potion and having one still working are different", "[coold
 
     SECTION("full bag, dose still running")
     {
-        s.potions.running = {"Restore Health"};
+        s.potions.running = {{"Restore Health", 50.0f}};
         EvalContext ctx;
         Trace trace;
         Evaluate(rs, s, ctx, &trace);
@@ -3398,24 +3398,45 @@ TEST_CASE("an any-drink reaches for a buff and never for a restore", "[evaluator
         }
     }
 
-    SECTION("a buff already up is not drunk again; the next roll finds the other")
+    SECTION("the roll never lands on a buff already up, so no tick is spent on one")
     {
-        s.potions.Add(0x501, 1, ConsumableKind::Potion, Buff("Fortify One-handed", 20.0f));
+        s.potions.Add(0x501, 1, ConsumableKind::Potion, Buff("Fortify Health", 20.0f));
         s.potions.Add(0x502, 1, ConsumableKind::Potion, Buff("Resist Fire", 30.0f));
-        s.potions.running.emplace_back("Fortify One-handed");
+        s.potions.running = {{"Fortify Health", 20.0f}};
+        // Every roll: the one not already beaten.
+        for (std::uint32_t roll = 0; roll < 6; ++roll)
+        {
+            s.roll = roll;
+            EvalContext ctx;
+            const auto d = Evaluate(rs, s, ctx);
+            REQUIRE(d.Fired());
+            REQUIRE(d.actionForm() == 0x502);
+        }
+    }
 
-        s.roll = 0;
+    SECTION("a stronger bottle of a buff already up is still a choice; a weaker one is not")
+    {
+        s.potions.Add(0x501, 1, ConsumableKind::Potion, Buff("Fortify Health", 20.0f));
+        s.potions.Add(0x504, 1, ConsumableKind::Potion, Buff("Fortify Health", 60.0f));
+        s.potions.running = {{"Fortify Health", 40.0f}};
+        for (std::uint32_t roll = 0; roll < 4; ++roll)
+        {
+            s.roll = roll;
+            REQUIRE(ChosenForm(AnyOf(ActionKind::DrinkAny), s) == 0x504);
+        }
+    }
+
+    SECTION("every buff carried already up: waits, and says so, not 'none carried'")
+    {
+        s.potions.Add(0x501, 1, ConsumableKind::Potion, Buff("Fortify Health", 20.0f));
+        s.potions.Add(0x502, 1, ConsumableKind::Potion, Buff("Resist Fire", 30.0f));
+        s.potions.running = {{"Fortify Health", 20.0f}, {"Resist Fire", 45.0f}};
         Trace trace;
         EvalContext ctx;
         REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
         REQUIRE(trace.at(0) == Verdict::EffectActive);
-        REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkAny)) == "that buff is already up");
-
-        s.roll = 1;
-        EvalContext ctx2;
-        const auto d = Evaluate(rs, s, ctx2);
-        REQUIRE(d.Fired());
-        REQUIRE(d.actionForm() == 0x502);
+        REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkAny)) ==
+                "every buff carried is already up");
     }
 
     SECTION("a bottle that both restores and fortifies is a buff, judged on the fortify")
@@ -3424,12 +3445,12 @@ TEST_CASE("an any-drink reaches for a buff and never for a restore", "[evaluator
         s.potions.Add(0x503, 1, ConsumableKind::Potion, Buff("Fortify Health", 20.0f));
         REQUIRE(ChosenForm(AnyOf(ActionKind::DrinkAny), s) == 0x503);
 
-        // Its restore running is beside the point; its fortify running
+        // Its restore in force is beside the point; its fortify in force
         // holds it back, as the buff it was chosen for.
-        s.potions.running.emplace_back("Restore Health");
+        s.potions.running = {{"Restore Health", 50.0f}};
         EvalContext ctx;
         REQUIRE(Evaluate(rs, s, ctx).Fired());
-        s.potions.running.emplace_back("Fortify Health");
+        s.potions.running.push_back({"Fortify Health", 20.0f});
         Trace trace;
         EvalContext ctx2;
         REQUIRE_FALSE(Evaluate(rs, s, ctx2, &trace).Fired());
@@ -3470,12 +3491,112 @@ TEST_CASE("a drink policy with no effect named rolls among the buffs only", "[ev
     s.potions.Add(0x606, 1, ConsumableKind::Food, Buff("Fortify Health", 5.0f));
     REQUIRE(ChosenForm(AnyOf(ActionKind::EatStrongestFood), s) == 0x606);
 
-    // A form the bag has not got has no buff up, whatever else is running:
-    // the answer for a roll that found nothing to choose.
-    s.potions.running.emplace_back("Resist Fire");
-    REQUIRE_FALSE(s.potions.WantedEffectsRunning(0, ConsumableKind::Potion));
-    REQUIRE_FALSE(s.potions.WantedEffectsRunning(0x601, ConsumableKind::Food)); // right form, wrong kind
-    REQUIRE(s.potions.WantedEffectsRunning(0x601, ConsumableKind::Potion));
+    // An effect already beaten drops out of the EFFECT roll too, so the
+    // effect rolled is always one some bottle can still gain: with Resist
+    // Fire up at 50, only Fortify Health is left to roll, whatever the roll.
+    s.potions.running = {{"Resist Fire", 50.0f}};
+    for (std::uint32_t roll = 0; roll < 4; ++roll)
+    {
+        s.roll = roll;
+        REQUIRE(ChosenForm(strongest, s) == 0x603);
+    }
+}
+
+TEST_CASE("an effect is outdone by one of its name in force at least as strongly", "[evaluator][any]")
+{
+    const PotionStock::Effect fire{"Resist Fire", 30.0f, 60.0f, true};
+    const auto outdone = [&](std::vector<RunningEffect> inForce) { return PotionStock::Outdone(inForce, fire); };
+
+    REQUIRE_FALSE(outdone({}));
+    REQUIRE(outdone({{"Resist Fire", 30.0f}}));        // equal: nothing gained
+    REQUIRE(outdone({{"Resist Fire", 45.0f}}));        // stronger up
+    REQUIRE_FALSE(outdone({{"Resist Fire", 29.0f}}));  // weaker up: a gain
+    REQUIRE_FALSE(outdone({{"Resist Frost", 99.0f}})); // another effect stacks
+    REQUIRE(outdone({{"Resist Frost", 99.0f}, {"Resist Fire", 30.0f}}));
+
+    // No magnitude at all (Paralysis): any of its name in force outdoes it.
+    const PotionStock::Effect paralysis{"Paralysis", 0.0f, 5.0f};
+    REQUIRE(PotionStock::Outdone({{"Paralysis", 0.0f}}, paralysis));
+}
+
+TEST_CASE("a poison is steered off what the target already has, but never withheld", "[evaluator][any]")
+{
+    // The target's effects only STEER: the dose goes on now and lands later,
+    // perhaps after the one in force has worn off, perhaps on someone else.
+    RuleSet rs;
+    rs.rules.push_back(Always(AnyOf(ActionKind::ApplyAny)));
+    Snapshot s = Healthy();
+    s.rightWeapon = {true, false};
+    s.currentTarget = 0xBAD;
+    s.potions.Add(0x701, 1, ConsumableKind::Poison, {"Slow", 50.0f, 10.0f});
+    s.potions.Add(0x702, 1, ConsumableKind::Poison, {"Lingering Damage Health", 2.0f, 10.0f});
+
+    SECTION("the target already slowed: every roll goes to the other poison")
+    {
+        s.targetRunning = {{"Slow", 50.0f}};
+        for (std::uint32_t roll = 0; roll < 6; ++roll)
+        {
+            s.roll = roll;
+            EvalContext ctx;
+            const auto d = Evaluate(rs, s, ctx);
+            REQUIRE(d.Fired());
+            REQUIRE(d.actionForm() == 0x702);
+        }
+    }
+
+    SECTION("the target under both: one goes on anyway -- second best, not useless")
+    {
+        s.targetRunning = {{"Slow", 50.0f}, {"Lingering Damage Health", 2.0f}};
+        EvalContext ctx;
+        const auto d = Evaluate(rs, s, ctx);
+        REQUIRE(d.Fired());
+        REQUIRE((d.actionForm() == 0x701 || d.actionForm() == 0x702));
+    }
+
+    SECTION("the effect roll and the strongest-of-it are steered the same way")
+    {
+        s.potions.Add(0x703, 1, ConsumableKind::Poison, {"Slow", 80.0f, 10.0f});
+        s.targetRunning = {{"Slow", 60.0f}};
+        Action strongest = AnyOf(ActionKind::ApplyStrongest);
+        Action weakest = AnyOf(ActionKind::ApplyWeakest);
+        // Slow at 50 is beaten by the 60 on the target; Slow at 80 is not.
+        // Weakest therefore means the weakest Slow that still does something.
+        // The effects left to roll, in the bag's order: Lingering Damage
+        // Health (0x702's), then Slow (0x703's; 0x701's is beaten).
+        s.roll = 0;
+        REQUIRE(ChosenForm(strongest, s) == 0x702);
+        s.roll = 1;
+        REQUIRE(ChosenForm(strongest, s) == 0x703);
+        REQUIRE(ChosenForm(weakest, s) == 0x703);
+        // A named effect steers too.
+        REQUIRE(ChosenForm(Apply("Slow", false), s) == 0x703);
+        // And falls back to the plain choice when nothing of it beats the
+        // target: the weakest Slow of all, as with no target.
+        s.targetRunning = {{"Slow", 90.0f}};
+        REQUIRE(ChosenForm(Apply("Slow", false), s) == 0x701);
+    }
+
+    SECTION("a potion is NOT given the fallback: drunk for nothing is simply gone")
+    {
+        s.potions.Add(0x704, 1, ConsumableKind::Potion, Buff("Resist Fire", 30.0f));
+        s.potions.running = {{"Resist Fire", 30.0f}};
+        REQUIRE(ChosenForm(AnyOf(ActionKind::DrinkAny), s) == 0);
+        REQUIRE(ChosenForm(Drink("Resist Fire"), s) == 0);
+    }
+
+    SECTION("the follower's own effects are not the target's: a potion up does not steer a poison")
+    {
+        s.targetRunning.clear();
+        s.potions.running = {{"Slow", 99.0f}}; // on the follower, not the target
+        std::vector<std::uint32_t> seen;
+        for (std::uint32_t roll = 0; roll < 2; ++roll)
+        {
+            s.roll = roll;
+            seen.push_back(ChosenForm(AnyOf(ActionKind::ApplyAny), s));
+        }
+        std::ranges::sort(seen);
+        REQUIRE(seen == std::vector<std::uint32_t>{0x701, 0x702});
+    }
 }
 
 TEST_CASE("a potion whose effect is still running is not drunk again", "[cooldown]")
@@ -3491,13 +3612,67 @@ TEST_CASE("a potion whose effect is still running is not drunk again", "[cooldow
     EvalContext ctx;
     REQUIRE(Evaluate(rs, s, ctx).Fired());
     s.now += 10.0;
-    s.potions.running = {"Resist Fire"};
+    s.potions.running = {{"Resist Fire", 30.0f}};
     Trace trace;
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::EffectActive);
-    // Another effect running is no reason to wait.
-    s.potions.running = {"Fortify Health"};
+    // Another effect running is no reason to wait: different effects stack.
+    s.potions.running = {{"Fortify Health", 30.0f}};
     REQUIRE(Evaluate(rs, s, ctx).Fired());
+}
+
+TEST_CASE("a stronger dose over a weaker one in force is a gain; an equal or weaker is not", "[cooldown]")
+{
+    // Alchemy effects of one name do not add: only the strongest is in
+    // force. So the bottle that beats what is up is worth drinking, and one
+    // that does not is a bottle spent for nothing.
+    Snapshot s = Healthy();
+    s.potions.carried.clear();
+    s.potions.Add(0x311, 1, ConsumableKind::Potion, {"Resist Fire", 20.0f, 60.0f});
+    s.potions.Add(0x312, 1, ConsumableKind::Potion, {"Resist Fire", 40.0f, 60.0f});
+    RuleSet rs;
+    rs.rules.push_back(Always(Drink("Resist Fire")));
+    const auto fire = [&](Verdict *why = nullptr) {
+        EvalContext ctx;
+        Trace trace;
+        const auto d = Evaluate(rs, s, ctx, &trace);
+        if (why)
+            *why = trace.at(0);
+        return d;
+    };
+
+    SECTION("a weaker dose up: the strongest bottle still beats it")
+    {
+        s.potions.running = {{"Resist Fire", 30.0f}};
+        const auto d = fire();
+        REQUIRE(d.Fired());
+        REQUIRE(d.actionForm() == 0x312);
+    }
+
+    SECTION("Weakest takes the weakest bottle that is still a gain, not one that does nothing")
+    {
+        rs.rules[0].FirstAction() = Drink("Resist Fire", false);
+        s.potions.running = {{"Resist Fire", 30.0f}};
+        const auto d = fire();
+        REQUIRE(d.Fired());
+        REQUIRE(d.actionForm() == 0x312); // the 20 would do nothing under a 30
+    }
+
+    SECTION("an equal dose up: nothing gains, and it says so rather than 'none carried'")
+    {
+        s.potions.running = {{"Resist Fire", 40.0f}};
+        Verdict why{};
+        REQUIRE_FALSE(fire(&why).Fired());
+        REQUIRE(why == Verdict::EffectActive);
+    }
+
+    SECTION("a stronger dose up outdoes every bottle carried")
+    {
+        s.potions.running = {{"Resist Fire", 55.0f}};
+        Verdict why{};
+        REQUIRE_FALSE(fire(&why).Fired());
+        REQUIRE(why == Verdict::EffectActive);
+    }
 }
 
 TEST_CASE("two policies for two effects are two actions, each on its own cooldown", "[cooldown]")
