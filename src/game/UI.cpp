@@ -5421,7 +5421,16 @@ void DrawSettings()
     if (settings.requireDualWieldStyle != was.requireDualWieldStyle ||
         settings.requireDualCastPerks != was.requireDualCastPerks ||
         settings.requirePowerBashPerk != was.requirePowerBashPerk)
+    {
         SetSettings(settings);
+        // What a follower has changes with the requirement, and the views
+        // the other pages read are the tick's -- which the frozen clock
+        // holds while the panel is open. Fresh ones on the game thread, as
+        // the panel's own open does, so the Tactics tab greys a rule as
+        // soon as the switch is clicked rather than on the next open.
+        if (auto *task = SKSE::GetTaskInterface())
+            task->AddTask([]() { PublishAllFollowers(); });
+    }
 }
 
 void __stdcall RenderSettings()
