@@ -67,18 +67,26 @@ bool Harmful(const RE::EffectSetting *base)
 // and answers no; Cure Disease and Cure Poison have archetypes of their
 // own; a Weakness or a Slow is a PeakValueModifier and is caught as harmful.
 //
+// And it must do something for THIS actor. A Fortify One-handed potion
+// writes OneHandedPowerModifier, which only a hidden perk reads, and an
+// actor without the perk drinks it for nothing (docs/RESEARCH.md 6;
+// EffectApplies, below, asks the actor). An "any buff" that rolled one of
+// those would be the waste it exists to avoid.
+//
 // Two edges, stated rather than guarded: an effect the BOTTLE gives no
 // duration is no buff whatever its record says, which is the check that
 // keeps a constant-effect record out; and a record that forgets the
 // detrimental flag on a bane reads as a buff (ccASVSSE001's Slow does).
 // Invisibility, Waterbreathing and Muffle are archetypes of their own and
 // are not buffs here -- none of them wins a fight.
-bool Buffs(const RE::EffectSetting *base, const RE::Effect::EffectItem &item)
+bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base);
+bool Buffs(const RE::Actor *actor, const RE::EffectSetting *base, const RE::Effect::EffectItem &item)
 {
-    return item.duration > 0 && !Harmful(base) && base->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier);
+    return item.duration > 0 && !Harmful(base) &&
+           base->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier) && EffectApplies(actor, base);
 }
 
-std::vector<ft::PotionStock::Effect> EffectsOf(RE::MagicItem *item, ft::ConsumableKind kind)
+std::vector<ft::PotionStock::Effect> EffectsOf(const RE::Actor *actor, RE::MagicItem *item, ft::ConsumableKind kind)
 {
     std::vector<ft::PotionStock::Effect> out;
     if (!item)
@@ -94,7 +102,7 @@ std::vector<ft::PotionStock::Effect> EffectsOf(RE::MagicItem *item, ft::Consumab
         const char *name = base->GetFullName();
         if (harmful == poison && name && *name && !ft::EffectUseless(name))
             out.push_back({name, effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration),
-                           Buffs(base, effect->effectItem)});
+                           Buffs(actor, base, effect->effectItem)});
         if (firstOnly)
             break;
     }
@@ -143,33 +151,41 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock)
         const auto kind = ConsumableKindOf(object);
         if (!kind)
             continue;
-        stock.carried.push_back(
-            {object->GetFormID(), static_cast<int>(count), *kind, EffectsOf(object->As<RE::MagicItem>(), *kind)});
+        stock.carried.push_back({object->GetFormID(), static_cast<int>(count), *kind,
+                                 EffectsOf(actor, object->As<RE::MagicItem>(), *kind)});
     }
 }
 
-// The effects still running on the actor, by name.
+// The alchemy effects in force on an actor -- a potion's, a poison's, a
+// food's, an ingredient's -- by name and strength.
+//
+// ALCHEMY sources only, because that is the stacking rule: alchemy effects
+// do not add to one another, only the strongest of a name is in force, but
+// they do stack with enchantments (UESP, Skyrim:Alchemy_Effects). A worn
+// Fortify One-handed ring shares the potion's name and writes a different
+// value (docs/RESEARCH.md 6); counting it would keep a follower off a potion
+// that would have stacked. (Until 2026-09-16 any source counted, when the
+// question was only "is something of this name up".)
 //
 // An INSTANT effect has duration 0 and never lingers here, so on a vanilla
 // game a Restore is never listed and the settle time in MinimumCooldown
 // does the spacing. Potion overhauls convert restores to over-time effects,
 // and there this is the exact answer where a fixed settle would be a guess.
-// A Fortify, a Resist, an Invisibility runs for a minute and is listed
-// throughout, so the rule that drank it waits as a buff rule waits.
-//
-// Deliberately not restricted to effects whose source is a potion: a spell
-// or an enchantment of the same effect ticking away is just as good a
-// reason not to drink.
-std::vector<std::string> RunningEffects(RE::Actor *actor)
+// A Fortify or a Resist runs for a minute and is listed throughout.
+std::vector<ft::RunningEffect> RunningEffects(RE::Actor *actor)
 {
-    std::vector<std::string> out;
+    using Type = RE::MagicSystem::SpellType;
+    std::vector<ft::RunningEffect> out;
     ForEachActiveEffect(actor, [&out](RE::ActiveEffect &ae) {
         // duration 0 is an instant effect that has already happened.
         if (!(ae.duration > 0.0f && ae.elapsedSeconds < ae.duration))
             return;
+        const auto type = ae.spell ? ae.spell->GetSpellType() : Type::kSpell;
+        if (type != Type::kPotion && type != Type::kPoison && type != Type::kIngredient)
+            return;
         const char *name = ae.effect->baseEffect->GetFullName();
         if (name && *name)
-            out.emplace_back(name);
+            out.push_back({name, ae.magnitude});
     });
     return out;
 }
@@ -1649,6 +1665,11 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     s.soulGems = ScanSoulGems(actor);
 
     s.potions.running = RunningEffects(actor);
+    // What a poison would land on, as far as can be told before the blow:
+    // the follower's own mark. One more walk of an effect list, and only
+    // with a mark.
+    if (auto *mark = s.currentTarget ? RE::TESForm::LookupByID<RE::Actor>(s.currentTarget) : nullptr)
+        s.targetRunning = RunningEffects(mark);
 
     // Spells: what they know, what is running, what is in hand. All three are
     // ids only -- Snapshot never sees an RE:: type -- and all three are needed
@@ -1797,7 +1818,7 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
             continue;
         std::vector<std::string> effects;
         bool any = false;
-        for (const auto &effect : EffectsOf(object->As<RE::MagicItem>(), *kind))
+        for (const auto &effect : EffectsOf(actor, object->As<RE::MagicItem>(), *kind))
         {
             effects.push_back(effect.name);
             any = any || ft::PotionStock::WantedByAny(*kind, effect);
