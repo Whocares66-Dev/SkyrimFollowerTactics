@@ -1944,6 +1944,67 @@ void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
     }
 }
 
+// The Order cell's three buttons -- up, down, remove -- centred in the cell
+// as a group and borderless, for the rule table and for the action table
+// inside it. A move writes its two indices into `moveFrom` and `moveTo`, a
+// removal writes its one into `removeAt`, and whatever was not asked for is
+// left as it was.
+//
+// `dimmed` greys the arrow that would go nowhere the panel's way rather
+// than ImGui's. The rule table needs that: it sits inside a BeginDimmed
+// whose disabled alpha is 1, so a plain BeginDisabled there took no clicks
+// while looking exactly like its neighbours.
+void OrderButtons(const std::string &id, float row, std::size_t index, std::size_t count, bool dimmed, int &moveFrom,
+                  int &moveTo, int &removeAt)
+{
+    {
+        // Centre the three as a group, using the SAME gap the layout below
+        // actually uses. Measuring with ItemSpacing while laying out with
+        // kOrderGap overstated the group by ~12px and shifted it left.
+        const float group = row * 3.0f + kOrderGap * 2.0f;
+        const float cell = Im::GetContentRegionAvail().x;
+        if (cell > group)
+            Im::SetCursorPosX(Im::GetCursorPosX() + (cell - group) * 0.5f);
+    }
+
+    const auto beginGrey = [dimmed](bool grey) {
+        if (dimmed)
+            BeginDimmed(grey);
+        else
+            Im::BeginDisabled(grey);
+    };
+    const auto endGrey = [dimmed] {
+        if (dimmed)
+            EndDimmed();
+        else
+            Im::EndDisabled();
+    };
+
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    // Arrows from the icon font, like every other glyph on the row.
+    beginGrey(index == 0);
+    if (GlyphButton("up" + id, row, Glyph::Up))
+    {
+        moveFrom = static_cast<int>(index);
+        moveTo = static_cast<int>(index) - 1;
+    }
+    endGrey();
+
+    Im::SameLine(0.0f, kOrderGap);
+    beginGrey(index + 1 >= count);
+    if (GlyphButton("dn" + id, row, Glyph::Down))
+    {
+        moveFrom = static_cast<int>(index);
+        moveTo = static_cast<int>(index) + 1;
+    }
+    endGrey();
+
+    Im::SameLine(0.0f, kOrderGap);
+    if (DeleteButton("rm" + id, row))
+        removeAt = static_cast<int>(index);
+    Im::PopStyleVar(1);
+}
+
 // The drawer an open rule reveals: its actions, one row each in the order
 // they are done, each its own menu; and up, down and remove, as the rule
 // table's Order column. A plus beneath for one more. Set under the Then
@@ -1993,32 +2054,7 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
                 changed = true;
 
             Im::TableSetColumnIndex(1);
-            {
-                const float group = row * 3.0f + kOrderGap * 2.0f;
-                const float cell = Im::GetContentRegionAvail().x;
-                if (cell > group)
-                    Im::SetCursorPosX(Im::GetCursorPosX() + (cell - group) * 0.5f);
-            }
-            Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-            Im::BeginDisabled(a == 0);
-            if (GlyphButton("up" + actId, row, Glyph::Up))
-            {
-                moveFrom = static_cast<int>(a);
-                moveTo = static_cast<int>(a) - 1;
-            }
-            Im::EndDisabled();
-            Im::SameLine(0.0f, kOrderGap);
-            Im::BeginDisabled(a + 1 >= rule.actions.size());
-            if (GlyphButton("dn" + actId, row, Glyph::Down))
-            {
-                moveFrom = static_cast<int>(a);
-                moveTo = static_cast<int>(a) + 1;
-            }
-            Im::EndDisabled();
-            Im::SameLine(0.0f, kOrderGap);
-            if (DeleteButton("rm" + actId, row))
-                removeAt = static_cast<int>(a);
-            Im::PopStyleVar(1);
+            OrderButtons(actId, row, a, rule.actions.size(), false, moveFrom, moveTo, removeAt);
         }
 
         Im::EndTable();
@@ -2339,42 +2375,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // Order is semantics, not decoration: rules are first-match-wins, so
         // moving a row changes which rule shadows which.
         Im::TableSetColumnIndex(4);
-        {
-            // Centre the three as a group, using the SAME gap the layout below
-            // actually uses. Measuring with ItemSpacing while laying out with
-            // kOrderGap overstated the group by ~12px and shifted it left.
-            const float group = row * 3.0f + kOrderGap * 2.0f;
-            const float cell = Im::GetContentRegionAvail().x;
-            if (cell > group)
-                Im::SetCursorPosX(Im::GetCursorPosX() + (cell - group) * 0.5f);
-        }
-        Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-        // Arrows from the icon font, like every other glyph on the row. The
-        // first row's up and the last row's down are greyed the panel's
-        // way, not ImGui's: the table sits in a BeginDimmed whose disabled
-        // alpha is 1, so a plain BeginDisabled took no clicks but looked
-        // exactly like its neighbours.
-        BeginDimmed(i == 0);
-        if (GlyphButton("up" + rowId, row, Glyph::Up))
-        {
-            moveFrom = static_cast<int>(i);
-            moveTo = static_cast<int>(i) - 1;
-        }
-        EndDimmed();
-
-        Im::SameLine(0.0f, kOrderGap);
-        BeginDimmed(i + 1 >= rules.rules.size());
-        if (GlyphButton("dn" + rowId, row, Glyph::Down))
-        {
-            moveFrom = static_cast<int>(i);
-            moveTo = static_cast<int>(i) + 1;
-        }
-        EndDimmed();
-
-        Im::SameLine(0.0f, kOrderGap);
-        if (DeleteButton("rm" + rowId, row))
-            removeAt = static_cast<int>(i);
-        Im::PopStyleVar(1);
+        OrderButtons(rowId, row, i, rules.rules.size(), true, moveFrom, moveTo, removeAt);
 
         // Back to the switch: every cell is drawn, so the row's height is
         // final and the slash reaches its bottom corner.
