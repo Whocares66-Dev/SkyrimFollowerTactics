@@ -5199,14 +5199,13 @@ std::uint64_t Packed(ft::ActorId actor, Tab tab)
     return (static_cast<std::uint64_t>(actor) << 8) | static_cast<std::uint64_t>(tab);
 }
 
-void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
-             std::initializer_list<std::uint64_t> detail = {})
+// This page is on screen: the framework calls only the visible section's
+// renderer, and a tab's body only while that tab is selected. A page that has
+// just come up is built at once rather than on the next beat, which is what
+// makes a tab click answer immediately; the stamp goes down every frame, open
+// or not.
+void ShowingPage(ft::ActorId actor, Tab tab)
 {
-    // This is the page on screen: the framework calls only the visible
-    // section's renderer, and a tab's body only while that tab is selected.
-    // A page that has just come up is built at once rather than on the next
-    // beat, which is what makes a tab click answer immediately; the stamp
-    // goes down every frame, open or not.
     const std::uint64_t packed = Packed(actor, tab);
     g_shownAt.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
     if (g_shownNow.exchange(packed, std::memory_order_relaxed) != packed)
@@ -5214,6 +5213,12 @@ void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
         if (auto *task = SKSE::GetTaskInterface())
             task->AddTask([] { RefreshShownPage(); });
     }
+}
+
+void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
+             std::initializer_list<std::uint64_t> detail = {})
+{
+    ShowingPage(actor, tab);
 
     std::string id = std::string("##tab/") + Name(tab) + "/" + std::to_string(actor);
     if (std::any_of(detail.begin(), detail.end(), [](std::uint64_t part) { return part != 0; }))
@@ -5485,6 +5490,18 @@ void __stdcall RenderPlayer()
 {
     // Nothing until the first frame's refresh has built the page: a frame.
     const auto view = ObservePlayer();
+    // Said here as well as in TabBody, because the two would otherwise wait
+    // on each other: a page is built because the panel says it is on screen,
+    // the tabs are what say so, and the tabs are not drawn until there is a
+    // page. A follower's list seeds their view every tick, so only the
+    // player's page ever sat at that standstill -- blank, for good.
+    if (auto *player = RE::PlayerCharacter::GetSingleton(); player && !view)
+    {
+        // The player's page has no Combat Style or Tactics tab, as CarriedTab
+        // knows: either carries over to Character.
+        const bool sheet = g_shownTab != Tab::None && g_shownTab != Tab::CombatStyle && g_shownTab != Tab::Tactics;
+        ShowingPage(player->GetFormID(), sheet ? g_shownTab : Tab::Character);
+    }
     if (!view || !Im::BeginTabBar("player##tabs"))
         return;
     DrawSheetTabs(*view, CarriedTab(*view));
