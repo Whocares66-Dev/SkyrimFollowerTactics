@@ -740,12 +740,6 @@ bool EvaluationHeld()
 // deadlock. This cost one hung startup to learn.
 void Tick()
 {
-    // The page the panel is drawing, ahead of every hold below: the clock is
-    // frozen while the panel is open, so nothing past this line runs, and
-    // that page is the one thing anyone is looking at. With the panel closed
-    // nothing is shown and nothing is built.
-    RefreshShownPage();
-
     // Not an early return on the tactics switch: the switch gates rule
     // EVALUATION, and the rest of this -- the roster behind the panel's list,
     // the pin watchdog -- is not tactics and runs whether or not they are
@@ -765,6 +759,11 @@ void Tick()
 
     const auto followers = CollectManagedFollowers();
     RefreshRoster(followers);
+    // The bars on whichever page is open. Only the bars: the page's own
+    // content is built when the page changes. Below the hold, where the clock
+    // is running -- with time frozen behind the panel there is nothing for
+    // them to move.
+    RefreshShownVitals();
 
     if (static_cast<int>(followers.size()) != g_lastFollowerCount)
     {
@@ -948,7 +947,23 @@ void CopyFollowerPage(ft::ActorId id, FollowerView &out)
 }
 } // namespace
 
-void RefreshShownPage()
+namespace
+{
+// What the panel is drawing, read off the actor again. `page` false: the
+// vitals alone -- the name, the level, the three bars -- and not the page's
+// own content.
+//
+// The two are split because they cost different orders of magnitude and
+// change for different reasons. The vitals are actor values and their
+// breakdowns; the page is scans. Measured in play 2026-09-15: the player's
+// magic page is ~92 ms, being 190 spells each described with its detail
+// sections and effect tables. Rebuilding that on a beat, as this did at
+// first, put 92 ms of work on the game thread twice a second for as long as
+// the page sat open -- felt as a cursor that would not keep up. Nothing the
+// page reads changes on its own while it is open, so it is built when the
+// page changes and when something is done to the follower, and not on a
+// clock.
+void RefreshShown(bool page)
 {
     const ui::ShownPage shown = ui::Shown();
     if (shown.tab == ui::Tab::None || shown.actor == 0)
@@ -969,7 +984,8 @@ void RefreshShownPage()
         CopyPlayerPage(v);
         v.player = true;
         FillVitals(actor, v, actor->IsInCombat());
-        FillPage(actor, v, shown.tab);
+        if (page)
+            FillPage(actor, v, shown.tab);
         std::scoped_lock lock(g_viewMutex);
         g_playerView = std::move(v);
     }
@@ -983,13 +999,30 @@ void RefreshShownPage()
         if (!v.nearby)
             return;
         FillVitals(actor, v, actor->IsInCombat());
-        FillPage(actor, v, shown.tab);
+        if (page)
+            FillPage(actor, v, shown.tab);
         PublishOne(std::move(v));
     }
     // What a page costs, measured rather than assumed: the player's bag is
-    // the largest there is, and this is the line that says so.
-    log::tactics.debug("{} page built for {} in {:.1f} ms", ui::Name(shown.tab), Describe(actor),
-                       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+    // the largest there is, and this is the line that says so. The vitals are
+    // not logged: they run on the beat, and a line twice a second is noise.
+    if (page)
+    {
+        log::tactics.debug(
+            "{} page built for {} in {:.1f} ms", ui::Name(shown.tab), Describe(actor),
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+    }
+}
+} // namespace
+
+void RefreshShownPage()
+{
+    RefreshShown(true);
+}
+
+void RefreshShownVitals()
+{
+    RefreshShown(false);
 }
 
 std::optional<CharacterView> ObservePlayer()

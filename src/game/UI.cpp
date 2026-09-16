@@ -5476,6 +5476,12 @@ void DrawSettings()
         settings.requirePowerBashPerk != was.requirePowerBashPerk)
     {
         SetSettings(settings);
+        // What a follower counts as having changes with the requirement, and
+        // the rules' page is greyed by it. Asked for here because nothing
+        // else will: a page is rebuilt when it changes, and this changes the
+        // page under the player without the page changing.
+        if (auto *task = SKSE::GetTaskInterface())
+            task->AddTask([] { RefreshShownPage(); });
     }
 }
 
