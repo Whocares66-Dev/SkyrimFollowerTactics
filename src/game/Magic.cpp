@@ -387,21 +387,6 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     return true;
 }
 
-// Has the player unlocked this word of power? The engine keeps it as bit 16
-// of the word's own form flags, and the flag is the player's: words are
-// unlocked once, for everyone. `PlayerCharacter::UnlockWord` (vtable 0xD0)
-// tail-calls the flag setter that sets that bit, and `TESShout::GetKnown`
-// (vtable 0x17) answers for a whole shout by reading it off the first
-// variation that has a word. Read from the running 1.6.1170 in memory
-// (docs/VERSIONS.md). CommonLib names no accessor for it on a word --
-// `GetRandomAnim` is the same bit on other form types -- so the bit is
-// named here rather than borrowed under a wrong name.
-constexpr std::uint32_t kWordUnlocked = 1u << 16;
-bool Unlocked(const RE::TESWordOfPower *word)
-{
-    return word && (word->GetFormFlags() & kWordUnlocked) != 0;
-}
-
 // A shout: its three words' spells, the first word's effects on the page.
 bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
 {
@@ -423,8 +408,11 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
     entry.hand = "Voice";
     entry.equipped = actor->GetActorRuntimeData().selectedPower == shout;
 
+    // No word unlocked -- or no word at all, which the engine answers the
+    // same way -- and there is nothing here for anyone to shout.
+    entry.locked = HighestUnlockedWord(shout) < 0;
+
     SheetSection stats{"Shout", {}, {}};
-    bool anyUnlocked = false;
     for (std::uint32_t i = 0; i < RE::TESShout::VariationIDs::kTotal; ++i)
     {
         const auto &variation = shout->variations[i];
@@ -441,15 +429,10 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
         row.value = word + "  (" + Fmt("%.0f", recovery) + " s)";
         // A word still locked is greyed with the reason on it: the shout
         // stops at the last word unlocked, whatever the record holds.
-        if (Unlocked(variation.word))
-            anyUnlocked = true;
-        else
+        if (!WordUnlocked(variation.word))
             row.aside = "Not unlocked";
         stats.rows.push_back(std::move(row));
     }
-    // No word unlocked -- or no word at all, which the engine answers the
-    // same way -- and there is nothing here to shout.
-    entry.locked = !anyUnlocked;
     if (entry.equipped)
         stats.rows.push_back(EquippedRow(false));
     entry.detail.push_back(std::move(stats));
@@ -474,7 +457,7 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
             continue;
         table.group = table.title;
         table.title = "Word " + std::to_string(i + 1);
-        if (!Unlocked(shout->variations[i].word))
+        if (!WordUnlocked(shout->variations[i].word))
             table.aside = "Not unlocked";
         entry.effectTables.push_back(std::move(table));
     }
@@ -485,6 +468,33 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
 }
 
 } // namespace
+
+// The engine keeps a word's unlocked state as bit 16 of the word's own form
+// flags: `PlayerCharacter::UnlockWord` (vtable 0xD0) tail-calls the flag
+// setter that sets that bit, and `TESShout::GetKnown` (vtable 0x17) answers
+// for a whole shout by reading it off the first variation that has a word.
+// Read from the running 1.6.1170 in memory (docs/VERSIONS.md). CommonLib
+// names no accessor for it on a word -- `GetRandomAnim` is the same bit on
+// other form types -- so the bit is named here rather than borrowed under a
+// wrong name.
+constexpr std::uint32_t kWordUnlocked = 1u << 16;
+
+bool WordUnlocked(const RE::TESWordOfPower *word)
+{
+    return word && (word->GetFormFlags() & kWordUnlocked) != 0;
+}
+
+int HighestUnlockedWord(const RE::TESShout *shout)
+{
+    int top = -1;
+    if (shout)
+    {
+        for (int i = 0; i < static_cast<int>(RE::TESShout::VariationIDs::kTotal); ++i)
+            if (WordUnlocked(shout->variations[i].word))
+                top = i;
+    }
+    return top;
+}
 
 const char *DisplayName(MagicCategory category)
 {

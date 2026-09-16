@@ -2,6 +2,7 @@
 
 #include "game/Forms.h"
 #include "game/Log.h"
+#include "game/Magic.h"
 #include "game/Sensors.h"
 #include "game/Sheet.h"
 #include "game/Util.h"
@@ -141,6 +142,13 @@ struct Slot
     // release; null when nothing is leased, and for a shout.
     RE::SpellItem *power = nullptr;
     RE::MagicSystem::SpellType powerType = RE::MagicSystem::SpellType::kSpell;
+    // A shout whose words above the last unlocked one were taken off the
+    // record for the lease, and what they were (see RequestShout). The
+    // engine shouts the highest FILLED word, so this is what keeps a
+    // follower from shouting further than the player's words reach.
+    // Restored on release; null when nothing was trimmed.
+    RE::TESShout *trimmed = nullptr;
+    RE::TESShout::Variation trimmedWords[RE::TESShout::VariationIDs::kTotal]{};
     // The voice type the follower's record had before the lease lent them
     // one the shout words are recorded in (see LendShoutVoice). Null when
     // nothing is lent; restored on release.
@@ -1180,6 +1188,17 @@ void StopTurning(RE::Actor *actor)
     stop(actor);
 }
 
+// A trimmed shout gets its own words back. Every path that ends a lease
+// calls this, not Release alone: the record is the game's, not ours, and a
+// shout left short of its words would stay that way for the session.
+void PutWordsBack(Slot &slot)
+{
+    if (!slot.trimmed)
+        return;
+    std::copy(std::begin(slot.trimmedWords), std::end(slot.trimmedWords), std::begin(slot.trimmed->variations));
+    slot.trimmed = nullptr;
+}
+
 void Release(Slot &slot)
 {
     if (slot.weapon && slot.lease)
@@ -1213,6 +1232,7 @@ void Release(Slot &slot)
         slot.power->data.spellType = slot.powerType;
         slot.power = nullptr;
     }
+    PutWordsBack(slot);
     // The sink stops looking before the lease goes.
     slot.holder.store(0, std::memory_order_release);
     slot.spellId.store(0, std::memory_order_relaxed);
@@ -1563,6 +1583,31 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
                        target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
                               : std::string("self"));
 
+    // No further than the player's words reach. The engine shouts the
+    // highest FILLED word (docs/ACTIONS.md 7), so a record whose later words
+    // are still locked would be shouted whole; those words come off for the
+    // lease and Release puts them back. Here rather than beside the other
+    // record writes above because every failure return is behind us: from
+    // this point Arm always takes a lease, and so the lease always releases.
+    // A shout with no word unlocked never reaches this far -- it is in
+    // nobody's known list -- and if one did, it is left as it is.
+    if (const int top = shout ? HighestUnlockedWord(shout) : -1; top >= 0)
+    {
+        constexpr auto kWords = static_cast<std::size_t>(RE::TESShout::VariationIDs::kTotal);
+        bool locked = false;
+        for (auto w = static_cast<std::size_t>(top) + 1; w < kWords; ++w)
+            locked = locked || shout->variations[w].word || shout->variations[w].spell;
+        if (locked)
+        {
+            std::copy(std::begin(shout->variations), std::end(shout->variations), std::begin(slot.trimmedWords));
+            slot.trimmed = shout;
+            for (auto w = static_cast<std::size_t>(top) + 1; w < kWords; ++w)
+                shout->variations[w] = {};
+            log::packages.debug("{:08X} shouts {:08X} at word {}: the words above it are not unlocked", PackageId(slot),
+                                formID, top + 1);
+        }
+    }
+
     // The procedure fires only a shout the actor has: the wrapper is given
     // for the lease; a shout of their own they have already. A shout speaks
     // its words in a voice that has them.
@@ -1730,6 +1775,9 @@ void ResetPackages()
             slot.power = nullptr;
         }
         ReturnShoutVoice(slot);
+        // The shout record outlives a load; a lease ended by one would
+        // otherwise leave it short of its words for the rest of the session.
+        PutWordsBack(slot);
         // A stack entry is not taken off here: the arrays are the actor's
         // and are rebuilt with them on load; the record's condition is
         // false by then and the entry never passes.

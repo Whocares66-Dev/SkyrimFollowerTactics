@@ -1613,7 +1613,11 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         {
             for (std::uint32_t i = 0; i < list->numShouts; ++i)
             {
-                if (list->shouts[i] && !IsWrapperShout(list->shouts[i]->GetFormID()))
+                // A shout with no word unlocked is nobody's to shout, so it
+                // is not known here either: a rule that names one reports the
+                // shout missing rather than firing into silence.
+                if (list->shouts[i] && !IsWrapperShout(list->shouts[i]->GetFormID()) &&
+                    HighestUnlockedWord(list->shouts[i]) >= 0)
                     s.spells.known.push_back(list->shouts[i]->GetFormID());
             }
         }
@@ -1813,7 +1817,10 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
             for (std::uint32_t i = 0; i < list->numShouts; ++i)
             {
                 auto *shout = list->shouts[i];
-                if (!shout || IsWrapperShout(shout->GetFormID()) || !shout->GetName() || !*shout->GetName())
+                // Not one with every word still locked: the menu would be
+                // offering a rule the follower could never perform.
+                if (!shout || IsWrapperShout(shout->GetFormID()) || !shout->GetName() || !*shout->GetName() ||
+                    HighestUnlockedWord(shout) < 0)
                     continue;
                 const auto *word = shout->variations[0].spell;
                 const bool self = word && word->GetDelivery() == RE::MagicSystem::Delivery::kSelf;
