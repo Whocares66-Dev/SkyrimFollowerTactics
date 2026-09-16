@@ -20,7 +20,9 @@ class TESWordOfPower;
 namespace ft::game
 {
 
-// SkyUI's Magic menu tabs, less Favorites and Active Effects.
+// The categories a follower's magic is sorted into: the five schools, then
+// what has no school, then the two that ride the voice slot. A follower has
+// no favourites, and what is running on them has a tab of its own.
 enum class MagicCategory : std::uint8_t
 {
     Alteration,

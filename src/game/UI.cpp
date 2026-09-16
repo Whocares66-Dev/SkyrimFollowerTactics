@@ -3419,8 +3419,8 @@ void CentredHeading(const char *title)
     Im::PopStyleVar(1);
 }
 
-// A row of chips: a strip of tabs in SkyUI's manner, each an icon and a
-// word, flowing onto a second line when the panel is narrow. Chips are
+// A row of chips: a strip of small tabs, each an icon and a word, flowing
+// onto a second line when the panel is narrow. Chips are
 // selectables with no label of their own; the icon and the word are painted
 // over them through the draw list, so the layout cursor stays on the chip's
 // full width and the next one lands beside it, not beside the text.
@@ -3482,9 +3482,8 @@ void DrawChips(const std::vector<Chip> &chips, int &selected)
     }
 }
 
-// SkyUI's tab strip: All, then every category they have something in. Empty
-// categories are left out, as SkyUI leaves them out -- a tab promising
-// nothing is noise.
+// The category strip: All, then every category they have something in.
+// Empty categories are left out -- a tab promising nothing is noise.
 void DrawCategoryRow(const CharacterView &view, InventoryTabState &state)
 {
     std::array<int, static_cast<std::size_t>(ItemCategory::COUNT)> counts{};
@@ -3767,8 +3766,9 @@ std::vector<const InventoryItem *> VisibleItems(const CharacterView &view, const
     return rows;
 }
 
-// The list: SkyUI's columns, sortable by clicking a heading, one row per
-// kind of item with the count in brackets. Clicking a row opens it.
+// The list: a column for each thing worth comparing, sortable by clicking a
+// heading, one row per kind of item with the count in brackets. Clicking a
+// row opens it.
 void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
 {
     Im::Spacing();
@@ -3792,8 +3792,7 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
 
     // Which columns this list has. A stat column only where the stat means
     // something -- damage for weapons, rating for armour -- and an Equipped
-    // column only where something can be equipped. SkyUI's lists differ the
-    // same way.
+    // column only where something can be equipped.
     const ItemColumns columns = ColumnsOf(state);
     const bool weapons = columns.weapons;
     const bool armour = columns.armour;
