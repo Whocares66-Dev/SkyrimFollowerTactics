@@ -945,6 +945,24 @@ void CopyFollowerPage(ft::ActorId id, FollowerView &out)
 }
 } // namespace
 
+namespace
+{
+// Asked for by a click whose change the engine had not finished when the
+// click returned; taken by the panel on its next frame. Written on the game
+// thread, read on the render thread.
+std::atomic_bool g_refreshSoon{false};
+} // namespace
+
+void RefreshShownPageSoon()
+{
+    g_refreshSoon.store(true, std::memory_order_relaxed);
+}
+
+bool TakeRefreshRequest()
+{
+    return g_refreshSoon.exchange(false, std::memory_order_relaxed);
+}
+
 // Built when the page changes, and never on a beat. Measured in play
 // 2026-09-15: the player's magic page is ~92 ms, being 190 spells each
 // described with its detail sections and effect tables. On a beat that was

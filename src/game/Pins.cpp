@@ -438,10 +438,24 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
 // Items go through the equip manager WITHOUT the prevent-equip flag: the
 // Creation Kit wiki notes that flag does nothing for weapons on an NPC and
 // works only too well for ammunition, leaving an archer holding a bow they
-// cannot use. A spell has no unequip in CommonLibSSE or in SKSE; the
-// engine's is the Papyrus native Actor.UnequipSpell(spell, source), 0 for
-// the left hand and 1 for the right, so it is dispatched to the script VM,
-// which runs it on the game thread a frame later.
+// cannot use. A spell goes off through the Papyrus native
+// Actor.UnequipSpell(spell, source) -- 0 for the left hand, 1 for the
+// right, 2 for the voice -- dispatched to the script VM, which runs it on
+// the game thread A FRAME LATER. That lateness is why a click taking a
+// spell off asks the panel to look again on its next frame
+// (RefreshShownPageSoon, game/Tactics.h): the build straight after the
+// click still reads the spell in hand.
+//
+// It is not for want of a native, as this comment claimed until
+// 2026-09-17. `Actor::DeselectSpell` (RELOCATION_ID(37820, 38769)) does the
+// work and does it at once: read off 1.6.1170, it walks the four selected
+// spell slots, nulls any holding the spell and tells that slot's caster,
+// then clears selectedPower where what sits there is a SpellItem (form type
+// 0x16). Two things keep us on Papyrus for now. It takes no hand, so it
+// clears the spell from BOTH hands where this unequips only the hand asked,
+// which is a difference per-hand pins care about; and that form-type gate
+// leaves a shout in the voice alone, so UnequipShout is a Papyrus call
+// whatever is done here. Neither tried in play.
 // Is the thing on anywhere it could be, and off from everywhere it is. An
 // either-hand thing is asked about, and taken from, each hand in turn: the
 // item code reads "both hands" as a two-hander's, which lives in the right,
@@ -1600,10 +1614,25 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         Wear(actor, thing, request, hand, true, variant, row);
         // The page the panel is on, at once: the clock is frozen while it is
         // open, so the tick's own refresh is held and the cell would
-        // otherwise answer only when the panel closed. What the engine
-        // finishes a frame later -- a spell leaving a hand goes through the
-        // Papyrus native -- is caught by the next beat's refresh.
+        // otherwise answer only when the panel closed.
         RefreshShownPage();
+        // A spell or a shout leaves a hand, or the voice, through a Papyrus
+        // native that the VM runs a frame later, so the build above read the
+        // actor before it had moved and the cell redrew as it was. This was
+        // caught by the next beat's refresh until the beat stopped rebuilding
+        // the page (2026-09-15); nothing came after it then, and with the
+        // player's cell having nothing but the actor to read -- a follower's
+        // also carries the pin and the ban, which change here and now -- an
+        // unequip took two clicks, the second only redrawing what the first
+        // had already done. The panel's next frame takes this instead.
+        //
+        // A spell going ON needs no second look, and nor does an item: both
+        // are done by the time this returns. Asking for the two of them
+        // rather than telling them apart down in UnequipForm keeps the reason
+        // in one place, and the cost is one page build on a click the player
+        // made, not on a beat.
+        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
+            RefreshShownPageSoon();
     });
 }
 
