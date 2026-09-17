@@ -114,7 +114,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", "Corpse"},
 }};
 
-constexpr std::array<Entry<ActionKind>, 32> kActions{{
+constexpr std::array<Entry<ActionKind>, 33> kActions{{
     // The consumable slugs name the SELECTION POLICY, not just the item
     // type, because that is part of the behaviour a profile is asking for:
     // "drink-weakest" -- don't burn a strong potion on a scratch -- beside
@@ -143,6 +143,7 @@ constexpr std::array<Entry<ActionKind>, 32> kActions{{
     {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
     {ActionKind::EatStrongestFood, "eat-strongest-food", "Eat strongest food"},
     {ActionKind::EatWeakestFood, "eat-weakest-food", "Eat weakest food"},
+    {ActionKind::EatAnyFood, "eat-any-food", "Eat any buff food"},
     {ActionKind::EatStrongestIngredient, "eat-strongest-ingredient", "Eat strongest ingredient"},
     {ActionKind::EatWeakestIngredient, "eat-weakest-ingredient", "Eat weakest ingredient"},
     {ActionKind::EatFood, "eat-food", "Eat food"},
@@ -515,6 +516,8 @@ std::string_view Describe(ActionKind v) noexcept
         return "Eat the strongest food with this effect.";
     case ActionKind::EatWeakestFood:
         return "Eat the weakest food with this effect.";
+    case ActionKind::EatAnyFood:
+        return "Eat a food that applies a buff";
     case ActionKind::EatStrongestIngredient:
         return "Eat the strongest ingredient with this effect.";
     case ActionKind::EatWeakestIngredient:

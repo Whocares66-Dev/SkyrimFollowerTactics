@@ -1745,7 +1745,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             if (BeginCascade("Food"))
             {
                 byEffect(ft::ConsumableKind::Food, ft::ActionKind::EatStrongestFood, ft::ActionKind::EatWeakestFood,
-                         ft::ActionKind::EatFood);
+                         ft::ActionKind::EatFood, ft::ActionKind::EatAnyFood);
                 Im::EndMenu();
             }
         }

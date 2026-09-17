@@ -3502,6 +3502,79 @@ TEST_CASE("a drink policy with no effect named rolls among the buffs only", "[ev
     }
 }
 
+TEST_CASE("an any-eat reaches for a buff food and never for one that only restores", "[evaluator][any]")
+{
+    RuleSet rs;
+    rs.rules.push_back(Always(AnyOf(ActionKind::EatAnyFood)));
+    Snapshot s = Healthy();
+    // A dozen apples that only heal; a stew and a fondue that buff.
+    s.potions.Add(0x401, 12, ConsumableKind::Food, {"Restore Health", 5.0f, 0.0f});
+    s.potions.Add(0x402, 1, ConsumableKind::Food, Buff("Fortify Stamina", 25.0f));
+    s.potions.Add(0x403, 1, ConsumableKind::Food, Buff("Fortify Magicka", 100.0f));
+    s.potions.Add(0x403, 1, ConsumableKind::Food, Buff("Regenerate Magicka", 25.0f));
+
+    SECTION("every roll lands on a buff, and each is reached: uniform over the foods, not the count")
+    {
+        std::vector<std::uint32_t> seen;
+        for (std::uint32_t roll = 0; roll < 6; ++roll)
+        {
+            s.roll = roll;
+            EvalContext ctx;
+            const auto d = Evaluate(rs, s, ctx);
+            REQUIRE(d.Fired());
+            REQUIRE(d.actionForm() != 0x401);
+            seen.push_back(d.actionForm());
+        }
+        std::ranges::sort(seen);
+        const auto [first, last] = std::ranges::unique(seen);
+        seen.erase(first, last);
+        REQUIRE(seen == std::vector<std::uint32_t>{0x402, 0x403});
+    }
+
+    SECTION("no buff food carried: nothing to eat, and says why -- the apples are not it")
+    {
+        s.potions.carried.clear();
+        s.potions.Add(0x401, 12, ConsumableKind::Food, {"Restore Health", 5.0f, 0.0f});
+        // A buff POTION is no buff food.
+        s.potions.Add(0x404, 1, ConsumableKind::Potion, Buff("Fortify Health", 20.0f, 60.0f));
+        Trace trace;
+        EvalContext ctx;
+        REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::NoResource);
+        REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EatAnyFood)) == "carries nothing that buffs");
+    }
+
+    SECTION("the roll never lands on a buff already up, so no tick is spent on one")
+    {
+        s.potions.running = {{"Fortify Stamina", 25.0f}};
+        for (std::uint32_t roll = 0; roll < 6; ++roll)
+        {
+            s.roll = roll;
+            EvalContext ctx;
+            const auto d = Evaluate(rs, s, ctx);
+            REQUIRE(d.Fired());
+            REQUIRE(d.actionForm() == 0x403);
+        }
+    }
+
+    SECTION("a food with two buffs is still a choice while either would gain")
+    {
+        s.potions.running = {{"Fortify Stamina", 25.0f}, {"Fortify Magicka", 100.0f}};
+        REQUIRE(ChosenForm(AnyOf(ActionKind::EatAnyFood), s) == 0x403);
+    }
+
+    SECTION("every buff carried already up: waits, and says so, not 'none carried'")
+    {
+        s.potions.running = {{"Fortify Stamina", 25.0f}, {"Fortify Magicka", 100.0f}, {"Regenerate Magicka", 25.0f}};
+        Trace trace;
+        EvalContext ctx;
+        REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+        REQUIRE(trace.at(0) == Verdict::EffectActive);
+        REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::EatAnyFood)) ==
+                "every buff carried is already up");
+    }
+}
+
 TEST_CASE("an effect is outdone by one of its name in force at least as strongly", "[evaluator][any]")
 {
     const PotionStock::Effect fire{"Resist Fire", 30.0f, 60.0f, true};

@@ -85,11 +85,16 @@ TEST_CASE("an 'any' rule is had while something carried is worth rolling", "[edi
     REQUIRE(ActionHad(strongestAny, has));
 
     // It is the kind's own bag that is asked: a buff FOOD is no buff potion.
+    // The outright food roll asks the same question the food policy does.
     Action eatAny;
     eatAny.kind = ActionKind::EatStrongestFood;
+    Action eatAnyFood;
+    eatAnyFood.kind = ActionKind::EatAnyFood;
     REQUIRE_FALSE(ActionHad(eatAny, has));
+    REQUIRE_FALSE(ActionHad(eatAnyFood, has));
     has.consumables.push_back({0x302, ConsumableKind::Food, {"Fortify Health"}, true});
     REQUIRE(ActionHad(eatAny, has));
+    REQUIRE(ActionHad(eatAnyFood, has));
 
     // A poison names no form and is had regardless, as every apply rule is:
     // whether a weapon in hand takes one is the evaluator's question, not

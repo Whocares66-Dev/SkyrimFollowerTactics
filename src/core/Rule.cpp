@@ -68,6 +68,7 @@ bool IsConsume(ActionKind action) noexcept
     case ActionKind::DrinkPotion:
     case ActionKind::EatStrongestFood:
     case ActionKind::EatWeakestFood:
+    case ActionKind::EatAnyFood:
     case ActionKind::EatFood:
     case ActionKind::EatStrongestIngredient:
     case ActionKind::EatWeakestIngredient:
@@ -104,7 +105,7 @@ bool IsStrongest(ActionKind action) noexcept
 
 bool IsAny(ActionKind action) noexcept
 {
-    return action == ActionKind::ApplyAny || action == ActionKind::DrinkAny;
+    return action == ActionKind::ApplyAny || action == ActionKind::DrinkAny || action == ActionKind::EatAnyFood;
 }
 
 bool ChoosesForm(ActionKind action) noexcept
@@ -131,6 +132,7 @@ ConsumableKind ConsumableOf(ActionKind action) noexcept
     {
     case ActionKind::EatStrongestFood:
     case ActionKind::EatWeakestFood:
+    case ActionKind::EatAnyFood:
     case ActionKind::EatFood:
         return ConsumableKind::Food;
     case ActionKind::EatStrongestIngredient:

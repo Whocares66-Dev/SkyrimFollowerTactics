@@ -262,9 +262,12 @@ enum class ActionKind : std::uint8_t
     DrinkAny,
     DrinkPotion, // one specific potion, named by actionForm
     // Food, and the few ingredients that are food (a follower does not
-    // taste the rest to learn them), the same three ways each.
+    // taste the rest to learn them), the same ways each -- and food the
+    // outright roll besides, EatAnyFood, which takes a FOOD rather than an
+    // effect, the same shape as DrinkAny above and narrowed the same way.
     EatStrongestFood,
     EatWeakestFood,
+    EatAnyFood,
     EatFood, // one specific food, named by actionForm
     EatStrongestIngredient,
     EatWeakestIngredient,

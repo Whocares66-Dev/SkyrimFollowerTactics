@@ -762,32 +762,34 @@ TEST_CASE("a policy names its effect on the wire, and one without an effect is d
     REQUIRE(j["rules"][0]["then"]["do"][1]["effect"] == "Resist Fire");
 }
 
-TEST_CASE("an 'any' rule survives the save: an empty effect, and the two roll actions", "[profile]")
+TEST_CASE("an 'any' rule survives the save: an empty effect, and the roll actions", "[profile]")
 {
     // An EMPTY effect is "any" -- roll the effect, then take the strongest
     // or weakest of it -- and is distinct from a MISSING one, which is a
-    // malformed record and is dropped (the test above). The two "any"
-    // actions name neither an effect nor a form: they roll the thing.
+    // malformed record and is dropped (the test above). The "any" actions
+    // name neither an effect nor a form: they roll the thing.
     const std::string rule = R"({
         "if": { "subject": "self", "predicate": "any" },
         "then": { "target": "self", "do": [
             { "action": "apply-strongest", "effect": "" },
             { "action": "drink-weakest", "effect": "" },
             { "action": "apply-any" },
-            { "action": "drink-any" }
+            { "action": "drink-any" },
+            { "action": "eat-any-food" }
         ] }
     })";
     const auto read = ReadProfile(OneRuleFile(rule), kHex);
     REQUIRE(read.warnings.empty());
     REQUIRE(read.profile->rules.rules.size() == 1);
     const Rule &r = read.profile->rules.rules[0];
-    REQUIRE(r.actions.size() == 4);
+    REQUIRE(r.actions.size() == 5);
     REQUIRE(r.actions[0].kind == ActionKind::ApplyStrongest);
     REQUIRE(r.actions[0].effect.empty());
     REQUIRE(r.actions[1].kind == ActionKind::DrinkWeakest);
     REQUIRE(r.actions[1].effect.empty());
     REQUIRE(r.actions[2].kind == ActionKind::ApplyAny);
     REQUIRE(r.actions[3].kind == ActionKind::DrinkAny);
+    REQUIRE(r.actions[4].kind == ActionKind::EatAnyFood);
 
     // Back out unchanged: the empty effect is written, so the next read
     // tells "any" from a record that lost its key.
@@ -801,6 +803,9 @@ TEST_CASE("an 'any' rule survives the save: an empty effect, and the two roll ac
     REQUIRE_FALSE(out[2].contains("form"));
     REQUIRE(out[3]["action"] == "drink-any");
     REQUIRE_FALSE(out[3].contains("form"));
+    REQUIRE(out[4]["action"] == "eat-any-food");
+    REQUIRE_FALSE(out[4].contains("effect"));
+    REQUIRE_FALSE(out[4].contains("form"));
 }
 
 TEST_CASE("a rule missing a part it cannot do without is dropped, and says which part", "[profile]")

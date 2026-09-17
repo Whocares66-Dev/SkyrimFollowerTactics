@@ -320,6 +320,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     case ft::ActionKind::DrinkPotion:
     case ft::ActionKind::EatStrongestFood:
     case ft::ActionKind::EatWeakestFood:
+    case ft::ActionKind::EatAnyFood:
     case ft::ActionKind::EatFood:
         // One named potion or food. The evaluator only fires this when the
         // snapshot says they carry it, so a null here is a form that
