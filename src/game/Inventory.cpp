@@ -124,6 +124,16 @@ ft::Grip ArmorGrip(const RE::TESObjectARMO *armor)
     }
 }
 
+ft::Grip SpellGrip(const RE::SpellItem *spell)
+{
+    const auto *slot = spell->GetEquipSlot();
+    const std::uint32_t slotId = slot ? slot->GetFormID() : 0;
+    return spell->IsTwoHanded()       ? ft::Grip::Both
+           : slotId == kLeftHandSlot  ? ft::Grip::LeftOnly
+           : slotId == kRightHandSlot ? ft::Grip::RightOnly
+                                      : ft::Grip::Either;
+}
+
 namespace
 {
 

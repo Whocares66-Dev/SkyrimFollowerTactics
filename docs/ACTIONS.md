@@ -87,10 +87,14 @@ which the school's Dual Casting perk sets, so a follower needs that perk
 
 Through **our package**, the UseMagic procedure has a DualCast boolean
 input; **built 2026-09-09 as the Dual Cast menu**, after Cast. A CastSpell
-action carries a `dual` flag (`"dual": true` on the wire). A spell whose
-record takes both hands (`IsTwoHanded`, the equip slot's flag) is out --
-vanilla's master spells, but a mod's one-handed master spell is in, since
-the level says nothing. The perk is asked for only where Settings'
+action carries a `dual` flag (`"dual": true` on the wire). Only a spell whose
+record fits either hand is in (`SpellGrip`, the equip slot): one that takes
+both (`IsTwoHanded`, vanilla's master spells) is out, but a mod's one-handed
+master spell is in, since the level says nothing; and one locked to a hand is
+out, the NPC-only variants that carry the player's spell's name. Serana's
+Ice Storm is Dawnguard's `DLC1IceStormRightHand`: offered until 2026-09-16,
+a rule dual casting it set the package's DualCast input and the spell fired
+from the right hand alone, cast after cast. The perk is asked for only where Settings'
 **Require Dual Casting perks** says so (off by default, `docs/PROFILES.md`):
 on, the sensor asks the perk system the Can Dual Cast Spell entry point for
 each spell the follower knows, so the school's Dual Casting perk, or a
@@ -103,7 +107,9 @@ dual-cast change. On request the slot's DualCast input is set (a Bool
 input: bit 1 of the data word, as the library's `GetDataAsString` reads
 it) and cleared again for a one-handed cast, since the record is shared.
 Not yet measured in play: whether the package honours the perk gate or
-bypasses it, and whether the follower's cast shows as dual. Direct API,
+bypasses it, and whether the follower's cast shows as dual. The Ice Storm
+casts above cannot answer either: Serana has no Dual Casting perk, so the
+hand lock and the perk are both there to explain the one hand. Direct API,
 unused: dual cast is state on the hand caster
 (`ActorMagicCaster::SetDualCasting`), not a cast argument. Watch for po3's
 Dual Casting Fix: scripted casts clear the dual state, and our faction-rank

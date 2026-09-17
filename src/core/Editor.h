@@ -44,8 +44,8 @@ struct Holdings
     // The spells, powers, shouts and scrolls the cast menu offers (a spell
     // above the follower's skill is not among them).
     std::vector<std::uint32_t> castable;
-    // Of those, the ones the Dual Cast menu offers: a record that leaves a
-    // hand free, and the school's perk where the Settings page asks for one.
+    // Of those, the ones the Dual Cast menu offers: a record that fits
+    // either hand, and the school's perk where the Settings page asks for one.
     std::vector<std::uint32_t> dualCastable;
     // Whether they have the Power Bash perk, where the Settings page asks
     // for it. True when it does not, which is the default.

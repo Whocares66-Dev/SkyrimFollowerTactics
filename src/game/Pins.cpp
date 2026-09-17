@@ -184,12 +184,7 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form, const std::option
         // hand as it keeps a lone dagger. Left at 1 until 2026-09-11, it
         // did exactly that, the opposite of what the tests prove.
         thing.count = 2;
-        const auto *slot = spell->GetEquipSlot();
-        const std::uint32_t slotId = slot ? slot->GetFormID() : 0;
-        thing.grip = spell->IsTwoHanded()       ? Grip::Both
-                     : slotId == kLeftHandSlot  ? Grip::LeftOnly
-                     : slotId == kRightHandSlot ? Grip::RightOnly
-                                                : Grip::Either;
+        thing.grip = SpellGrip(spell);
         // Above the follower's skill in its school: the combat AI will not
         // choose it. An effect of no school (a power's, an ability's) has
         // no skill to ask about -- its skill is kNone, and asking for that

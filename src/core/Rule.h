@@ -384,9 +384,10 @@ struct Action // NOLINT(clang-analyzer-core.uninitialized.Assign)
 
     // For CastSpell: cast from both hands at once, for the stronger and
     // dearer spell. Only a spell the snapshot says the follower CAN dual
-    // cast -- one the school's Dual Casting perk covers, whose record does
-    // not take both hands (vanilla's master spells do; a mod's may not;
-    // the slot decides, never the level) -- and the menu offers no other.
+    // cast -- one the school's Dual Casting perk covers, whose record fits
+    // either hand (not vanilla's master spells, which take both, nor an
+    // NPC's one-hand variant; the slot decides, never the level) -- and the
+    // menu offers no other.
     bool dual{false};
 
     // Which effect, for the eight policies: the magic effect's name as the

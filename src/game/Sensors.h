@@ -208,10 +208,10 @@ struct SpellOption
     // so a mod's reanimate spell is found by it whatever it is called.
     bool reanimate{false};
     // They can cast it from both hands: the school's Dual Casting perk, as
-    // the perk system answers for this spell, and a record that does not
-    // take both hands -- the equip slot, not the level: vanilla's master
-    // spells take both, a mod's may not. The Dual Cast menu lists these
-    // and no other.
+    // the perk system answers for this spell, and a record that fits either
+    // hand -- the equip slot, not the level: vanilla's master spells take
+    // both, a mod's may not, and an NPC's one-hand variant takes one. The
+    // Dual Cast menu lists these and no other.
     bool dualCast{false};
     // Which menu lists it: Cast spell, Use power, or Shout. One list
     // because all three are found by the same walk of what they know.

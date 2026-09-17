@@ -174,6 +174,11 @@ struct InventoryItem
 // hand slot itself or one beneath it. Body armour takes none.
 [[nodiscard]] ft::Grip ArmorGrip(const RE::TESObjectARMO *armor);
 
+// The hands a spell takes. A spell locked to one hand is an NPC-only
+// variant carrying the player's spell's name (Serana's Ice Storm is
+// right-hand only), so the name never tells it from the one that fits either.
+[[nodiscard]] ft::Grip SpellGrip(const RE::SpellItem *spell);
+
 // Everything they carry that the game would list, sorted by name. Nameless
 // entries and armour or weapons flagged non-playable are left out, as the
 // container menu leaves them out.
