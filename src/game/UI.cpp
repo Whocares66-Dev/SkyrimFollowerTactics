@@ -1556,8 +1556,13 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 // for the same reason -- an unfireable rule should be unauthorable, not
 // merely discouraged. Choosing one sets the rule's target and the action
 // together, as choosing a condition sets subject and predicate.
+//
+// With `probe`, nothing is drawn and the answer is only whether anything
+// would be: the heading asks before it is drawn, so a target with no action
+// for this follower -- the player, with no spell that suits -- is left out,
+// by the same checks that fill the menu rather than a copy of them.
 bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, std::uint32_t form,
-                 const FollowerView &view)
+                 const FollowerView &view, bool probe = false)
 {
     bool changed = false;
     // Is this heading the rule's current target? Only then is an item under
@@ -1574,11 +1579,16 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // between the groups that draw anything -- a heading with nothing
     // under it (no food carried, no spell that suits) is not drawn, so the
     // divider is placed as the items come, never before an empty group.
+    // Every item below enters its group just before it is drawn, so entering
+    // one is where a probe has its answer.
     int lastGroup = -1;
-    const auto group = [&](int g) {
+    const auto enter = [&](int g) {
+        if (probe)
+            return false;
         if (lastGroup >= 0 && g != lastGroup)
             Im::Separator();
         lastGroup = g;
+        return true;
     };
     const auto valid = [&](ft::ActionKind action) { return ft::IsActionValidFor(target, action); };
 
@@ -1630,7 +1640,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         // got it, a power bash is not offered at all.
         if (kind == ft::ActionKind::PowerBash && !view.holdings.powerBashPerk)
             continue;
-        group(kind == ft::ActionKind::Attack || ft::ActionKind::PowerAttack == kind ? 0 : 1);
+        if (!enter(kind == ft::ActionKind::Attack || ft::ActionKind::PowerAttack == kind ? 0 : 1))
+            return true;
         const bool selected = here && act.kind == kind;
         if (CascadeItem(std::string(ft::DisplayName(kind)).c_str(), selected))
         {
@@ -1731,7 +1742,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         // divider would stand above the next group with nothing over it.
         if (carried(ft::ConsumableKind::Potion))
         {
-            group(1);
+            if (!enter(1))
+                return true;
             if (BeginCascade("Potion"))
             {
                 byEffect(ft::ConsumableKind::Potion, ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest,
@@ -1741,7 +1753,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
         if (carried(ft::ConsumableKind::Food))
         {
-            group(1);
+            if (!enter(1))
+                return true;
             if (BeginCascade("Food"))
             {
                 byEffect(ft::ConsumableKind::Food, ft::ActionKind::EatStrongestFood, ft::ActionKind::EatWeakestFood,
@@ -1751,7 +1764,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
         if (carried(ft::ConsumableKind::Ingredient))
         {
-            group(1);
+            if (!enter(1))
+                return true;
             if (BeginCascade("Ingredient"))
             {
                 byEffect(ft::ConsumableKind::Ingredient, ft::ActionKind::EatStrongestIngredient,
@@ -1797,7 +1811,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             continue;
         // The hand's casts -- spells, scrolls -- then the voice's, a
         // divider between.
-        group(action == ft::ActionKind::CastSpell || action == ft::ActionKind::UseScroll ? 2 : 3);
+        if (!enter(action == ft::ActionKind::CastSpell || action == ft::ActionKind::UseScroll ? 2 : 3))
+            return true;
         if (!BeginCascade(menu.label))
             continue;
         for (const auto *option : suited)
@@ -1827,7 +1842,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // name; not drawn with none carried).
     if (valid(ft::ActionKind::ChargeStrongestSoulGem))
     {
-        group(4);
+        if (!enter(4))
+            return true;
         // The named things of one kind, after a divider when there are any.
         const auto namedAfterDivider = [&](ft::ActionKind kind) {
             if (!carried(ft::ConsumableOf(kind)))
@@ -1856,7 +1872,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // rule, not the promise the pin makes.
     if (valid(ft::ActionKind::EquipWeapon))
     {
-        group(5);
+        if (!enter(5))
+            return true;
         for (const auto kind : {ft::ActionKind::EquipWeapon, ft::ActionKind::EquipArrows, ft::ActionKind::EquipArmor,
                                 ft::ActionKind::EquipSpell})
         {
@@ -1947,6 +1964,10 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
             continue;
         // Under "Corpse: None" there is no corpse to aim at.
         if (heading.target == ft::ActionTargetKind::Corpse && rule.predicate == ft::PredicateKind::CorpseNone)
+            continue;
+        // Nothing this follower could do to them: no heading, rather than one
+        // that opens on an empty menu.
+        if (!ActionItems(rule, act, heading.target, heading.form, view, true))
             continue;
         if (!BeginCascade(heading.label.c_str()))
             continue;
