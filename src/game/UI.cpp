@@ -1651,6 +1651,21 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     const auto anyLabel = [](ft::ConsumableKind ckind) {
         return ckind == ft::ConsumableKind::Poison ? "Any" : "Any buff";
     };
+    // Listed whether or not anything carried would answer it, so the rule
+    // can be written before the bottles are in the bag; with none, dimmed as
+    // a banned leaf is, still a choice, and the tooltip says why.
+    const auto anyItem = [&](ft::ConsumableKind ckind, ft::ActionKind kind, bool selected) {
+        const bool had = rollable(ckind);
+        if (CascadeItem(anyLabel(ckind), selected, had ? nullptr : &Im::GetStyle()->Colors[Im::ImGuiCol_TextDisabled]))
+        {
+            act.kind = kind;
+            act.form = 0;
+            act.effect.clear();
+            choose();
+        }
+        if (Im::IsItemHovered(0))
+            Im::SetTooltip("%s", had ? std::string(ft::Describe(kind)).c_str() : "No applicable buffs available");
+    };
     const auto byEffect = [&](ft::ConsumableKind ckind, ft::ActionKind strongestKind, ft::ActionKind weakestKind,
                               ft::ActionKind namedKind, ft::ActionKind anyKind = ft::ActionKind::None) {
         std::vector<std::string> names;
@@ -1659,22 +1674,9 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                 names.insert(names.end(), option.effects.begin(), option.effects.end());
         const auto arranged = ft::ArrangeEffects(ckind, std::move(names));
         // The roll that names nothing at all, at the head of the menu:
-        // "Poison: Any" puts SOMETHING on the blade. Left out when nothing
-        // carried would answer it, as an effect nothing has is left out.
-        const bool any = rollable(ckind);
-        if (any && anyKind != ft::ActionKind::None)
-        {
-            const bool selected = here && act.kind == anyKind;
-            if (CascadeItem(anyLabel(ckind), selected))
-            {
-                act.kind = anyKind;
-                act.form = 0;
-                act.effect.clear();
-                choose();
-            }
-            if (Im::IsItemHovered(0))
-                Im::SetTooltip("%s", std::string(ft::Describe(anyKind)).c_str());
-        }
+        // "Poison: Any" puts SOMETHING on the blade.
+        if (anyKind != ft::ActionKind::None)
+            anyItem(ckind, anyKind, here && act.kind == anyKind);
         for (const auto [label, kind] : {std::pair{"Strongest", strongestKind}, std::pair{"Weakest", weakestKind}})
         {
             if (arranged.empty() || !BeginCascade(label))
@@ -1682,18 +1684,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             // "Strongest: Any" rolls the EFFECT and then takes the strongest
             // of that one, since magnitudes do not compare across effects.
             // An empty effect is what carries that on the wire.
-            if (any)
-            {
-                const bool selected = here && act.kind == kind && act.effect.empty();
-                if (CascadeItem(anyLabel(ckind), selected))
-                {
-                    act.kind = kind;
-                    act.form = 0;
-                    act.effect.clear();
-                    choose();
-                }
-                Im::Separator();
-            }
+            anyItem(ckind, kind, here && act.kind == kind && act.effect.empty());
+            Im::Separator();
             int last = -1;
             for (const auto &entry : arranged)
             {
