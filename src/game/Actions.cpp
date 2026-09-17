@@ -9,6 +9,7 @@
 #include "game/Util.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace ft::game
 {
@@ -55,12 +56,37 @@ ActionResult Consume(RE::Actor *actor, RE::TESBoundObject *item)
     return ActionResult::Performed;
 }
 
-// Put a poison on the weapon in hand: one dose on the worn copy's extra
+// How many hits the dose is worth. The engine's own count: the inventory
+// menu's routine starts at one and puts it through the Mod Poison Dose
+// Count entry point, which is where Concentrated Poison keeps its "Set 2"
+// (105F2F), so the perk decides this here as it does in the menu -- and a
+// mod that retunes the perk, or gives another one entries of its own, is
+// followed without a table of our own.
+//
+// The value is a float because a perk entry's own value is one
+// (BGSEntryPointFunctionDataOneValue::data), as every other entry point
+// called here is. Read from the 1.6.1170 executable (2026-09-17): the entry
+// point's three parameters are named "Perk Owner", "Attacker Weapon" and
+// "Item", which is the order they go in; which of the latter two the engine
+// itself passes first was not read, and matters only to a perk with
+// conditions on them, since Concentrated Poison has none.
+//
+// Rounded, and never below one: a count of no hits would put a poison on
+// that does nothing, and that is also where a float the engine did not
+// write lands -- a wrong reading comes out as the single dose this gave
+// before the entry point was asked.
+std::int32_t PoisonDoses(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::AlchemyItem *poison)
+{
+    float doses = 1.0f;
+    RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModPoisonDoseCount, actor,
+                                        static_cast<RE::TESForm *>(weapon), static_cast<RE::TESForm *>(poison), &doses);
+    return (std::max)(std::int32_t{1}, static_cast<std::int32_t>(std::lround(doses)));
+}
+
+// Put a poison on the weapon in hand: the dose on the worn copy's extra
 // list, one bottle out of the bag. The engine's own PoisonObject writes to
 // an entry's FIRST extra list, which for a follower with two of the sword
-// need not be the one in hand; the worn list is found here instead. The
-// dose is one hit, as the inventory menu gives a player without the
-// Concentrated Poison perk.
+// need not be the one in hand; the worn list is found here instead.
 ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
 {
     if (!poison)
@@ -76,7 +102,8 @@ ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
     if (!worn)
         return ActionResult::MissingItem;
 
-    worn->Add(new RE::ExtraPoison(poison, 1));
+    const std::int32_t doses = PoisonDoses(actor, weapon, poison);
+    worn->Add(new RE::ExtraPoison(poison, doses));
     actor->RemoveItem(poison, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
     // What the inventory menu's own routine plays after the dose goes on
     // (read from the executable): the vial, as a UI sound. There is no
@@ -86,8 +113,10 @@ ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
                        {{"poisonFormId", log::Id(poison->GetFormID())},
                         {"poisonName", log::NameOf(poison)},
                         {"weaponFormId", log::Id(weapon->GetFormID())},
-                        {"weaponName", log::NameOf(weapon)}},
-                       "{} put {} on {}", Describe(actor), log::NameOf(poison), log::NameOf(weapon));
+                        {"weaponName", log::NameOf(weapon)},
+                        {"doses", doses}},
+                       "{} put {} on {} ({} hit{})", Describe(actor), log::NameOf(poison), log::NameOf(weapon), doses,
+                       doses == 1 ? "" : "s");
     return ActionResult::Performed;
 }
 
