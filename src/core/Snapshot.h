@@ -190,9 +190,13 @@ struct PotionStock
         // against a Restore, which is the emergency being saved for. Judged
         // on the game side from the effect record, not from its name, so a
         // mod's own Fortify counts (src/game/Sensors.cpp, docs/ACTIONS.md).
-        // Meaningless on a poison, where every bane goes at the enemy and
-        // WantedByAny takes the lot.
+        // Meaningless on a poison, where every bane goes at the enemy.
         bool buff{false};
+        // A bane: Detrimental or Hostile on the record. Kept beside the boons
+        // rather than dropped at the scan, so the rules see the whole item --
+        // a wine's regeneration damage beside its resist -- and ChoosableBy
+        // decides which half a rule may choose it by.
+        bool harmful{false};
 
         [[nodiscard]] bool StrongerThan(const Effect &o) const noexcept
         {
@@ -274,7 +278,7 @@ struct PotionStock
                 continue;
             for (const auto &e : c.effects)
             {
-                if (e.name != effect || Outdone(inForce, e))
+                if (e.name != effect || !ChoosableBy(kind, e) || Outdone(inForce, e))
                     continue;
                 if (!bestEffect || (strongest ? e.StrongerThan(*bestEffect) : bestEffect->StrongerThan(e)))
                 {
@@ -286,15 +290,27 @@ struct PotionStock
         return best ? best->form : 0;
     }
 
-    // What an "any" action may take of a kind: every bane a poison carries
-    // -- they all go at the enemy, so "put something on the blade" needs no
-    // further judgement -- but only the lingering boons of anything drunk
-    // or eaten. "Drink any potion" would as happily pick the health potion
-    // being kept for the emergency, which is the opposite of what a
-    // buff-before-the-fight rule is for.
+    // Which effects a rule may choose an item of this kind BY: a poison's
+    // banes, since it goes at the enemy, and the boons of anything drunk or
+    // eaten. The one place that says so. A wine carries both and is chosen
+    // by its resist; its regeneration damage is no reason to drink it, and
+    // no Strongest or Weakest can name it. The scan hands over every effect
+    // an item has, so this is decided here, under test, and not filtered
+    // away on the game side where nothing can test it.
+    [[nodiscard]] static constexpr bool ChoosableBy(ConsumableKind kind, const Effect &e) noexcept
+    {
+        return kind == ConsumableKind::Poison ? e.harmful : !e.harmful;
+    }
+
+    // What an "any" action may take of a kind, of what it may be chosen by:
+    // every bane a poison carries -- they all go at the enemy, so "put
+    // something on the blade" needs no further judgement -- but only the
+    // lingering boons of anything drunk or eaten. "Drink any potion" would
+    // as happily pick the health potion being kept for the emergency, which
+    // is the opposite of what a buff-before-the-fight rule is for.
     [[nodiscard]] static constexpr bool WantedByAny(ConsumableKind kind, const Effect &e) noexcept
     {
-        return kind == ConsumableKind::Poison || e.buff;
+        return ChoosableBy(kind, e) && (kind == ConsumableKind::Poison || e.buff);
     }
 
     // A bottle an "any" may roll: of the kind, carried, and with at least

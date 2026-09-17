@@ -39,13 +39,6 @@ namespace
 // condition refuses.
 constexpr std::uint32_t kMagicNoReanimateKeyword = 0x0006F6FB;
 
-// The effects of a bottle a policy could choose it by: a potion's boons
-// and a poison's banes, by the name the game shows, with the bottle's
-// magnitude and duration of each. A potion's harmful side (the Slow in
-// Sleeping Tree Sap, the regen loss in an ale) is not a reason to drink
-// it, and a poison is chosen for what it does to the enemy.
-// An ingredient eaten gives its FIRST effect and no other (the rest are for
-// the alchemy table), so that one is the ingredient's effect here.
 // A bane rather than a boon: the two flags the Creation Kit shows as
 // Detrimental and Hostile. What tells a poison's effects from a potion's,
 // and a Weakness to Fire from a Resist Fire.
@@ -97,13 +90,21 @@ bool Buffs(const RE::Actor *actor, const RE::EffectSetting *base, const RE::Effe
            base->data.primaryAV != RE::ActorValue::kWaterBreathing && EffectApplies(actor, base);
 }
 
+// Every effect a consumable gives, by the name the game shows, with the
+// item's magnitude and duration of each, marked harmful or not and judged a
+// buff or not. EVERY one, the bane beside the boon: which of them a rule may
+// choose the item by is policy, and it lives in core where it is tested
+// (PotionStock::ChoosableBy). A potion's harmful side -- the Slow in Sleeping
+// Tree Sap, the regeneration damage in a wine -- is no reason to drink it,
+// and a poison is chosen for what it does to the enemy; core says so, not
+// this. An ingredient eaten gives its FIRST effect and no other (the rest
+// are for the alchemy table), so that one is the ingredient's effect.
 std::vector<ft::PotionStock::Effect> ConsumableEffects(const RE::Actor *actor, RE::MagicItem *item,
                                                        ft::ConsumableKind kind)
 {
     std::vector<ft::PotionStock::Effect> out;
     if (!item)
         return out;
-    const bool poison = kind == ft::ConsumableKind::Poison;
     const bool firstOnly = kind == ft::ConsumableKind::Ingredient;
     for (auto *effect : item->effects)
     {
@@ -112,9 +113,9 @@ std::vector<ft::PotionStock::Effect> ConsumableEffects(const RE::Actor *actor, R
         const auto *base = effect->baseEffect;
         const bool harmful = Harmful(base);
         const char *name = base->GetFullName();
-        if (harmful == poison && name && *name && !ft::EffectUseless(name))
+        if (name && *name && !ft::EffectUseless(name))
             out.push_back({name, effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration),
-                           Buffs(actor, base, effect->effectItem)});
+                           Buffs(actor, base, effect->effectItem), harmful});
         if (firstOnly)
             break;
     }
@@ -1833,6 +1834,8 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
         bool any = false;
         for (const auto &effect : ConsumableEffects(actor, object->As<RE::MagicItem>(), *kind))
         {
+            if (!ft::PotionStock::ChoosableBy(*kind, effect))
+                continue;
             effects.push_back(effect.name);
             any = any || ft::PotionStock::WantedByAny(*kind, effect);
         }

@@ -81,6 +81,13 @@ PotionStock::Effect Buff(const char *name, float magnitude, float duration = 60.
     return {name, magnitude, duration, true};
 }
 
+// A bane: what the game side flags Detrimental or Hostile. Every effect a
+// poison is chosen by is one, so a poison fixture says so.
+PotionStock::Effect Bane(const char *name, float magnitude, float duration = 0.0f)
+{
+    return {name, magnitude, duration, false, true};
+}
+
 } // namespace
 
 TEST_CASE("an empty rule set does nothing", "[evaluator]")
@@ -2839,7 +2846,7 @@ TEST_CASE("an apply rule needs a weapon that takes a poison, and waits on one al
     EvalContext ctx;
 
     Snapshot s = Healthy();
-    s.potions.Add(0x3A5A4, 3, ConsumableKind::Poison, {"Damage Health", 15.0f, 0.0f});
+    s.potions.Add(0x3A5A4, 3, ConsumableKind::Poison, Bane("Damage Health", 15.0f, 0.0f));
 
     SECTION("no weapon in hand: not met, with its own verdict")
     {
@@ -3151,7 +3158,7 @@ TEST_CASE("a policy chooses the bottle by its effect, strongest or weakest", "[e
     REQUIRE(ChosenForm(Drink("Resist Fire"), s) == 0x104);
     REQUIRE(ChosenForm(Drink("Restore Stamina"), s) == 0);
     // A poison is not a potion, whatever its effect says.
-    s.potions.Add(0x105, 1, ConsumableKind::Poison, {"Restore Health", 999.0f, 0.0f});
+    s.potions.Add(0x105, 1, ConsumableKind::Poison, Bane("Restore Health", 999.0f, 0.0f));
     REQUIRE(ChosenForm(Drink("Restore Health"), s) == 0x102);
     REQUIRE(ChosenForm(Apply("Restore Health"), s) == 0x105);
     // Food and a food-ingredient are chosen from their own kind.
@@ -3173,10 +3180,10 @@ TEST_CASE("a policy chooses the bottle by its effect, strongest or weakest", "[e
     // Equal magnitudes: the longer one is the stronger. No magnitude at
     // all: the duration is the strength.
     s.potions.carried.clear();
-    s.potions.Add(0x201, 1, ConsumableKind::Poison, {"Lingering Damage Health", 1.0f, 10.0f});
-    s.potions.Add(0x202, 1, ConsumableKind::Poison, {"Lingering Damage Health", 1.0f, 15.0f});
-    s.potions.Add(0x203, 1, ConsumableKind::Poison, {"Paralysis", 0.0f, 3.0f});
-    s.potions.Add(0x204, 1, ConsumableKind::Poison, {"Paralysis", 0.0f, 7.0f});
+    s.potions.Add(0x201, 1, ConsumableKind::Poison, Bane("Lingering Damage Health", 1.0f, 10.0f));
+    s.potions.Add(0x202, 1, ConsumableKind::Poison, Bane("Lingering Damage Health", 1.0f, 15.0f));
+    s.potions.Add(0x203, 1, ConsumableKind::Poison, Bane("Paralysis", 0.0f, 3.0f));
+    s.potions.Add(0x204, 1, ConsumableKind::Poison, Bane("Paralysis", 0.0f, 7.0f));
     REQUIRE(ChosenForm(Apply("Lingering Damage Health"), s) == 0x202);
     REQUIRE(ChosenForm(Apply("Lingering Damage Health", false), s) == 0x201);
     REQUIRE(ChosenForm(Apply("Paralysis"), s) == 0x204);
@@ -3215,9 +3222,9 @@ TEST_CASE("apply any poison rolls one of those carried", "[evaluator][any]")
 
     Snapshot s = Healthy(); // three restore POTIONS, which no poison rule sees
     s.rightWeapon = {true, false};
-    s.potions.Add(0x301, 1, ConsumableKind::Poison, {"Damage Health", 5.0f, 0.0f});
-    s.potions.Add(0x302, 9, ConsumableKind::Poison, {"Damage Stamina", 5.0f, 0.0f});
-    s.potions.Add(0x303, 1, ConsumableKind::Poison, {"Paralysis", 0.0f, 3.0f});
+    s.potions.Add(0x301, 1, ConsumableKind::Poison, Bane("Damage Health", 5.0f, 0.0f));
+    s.potions.Add(0x302, 9, ConsumableKind::Poison, Bane("Damage Stamina", 5.0f, 0.0f));
+    s.potions.Add(0x303, 1, ConsumableKind::Poison, Bane("Paralysis", 0.0f, 3.0f));
 
     SECTION("three rolls cover all three, and the stack of nine is no likelier")
     {
@@ -3303,7 +3310,7 @@ TEST_CASE("apply any poison rolls one of those carried", "[evaluator][any]")
     SECTION("a bottle the follower has run out of is not a choice")
     {
         s.potions.carried.clear();
-        s.potions.Add(0x301, 0, ConsumableKind::Poison, {"Damage Health", 5.0f, 0.0f});
+        s.potions.Add(0x301, 0, ConsumableKind::Poison, Bane("Damage Health", 5.0f, 0.0f));
         REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyAny), s) == 0);
     }
 }
@@ -3313,9 +3320,9 @@ TEST_CASE("a policy with no effect named rolls the effect, then chooses by it", 
     Snapshot s = Healthy();
     s.rightWeapon = {true, false};
     s.potions.carried.clear();
-    s.potions.Add(0x401, 1, ConsumableKind::Poison, {"Damage Health", 3.0f, 0.0f});
-    s.potions.Add(0x402, 1, ConsumableKind::Poison, {"Damage Health", 9.0f, 0.0f});
-    s.potions.Add(0x403, 1, ConsumableKind::Poison, {"Damage Stamina", 20.0f, 0.0f});
+    s.potions.Add(0x401, 1, ConsumableKind::Poison, Bane("Damage Health", 3.0f, 0.0f));
+    s.potions.Add(0x402, 1, ConsumableKind::Poison, Bane("Damage Health", 9.0f, 0.0f));
+    s.potions.Add(0x403, 1, ConsumableKind::Poison, Bane("Damage Stamina", 20.0f, 0.0f));
 
     // Two effects carried, not three: two bottles of Damage Health are one
     // effect, and do not make it twice as likely as Damage Stamina.
@@ -3480,7 +3487,7 @@ TEST_CASE("a drink policy with no effect named rolls among the buffs only", "[ev
 
     // A poison is not narrowed this way: every bane goes at the enemy, so
     // all of them are choices though none is flagged a buff.
-    s.potions.Add(0x604, 1, ConsumableKind::Poison, {"Damage Health", 5.0f, 0.0f});
+    s.potions.Add(0x604, 1, ConsumableKind::Poison, Bane("Damage Health", 5.0f, 0.0f));
     s.roll = 0;
     REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyAny), s) == 0x604);
     REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyStrongest), s) == 0x604);
@@ -3575,6 +3582,66 @@ TEST_CASE("an any-eat reaches for a buff food and never for one that only restor
     }
 }
 
+TEST_CASE("which effects an item is chosen by: a poison's banes, anything else's boons", "[evaluator][any]")
+{
+    const PotionStock::Effect boon = Buff("Resist Fire", 30.0f);
+    const PotionStock::Effect bane = Bane("Damage Health", 10.0f);
+    for (const auto kind : {ConsumableKind::Potion, ConsumableKind::Food, ConsumableKind::Ingredient})
+    {
+        REQUIRE(PotionStock::ChoosableBy(kind, boon));
+        REQUIRE_FALSE(PotionStock::ChoosableBy(kind, bane));
+    }
+    REQUIRE(PotionStock::ChoosableBy(ConsumableKind::Poison, bane));
+    REQUIRE_FALSE(PotionStock::ChoosableBy(ConsumableKind::Poison, boon));
+}
+
+TEST_CASE("a drink with a price is chosen by its boon, and the price is never a choice", "[evaluator][any]")
+{
+    // Colovian Brandy: a Resist Frost beside a regeneration damage. The scan
+    // hands over both; core decides the damage is no reason to take it and
+    // no name a rule may take it by, and that the resist still is.
+    Snapshot s = Healthy();
+    s.potions.carried.clear();
+    s.potions.Add(0x801, 1, ConsumableKind::Food, Buff("Resist Frost", 15.0f));
+    s.potions.Add(0x801, 1, ConsumableKind::Food, Bane("Damage Stamina Regeneration", 25.0f, 120.0f));
+
+    SECTION("an any rolls it, by its boon")
+    {
+        REQUIRE(ChosenForm(AnyOf(ActionKind::EatStrongestFood), s) == 0x801);
+    }
+
+    SECTION("a rule naming the boon takes it")
+    {
+        Action frost;
+        frost.kind = ActionKind::EatStrongestFood;
+        frost.effect = "Resist Frost";
+        REQUIRE(ChosenForm(frost, s) == 0x801);
+    }
+
+    SECTION("a rule naming the price cannot")
+    {
+        Action price;
+        price.kind = ActionKind::EatStrongestFood;
+        price.effect = "Damage Stamina Regeneration";
+        REQUIRE(ChosenForm(price, s) == 0);
+    }
+}
+
+TEST_CASE("a poison is chosen by its bane, never by a boon it happens to carry", "[evaluator][any]")
+{
+    // The mirror of the priced drink. Before the scan kept every effect, a
+    // poison's list held only banes, and "any poison" took the lot; a boon on
+    // the record would now be a name to reach it by and a reason to roll it.
+    Snapshot s = Healthy();
+    s.potions.carried.clear();
+    s.potions.Add(0x802, 1, ConsumableKind::Poison, Bane("Damage Health", 10.0f));
+    s.potions.Add(0x802, 1, ConsumableKind::Poison, Buff("Fortify Health", 5.0f));
+
+    REQUIRE(ChosenForm(Apply("Damage Health"), s) == 0x802);
+    REQUIRE(ChosenForm(Apply("Fortify Health"), s) == 0);
+    REQUIRE(ChosenForm(AnyOf(ActionKind::ApplyAny), s) == 0x802);
+}
+
 TEST_CASE("an effect is outdone by one of its name in force at least as strongly", "[evaluator][any]")
 {
     const PotionStock::Effect fire{"Resist Fire", 30.0f, 60.0f, true};
@@ -3601,8 +3668,8 @@ TEST_CASE("a poison is steered off what the target already has, but never withhe
     Snapshot s = Healthy();
     s.rightWeapon = {true, false};
     s.currentTarget = 0xBAD;
-    s.potions.Add(0x701, 1, ConsumableKind::Poison, {"Slow", 50.0f, 10.0f});
-    s.potions.Add(0x702, 1, ConsumableKind::Poison, {"Lingering Damage Health", 2.0f, 10.0f});
+    s.potions.Add(0x701, 1, ConsumableKind::Poison, Bane("Slow", 50.0f, 10.0f));
+    s.potions.Add(0x702, 1, ConsumableKind::Poison, Bane("Lingering Damage Health", 2.0f, 10.0f));
 
     SECTION("the target already slowed: every roll goes to the other poison")
     {
@@ -3628,7 +3695,7 @@ TEST_CASE("a poison is steered off what the target already has, but never withhe
 
     SECTION("the effect roll and the strongest-of-it are steered the same way")
     {
-        s.potions.Add(0x703, 1, ConsumableKind::Poison, {"Slow", 80.0f, 10.0f});
+        s.potions.Add(0x703, 1, ConsumableKind::Poison, Bane("Slow", 80.0f, 10.0f));
         s.targetRunning = {{"Slow", 60.0f}};
         Action strongest = AnyOf(ActionKind::ApplyStrongest);
         Action weakest = AnyOf(ActionKind::ApplyWeakest);
