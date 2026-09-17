@@ -37,6 +37,10 @@
 ;    00039954   Draught of the Warrior   Fortify One-handed 30 for 60 s
 ;    00039955   Philter of the Warrior   Fortify One-handed 40 for 60 s
 ;    00039956   Elixir of the Warrior    Fortify One-handed 50 for 60 s
+;    0003EAF2   Potion of Health         Fortify Health 20 for 60 s
+;    0003EAF4   Draught of Health        Fortify Health 40 for 60 s
+;    00039B4A   Potion of Resist Fire    Resist Fire 20 for 60 s
+;    00039B4B   Philter of Resist Fire   Resist Fire 40 for 60 s
 ;
 ;  SPELLS. Two, because they test different things.
 ;
@@ -126,9 +130,10 @@
 
 setrelationshiprank player 4
 
-; Three each: one tier of health, magicka and stamina, then the four tiers
-; of Fortify One-handed. The full vanilla set is in git history (before
-; 2026-09-12) if a menu needs every effect again.
+; Three each: one tier of health, magicka and stamina, the four tiers of
+; Fortify One-handed, two of Fortify Health and two of Resist Fire. The full
+; vanilla set is in git history (before 2026-09-12) if a menu needs every
+; effect again.
 additem 0003EADE 3
 additem 0003EAE1 3
 additem 00039BE8 3
@@ -136,6 +141,10 @@ additem 0003EB2A 3
 additem 00039954 3
 additem 00039955 3
 additem 00039956 3
+additem 0003EAF2 3
+additem 0003EAF4 3
+additem 00039B4A 3
+additem 00039B4B 3
 
 ; Every vanilla poison, three of each, for the Poison menu's Strongest and
 ; Weakest: the damages, the lingering ones, the regen ones, the
