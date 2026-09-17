@@ -1663,8 +1663,16 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             act.effect.clear();
             choose();
         }
-        if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", had ? std::string(ft::Describe(kind)).c_str() : "No applicable buffs available");
+        if (!Im::IsItemHovered(0))
+            return;
+        if (!had)
+            Im::SetTooltip("%s", "No applicable buffs available");
+        else if (kind == ft::ActionKind::DrinkStrongest)
+            Im::SetTooltip("%s", "Drink the strongest potion that applies a buff");
+        else if (kind == ft::ActionKind::DrinkWeakest)
+            Im::SetTooltip("%s", "Drink the weakest potion that applies a buff");
+        else
+            Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
     };
     const auto byEffect = [&](ft::ConsumableKind ckind, ft::ActionKind strongestKind, ft::ActionKind weakestKind,
                               ft::ActionKind namedKind, ft::ActionKind anyKind = ft::ActionKind::None) {

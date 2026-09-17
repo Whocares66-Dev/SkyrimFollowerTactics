@@ -507,7 +507,7 @@ std::string_view Describe(ActionKind v) noexcept
     case ActionKind::ApplyAny:
         return "Apply any poison";
     case ActionKind::DrinkAny:
-        return "Drink any applicable buff";
+        return "Drink a potion that applies a buff";
     case ActionKind::ApplyPoison:
         return "Put this poison on the weapon in hand.";
     case ActionKind::DrinkPotion:
