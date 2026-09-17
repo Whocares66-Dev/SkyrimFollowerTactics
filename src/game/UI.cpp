@@ -5322,18 +5322,13 @@ void DrawSkills(const CharacterView &view)
 // nothing is clipped. Popped before drawing, so the tab's own popups and
 // tooltips keep the style's padding.
 // Whose page is being drawn and which tab of it, packed into one word so the
-// game thread always reads a pair that belongs together, and when it was
-// last drawn. Written here on the render thread, read by the tick through
+// game thread always reads a pair that belongs together; 0 when no page of
+// ours is on screen. Written on the render thread, read by the tick through
 // Shown().
-//
-// The stamp is what says the panel is still up. A page is drawn every frame
-// it is open, so a stamp that has stopped moving means nobody is looking --
-// which is the one thing the game thread must not get wrong, since it is
-// what stops it building pages for a closed panel. Asking the framework
-// instead would mean trusting a close event to never be missed, or reading
-// "is any blocking window open", which is true of another mod's panel too.
 std::atomic<std::uint64_t> g_shownNow{0};
-std::atomic<std::int64_t> g_shownAt{0};
+// Whether this frame drew a page of ours, between the framework's before- and
+// after-render events.
+std::atomic<bool> g_drawnThisFrame{false};
 
 std::uint64_t Packed(ft::ActorId actor, Tab tab)
 {
@@ -5342,17 +5337,40 @@ std::uint64_t Packed(ft::ActorId actor, Tab tab)
 
 // This page is on screen: the framework calls only the visible section's
 // renderer, and a tab's body only while that tab is selected. A page that has
-// just come up is built at once rather than on the next beat, which is what
-// makes a tab click answer immediately; the stamp goes down every frame, open
-// or not.
+// just come up is built at once: another tab or character, or the panel
+// opened, or a section of ours shown again after another.
 void ShowingPage(ft::ActorId actor, Tab tab)
 {
+    g_drawnThisFrame.store(true, std::memory_order_relaxed);
     const std::uint64_t packed = Packed(actor, tab);
-    g_shownAt.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
     if (g_shownNow.exchange(packed, std::memory_order_relaxed) != packed)
     {
         if (auto *task = SKSE::GetTaskInterface())
             task->AddTask([] { RefreshShownPage(); });
+    }
+}
+
+// No page is on screen once the panel opens or closes, or after a frame that
+// drew none (Settings, or another mod's section): so the next page drawn
+// counts as come up, and is built.
+void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
+{
+    using Event = SKSEMenuFramework::Model::EventType;
+    switch (type)
+    {
+    case Event::kOpenMenu:
+    case Event::kCloseMenu:
+        g_shownNow.store(0, std::memory_order_relaxed);
+        break;
+    case Event::kBeforeRender:
+        g_drawnThisFrame.store(false, std::memory_order_relaxed);
+        break;
+    case Event::kAfterRender:
+        if (!g_drawnThisFrame.load(std::memory_order_relaxed))
+            g_shownNow.store(0, std::memory_order_relaxed);
+        break;
+    default:
+        break;
     }
 }
 
@@ -5637,15 +5655,7 @@ void DrawSettings()
     if (settings.requireDualWieldStyle != was.requireDualWieldStyle ||
         settings.requireDualCastPerks != was.requireDualCastPerks ||
         settings.requirePowerBashPerk != was.requirePowerBashPerk)
-    {
         SetSettings(settings);
-        // What a follower counts as having changes with the requirement, and
-        // the rules' page is greyed by it. Asked for here because nothing
-        // else will: a page is rebuilt when it changes, and this changes the
-        // page under the player without the page changing.
-        if (auto *task = SKSE::GetTaskInterface())
-            task->AddTask([] { RefreshShownPage(); });
-    }
 }
 
 void __stdcall RenderSettings()
@@ -5695,13 +5705,6 @@ constexpr std::array<SKSEMenuFramework::Model::RenderFunction, sizeof...(N)> Ren
 
 ShownPage Shown()
 {
-    // Stale: the panel is not drawing, so nothing is on screen and nothing
-    // is to be built. A page is redrawn every frame it is open, so a tenth
-    // of a second of silence is many frames' worth.
-    const auto drawn = std::chrono::steady_clock::time_point(
-        std::chrono::steady_clock::duration(g_shownAt.load(std::memory_order_relaxed)));
-    if (std::chrono::steady_clock::now() - drawn > std::chrono::milliseconds(100))
-        return {};
     const std::uint64_t packed = g_shownNow.load(std::memory_order_relaxed);
     return {static_cast<ft::ActorId>(packed >> 8), static_cast<Tab>(packed & 0xFF)};
 }
@@ -5848,6 +5851,10 @@ void Install()
                      "Tactics still run; see this log for what they decide.");
         return;
     }
+
+    // Registered for the life of the game: the event unregisters when freed.
+    static const auto *menuEvents = SKSEMenuFramework::AddEvent(OnMenuEvent, 0.0f);
+    (void)menuEvents;
 
     SKSEMenuFramework::SetSection("Follower Tactics");
     SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
