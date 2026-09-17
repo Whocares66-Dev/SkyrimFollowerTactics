@@ -163,6 +163,24 @@ if(FT_BUILD_PLUGIN)
     # manifest, since a manifest build reads only the top-level one. Its
     # tests are not ours to build. docs/COMMONLIB.md has the history.
     set(BUILD_TESTS OFF CACHE BOOL "CommonLibSSE's own tests" FORCE)
+    # AE only, for now (2026-09-17). The plugin calls engine functions by
+    # Address Library ID, and an ID is only stable within one line: the same
+    # number names another function in the Special Edition's database, which
+    # is a separately numbered space (and a different file format again).
+    # Every ID here was read on the AE line and holds across it -- 1.6.317 to
+    # 1.6.1179, each build at its own offset, which is what the library is
+    # for -- so the plugin stays version-independent within AE and does not
+    # pin a runtime.
+    #
+    # Building SE and VR support in bought nothing but a second code path per
+    # such call, one that could not be tested here and was wrong the moment
+    # anyone relied on it. Turning them off makes REL::Module::IsAE() a
+    # compile-time truth (REL/Relocation.h), so those paths fold away.
+    # Supporting them again means reading each ID's SE half first
+    # (docs/VERSIONS.md).
+    set(ENABLE_SKYRIM_SE OFF CACHE BOOL "Skyrim SE support in CommonLibSSE" FORCE)
+    set(ENABLE_SKYRIM_VR OFF CACHE BOOL "Skyrim VR support in CommonLibSSE" FORCE)
+    set(ENABLE_SKYRIM_AE ON CACHE BOOL "Skyrim AE support in CommonLibSSE" FORCE)
     add_subdirectory(extern/commonlibsse-ng EXCLUDE_FROM_ALL)
     # add_commonlibsse_plugin: the library's CMakeLists includes it only on
     # its prebuilt path (7.5.1), so the source build includes it here.

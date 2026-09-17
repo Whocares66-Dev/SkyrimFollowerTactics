@@ -1,12 +1,14 @@
 # Version-bound dependencies
 
-What the plugin takes from one build of the game rather than from CommonLib or the game's data: what each is, what uses it, what happens on another runtime, and how far it was checked. The plugin is built with CommonLib's SE, AE and VR support all on, and every entry here was read on **1.6.1170** alone. Each is to be resolved before shipping: its Special Edition (and VR) counterpart read and checked, or the feature it serves declared AE-only (`docs/TODO.md` "Toolchain").
+What the plugin takes from one build of the game rather than from CommonLib or the game's data: what each is, what uses it, what happens on another runtime, and how far it was checked. Every entry here was read on **1.6.1170**.
+
+**The plugin is built for the AE line alone** (2026-09-17): `ENABLE_SKYRIM_SE` and `ENABLE_SKYRIM_VR` are forced off in `CMakeLists.txt`, which is the resolution this page used to offer as an alternative -- "the feature it serves declared AE-only". An Address Library ID is stable within a line but not across one, so on SE the same number names another function; carrying a second path for a runtime nobody here can test was worse than not building for it. Supporting SE or VR again means reading each ID's Special Edition half first, and the rows below are that list.
 
 A new dependency of this kind gets a row here when it is added.
 
 ## Address Library IDs with no Special Edition ID
 
-Called only when `REL::Module::IsAE()`; on SE and VR the feature is skipped.
+Simply called: the plugin is AE-only, so `REL::Module::IsAE()` is a compile-time truth and the guards some of these still carry fold away. The "Off AE" column records what would be lost if SE or VR support came back before that ID's Special Edition half was read.
 
 | What | AE ID | Used by | Off AE |
 |---|---|---|---|
@@ -17,6 +19,8 @@ Called only when `REL::Module::IsAE()`; on SE and VR the feature is skipped.
 | `ActorEquipManager::UnequipShout(actor, shout)`, the same for `Actor.UnequipShout` | 38904 | `UnequipShoutNow`, same file | the same Papyrus fallback |
 
 An AE ID names the same thing in every AE build's Address Library only if that library's authors matched it; these were read on 1.6.1170. On an AE build whose library lacks one, CommonLib stops the game at the first use with "Failed to find the id within the address library" (`src/REL/IDDB.cpp`), rather than skipping.
+
+That matching was checked for 38903 and 38904 on 2026-09-17, by loading the databases in `AddressLibrary/SKSE/Plugins/` directly rather than trusting it: both IDs are present in 1.6.317, 353, 629, 1130, 1170 and 1179, at a different offset in each build, which is the library doing the job it exists for. So these two are not pinned to the runtime they were read on -- they hold across the AE line. What they do not cross is the line to SE: that database is a separate ID space, numbered independently, which is why CommonLib spells every such function as a `RELOCATION_ID(se, ae)` pair of two different numbers. It is a separate file format too, and so is 1.7's: `version-1-5-97-0.bin` reads as format 1 and the 1.7 databases as format 5, where `tools/disasm.py` (format 2) cannot follow, so neither was checked here.
 
 To resolve: find each in the SE executable (`tools/livedisasm.py` against a running SE, or `tools/disasm.py` against an unpacked one), by what calls it and what it calls, and make it a `RELOCATION_ID(se, ae)`. The alias map could instead go to CommonLib as a mapped global, with both IDs.
 

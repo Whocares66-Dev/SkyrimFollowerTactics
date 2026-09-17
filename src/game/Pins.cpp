@@ -438,24 +438,20 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
 // Items go through the equip manager WITHOUT the prevent-equip flag: the
 // Creation Kit wiki notes that flag does nothing for weapons on an NPC and
 // works only too well for ammunition, leaving an archer holding a bow they
-// cannot use. A spell goes off through the Papyrus native
-// Actor.UnequipSpell(spell, source) -- 0 for the left hand, 1 for the
-// right, 2 for the voice -- dispatched to the script VM, which runs it on
-// the game thread A FRAME LATER. That lateness is why a click taking a
-// spell off asks the panel to look again on its next frame
-// (RefreshShownPageSoon, game/Tactics.h): the build straight after the
-// click still reads the spell in hand.
+// cannot use. A spell or a shout goes off through the equip manager's own
+// unequip, called by ID (UnequipSpellNow and UnequipShoutNow below), which
+// takes effect on the frame it is asked for. It went through Papyrus's
+// Actor.UnequipSpell until 2026-09-17, and the VM ran that a frame later --
+// late enough that the panel, redrawing straight after the click, still saw
+// the spell in hand and an unequip took two clicks.
 //
-// It is not for want of a native, as this comment claimed until
-// 2026-09-17. `Actor::DeselectSpell` (RELOCATION_ID(37820, 38769)) does the
-// work and does it at once: read off 1.6.1170, it walks the four selected
-// spell slots, nulls any holding the spell and tells that slot's caster,
-// then clears selectedPower where what sits there is a SpellItem (form type
-// 0x16). Two things keep us on Papyrus for now. It takes no hand, so it
-// clears the spell from BOTH hands where this unequips only the hand asked,
-// which is a difference per-hand pins care about; and that form-type gate
-// leaves a shout in the voice alone, so UnequipShout is a Papyrus call
-// whatever is done here. Neither tried in play.
+// Not `Actor::DeselectSpell` (RELOCATION_ID(37820, 38769)), though CommonLib
+// does declare that one. Read off 1.6.1170, it walks the four selected spell
+// slots, nulls any holding the spell and tells that slot's caster, then
+// clears selectedPower where what sits there is a SpellItem (form type
+// 0x16). So it takes no hand -- it would clear the spell from BOTH, where
+// this takes it out of the one asked, which per-hand pins care about -- and
+// its form-type gate leaves a shout in the voice alone.
 // Is the thing on anywhere it could be, and off from everywhere it is. An
 // either-hand thing is asked about, and taken from, each hand in turn: the
 // item code reads "both hands" as a two-hander's, which lives in the right,
@@ -484,77 +480,37 @@ bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands,
 // docs/COMMONLIB.md has the trace, docs/VERSIONS.md the IDs). Calling them
 // here does on THIS frame what the Papyrus dispatch does on the next.
 //
-// AE only, as the Special Edition half of each ID was never read: on SE and
-// VR these answer false and the Papyrus route runs instead, a frame late
-// but right.
-bool UnequipSpellNow(RE::Actor *actor, RE::SpellItem *spell, std::uint32_t source)
+// The IDs are the AE line's, which is the only line this plugin is built for
+// (CMakeLists.txt): they hold from 1.6.317 to 1.6.1179, each build at its
+// own offset, which is the Address Library doing its job. There is no
+// Special Edition path to fall back to, because there is no Special Edition
+// build.
+void UnequipSpellNow(RE::Actor *actor, RE::SpellItem *spell, std::uint32_t source)
 {
-    auto *manager = actor && spell && REL::Module::IsAE() ? RE::ActorEquipManager::GetSingleton() : nullptr;
+    auto *manager = actor && spell ? RE::ActorEquipManager::GetSingleton() : nullptr;
     if (!manager)
-        return false;
+        return;
     // (manager, actor, spell, source), the source being Papyrus's aiSource
     // passed straight through: 0 the left hand, 1 the right, 2 the voice.
     // The function turns it into the matching equip slot itself.
     using func_t = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::SpellItem *, std::uint32_t);
     static REL::Relocation<func_t> func{REL::ID(38903)};
     func(manager, actor, spell, source);
-    return true;
 }
 
-bool UnequipShoutNow(RE::Actor *actor, RE::TESShout *shout)
+void UnequipShoutNow(RE::Actor *actor, RE::TESShout *shout)
 {
-    auto *manager = actor && shout && REL::Module::IsAE() ? RE::ActorEquipManager::GetSingleton() : nullptr;
+    auto *manager = actor && shout ? RE::ActorEquipManager::GetSingleton() : nullptr;
     if (!manager)
-        return false;
+        return;
     using func_t = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::TESShout *);
     static REL::Relocation<func_t> func{REL::ID(38904)};
     func(manager, actor, shout);
-    return true;
-}
-
-// And the Papyrus route the two fall back to, which the VM runs on the game
-// thread a frame later. Written once here rather than twice below: the hand
-// spells and the voice ask for the same call with a different source.
-//
-// MakeFunctionArguments takes Args&&, and an lvalue pointer deduces a
-// reference type that fails its is_return_convertible gate -- so the
-// std::move is the call's shape, not a copy avoided.
-void DispatchUnequipSpell(RE::Actor *actor, RE::SpellItem *spell, std::uint32_t source)
-{
-    auto *vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-    auto *policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
-    if (!policy)
-        return;
-    const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
-    RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
-    // A block and not a NOLINTNEXTLINE: the formatter wraps this call, and
-    // the move then sits a line below the one the suppression covers, which
-    // is how it was caught by the linter rather than by reading (2026-09-17).
-    // NOLINTBEGIN(performance-move-const-arg)
-    vm->DispatchMethodCall2(handle, "Actor", "UnequipSpell",
-                            RE::MakeFunctionArguments(std::move(spell), static_cast<std::int32_t>(source)), result);
-    // NOLINTEND(performance-move-const-arg)
-}
-
-void DispatchUnequipShout(RE::Actor *actor, RE::TESShout *shout)
-{
-    auto *vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-    auto *policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
-    if (!policy)
-        return;
-    const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
-    RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
-    // A block here too: this call fits on one line today, and would lose its
-    // suppression the moment it did not.
-    // NOLINTBEGIN(performance-move-const-arg)
-    vm->DispatchMethodCall2(handle, "Actor", "UnequipShout", RE::MakeFunctionArguments(std::move(shout)), result);
-    // NOLINTEND(performance-move-const-arg)
 }
 
 // Take a spell out of a hand, or an item off. A no-op when it is not
-// there, like EquipSpellIn: a spell's unequip is a native or a Papyrus
-// call and a republish, and neither is owed for a hand that was already
-// empty.
+// there, like EquipSpellIn: a spell's unequip is a native call and a
+// republish, and neither is owed for a hand that was already empty.
 void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
                  const std::optional<ft::ItemVariant> &variant)
 {
@@ -567,15 +523,9 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
             return;
         // The voice is source 2 for a power; a shout has a call of its own.
         if (auto *shout = form->As<RE::TESShout>())
-        {
-            if (!UnequipShoutNow(actor, shout))
-                DispatchUnequipShout(actor, shout);
-        }
+            UnequipShoutNow(actor, shout);
         else if (auto *power = form->As<RE::SpellItem>())
-        {
-            if (!UnequipSpellNow(actor, power, 2))
-                DispatchUnequipSpell(actor, power, 2);
-        }
+            UnequipSpellNow(actor, power, 2);
         return;
     }
     if (auto *spell = form->As<RE::SpellItem>())
@@ -584,9 +534,7 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
         {
             if (!Overlap(hands, hand) || !EquippedIn(actor, spell, hand))
                 continue;
-            const std::uint32_t source = hand == Hand::Left ? 0 : 1;
-            if (!UnequipSpellNow(actor, spell, source))
-                DispatchUnequipSpell(actor, spell, source);
+            UnequipSpellNow(actor, spell, hand == Hand::Left ? 0 : 1);
         }
         return;
     }

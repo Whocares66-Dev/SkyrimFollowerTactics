@@ -757,9 +757,17 @@ void TakeWrapper(RE::Actor *actor, RE::TESShout *wrapper)
     // slot as a bare form ID that a load looks up again with no type check
     // (docs/MAGIC.md "Forms at runtime"). So a power's wrapper does not stay
     // there once the list gives it up, nor does anything of ours an old save
-    // put back; a real shout or power is the follower's and stays. A plain
-    // write: Papyrus's UnequipShout runs a frame later, after the save
-    // message's release has already let the file be written.
+    // put back; a real shout or power is the follower's and stays.
+    //
+    // A plain write rather than an unequip, and meant as one. This is not
+    // taking a shout off the follower: it is scrubbing a form of ours out of
+    // a field before a save writes it, and the wrapper leaves the list on the
+    // next lines anyway. The engine's own UnequipShout is reachable since
+    // 2026-09-17 (UnequipShoutNow, game/Pins.cpp) and would run on this frame
+    // rather than the next, so the old reason given here -- that Papyrus was
+    // too late for the save message -- no longer holds; the write stays
+    // because an actor's worth of bookkeeping is not owed to a record that is
+    // about to go.
     auto &voice = actor->GetActorRuntimeData().selectedPower;
     if (voice && MadeByUs(voice->GetFormID()))
     {
