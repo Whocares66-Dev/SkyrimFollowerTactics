@@ -3304,7 +3304,12 @@ float DrawNameBadges(Im::ImDrawList *draw, const InventoryItem &item, Im::ImVec2
     else if (item.enchanted)
         badge(0xF0E7, kEnchanted); // bolt
     if (!item.poison.rows.empty())
+    {
+        const Im::ImVec2 from{x, at.y};
         badge(0xF714, kPoison); // skull-crossbones
+        if (draw && Im::IsMouseHoveringRect(from, {x - kBadgeGap, at.y + h}, true))
+            Im::SetTooltip("%s", item.poison.rows.front().label.c_str());
+    }
     if (item.stolen)
         badge(0xF256, kStolen); // hand
     return x - at.x;
