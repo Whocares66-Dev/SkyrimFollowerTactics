@@ -1839,30 +1839,34 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     // What is done to the weapon in hand: Charge (the strongest gem that
     // fits, the weakest, then every spendable gem by name) and Poison (the
     // strongest and the weakest by effect, then every poison carried by
-    // name; not drawn with none carried).
+    // name). Neither is drawn with nothing to spend, and a gem counts only
+    // filled: the scan lists no empty one, so a bag of empty gems offers no
+    // Charge. Each enters the group only when drawn, as Potion does.
     if (valid(ft::ActionKind::ChargeStrongestSoulGem))
     {
-        if (!enter(4))
-            return true;
-        // The named things of one kind, after a divider when there are any.
-        const auto namedAfterDivider = [&](ft::ActionKind kind) {
-            if (!carried(ft::ConsumableOf(kind)))
-                return;
-            Im::Separator();
-            named(kind);
-        };
-        if (BeginCascade("Charge"))
+        if (carried(ft::ConsumableKind::SoulGem))
         {
-            policy(ft::ActionKind::ChargeStrongestSoulGem);
-            policy(ft::ActionKind::ChargeWeakestSoulGem);
-            namedAfterDivider(ft::ActionKind::ChargeSoulGem);
-            Im::EndMenu();
+            if (!enter(4))
+                return true;
+            if (BeginCascade("Charge"))
+            {
+                policy(ft::ActionKind::ChargeStrongestSoulGem);
+                policy(ft::ActionKind::ChargeWeakestSoulGem);
+                Im::Separator();
+                named(ft::ActionKind::ChargeSoulGem);
+                Im::EndMenu();
+            }
         }
-        if (carried(ft::ConsumableKind::Poison) && BeginCascade("Poison"))
+        if (carried(ft::ConsumableKind::Poison))
         {
-            byEffect(ft::ConsumableKind::Poison, ft::ActionKind::ApplyStrongest, ft::ActionKind::ApplyWeakest,
-                     ft::ActionKind::ApplyPoison, ft::ActionKind::ApplyAny);
-            Im::EndMenu();
+            if (!enter(4))
+                return true;
+            if (BeginCascade("Poison"))
+            {
+                byEffect(ft::ConsumableKind::Poison, ft::ActionKind::ApplyStrongest, ft::ActionKind::ApplyWeakest,
+                         ft::ActionKind::ApplyPoison, ft::ActionKind::ApplyAny);
+                Im::EndMenu();
+            }
         }
     }
 
