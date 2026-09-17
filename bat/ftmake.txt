@@ -29,10 +29,14 @@
 ;  broken. A selection made BEFORE the batch is stable state,
 ;  which is why the second form is safe and prid is not.
 ;
-;  POTIONS: three each of one tier, read off the running game.
+;  POTIONS: three each, read off the running game.
 ;    0003EADE   Healing
 ;    0003EAE1   Magicka
 ;    00039BE8   Stamina
+;    0003EB2A   Potion of the Warrior    Fortify One-handed 20 for 60 s
+;    00039954   Draught of the Warrior   Fortify One-handed 30 for 60 s
+;    00039955   Philter of the Warrior   Fortify One-handed 40 for 60 s
+;    00039956   Elixir of the Warrior    Fortify One-handed 50 for 60 s
 ;
 ;  SPELLS. Two, because they test different things.
 ;
@@ -122,13 +126,16 @@
 
 setrelationshiprank player 4
 
-; Three potions, three each: one tier of health, magicka and stamina. The
-; Potion menu's Strongest and Weakest need one effect each to list, and the
-; bag stays small enough to read at a glance. The full vanilla set is in
-; git history (before 2026-09-12) if a menu needs every effect again.
+; Three each: one tier of health, magicka and stamina, then the four tiers
+; of Fortify One-handed. The full vanilla set is in git history (before
+; 2026-09-12) if a menu needs every effect again.
 additem 0003EADE 3
 additem 0003EAE1 3
 additem 00039BE8 3
+additem 0003EB2A 3
+additem 00039954 3
+additem 00039955 3
+additem 00039956 3
 
 ; Every vanilla poison, three of each, for the Poison menu's Strongest and
 ; Weakest: the damages, the lingering ones, the regen ones, the
