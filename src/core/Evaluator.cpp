@@ -596,9 +596,8 @@ Verdict EquipAvailability(const Action &a, const Snapshot &snap, const std::vect
 // on nothing -- the 12:20 run fired four heals at empty magicka. A spell
 // above the follower's skill is not cast either: the package would make
 // them cast it regardless; it is refused so that cast and equip agree,
-// and the menus offer neither. A dual cast needs the school's Dual
-// Casting perk, which the snapshot has judged, and costs more, the game's
-// multiplier in. A follower mid-cast on a spell of their own is left to
+// and the menus offer neither. Whether a dual cast is possible, and what it
+// costs, the snapshot has judged. A follower mid-cast on a spell of their own is left to
 // finish it: firing our package then interrupts the cast in progress -- a
 // Lightning Bolt rule on "magicka above half" cut off every spell the AI
 // began -- so the rule waits, as a busy action does: no cooldown

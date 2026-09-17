@@ -85,35 +85,7 @@ dual-casting perks. The gate is the perk entry point CanDualCastSpell,
 which the school's Dual Casting perk sets, so a follower needs that perk
 (`Actor::AddPerk`). No combat-style flag is involved.
 
-Through **our package**, the UseMagic procedure has a DualCast boolean
-input; **built 2026-09-09 as the Dual Cast menu**, after Cast. A CastSpell
-action carries a `dual` flag (`"dual": true` on the wire). Only a spell whose
-record fits either hand is in (`SpellGrip`, the equip slot): one that takes
-both (`IsTwoHanded`, vanilla's master spells) is out, but a mod's one-handed
-master spell is in, since the level says nothing; and one locked to a hand is
-out, the NPC-only variants that carry the player's spell's name. Serana's
-Ice Storm is Dawnguard's `DLC1IceStormRightHand`: offered until 2026-09-16,
-a rule dual casting it set the package's DualCast input and the spell fired
-from the right hand alone, cast after cast. The perk is asked for only where Settings'
-**Require Dual Casting perks** says so (off by default, `docs/PROFILES.md`):
-on, the sensor asks the perk system the Can Dual Cast Spell entry point for
-each spell the follower knows, so the school's Dual Casting perk, or a
-mod's, decides; off, any spell that leaves a hand free may be dual cast, and
-what the AI does with two hands is the AI's business. The menu lists only
-those, the evaluator refuses a dual cast of any other ("cannot dual cast that spell"), and the
-magicka check uses the dual cost: the cost times
-`fMagicDualCastingCostMult` (2.8), unless the spell is flagged to take no
-dual-cast change. On request the slot's DualCast input is set (a Bool
-input: bit 1 of the data word, as the library's `GetDataAsString` reads
-it) and cleared again for a one-handed cast, since the record is shared.
-Not yet measured in play: whether the package honours the perk gate or
-bypasses it, and whether the follower's cast shows as dual. The Ice Storm
-casts above cannot answer either: Serana has no Dual Casting perk, so the
-hand lock and the perk are both there to explain the one hand. Direct API,
-unused: dual cast is state on the hand caster
-(`ActorMagicCaster::SetDualCasting`), not a cast argument. Watch for po3's
-Dual Casting Fix: scripted casts clear the dual state, and our faction-rank
-abilities might too.
+Through **our package**, the UseMagic procedure has a DualCast boolean input; **built 2026-09-09 as the Dual Cast menu**, after Cast. A CastSpell action carries a `dual` flag (`"dual": true` on the wire). Which spells the menu offers and the evaluator allows is `CanDualCast` (`src/game/Sensors.cpp`), what one costs is `DualCastCost` beside it, and the perk switch is in `docs/PROFILES.md`. On request the slot's DualCast input is set, and cleared again for a one-handed cast since the record is shared (`SetPackageBool`, `src/game/Packages.cpp`). Not yet measured in play: whether the package honours the perk gate or bypasses it, and whether the follower's cast shows as dual. Serana's Ice Storm (2026-09-16, in `CanDualCast`'s comment) cannot tell: that spell is locked to the right hand, and Serana has no Dual Casting perk either. Direct API, unused: dual cast is state on the hand caster (`ActorMagicCaster::SetDualCasting`), not a cast argument. Watch for po3's Dual Casting Fix: scripted casts clear the dual state, and our faction-rank abilities might too.
 
 **Scrolls (built 2026-09-09, not yet seen in play).** A Scroll action under Cast and Dual Cast, listing the scrolls carried by the scroll's own delivery: a Self one under Self, an aimed one under everyone else, as spells are. A scroll is a MagicItem cast from a hand like a spell, so it rides the UseMagic package with the scroll as the package's spell; the sensor lists carried scrolls in the snapshot's known list, since knowing and carrying are the one question, and no magicka is checked. Open: whether the engine spends the scroll on a package cast. The pool keeps the count from the request and, on the fire event, takes one off by hand if the count did not drop (`SpendScroll`), so a rule can never read the same scroll for free either way; the log says which happened.
 

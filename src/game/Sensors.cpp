@@ -320,15 +320,14 @@ bool IsPower(const RE::SpellItem *spell)
            IsLeasedPower(spell->GetFormID());
 }
 
-// Whether the actor can dual cast a spell: a record that fits either hand,
-// by its equip slot -- vanilla's master spells take both hands, a mod's may
-// not, and the level says nothing; a package told to dual cast a one-hand
-// variant fired it from that hand alone (Serana's Ice Storm, 2026-09-16) --
-// and, where Settings asks for it, the perk system's answer to the Can Dual
-// Cast Spell entry point, which each school's Dual Casting perk sets for its
-// own school, so a mod's perk counts the same. The game asks that of the
-// player; of a follower it is asked only when the player says so
-// (game/Settings.h).
+// Whether the actor can dual cast a spell. The one statement of the rule; the
+// menu, the evaluator and the docs point here. A record that fits either
+// hand (SpellGrip): the slot decides, never the level, so a mod's one-handed
+// master spell is in; a package told to dual cast a one-hand variant fired it
+// from that hand alone (Serana's Ice Storm, DLC1IceStormRightHand,
+// 2026-09-16). And, where Settings asks for it (docs/PROFILES.md), the perk
+// system's answer to the Can Dual Cast Spell entry point, so a mod's perk
+// counts the same as the school's Dual Casting perk.
 bool CanDualCast(RE::Actor *actor, RE::SpellItem *spell)
 {
     if (!actor || !spell || !IsCastable(spell) || SpellGrip(spell) != ft::Grip::Either)

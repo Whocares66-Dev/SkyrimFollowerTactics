@@ -126,6 +126,9 @@ ft::Grip ArmorGrip(const RE::TESObjectARMO *armor)
 
 ft::Grip SpellGrip(const RE::SpellItem *spell)
 {
+    // By FormID: the four slots are fixed in Skyrim.esm, and the default
+    // object table did not answer for them (01:29, "Either" for a left-hand
+    // record).
     const auto *slot = spell->GetEquipSlot();
     const std::uint32_t slotId = slot ? slot->GetFormID() : 0;
     return spell->IsTwoHanded()       ? ft::Grip::Both

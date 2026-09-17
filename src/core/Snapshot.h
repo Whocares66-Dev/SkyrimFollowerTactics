@@ -391,10 +391,8 @@ struct SpellState
     {
         std::uint32_t form{0};
         float magicka{0.0f};
-        // Whether they can dual cast it -- the school's Dual Casting perk
-        // and a spell whose record fits either hand -- and what it costs then:
-        // the cost times the game's dual-casting multiplier, unless the
-        // spell is flagged to take no dual-cast change.
+        // Whether they can dual cast it, and what that costs: the game
+        // side's CanDualCast and DualCastCost (game/Sensors.cpp).
         bool dualable{false};
         float dualMagicka{0.0f};
     };

@@ -103,8 +103,7 @@ struct MagicEntry
     // Never to be used: the combat AI scores it zero, the engine's equips of
     // it are refused, and it comes off if found on. Off, and kept off.
     bool banned{false};
-    // Which hands the record allows. Most spells take either; the NPC-only
-    // variants take one, and a master spell takes both at once.
+    // Which hands the record allows (SpellGrip).
     bool leftAllowed{true};
     bool rightAllowed{true};
     // The same, as the pin book words it, for the equip menu's hand lists.

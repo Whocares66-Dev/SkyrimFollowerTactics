@@ -313,22 +313,14 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     // engine applies them when the effect is made.
     entry.magnitude = costliest ? ActualMagnitude(actor, spell, costliest) : 0.0f;
     {
-        // The equip slot record: the left-hand or right-hand slot means that
-        // hand only -- the NPC-only variants, which carry the same display
-        // name as the player's spell (Marcurio's Lightning Bolt is one). By
-        // FormID: the four slots are fixed in Skyrim.esm, and the default
-        // object table did not answer for them (01:29, "Either" for a
-        // left-hand record).
-        if (const auto *slot = spell->GetEquipSlot())
-        {
-            entry.leftAllowed = slot->GetFormID() != kRightHandSlot;
-            entry.rightAllowed = slot->GetFormID() != kLeftHandSlot;
-        }
-        entry.hand = power                  ? "Voice"
-                     : spell->IsTwoHanded() ? "Both"
-                     : !entry.leftAllowed   ? "Right"
-                     : !entry.rightAllowed  ? "Left"
-                                            : "Either";
+        const ft::Grip grip = SpellGrip(spell);
+        entry.leftAllowed = grip != ft::Grip::RightOnly;
+        entry.rightAllowed = grip != ft::Grip::LeftOnly;
+        entry.hand = power                         ? "Voice"
+                     : grip == ft::Grip::Both      ? "Both"
+                     : grip == ft::Grip::RightOnly ? "Right"
+                     : grip == ft::Grip::LeftOnly  ? "Left"
+                                                   : "Either";
         entry.grip = DescribeHoldable(actor, spell).grip;
     }
     {
