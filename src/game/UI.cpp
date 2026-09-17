@@ -550,7 +550,10 @@ void PushPopupChrome()
 
 constexpr int kPopupChromeVars = 4;
 
-void CellButtonOpensPopup(const char *id, const std::string &label)
+// Returns where the popup opens, the cell's bottom-left, for the caller to
+// set just before BeginPopup: set here, it would place whatever window opens
+// next instead, and a tooltip raised on the cell is one.
+Im::ImVec2 CellButtonOpensPopup(const char *id, const std::string &label)
 {
     // The highlight is the TABLE's, not the button's.
     //
@@ -591,7 +594,7 @@ void CellButtonOpensPopup(const char *id, const std::string &label)
     if (clicked)
         Im::OpenPopup(id, 0);
 
-    Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
+    return below;
 }
 
 // One row of a cascade, drawn with the icon font's glyphs.
@@ -724,14 +727,16 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     // colour is pushed round the cell alone, so the menu reads as usual;
     // `setAside` greys it with the rest of a row set aside for its action.
     const bool available = ConditionAvailable(rule, view);
+    Im::ImVec2 below;
     {
         const DimText grey(setAside || !available);
-        CellButtonOpensPopup(id, ConditionText(rule, view));
+        below = CellButtonOpensPopup(id, ConditionText(rule, view));
     }
     if (!available && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
         Im::SetTooltip("%s", kFollowerAway);
 
     PushPopupChrome();
+    Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
     if (!Im::BeginPopup(id, 0))
     {
         Im::PopStyleVar(kPopupChromeVars);
@@ -1886,14 +1891,16 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
     const char *reason = !TargetAvailable(rule, view)  ? kFollowerAway
                          : !ActionAvailable(act, view) ? kNotAvailable
                                                        : nullptr;
+    Im::ImVec2 below;
     {
         const DimText grey(setAside || reason != nullptr);
-        CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
+        below = CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
     }
     if (reason && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
         Im::SetTooltip("%s", reason);
 
     PushPopupChrome();
+    Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
     if (!Im::BeginPopup(id, 0))
     {
         Im::PopStyleVar(kPopupChromeVars);
