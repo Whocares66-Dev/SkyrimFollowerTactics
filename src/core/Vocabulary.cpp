@@ -66,11 +66,11 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
 
 constexpr std::array<Entry<PredicateKind>, 37> kPredicates{{
     {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
+    {PredicateKind::CombatBegins, "combat-begins", "Combat start"},
+    {PredicateKind::CombatEnds, "combat-ends", "Combat end"},
     {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
     {PredicateKind::MagickaPctBelow, "magicka-pct-below", "Magicka"},
-    {PredicateKind::CombatBegins, "combat-begins", "Combat start"},
-    {PredicateKind::CombatEnds, "combat-ends", "Combat end"},
     {PredicateKind::Type, "type", "Type"},
     {PredicateKind::Status, "status", "Status"},
     {PredicateKind::ArmorPctBelow, "armor-pct-below", "Armor"},

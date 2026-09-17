@@ -653,7 +653,7 @@ bool CascadeItem(const char *label, bool selected, const Im::ImVec4 *textColour 
 
 // The two about a fight, under one "Combat" heading: Start, End.
 // The condition cascade in eight groups, a divider between them: Any; the
-// three stats; the fight's edges; the enemy's relation to the party
+// fight's edges; the three stats; the enemy's relation to the party
 // (Attacking, Attacked by); the hits (Hit type, Hit by); Status; the
 // equipment -- weapon, armour, resistance; the summon. (The corpse
 // questions are a subject of their own and fall in one group.)
@@ -663,12 +663,12 @@ int ConditionGroup(ft::PredicateKind p)
     {
     case ft::PredicateKind::Any:
         return 0;
+    case ft::PredicateKind::CombatBegins:
+    case ft::PredicateKind::CombatEnds:
+        return 1;
     case ft::PredicateKind::HealthPctBelow:
     case ft::PredicateKind::StaminaPctBelow:
     case ft::PredicateKind::MagickaPctBelow:
-        return 1;
-    case ft::PredicateKind::CombatBegins:
-    case ft::PredicateKind::CombatEnds:
         return 2;
     case ft::PredicateKind::Attacking:
     case ft::PredicateKind::AttackedBy:

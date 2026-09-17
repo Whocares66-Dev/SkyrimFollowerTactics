@@ -51,9 +51,6 @@ enum class SubjectKind : std::uint8_t
 enum class PredicateKind : std::uint8_t
 {
     Any,
-    HealthPctBelow,
-    StaminaPctBelow,
-    MagickaPctBelow,
     // The edges of a fight, true on one tick each. There is no "in combat"
     // beside them: tactics only run in a fight, so it would always hold,
     // and bleeding out is a Status. CombatBegins holds on the first
@@ -67,6 +64,9 @@ enum class PredicateKind : std::uint8_t
     // has put the travelling gear back.
     CombatBegins,
     CombatEnds,
+    HealthPctBelow,
+    StaminaPctBelow,
+    MagickaPctBelow,
     // (A count of the group -- "at least N enemies" -- was here until
     // 2026-09-08. Nobody offered it in the end: an ally's count changes too
     // rarely to be a condition, and the enemy's was not wanted.)
