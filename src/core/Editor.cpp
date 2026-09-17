@@ -79,9 +79,14 @@ Aside RuleSetAside(const Rule &rule, const Holdings &has)
 {
     if (!ConditionHad(rule, has) || !TargetHad(rule, has))
         return Aside::FollowerAway;
-    const bool all = std::all_of(rule.actions.begin(), rule.actions.end(),
-                                 [&](const Action &action) { return ActionHad(action, has); });
-    return all ? Aside::None : Aside::NotHad;
+    const bool none = !rule.actions.empty() && ActionsNotHad(rule, has) == rule.actions.size();
+    return none ? Aside::NotHad : Aside::None;
+}
+
+std::size_t ActionsNotHad(const Rule &rule, const Holdings &has)
+{
+    return static_cast<std::size_t>(std::count_if(rule.actions.begin(), rule.actions.end(),
+                                                  [&](const Action &action) { return !ActionHad(action, has); }));
 }
 
 } // namespace ft

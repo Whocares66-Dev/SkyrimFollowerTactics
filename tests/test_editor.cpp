@@ -170,6 +170,42 @@ TEST_CASE("what the settings require is part of what a follower has", "[editor]"
     REQUIRE(ActionHad(cast, has));
 }
 
+TEST_CASE("a rule is set aside only when none of its actions is had", "[editor]")
+{
+    const Holdings has = Bag(); // carries a health potion, knows Firebolt
+    Action had;
+    had.kind = ActionKind::DrinkStrongest;
+    had.effect = "Restore Health";
+    Action gone;
+    gone.kind = ActionKind::DrinkStrongest;
+    gone.effect = "Fortify Destruction Power";
+    Action cast;
+    cast.kind = ActionKind::CastSpell;
+    cast.form = kFirebolt;
+
+    Rule r = HealBelow(0.5f);
+
+    // Three actions, one not had: the rule stands, one counted.
+    r.actions = {had, gone, cast};
+    REQUIRE(ActionsNotHad(r, has) == 1);
+    REQUIRE(RuleSetAside(r, has) == Aside::None);
+
+    // Every one gone: set aside.
+    r.actions = {gone, gone};
+    REQUIRE(ActionsNotHad(r, has) == 2);
+    REQUIRE(RuleSetAside(r, has) == Aside::NotHad);
+
+    // All had: none counted.
+    r.actions = {had, cast};
+    REQUIRE(ActionsNotHad(r, has) == 0);
+    REQUIRE(RuleSetAside(r, has) == Aside::None);
+
+    // No actions at all is not "none had".
+    r.actions.clear();
+    REQUIRE(ActionsNotHad(r, has) == 0);
+    REQUIRE(RuleSetAside(r, has) == Aside::None);
+}
+
 TEST_CASE("a follower away sets the rule aside, and is said before what is not had", "[editor]")
 {
     const Holdings has = Bag();

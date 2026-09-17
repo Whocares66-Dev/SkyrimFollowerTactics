@@ -1,8 +1,8 @@
 #pragma once
 // What the editor asks of a rule against what the follower has: a rule
-// naming a thing the follower no longer has -- the potion drunk up, the
-// spell forgotten, the sword sold -- or a follower who is away, is set
-// aside in the panel, its switch dead and the row dimmed, until the thing
+// whose every action names a thing the follower no longer has -- the potion
+// drunk up, the spell forgotten, the sword sold -- or a follower who is
+// away, is set aside in the panel, its switch dead and the row dimmed, until the thing
 // or the follower is back. Decided here, where it is tested; the panel
 // only draws the answer.
 
@@ -10,6 +10,7 @@
 #include "Rule.h"
 #include "Snapshot.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -75,7 +76,9 @@ struct Holdings
 [[nodiscard]] bool TargetHad(const Rule &rule, const Holdings &has);
 
 // Why a rule is set aside, or None. A follower away is said first: the
-// whole rule waits on them, whatever else it names.
+// whole rule waits on them, whatever else it names. NotHad only when no
+// action of the rule is had: the evaluator skips an action it cannot do
+// and does the rest, so one missing potion leaves the rule standing.
 enum class Aside : std::uint8_t
 {
     None,
@@ -83,5 +86,8 @@ enum class Aside : std::uint8_t
     NotHad
 };
 [[nodiscard]] Aside RuleSetAside(const Rule &rule, const Holdings &has);
+
+// How many of the rule's actions are not had.
+[[nodiscard]] std::size_t ActionsNotHad(const Rule &rule, const Holdings &has);
 
 } // namespace ft

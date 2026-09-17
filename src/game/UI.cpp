@@ -2262,9 +2262,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         auto &rule = rules.rules[i];
         const std::string rowId = std::to_string(i);
-        // A rule naming a thing the follower no longer has -- the potion
-        // drunk up, the spell forgotten, the sword sold -- or a follower
-        // who is away, is set aside: its switch slashed and dead, as an
+        // A rule whose every action names a thing the follower no longer
+        // has -- the potion drunk up, the spell forgotten, the sword sold --
+        // or a follower who is away, is set aside: its switch slashed and dead, as an
         // equip cell that does not apply is, the row dimmed, the reason on
         // the switch and on the cell concerned. It keeps its text, its
         // place and its delete; the switch's own state is untouched, so the
@@ -2405,7 +2405,10 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // the row when set aside: the cell answers, but reads as the
             // rest of the row does.
             const DimText grey(!available);
-            Im::Text("%zu actions", rule.actions.size());
+            if (const std::size_t unavailable = ft::ActionsNotHad(rule, view.holdings); unavailable > 0)
+                Im::Text("%zu actions (%zu unavailable)", rule.actions.size(), unavailable);
+            else
+                Im::Text("%zu actions", rule.actions.size());
         }
 
         EndDimmed();
