@@ -5300,14 +5300,7 @@ void ShowingPage(ft::ActorId actor, Tab tab)
 {
     const std::uint64_t packed = Packed(actor, tab);
     g_shownAt.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
-    const bool changed = g_shownNow.exchange(packed, std::memory_order_relaxed) != packed;
-    // And a build asked for by a click whose change the engine had not
-    // finished when the click returned (RefreshShownPageSoon): this frame is
-    // the next one after it, which is the soonest the change can be read.
-    // Asked for even where the page changed too, so a request does not stand
-    // over into the frame after this one.
-    const bool asked = TakeRefreshRequest();
-    if (changed || asked)
+    if (g_shownNow.exchange(packed, std::memory_order_relaxed) != packed)
     {
         if (auto *task = SKSE::GetTaskInterface())
             task->AddTask([] { RefreshShownPage(); });

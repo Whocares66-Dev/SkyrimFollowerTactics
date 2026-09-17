@@ -1625,23 +1625,6 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         // open, so the tick's own refresh is held and the cell would
         // otherwise answer only when the panel closed.
         RefreshShownPage();
-        // A spell or a shout leaves a hand, or the voice, through a Papyrus
-        // native that the VM runs a frame later, so the build above read the
-        // actor before it had moved and the cell redrew as it was. This was
-        // caught by the next beat's refresh until the beat stopped rebuilding
-        // the page (2026-09-15); nothing came after it then, and with the
-        // player's cell having nothing but the actor to read -- a follower's
-        // also carries the pin and the ban, which change here and now -- an
-        // unequip took two clicks, the second only redrawing what the first
-        // had already done. The panel's next frame takes this instead.
-        //
-        // A spell going ON needs no second look, and nor does an item: both
-        // are done by the time this returns. Asking for the two of them
-        // rather than telling them apart down in UnequipForm keeps the reason
-        // in one place, and the cost is one page build on a click the player
-        // made, not on a beat.
-        if (thing->Is(RE::FormType::Spell) || thing->Is(RE::FormType::Shout))
-            RefreshShownPageSoon();
     });
 }
 

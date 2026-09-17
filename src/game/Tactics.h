@@ -153,22 +153,6 @@ void ForgetSession();
 // magic page costs ~92 ms to build. Game thread.
 void RefreshShownPage();
 
-// Ask for one more build of the page on screen, on the panel's next frame.
-// Some of what the panel asks the engine for has not landed by the time the
-// asking returns: a spell leaves a hand through a Papyrus native, which the
-// VM runs a frame later, so a build straight after the click reads the actor
-// before it has moved and the cell redraws as it was.
-//
-// Another AddTask will not do. SKSE drains its task queue to empty inside
-// one call, so a task added from inside a task runs in that same drain --
-// still before the frame being waited for. The wait belongs to whatever
-// draws every frame, which is the panel: it takes this on its next one
-// (game/UI.cpp, ShowingPage). Any thread.
-void RefreshShownPageSoon();
-
-// Whether one was asked for, clearing it. Render thread, once a frame.
-[[nodiscard]] bool TakeRefreshRequest();
-
 [[nodiscard]] std::optional<CharacterView> ObservePlayer();
 
 // Start ticking. Safe to call once, after kDataLoaded.
