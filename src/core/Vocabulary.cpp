@@ -401,9 +401,8 @@ std::string_view Describe(PredicateKind v) noexcept
     case PredicateKind::Status:
         return "In this state right now.";
     case PredicateKind::ArmorPctBelow:
-        return "The armour turns away under this share of a blow; the most is 80%.";
     case PredicateKind::ArmorPctAbove:
-        return "The armour turns away over this share of a blow; the most is 80%.";
+        return ""; // no tooltip
     case PredicateKind::ResistancePctBelow:
         return "Resistance to that kind of damage under this much; a weakness is below zero.";
     case PredicateKind::ResistancePctAbove:

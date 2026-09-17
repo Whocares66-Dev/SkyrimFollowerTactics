@@ -364,8 +364,9 @@ TEST_CASE("every value has display text and help text", "[vocabulary]")
         const auto v = static_cast<PredicateKind>(i);
         REQUIRE(DisplayName(v).size() > 0);
         // Any says it all in its name, and a Type leaf is the kind's own
-        // name: neither has a tooltip, on purpose.
-        if (v != PredicateKind::Any && v != PredicateKind::Type)
+        // name: neither has a tooltip, on purpose. Nor has Armor.
+        if (v != PredicateKind::Any && v != PredicateKind::Type && v != PredicateKind::ArmorPctBelow &&
+            v != PredicateKind::ArmorPctAbove)
             REQUIRE(Describe(v).size() > 0);
     }
     for (std::size_t i = 0; i < static_cast<std::size_t>(ActionKind::COUNT); ++i)
