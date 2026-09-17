@@ -505,7 +505,7 @@ std::string_view Describe(ActionKind v) noexcept
     case ActionKind::ApplyWeakest:
         return "Put the weakest poison with this effect on the weapon in hand.";
     case ActionKind::ApplyAny:
-        return "Put any poison carried on the weapon in hand, a different one each time.";
+        return "Apply any poison";
     case ActionKind::DrinkAny:
         return "Drink any applicable buff";
     case ActionKind::ApplyPoison:
