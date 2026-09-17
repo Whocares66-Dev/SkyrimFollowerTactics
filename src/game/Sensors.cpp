@@ -77,13 +77,24 @@ bool Harmful(const RE::EffectSetting *base)
 // duration is no buff whatever its record says, which is the check that
 // keeps a constant-effect record out; and a record that forgets the
 // detrimental flag on a bane reads as a buff (ccASVSSE001's Slow does).
-// Invisibility, Waterbreathing and Muffle are archetypes of their own and
-// are not buffs here -- none of them wins a fight.
+//
+// Waterbreathing is left out by hand, by the actor value it writes rather
+// than by its name, so a mod's own goes with it: it does nothing for a
+// follower, and an "any" that rolled it would spend the item for nothing.
+// It needs saying because it is NOT an archetype of its own -- every
+// vanilla Waterbreathing effect, AlchWaterbreathing (03AC2D) included, is a
+// PeakValueModifier flagged NoMagnitude (checked against the records
+// 2026-09-16; only the enchantment's is a plain archetype, and the duration
+// test above already keeps that one out). Invisibility IS its own archetype
+// and needs no check. Muffle is a PeakValueModifier like Waterbreathing and
+// so still reads as a buff here -- left in, since it does at least do
+// something for a follower, but noted rather than guarded.
 bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base);
 bool Buffs(const RE::Actor *actor, const RE::EffectSetting *base, const RE::Effect::EffectItem &item)
 {
     return item.duration > 0 && !Harmful(base) &&
-           base->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier) && EffectApplies(actor, base);
+           base->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier) &&
+           base->data.primaryAV != RE::ActorValue::kWaterBreathing && EffectApplies(actor, base);
 }
 
 std::vector<ft::PotionStock::Effect> EffectsOf(const RE::Actor *actor, RE::MagicItem *item, ft::ConsumableKind kind)
