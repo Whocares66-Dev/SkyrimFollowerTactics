@@ -97,7 +97,8 @@ bool Buffs(const RE::Actor *actor, const RE::EffectSetting *base, const RE::Effe
            base->data.primaryAV != RE::ActorValue::kWaterBreathing && EffectApplies(actor, base);
 }
 
-std::vector<ft::PotionStock::Effect> EffectsOf(const RE::Actor *actor, RE::MagicItem *item, ft::ConsumableKind kind)
+std::vector<ft::PotionStock::Effect> ConsumableEffects(const RE::Actor *actor, RE::MagicItem *item,
+                                                       ft::ConsumableKind kind)
 {
     std::vector<ft::PotionStock::Effect> out;
     if (!item)
@@ -163,7 +164,7 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock)
         if (!kind)
             continue;
         stock.carried.push_back({object->GetFormID(), static_cast<int>(count), *kind,
-                                 EffectsOf(actor, object->As<RE::MagicItem>(), *kind)});
+                                 ConsumableEffects(actor, object->As<RE::MagicItem>(), *kind)});
     }
 }
 
@@ -1830,7 +1831,7 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
             continue;
         std::vector<std::string> effects;
         bool any = false;
-        for (const auto &effect : EffectsOf(actor, object->As<RE::MagicItem>(), *kind))
+        for (const auto &effect : ConsumableEffects(actor, object->As<RE::MagicItem>(), *kind))
         {
             effects.push_back(effect.name);
             any = any || ft::PotionStock::WantedByAny(*kind, effect);
