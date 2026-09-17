@@ -48,9 +48,9 @@ class HitSink : public RE::BSTEventSink<RE::TESHitEvent>
         auto *source = RE::TESForm::LookupByID(ev->source);
         if (auto *magic = source ? source->As<RE::MagicItem>() : nullptr)
         {
-            for (const auto *effect : magic->effects)
+            for (const auto *effect : ResolvedEffects(*magic))
             {
-                if (effect && effect->baseEffect && effect->baseEffect->IsDetrimental())
+                if (effect->baseEffect->IsDetrimental())
                 {
                     Note(target, DamageKind::Magic, attacker);
                     Note(target, KindOfEffect(effect->baseEffect), attacker);

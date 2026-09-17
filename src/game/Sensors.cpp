@@ -106,10 +106,8 @@ std::vector<ft::PotionStock::Effect> ConsumableEffects(const RE::Actor *actor, R
     if (!item)
         return out;
     const bool firstOnly = kind == ft::ConsumableKind::Ingredient;
-    for (auto *effect : item->effects)
+    for (auto *effect : ResolvedEffects(*item))
     {
-        if (!effect || !effect->baseEffect)
-            continue;
         const auto *base = effect->baseEffect;
         const bool harmful = Harmful(base);
         const char *name = base->GetFullName();
@@ -500,12 +498,21 @@ bool Hidden(const RE::EffectSetting *base)
     return base && base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI);
 }
 
+// A corpse-raising effect, by its archetype rather than its name, so a mod's
+// own Reanimate counts. Asked of a resolved effect.
+bool IsReanimate(const RE::Effect *effect)
+{
+    return effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate;
+}
+
 // Every effect on the spell hidden from the player's active effects. Never
 // an enchantment's: that is named for its item, which the player sees.
 bool AllHidden(const RE::MagicItem *spell)
 {
     if (!spell || spell->As<RE::EnchantmentItem>() || spell->effects.empty())
         return false;
+    // Not ResolvedEffects: an effect with no base is not known to be hidden,
+    // so it must make the answer "no", and the view would skip it.
     for (const RE::Effect *effect : spell->effects)
     {
         if (!effect || !Hidden(effect->baseEffect))
@@ -897,10 +904,8 @@ SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
                               ? actor->GetActorRuntimeData().currentCombatTarget.get()
                               : RE::NiPointer<RE::Actor>{};
     RE::Actor *enemy = fighting && !fighting->IsDead() ? fighting.get() : nullptr;
-    for (const auto *effect : magic->effects)
+    for (const auto *effect : ResolvedEffects(*magic))
     {
-        if (!effect || !effect->baseEffect)
-            continue;
         ConditionParties parties{actor, actor};
         if (!onSelf)
         {
@@ -1337,10 +1342,9 @@ void ReadHands(RE::Actor *actor, ft::ActorTraits &traits)
     const auto effectsOf = [&](const RE::MagicItem *magic) {
         if (!magic)
             return;
-        for (const auto *effect : magic->effects)
-            if (effect && effect->baseEffect)
-                if (const auto kind = KindOfEffect(effect->baseEffect); kind != ft::DamageKind::Magic)
-                    traits.Wield(kind);
+        for (const auto *effect : ResolvedEffects(*magic))
+            if (const auto kind = KindOfEffect(effect->baseEffect); kind != ft::DamageKind::Magic)
+                traits.Wield(kind);
     };
     for (const bool left : {false, true})
     {
@@ -1733,10 +1737,9 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         // Zombie 30) -- as SHE casts it, perks and Fortify effects in, the
         // same way the engine judges the corpse. The Corpse subject
         // measures the dead against it.
-        for (const auto *effect : spell->effects)
+        for (const auto *effect : ResolvedEffects(*spell))
         {
-            if (effect && effect->baseEffect &&
-                effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate)
+            if (IsReanimate(effect))
             {
                 s.spells.caps.push_back({spell->GetFormID(), static_cast<int>(ActualMagnitude(actor, spell, effect))});
                 break;
@@ -1866,11 +1869,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         std::string name = NameOr(spell, "");
         if (name.empty())
             return; // nameless entries are internal; nothing to show a player
-        bool reanimate = false;
-        for (const auto *effect : spell->effects)
-            reanimate =
-                reanimate || (effect && effect->baseEffect &&
-                              effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate);
+        const bool reanimate = std::ranges::any_of(ResolvedEffects(*spell), IsReanimate);
         out.push_back(SpellOption{
             spell->GetFormID(), std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
             spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
@@ -1888,11 +1887,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         std::string name = NameOr(scroll, "");
         if (name.empty())
             continue;
-        bool reanimate = false;
-        for (const auto *effect : scroll->effects)
-            reanimate =
-                reanimate || (effect && effect->baseEffect &&
-                              effect->baseEffect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kReanimate);
+        const bool reanimate = std::ranges::any_of(ResolvedEffects(*scroll), IsReanimate);
         out.push_back(SpellOption{scroll->GetFormID(), std::move(name),
                                   scroll->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
                                   scroll->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate, false,
@@ -2245,6 +2240,8 @@ const std::vector<std::string> &PerkReaders(const RE::BGSPerk *perk)
         {
             if (!spell)
                 continue;
+            // Not ResolvedEffects: the conditions are the effect's own and
+            // need no base, so an unresolved effect's still count.
             for (const auto *effect : spell->effects)
                 if (effect)
                     note(effect->conditions, NameOr(spell, ""));
@@ -2916,12 +2913,8 @@ ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
         ft::Start(b, "Base", static_cast<float>(spell->data.costOverride));
     else
     {
-        for (const auto *effect : spell->effects)
-        {
-            if (!effect || !effect->baseEffect)
-                continue;
+        for (const auto *effect : ResolvedEffects(*spell))
             ft::Add(b, NameOr(effect->baseEffect, "?"), effect->cost);
-        }
     }
     // The skill curve: cost times mult times (1 - (base * level)^scale),
     // one triple of settings for the player and another for everyone
@@ -4429,13 +4422,9 @@ ft::ItemVariant VariantOf(const RE::ExtraDataList *list)
     if (const auto *ench = static_cast<const RE::ExtraEnchantment *>(list->GetByType(T::kEnchantment));
         ench && ench->enchantment)
     {
-        for (const RE::Effect *effect : ench->enchantment->effects)
-        {
-            if (!effect || !effect->baseEffect)
-                continue;
+        for (const RE::Effect *effect : ResolvedEffects(*ench->enchantment))
             variant.enchantment.push_back({effect->baseEffect->GetFormID(), effect->effectItem.magnitude,
                                            effect->effectItem.duration, effect->effectItem.area});
-        }
     }
     if (const auto *health = static_cast<const RE::ExtraHealth *>(list->GetByType(T::kHealth)); health)
         variant.tempering = health->health;

@@ -7,6 +7,7 @@
 // Anything else stays inline until it has repeated three times.
 
 #include <chrono>
+#include <ranges>
 #include <string>
 
 namespace RE
@@ -48,5 +49,16 @@ namespace ft::game
 // Just the name, for the UI. Describe() above adds the FormID, which is what a
 // log wants and what a screen does not.
 [[nodiscard]] std::string DisplayNameOf(RE::Actor *actor);
+
+// The effects of a magic item that name their base effect: the only ones
+// anything here can read, since every reader goes on to the base. A record
+// can point at an MGEF the load order does not define -- a removed or merged
+// mod's leavings -- and that effect arrives with no base. Checked here, once,
+// rather than at the top of every loop; the few walks that must still see
+// such an effect say so where they stand.
+[[nodiscard]] inline auto ResolvedEffects(const RE::MagicItem &item)
+{
+    return item.effects | std::views::filter([](const RE::Effect *effect) { return effect && effect->baseEffect; });
+}
 
 } // namespace ft::game

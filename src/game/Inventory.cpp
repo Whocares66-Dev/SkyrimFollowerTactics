@@ -295,9 +295,9 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     // rest are on its page. (An ingredient gives its first when eaten and
     // no other, so for one this is the whole truth.)
     const auto effectName = [](const RE::MagicItem *magic) -> std::string {
-        for (const auto *effect : magic->effects)
+        for (const auto *effect : ResolvedEffects(*magic))
         {
-            const char *name = effect && effect->baseEffect ? effect->baseEffect->GetFullName() : nullptr;
+            const char *name = effect->baseEffect->GetFullName();
             if (name && *name)
                 return name;
         }
