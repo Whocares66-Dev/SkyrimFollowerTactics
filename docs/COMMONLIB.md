@@ -53,3 +53,24 @@ Things to know about it: `add_commonlibsse_plugin` lives in `cmake/CommonLibSSE.
 **What we do instead.** `effect.target->GetTargetStatsObject()`, the `MagicTarget` virtual the engine itself uses for this (`ActiveEffect::GetVisualsTarget`, and the condition re-check at id 34062), then `As<RE::Actor>()`. It asks the object, so no offset and no runtime are assumed. Our code calls neither `GetTargetActor` nor `GetTargetAsActor`. Not yet seen in play after the change.
 
 **Upstream.** A draft report is in `docs/bugs/commonlibsse-ng-gettargetactor.md`. Whether an issue already exists was not checked: `gh` is not installed here.
+
+## Missing: `ActorEquipManager` declares the equips but neither unequip of a spell or a shout (found 2026-09-17)
+
+**What is missing.** `ActorEquipManager` (`include/RE/A/ActorEquipManager.h`) declares `EquipObject`, `EquipSpell`, `EquipShout` and `UnequipObject` -- and nothing for taking a spell or a shout off. The whole library has no `UnequipSpell` and no `UnequipShout`: a search of the submodule at v7.5.1 for either name returns nothing in `include/` or `src/`. The nearest thing it does declare is `Actor::DeselectSpell` (`RELOCATION_ID(37820, 38769)`), which is a different function with a different job (below).
+
+**Why that is a gap and not a choice.** A plugin that wants to take a spell out of an NPC's hand is left dispatching Papyrus's `Actor.UnequipSpell` through the VM, which runs it on the game thread a frame later. Everything the engine does for equipping is a direct call; only the unequip has to go the long way round, and the lateness is visible: a panel that redraws straight after the call still reads the spell in hand.
+
+**What the engine actually has.** Read off a running 1.6.1170 with `tools/livedisasm.py`, by finding the `"UnequipSpell"` name string (`0x191a600`), the one site that loads it (`0x9f0bb7`, in the Papyrus registration, ID 54784), and the function pointer registered beside it:
+
+| Papyrus native (a wrapper: null-check, then tail-call) | tail-calls | which is |
+|---|---|---|
+| `Actor.UnequipSpell`, ID 54669 at `0x9e8150` | **ID 38903** at `0x6ca2b0` | `ActorEquipManager::UnequipSpell(Actor*, SpellItem*, source)`: dispatches source 0/1/2 to the hand and voice equip-slot getters (IDs 23607, 23608, 23610), then calls the slot overload, ID 38902 |
+| `Actor.UnequipShout`, ID 54664 at `0x9e80b0` | **ID 38904** at `0x6ca320` | `ActorEquipManager::UnequipShout(Actor*, TESShout*)` |
+
+Both wrappers load the equip manager singleton from a global and `jmp` to the method, so the signatures are the manager's own: `(this, actor, spell, source)` and `(this, actor, shout)`. The IDs are in the Address Library already -- what is absent is only the declaration.
+
+**Why `DeselectSpell` is not the same thing.** Read at `0x6c4300`: it walks the four selected-spell slots, nulls any holding the spell and tells that slot's caster, then clears `selectedPower` where what sits there is a `SpellItem` (form type `0x16`). So it takes no hand -- it clears the spell from every slot at once, where `UnequipSpell` takes the source and clears the one asked -- and its form-type gate leaves a shout in the voice alone. For per-hand work it is the wrong tool, and for a shout it does nothing at all.
+
+**What we do instead.** Bind both by ID and call them on the game thread (`UnequipSpellNow` and `UnequipShoutNow`, `src/game/Pins.cpp`), falling back to the Papyrus dispatch where they are not available. AE only for now, since only 1.6.1170 was read; the rows are in `docs/VERSIONS.md`. Not yet verified in play.
+
+**Upstream.** A PR would add the two to `ActorEquipManager.h` and `.cpp` beside `EquipSpell` and `EquipShout`, as `RELOCATION_ID(se, ae)` pairs. The AE halves are 38903 and 38904, read here; the SE halves still need reading against a 1.5.97 binary before either could be offered, which is the same work `docs/VERSIONS.md` already owes for these IDs. Not reported yet, and whether an issue exists was not checked -- `gh` is not installed here.

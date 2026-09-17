@@ -477,9 +477,84 @@ bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands,
     return carried.entry && carried.entry->IsWorn();
 }
 
+// The engine's own unequips, which CommonLib declares for neither spell nor
+// shout. The Papyrus natives behind Actor.UnequipSpell and
+// Actor.UnequipShout are thin wrappers: they null-check, and tail-call
+// these on the equip manager singleton (read off 1.6.1170 --
+// docs/COMMONLIB.md has the trace, docs/VERSIONS.md the IDs). Calling them
+// here does on THIS frame what the Papyrus dispatch does on the next.
+//
+// AE only, as the Special Edition half of each ID was never read: on SE and
+// VR these answer false and the Papyrus route runs instead, a frame late
+// but right.
+bool UnequipSpellNow(RE::Actor *actor, RE::SpellItem *spell, std::uint32_t source)
+{
+    auto *manager = actor && spell && REL::Module::IsAE() ? RE::ActorEquipManager::GetSingleton() : nullptr;
+    if (!manager)
+        return false;
+    // (manager, actor, spell, source), the source being Papyrus's aiSource
+    // passed straight through: 0 the left hand, 1 the right, 2 the voice.
+    // The function turns it into the matching equip slot itself.
+    using func_t = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::SpellItem *, std::uint32_t);
+    static REL::Relocation<func_t> func{REL::ID(38903)};
+    func(manager, actor, spell, source);
+    return true;
+}
+
+bool UnequipShoutNow(RE::Actor *actor, RE::TESShout *shout)
+{
+    auto *manager = actor && shout && REL::Module::IsAE() ? RE::ActorEquipManager::GetSingleton() : nullptr;
+    if (!manager)
+        return false;
+    using func_t = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::TESShout *);
+    static REL::Relocation<func_t> func{REL::ID(38904)};
+    func(manager, actor, shout);
+    return true;
+}
+
+// And the Papyrus route the two fall back to, which the VM runs on the game
+// thread a frame later. Written once here rather than twice below: the hand
+// spells and the voice ask for the same call with a different source.
+//
+// MakeFunctionArguments takes Args&&, and an lvalue pointer deduces a
+// reference type that fails its is_return_convertible gate -- so the
+// std::move is the call's shape, not a copy avoided.
+void DispatchUnequipSpell(RE::Actor *actor, RE::SpellItem *spell, std::uint32_t source)
+{
+    auto *vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+    auto *policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
+    if (!policy)
+        return;
+    const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
+    RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
+    // A block and not a NOLINTNEXTLINE: the formatter wraps this call, and
+    // the move then sits a line below the one the suppression covers, which
+    // is how it was caught by the linter rather than by reading (2026-09-17).
+    // NOLINTBEGIN(performance-move-const-arg)
+    vm->DispatchMethodCall2(handle, "Actor", "UnequipSpell",
+                            RE::MakeFunctionArguments(std::move(spell), static_cast<std::int32_t>(source)), result);
+    // NOLINTEND(performance-move-const-arg)
+}
+
+void DispatchUnequipShout(RE::Actor *actor, RE::TESShout *shout)
+{
+    auto *vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+    auto *policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
+    if (!policy)
+        return;
+    const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
+    RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
+    // A block here too: this call fits on one line today, and would lose its
+    // suppression the moment it did not.
+    // NOLINTBEGIN(performance-move-const-arg)
+    vm->DispatchMethodCall2(handle, "Actor", "UnequipShout", RE::MakeFunctionArguments(std::move(shout)), result);
+    // NOLINTEND(performance-move-const-arg)
+}
+
 // Take a spell out of a hand, or an item off. A no-op when it is not
-// there, like EquipSpellIn: a spell's unequip is a Papyrus call and a
-// republish, and neither is owed for a hand that was already empty.
+// there, like EquipSpellIn: a spell's unequip is a native or a Papyrus
+// call and a republish, and neither is owed for a hand that was already
+// empty.
 void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
                  const std::optional<ft::ItemVariant> &variant)
 {
@@ -490,42 +565,28 @@ void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
     {
         if (!InVoice(actor, form))
             return;
-        auto *vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-        auto *policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
-        if (!policy)
-            return;
-        const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
-        RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
-        // MakeFunctionArguments takes Args&&: an lvalue pointer deduces a
-        // reference type and fails its is_return_convertible gate, so the
-        // std::move is the call's shape, not a copy avoided.
-        // NOLINTBEGIN(performance-move-const-arg)
+        // The voice is source 2 for a power; a shout has a call of its own.
         if (auto *shout = form->As<RE::TESShout>())
-            vm->DispatchMethodCall2(handle, "Actor", "UnequipShout", RE::MakeFunctionArguments(std::move(shout)),
-                                    result);
+        {
+            if (!UnequipShoutNow(actor, shout))
+                DispatchUnequipShout(actor, shout);
+        }
         else if (auto *power = form->As<RE::SpellItem>())
-            vm->DispatchMethodCall2(handle, "Actor", "UnequipSpell",
-                                    RE::MakeFunctionArguments(std::move(power), static_cast<std::int32_t>(2)), result);
-        // NOLINTEND(performance-move-const-arg)
+        {
+            if (!UnequipSpellNow(actor, power, 2))
+                DispatchUnequipSpell(actor, power, 2);
+        }
         return;
     }
     if (auto *spell = form->As<RE::SpellItem>())
     {
-        auto *vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-        auto *policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
-        if (!policy)
-            return;
-        const auto handle = policy->GetHandleForObject(actor->GetFormType(), actor);
         for (const Hand hand : {Hand::Left, Hand::Right})
         {
             if (!Overlap(hands, hand) || !EquippedIn(actor, spell, hand))
                 continue;
-            RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
-            vm->DispatchMethodCall2(
-                handle, "Actor", "UnequipSpell",
-                RE::MakeFunctionArguments(std::move(spell), // NOLINT(performance-move-const-arg) as above
-                                          static_cast<std::int32_t>(hand == Hand::Left ? 0 : 1)),
-                result);
+            const std::uint32_t source = hand == Hand::Left ? 0 : 1;
+            if (!UnequipSpellNow(actor, spell, source))
+                DispatchUnequipSpell(actor, spell, source);
         }
         return;
     }
