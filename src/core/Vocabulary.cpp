@@ -139,7 +139,7 @@ constexpr std::array<Entry<ActionKind>, 32> kActions{{
     {ActionKind::ApplyPoison, "apply-poison", "Apply poison"},
     {ActionKind::DrinkStrongest, "drink-strongest", "Drink strongest potion"},
     {ActionKind::DrinkWeakest, "drink-weakest", "Drink weakest potion"},
-    {ActionKind::DrinkAny, "drink-any", "Drink any buff"},
+    {ActionKind::DrinkAny, "drink-any", "Drink any buff potion"},
     {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
     {ActionKind::EatStrongestFood, "eat-strongest-food", "Eat strongest food"},
     {ActionKind::EatWeakestFood, "eat-weakest-food", "Eat weakest food"},
