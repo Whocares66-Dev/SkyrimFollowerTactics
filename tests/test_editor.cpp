@@ -5,6 +5,7 @@
 
 #include "Build.h"
 #include "core/Editor.h"
+#include "core/Vocabulary.h"
 
 using namespace ft;
 using namespace ft::test;
@@ -96,11 +97,15 @@ TEST_CASE("an 'any' rule is had while something carried is worth rolling", "[edi
     REQUIRE(ActionHad(eatAny, has));
     REQUIRE(ActionHad(eatAnyFood, has));
 
-    // A poison names no form and is had regardless, as every apply rule is:
-    // whether a weapon in hand takes one is the evaluator's question, not
-    // the editor's.
+    // A poison is asked of the bag exactly as a potion is. Whether a weapon
+    // in hand can take one stays the evaluator's question -- that changes
+    // from tick to tick -- but carrying one at all does not, and this read
+    // "had regardless" until 2026-09-17, which showed an Apply rule as ready
+    // with no poison in the bag (and a Charge rule with no gem).
     Action applyAny;
     applyAny.kind = ActionKind::ApplyAny;
+    REQUIRE_FALSE(ActionHad(applyAny, has));
+    has.consumables.push_back({0x303, ConsumableKind::Poison, {"Damage Health"}, true});
     REQUIRE(ActionHad(applyAny, has));
 }
 
@@ -243,4 +248,99 @@ TEST_CASE("a follower away sets the rule aside, and is said before what is not h
     REQUIRE_FALSE(TargetHad(aimed, has));
     aimed.FirstAction().effect = "Fortify Destruction Power"; // not had either
     REQUIRE(RuleSetAside(aimed, has) == Aside::FollowerAway);
+}
+
+TEST_CASE("a charge rule is had only with a gem to spend", "[editor]")
+{
+    // The bag from Bag() carries a potion and a food and no gem at all.
+    Holdings has = Bag();
+    Action strongest;
+    strongest.kind = ActionKind::ChargeStrongestSoulGem;
+    Action weakest;
+    weakest.kind = ActionKind::ChargeWeakestSoulGem;
+    Action named;
+    named.kind = ActionKind::ChargeSoulGem;
+    named.form = 0x2E4E2; // a petty gem
+
+    REQUIRE_FALSE(ActionHad(strongest, has));
+    REQUIRE_FALSE(ActionHad(weakest, has));
+    REQUIRE_FALSE(ActionHad(named, has));
+    REQUIRE(RuleSetAside(With(strongest), has) == Aside::NotHad);
+
+    // The scan lists a gem only when it holds a soul, so one in the bag is
+    // one that can be spent.
+    has.consumables.push_back({0x2E4E2, ConsumableKind::SoulGem, {}});
+    REQUIRE(ActionHad(strongest, has));
+    REQUIRE(ActionHad(weakest, has));
+    REQUIRE(ActionHad(named, has));
+    REQUIRE(RuleSetAside(With(strongest), has) == Aside::None);
+
+    // A gem of another form still answers the two sizes, which choose at
+    // the firing, but not the rule that names this one.
+    has.consumables.back().form = 0x2E4F4;
+    REQUIRE(ActionHad(strongest, has));
+    REQUIRE_FALSE(ActionHad(named, has));
+}
+
+TEST_CASE("a poison rule is had only with a poison to put on", "[editor]")
+{
+    Holdings has = Bag();
+    Action strongest;
+    strongest.kind = ActionKind::ApplyStrongest;
+    strongest.effect = "Damage Health";
+    Action any;
+    any.kind = ActionKind::ApplyAny;
+    Action rolled; // a policy with no effect: rolls one, then takes the strongest of it
+    rolled.kind = ActionKind::ApplyWeakest;
+    Action named;
+    named.kind = ActionKind::ApplyPoison;
+    named.form = 0x73F30;
+
+    REQUIRE_FALSE(ActionHad(strongest, has));
+    REQUIRE_FALSE(ActionHad(any, has));
+    REQUIRE_FALSE(ActionHad(rolled, has));
+    REQUIRE_FALSE(ActionHad(named, has));
+    REQUIRE(RuleSetAside(With(any), has) == Aside::NotHad);
+
+    // Every poison is worth rolling, so one in the bag answers the rolls;
+    // the effect ones want that effect.
+    Holdings::Consumable poison{0x73F30, ConsumableKind::Poison, {"Damage Health"}};
+    poison.any = true;
+    has.consumables.push_back(poison);
+    REQUIRE(ActionHad(strongest, has));
+    REQUIRE(ActionHad(any, has));
+    REQUIRE(ActionHad(rolled, has));
+    REQUIRE(ActionHad(named, has));
+    REQUIRE(RuleSetAside(With(any), has) == Aside::None);
+
+    // A poison of another effect still answers the rolls, and not the rule
+    // that asks for Damage Health.
+    has.consumables.back().effects = {"Damage Stamina"};
+    REQUIRE_FALSE(ActionHad(strongest, has));
+    REQUIRE(ActionHad(any, has));
+
+    // A potion is not a poison, whatever its effect says.
+    has.consumables.back().kind = ConsumableKind::Potion;
+    REQUIRE_FALSE(ActionHad(any, has));
+}
+
+TEST_CASE("every action that chooses its thing needs something to choose", "[editor]")
+{
+    // The guard for the hole this file's two tests above came from: an
+    // action that works out WHICH thing at the firing carries no form, so
+    // it reaches ActionHad's "names nothing, so nothing to miss" line --
+    // which is true of an Unequip and of a blow, and of nothing else. Every
+    // such action must answer no with an empty bag, or a rule that can
+    // never do anything reads as ready.
+    const Holdings nothing;
+    for (std::uint8_t i = 1; i < static_cast<std::uint8_t>(ActionKind::COUNT); ++i)
+    {
+        const auto kind = static_cast<ActionKind>(i);
+        if (!ChoosesForm(kind))
+            continue;
+        Action a;
+        a.kind = kind;
+        INFO(WireName(kind));
+        REQUIRE_FALSE(ActionHad(a, nothing));
+    }
 }
