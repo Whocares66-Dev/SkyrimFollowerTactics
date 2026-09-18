@@ -77,7 +77,7 @@ constexpr std::array<Entry<PredicateKind>, 37> kPredicates{{
     {PredicateKind::ResistancePctBelow, "resistance-pct-below", "Resistance"},
     {PredicateKind::Attacking, "attacking", "Attacking"},
     {PredicateKind::AttackedBy, "attacked-by", "Attacked by"},
-    {PredicateKind::HitType, "hit-type", "Hit type"},
+    {PredicateKind::HitType, "hit-type", "Attacks with"},
     {PredicateKind::HitBy, "hit-by", "Hit by"},
     {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
     {PredicateKind::HealthHighest, "health-highest", "Health highest"},
@@ -421,9 +421,9 @@ std::string_view Describe(PredicateKind v) noexcept
     case PredicateKind::ResistanceHighest:
         return "The one most resistant to that kind of damage.";
     case PredicateKind::HitType:
-        return "Hits with that: a blade, a bow, a spell or a staff in hand, or anything that does that kind of damage.";
+        return "Attacks with this type of damage";
     case PredicateKind::HitBy:
-        return "Hit with that kind of damage in the last few seconds.";
+        return "Hit by this type of damage in last few seconds";
     case PredicateKind::Attacking:
         return "Attacking that member of the party: they are its combat target.";
     case PredicateKind::AttackedBy:

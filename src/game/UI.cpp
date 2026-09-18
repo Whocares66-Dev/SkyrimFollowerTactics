@@ -623,14 +623,20 @@ void CascadeIcon(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 rowPos, float rig
     DrawGlyph(draw, glyph, {right - w, rowPos.y}, {right, rowPos.y + h}, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
 }
 
-bool BeginCascade(const char *label)
+// `tooltip` belongs to the HEADING, and is read here rather than by the
+// caller: with the submenu open the last item is the popup's, not this
+// entry's, so a hover test after the call answers about the wrong thing.
+bool BeginCascade(const char *label, const char *tooltip = nullptr)
 {
     auto *draw = Im::GetWindowDrawList();
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
     const float right = CascadeIconRight();
     Im::PushStyleColor(Im::ImGuiCol_Text, Im::ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
     const bool open = Im::BeginMenu(label, true);
+    const bool hovered = Im::IsItemHovered(0);
     Im::PopStyleColor(1);
+    if (tooltip && *tooltip && hovered)
+        Im::SetTooltip("%s", tooltip);
     if (draw)
         Im::ImDrawListManager::AddText(draw, pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), label);
     CascadeIcon(draw, Glyph::CaretRight, pos, right);
@@ -780,7 +786,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             std::optional<ft::TypeKind> type;
             std::optional<std::uint32_t> member;
         };
-        const auto pick = [&](const char *label, ft::PredicateKind which, const Extras &x = {}) {
+        const auto pick = [&](const char *label, ft::PredicateKind which, const Extras &x = {}, bool tip = true) {
             const std::uint32_t subjectForm = x.member.value_or(form);
             const bool selected =
                 rule.subject == subject && rule.subjectForm == subjectForm && rule.predicate == which &&
@@ -801,7 +807,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     rule.conditionArg = *x.arg;
                 changed = true;
             }
-            if (const auto text = ft::Describe(which); !text.empty() && Im::IsItemHovered(0))
+            if (const auto text = tip ? ft::Describe(which) : std::string_view{}; !text.empty() && Im::IsItemHovered(0))
                 Im::SetTooltip("%s", std::string(text).c_str());
         };
 
@@ -931,12 +937,17 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             // something and the condition would be true of everyone.
             if (predicate == ft::PredicateKind::HitType || predicate == ft::PredicateKind::HitBy)
             {
-                if (!BeginCascade(predicateName.c_str()))
+                // The explanation sits on the heading, once, and not on each
+                // of the eight kinds under it: "Attacks with this type of
+                // damage" says the same thing over Fire as over Melee, and a
+                // tooltip on every leaf only gets in the way of reading the
+                // list (2026-09-17).
+                if (!BeginCascade(predicateName.c_str(), std::string(ft::Describe(predicate)).c_str()))
                     continue;
                 const auto kind = [&](ft::DamageKind k) {
                     Extras x;
                     x.damage = k;
-                    pick(std::string(ft::DisplayName(k)).c_str(), predicate, x);
+                    pick(std::string(ft::DisplayName(k)).c_str(), predicate, x, false);
                 };
                 if (ft::IsDamageKindValidFor(predicate, ft::DamageKind::Any))
                 {
