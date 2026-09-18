@@ -34,27 +34,16 @@ if ($ini -notmatch '(?m)^level\s*=\s*info\s*$') {
     throw "assets\FollowerTactics.ini does not set 'level = info' -- the player's zip must not ship a debug log"
 }
 
-$readme = @"
-FollowerTactics $version
-
-Dragon Age-style tactics for followers: an ordered list of IF <subject>: <condition>
-THEN <target>: <action> rules per follower, edited in game through the SKSE Menu
-Framework panel. One file, no plugin, nothing left in the save: uninstall by
-removing it.
-
-Requires: SKSE, Address Library for SKSE Plugins, SKSE Menu Framework.
-One DLL for Special Edition 1.5.97 and every Anniversary Edition build, 1.6.317
-through 1.7.104 (the Address Library resolves each runtime). NOT for VR.
-
-Install as a mod (this zip is a mod root), or extract into Data.
-"@
+# The zip's readme is the repository's, the same file: what it says about
+# runtimes, requirements and installing is written once, there.
+$readme = Join-Path $root 'README.md'
 
 $testNote = @"
-
-This is the TEST build. The same DLL as follower-tactics-$version.zip, with the
-log level set to debug: FollowerTactics.log then carries every per-tick readout,
-which is what a bug report wants and is far larger than a player needs. Set
-level = info in SKSE\Plugins\FollowerTactics.ini to quieten it.
+This is the TEST build of FollowerTactics ${version}: the same DLL as
+follower-tactics-$version.zip, with the log level set to debug.
+FollowerTactics.log then carries every per-tick readout, which is what a bug
+report wants and is far larger than a player needs. Set level = info in
+SKSE\Plugins\FollowerTactics.ini to quieten it.
 "@
 
 $dist = Join-Path $root 'dist'
@@ -62,8 +51,8 @@ New-Item -ItemType Directory -Force $dist | Out-Null
 
 $written = @()
 foreach ($flavour in @(
-        @{ Suffix = '';      Level = 'info';  Notes = $readme },
-        @{ Suffix = '-test'; Level = 'debug'; Notes = $readme + $testNote })) {
+        @{ Suffix = '';      Level = 'info';  Notes = $null },
+        @{ Suffix = '-test'; Level = 'debug'; Notes = $testNote })) {
 
     $stage = Join-Path $root "build\release\package$($flavour.Suffix)"
     if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
@@ -72,7 +61,8 @@ foreach ($flavour in @(
     Copy-Item $dll $plugins
     Set-Content -Path (Join-Path $plugins 'FollowerTactics.ini') -Encoding UTF8 `
         -Value ($ini -replace '(?m)^level\s*=\s*info\s*$', "level = $($flavour.Level)")
-    Set-Content -Path (Join-Path $stage 'FollowerTactics.txt') -Value $flavour.Notes -Encoding UTF8
+    Copy-Item $readme $stage
+    if ($flavour.Notes) { Set-Content -Path (Join-Path $stage 'TEST-BUILD.txt') -Value $flavour.Notes -Encoding UTF8 }
 
     $zip = Join-Path $dist "follower-tactics-$version$($flavour.Suffix).zip"
     if (Test-Path $zip) { Remove-Item -Force $zip }
