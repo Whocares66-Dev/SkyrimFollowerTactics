@@ -5,6 +5,7 @@
         .\tools\release.ps1 patch      0.1.0 -> 0.1.1
         .\tools\release.ps1 minor      0.1.0 -> 0.2.0
         .\tools\release.ps1 major      0.1.0 -> 1.0.0
+        .\tools\release.ps1 none       the version CMakeLists.txt already names
         .\tools\release.ps1 patch -DryRun     say what it would do, change nothing
 
     A TAG is git's: a name for one commit, in the repository, pushed like a
@@ -34,7 +35,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('major', 'minor', 'patch')]
+    [ValidateSet('major', 'minor', 'patch', 'none')]
     [string]$Bump,
 
     # Make the release a draft: it exists on GitHub, with its files, and
@@ -118,6 +119,7 @@ switch ($Bump) {
     'major' { $major++; $minor = 0; $patch = 0 }
     'minor' { $minor++; $patch = 0 }
     'patch' { $patch++ }
+    'none' { }
 }
 $version = "$major.$minor.$patch"
 $tag = "v$version"
@@ -148,9 +150,11 @@ if ($DryRun) {
 
 # --- bump, then prove it builds --------------------------------------------
 
-$bumped = $text -replace "project\($name VERSION $([regex]::Escape($from))", "project($name VERSION $version"
-if ($bumped -eq $text) { Fail "The version line did not change -- CMakeLists.txt is not what was read." }
-Set-Content -Path $cmake -Value $bumped -NoNewline
+if ($Bump -ne 'none') {
+    $bumped = $text -replace "project\($name VERSION $([regex]::Escape($from))", "project($name VERSION $version"
+    if ($bumped -eq $text) { Fail "The version line did not change -- CMakeLists.txt is not what was read." }
+    Set-Content -Path $cmake -Value $bumped -NoNewline
+}
 
 try {
     & (Join-Path $PSScriptRoot 'build.ps1') -Preset core -Test
@@ -170,8 +174,10 @@ catch {
 
 # --- commit, tag, push, release --------------------------------------------
 
-git -C $root add $cmake
-git -C $root commit --quiet -m "$name $version"
+if ($Bump -ne 'none') {
+    git -C $root add $cmake
+    git -C $root commit --quiet -m "$name $version"
+}
 git -C $root tag -a $tag -m "$name $version"
 git -C $root push --quiet origin HEAD
 git -C $root push --quiet origin $tag
