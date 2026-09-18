@@ -1,5 +1,6 @@
 #include "game/Forms.h"
 
+#include "game/Addresses.h"
 #include "game/Log.h"
 
 #include <algorithm>
@@ -23,7 +24,7 @@ namespace
 RE::TESPackage *CreatePackage(RE::PACKAGE_TYPE type)
 {
     using func_t = RE::TESPackage *(*)(RE::PACKAGE_TYPE);
-    static REL::Relocation<func_t> func{RELOCATION_ID(28732, 29496)};
+    static REL::Relocation<func_t> func{addr::kCreatePackage};
     return func(type);
 }
 

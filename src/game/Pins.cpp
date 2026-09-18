@@ -4,6 +4,8 @@
 
 #include "game/Pins.h"
 
+#include "game/Addresses.h"
+
 #include "game/Log.h"
 #include "game/Sensors.h"
 #include "game/Sheet.h"
@@ -471,15 +473,9 @@ bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands,
 // The engine's own unequips, which CommonLib declares for neither spell nor
 // shout. The Papyrus natives behind Actor.UnequipSpell and
 // Actor.UnequipShout are thin wrappers: they null-check, and tail-call
-// these on the equip manager singleton (read off 1.6.1170 --
-// dev/COMMONLIB.md has the trace, dev/VERSIONS.md the IDs). Calling them
-// here does on THIS frame what the Papyrus dispatch does on the next.
-//
-// The IDs are the AE line's, which is the only line this plugin is built for
-// (CMakeLists.txt): they hold from 1.6.317 to 1.6.1179, each build at its
-// own offset, which is the Address Library doing its job. There is no
-// Special Edition path to fall back to, because there is no Special Edition
-// build.
+// these on the equip manager singleton (dev/COMMONLIB.md has the trace,
+// Addresses.h the IDs). Calling them here does on THIS frame what the
+// Papyrus dispatch does on the next.
 void UnequipSpellNow(RE::Actor *actor, RE::SpellItem *spell, std::uint32_t source)
 {
     auto *manager = actor && spell ? RE::ActorEquipManager::GetSingleton() : nullptr;
@@ -489,7 +485,7 @@ void UnequipSpellNow(RE::Actor *actor, RE::SpellItem *spell, std::uint32_t sourc
     // passed straight through: 0 the left hand, 1 the right, 2 the voice.
     // The function turns it into the matching equip slot itself.
     using func_t = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::SpellItem *, std::uint32_t);
-    static REL::Relocation<func_t> func{REL::ID(38903)};
+    static REL::Relocation<func_t> func{addr::kUnequipSpell};
     func(manager, actor, spell, source);
 }
 
@@ -499,7 +495,7 @@ void UnequipShoutNow(RE::Actor *actor, RE::TESShout *shout)
     if (!manager)
         return;
     using func_t = void (*)(RE::ActorEquipManager *, RE::Actor *, RE::TESShout *);
-    static REL::Relocation<func_t> func{REL::ID(38904)};
+    static REL::Relocation<func_t> func{addr::kUnequipShout};
     func(manager, actor, shout);
 }
 
@@ -1025,7 +1021,7 @@ std::unordered_set<const RE::CombatInventoryItem *> g_zeroedOnce;
 // table missed one. The original is kept per vtable.
 using ScoreFn = float (*)(RE::CombatInventoryItem *, RE::CombatController *);
 std::unordered_map<std::uintptr_t, ScoreFn> g_scoreOriginals;
-constexpr std::size_t kCalculateScoreSlot = 0x0C;
+using addr::kCalculateScoreSlot;
 
 // The actor whose AI this controller is, or null. The hook fires for every
 // creature's AI, not only a follower's, and the attacker is found by its
@@ -2068,11 +2064,11 @@ template <typename Fn> bool Detour(const char *what, REL::RelocationID id, Fn &o
 
 void RefuseEquipsAgainstPins()
 {
-    // The engine's three equip entries (SE / AE ids): an item, a spell into
-    // a hand, a shout or power into the voice.
-    Detour("ActorEquipManager::EquipObject", RELOCATION_ID(37938, 38894), g_equipObject, &EquipObjectHook);
-    Detour("ActorEquipManager::EquipSpell", RELOCATION_ID(37939, 38895), g_equipSpell, &EquipSpellHook);
-    Detour("ActorEquipManager::EquipShout", RELOCATION_ID(37941, 38897), g_equipShout, &EquipShoutHook);
+    // The engine's three equip entries: an item, a spell into a hand, a
+    // shout or power into the voice.
+    Detour("ActorEquipManager::EquipObject", addr::kEquipObject, g_equipObject, &EquipObjectHook);
+    Detour("ActorEquipManager::EquipSpell", addr::kEquipSpell, g_equipSpell, &EquipSpellHook);
+    Detour("ActorEquipManager::EquipShout", addr::kEquipShout, g_equipShout, &EquipShoutHook);
 }
 
 } // namespace ft::game

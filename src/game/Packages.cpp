@@ -1,5 +1,6 @@
 #include "game/Packages.h"
 
+#include "game/Addresses.h"
 #include "game/Forms.h"
 #include "game/Log.h"
 #include "game/Magic.h"
@@ -853,8 +854,9 @@ void ReturnShoutVoice(Slot &slot)
 // follower's package in a fight comes from (dev/ATTACK.md "Facing").
 // CommonLib has the table's layout (BSTScatterTable, RE/B/BSTHashMap.h) but
 // not this global, so the table is read through a copy of that layout,
-// anchored on the capacity the loader reads (Address Library 369298, 0x0C
-// into the table): an address known for 1.6.1170 alone (dev/VERSIONS.md).
+// anchored on the capacity the loader reads, 0x0C into the table
+// (Addresses.h; on SE the lookup is a function of its own, 12793, reading
+// the same three fields at the same spacing).
 struct AliasOverrideEntry
 {
     const RE::BGSRefAlias *alias;
@@ -878,10 +880,9 @@ static_assert(offsetof(AliasOverrideMap, capacity) == 0x0C && offsetof(AliasOver
 // Nothing reads the map unless CheckAliasOverrideLists found it as expected.
 bool g_aliasOverrideListsRead = false;
 
-// AE alone: the ID means something else to the Special Edition's library.
 const AliasOverrideMap &AliasOverrideTable()
 {
-    static REL::Relocation<const AliasOverrideMap *> at{REL::ID(369298), -0x0C};
+    static REL::Relocation<const AliasOverrideMap *> at{addr::kAliasOverrideMapCapacity, -0x0C};
     return *at.get();
 }
 
@@ -1169,18 +1170,16 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
 // Turning an actor toward a point, the engine's own way: the UseWeapon
 // procedure asks it on every update out of combat and never in one, where it
 // leaves turning to the combat controller (dev/ATTACK.md "Facing") -- which
-// a record with IgnoreCombat suspends. 37834 hands the actor's movement
+// a record with IgnoreCombat suspends. TurnToward hands the actor's movement
 // controller the point, a tolerance in radians (the procedure's,
-// fCombatAngleTolerance degrees) and two factors of 1; 37839 takes the point
-// back. Both read from 1.6.1170. The Special Edition addresses are not known,
-// so off AE neither is called, and a power attack still needs the follower
-// to be facing the enemy already.
+// fCombatAngleTolerance degrees) and two factors of 1; StopTurning takes the
+// point back.
 void TurnToward(RE::Actor *actor, RE::TESObjectREFR *target)
 {
-    if (!actor || !target || !REL::Module::IsAE())
+    if (!actor || !target)
         return;
     using func_t = void (*)(RE::Actor *, const RE::NiPoint3 *, float, float, float);
-    static REL::Relocation<func_t> turn{REL::ID(37834)};
+    static REL::Relocation<func_t> turn{addr::kTurnToward};
     constexpr float kRadiansPerDegree = 0.017453292f;
     // The target's own position, as the procedure passes it, not a copy: the
     // controller may keep the pointer until StopTurning.
@@ -1189,10 +1188,10 @@ void TurnToward(RE::Actor *actor, RE::TESObjectREFR *target)
 
 void StopTurning(RE::Actor *actor)
 {
-    if (!actor || !REL::Module::IsAE())
+    if (!actor)
         return;
     using func_t = void (*)(RE::Actor *);
-    static REL::Relocation<func_t> stop{REL::ID(37839)};
+    static REL::Relocation<func_t> stop{addr::kStopTurning};
     stop(actor);
 }
 
@@ -2250,12 +2249,6 @@ bool InGameData(std::uintptr_t address)
 // at a header that does not add up. False leaves the lists unread.
 bool CheckAliasOverrideLists()
 {
-    if (!REL::Module::IsAE())
-    {
-        log::packages.info("alias override lists: their address is known for 1.6.1170 alone -- not read on this "
-                           "runtime");
-        return false;
-    }
     auto *quest = RE::TESForm::LookupByID<RE::TESQuest>(kDialogueFollowerID);
     const auto *expected = RE::TESForm::LookupByID<RE::BGSListForm>(kFollowerCombatOverrideListID);
     const RE::BGSRefAlias *follower = nullptr;

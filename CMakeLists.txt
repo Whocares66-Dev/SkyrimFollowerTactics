@@ -166,19 +166,11 @@ if(FT_BUILD_PLUGIN)
     # AE only, for now (2026-09-17). The plugin calls engine functions by
     # Address Library ID, and an ID is only stable within one line: the same
     # number names another function in the Special Edition's database, which
-    # is a separately numbered space (and a different file format again).
-    # Every ID here was read on the AE line and holds across it -- 1.6.317 to
-    # 1.6.1179, each build at its own offset, which is what the library is
-    # for -- so the plugin stays version-independent within AE and does not
-    # pin a runtime.
-    #
-    # Building SE and VR support in bought nothing but a second code path per
-    # such call, one that could not be tested here and was wrong the moment
-    # anyone relied on it. Turning them off makes REL::Module::IsAE() a
-    # compile-time truth (REL/Relocation.h), so those paths fold away.
-    # Supporting them again means reading each ID's SE half first
-    # (dev/VERSIONS.md).
-    set(ENABLE_SKYRIM_SE OFF CACHE BOOL "Skyrim SE support in CommonLibSSE" FORCE)
+    # is a separately numbered space. Every address of our own is an
+    # (SE, AE) pair in src/game/Addresses.h, each half read on its own
+    # build (dev/VERSIONS.md), so the one DLL runs on both lines. VR is a
+    # third library again, one nobody here can read or run, so it stays off.
+    set(ENABLE_SKYRIM_SE ON CACHE BOOL "Skyrim SE support in CommonLibSSE" FORCE)
     set(ENABLE_SKYRIM_VR OFF CACHE BOOL "Skyrim VR support in CommonLibSSE" FORCE)
     set(ENABLE_SKYRIM_AE ON CACHE BOOL "Skyrim AE support in CommonLibSSE" FORCE)
     add_subdirectory(extern/commonlibsse-ng EXCLUDE_FROM_ALL)
