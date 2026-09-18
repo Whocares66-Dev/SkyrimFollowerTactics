@@ -1964,7 +1964,7 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
 
     for (const Heading &heading : headings)
     {
-        if (!ft::IsActionTargetValidFor(rule.subject, heading.target))
+        if (!ft::IsActionTargetValidFor(rule.subject, heading.target, rule.negated))
             continue;
         // Under "Corpse: None" there is no corpse to aim at.
         if (heading.target == ft::ActionTargetKind::Corpse && rule.predicate == ft::PredicateKind::CorpseNone)
@@ -2196,6 +2196,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     // click target now, so it needs no room for a button around the glyph.
     const float onWidth = (std::max)(TextWidth("On"), row * 0.4f) + gutter;
     const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
+    const float notWidth = (std::max)(TextWidth("Not"), row * 0.4f) + gutter;
     const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
 
     const auto border = Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f);
@@ -2227,10 +2228,13 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     bool changed = false;
     const auto beginPiece = [&]() {
         const std::string id = "rules##" + std::to_string(piece++);
-        if (!Im::BeginTable(id.c_str(), 5, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+        if (!Im::BeginTable(id.c_str(), 6, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
             return false;
         Im::TableSetupColumn("On", Im::ImGuiTableColumnFlags_WidthFixed, onWidth, 0);
         Im::TableSetupColumn("#", Im::ImGuiTableColumnFlags_WidthFixed, numWidth, 0);
+        // Not comes before the condition, because that is the order it is
+        // read in: "not enemy: undead".
+        Im::TableSetupColumn("Not", Im::ImGuiTableColumnFlags_WidthFixed, notWidth, 0);
         Im::TableSetupColumn("Condition", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
         // The wider share, because an action reads as a phrase ("Drink magicka
         // potion") where a condition is mostly short words and a number.
@@ -2259,7 +2263,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             Im::SetCursorScreenPos(pos);
             Im::Text("On");
             int column = 1;
-            for (const char *label : {"#", "Condition", "Action", "Order"})
+            for (const char *label : {"#", "Not", "Condition", "Action", "Order"})
             {
                 Im::TableSetColumnIndex(column++);
                 Im::Text("%s", label);
@@ -2366,10 +2370,47 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         }
 
         Im::TableSetColumnIndex(2);
+        {
+            // The same cell-wide switch as On, with the same tick in it: a
+            // rule's condition is negated by ticking it, and the row then
+            // reads "not <condition>". Three conditions cannot be negated
+            // (ft::CanNegate), and their cell is dead and says why.
+            const bool can = ft::CanNegate(rule.predicate);
+            const Im::ImVec2 pos = Im::GetCursorScreenPos();
+            if (!can || !available)
+            {
+                Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
+                if (can && Im::IsItemHovered(0))
+                    Im::SetTooltip("%s", setAside);
+                else if (Im::IsItemHovered(0))
+                    Im::SetTooltip("This condition cannot be negated");
+            }
+            else if (CellClicked(("##not" + rowId).c_str(), Im::GetFrameHeight()))
+            {
+                rule.negated = !rule.negated;
+                // A negated condition matches nobody, so a target that
+                // wanted the one it matched is put back to Self.
+                ft::Reconcile(rule);
+                changed = true;
+            }
+            if (can && available && Im::IsItemHovered(0))
+                Im::SetTooltip(rule.negated ? "Click to unnegate condition" : "Click to negate condition");
+
+            if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.negated && can)
+            {
+                const float size = Im::GetFrameHeight();
+                const float cell = Im::GetContentRegionAvail().x;
+                const float leftEdge = pos.x + (cell - size) * 0.5f;
+                DrawGlyph(drawList, Glyph::Tick, {leftEdge, pos.y}, {leftEdge + size, pos.y + size},
+                          Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
+            }
+        }
+
+        Im::TableSetColumnIndex(3);
         if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, !available))
             changed = true;
 
-        Im::TableSetColumnIndex(3);
+        Im::TableSetColumnIndex(4);
         // Where the Then column begins, for the drawer's border to sit on
         // it: the cell's content less the cell padding and less the half
         // item spacing ImGui puts before a cell's content, which this table
@@ -2455,7 +2496,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         // Order is semantics, not decoration: rules are first-match-wins, so
         // moving a row changes which rule shadows which.
-        Im::TableSetColumnIndex(4);
+        Im::TableSetColumnIndex(5);
         OrderButtons(rowId, row, i, rules.rules.size(), true, moveFrom, moveTo, removeAt);
 
         // Back to the switch: every cell is drawn, so the row's height is

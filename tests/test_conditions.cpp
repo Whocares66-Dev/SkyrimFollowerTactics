@@ -484,3 +484,149 @@ TEST_CASE("the predicate grid: every cell names one predicate, and every grid pr
     REQUIRE(ExtremesOf(PredicateKind::Status).lowest == PredicateKind::Status);
     REQUIRE(PredicateAt(Measure::None, Side::Below) == PredicateKind::Any);
 }
+
+// --- Not: the condition negated ---------------------------------------------
+
+TEST_CASE("a negated condition holds exactly when the plain one does not", "[not]")
+{
+    Snapshot s = Party();
+    RuleSet rs;
+    Rule r = About(SubjectKind::Self, PredicateKind::HealthPctBelow);
+    r.conditionArg = 0.5f;
+    r.FirstAction().kind = ActionKind::DrinkStrongest;
+    r.FirstAction().effect = "Restore Health";
+    s.potions.Add(0x3EADE, 5, ConsumableKind::Potion, {"Restore Health", 50.0f, 0.0f});
+    rs.rules.push_back(r);
+
+    // Plain: false at full health, true when hurt.
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+    s.health = {10.0f, 100.0f};
+    REQUIRE(FirstVerdict(rs, s) == Verdict::Fired);
+
+    // Negated: the other way round, and it binds the follower.
+    rs.rules[0].negated = true;
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+    s.health = {100.0f, 100.0f};
+    Decision d;
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    REQUIRE(d.subjectId() == s.self);
+}
+
+TEST_CASE("a negated group condition means no one, and binds nobody", "[not]")
+{
+    // "No enemy is undead" -- true while none is, false the moment one is.
+    Snapshot s = Party();
+    s.spells.known.push_back(kFirebolt);
+    Rule r = About(SubjectKind::Enemy, PredicateKind::Type);
+    r.typeKind = TypeKind::Undead;
+    r.negated = true;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = kFirebolt;
+    RuleSet rs;
+    rs.rules.push_back(r);
+
+    Decision d;
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    // Nobody matched, so the follower is the subject, not an enemy.
+    REQUIRE(d.subjectId() == s.self);
+
+    s.enemies[1].traits.kinds = Bit(TypeKind::Undead);
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+}
+
+TEST_CASE("a negated condition has no matched one to act on", "[not]")
+{
+    // The targets that mean "the one the condition matched" are refused:
+    // there is no such one, by definition.
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Ally));
+    REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Ally, true));
+    REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Corpse, ActionTargetKind::Corpse, true));
+    // Enemy and Attacker do not need one: the follower's own fight answers
+    // the first, whoever last hit them the second.
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Enemy, true));
+    REQUIRE(IsActionTargetValidFor(SubjectKind::Self, ActionTargetKind::Attacker, true));
+
+    // Reconcile puts a rule back in order when the Not goes on.
+    Rule r = About(SubjectKind::Ally, PredicateKind::HealthPctBelow);
+    r.conditionArg = 0.5f;
+    r.actionTarget = ActionTargetKind::Ally;
+    r.negated = true;
+    Reconcile(r);
+    REQUIRE(r.actionTarget == ActionTargetKind::Self);
+
+    // And an enemy rule aims at whoever the follower is fighting.
+    Snapshot s = Party();
+    s.currentTarget = kEnemy;
+    s.spells.known.push_back(kFirebolt);
+    Rule e = About(SubjectKind::Enemy, PredicateKind::Type);
+    e.typeKind = TypeKind::Undead;
+    e.negated = true;
+    e.actionTarget = ActionTargetKind::Enemy;
+    e.FirstAction().kind = ActionKind::CastSpell;
+    e.FirstAction().form = kFirebolt;
+    RuleSet rs;
+    rs.rules.push_back(e);
+    Decision d;
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    REQUIRE(d.targetId() == kEnemy);
+}
+
+TEST_CASE("three conditions cannot be negated, and a Not on them is dropped", "[not]")
+{
+    REQUIRE_FALSE(CanNegate(PredicateKind::Any));
+    REQUIRE_FALSE(CanNegate(PredicateKind::CombatBegins));
+    REQUIRE_FALSE(CanNegate(PredicateKind::CombatEnds));
+    REQUIRE(CanNegate(PredicateKind::HealthPctBelow));
+    REQUIRE(CanNegate(PredicateKind::Status));
+
+    // Reconcile clears it, so switching a negated rule to Any leaves a rule
+    // that still fires rather than one that never can.
+    Rule r = About(SubjectKind::Self, PredicateKind::Status);
+    r.negated = true;
+    r.predicate = PredicateKind::Any;
+    Reconcile(r);
+    REQUIRE_FALSE(r.negated);
+
+    // Hand-edited past the editor, it is reported rather than obeyed.
+    Snapshot s = Party();
+    Rule bad = About(SubjectKind::Self, PredicateKind::Any);
+    bad.negated = true;
+    bad.FirstAction().kind = ActionKind::DrinkStrongest;
+    bad.FirstAction().effect = "Restore Health";
+    RuleSet rs;
+    rs.rules.push_back(bad);
+    REQUIRE(FirstVerdict(rs, s) == Verdict::InvalidCondition);
+}
+
+TEST_CASE("a negation does not invert the two guards around the condition", "[not]")
+{
+    Snapshot s = Party();
+    s.spells.known.push_back(kFirebolt);
+
+    // The farewell pass after a fight: only a Combat end rule runs on it,
+    // and a negated rule must not fire there just because its condition is
+    // false.
+    Rule r = About(SubjectKind::Self, PredicateKind::HealthPctBelow);
+    r.conditionArg = 0.5f;
+    r.negated = true;
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = kFirebolt;
+    RuleSet rs;
+    rs.rules.push_back(r);
+    REQUIRE(FirstVerdict(rs, s) == Verdict::Fired);
+    s.inCombat = false;
+    s.combatEnded = true;
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+
+    // A pair that cannot be asked at all stays unanswerable: negating a
+    // question nobody can answer does not make it true.
+    Rule invalid = About(SubjectKind::Player, PredicateKind::WeaponChargeNeeded);
+    invalid.negated = true;
+    invalid.FirstAction().kind = ActionKind::CastSpell;
+    invalid.FirstAction().form = kFirebolt;
+    RuleSet bad;
+    bad.rules.push_back(invalid);
+    Snapshot fresh = Party();
+    REQUIRE(FirstVerdict(bad, fresh) == Verdict::InvalidCondition);
+}

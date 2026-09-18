@@ -110,6 +110,10 @@ json WriteRule(const Rule &r, const FormCodec &codec)
     if (r.subject == SubjectKind::Follower)
         cond["follower"] = codec.encode(r.subjectForm);
     cond["predicate"] = WireName(r.predicate);
+    // Written only when it is on, as every other exception here is: a rule
+    // that is not negated says nothing about negation.
+    if (r.negated)
+        cond["not"] = true;
     // The party member of Attacking / Attacked by: "player", or the
     // follower's form.
     if (r.predicate == PredicateKind::Attacking || r.predicate == PredicateKind::AttackedBy)
@@ -356,6 +360,10 @@ struct FormField
         r.predicate = *p;
     else
         return drop("unknown predicate \"" + *predicate + "\"");
+    // A Not on a condition that cannot take one -- Any, or a fight's edge --
+    // is dropped, and the rule is kept: what it says about the condition
+    // itself is still good, and the flag would only make it unanswerable.
+    r.negated = Bool(*cond, "not").value_or(false) && CanNegate(r.predicate);
     if (r.predicate == PredicateKind::Attacking || r.predicate == PredicateKind::AttackedBy)
     {
         // Absent or "player" is the player; anything else a follower's form.

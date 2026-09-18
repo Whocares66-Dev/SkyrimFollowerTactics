@@ -201,8 +201,21 @@ Kind KindOf(ActionKind action) noexcept
     }
 }
 
-bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target) noexcept
+bool CanNegate(PredicateKind predicate) noexcept
 {
+    return predicate != PredicateKind::Any && predicate != PredicateKind::CombatBegins &&
+           predicate != PredicateKind::CombatEnds;
+}
+
+bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target, bool negated) noexcept
+{
+    // A negated condition matched nobody -- that is what it says -- so
+    // "the ally it matched" and "the corpse it matched" name no one and are
+    // refused. Enemy and Attacker survive it: neither needs the binding when
+    // there is none (ResolveActionTarget takes the follower's own fight for
+    // the first and whoever last hit them for the second).
+    if (negated && (target == ActionTargetKind::Ally || target == ActionTargetKind::Corpse))
+        return false;
     // "Enemy" reads from the condition: under an enemy condition it is the
     // one the condition matched; under anyone else, whoever the follower
     // is fighting, else the nearest. "Attacker" is whoever last hit the
@@ -274,7 +287,12 @@ bool IsDamageKindValidFor(PredicateKind predicate, DamageKind kind) noexcept
 
 void Reconcile(Rule &rule) noexcept
 {
-    if (!IsActionTargetValidFor(rule.subject, rule.actionTarget))
+    // A predicate that cannot be negated drops the Not with it: the editor
+    // leaves the cell dead, and a rule that changes its condition to one of
+    // the three must not keep a negation nothing would apply.
+    if (!CanNegate(rule.predicate))
+        rule.negated = false;
+    if (!IsActionTargetValidFor(rule.subject, rule.actionTarget, rule.negated))
     {
         rule.actionTarget = ActionTargetKind::Self;
         rule.actionTargetForm = 0;

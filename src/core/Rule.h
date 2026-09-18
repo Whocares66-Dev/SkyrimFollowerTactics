@@ -404,6 +404,19 @@ struct Rule
 {
     bool enabled{true};
 
+    // The condition negated: the rule holds when it does NOT. The Not
+    // column in the editor, ticked.
+    //
+    // For a group subject this reads "no one": `NOT Enemy: Undead` holds
+    // when not one enemy is undead. So a negated condition binds NOBODY
+    // -- there is no matched enemy to act on -- and the targets that mean
+    // "the one the condition matched" are not offered for it
+    // (IsActionTargetValidFor). The action falls back to the follower, as
+    // it does under a Self condition.
+    //
+    // Not every condition can be negated: CanNegate says which.
+    bool negated{false};
+
     SubjectKind subject{SubjectKind::Self};
     // Which follower, for SubjectKind::Follower: the actor's FormID, as
     // opaque here as an action's form is. For Attacking and AttackedBy, the
@@ -556,7 +569,17 @@ struct RuleSet
 // Enemy or Attacker and nothing else. The casts are aimed anywhere but a
 // corpse (a spell may be); which spells suit which target is the menu's
 // business, since core does not know a spell's delivery.
-[[nodiscard]] bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target) noexcept;
+// `negated` is the rule's Not: a negated condition matches nobody, so the
+// targets that mean "the one the condition matched" -- an ally, a corpse --
+// have no one to resolve to and are refused.
+[[nodiscard]] bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target, bool negated = false) noexcept;
+
+// Can this condition be negated at all? Every one but three. `Any` is the
+// always-true condition and negates to a rule that can never fire; the
+// fight's two edges are moments, and "not the moment the fight began" is
+// every other tick of it, which is not a thing anyone means by Not. The
+// editor leaves the Not cell dead for these three and says why.
+[[nodiscard]] bool CanNegate(PredicateKind predicate) noexcept;
 [[nodiscard]] bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept;
 
 // Put a rule back in order after its condition changed: a target the new
