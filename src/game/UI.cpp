@@ -2527,11 +2527,19 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::TableSetColumnIndex(5);
         OrderButtons(rowId, row, i, rules.rules.size(), true, moveFrom, moveTo, removeAt);
 
-        // Back to the switch: every cell is drawn, so the row's height is
-        // final and the slash reaches its bottom corner.
+        // Back to the switches: every cell is drawn, so the row's height is
+        // final and a slash reaches its bottom corner. The On cell's says
+        // the rule is set aside; the NOT cell's says this condition is not
+        // one that can be negated -- a dead cell reads as an empty one
+        // otherwise, since an unticked switch is also empty.
         if (!available)
         {
             Im::TableSetColumnIndex(0);
+            SlashCell();
+        }
+        if (!ft::CanNegate(rule.predicate))
+        {
+            Im::TableSetColumnIndex(2);
             SlashCell();
         }
 
