@@ -37,6 +37,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'console.ps1')
+
+# The overrides, taken at script scope; the functions below read these.
+$script:GameRootOverride = $GameRoot
+$script:SteamRootOverride = $SteamRoot
+$script:BackupDirOverride = $BackupDir
 
 # $IsWindows only exists in PowerShell 6+. Windows still ships 5.1 by default,
 # where StrictMode would throw on referencing it.
@@ -84,15 +90,6 @@ $CRITICAL_FILES = @(
     'Data/Skyrim - Interface.bsa'
 )
 
-# --------------------------------------------------------------------------
-# Output helpers
-# --------------------------------------------------------------------------
-function Write-Head($t) { Write-Host ''; Write-Host $t -ForegroundColor Cyan; Write-Host ('-' * $t.Length) -ForegroundColor DarkGray }
-function Write-Ok($t)   { Write-Host "  OK    $t" -ForegroundColor Green }
-function Write-Warn($t){ Write-Host "  WARN  $t" -ForegroundColor Yellow }
-function Write-Bad($t)  { Write-Host "  FAIL  $t" -ForegroundColor Red }
-function Write-Info($t) { Write-Host "        $t" -ForegroundColor Gray }
-
 function Format-Size([long]$b) {
     if ($b -ge 1GB) { '{0:N2} GB' -f ($b / 1GB) }
     elseif ($b -ge 1MB) { '{0:N1} MB' -f ($b / 1MB) }
@@ -103,14 +100,12 @@ function Format-Size([long]$b) {
 # Discovery
 # --------------------------------------------------------------------------
 function Resolve-SteamRoot {
-    if ($SteamRoot) { return $SteamRoot }
+    if ($script:SteamRootOverride) { return $script:SteamRootOverride }
 
     # The registry is authoritative when it's there; the fixed paths are a fallback.
     foreach ($key in 'HKCU:\Software\Valve\Steam', 'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam') {
-        try {
-            $p = (Get-ItemProperty -Path $key -ErrorAction Stop).SteamPath
-            if ($p -and (Test-Path $p)) { return ($p -replace '/', '\') }
-        } catch { }
+        $item = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+        if ($item -and $item.SteamPath -and (Test-Path $item.SteamPath)) { return ($item.SteamPath -replace '/', '\') }
     }
     foreach ($p in "${env:ProgramFiles(x86)}\Steam", "$env:ProgramFiles\Steam", 'C:\Steam') {
         if ($p -and (Test-Path $p)) { return $p }
@@ -119,11 +114,11 @@ function Resolve-SteamRoot {
 }
 
 function Resolve-GameRoot {
-    if ($GameRoot) {
-        if (-not (Test-Path (Join-Path $GameRoot 'SkyrimSE.exe'))) {
-            throw "No SkyrimSE.exe in '$GameRoot'."
+    if ($script:GameRootOverride) {
+        if (-not (Test-Path (Join-Path $script:GameRootOverride 'SkyrimSE.exe'))) {
+            throw "No SkyrimSE.exe in '$script:GameRootOverride'."
         }
-        return $GameRoot
+        return $script:GameRootOverride
     }
 
     $steam = Resolve-SteamRoot
@@ -149,10 +144,8 @@ function Resolve-GameRoot {
 
 function Get-ExeVersion($path) {
     if (-not (Test-Path $path)) { return $null }
-    try {
-        $v = (Get-Item $path).VersionInfo.FileVersion
-        if ($v) { return $v.Trim() }
-    } catch { }
+    $v = (Get-Item $path).VersionInfo.FileVersion
+    if ($v) { return $v.Trim() }
 
     # pwsh on non-Windows leaves VersionInfo empty, so read the PE resource.
     try {
@@ -163,7 +156,9 @@ function Get-ExeVersion($path) {
         $tail = $text.Substring($i + 11, [Math]::Min(40, $text.Length - $i - 11)).Replace("`0", ' ').Trim()
         $m = [regex]::Match($tail, '^[\d.]+')
         if ($m.Success) { return $m.Value }
-    } catch { }
+    } catch {
+        Write-Verbose "could not read the version resource of ${path}: $_"
+    }
     return $null
 }
 
@@ -184,7 +179,7 @@ function Assert-NotRunning {
 }
 
 function Get-DefaultBackupDir($root) {
-    if ($BackupDir) { return $BackupDir }
+    if ($script:BackupDirOverride) { return $script:BackupDirOverride }
     Join-Path (Split-Path $root -Parent) 'Skyrim SE - pre-downgrade backup'
 }
 
@@ -192,85 +187,87 @@ function Get-DefaultBackupDir($root) {
 # Steps
 # --------------------------------------------------------------------------
 function Invoke-Check($root) {
-    Write-Head 'Install'
-    Write-Info $root
+    Show-Head 'Install'
+    Show-Info $root
 
     $exe = Get-ExeVersion (Join-Path $root 'SkyrimSE.exe')
     $ck  = Get-ExeVersion (Join-Path $root 'CreationKit.exe')
 
-    Write-Info "SkyrimSE.exe     $exe"
-    Write-Info "CreationKit.exe  $(if ($ck) { $ck } else { 'not installed' })"
+    Show-Info "SkyrimSE.exe     $exe"
+    Show-Info "CreationKit.exe  $(if ($ck) { $ck } else { 'not installed' })"
 
     $downgraded = $exe -and $exe.StartsWith($TARGET_VERSION)
-    if ($downgraded) { Write-Ok "Runtime is $TARGET_VERSION. SKSE 2.2.8 is the matching build." }
-    else { Write-Warn "Not on $TARGET_VERSION yet." }
+    if ($downgraded) { Show-Ok "Runtime is $TARGET_VERSION. SKSE 2.2.8 is the matching build." }
+    else { Show-Warn "Not on $TARGET_VERSION yet." }
 
-    Write-Head 'Data files'
+    Show-Head 'Data files'
     $bsa = Join-Path $root $INTERFACE_BSA
     if (Test-Path $bsa) {
         $size = (Get-Item $bsa).Length
-        Write-Info "Skyrim - Interface.bsa  $size"
+        Show-Info "Skyrim - Interface.bsa  $size"
         if ($size -eq $INTERFACE_SIZE_1_6_1170) {
-            Write-Ok "Matches 1.6.1170 exactly. The Data files reverted, not just the exe."
+            Show-Ok "Matches 1.6.1170 exactly. The Data files reverted, not just the exe."
         } elseif ($downgraded) {
-            Write-Bad "Exe says $TARGET_VERSION but this BSA does not match 1.6.1170 ($INTERFACE_SIZE_1_6_1170)."
-            Write-Info "Only depot 489833 (the exe) landed. Re-copy depots 489831 and 489832."
+            Show-Bad "Exe says $TARGET_VERSION but this BSA does not match 1.6.1170 ($INTERFACE_SIZE_1_6_1170)."
+            Show-Info "Only depot 489833 (the exe) landed. Re-copy depots 489831 and 489832."
         } else {
-            Write-Info "Expected $INTERFACE_SIZE_1_6_1170 after a correct downgrade."
+            Show-Info "Expected $INTERFACE_SIZE_1_6_1170 after a correct downgrade."
         }
     }
 
-    Write-Head 'Steam update locks'
+    Show-Head 'Steam update locks'
     $steam = Resolve-SteamRoot
-    if (-not $steam) { Write-Warn 'Steam root not found; cannot check manifests.'; return }
+    if (-not $steam) { Show-Warn 'Steam root not found; cannot check manifests.'; return }
 
     foreach ($pair in @(@{Id = $APP_ID; Name = 'Skyrim SE' }, @{Id = $CK_APP_ID; Name = 'Creation Kit' })) {
         $mf = Join-Path $steam "steamapps\appmanifest_$($pair.Id).acf"
-        if (-not (Test-Path $mf)) { Write-Info "$($pair.Name): no manifest (not installed?)"; continue }
-        if ((Get-Item $mf).IsReadOnly) { Write-Ok "$($pair.Name) manifest is read-only" }
-        else { Write-Warn "$($pair.Name) manifest is WRITABLE - Steam can update it. Run -Step lock" }
+        if (-not (Test-Path $mf)) { Show-Info "$($pair.Name): no manifest (not installed?)"; continue }
+        if ((Get-Item $mf).IsReadOnly) { Show-Ok "$($pair.Name) manifest is read-only" }
+        else { Show-Warn "$($pair.Name) manifest is WRITABLE - Steam can update it. Run -Step lock" }
     }
 }
 
-function Invoke-Depots($root) {
+function Show-DepotDownload($root) {
     $steam = Resolve-SteamRoot
-    Write-Head 'Paste these into the Steam console, ONE AT A TIME'
-    Write-Info 'Open it with:  Win+R  ->  steam://open/console'
-    Write-Info 'Wait for each to report completion before pasting the next.'
-    Write-Host ''
+    Show-Head 'Paste these into the Steam console, ONE AT A TIME'
+    Show-Info 'Open it with:  Win+R  ->  steam://open/console'
+    Show-Info 'Wait for each to report completion before pasting the next.'
+    Show-Line
     foreach ($d in $DEPOTS) {
-        Write-Host "  download_depot $APP_ID $($d.Id) $($d.Manifest)" -ForegroundColor White
-        Write-Info "      $($d.Desc), $($d.Files) file(s)"
+        Show-Line "  download_depot $APP_ID $($d.Id) $($d.Manifest)" -Colour White
+        Show-Info "      $($d.Desc), $($d.Files) file(s)"
     }
-    Write-Host ''
-    Write-Info 'Roughly 15 GB total. They land in:'
-    if ($steam) { Write-Info "  $steam\steamapps\content\app_$APP_ID\depot_<id>\" }
-    Write-Host ''
-    Write-Info 'Then run:  -Step install'
-    Write-Host ''
-    Write-Info 'Prefer it fully scripted? DepotDownloader takes the same three IDs'
-    Write-Info 'non-interactively (it will prompt for your Steam login and 2FA):'
-    Write-Info '  https://github.com/SteamRE/DepotDownloader'
+    Show-Line
+    Show-Info 'Roughly 15 GB total. They land in:'
+    if ($steam) { Show-Info "  $steam\steamapps\content\app_$APP_ID\depot_<id>\" }
+    Show-Line
+    Show-Info 'Then run:  -Step install'
+    Show-Line
+    Show-Info 'Prefer it fully scripted? DepotDownloader takes the same three IDs'
+    Show-Info 'non-interactively (it will prompt for your Steam login and 2FA):'
+    Show-Info '  https://github.com/SteamRE/DepotDownloader'
     foreach ($d in $DEPOTS) {
-        Write-Info "  DepotDownloader -app $APP_ID -depot $($d.Id) -manifest $($d.Manifest) -username <you>"
+        Show-Info "  DepotDownloader -app $APP_ID -depot $($d.Id) -manifest $($d.Manifest) -username <you>"
     }
 }
 
-function Invoke-Backup($root) {
+function Invoke-Backup {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$root)
     $dest = Get-DefaultBackupDir $root
-    Write-Head 'Backup'
-    Write-Info "-> $dest"
+    Show-Head 'Backup'
+    Show-Info "-> $dest"
 
     $total = 0L
     $plan = @()
     foreach ($rel in $CRITICAL_FILES) {
         $src = Join-Path $root $rel
-        if (-not (Test-Path $src)) { Write-Warn "missing, skipping: $rel"; continue }
+        if (-not (Test-Path $src)) { Show-Warn "missing, skipping: $rel"; continue }
         $len = (Get-Item $src).Length
         $total += $len
         $plan += [pscustomobject]@{ Rel = $rel; Src = $src; Size = $len }
     }
-    Write-Info "$(@($plan).Count) files, $(Format-Size $total)"
+    Show-Info "$(@($plan).Count) files, $(Format-Size $total)"
 
     if (-not $PSCmdlet.ShouldProcess($dest, "Copy $(@($plan).Count) files")) { return }
 
@@ -281,9 +278,9 @@ function Invoke-Backup($root) {
         if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
 
         if ((Test-Path $target) -and (Get-Item $target).Length -eq $item.Size) {
-            Write-Info "already backed up: $($item.Rel)"
+            Show-Info "already backed up: $($item.Rel)"
         } else {
-            Write-Info "copying $($item.Rel)  ($(Format-Size $item.Size))"
+            Show-Info "copying $($item.Rel)  ($(Format-Size $item.Size))"
             Copy-Item -LiteralPath $item.Src -Destination $target -Force
         }
         $manifest[$item.Rel] = @{ size = $item.Size }
@@ -297,10 +294,12 @@ function Invoke-Backup($root) {
         files        = $manifest
     }
     $meta | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $dest 'backup-manifest.json')
-    Write-Ok "Backed up. Manifest: $(Join-Path $dest 'backup-manifest.json')"
+    Show-Ok "Backed up. Manifest: $(Join-Path $dest 'backup-manifest.json')"
 }
 
-function Invoke-Install($root) {
+function Invoke-Install {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$root)
     Assert-NotRunning
     $steam = Resolve-SteamRoot
     if (-not $steam) { throw 'Could not locate Steam. Pass -SteamRoot.' }
@@ -310,11 +309,11 @@ function Invoke-Install($root) {
         throw "No downloaded depots at '$content'. Run -Step depots first."
     }
 
-    Write-Head 'Downloaded depots'
+    Show-Head 'Downloaded depots'
     $found = @()
     foreach ($d in $DEPOTS) {
         $dir = Join-Path $content "depot_$($d.Id)"
-        if (-not (Test-Path $dir)) { Write-Bad "depot_$($d.Id) missing ($($d.Desc))"; continue }
+        if (-not (Test-Path $dir)) { Show-Bad "depot_$($d.Id) missing ($($d.Desc))"; continue }
         $items  = @(Get-ChildItem $dir -Recurse -File)
         $count  = $items.Count
         $sizeMB = [math]::Round((($items | Measure-Object -Property Length -Sum).Sum) / 1MB)
@@ -322,11 +321,11 @@ function Invoke-Install($root) {
         # Steam prints "Depot download complete" when it is done; that is the real
         # authority. These are sanity checks against an interrupted copy, not a
         # verdict on the download itself.
-        if ($count -eq $d.Files) { Write-Ok "depot_$($d.Id) $($d.Desc): $count files, $sizeMB MB" }
-        else { Write-Warn "depot_$($d.Id) $($d.Desc): $count files, expected $($d.Files) ($sizeMB MB)" }
+        if ($count -eq $d.Files) { Show-Ok "depot_$($d.Id) $($d.Desc): $count files, $sizeMB MB" }
+        else { Show-Warn "depot_$($d.Id) $($d.Desc): $count files, expected $($d.Files) ($sizeMB MB)" }
 
         if ($d.MB -gt 0 -and [math]::Abs($sizeMB - $d.MB) -gt [math]::Max(50, $d.MB * 0.05)) {
-            Write-Warn "  size is $sizeMB MB, expected around $($d.MB) MB - check the download finished"
+            Show-Warn "  size is $sizeMB MB, expected around $($d.MB) MB - check the download finished"
         }
         $found += $dir
     }
@@ -335,14 +334,14 @@ function Invoke-Install($root) {
     }
 
     if (-not (Test-Admin)) {
-        Write-Warn 'Not running as Administrator. Writing into Program Files will likely fail.'
+        Show-Warn 'Not running as Administrator. Writing into Program Files will likely fail.'
     }
 
     # Back up anything we are about to overwrite, before overwriting it.
-    Write-Head 'Backing up files that will be overwritten'
+    Show-Head 'Backing up files that will be overwritten'
     Invoke-Backup $root
 
-    Write-Head 'Installing'
+    Show-Head 'Installing'
     $n = 0
     $overwritten = @()
     foreach ($dir in $found) {
@@ -359,86 +358,90 @@ function Invoke-Install($root) {
                 if (Test-Path $target) { Set-ItemProperty -LiteralPath $target -Name IsReadOnly -Value $false }
                 Copy-Item -LiteralPath $src.FullName -Destination $target -Force
             }
-            Write-Info "$rel  ($(Format-Size $src.Length))"
+            Show-Info "$rel  ($(Format-Size $src.Length))"
             $overwritten += ($rel -replace '\\', '/')
             $n++
         }
     }
-    if ($WhatIfPreference) { Write-Ok "$n file(s) WOULD be installed. Nothing was changed." }
-    else                    { Write-Ok "$n file(s) installed." }
+    if ($WhatIfPreference) { Show-Ok "$n file(s) WOULD be installed. Nothing was changed." }
+    else                    { Show-Ok "$n file(s) installed." }
 
     $uncovered = @($overwritten | Where-Object { $_ -notin $CRITICAL_FILES })
     if ($uncovered.Count -gt 0) {
-        Write-Host ''
+        Show-Line
         $tense = if ($WhatIfPreference) { 'would be overwritten and are' } else { 'overwritten file(s) are' }
-        Write-Warn "$($uncovered.Count) file(s) $tense NOT in the backup set:"
-        foreach ($u in $uncovered) { Write-Info "  $u" }
-        Write-Info 'These are bulk asset archives. -Step restore will not bring them back;'
-        Write-Info 'Steam > Verify integrity of game files restores them perfectly.'
+        Show-Warn "$($uncovered.Count) file(s) $tense NOT in the backup set:"
+        foreach ($u in $uncovered) { Show-Info "  $u" }
+        Show-Info 'These are bulk asset archives. -Step restore will not bring them back;'
+        Show-Info 'Steam > Verify integrity of game files restores them perfectly.'
     }
 
     if ($WhatIfPreference) {
-        Write-Host ''
-        Write-Info 'Dry run only. Re-run without -WhatIf to apply, then it will verify.'
+        Show-Line
+        Show-Info 'Dry run only. Re-run without -WhatIf to apply, then it will verify.'
         return
     }
 
-    Write-Head 'Verifying'
+    Show-Head 'Verifying'
     Invoke-Check $root
 }
 
-function Set-ManifestLock($locked) {
+function Set-ManifestLock {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([bool]$locked)
     $steam = Resolve-SteamRoot
     if (-not $steam) { throw 'Could not locate Steam. Pass -SteamRoot.' }
     $verb = if ($locked) { 'Locking' } else { 'Unlocking' }
-    Write-Head "$verb Steam manifests"
+    Show-Head "$verb Steam manifests"
 
     foreach ($pair in @(@{Id = $APP_ID; Name = 'Skyrim SE' }, @{Id = $CK_APP_ID; Name = 'Creation Kit' })) {
         $mf = Join-Path $steam "steamapps\appmanifest_$($pair.Id).acf"
-        if (-not (Test-Path $mf)) { Write-Info "$($pair.Name): no manifest, skipping"; continue }
+        if (-not (Test-Path $mf)) { Show-Info "$($pair.Name): no manifest, skipping"; continue }
         if ($PSCmdlet.ShouldProcess($mf, "Set IsReadOnly=$locked")) {
             Set-ItemProperty -LiteralPath $mf -Name IsReadOnly -Value $locked
         }
-        Write-Ok "$($pair.Name): read-only = $locked"
+        Show-Ok "$($pair.Name): read-only = $locked"
     }
 
     if ($locked) {
-        Write-Host ''
-        Write-Warn 'This is necessary but NOT sufficient. Also:'
-        Write-Info '  - Steam > Properties > Updates > Automatic Updates >'
-        Write-Info '      "Wait until I launch the game"  (there is no "never update" option)'
-        Write-Info '  - Never press Play in the Steam Library. Launch via SKSE/MO2 --'
-        Write-Info '    the setting above only DEFERS an update until you launch via Steam.'
-        Write-Info '  - Never run "Verify integrity of game files" - it restores 1.7.104.'
-        Write-Info '  - Re-run -Step check after Steam client updates. The read-only trick'
-        Write-Info '    has been reported failing after a few days.'
+        Show-Line
+        Show-Warn 'This is necessary but NOT sufficient. Also:'
+        Show-Info '  - Steam > Properties > Updates > Automatic Updates >'
+        Show-Info '      "Wait until I launch the game"  (there is no "never update" option)'
+        Show-Info '  - Never press Play in the Steam Library. Launch via SKSE/MO2 --'
+        Show-Info '    the setting above only DEFERS an update until you launch via Steam.'
+        Show-Info '  - Never run "Verify integrity of game files" - it restores 1.7.104.'
+        Show-Info '  - Re-run -Step check after Steam client updates. The read-only trick'
+        Show-Info '    has been reported failing after a few days.'
     }
 }
 
-function Invoke-Restore($root) {
+function Invoke-Restore {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$root)
     Assert-NotRunning
     $dest = Get-DefaultBackupDir $root
     $manifestPath = Join-Path $dest 'backup-manifest.json'
     if (-not (Test-Path $manifestPath)) { throw "No backup manifest at '$manifestPath'." }
 
     $meta = Get-Content $manifestPath -Raw | ConvertFrom-Json
-    Write-Head 'Restore'
-    Write-Info "from $dest"
-    Write-Info "captured $($meta.capturedUtc), exe was $($meta.exeVersion)"
+    Show-Head 'Restore'
+    Show-Info "from $dest"
+    Show-Info "captured $($meta.capturedUtc), exe was $($meta.exeVersion)"
 
     foreach ($prop in $meta.files.PSObject.Properties) {
         $rel = $prop.Name
         $src = Join-Path $dest $rel
-        if (-not (Test-Path $src)) { Write-Warn "missing from backup: $rel"; continue }
+        if (-not (Test-Path $src)) { Show-Warn "missing from backup: $rel"; continue }
         $target = Join-Path $root $rel
         if ($PSCmdlet.ShouldProcess($target, 'Restore from backup')) {
             if (Test-Path $target) { Set-ItemProperty -LiteralPath $target -Name IsReadOnly -Value $false }
             Copy-Item -LiteralPath $src -Destination $target -Force
         }
-        Write-Info "restored $rel"
+        Show-Info "restored $rel"
     }
-    Write-Ok 'Restored. Note this only covers the critical file list, not every BSA.'
-    Write-Info 'For a guaranteed clean revert: unlock manifests, then Steam > Verify integrity.'
+    Show-Ok 'Restored. Note this only covers the critical file list, not every BSA.'
+    Show-Info 'For a guaranteed clean revert: unlock manifests, then Steam > Verify integrity.'
 }
 
 # --------------------------------------------------------------------------
@@ -447,15 +450,15 @@ try {
     switch ($Step) {
         'check'   { Invoke-Check   $root }
         'backup'  { Invoke-Backup  $root }
-        'depots'  { Invoke-Depots  $root }
+        'depots'  { Show-DepotDownload $root }
         'install' { Invoke-Install $root }
         'lock'    { Set-ManifestLock $true }
         'unlock'  { Set-ManifestLock $false }
         'restore' { Invoke-Restore $root }
     }
-    Write-Host ''
+    Show-Line
 } catch {
-    Write-Host ''
-    Write-Bad $_.Exception.Message
+    Show-Line
+    Show-Bad $_.Exception.Message
     exit 1
 }

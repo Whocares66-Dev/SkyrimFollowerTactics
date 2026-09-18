@@ -28,6 +28,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'console.ps1')
 $repo = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $repo 'bat'
 
@@ -61,19 +62,19 @@ foreach ($f in $files) {
     foreach ($d in $destinations) {
         if ($Check) {
             $state = if (Test-Path $d) { 'present' } else { 'MISSING' }
-            Write-Host ("  {0,-8} {1}" -f $state, $d) -ForegroundColor DarkGray
+            Show-Line ("  {0,-8} {1}" -f $state, $d) -Colour DarkGray
             continue
         }
         Write-Crlf -Path $d -Text $text
         $written++
     }
-    if (-not $Check) { Write-Host ("  deployed  {0}  (3 locations, CRLF)" -f $f.Name) -ForegroundColor Green }
+    if (-not $Check) { Show-Line ("  deployed  {0}  (3 locations, CRLF)" -f $f.Name) -Colour Green }
 }
 
 if (-not $Check) {
-    Write-Host "`n$written files written." -ForegroundColor Cyan
-    Write-Host "Click a follower in the console FIRST, then:" -ForegroundColor Cyan
-    Write-Host "  bat ftmake   (repeat per follower)  ->  bat ftbear  ->  bat ftstatus" -ForegroundColor Cyan
-    Write-Host "From a bat file only player.<cmd> and commands on a PRIOR selection work." -ForegroundColor DarkGray
-    Write-Host "prid and <refid>.<cmd> were both tried and neither does." -ForegroundColor DarkGray
+    Show-Line "`n$written files written." -Colour Cyan
+    Show-Line "Click a follower in the console FIRST, then:" -Colour Cyan
+    Show-Line "  bat ftmake   (repeat per follower)  ->  bat ftbear  ->  bat ftstatus" -Colour Cyan
+    Show-Line "From a bat file only player.<cmd> and commands on a PRIOR selection work." -Colour DarkGray
+    Show-Line "prid and <refid>.<cmd> were both tried and neither does." -Colour DarkGray
 }

@@ -49,6 +49,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'console.ps1')
 $repo = Split-Path -Parent $PSScriptRoot
 
 function Get-VcVarsPath {
@@ -77,7 +78,7 @@ function Get-VcVarsPath {
     return $null
 }
 
-function Import-VcVars {
+function Import-DeveloperEnvironment {
     $vcvars = Get-VcVarsPath
     if (-not $vcvars) {
         throw @'
@@ -101,7 +102,7 @@ splits on spaces otherwise and reports "installPath: C:\Program".
 '@
     }
 
-    Write-Host "Importing developer environment from $vcvars" -ForegroundColor DarkGray
+    Show-Line "Importing developer environment from $vcvars" -Colour DarkGray
 
     # `set` after vcvars64 dumps the whole environment; replay it into this session.
     $output = & ${env:ComSpec} /s /c "`"$vcvars`" >nul 2>&1 && set"
@@ -118,11 +119,11 @@ splits on spaces otherwise and reports "installPath: C:\Program".
 # resolves the manifest against the wrong package tree.
 $userVcpkgRoot = $env:VCPKG_ROOT
 
-Import-VcVars
+Import-DeveloperEnvironment
 
 if ($userVcpkgRoot) {
     if ($env:VCPKG_ROOT -ne $userVcpkgRoot) {
-        Write-Host "  restoring VCPKG_ROOT=$userVcpkgRoot (vcvars64 had reset it to $env:VCPKG_ROOT)" -ForegroundColor DarkGray
+        Show-Line "  restoring VCPKG_ROOT=$userVcpkgRoot (vcvars64 had reset it to $env:VCPKG_ROOT)" -Colour DarkGray
     }
     $env:VCPKG_ROOT = $userVcpkgRoot
 }
@@ -130,7 +131,7 @@ if ($userVcpkgRoot) {
 foreach ($tool in 'cl', 'cmake', 'ninja') {
     $found = Get-Command $tool -ErrorAction SilentlyContinue
     if (-not $found) { throw "'$tool' is still not on PATH after importing vcvars64." }
-    Write-Host ("  {0,-6} {1}" -f $tool, $found.Source) -ForegroundColor DarkGray
+    Show-Line ("  {0,-6} {1}" -f $tool, $found.Source) -Colour DarkGray
 }
 
 if ($Preset -in 'debug', 'release') {
@@ -142,34 +143,34 @@ if ($Preset -in 'debug', 'release') {
 
 $buildDir = Join-Path $repo "build\$Preset"
 if ($Fresh -and (Test-Path $buildDir)) {
-    Write-Host "Removing $buildDir" -ForegroundColor Yellow
+    Show-Line "Removing $buildDir" -Colour Yellow
     Remove-Item -Recurse -Force $buildDir
 }
 
 Push-Location $repo
 try {
     if ($Coverage -and $Preset -ne 'core-cov') { throw "-Coverage needs the core-cov preset (instrumented build); got '$Preset'." }
-    Write-Host "`n== configure ($Preset) ==" -ForegroundColor Cyan
+    Show-Line "`n== configure ($Preset) ==" -Colour Cyan
     $analyzeFlag = if ($Analyze) { 'ON' } else { 'OFF' }
     cmake --preset $Preset "-DFT_ANALYZE=$analyzeFlag"
     if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
-    Write-Host "`n== build ($Preset) ==" -ForegroundColor Cyan
+    Show-Line "`n== build ($Preset) ==" -Colour Cyan
     cmake --build --preset $Preset
     if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
 
     if ($Test) {
-        Write-Host "`n== test ($Preset) ==" -ForegroundColor Cyan
+        Show-Line "`n== test ($Preset) ==" -Colour Cyan
         ctest --preset $Preset
         if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
     }
 
     if ($Coverage) {
-        Write-Host "`n== coverage ($Preset) ==" -ForegroundColor Cyan
+        Show-Line "`n== coverage ($Preset) ==" -Colour Cyan
         cmake --build --preset $Preset --target coverage
         if ($LASTEXITCODE -ne 0) { throw "coverage failed ($LASTEXITCODE)" }
     }
-    Write-Host "`nOK" -ForegroundColor Green
+    Show-Line "`nOK" -Colour Green
 } finally {
     Pop-Location
 }

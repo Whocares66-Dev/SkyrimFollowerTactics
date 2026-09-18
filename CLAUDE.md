@@ -112,6 +112,14 @@ cmake --build --preset debug --target tidy  # the linter over src/game and src/p
 
 The second is the slower one -- every `src/game` translation unit parses the whole of CommonLibSSE, which no filter avoids and which the `/Y-` above means clang cannot precompile once and reuse. Spread across cores it is about a minute and a half against `src/core`'s twenty seconds, which is why it sits here rather than in the fast loop.
 
+A change under `tools\` gets the PowerShell linter too, on its default rules and nothing custom:
+
+```powershell
+Invoke-ScriptAnalyzer -Path tools -Recurse   # PSScriptAnalyzer; Install-Module PSScriptAnalyzer -Scope CurrentUser once
+```
+
+It is clean as of 2026-09-18. Its rule against `Write-Host` allows it inside a function whose verb is `Show`, so every script prints through the `Show-*` helpers in `tools\console.ps1`, dot-sourced at the top of each; a state-changing function declares `SupportsShouldProcess` and asks `$PSCmdlet.ShouldProcess` before it writes, which is what makes `-WhatIf` on the downgrade script honest.
+
 **A green build is not a passing check.** Every one of these has caught a defect
 that compiled perfectly: the tests caught a cooldown interaction that changed
 behaviour silently, the formatter has caught hand-written code on nearly every

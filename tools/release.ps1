@@ -52,6 +52,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'console.ps1')
 $root = Split-Path -Parent $PSScriptRoot
 # Every git call names the repository explicitly rather than this script
 # changing the caller's directory, which in PowerShell outlives the script.
@@ -132,19 +133,19 @@ if ($LASTEXITCODE -eq 0) { Fail "Tag $tag already exists on origin." }
 # it keeps the release off "Latest" and out of the update feeds.
 $prerelease = $major -eq 0
 
-Write-Host "release $repo  $from -> $version  (tag $tag)" -ForegroundColor Cyan
-if ($prerelease) { Write-Host "  marked prerelease (0.x)" }
-if ($Draft) { Write-Host "  draft: published by hand" }
+Show-Line "release $repo  $from -> $version  (tag $tag)" -Colour Cyan
+if ($prerelease) { Show-Line "  marked prerelease (0.x)" }
+if ($Draft) { Show-Line "  draft: published by hand" }
 
 if ($DryRun) {
-    Write-Host "`n-DryRun, so this is where it stops. It would:" -ForegroundColor Yellow
+    Show-Line "`n-DryRun, so this is where it stops. It would:" -Colour Yellow
     @("set $name VERSION to $version in CMakeLists.txt",
       "run the core tests",
       "run tools\package.ps1 -- both zips into dist\",
       "publish the player's zip only; the test zip stays here",
       "commit CMakeLists.txt as `"$name $version`"",
       "tag $tag, push master and the tag",
-      "gh release create $tag on $repo with the player's zip attached") | ForEach-Object { Write-Host "  - $_" }
+      "gh release create $tag on $repo with the player's zip attached") | ForEach-Object { Show-Line "  - $_" }
     return
 }
 
@@ -168,7 +169,7 @@ try {
     if (-not (Test-Path $zip)) { Fail "Packaging did not write $zip." }
 }
 catch {
-    Write-Host "`nfailed before anything was committed. To undo the bump: git checkout CMakeLists.txt" -ForegroundColor Red
+    Show-Line "`nfailed before anything was committed. To undo the bump: git checkout CMakeLists.txt" -Colour Red
     throw
 }
 
@@ -192,6 +193,6 @@ if ($LASTEXITCODE -ne 0) {
     Fail "The commit, the tag and the push went through; gh release create did not. Re-run just that:`n  gh release create $tag --repo $repo --generate-notes dist\follower-tactics-$version.zip"
 }
 
-Write-Host "`nreleased $name $version" -ForegroundColor Green
-Write-Host "  https://github.com/$repo/releases/tag/$tag"
-Write-Host "  the test zip stays in dist\ -- it is not published"
+Show-Line "`nreleased $name $version" -Colour Green
+Show-Line "  https://github.com/$repo/releases/tag/$tag"
+Show-Line "  the test zip stays in dist\ -- it is not published"

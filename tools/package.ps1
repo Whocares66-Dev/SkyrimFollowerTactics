@@ -17,6 +17,7 @@
     copy says which zip it came from.
 #>
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'console.ps1')
 $root = Split-Path -Parent $PSScriptRoot
 
 $version = (Select-String -Path (Join-Path $root 'CMakeLists.txt') -Pattern 'project\(\w+ VERSION ([\d.]+)').Matches[0].Groups[1].Value
@@ -67,9 +68,9 @@ foreach ($flavour in @(
     $zip = Join-Path $dist "follower-tactics-$version$($flavour.Suffix).zip"
     if (Test-Path $zip) { Remove-Item -Force $zip }
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
-    Write-Host "wrote $zip  (log level $($flavour.Level))" -ForegroundColor Green
+    Show-Line "wrote $zip  (log level $($flavour.Level))" -Colour Green
     $written += $zip
 }
 
-Write-Host ("  " + ((Get-Item $dll).Length / 1KB).ToString('0') + " KB dll, release, version $version")
-Write-Host ("  " + $written.Count + " zips in dist\")
+Show-Line ("  " + ((Get-Item $dll).Length / 1KB).ToString('0') + " KB dll, release, version $version")
+Show-Line ("  " + $written.Count + " zips in dist\")
