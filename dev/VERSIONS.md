@@ -28,14 +28,16 @@ To resolve: find each in the SE executable (`tools/disasm.py --version 1.5.97` a
 
 | What | IDs (SE, AE) | Used by | Checked |
 |---|---|---|---|
-| `TESPackage::CreatePackage` | 28732, 29496 | `src/game/Forms.cpp` | AE read against 1.6.1170 (`dev/MAGIC.md` "Forms at runtime"); the same body in 1.7.104; the SE ID is the library's |
-| `ActorEquipManager::EquipObject`, `EquipSpell`, `EquipShout`, detoured | 37938 / 38894, 37939 / 38895, 37941 / 38897 | `src/game/Pins.cpp` | CommonLib's pairs; run on 1.6.1170 only; the same bodies in 1.7.104 |
+| `TESPackage::CreatePackage` | 28732, 29496 | `src/game/Forms.cpp` | AE read against 1.6.1170 (`dev/MAGIC.md` "Forms at runtime"); the same body in 1.7.104; the SE ID is the library's, and its body on 1.5.97 is shorter (111 instructions to AE's 123) and not read |
+| `ActorEquipManager::EquipObject`, `EquipSpell`, `EquipShout`, detoured | 37938 / 38894, 37939 / 38895, 37941 / 38897 | `src/game/Pins.cpp` | CommonLib's pairs; run on 1.6.1170 only; the same bodies in 1.7.104. On 1.5.97, `EquipSpell` and `EquipShout` have instruction for instruction the AE shape; `EquipObject` is 74 instructions to AE's 117, so AE added to it, and what was added is not read |
+
+Across the line the comparison is of shape only, every address made the same, since the IDs do not correspond. `Actor::DeselectSpell` (37820 / 38769), read the same way, differs in one thing: an Actor field at 0x1C0 on SE and 0x1C8 on AE, the layout difference CommonLib carries for the class.
 
 ## Vtable slots
 
 | What | Slot | Used by | Checked |
 |---|---|---|---|
-| `CombatInventoryItem`'s score call, replaced in each entry class's vtable | 0x0C | `kCalculateScoreSlot`, `src/game/Pins.cpp` | the vtables come from CommonLib for each runtime; the slot was read on 1.6.1170's melee entry (`dev/UNIQUE.md`); all twenty-one hooked tables have the same ID in every one of their first sixteen slots on 1.7.104 as on 1.6.1170 (2026-09-18) |
+| `CombatInventoryItem`'s score call, replaced in each entry class's vtable | 0x0C | `kCalculateScoreSlot`, `src/game/Pins.cpp` | the vtables come from CommonLib for each runtime; the slot was read on 1.6.1170's melee entry (`dev/UNIQUE.md`); all twenty-one hooked tables have the same ID in every one of their first sixteen slots on 1.7.104 as on 1.6.1170 (2026-09-18). On 1.5.97 the slot holds the same function shape in the ranged, block, staff and every magic table (SE 43863 for all the casters, as AE 45082 is), and a different one in the melee, shield and torch tables, with the slots around it matching, so the slot is the score there too and those three score differently |
 
 ## Layouts CommonLib does not map
 
@@ -66,7 +68,7 @@ Not addresses: copied into the plugin as logic, and wrong on another build only 
 |---|---|---|---|
 | 1.6.1170 | yes | the installed game, via `tools/Downgrade-Skyrim.ps1` (`dev/DOWNGRADE.md`) | 2.2.8 |
 | 1.7.104 | yes (2026-09-18) | the pre-downgrade backup the same script keeps beside the game folder; Steamless reports its code section is not encrypted, so the Steam file would have read as well | 2.3.1 |
-| 1.5.97 | no | `download_depot 489830 489833 2289561010626853674` in the Steam console (`steam://nav/console`): the exe depot at its last Special Edition manifest, one file. Special Edition and Anniversary Edition are the same Steam app; "AE" is the 1.6+ executable plus the Anniversary Upgrade's content, so owning it is owning every manifest. Running 1.5.97 would also need that build's `Skyrim.esm` and `Update.esm`, from depots 489831 and 489832 at their 1.5.97 manifests, which the Nexus manifest list (article 6536) has. | 2.0.20 |
+| 1.5.97 | yes (2026-09-18) | `download_depot 489830 489833 2289561010626853674` in the Steam console (`steam://nav/console`): the exe depot at its last Special Edition manifest, one file, landing in `steamapps\content\app_489830\depot_489833\`. Special Edition and Anniversary Edition are the same Steam app; "AE" is the 1.6+ executable plus the Anniversary Upgrade's content, so owning it is owning every manifest. Running 1.5.97 would also need that build's `Skyrim.esm` and `Update.esm`, from depots 489831 and 489832 at their 1.5.97 manifests, which the Nexus manifest list (article 6536) has. | 2.0.20 |
 | 1.7.99 | no | Steam, 2026-08-20 to 08-27 (the Address Library's file dates); its manifest is on neither list read | not looked up |
 | 1.6.1179 | no | GOG only, never a Steam manifest | 2.2.6 |
 
