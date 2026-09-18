@@ -2399,7 +2399,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 if (can && Im::IsItemHovered(0))
                     Im::SetTooltip("%s", setAside);
                 else if (Im::IsItemHovered(0))
-                    Im::SetTooltip("This condition cannot be negated");
+                    Im::SetTooltip("Condition cannot be negated");
             }
             else if (CellClicked(("##not" + rowId).c_str(), Im::GetFrameHeight()))
             {
