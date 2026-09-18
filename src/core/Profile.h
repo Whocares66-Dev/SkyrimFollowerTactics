@@ -15,7 +15,7 @@
 // that is accepted -- a profile from the future should degrade, not explode.
 //
 // Pure, like everything in core: forms cross the wire through a codec the
-// game supplies (docs/PROFILES.md says what the game writes), and the tests
+// game supplies (dev/PROFILES.md says what the game writes), and the tests
 // use one that passes ids through as hex.
 
 #include "Rule.h"

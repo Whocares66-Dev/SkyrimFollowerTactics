@@ -1,6 +1,6 @@
 #pragma once
 // A session's files: the pair one launch of the game writes, and the archive
-// the previous launch's pair moves into (docs/EVENTS.md "Sessions and
+// the previous launch's pair moves into (dev/EVENTS.md "Sessions and
 // files"). What can be decided without a disk is here, so it is tested: when
 // a session began, read back from the first line it wrote; the name its pair
 // is archived under; which archived pairs go; how much more a file may take.

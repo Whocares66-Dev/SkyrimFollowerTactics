@@ -4,7 +4,7 @@
 //
 // THE MECHANISM, AND WHY IT IS THIS ONE
 // Nothing in the game's API makes an NPC cast a chosen spell at a chosen
-// moment (docs/MAGIC.md walks the seven ways that was established). The AI
+// moment (dev/MAGIC.md walks the seven ways that was established). The AI
 // casts when one of ITS packages says to, so the only honest route is to give
 // the AI a package and a reason to pick it.
 //
@@ -33,22 +33,22 @@
 //
 // (Until 2026-09-09 the record was spliced into the vanilla follower
 // alias's combat-override list instead, which is shared and covered only
-// the followers that alias holds; docs/MAGIC.md "The list they live in".)
+// the followers that alias holds; dev/MAGIC.md "The list they live in".)
 //
 // NO PLUGIN FILE, NOTHING IN THE SAVE
 // Every record this needs is created in memory and forgotten at exit. The load
 // order does not change, the save never references a form of ours (every
 // lease is released on the save message, before the engine writes), and
-// removing the DLL removes the mod. docs/MAGIC.md "Forms at runtime" has what
+// removing the DLL removes the mod. dev/MAGIC.md "Forms at runtime" has what
 // was read from the executable to establish that.
 //
 // WHAT IS MADE
 // For each follower: a UseMagic package (a copy of Mercer's cast-at-player
 // record); a Shout package (a copy of Tsun's Clear Skies record), which is how
 // a POWER is performed -- the UseMagic procedure never fires one
-// (docs/ACTIONS.md 7); a one-word wrapper shout and its word; and a UseWeapon
+// (dev/ACTIONS.md 7); a one-word wrapper shout and its word; and a UseWeapon
 // package (a copy of Edorfin's attack-a-target record), which is how a POWER
-// ATTACK is made (docs/ATTACK.md). Each package's condition is
+// ATTACK is made (dev/ATTACK.md). Each package's condition is
 // GetIsReference(holder).
 //
 // ONE SET PER FOLLOWER
@@ -172,7 +172,7 @@ enum class CastRequest : std::uint8_t
 // record: power attacks only, one attack, damage done, the location near
 // themself, the rule's target. The procedure draws the attack from the race's
 // power attacks, waits for the follower's own swing to end, and retries until
-// the graph takes it (docs/ATTACK.md). The lease ends once the swing has
+// the graph takes it (dev/ATTACK.md). The lease ends once the swing has
 // ended, when the AI drops the package, or at the deadline. NoPackages when
 // the follower has no such record: the checks at load failed, or the copy did.
 // `plan` is the blow as the sensors priced it; its cost and reach go into

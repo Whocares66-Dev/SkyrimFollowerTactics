@@ -1,5 +1,5 @@
 #pragma once
-// The last game events, kept in memory for the panel (docs/EVENTS.md "The
+// The last game events, kept in memory for the panel (dev/EVENTS.md "The
 // last 1,000 in memory"). The panel can stay open with time running, so a
 // Logs tab has to show an event as it happens; reading the events file back
 // would mean file I/O and JSON parsing for the render thread, a half-written

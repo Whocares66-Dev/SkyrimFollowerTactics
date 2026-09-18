@@ -3,7 +3,7 @@
 // co-save (the .skse beside every .ess), written when the game saves and
 // read when a save loads, so tactics roll back with the save, go with it
 // when it is deleted, and are dropped by SKSE when the plugin is absent.
-// docs/PROFILES.md is the whole of it. This is the thin part: who a
+// dev/PROFILES.md is the whole of it. This is the thin part: who a
 // record is for, how a form is named in it, and the SKSE callbacks. What
 // a record holds is core's (core/Profile.h), as JSON text.
 

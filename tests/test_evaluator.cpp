@@ -1,5 +1,5 @@
 // These tests run with no Skyrim, no SKSE, and no CommonLibSSE.
-// That is the whole point -- see docs/PLAN.md section 3.
+// That is the whole point -- see dev/PLAN.md section 3.
 
 #include <catch2/catch_test_macros.hpp>
 

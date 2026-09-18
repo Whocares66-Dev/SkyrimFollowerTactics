@@ -19,7 +19,7 @@ namespace
 // Making an NPC actually consume a potion -- or a food, or an ingredient:
 // all three are eaten by the same equip call, and the game consumes the
 // item through its normal path. (Food and ingredients: built 2026-09-04,
-// their effects on an NPC unverified in play; docs/ACTIONS.md 7.)
+// their effects on an NPC unverified in play; dev/ACTIONS.md 7.)
 //
 // These parameter values are NOT guesses. They are copied from NPCsUsePotions
 // (github.com/muenchk/NPCsUsePotions), which has solved this problem in
@@ -27,7 +27,7 @@ namespace
 //
 //     EquipObject(actor, potion, nullptr, 1, nullptr, true, false, false)
 //
-// Note playSounds = false. docs/PLAN.md originally guessed true; the working
+// Note playSounds = false. dev/PLAN.md originally guessed true; the working
 // implementation passes false, so we match it. If the drink turns out to be
 // silent in a way that matters, that is the one flag to flip -- but reliability
 // first, polish second.
@@ -296,7 +296,7 @@ const char *ToString(ActionResult r) noexcept
 // Point the combat AI at an enemy: the target the controller holds and the
 // actor's own mirror of it. Everything else -- weapon, spell, spacing --
 // stays the AI's, re-scored for the new target. Whether the standard target
-// selector lets the choice stand is the open question (docs/ACTIONS.md 6):
+// selector lets the choice stand is the open question (dev/ACTIONS.md 6):
 // the rule reports "already fighting them" on the next tick if it did, and
 // fires again after its cooldown if it did not, so the log answers it
 // without any extra instrumentation.
@@ -369,7 +369,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // selected on every request and the AI never cast, because that
         // procedure casts from a hand. The instant caster would apply the
         // effect with no animation; a performance was wanted, so the Shout
-        // package it is (docs/ACTIONS.md 7). A shout goes through the same package
+        // package it is (dev/ACTIONS.md 7). A shout goes through the same package
         // with the shout itself in the package's input, no wrapper. Aimed as
         // a cast is: a Self power or shout on the follower, anything else at
         // whom the rule aimed it.
@@ -492,7 +492,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // A power attack with the right hand's weapon goes through the
         // follower's UseWeapon record, which waits for their own swing to end
         // instead of being turned away mid-swing: sent as an event, 3 of 11
-        // blows landed in play (2026-09-09, docs/ACTIONS.md 6). The procedure
+        // blows landed in play (2026-09-09, dev/ACTIONS.md 6). The procedure
         // attacks with the right hand alone, so the left's blade and the fists
         // stay events.
         if (blow.swing == ft::Swing::Right || blow.swing == ft::Swing::Both)

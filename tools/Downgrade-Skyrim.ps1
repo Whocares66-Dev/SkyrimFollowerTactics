@@ -47,7 +47,7 @@ $script:OnWindows = if (Get-Variable -Name IsWindows -ErrorAction SilentlyContin
 }
 
 # --------------------------------------------------------------------------
-# Facts. Sources are in docs/DOWNGRADE.md.
+# Facts. Sources are in dev/DOWNGRADE.md.
 # --------------------------------------------------------------------------
 $APP_ID    = 489830
 $CK_APP_ID = 1946180

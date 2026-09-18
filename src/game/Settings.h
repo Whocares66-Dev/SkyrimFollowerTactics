@@ -6,7 +6,7 @@
 // tree's Power Bash perk. An NPC needs none of them in vanilla -- the idle
 // tree asks the Power Bash perk of the player alone, and the combat style is
 // a hint to the AI, not a law -- so each is the player's choice, and what
-// they choose is saved with the game (game/Profiles.h, docs/PROFILES.md).
+// they choose is saved with the game (game/Profiles.h, dev/PROFILES.md).
 //
 // Read by the tick building a snapshot and by the panel drawing a menu;
 // written by the panel and by a load. Three atomics, so a read costs

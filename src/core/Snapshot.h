@@ -143,7 +143,7 @@ struct ActorView
     Stat magicka{};
     Stat stamina{};
     // How far a swing has to reach to strike them, as the engine's melee
-    // test measures it (docs/ACTIONS.md 6): centre to centre, less both
+    // test measures it (dev/ACTIONS.md 6): centre to centre, less both
     // bodies. What a blow's reach is held against.
     float reachDistance{0.0f};
 };
@@ -171,7 +171,7 @@ struct CorpseView
 
 // What the follower carries to drink, eat or apply, with what each bottle
 // does. Populated by an inventory scan in src/game/, which is expensive --
-// see the sensor gating note in docs/PLAN.md section 3.3.
+// see the sensor gating note in dev/PLAN.md section 3.3.
 struct PotionStock
 {
     // One effect of a bottle, by the name the game shows for it, with what
@@ -189,7 +189,7 @@ struct PotionStock
         // follower is worth buffing with before the swords come out, as
         // against a Restore, which is the emergency being saved for. Judged
         // on the game side from the effect record, not from its name, so a
-        // mod's own Fortify counts (src/game/Sensors.cpp, docs/ACTIONS.md).
+        // mod's own Fortify counts (src/game/Sensors.cpp, dev/ACTIONS.md).
         // Meaningless on a poison, where every bane goes at the enemy.
         bool buff{false};
         // A bane: Detrimental or Hostile on the record. Kept beside the boons
@@ -610,7 +610,7 @@ struct Snapshot
     // poison is only probably so.
     std::vector<RunningEffect> targetRunning;
 
-    // The party and the enemies, by definition (docs/CONDITIONS.md 6): the
+    // The party and the enemies, by definition (dev/CONDITIONS.md 6): the
     // allies are the player and every other teammate, so the player is
     // read as an ally with kPlayerFormID; the enemies are whoever the
     // compass paints red. Alive ones only.

@@ -3,7 +3,7 @@
 // the action targets that read from the binding. Written against what the
 // coverage report (build/core-cov) showed the other tests never reach.
 //
-// No Skyrim, no SKSE, no CommonLibSSE -- see docs/PLAN.md section 3.
+// No Skyrim, no SKSE, no CommonLibSSE -- see dev/PLAN.md section 3.
 
 #include <catch2/catch_test_macros.hpp>
 

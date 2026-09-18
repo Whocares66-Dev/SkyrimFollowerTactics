@@ -11,7 +11,7 @@
 // referenced from the save file, and removing the DLL removes the whole mod.
 //
 // HOW, AND WHAT WAS CHECKED
-// Read from the 1.6.1170 executable (tools/disasm.py, docs/MAGIC.md "Forms at
+// Read from the 1.6.1170 executable (tools/disasm.py, dev/MAGIC.md "Forms at
 // runtime") rather than assumed:
 // - TESForm's constructor gives a form made outside file loading a dynamic
 //   FormID from the data handler and registers it in the global form map.

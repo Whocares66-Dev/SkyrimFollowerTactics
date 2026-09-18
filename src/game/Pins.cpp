@@ -472,7 +472,7 @@ bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands,
 // shout. The Papyrus natives behind Actor.UnequipSpell and
 // Actor.UnequipShout are thin wrappers: they null-check, and tail-call
 // these on the equip manager singleton (read off 1.6.1170 --
-// docs/COMMONLIB.md has the trace, docs/VERSIONS.md the IDs). Calling them
+// dev/COMMONLIB.md has the trace, dev/VERSIONS.md the IDs). Calling them
 // here does on THIS frame what the Papyrus dispatch does on the next.
 //
 // The IDs are the AE line's, which is the only line this plugin is built for
@@ -1839,7 +1839,7 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
 //
 // Out of combat the engine chooses equipment by a routine nobody has found:
 // the best weapon when a fight ends, the default outfit on a cell change, a
-// better arrow when one is picked up (docs/RESEARCH.md 7). What it chooses
+// better arrow when one is picked up (dev/RESEARCH.md 7). What it chooses
 // is not reachable; what it DOES is, because every choice lands in
 // ActorEquipManager::EquipObject, the same function Papyrus EquipItem and
 // our own pins call. So the choice is refused where it lands: an equip we

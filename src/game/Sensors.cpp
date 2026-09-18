@@ -62,7 +62,7 @@ bool Harmful(const RE::EffectSetting *base)
 //
 // And it must do something for THIS actor. A Fortify One-handed potion
 // writes OneHandedPowerModifier, which only a hidden perk reads, and an
-// actor without the perk drinks it for nothing (docs/RESEARCH.md 6;
+// actor without the perk drinks it for nothing (dev/RESEARCH.md 6;
 // EffectApplies, below, asks the actor). An "any buff" that rolled one of
 // those would be the waste it exists to avoid.
 //
@@ -174,7 +174,7 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock)
 // do not add to one another, only the strongest of a name is in force, but
 // they do stack with enchantments (UESP, Skyrim:Alchemy_Effects). A worn
 // Fortify One-handed ring shares the potion's name and writes a different
-// value (docs/RESEARCH.md 6); counting it would keep a follower off a potion
+// value (dev/RESEARCH.md 6); counting it would keep a follower off a potion
 // that would have stacked. (Until 2026-09-16 any source counted, when the
 // question was only "is something of this name up".)
 //
@@ -208,7 +208,7 @@ bool ReadsSkillPowerMods(const RE::Actor *actor);
 // Does this effect change anything for this actor? A value-modifying effect
 // on a skill modifier -- Fortify One-handed's OneHandedModifier, Fortify
 // Destruction's DestructionModifier -- is read only by the two hidden perks
-// a follower does not carry (docs/RESEARCH.md 6): the value moves, and
+// a follower does not carry (dev/RESEARCH.md 6): the value moves, and
 // nothing looks at it.
 bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base)
 {
@@ -283,7 +283,7 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
     // Current is the damaged value. The maximum is the permanent value --
     // base plus the permanent modifier -- plus the TEMPORARY modifier,
     // where a follower's Fortify enchantment or potion lands (the player's
-    // goes in the permanent one, docs/MODIFIERS.md): a
+    // goes in the permanent one, dev/MODIFIERS.md): a
     // circlet of +50 magicka raises what the bar can show, and reading the
     // permanent value alone put 346 over 246 (2026-09-09). Their ratio is
     // what the rules read, so both are logged in Tactics.cpp to make a
@@ -336,7 +336,7 @@ bool IsPower(const RE::SpellItem *spell)
 // hand (SpellGrip): the slot decides, never the level, so a mod's one-handed
 // master spell is in; a package told to dual cast a one-hand variant fired it
 // from that hand alone (Serana's Ice Storm, DLC1IceStormRightHand,
-// 2026-09-16). And, where Settings asks for it (docs/PROFILES.md), the perk
+// 2026-09-16). And, where Settings asks for it (dev/PROFILES.md), the perk
 // system's answer to the Can Dual Cast Spell entry point, so a mod's perk
 // counts the same as the school's Dual Casting perk.
 bool CanDualCast(RE::Actor *actor, RE::SpellItem *spell)
@@ -959,7 +959,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         // totals read too (ForEachActiveEffect). Not by asking the
         // conditions: the engine asks an effect record's once, when the
         // effect lands, and Adamant's Bastion asks there whether the cast
-        // was dual, which reads false ever after (docs/CONDITIONS.md 10).
+        // was dual, which reads false ever after (dev/CONDITIONS.md 10).
         row.active = !ae->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled);
         row.name = name;
         row.magnitude = ae->magnitude;
@@ -1035,7 +1035,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
     return out;
 }
 
-// What an actor is in the middle of, as docs/CONDITIONS.md 2 reads it: the
+// What an actor is in the middle of, as dev/CONDITIONS.md 2 reads it: the
 // hostile effects running on them by the kind of damage, the poison and
 // the disease by their spell type, the paralysis and the rest by the
 // actor's own flags. One walk of the effect list, a handful of flag reads.
@@ -1260,7 +1260,7 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     }
 
     // The cost as the engine's own routine prices a power attack (26429 on
-    // 1.6.1170, which the UseWeapon procedure asks too; docs/ACTIONS.md 6):
+    // 1.6.1170, which the UseWeapon procedure asks too; dev/ACTIONS.md 6):
     // the RIGHT hand's weapon's weight, 1 with none there, times
     // fStaminaAttackWeaponMult, plus fStaminaAttackWeaponBase, times
     // fPowerAttackStaminaPenalty -- 1, 20 and 2 in vanilla; then the Mod Power
@@ -1276,7 +1276,7 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     plan.stamina = (std::max)(0.0f, cost * StaminaMultOf(actor, plan.event));
     // The engine's own reach for the actor and what they hold -- the weapon's
     // reach times fCombatDistance, or the race's unarmed reach, times the
-    // actor's scale (docs/ACTIONS.md 6). The bodies are in the enemy's
+    // actor's scale (dev/ACTIONS.md 6). The bodies are in the enemy's
     // ReachDistance, as the engine leaves them out of its distance.
     plan.reach = actor->GetReach();
     return plan;
@@ -1378,7 +1378,7 @@ void ReadHands(RE::Actor *actor, ft::ActorTraits &traits)
         traits.Wield(ft::DamageKind::Melee);
 }
 
-// The kind of being, for the Type condition (docs/CONDITIONS.md 2a). The
+// The kind of being, for the Type condition (dev/CONDITIONS.md 2a). The
 // engine's own classes are keywords on the race and the actor base, asked
 // of the actor as its conditions ask them (HasKeyword: the sun spells gate
 // on ActorTypeUndead this way, and a ghost carries it on the base over a
@@ -1593,7 +1593,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     // target" resolves to.
     s.currentTarget = LiveTargetOf(actor);
 
-    // The party and the enemies, by definition (docs/CONDITIONS.md 6). An
+    // The party and the enemies, by definition (dev/CONDITIONS.md 6). An
     // ally is the player and every other actor with the teammate flag; an
     // enemy is anyone the compass paints red for the player, in combat and
     // hostile to them. One walk of the loaded actors, alive ones only, each
@@ -2482,7 +2482,7 @@ namespace
 // The two hidden perks that turn the Fortify skill values into anything:
 // PerkSkillBoosts reads the enchantment values (OneHandedModifier and its
 // kin), AlchemySkillBoosts the potion ones (OneHandedPowerModifier ...).
-// The player carries both. On the records no follower does (docs/RESEARCH.md
+// The player carries both. On the records no follower does (dev/RESEARCH.md
 // 6), and UESP agrees: Fortify One-handed on a follower's gauntlets does
 // nothing. So the sheets multiply a Fortify value in only for an actor who
 // has the perk that reads it, and say so otherwise.
@@ -2528,7 +2528,7 @@ namespace
 {
 // The entries the actor holds on one entry point, in the order the
 // engine visits them: the arrays on the actor's process, kept sorted by
-// priority (docs/MODIFIERS.md).
+// priority (dev/MODIFIERS.md).
 struct EntryCollector : RE::PerkEntryVisitor
 {
     // A virtual destructor after Visit keeps Visit in the slot the engine
@@ -2544,7 +2544,7 @@ struct EntryCollector : RE::PerkEntryVisitor
 };
 
 // The two floats of a two-value function record, read where the engine's
-// handlers read them (docs/MODIFIERS.md): the first is an actor value's
+// handlers read them (dev/MODIFIERS.md): the first is an actor value's
 // index for the actor-value functions, the second the multiplier.
 struct TwoValueData
 {
@@ -2787,7 +2787,7 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     // One-handed and its kin count here too, for whoever holds the hidden
     // perk that reads them (every NPC in Nordic Souls; no follower in
     // vanilla): multiplying the value in by hand as well doubled it
-    // (docs/MODIFIERS.md, 2026-09-13).
+    // (dev/MODIFIERS.md, 2026-09-13).
     (void)fortify;
     (void)fortifyPower;
     AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, {weapon, actor});
@@ -2797,7 +2797,7 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     // The multiplier on every physical hit (a Vampire Lord's, a mod's), 1
     // for plain, and flat points on the weapon's listed damage: both per
     // UESP's account of what the listed damage carries, not yet read off
-    // the executable (docs/MODIFIERS.md).
+    // the executable (dev/MODIFIERS.md).
     if (owner)
     {
         if (const float mult = owner->GetActorValue(AV::kAttackDamageMult); mult > 0.0f && mult != 1.0f)
@@ -2831,7 +2831,7 @@ float CritChance(RE::Actor *actor, RE::TESObjectWEAP *weapon, ft::Breakdown *out
     // Bladesman and its kin set or add to it here. The entry point takes
     // the weapon and a target; they stand in for the target, as for
     // damage. Where the engine starts its own figure from is not yet read
-    // off the executable (docs/MODIFIERS.md).
+    // off the executable (dev/MODIFIERS.md).
     AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kCalculateMyCriticalHitChance, {weapon, actor});
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kCalculateMyCriticalHitChance, actor, weapon,
                                         actor, &chance);
@@ -2897,7 +2897,7 @@ float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out)
 
 ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
 {
-    // The engine's own cost, read off the executable (docs/MODIFIERS.md):
+    // The engine's own cost, read off the executable (dev/MODIFIERS.md):
     // the sum of each effect's cost, each scaled by the caster's skill in
     // the effect's school, then the Mod Spell Cost entries, then clamped
     // at zero. A power gets none of it: the caster is dropped and the sum
@@ -2954,7 +2954,7 @@ ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
 float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntryData *entry, ft::Breakdown *out)
 {
     // The engine's own per-piece figure, read off its armour rating walk
-    // (2026-09-13, docs/MODIFIERS.md): the record's rating plus the
+    // (2026-09-13, dev/MODIFIERS.md): the record's rating plus the
     // tempering bonus in points, times the skill multiplier plus the Armor
     // Perks value, rounded up, then the Mod Armor Rating entries.
     if (!actor || !armor)
@@ -2975,7 +2975,7 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     // nothing. Doubled, before the floor, for a piece carrying the default
     // object Keyword Cuirass: Serana's tempered Vampire Armor rated 82 on
     // our sheet and 106 in the engine, the whole of an Other +24
-    // (measured 2026-09-13, docs/MODIFIERS.md).
+    // (measured 2026-09-13, dev/MODIFIERS.md).
     const float healthLow = GameSetting("fHealthDataValue1", 1.1f);
     const float healthHigh = GameSetting("fHealthDataValue6", 1.6f);
     const float smithingMax = GameSetting("fSmithingArmorMax", 10.0f);
@@ -3049,7 +3049,7 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     // Perks: Juggernaut, Agile Defender and their kin, through the engine's
     // entry point for armour, which takes the piece and the value. A
     // Fortify Heavy Armor value is not multiplied in: the hidden perk that
-    // reads it cuts incoming damage, not the rating (docs/RESEARCH.md 6),
+    // reads it cuts incoming damage, not the rating (dev/RESEARCH.md 6),
     // and vanilla writes the skill itself.
     AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kModArmorRating, {armor});
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModArmorRating, actor, armor, &rating);
@@ -3253,7 +3253,7 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
     const auto chance = [](float x) { return Fmt("%.2f", x) + " / 1"; };
     const auto score = [](float x) { return Fmt("%.2f", x) + " / 10"; };
     // Hover text: the Creation Kit wiki's word on each field, as bullets.
-    // docs/COMBAT_STYLE.md has the page.
+    // dev/COMBAT_STYLE.md has the page.
     const auto note = [](SheetRow row, const char *text) {
         row.note = text;
         return row;
@@ -3593,7 +3593,7 @@ std::vector<SheetRow> ConditionRows(const RE::TESCondition &condition, const Con
         using Object = RE::CONDITIONITEMOBJECT;
         const auto object = data.object.get();
         // The party the engine runs it on (TESConditionItem::IsTrue,
-        // docs/CONDITIONS.md 10): the Subject, or through the Subject its
+        // dev/CONDITIONS.md 10): the Subject, or through the Subject its
         // combat target or linked reference; the Target; the swap flag
         // trading the two when both are there. A named reference needs
         // neither, and a quest alias, package data or a story event is
@@ -4016,7 +4016,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
     const auto av = [owner](RE::ActorValue value) { return owner->GetActorValue(value); };
 
     // What a skill's two modifier values do, read from the game's own records
-    // rather than a wiki (docs/RESEARCH.md, "Skill modifiers").
+    // rather than a wiki (dev/RESEARCH.md, "Skill modifiers").
     //
     // Every actor carries two hidden perks, PerkSkillBoosts and
     // AlchemySkillBoosts in Skyrim.esm. Each multiplies ONE game quantity by
@@ -4103,7 +4103,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         }
 
         // The Armor Perks value, which the engine adds to either armour
-        // skill's multiplier for every piece worn (docs/MODIFIERS.md): on
+        // skill's multiplier for every piece worn (dev/MODIFIERS.md): on
         // both rows, with what set it on hover.
         if (k.value == AV::kHeavyArmor || k.value == AV::kLightArmor)
         {
@@ -4274,7 +4274,7 @@ namespace
 // record's duration; a dual cast (id 34058); the caster's Mod Spell Duration
 // entries given the spell and the target, then the target's Mod Incoming
 // Spell Duration given the spell (ActiveEffect::AdjustForPerks, id 34053);
-// less the time run (docs/MODIFIERS.md). Whatever else moves a duration is
+// less the time run (dev/MODIFIERS.md). Whatever else moves a duration is
 // not read, and shows as Other.
 ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
 {

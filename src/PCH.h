@@ -15,6 +15,6 @@
 // not the library -- and while it existed, a new call site could log prose at
 // a hardcoded level with a hand-typed module prefix and nobody would notice.
 // game/Log.h is the way in now: ft::log::<module>.info(...), and .event(...)
-// for anything docs/LOGGING.md gives an event name.
+// for anything dev/LOGGING.md gives an event name.
 
 using namespace std::literals;

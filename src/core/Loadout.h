@@ -137,7 +137,7 @@ struct EnchantEffect
 
 // One variant of a form: what tells a row of the Inventory tab from the
 // other rows of the same form, made of the parts of the copy's extra-data
-// list that only the player's own hand changes (docs/UNIQUE.md, "The
+// list that only the player's own hand changes (dev/UNIQUE.md, "The
 // variant"). The plain variant has every part empty. Charge, a poison
 // dose, worn marks and the engine's per-bag id are not part of it: they
 // change on their own, or the engine ignores them itself. Wherever a
@@ -477,7 +477,7 @@ enum class Shadow : std::uint8_t
 // ---- The engine's own pick, minus the banned copies.
 //
 // An equip that names no list -- every one the combat AI makes -- leaves
-// the copy to the engine, whose rule is known (docs/UNIQUE.md, "Which copy
+// the copy to the engine, whose rule is known (dev/UNIQUE.md, "Which copy
 // the engine takes for a null list"): a plain copy first, else the first
 // copy in the entry's order that is not already worn. A ban on one copy
 // is kept by walking the same pool in the same order with the banned

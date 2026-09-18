@@ -5,7 +5,7 @@
 // In the game's idle tree a bash is an attack made while blocking: bashStart
 // is offered only to an actor who wants to block and is blocking, and the
 // combat AI bashes the same way, its block raised by a CombatAnimation of the
-// left attack action before its attack (docs/ATTACK.md "How the engine
+// left attack action before its attack (dev/ATTACK.md "How the engine
 // bashes"). The bash itself is the right attack action made from the block,
 // which the tree resolves into bashStart, and which sets the bash attack
 // state; the event sent straight to the graph was taken and set no such

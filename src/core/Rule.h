@@ -276,7 +276,7 @@ enum class ActionKind : std::uint8_t
     // A power (Embrace of Shadows, Battle Cry): a spell record cast from
     // the voice rather than a hand, no magicka. Performed through a Shout
     // package wrapping the power as a one-word shout, since the UseMagic
-    // package never fires one (measured 2026-09-04, docs/ACTIONS.md 7).
+    // package never fires one (measured 2026-09-04, dev/ACTIONS.md 7).
     // Otherwise a cast: a lease, a deadline, and it waits on the
     // follower's own cast in progress.
     UsePower,

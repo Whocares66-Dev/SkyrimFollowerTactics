@@ -9,7 +9,7 @@ namespace ft
 {
 
 // What an actor is in the middle of, read off the actor each tick. One bit
-// each in ActorTraits::status. docs/CONDITIONS.md 2 says what each reads.
+// each in ActorTraits::status. dev/CONDITIONS.md 2 says what each reads.
 enum class StatusKind : std::uint8_t
 {
     Poisoned,
@@ -37,7 +37,7 @@ enum class StatusKind : std::uint8_t
 // What kind of being an actor is, for the Type condition: four groups, each
 // with a head that means any of its members, the members contiguous after
 // it. The peoples by race; the creatures by the engine's own actor-type
-// keywords where it has one and by race where it does not (docs/CONDITIONS.md
+// keywords where it has one and by race where it does not (dev/CONDITIONS.md
 // 2a). One bit each in ActorTraits::kinds; the game side sets the bits it
 // reads, a head's own bit included where a being is of the group and of no
 // member (the Elder race is a man; a hagraven is a creature). Overlap is by

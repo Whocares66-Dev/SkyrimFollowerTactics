@@ -19,7 +19,7 @@ namespace
 // rule "unsupported" since the migration). The declaration is the
 // library's bug; this one takes the type the engine takes, so the call
 // is made with the enum and no cast. The AE ID was checked against
-// 1.6.1170 by reading the function (docs/MAGIC.md "Forms at runtime").
+// 1.6.1170 by reading the function (dev/MAGIC.md "Forms at runtime").
 RE::TESPackage *CreatePackage(RE::PACKAGE_TYPE type)
 {
     using func_t = RE::TESPackage *(*)(RE::PACKAGE_TYPE);

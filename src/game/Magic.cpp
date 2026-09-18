@@ -465,7 +465,7 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
 // flags: `PlayerCharacter::UnlockWord` (vtable 0xD0) tail-calls the flag
 // setter that sets that bit, and `TESShout::GetKnown` (vtable 0x17) answers
 // for a whole shout by reading it off the first variation that has a word.
-// Read from the running 1.6.1170 in memory (docs/VERSIONS.md). CommonLib
+// Read from the running 1.6.1170 in memory (dev/VERSIONS.md). CommonLib
 // names no accessor for it on a word -- `GetRandomAnim` is the same bit on
 // other form types -- so the bit is named here rather than borrowed under a
 // wrong name.

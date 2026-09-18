@@ -7,8 +7,8 @@
 //                                 whatever the level
 //
 // Neither is hand-maintained against the other: a game event is written once,
-// here, and comes out of both. docs/LOGGING.md is the machinery and the
-// levels; docs/EVENTS.md is which events there are and what each carries.
+// here, and comes out of both. dev/LOGGING.md is the machinery and the
+// levels; dev/EVENTS.md is which events there are and what each carries.
 //
 // Every line names its module, and the module is a FIELD rather than a string
 // somebody typed at the front of the message:
@@ -109,7 +109,7 @@ class Module
     }
 
     // A game event: the JSON line in the events file AND the prose line in
-    // the log, from this one call. `name` is a name from docs/EVENTS.md's
+    // the log, from this one call. `name` is a name from dev/EVENTS.md's
     // catalogue, `fields` what that row says it carries beyond the envelope,
     // and the trailing format string is how the same fact reads in prose.
     // The level filters the prose line only: turning the log down must not

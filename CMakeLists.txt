@@ -161,7 +161,7 @@ if(FT_BUILD_PLUGIN)
     # (extern/commonlibsse-ng, branch ng). Its own dependencies -- spdlog,
     # rapidcsv, directxtk and what they pull -- come through our vcpkg
     # manifest, since a manifest build reads only the top-level one. Its
-    # tests are not ours to build. docs/COMMONLIB.md has the history.
+    # tests are not ours to build. dev/COMMONLIB.md has the history.
     set(BUILD_TESTS OFF CACHE BOOL "CommonLibSSE's own tests" FORCE)
     # AE only, for now (2026-09-17). The plugin calls engine functions by
     # Address Library ID, and an ID is only stable within one line: the same
@@ -177,7 +177,7 @@ if(FT_BUILD_PLUGIN)
     # anyone relied on it. Turning them off makes REL::Module::IsAE() a
     # compile-time truth (REL/Relocation.h), so those paths fold away.
     # Supporting them again means reading each ID's SE half first
-    # (docs/VERSIONS.md).
+    # (dev/VERSIONS.md).
     set(ENABLE_SKYRIM_SE OFF CACHE BOOL "Skyrim SE support in CommonLibSSE" FORCE)
     set(ENABLE_SKYRIM_VR OFF CACHE BOOL "Skyrim VR support in CommonLibSSE" FORCE)
     set(ENABLE_SKYRIM_AE ON CACHE BOOL "Skyrim AE support in CommonLibSSE" FORCE)
@@ -218,7 +218,7 @@ if(FT_BUILD_PLUGIN)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
         # Every structured log line carries the build that wrote it
-        # (docs/LOGGING.md's envelope), so a .jsonl attached to a bug report
+        # (dev/LOGGING.md's envelope), so a .jsonl attached to a bug report
         # says which version produced it without anyone having to ask.
         FT_VERSION="${PROJECT_VERSION}")
     ft_apply_warnings(${PROJECT_NAME})

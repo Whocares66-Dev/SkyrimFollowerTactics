@@ -34,7 +34,7 @@ namespace
 
 // The TURN. Every half second the list is walked and at most one rule
 // fires. There is no separate "global cooldown": the turn is the spacing
-// between decisions, and the only other timers are per action. (docs/PLAN.md
+// between decisions, and the only other timers are per action. (dev/PLAN.md
 // 3.2 asked for 150 ms; a decision a half-second is the cadence a fight
 // reads well at, and the cost is far under budget either way.)
 constexpr double kTickInterval = 0.5;
@@ -159,7 +159,7 @@ namespace
 std::mutex g_viewMutex;
 std::vector<FollowerView> g_view;
 
-// Per-evaluation cost, in microseconds. docs/PLAN.md 3.2 sets a budget -- total
+// Per-evaluation cost, in microseconds. dev/PLAN.md 3.2 sets a budget -- total
 // tick cost across 8 followers under 0.5 ms/frame amortised -- and insists it be
 // measured rather than assumed. This is that measurement. It is also how we will
 // know whether the inventory scan needs caching, before building a cache for it.

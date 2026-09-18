@@ -1,0 +1,43 @@
+title: Follower Tactics
+description: Follower Tactics is a Skyrim mod that allows combat tactics to be customized for followers.
+url: https://whocares66-dev.github.io
+baseurl: /SkyrimFollowerTactics
+remote_theme: just-the-docs/just-the-docs@v0.12.0
+color_scheme: nordic
+permalink: pretty
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+  - jekyll-include-cache
+search_enabled: true
+search:
+  heading_level: 4
+  previews: 3
+  preview_words_before: 5
+  preview_words_after: 12
+  focus_shortcut_key: k
+  button: false
+heading_anchors: true
+nav_enabled: true
+back_to_top: true
+back_to_top_text: Back to top
+callouts:
+  note:
+    color: blue
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+      has_toc: false
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+  - tools
+  - _legacy

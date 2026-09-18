@@ -3,20 +3,20 @@
 A Dragon Age: Origins-style tactics system for Skyrim SE/AE followers: an ordered list of
 `IF <subject>: <condition> THEN <target>: <action>` rules, per follower, editable in game.
 
-Read `docs/PLAN.md` first. `docs/RESEARCH.md` has the sourced findings behind it, with
-explicit uncertainty flags. `docs/MAGIC.md` is how casting works and what does not;
-`docs/PROFILES.md` is how tactics live in the save (format, when, versioning);
-`docs/UNIQUE.md` is how one copy of an item is told from another (the engine's
+Read `dev/PLAN.md` first. `dev/RESEARCH.md` has the sourced findings behind it, with
+explicit uncertainty flags. `dev/MAGIC.md` is how casting works and what does not;
+`dev/PROFILES.md` is how tactics live in the save (format, when, versioning);
+`dev/UNIQUE.md` is how one copy of an item is told from another (the engine's
 unique id, what a pin, a ban and a rule name, what is still to verify);
-`docs/GAME_MODEL.md` is the plan for a model of the engine the item logic can be
+`dev/GAME_MODEL.md` is the plan for a model of the engine the item logic can be
 tested against without Skyrim (not yet built; what is known, what to measure first);
-`docs/DEVBENCH.md` is what devbench, a plugin that lets a script or an agent drive a running Skyrim, would give us, its limits, and how it meets the game model (observations; nothing wired in);
-`docs/LOGGING.md` is the log design (levels, structured events, the JSON-lines sidecar);
-`docs/EVENTS.md` is the game events: what tactics record, the last 1,000 kept in memory for the panel, and the per-session files and their archive (built 2026-09-14; not yet verified in play);
-`docs/MODIFIERS.md` is where a follower's bonuses come from and how to total them (perk
+`dev/DEVBENCH.md` is what devbench, a plugin that lets a script or an agent drive a running Skyrim, would give us, its limits, and how it meets the game model (observations; nothing wired in);
+`dev/LOGGING.md` is the log design (levels, structured events, the JSON-lines sidecar);
+`dev/EVENTS.md` is the game events: what tactics record, the last 1,000 kept in memory for the panel, and the per-session files and their archive (built 2026-09-14; not yet verified in play);
+`dev/MODIFIERS.md` is where a follower's bonuses come from and how to total them (perk
 entry points over actor values; research and thoughts, with the open questions);
-`docs/VERSIONS.md` is every address, vtable slot and layout taken from one build of the game (1.6.1170) rather than from CommonLib, to resolve before shipping; add a row when you add one;
-`docs/TODO.md` is what is still to do.
+`dev/VERSIONS.md` is every address, vtable slot and layout taken from one build of the game (1.6.1170) rather than from CommonLib, to resolve before shipping; add a row when you add one;
+`dev/TODO.md` is what is still to do.
 
 ## The one architectural rule
 
@@ -42,7 +42,7 @@ verified by playing. If you want to `#include "RE/Skyrim.h"` in `core/`, the cod
 
 **Never run Steam's "verify integrity of game files"** — it restores 1.7.104 and undoes the
 downgrade. Both appmanifests are read-only to prevent silent updates. **Never launch Skyrim
-or the CK from the Steam Library** — use `skse64_loader.exe` or MO2. See `docs/DOWNGRADE.md`.
+or the CK from the Steam Library** — use `skse64_loader.exe` or MO2. See `dev/DOWNGRADE.md`.
 
 ## Building
 
@@ -232,11 +232,11 @@ Verified against the headers. Do not "simplify" these away:
   ours: every line went through its logger, the ini's `level` never applied to a release build,
   and our banner lines were truncated away. Found 2026-09-11, after two days of "debug does
   nothing" in Nordic Souls. We call `SKSE::Init(skse, {.log = false})`.
-- **Never call `ActiveEffect::GetTargetActor()` or `MagicTarget::GetTargetAsActor()`.** They return a pointer 0x98/0xA0 into the actor, and it crashed the game (2026-09-13). Use `target->GetTargetStatsObject()` and `As<RE::Actor>()`. `docs/COMMONLIB.md` has the evidence and history.
+- **Never call `ActiveEffect::GetTargetActor()` or `MagicTarget::GetTargetAsActor()`.** They return a pointer 0x98/0xA0 into the actor, and it crashed the game (2026-09-13). Use `target->GetTargetStatsObject()` and `As<RE::Actor>()`. `dev/COMMONLIB.md` has the evidence and history.
 
 We are on **alandtse/CommonLibSSE-NG v7.5.1** as the submodule `extern/commonlibsse-ng`
 (clone with `--recurse-submodules`). Its vcpkg dependencies are in our manifest.
-`docs/COMMONLIB.md` has why the fork was chosen and the API shapes worth knowing.
+`dev/COMMONLIB.md` has why the fork was chosen and the API shapes worth knowing.
 
 ## Current phase
 
@@ -253,7 +253,7 @@ Lydia (FF000DE0) health 42/42 (100%) combat=true potions=12    <- drank, count d
 tactics: 23 evaluations, avg 47 us, max 50 us
 ```
 
-`docs/PLAN.md` section 5 rated "forcing an NPC to drink a potion isn't reliable" as the
+`dev/PLAN.md` section 5 rated "forcing an NPC to drink a potion isn't reliable" as the
 highest risk in the project, the one that would kill the marquee feature. It works, via
 `ActorEquipManager::EquipObject` with NPCsUsePotions' parameters.
 
@@ -269,12 +269,12 @@ sensors, dependency-driven sensor activation -- are **not needed yet**, and buil
 now would be optimising a cost that is two orders of magnitude under budget. Revisit only
 if this number moves. It is logged every 5 s of combat, so drift is visible.
 
-**Casting — WORKS end to end (2026-09-02 13:15).** `docs/MAGIC.md` "The eighth attempt":
+**Casting — WORKS end to end (2026-09-02 13:15).** `dev/MAGIC.md` "The eighth attempt":
 UseMagic packages put at the front of the follower's own package stack, gated by a
 condition held by a lease (a faction rank until 2026-09-08), released when the follower's own spell-fire animation event
 names our spell. Measured over two cycles: rule fires at 43% health, package selected on
 the same tick, `Fast Healing -- OURS` 1.4 s later, health 75 -> 175, released next tick,
-follower back to fighting. Since 2026-09-08 the records are **made in memory** (`src/game/Forms.cpp`, `docs/MAGIC.md` "Forms at runtime"): no plugin
+follower back to fighting. Since 2026-09-08 the records are **made in memory** (`src/game/Forms.cpp`, `dev/MAGIC.md` "Forms at runtime"): no plugin
 file, nothing of ours in the save, the DLL is the whole mod. Verified in play
 the same day; the ESP is gone (git history before 2026-09-08 has it). Since 2026-09-14 they are one set per follower, made when the tick first sees them, instead of a shared pool of sixteen made at load; not yet verified in play.
 Recruit through dialogue (or `cqf DialogueFollower
@@ -283,12 +283,12 @@ SetFollower`), never `setplayerteammate`. Cooldowns and leases run on game time.
 **Phase 2 — in progress.** The rule engine has the subject/predicate model, a list of
 actions per rule done one per tick, equip actions that pin, and conditions for status,
 armour, resistance, attacked-by, the party's extremes and the player's fight
-(`docs/CONDITIONS.md`); `Snapshot::allies` / `enemies` are populated by definition
+(`dev/CONDITIONS.md`); `Snapshot::allies` / `enemies` are populated by definition
 (the party, and whoever the compass paints red). Rules persist in the SKSE co-save:
 one JSON record per follower with the rules, the switch and the player's pins, written
 when the game saves and taken back when the tick first sees the follower after a load
-(`docs/PROFILES.md`; built 2026-09-04, not yet verified in play). Still missing:
-shareable named profiles. Actions to come are in `docs/ACTIONS.md`.
+(`dev/PROFILES.md`; built 2026-09-04, not yet verified in play). Still missing:
+shareable named profiles. Actions to come are in `dev/ACTIONS.md`.
 
 **Defaults (2026-09-04):** a follower starts with NO rules; both switches start on,
 which is safe because an empty list does nothing. A fresh install changes nothing
@@ -304,9 +304,9 @@ default until then.
 
 Documents is redirected to OneDrive on this machine. Resolve it with
 `[Environment]::GetFolderPath('MyDocuments')`; never assume `%USERPROFILE%\Documents`.
-SKSE's own `skse64.log` is in the same folder. Each launch moves the previous launch's pair into `SKSE\FollowerTactics\` as `FollowerTactics-<start>_<end>.log` and `.events.jsonl`, in UTC and Crash Logger's format, and keeps the last 20 (`docs/EVENTS.md` "Sessions and files").
+SKSE's own `skse64.log` is in the same folder. Each launch moves the previous launch's pair into `SKSE\FollowerTactics\` as `FollowerTactics-<start>_<end>.log` and `.events.jsonl`, in UTC and Crash Logger's format, and keeps the last 20 (`dev/EVENTS.md` "Sessions and files").
 
-The first is prose to read while playing: every line, filtered by the level set in `Data/SKSE/Plugins/FollowerTactics.ini` — `info` by default, `debug` for the per-tick readouts. The second is the game events, what tactics did to and saw of a follower, one JSON object per line, whatever the level; a game event is one call that writes both. `docs/LOGGING.md` is the machinery, the levels and how to add a call site (`ft::log::<module>.info(...)`; there is no `logger` alias any more); `docs/EVENTS.md` is which events there are.
+The first is prose to read while playing: every line, filtered by the level set in `Data/SKSE/Plugins/FollowerTactics.ini` — `info` by default, `debug` for the per-tick readouts. The second is the game events, what tactics did to and saw of a follower, one JSON object per line, whatever the level; a game event is one call that writes both. `dev/LOGGING.md` is the machinery, the levels and how to add a call site (`ft::log::<module>.info(...)`; there is no `logger` alias any more); `dev/EVENTS.md` is which events there are.
 
 ## Reading the executable
 
@@ -316,8 +316,8 @@ function an address falls in. The installed exe is SteamStub-encrypted and
 reads as noise: point `SKYRIM_EXE` at a copy unpacked with Steamless (never
 the installed file). While the game is running, `tools/livedisasm.py` reads
 the decrypted code out of the live process instead, with the same modes plus
-`--callers <id>` (every call into a function) and `--bytes`. `docs/MAGIC.md`
-"Forms at runtime" and `docs/UNIQUE.md` are what has been read with them so
+`--callers <id>` (every call into a function) and `--bytes`. `dev/MAGIC.md`
+"Forms at runtime" and `dev/UNIQUE.md` are what has been read with them so
 far.
 
 ## Reading a save

@@ -10,6 +10,25 @@ vcpkg_installed/
 *.lib
 *.obj
 
+# LLVM coverage output
+*.profraw
+*.profdata
+
+# Jekyll / Sass generated output and local Bundler configuration
+_site/
+.jekyll-cache/
+.jekyll-metadata
+.sass-cache/
+.bundle/
+/docs/vendor/
+
+# Nested local preview worktree
+/site-preview/
+
+# Machine-specific assistant settings; shared skills remain trackable
+/.claude/settings.local.json
+/.claude/settings.json
+
 # IDE
 .vs/
 .idea/

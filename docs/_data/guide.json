@@ -1,0 +1,255 @@
+[
+  {
+    "title": "About",
+    "url": "/",
+    "headings": [
+      {
+        "title": "Features",
+        "anchor": "features",
+        "level": 2
+      },
+      {
+        "title": "Non-features",
+        "anchor": "non-features",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "title": "Getting started",
+    "url": "/getting-started/",
+    "headings": [
+      {
+        "title": "Install",
+        "anchor": "install",
+        "level": 2
+      },
+      {
+        "title": "Compatibility",
+        "anchor": "compatibility",
+        "level": 2
+      },
+      {
+        "title": "Uninstall",
+        "anchor": "uninstall",
+        "level": 2
+      },
+      {
+        "title": "Interface",
+        "anchor": "interface",
+        "level": 2
+      },
+      {
+        "title": "Saving your changes",
+        "anchor": "saving-your-changes",
+        "level": 2
+      },
+      {
+        "title": "Reporting problems",
+        "anchor": "reporting-problems",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "title": "Tactics",
+    "url": "/tactics/",
+    "headings": [
+      {
+        "title": "Conditions",
+        "anchor": "conditions",
+        "level": 2
+      },
+      {
+        "title": "Conditions explained",
+        "anchor": "conditions-explained",
+        "level": 3
+      },
+      {
+        "title": "Negation",
+        "anchor": "negation",
+        "level": 3
+      },
+      {
+        "title": "Actions",
+        "anchor": "actions",
+        "level": 2
+      },
+      {
+        "title": "Actions explained",
+        "anchor": "actions-explained",
+        "level": 2
+      },
+      {
+        "title": "Dual casting and power bashing",
+        "anchor": "dual-casting-and-power-bashing",
+        "level": 3
+      },
+      {
+        "title": "Multiple Actions",
+        "anchor": "multiple-actions",
+        "level": 3
+      },
+      {
+        "title": "Cooldowns",
+        "anchor": "cooldowns",
+        "level": 3
+      },
+      {
+        "title": "Enabling / Disabling",
+        "anchor": "enabling--disabling",
+        "level": 2
+      },
+      {
+        "title": "All followers",
+        "anchor": "all-followers",
+        "level": 3
+      },
+      {
+        "title": "Per follower",
+        "anchor": "per-follower",
+        "level": 3
+      },
+      {
+        "title": "Per tactic",
+        "anchor": "per-tactic",
+        "level": 3
+      },
+      {
+        "title": "Unavailable",
+        "anchor": "unavailable",
+        "level": 3
+      }
+    ]
+  },
+  {
+    "title": "Character",
+    "url": "/character/",
+    "headings": [
+      {
+        "title": "Breakdowns",
+        "anchor": "breakdowns",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "title": "Inventory",
+    "url": "/inventory/",
+    "headings": [
+      {
+        "title": "Weapons",
+        "anchor": "weapons",
+        "level": 2
+      },
+      {
+        "title": "Dual-wielding",
+        "anchor": "dual-wielding",
+        "level": 3
+      },
+      {
+        "title": "Arrows",
+        "anchor": "arrows",
+        "level": 2
+      },
+      {
+        "title": "Armor",
+        "anchor": "armor",
+        "level": 2
+      },
+      {
+        "title": "Potions",
+        "anchor": "potions",
+        "level": 2
+      },
+      {
+        "title": "Poisons",
+        "anchor": "poisons",
+        "level": 2
+      },
+      {
+        "title": "Food",
+        "anchor": "food",
+        "level": 2
+      },
+      {
+        "title": "Ingredients",
+        "anchor": "ingredients",
+        "level": 2
+      },
+      {
+        "title": "Scrolls",
+        "anchor": "scrolls",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "title": "Magic",
+    "url": "/magic/",
+    "headings": []
+  },
+  {
+    "title": "Summons",
+    "url": "/summons/",
+    "headings": []
+  },
+  {
+    "title": "Effects",
+    "url": "/effects/",
+    "headings": []
+  },
+  {
+    "title": "Skills",
+    "url": "/skills/",
+    "headings": [
+      {
+        "title": "Perks",
+        "anchor": "perks",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "title": "Combat Style",
+    "url": "/combat-style/",
+    "headings": [
+      {
+        "title": "Dual-wielding",
+        "anchor": "dual-wielding",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "title": "Equip states",
+    "url": "/equip-states/",
+    "headings": [
+      {
+        "title": "Pinned",
+        "anchor": "pinned",
+        "level": 2
+      },
+      {
+        "title": "Shadowed",
+        "anchor": "shadowed",
+        "level": 3
+      },
+      {
+        "title": "Banned",
+        "anchor": "banned",
+        "level": 2
+      },
+      {
+        "title": "Unavailable",
+        "anchor": "unavailable",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "title": "Thanks",
+    "url": "/thanks/",
+    "headings": []
+  }
+]

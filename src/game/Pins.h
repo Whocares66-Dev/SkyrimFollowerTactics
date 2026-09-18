@@ -68,7 +68,7 @@ namespace ft::game
 // makes in the panel mid-fight counts as the new normal and survives.
 //
 // A pin or a ban names one VARIANT of an item where the bag holds several
-// rows of a form (Holdable::variant; docs/UNIQUE.md "The variant"), so the
+// rows of a form (Holdable::variant; dev/UNIQUE.md "The variant"), so the
 // enchanted armour is pinned and the outfit one is not; a rule's pin may
 // name the form alone, whichever variant. The three means see it unevenly,
 // and none of them chooses a copy: ours is to gatekeep the pins and the

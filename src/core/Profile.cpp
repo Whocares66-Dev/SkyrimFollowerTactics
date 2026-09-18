@@ -48,7 +48,7 @@ using json = nlohmann::ordered_json;
 
 // The variant on the wire: one object under "variant", each part in it
 // only when present, so the plain variant is an empty object; no variant
-// -- the form, whichever -- writes no key (docs/UNIQUE.md, "The variant").
+// -- the form, whichever -- writes no key (dev/UNIQUE.md, "The variant").
 void WriteVariant(json &j, const std::optional<ItemVariant> &variant, const FormCodec &codec)
 {
     if (!variant)

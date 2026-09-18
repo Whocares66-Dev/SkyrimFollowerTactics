@@ -3,7 +3,7 @@
 //
 // The prose log is for a human tailing it while playing; this is the other
 // half of the job -- "did they cast twice", a before/after across two runs, a
-// file attached to a bug report that needs no tooling to read. docs/LOGGING.md
+// file attached to a bug report that needs no tooling to read. dev/LOGGING.md
 // says which events exist and what each carries.
 //
 // Pure, so it is testable: an event is a level, a name, and fields, and this
@@ -24,7 +24,7 @@
 namespace ft::log
 {
 
-// Four levels, by what belongs in each (docs/LOGGING.md has the table):
+// Four levels, by what belongs in each (dev/LOGGING.md has the table):
 // error, a feature is broken until something changes; warn, the mod adapted
 // or skipped something on its own; info, a state change worth narrating while
 // playing; debug, everything else.

@@ -89,7 +89,7 @@ struct InventoryItem
     bool artifact{false};
     // A copy on the row is stolen: a red hand after the name. The row's mark
     // only, never a part of the variant: a rule's "equip Iron Dagger (+7)"
-    // takes a stolen one (docs/UNIQUE.md).
+    // takes a stolen one (dev/UNIQUE.md).
     bool stolen{false};
     // A poison on the weapon: one row, its name and the hits left, under
     // headings of its own, and its effects in the enchantment's table
@@ -154,7 +154,7 @@ struct InventoryItem
 // effect is made (ModSpellMagnitude, ModSpellDuration): real perks such as
 // Augmented Flames and Necromage, and the hidden per-actor perks that turn
 // the Fortify <School> actor values into the same entry points -- the
-// PowerModifier for potions, the Modifier for enchantments (docs/RESEARCH.md
+// PowerModifier for potions, the Modifier for enchantments (dev/RESEARCH.md
 // 6). What it does NOT include is dual casting, a flag of the cast itself.
 [[nodiscard]] float ActualMagnitude(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect);
 [[nodiscard]] float ActualDuration(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect);

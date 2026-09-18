@@ -15,7 +15,7 @@ namespace ft
 
 // Why a rule did not fire. Authoring rules against an opaque engine is
 // guesswork without it, so every evaluation says, per rule, and the log
-// carries it (docs/EVENTS.md).
+// carries it (dev/EVENTS.md).
 enum class Verdict : std::uint8_t
 {
     Fired,

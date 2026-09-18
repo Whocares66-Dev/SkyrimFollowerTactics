@@ -116,7 +116,7 @@ def main():
     if exe_version.startswith("1.6.1170"):
         print("  OK - target runtime. SKSE 2.2.8 is the matching build.")
     elif exe_version.startswith("1.7."):
-        print("  REVERTED to 1.7.x. Steam re-updated you - see docs/DOWNGRADE.md.")
+        print("  REVERTED to 1.7.x. Steam re-updated you - see dev/DOWNGRADE.md.")
     else:
         print(f"  Unexpected runtime: {exe_version}")
     print()

@@ -105,7 +105,7 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
 // The entries on a list as their type numbers, "16 3E" (ExtraDataType,
 // hex), for a log line about which copy is which; "-" for no list.
 [[nodiscard]] std::string ListEntries(const RE::ExtraDataList *list);
-// The variant of the copy on this list (docs/UNIQUE.md "The variant"): its
+// The variant of the copy on this list (dev/UNIQUE.md "The variant"): its
 // enchantment, tempering and custom name. Plain for a list with none of
 // them, and for no list.
 [[nodiscard]] ft::ItemVariant VariantOf(const RE::ExtraDataList *list);
@@ -222,13 +222,13 @@ struct SpellOption
 };
 
 // How far a swing has to reach to strike `to`, as the engine's melee test
-// measures it: centre to centre, less both bodies (docs/ACTIONS.md 6).
+// measures it: centre to centre, less both bodies (dev/ACTIONS.md 6).
 [[nodiscard]] float ReachDistance(const RE::Actor *from, const RE::Actor *to);
 
 // A blow with what the actor holds: the animation event that starts it,
 // the stamina it costs, and how far it reaches, held against an enemy's
 // ReachDistance. No event where the hands hold nothing for it. The race record's attack data carries the events and
-// their multipliers (docs/ACTIONS.md 6).
+// their multipliers (dev/ACTIONS.md 6).
 struct BlowPlan
 {
     const char *event{nullptr};
@@ -397,7 +397,7 @@ struct SheetSection
 
 // Who a record's conditions are asked of: the Subject and the Target the
 // engine passes. For an effect that is the one it lands on and whoever
-// cast it (docs/CONDITIONS.md 10). A party the page cannot name is null,
+// cast it (dev/CONDITIONS.md 10). A party the page cannot name is null,
 // and a condition that runs on it is listed unasked, N/A: asked of nobody
 // the engine answers false, which is not "not met".
 struct ConditionParties
@@ -472,7 +472,7 @@ struct SummonView
     // Each bar written out as the follower's are. A summoner's perks reach
     // the summon as effects running on it -- Adamant's are cloaks on the
     // summoner casting onto commanded actors near them -- so they list with
-    // the summon's own (docs/MODIFIERS.md).
+    // the summon's own (dev/MODIFIERS.md).
     ft::Breakdown healthBreakdown;
     ft::Breakdown magickaBreakdown;
     ft::Breakdown staminaBreakdown;
@@ -550,7 +550,7 @@ void AddValueLines(ft::Breakdown &b, const ValueParts &parts, float scale = 1.0f
 
 // The perk entries an actor holds on one entry point, as lines: each
 // entry in the order the engine applies them (highest priority first, the
-// arrays on the actor's process being kept sorted -- docs/MODIFIERS.md),
+// arrays on the actor's process being kept sorted -- dev/MODIFIERS.md),
 // named for its perk, its function applied as the engine applies it; an
 // entry whose conditions fail against `args` listed dimmed with the
 // condition that stopped it. `args` are the call's arguments after the
@@ -666,7 +666,7 @@ struct PerkPage
 // load; cooldowns are measured against it. Self and player state, the
 // potions and the loadout, and the party and the enemies by definition:
 // allies are the player and the other teammates, enemies whoever is in
-// combat and hostile to the player (docs/CONDITIONS.md 6).
+// combat and hostile to the player (dev/CONDITIONS.md 6).
 ft::Snapshot BuildSnapshot(RE::Actor *actor, double now);
 
 } // namespace ft::game

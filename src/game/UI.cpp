@@ -2,7 +2,7 @@
 // editor and the character sheet -- inventory, magic, effects, summons,
 // character, skills -- of a follower and of the player. Why a rule did or
 // did not act is not a column here: a verdict lasted one tick and blanked
-// when the fight ended, so it goes to the events log (docs/EVENTS.md).
+// when the fight ended, so it goes to the events log (dev/EVENTS.md).
 //
 // Everything here runs on the render thread. It never touches an RE::Actor and
 // never reaches into live engine state -- ObserveFollowers() hands back a copy.

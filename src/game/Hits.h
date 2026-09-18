@@ -5,7 +5,7 @@
 // hazards included, which land without a hit. Both are kept in one table,
 // per actor and per kind of damage, with the attacker and the time, and
 // the snapshot asks it "attacked by fire in the last few seconds?" -- the
-// Attacked by condition (docs/CONDITIONS.md 5).
+// Attacked by condition (dev/CONDITIONS.md 5).
 
 #include "core/HitTable.h"
 #include "core/Kinds.h"

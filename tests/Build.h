@@ -47,7 +47,7 @@ inline Rule HealBelow(float pct, const char *label = "heal")
 // The player, as an ally of the snapshot: the one with the player's id,
 // added at full everything and close by on the first ask. A Player
 // condition reads the player from the allies, as the game builds them
-// (docs/CONDITIONS.md 6).
+// (dev/CONDITIONS.md 6).
 inline ActorView &Player(Snapshot &s)
 {
     for (auto &a : s.allies)

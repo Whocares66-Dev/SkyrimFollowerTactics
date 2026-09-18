@@ -65,7 +65,7 @@ constexpr double kWeaponSwingSeconds = 3.0;
 //
 // The condition is GetIsReference(param) == 1 on the subject: the engine
 // compares the evaluating actor's pointer with the parameter's, null-safe
-// (read from the executable, docs/MAGIC.md "Forms at runtime"). Nothing is
+// (read from the executable, dev/MAGIC.md "Forms at runtime"). Nothing is
 // written to the actor, so nothing about a lease can reach a save through
 // them.
 class SlotLease
@@ -755,7 +755,7 @@ void TakeWrapper(RE::Actor *actor, RE::TESShout *wrapper)
         return;
     // The Shout procedure readies what it fires, and a save writes the voice
     // slot as a bare form ID that a load looks up again with no type check
-    // (docs/MAGIC.md "Forms at runtime"). So a power's wrapper does not stay
+    // (dev/MAGIC.md "Forms at runtime"). So a power's wrapper does not stay
     // there once the list gives it up, nor does anything of ours an old save
     // put back; a real shout or power is the follower's and stays.
     //
@@ -850,11 +850,11 @@ void ReturnShoutVoice(Slot &slot)
 // A quest alias's override package lists are not on the alias: its loader
 // (24013) files a BGSOverridePackCollection for it in a global map keyed by
 // the alias, and the follower alias's combat override list is where a
-// follower's package in a fight comes from (docs/ATTACK.md "Facing").
+// follower's package in a fight comes from (dev/ATTACK.md "Facing").
 // CommonLib has the table's layout (BSTScatterTable, RE/B/BSTHashMap.h) but
 // not this global, so the table is read through a copy of that layout,
 // anchored on the capacity the loader reads (Address Library 369298, 0x0C
-// into the table): an address known for 1.6.1170 alone (docs/VERSIONS.md).
+// into the table): an address known for 1.6.1170 alone (dev/VERSIONS.md).
 struct AliasOverrideEntry
 {
     const RE::BGSRefAlias *alias;
@@ -910,7 +910,7 @@ const RE::BGSOverridePackCollection *OverrideListsOf(const RE::BGSBaseAlias *ali
 // Drawn and interrupt override Combat, without IgnoreCombat, so combat goes
 // on facing and moving the follower. Copied, not written: the file's
 // interrupt override values and the library's names for them do not agree
-// (docs/MAGIC.md "Forms at runtime").
+// (dev/MAGIC.md "Forms at runtime").
 struct PackageData
 {
     decltype(RE::PACKAGE_DATA::packFlags) flags;
@@ -1140,7 +1140,7 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
         const double distanceNow = holder && target ? static_cast<double>(ReachDistance(holder, target.get())) : -1.0;
         const int attackState = state ? static_cast<int>(state->GetAttackState()) : -1;
         // The procedure attacks only a target within the attack's strike
-        // angle of their heading (docs/ATTACK.md).
+        // angle of their heading (dev/ATTACK.md).
         const double headingNow =
             holder && target ? static_cast<double>(holder->GetHeadingAngle(target->GetPosition(), true)) : -1.0;
         fields.emplace_back("attackEvent", slot.attackEvent);
@@ -1168,7 +1168,7 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
 
 // Turning an actor toward a point, the engine's own way: the UseWeapon
 // procedure asks it on every update out of combat and never in one, where it
-// leaves turning to the combat controller (docs/ATTACK.md "Facing") -- which
+// leaves turning to the combat controller (dev/ATTACK.md "Facing") -- which
 // a record with IgnoreCombat suspends. 37834 hands the actor's movement
 // controller the point, a tolerance in radians (the procedure's,
 // fCombatAngleTolerance degrees) and two factors of 1; 37839 takes the point
@@ -1592,7 +1592,7 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
                               : std::string("self"));
 
     // No further than the player's words reach. The engine shouts the
-    // highest FILLED word (docs/ACTIONS.md 7), so a record whose later words
+    // highest FILLED word (dev/ACTIONS.md 7), so a record whose later words
     // are still locked would be shouted whole; those words come off for the
     // lease and Release puts them back. Here rather than beside the other
     // record writes above because every failure return is behind us: from
@@ -1639,7 +1639,7 @@ const RE::BGSAttackData *AttackDataOf(RE::Actor *actor)
 }
 
 // A power attack's lease. The procedure does complete once its one attack is
-// counted (docs/ATTACK.md), but the condition still passes then and the AI
+// counted (dev/ATTACK.md), but the condition still passes then and the AI
 // would pick the package again, so the lease goes as soon as the swing has
 // ended: a power attack seen after pick-up, then the attack state back at none.
 void TickWeaponSlot(Slot &slot, double now)
@@ -2104,7 +2104,7 @@ bool ProveCopy(RE::TESPackage *pkg, const char *inputName, RE::TESForm *canary)
 // (EdorfinAttackTarget): an instance of the UseWeapon template, whose
 // procedure node maps Always Power Attack to an input. UseWeaponAlreadyHeld,
 // the template of Karliah's combat override in Blindsighted, maps it to none
-// (docs/ATTACK.md). Edorfin's trigger is himself and the record has no
+// (dev/ATTACK.md). Edorfin's trigger is himself and the record has no
 // conditions; its Use Weapon Location, his editor location, is rewritten.
 constexpr std::uint32_t kEdorfinAttackTargetID = 0x00055D48;
 // The values the checks read, as authored. The heroes of Sovngarde's package
@@ -2394,7 +2394,7 @@ const char *ConfigureWeapon(RE::TESPackage *pkg, RE::TESPackage *source)
 
     // IgnoreCombat, from ClonePackage, as the cast records: without it the
     // record is passed over in a fight for the alias's combat override
-    // (docs/ATTACK.md "Facing"). Facing the target is then ours to do
+    // (dev/ATTACK.md "Facing"). Facing the target is then ours to do
     // (TurnToward).
     pkg->packData.packFlags.set(RE::PACKAGE_DATA::GeneralFlag::kWeaponDrawn);
     return nullptr;

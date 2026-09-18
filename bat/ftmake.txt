@@ -60,14 +60,14 @@
 ;  cast case, and it is here to be watched, not because it works:
 ;  the record's CastTime inputs are 0.5..1 s and the release fires
 ;  on the spell-fire event, which for a concentration spell marks
-;  the START of the stream. docs/MAGIC.md "Open" has the plan.
+;  the START of the stream. dev/MAGIC.md "Open" has the plan.
 ;
 ;  Costs are listed at skill 0 and fall with the school's skill.
 ;  Check the follower can actually afford one with `bat ftstatus`
 ;  before concluding the rule engine is at fault -- a caster who
 ;  cannot pay looks exactly like a rule that never fired.
 ;
-;  POWERS, for the Use power action (docs/ACTIONS.md 7). Marcurio
+;  POWERS, for the Use power action (dev/ACTIONS.md 7). Marcurio
 ;  already has one from his race -- Voice of the Emperor 000E40CA,
 ;  an Imperial's -- which is why the Magic tab's Powers chip is not
 ;  empty before this runs. Added here:
@@ -118,7 +118,7 @@
 ;    00012E49   Iron Armor    body, heavy -- displaces the robes
 ;    00012EB6   Iron Shield   left hand -- contests a spell there
 ;    0001397E   Iron Dagger   one-handed, either hand; THREE, for the
-;               copy tests (docs/UNIQUE.md): pin one, smith another
+;               copy tests (dev/UNIQUE.md): pin one, smith another
 ;    0003B562   Long Bow      two-handed -- the pinned-bow case, and
 ;    0001397D   Iron Arrow    the arrows it needs to be listed at all
 ;    0005ACE4   Iron Ingot    three, to smith a dagger at a grindstone
