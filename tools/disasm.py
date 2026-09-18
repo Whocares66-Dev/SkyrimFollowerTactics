@@ -1,83 +1,42 @@
 """Disassemble a function from SkyrimSE.exe by Address Library ID.
 
-    python tools/disasm.py <id> [max_bytes]           one function, by AE address-library ID
+    python tools/disasm.py <id> [max_bytes]           one function, by address-library ID
     python tools/disasm.py --offset <hex> [max_bytes] by file-relative RVA
     python tools/disasm.py --lookup <hex_rva>         which ID owns an RVA
     python tools/disasm.py --vtable <id> [count]      the function slots of a vtable, by its ID
 
-Needs `pip install capstone pefile`. Reads versionlib-1-6-1170-0.bin (format v2) and the exe named by the SKYRIM_EXE
-environment variable. The Steam exe's .text is SteamStub-encrypted (the .bind
-section holds the entry point), so point SKYRIM_EXE at a copy unpacked with
-Steamless; the installed exe disassembles to garbage. Stops at the first `ret`
-that is followed by padding, or at max_bytes.
+Which build: `--version 1.7.104` before the other arguments, or SKYRIM_VERSION;
+1.6.1170 otherwise. The exe is C:/Modding/SkyrimVersions/<version>/SkyrimSE.exe
+(SKYRIM_EXE overrides) and the database is whichever file under
+AddressLibrary/SKSE/Plugins/ names that version, in any of the library's
+formats (tools/addrlib.py). IDs are the line's own: Special Edition numbers
+for a 1.5 build, Anniversary numbers for 1.6 and 1.7.
+
+Needs `pip install capstone pefile`. The Steam exe's .text is SteamStub-
+encrypted (the .bind section holds the entry point), so the exe under
+SkyrimVersions is a copy unpacked with Steamless; the installed exe
+disassembles to garbage. Stops at the first `ret` that is followed by
+padding, or at max_bytes.
 """
-import struct, sys, os
-import capstone, pefile
+import os
+import struct
+import sys
 
-EXE = os.environ.get("SKYRIM_EXE", r"C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition\SkyrimSE.exe")
-LIB = r"AddressLibrary/SKSE/Plugins/versionlib-1-6-1170-0.bin"
+import capstone
+import pefile
 
-def load_lib(path):
-    with open(path, "rb") as f:
-        d = f.read()
-    p = 0
-    fmt, = struct.unpack_from("<i", d, p); p += 4
-    assert fmt == 2, fmt
-    ver = struct.unpack_from("<4i", d, p); p += 16
-    tlen, = struct.unpack_from("<i", d, p); p += 4
-    p += tlen
-    ptr_size, count = struct.unpack_from("<ii", d, p); p += 8
-    ids = {}
-    prev_id = prev_off = 0
-    for _ in range(count):
-        t = d[p]; p += 1
-        lo, hi = t & 0xF, t >> 4
-        if lo == 0:
-            i, = struct.unpack_from("<Q", d, p); p += 8
-        elif lo == 1:
-            i = prev_id + 1
-        elif lo == 2:
-            i = prev_id + d[p]; p += 1
-        elif lo == 3:
-            i = prev_id - d[p]; p += 1
-        elif lo == 4:
-            i = prev_id + struct.unpack_from("<H", d, p)[0]; p += 2
-        elif lo == 5:
-            i = prev_id - struct.unpack_from("<H", d, p)[0]; p += 2
-        elif lo == 6:
-            i, = struct.unpack_from("<H", d, p); p += 2
-        elif lo == 7:
-            i, = struct.unpack_from("<I", d, p); p += 4
-        else:
-            raise ValueError(lo)
-        tmp = (prev_off // ptr_size) if (hi & 8) else prev_off
-        if hi & 7 == 0:
-            o, = struct.unpack_from("<Q", d, p); p += 8
-        elif hi & 7 == 1:
-            o = tmp + 1
-        elif hi & 7 == 2:
-            o = tmp + d[p]; p += 1
-        elif hi & 7 == 3:
-            o = tmp - d[p]; p += 1
-        elif hi & 7 == 4:
-            o = tmp + struct.unpack_from("<H", d, p)[0]; p += 2
-        elif hi & 7 == 5:
-            o = tmp - struct.unpack_from("<H", d, p)[0]; p += 2
-        elif hi & 7 == 6:
-            o, = struct.unpack_from("<H", d, p); p += 2
-        elif hi & 7 == 7:
-            o, = struct.unpack_from("<I", d, p); p += 4
-        if hi & 8:
-            o *= ptr_size
-        ids[i] = o
-        prev_id, prev_off = i, o
-    return ids
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import addrlib  # noqa: E402
+
+ARGS = sys.argv[1:]
+VERSION, EXE, LIB = addrlib.resolve(ARGS)
+
 
 def main():
-    ids = load_lib(LIB)
+    ids = addrlib.load(LIB)[2]
     pe = pefile.PE(EXE, fast_load=True)
     base = pe.OPTIONAL_HEADER.ImageBase
-    args = sys.argv[1:]
+    args = ARGS
     if args[0] == "--lookup":
         rva = int(args[1], 16)
         best = max(((i, o) for i, o in ids.items() if o <= rva), key=lambda x: x[1])
@@ -99,7 +58,7 @@ def main():
         rva = int(args[1], 16); rest = args[2:]
     else:
         rva = ids[int(args[0])]; rest = args[1:]
-    maxb = int(rest[0]) if rest else 0x600
+    maxb = int(rest[0], 0) if rest else 0x600
     code = pe.get_data(rva, maxb)
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     md.detail = False
@@ -126,4 +85,6 @@ def main():
             if nxt[:1] == b"\xcc" or ins.mnemonic == "int3":
                 break
 
-main()
+
+if __name__ == "__main__":
+    main()

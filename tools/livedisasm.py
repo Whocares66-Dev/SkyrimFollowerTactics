@@ -1,17 +1,20 @@
 """Disassemble from the RUNNING SkyrimSE.exe: the code is decrypted in memory.
-    python build/livedisasm.py --vtable <id> [count]
-    python build/livedisasm.py <id> [max_bytes]
-    python build/livedisasm.py --rva <hex> [max_bytes]
+    python tools/livedisasm.py --vtable <id> [count]
+    python tools/livedisasm.py <id> [max_bytes]
+    python tools/livedisasm.py --rva <hex> [max_bytes]
+
+The IDs are read from the database for `--version <build>` (SKYRIM_VERSION;
+1.6.1170 otherwise), which has to be the build that is running.
 """
-import ctypes, ctypes.wintypes as w, struct, sys, os, importlib.util
+import ctypes, ctypes.wintypes as w, struct, sys, os
 import capstone
 
-sys.argv_backup = sys.argv
-spec = importlib.util.spec_from_file_location("disasm", os.path.join("tools", "disasm.py"))
-src = open(os.path.join("tools", "disasm.py"), encoding="utf-8").read().replace("\nmain()\n", "\n")
-ns = {}
-exec(compile(src, "disasm.py", "exec"), ns)
-ids = ns["load_lib"](ns["LIB"])
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import addrlib  # noqa: E402
+
+args = sys.argv[1:]
+VERSION, _, LIB = addrlib.resolve(args)
+ids = addrlib.load(LIB)[2]
 rev = {}
 for i, o in ids.items():
     rev.setdefault(o, i)
@@ -48,8 +51,7 @@ def read(rva, n):
         raise SystemExit(f"ReadProcessMemory at {rva:#x} failed: {ctypes.GetLastError()}")
     return buf.raw[:got.value]
 
-args = sys.argv[1:]
-print(f"SkyrimSE.exe pid {pid} base {base:#x}")
+print(f"SkyrimSE.exe pid {pid} base {base:#x}, IDs of {VERSION}")
 if args[0] == "--vtable":
     rva = ids[int(args[1])]
     n = int(args[2]) if len(args) > 2 else 16
