@@ -630,3 +630,109 @@ TEST_CASE("a negation does not invert the two guards around the condition", "[no
     Snapshot fresh = Party();
     REQUIRE(FirstVerdict(bad, fresh) == Verdict::InvalidCondition);
 }
+
+TEST_CASE("a negation is asked of every subject, and keeps the targets that need no match", "[not]")
+{
+    Snapshot s = Party();
+    s.spells.known.push_back(kFirebolt);
+    const auto cast = [](Rule &r) {
+        r.FirstAction().kind = ActionKind::CastSpell;
+        r.FirstAction().form = kFirebolt;
+    };
+
+    SECTION("the player")
+    {
+        Rule r = About(SubjectKind::Player, PredicateKind::Status);
+        r.statusKind = StatusKind::Sneaking;
+        r.negated = true;
+        cast(r);
+        RuleSet rs;
+        rs.rules.push_back(r);
+
+        // Nobody is sneaking, so "not sneaking" holds of the player.
+        REQUIRE(FirstVerdict(rs, s) == Verdict::Fired);
+        Player(s).traits.status = Bit(StatusKind::Sneaking);
+        REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+    }
+
+    SECTION("one follower by name")
+    {
+        Rule r = About(SubjectKind::Follower, PredicateKind::HealthPctBelow);
+        r.conditionArg = 0.5f;
+        r.negated = true;
+        cast(r);
+        RuleSet rs;
+        rs.rules.push_back(r);
+
+        REQUIRE(FirstVerdict(rs, s) == Verdict::Fired);
+        s.allies[1].health = {10.0f, 100.0f};
+        REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+
+        // Away, the named one satisfies nothing, so the negation holds --
+        // "not hurt" is true of someone who is not here to be hurt. The
+        // rule is the player's to write that way; the plain twin reports
+        // ConditionFalse in the same case.
+        s.allies.erase(s.allies.begin() + 1);
+        REQUIRE(FirstVerdict(rs, s) == Verdict::Fired);
+    }
+
+    SECTION("the party as a group")
+    {
+        Rule r = About(SubjectKind::Ally, PredicateKind::HealthPctBelow);
+        r.conditionArg = 0.5f;
+        r.negated = true;
+        cast(r);
+        RuleSet rs;
+        rs.rules.push_back(r);
+
+        // "No ally is hurt": true of a whole party, false as soon as one is.
+        Decision d;
+        REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+        REQUIRE(d.subjectId() == s.self);
+        Player(s).health = {10.0f, 100.0f};
+        REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+    }
+
+    SECTION("the attacker target still resolves")
+    {
+        // Attacker is whoever last hit the actor the condition bound, and a
+        // negated condition binds the follower, so it reads their own
+        // attacker -- the same as under a Self condition.
+        Rule r = About(SubjectKind::Self, PredicateKind::Status);
+        r.statusKind = StatusKind::Poisoned;
+        r.negated = true;
+        r.actionTarget = ActionTargetKind::Attacker;
+        cast(r);
+        RuleSet rs;
+        rs.rules.push_back(r);
+
+        REQUIRE(FirstVerdict(rs, s) == Verdict::NoTarget);
+        s.traits.attacker = kEnemy;
+        Decision d;
+        REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+        REQUIRE(d.targetId() == kEnemy);
+    }
+
+    SECTION("the corpse question, the other way round")
+    {
+        // Corpse: None negated is "there IS one the spell could raise". It
+        // binds the follower, not the corpse, so the spell goes on them and
+        // the Corpse target is refused (the menu does not offer it).
+        Rule r = About(SubjectKind::Corpse, PredicateKind::CorpseNone);
+        r.negated = true;
+        cast(r);
+        RuleSet rs;
+        rs.rules.push_back(r);
+
+        REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+        s.corpses.push_back({0x301, 5, 200.0f});
+        Decision d;
+        REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+        // The corpse question reports no subject either way round: the
+        // special case is the predicate's, not the negation's, so a negated
+        // one says what its plain twin says.
+        REQUIRE(d.subjectId() == 0);
+        REQUIRE(d.targetId() == s.self);
+        REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Corpse, ActionTargetKind::Corpse, true));
+    }
+}
