@@ -2132,7 +2132,14 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
                 changed = true;
 
             Im::TableSetColumnIndex(1);
-            OrderButtons(actId, row, a, rule.actions.size(), false, moveFrom, moveTo, removeAt);
+            // Greyed the way a rule's arrows are -- the first action's up,
+            // the last one's down -- rather than by ImGui's own disabling.
+            // The drawer is drawn inside BeginDimmed, which sets the
+            // disabled alpha to 1 so that dimming is done by text colour;
+            // a plain BeginDisabled under it fades nothing, so the two
+            // arrows that could not move looked exactly like the ones that
+            // could.
+            OrderButtons(actId, row, a, rule.actions.size(), true, moveFrom, moveTo, removeAt);
         }
 
         Im::EndTable();
