@@ -2418,13 +2418,18 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             changed = true;
 
         Im::TableSetColumnIndex(4);
-        // Where the Then column begins, for the drawer's border to sit on
-        // it: the cell's content less the cell padding and less the half
-        // item spacing ImGui puts before a cell's content, which this table
-        // pushes to kCellPadX -- read from the style, not assumed. Without
-        // the spacing the drawer sat three pixels right of the column's
-        // border (2026-09-12).
-        const float thenLeft = Im::GetCursorScreenPos().x - kCellPadX - std::floor(style->ItemSpacing.x * 0.5f);
+        // Where the Then column's border is, for the drawer's own left
+        // border to land ON it rather than beside it: the cell's content,
+        // less the cell padding this table pushes, less the single pixel
+        // the inner border itself occupies.
+        //
+        // Both numbers are measured, off the panel's own pixels rather than
+        // guessed from the style (2026-09-17, ScreenShot106): this cell's
+        // content starts at x=978, the parent's Condition/Action divider is
+        // drawn at x=971, and kCellPadX is 6. The previous correction took
+        // half of ItemSpacing.x instead -- 3 px where the border is 1 -- and
+        // put the drawer two pixels left of the line it was meant to sit on.
+        const float thenLeft = Im::GetCursorScreenPos().x - kCellPadX - 1.0f;
         if (rule.actions.empty())
             rule.actions.emplace_back();
         const std::string key = RuleKey(view.id, i);
