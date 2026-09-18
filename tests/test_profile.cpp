@@ -40,6 +40,9 @@ Profile Everything()
         r.subjectForm = 0x1234;
         r.predicate = PredicateKind::Status;
         r.statusKind = StatusKind::Burning;
+        // Negated, so the file's "not" rides the round-trip with everything
+        // else a rule can carry.
+        r.negated = true;
         r.actionTarget = ActionTargetKind::Follower;
         r.actionTargetForm = 0x1234;
         Action cast;
@@ -166,6 +169,7 @@ void RequireSame(const Rule &a, const Rule &b)
     REQUIRE(a.subject == b.subject);
     REQUIRE(a.subjectForm == b.subjectForm);
     REQUIRE(a.predicate == b.predicate);
+    REQUIRE(a.negated == b.negated);
     REQUIRE(a.conditionArg == b.conditionArg);
     REQUIRE(a.statusKind == b.statusKind);
     REQUIRE(a.typeKind == b.typeKind);
@@ -489,9 +493,13 @@ TEST_CASE("the file carries only the fields a rule reads", "[profile]")
     REQUIRE_FALSE(heal["then"]["do"][0].contains("form"));
     REQUIRE_FALSE(heal["then"]["do"][0].contains("hand"));
 
-    // Status: a status, no argument.
+    // A rule that is not negated says nothing about negation.
+    REQUIRE_FALSE(heal["if"].contains("not"));
+
+    // Status: a status, no argument, and this one's Not.
     const auto &douse = j["rules"][1];
     REQUIRE(douse["if"]["status"] == "burning");
+    REQUIRE(douse["if"]["not"] == true);
     REQUIRE_FALSE(douse["if"].contains("arg"));
     REQUIRE(douse["if"]["follower"] == "0x1234");
     REQUIRE(douse["then"]["follower"] == "0x1234");
@@ -927,4 +935,45 @@ TEST_CASE("the party member of attacking and attacked by round-trips", "[profile
     const auto old = ReadProfile(older, kHex);
     REQUIRE(old.warnings.empty());
     REQUIRE(old.profile->rules.rules[0].subjectForm == 0);
+}
+
+TEST_CASE("a negated condition rides the file, and a Not nothing can take is dropped", "[profile]")
+{
+    // On the wire it is one key inside the condition.
+    const std::string negated = R"({
+        "if": { "subject": "enemy", "predicate": "type", "type": "undead", "not": true },
+        "then": { "target": "self", "do": [ { "action": "drink-strongest", "effect": "Restore Health" } ] }
+    })";
+    const auto read = ReadProfile(OneRuleFile(negated), kHex);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules.size() == 1);
+    REQUIRE(read.profile->rules.rules[0].negated);
+
+    // Written back, it comes out the same key, and reads back the same rule.
+    const auto again = ReadProfile(WriteProfile(*read.profile, kHex), kHex);
+    REQUIRE(again.profile.has_value());
+    RequireSame(again.profile->rules.rules[0], read.profile->rules.rules[0]);
+
+    // Absent, a rule is not negated -- the field is not required.
+    const auto plain = ReadProfile(OneRuleFile(kHealRule), kHex);
+    REQUIRE(plain.profile.has_value());
+    REQUIRE_FALSE(plain.profile->rules.rules[0].negated);
+
+    // A Not on one of the three conditions that cannot take one is dropped
+    // and the RULE is kept: what the file says about the condition itself is
+    // still good, and the flag would only make it unanswerable. Hand-edited
+    // files are the only way to get here; the editor's cell is dead.
+    for (const char *predicate : {"any", "combat-begins", "combat-ends"})
+    {
+        const std::string hand = std::string(R"({
+            "if": { "subject": "self", "predicate": ")") +
+                                 predicate + R"(", "not": true },
+            "then": { "target": "self", "do": [ { "action": "drink-strongest", "effect": "Restore Health" } ] }
+        })";
+        const auto one = ReadProfile(OneRuleFile(hand), kHex);
+        INFO(predicate);
+        REQUIRE(one.profile.has_value());
+        REQUIRE(one.profile->rules.rules.size() == 1);
+        REQUIRE_FALSE(one.profile->rules.rules[0].negated);
+    }
 }
