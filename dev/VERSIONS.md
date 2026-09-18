@@ -2,29 +2,25 @@
 
 What the plugin takes from one build of the game rather than from CommonLib or the game's data: what each is, what uses it, what happens on another runtime, and how far it was checked. Every entry here was read on **1.6.1170**.
 
-**The plugin is built for the AE line alone** (2026-09-17): `ENABLE_SKYRIM_SE` and `ENABLE_SKYRIM_VR` are forced off in `CMakeLists.txt`, which is the resolution this page used to offer as an alternative -- "the feature it serves declared AE-only". An Address Library ID is stable within a line but not across one, so on SE the same number names another function; carrying a second path for a runtime nobody here can test was worse than not building for it. Supporting SE or VR again means reading each ID's Special Edition half first, and the rows below are that list.
+**The plugin is built for both lines** (SE from 2026-09-18; AE only between 2026-09-17 and then). Every address of our own is one named `(SE, AE)` pair in `src/game/Addresses.h`, and nothing else names a bare ID: an Address Library ID is stable within a line but not across one, so on SE the same number names another function, and the SE and AE halves are each read on their own build. VR stays off: its library is a third one, of raw offsets, that nobody here can read or run.
 
-A new dependency of this kind gets a row here when it is added.
+A new dependency of this kind gets a row here and a name in `Addresses.h` when it is added.
 
-## Address Library IDs with no Special Edition ID
+## ID pairs of our own
 
-Simply called: the plugin is AE-only, so `REL::Module::IsAE()` is a compile-time truth and the guards some of these still carry fold away. The "Off AE" column records what would be lost if SE or VR support came back before that ID's Special Edition half was read.
+The AE halves were read on 1.6.1170, the SE halves on 1.5.97 (2026-09-18), all with `tools/disasm.py`. Across the line the IDs do not correspond, so an SE half is found by shape (`--match`: the AE body with every address made the same, looked for among every function of the SE build) and settled by what reaches it (`--refs`: the same callers at the same offsets inside them), or by the same route that found the AE half.
 
-| What | AE ID | Used by | Off AE |
+| What | IDs (SE, AE) | Used by | How the SE half was found |
 |---|---|---|---|
-| Turn an actor toward a point, through its movement controller (the UseWeapon procedure's own call out of combat) | 37834 | `TurnToward`, `src/game/Packages.cpp` | not turned; a power attack needs the follower already facing the target |
-| Take that point back | 37839 | `StopTurning`, same file | nothing to take back |
-| The global map from a quest alias to its `BGSOverridePackCollection`: the capacity field the alias loader (24013) reads, 0x0C into the table | 369298 | `CheckAliasOverrideLists` and `OverrideListsOf`, same file | not read; a power attack's record goes on an alias's package array with IgnoreCombat and is turned toward the target |
-| `ActorEquipManager::UnequipSpell(actor, spell, source)`, what Papyrus's `Actor.UnequipSpell` tail-calls after its null check: source 0 the left hand, 1 the right, 2 the voice, turned into the matching equip slot inside | 38903 | `UnequipSpellNow`, `src/game/Pins.cpp` | nothing takes a spell out of a hand at all: the Papyrus dispatch that used to do it went with the AE-only build, and would have to come back with the runtime |
-| `ActorEquipManager::UnequipShout(actor, shout)`, the same for `Actor.UnequipShout` | 38904 | `UnequipShoutNow`, same file | the same Papyrus fallback |
+| Turn an actor toward a point, through its movement controller (the UseWeapon procedure's own call out of combat) | 36818, 37834 | `TurnToward`, `src/game/Packages.cpp` | the one function of that shape on 1.5.97; the same eight callers as on AE, three of them at the same offset inside the caller |
+| Take that point back | 36823, 37839 | `StopTurning`, same file | seventeen SE functions share the six-instruction shape; 36823 alone has AE's twenty-five callers, the UseWeapon update among them at the offset where AE calls |
+| The global map from a quest alias to its `BGSOverridePackCollection`: its capacity field, 0x0C into a `BSTScatterTable` (the sentinel is at 0x18, the entries pointer at 0x28; the loader is 24013 on AE) | 502247, 369298 | `CheckAliasOverrideLists` and `OverrideListsOf`, same file | AE inlines the table lookup into four readers (12722 to 12725); SE keeps it as a function (12793), reached from the readers' twin (24166, the exact shape of AE's 24670), and that function reads capacity, sentinel and entries at 0x1dd3e64, 0x1dd3e70 and 0x1dd3e80: the same spacing as AE's 369298, 369300 and 369301 |
+| `ActorEquipManager::UnequipSpell(actor, spell, source)`, what Papyrus's `Actor.UnequipSpell` tail-calls after its null check: source 0 the left hand, 1 the right, 2 the voice, turned into the matching equip slot inside | 37947, 38903 | `UnequipSpellNow`, `src/game/Pins.cpp` | the route that found the AE half: the `"UnequipSpell"` string, its one reference in the Papyrus registration (53960), the native registered beside it (0x94a910), and its tail jump; the body is instruction for instruction AE's, dispatching the source to 23150, 23151 and 23153 then calling the slot overload 37946 |
+| `ActorEquipManager::UnequipShout(actor, shout)`, the same for `Actor.UnequipShout` | 37948, 38904 | `UnequipShoutNow`, same file | the same route; the native at 0x94a870 |
 
-An AE ID names the same thing in every AE build's Address Library only if that library's authors matched it; these were read on 1.6.1170. On an AE build whose library lacks one, CommonLib stops the game at the first use with "Failed to find the id within the address library" (`src/REL/IDDB.cpp`), rather than skipping.
+An ID names the same thing in every build of its line only if that library's authors matched it. On a build whose library lacks one, CommonLib stops the game at the first use with "Failed to find the id within the address library" (`src/REL/IDDB.cpp`), rather than skipping. That matching was checked on 2026-09-18 for every ID on this page, by loading the databases in `AddressLibrary/SKSE/Plugins/` directly (`python tools/addrlib.py --all <ids>`): each AE half is present in all thirteen AE-line databases, 1.6.317 through 1.6.1179 and the two 1.7 ones, at a different offset in each build, which is the library doing the job it exists for; 1.7's database is a different file format, format 5, and the AE numbering carries on into it. The SE halves are present in the ten SE databases the same way. Not yet run on SE: the plugin builds for it, and the rows above are read from its executable, not from play.
 
-That matching was checked on 2026-09-18 for every ID on this page, by loading the databases in `AddressLibrary/SKSE/Plugins/` directly (`python tools/addrlib.py --all <ids>`): each is present in all thirteen AE-line databases, 1.6.317 through 1.6.1179 and the two 1.7 ones, at a different offset in each build, which is the library doing the job it exists for. So none is pinned to the runtime it was read on -- they hold across the AE line, 1.7 included (its database is a different file format, format 5, and the AE numbering carries on into it). What they do not cross is the line to SE: that database is a separate ID space, numbered independently, which is why CommonLib spells every such function as a `RELOCATION_ID(se, ae)` pair of two different numbers. The same five AE numbers exist in the SE databases too, naming other things.
-
-To resolve: find each in the SE executable (`tools/disasm.py --version 1.5.97` against an unpacked one, or `tools/livedisasm.py` against a running SE), by what calls it and what it calls, and make it a `RELOCATION_ID(se, ae)`. The alias map could instead go to CommonLib as a mapped global, with both IDs. Two ways in: meh321's "Attempt at matching 1.5.97.0 to 1.6.318.0" file on the Address Library page is an SE-to-AE ID map (Nexus 32444, Miscellaneous; manager download only), and CommonLib's own `RELOCATION_ID` pairs place an unknown function between known neighbours.
-
-## ID pairs whose Special Edition half was never read
+## ID pairs CommonLib carries
 
 | What | IDs (SE, AE) | Used by | Checked |
 |---|---|---|---|
@@ -51,7 +47,7 @@ Each is found or checked at load against vanilla records, and what does not read
 
 ## Engine behaviour read from 1.6.1170's code
 
-Not addresses: copied into the plugin as logic, and wrong on another build only if Bethesda changed it there. Whether it did is readable without running anything: disassemble the function in both builds, replace every address with the ID it resolves to, and compare. Done for every function below and above on 1.6.1170 against 1.7.104 (2026-09-18): the same instructions in the same order in all of them. Three (26429, 49170, 24013) differ only in a `[rip + ...]` data reference the 1.6 library names and the 1.7 library does not, and 29496 only in the padding after its last `jmp`.
+Not addresses: copied into the plugin as logic, and wrong on another build only if Bethesda changed it there. Whether it did is readable without running anything: disassemble the function in both builds, replace every address with the ID it resolves to, and compare. Done for every function below and above on 1.6.1170 against 1.7.104 (2026-09-18): the same instructions in the same order in all of them. Three (26429, 49170, 24013) differ only in the raw displacement of one `[rip + ...]` data reference, which moves with the build, and 29496 only in the padding after its last `jmp`.
 
 - The stamina a power attack and a bash cost (26429; `dev/ACTIONS.md` 6).
 - How far a swing has to reach (47273 and 47276; `ReachDistance` and `BodyRadius`, `src/game/Sensors.cpp`): centre to centre, flat from a height difference of 48, less both bodies' radii, each the bound max Y times the scale or 16.
