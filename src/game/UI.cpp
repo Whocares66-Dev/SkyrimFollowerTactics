@@ -2035,25 +2035,17 @@ void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
 void OrderButtons(const std::string &id, float row, std::size_t index, std::size_t count, bool dimmed, int &moveFrom,
                   int &moveTo, int &removeAt)
 {
-    // Sized and inset like the row's TEXT, not like its cell. At the frame
-    // height these three filled the row top to bottom, with none of the
-    // margin the number and the condition beside them sit in, and read as
-    // three big boxes rather than as controls on a line of text. A frame
-    // height is the font's height plus a frame padding above and below, so
-    // taking those away leaves exactly the box the text occupies, and
-    // pushing the cursor down by one padding puts it where the text's own
-    // baseline would be.
-    const float padY = Im::GetStyle()->FramePadding.y;
-    const float size = (std::max)(1.0f, row - padY * 2.0f);
+    // A frame height each, filling the row: tried at the font's height with
+    // a padding above and below, to sit in the same margin as the text
+    // beside them, and the three read better big (2026-09-17).
     {
         // Centre the three as a group, using the SAME gap the layout below
         // actually uses. Measuring with ItemSpacing while laying out with
         // kOrderGap overstated the group by ~12px and shifted it left.
-        const float group = size * 3.0f + kOrderGap * 2.0f;
+        const float group = row * 3.0f + kOrderGap * 2.0f;
         const float cell = Im::GetContentRegionAvail().x;
         if (cell > group)
             Im::SetCursorPosX(Im::GetCursorPosX() + (cell - group) * 0.5f);
-        Im::SetCursorPosY(Im::GetCursorPosY() + padY);
     }
 
     const auto beginGrey = [dimmed](bool grey) {
@@ -2072,7 +2064,7 @@ void OrderButtons(const std::string &id, float row, std::size_t index, std::size
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
     // Arrows from the icon font, like every other glyph on the row.
     beginGrey(index == 0);
-    if (GlyphButton("up" + id, size, Glyph::Up))
+    if (GlyphButton("up" + id, row, Glyph::Up))
     {
         moveFrom = static_cast<int>(index);
         moveTo = static_cast<int>(index) - 1;
@@ -2081,7 +2073,7 @@ void OrderButtons(const std::string &id, float row, std::size_t index, std::size
 
     Im::SameLine(0.0f, kOrderGap);
     beginGrey(index + 1 >= count);
-    if (GlyphButton("dn" + id, size, Glyph::Down))
+    if (GlyphButton("dn" + id, row, Glyph::Down))
     {
         moveFrom = static_cast<int>(index);
         moveTo = static_cast<int>(index) + 1;
@@ -2089,7 +2081,7 @@ void OrderButtons(const std::string &id, float row, std::size_t index, std::size
     endGrey();
 
     Im::SameLine(0.0f, kOrderGap);
-    if (DeleteButton("rm" + id, size))
+    if (DeleteButton("rm" + id, row))
         removeAt = static_cast<int>(index);
     Im::PopStyleVar(1);
 }
