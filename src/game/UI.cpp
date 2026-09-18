@@ -2035,14 +2035,25 @@ void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
 void OrderButtons(const std::string &id, float row, std::size_t index, std::size_t count, bool dimmed, int &moveFrom,
                   int &moveTo, int &removeAt)
 {
+    // Sized and inset like the row's TEXT, not like its cell. At the frame
+    // height these three filled the row top to bottom, with none of the
+    // margin the number and the condition beside them sit in, and read as
+    // three big boxes rather than as controls on a line of text. A frame
+    // height is the font's height plus a frame padding above and below, so
+    // taking those away leaves exactly the box the text occupies, and
+    // pushing the cursor down by one padding puts it where the text's own
+    // baseline would be.
+    const float padY = Im::GetStyle()->FramePadding.y;
+    const float size = (std::max)(1.0f, row - padY * 2.0f);
     {
         // Centre the three as a group, using the SAME gap the layout below
         // actually uses. Measuring with ItemSpacing while laying out with
         // kOrderGap overstated the group by ~12px and shifted it left.
-        const float group = row * 3.0f + kOrderGap * 2.0f;
+        const float group = size * 3.0f + kOrderGap * 2.0f;
         const float cell = Im::GetContentRegionAvail().x;
         if (cell > group)
             Im::SetCursorPosX(Im::GetCursorPosX() + (cell - group) * 0.5f);
+        Im::SetCursorPosY(Im::GetCursorPosY() + padY);
     }
 
     const auto beginGrey = [dimmed](bool grey) {
@@ -2061,7 +2072,7 @@ void OrderButtons(const std::string &id, float row, std::size_t index, std::size
     Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
     // Arrows from the icon font, like every other glyph on the row.
     beginGrey(index == 0);
-    if (GlyphButton("up" + id, row, Glyph::Up))
+    if (GlyphButton("up" + id, size, Glyph::Up))
     {
         moveFrom = static_cast<int>(index);
         moveTo = static_cast<int>(index) - 1;
@@ -2070,7 +2081,7 @@ void OrderButtons(const std::string &id, float row, std::size_t index, std::size
 
     Im::SameLine(0.0f, kOrderGap);
     beginGrey(index + 1 >= count);
-    if (GlyphButton("dn" + id, row, Glyph::Down))
+    if (GlyphButton("dn" + id, size, Glyph::Down))
     {
         moveFrom = static_cast<int>(index);
         moveTo = static_cast<int>(index) + 1;
@@ -2078,7 +2089,7 @@ void OrderButtons(const std::string &id, float row, std::size_t index, std::size
     endGrey();
 
     Im::SameLine(0.0f, kOrderGap);
-    if (DeleteButton("rm" + id, row))
+    if (DeleteButton("rm" + id, size))
         removeAt = static_cast<int>(index);
     Im::PopStyleVar(1);
 }
@@ -2203,7 +2214,13 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     // click target now, so it needs no room for a button around the glyph.
     const float onWidth = (std::max)(TextWidth("On"), row * 0.4f) + gutter;
     const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
-    const float notWidth = (std::max)(TextWidth("Not"), row * 0.4f) + gutter;
+    // Wide enough for the header and the tick and no wider: ImGui adds
+    // its own cell padding on both sides of what is asked for here, so
+    // only one gutter of slack goes in rather than On's two. Measured
+    // off ScreenShot107: with two it came out 54 px against a 46 px
+    // row, which reads as a wide gap after the word rather than as a
+    // square switch.
+    const float notWidth = (std::max)(TextWidth("NOT"), row * 0.4f) + kCellPadX;
     const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
 
     const auto border = Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f);
@@ -2241,7 +2258,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::TableSetupColumn("#", Im::ImGuiTableColumnFlags_WidthFixed, numWidth, 0);
         // Not comes before the condition, because that is the order it is
         // read in: "not enemy: undead".
-        Im::TableSetupColumn("Not", Im::ImGuiTableColumnFlags_WidthFixed, notWidth, 0);
+        Im::TableSetupColumn("NOT", Im::ImGuiTableColumnFlags_WidthFixed, notWidth, 0);
         Im::TableSetupColumn("Condition", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
         // The wider share, because an action reads as a phrase ("Drink magicka
         // potion") where a condition is mostly short words and a number.
@@ -2270,7 +2287,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             Im::SetCursorScreenPos(pos);
             Im::Text("On");
             int column = 1;
-            for (const char *label : {"#", "Not", "Condition", "Action", "Order"})
+            for (const char *label : {"#", "NOT", "Condition", "Action", "Order"})
             {
                 Im::TableSetColumnIndex(column++);
                 Im::Text("%s", label);
@@ -2369,13 +2386,13 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // rule to write it again is not (2026-09-10).
         BeginDimmed(!rule.enabled);
 
-        Im::TableSetColumnIndex(1);
-        Im::AlignTextToFramePadding();
-        {
-            const DimText grey(!available);
-            Im::Text("%zu", i + 1);
-        }
-
+        // The NOT cell is drawn BEFORE the number, though it sits after
+        // it: the number's AlignTextToFramePadding sets the row's text
+        // baseline, and ImGui charges a Selectable that offset ON TOP of
+        // the height it was asked for (the same trap the several-actions
+        // cell documents below). Drawn after the number the switch made
+        // every row with a condition five pixels taller than the header
+        // (measured, ScreenShot107: 51 px against 46).
         Im::TableSetColumnIndex(2);
         {
             // The same cell-wide switch as On, with the same tick in it: a
@@ -2411,6 +2428,13 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 DrawGlyph(drawList, Glyph::Tick, {leftEdge, pos.y}, {leftEdge + size, pos.y + size},
                           Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
             }
+        }
+
+        Im::TableSetColumnIndex(1);
+        Im::AlignTextToFramePadding();
+        {
+            const DimText grey(!available);
+            Im::Text("%zu", i + 1);
         }
 
         Im::TableSetColumnIndex(3);
