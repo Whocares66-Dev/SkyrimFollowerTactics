@@ -1,7 +1,6 @@
 # Follower Tactics guide
 
-The Jekyll site lives in `/docs` alongside the mod source. Documentation work is
-currently on `wip-docs`, branched from `master`. Developer notes live in `/dev`.
+The Jekyll site lives in `/docs` alongside the mod source. Developer notes live in `/dev`.
 
 ## Preview
 
@@ -25,10 +24,4 @@ The Nordic color scheme is in `_sass/color_schemes/nordic.scss`, with typography
 
 ## Publishing
 
-After merging this branch into `master`, set the repository's **Settings > Pages**
-to **Deploy from a branch**, branch **master**, folder **/docs**. GitHub Pages
-builds Jekyll automatically; no custom Actions workflow is needed. Subsequent
-pushes to `master` publish the guide.
-
-Until that setting is changed, the existing `gh-pages` publication is unaffected.
-The original `site-preview` worktree is retained locally as a migration backup.
+GitHub Pages builds `master`, folder `/docs`, at https://whocares66-dev.github.io/SkyrimFollowerTactics/ (enabled 2026-09-18). Every push to `master` publishes; no Actions workflow is needed.
