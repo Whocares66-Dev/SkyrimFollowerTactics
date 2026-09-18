@@ -10,7 +10,7 @@ has_toc: false
 
 ## Install
 
-The current build supports Skyrim's **AE runtime line (1.6.x)**. SE 1.5.97 and VR are not supported. Development and in-game verification use 1.6.1170.
+One DLL runs on **Special Edition 1.5.97** and every **Anniversary Edition** build, 1.6.317 through the current 1.7.104; the Address Library resolves each runtime. VR is not supported. Development and in-game verification use 1.5.97, 1.6.1170 and 1.7.104.
 
 The following dependencies are required; install versions matching your Skyrim runtime:
 

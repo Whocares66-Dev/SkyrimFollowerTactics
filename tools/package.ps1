@@ -43,8 +43,8 @@ Framework panel. One file, no plugin, nothing left in the save: uninstall by
 removing it.
 
 Requires: SKSE, Address Library for SKSE Plugins, SKSE Menu Framework.
-Built for Skyrim Anniversary Edition, 1.6.317 and later (the Address Library
-resolves each 1.6 runtime). NOT for Special Edition 1.5.97 or for VR.
+One DLL for Special Edition 1.5.97 and every Anniversary Edition build, 1.6.317
+through 1.7.104 (the Address Library resolves each runtime). NOT for VR.
 
 Install as a mod (this zip is a mod root), or extract into Data.
 "@
