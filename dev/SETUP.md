@@ -101,9 +101,9 @@ Nothing else. Every extra mod is a variable in every future bug report you write
 Keep this profile separate from any profile you actually play on — dev saves get corrupted on
 purpose (see the script-baking note below).
 
-Set the `SKYRIM_MODS_FOLDER` environment variable to MO2's `mods` folder. The CMake build
-reads it and drops the built `.dll` straight into `mods\FollowerTactics\SKSE\Plugins\`, so a
-rebuild is immediately live.
+Nothing needs to know where this profile is. The build copies the `.dll` nowhere; a change is
+tried in game by running `.\tools\package.ps1` and installing
+`dist\follower-tactics-<version>-test.zip` here as a mod, which is what a tester installs too.
 
 ## Step 5 — Creation Kit config
 
@@ -223,10 +223,9 @@ build was bootstrapped against and makes the build fail somewhere that looks unr
 The first `debug` configure is slow: vcpkg compiles fmt, spdlog and the rest, and the
 first build compiles CommonLibSSE-NG from the submodule. Later builds are fast.
 
-**On auto-deploy and elevation.** The build copies the finished `.dll` to
-`$SKYRIM_MODS_FOLDER` (set to `MO2\mods`, inside this repo). Pointing `SKYRIM_FOLDER` at
-the Steam install under `C:\Program Files (x86)` instead would make the post-build copy
-require Administrator; the MO2 route avoids that entirely and is the better setup.
+**On installing what was built.** The build writes only into `build\`, so it needs no
+Administrator and no environment variable, and it runs happily while the game is up. The mod
+goes in from the zip `.\tools\package.ps1` writes, installed in MO2 like any other.
 
 **Exit criterion for Phase 0:** launch through SKSE and see
 `FollowerTactics loaded` in the `~` console, plus a matching line in

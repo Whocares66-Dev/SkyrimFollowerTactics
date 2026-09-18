@@ -515,8 +515,8 @@ runtime").
    `bAllowMultipleMasterLoads=1` and `sScriptSourceFolder=".\Data\Scripts\Source"`.
    Run CK through MO2; route its output to the dev mod folder, not `overwrite`.
 4. VS2022 + CMake + vcpkg + CommonLibSSE-NG. Start from
-   [SkyrimDev/HelloWorld-using-CommonLibSSE-NG](https://github.com/SkyrimDev/HelloWorld-using-CommonLibSSE-NG)
-   and set `SKYRIM_MODS_FOLDER` so a rebuild deploys the DLL straight into the MO2 dev mod.
+   [SkyrimDev/HelloWorld-using-CommonLibSSE-NG](https://github.com/SkyrimDev/HelloWorld-using-CommonLibSSE-NG).
+   The build copies the DLL nowhere; the mod goes in from the zip `tools\package.ps1` writes.
 5. Test scenario — **no Creation Kit needed**, it is four console batch files in `bat/`
    (see `dev/TESTING.md`): `coc QASmoke` manually, then `bat ftsetup` / `ftspawn` /
    `fthurt` / `ftclean`. Plus a saved "clean dev save" parked in the test cell.

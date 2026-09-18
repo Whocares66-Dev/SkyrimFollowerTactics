@@ -142,20 +142,13 @@ target_link_libraries(ft_core PRIVATE nlohmann_json::nlohmann_json)
 # The SKSE plugin.
 # ---------------------------------------------------------------------------
 if(FT_BUILD_PLUGIN)
-    # Deploy target: set SKYRIM_MODS_FOLDER (MO2) or SKYRIM_FOLDER (vanilla)
-    # and a rebuild lands the .dll straight where the game will load it.
-    #
-    # FT_DEPLOY=OFF builds without the copy, for compiling while the game
-    # is running and holds the deployed .dll open. tools\build.ps1 -NoDeploy
-    # sets it, and sets it back to ON on the next plain run: the value is
-    # cached, so the script always passes it explicitly.
-    option(FT_DEPLOY "Copy the plugin into the game or mods folder after linking" ON)
-    if(FT_DEPLOY AND DEFINED ENV{SKYRIM_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_FOLDER}/Data")
-        set(OUTPUT_FOLDER "$ENV{SKYRIM_FOLDER}/Data")
-    endif()
-    if(FT_DEPLOY AND DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
-        set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/${PROJECT_NAME}")
-    endif()
+    # The build copies the .dll nowhere. It used to land in a mod folder named
+    # by SKYRIM_MODS_FOLDER, which was one machine's layout in the build of a
+    # mod that ships as a zip: the plugin is installed from
+    # dist\follower-tactics-<version>-test.zip like any other mod (see
+    # tools\package.ps1). Nothing here needs to know where anyone's Skyrim is,
+    # and a build can run with the game up, since no file of the game's is
+    # held open.
 
     # CommonLibSSE-NG, alandtse's live fork, as a submodule built with us
     # (extern/commonlibsse-ng, branch ng). Its own dependencies -- spdlog,
@@ -252,33 +245,6 @@ if(FT_BUILD_PLUGIN)
     target_include_directories(${PROJECT_NAME} PRIVATE ${DETOURS_INCLUDE_DIRS})
     target_link_libraries(${PROJECT_NAME} PRIVATE ${DETOURS_LIBRARY})
 
-    if(DEFINED OUTPUT_FOLDER)
-        set(DLL_FOLDER "${OUTPUT_FOLDER}/SKSE/Plugins")
-        message(STATUS "SKSE plugin output folder: ${DLL_FOLDER}")
-
-        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLL_FOLDER}"
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                    "$<TARGET_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
-            # The settings file goes beside the .dll, where Log.cpp looks for
-            # it. copy_if_different, so a level set for a play session is not
-            # reverted by the next build.
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                    "${CMAKE_SOURCE_DIR}/assets/FollowerTactics.ini" "${DLL_FOLDER}/FollowerTactics.ini"
-            VERBATIM)
-
-        if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "Release")
-            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                        "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>"
-                VERBATIM)
-        endif()
-    elseif(NOT FT_DEPLOY)
-        message(STATUS "FT_DEPLOY is OFF -- the .dll is built but not copied anywhere.")
-    else()
-        message(WARNING "Neither SKYRIM_MODS_FOLDER nor SKYRIM_FOLDER is set -- "
-                        "the .dll will not be deployed automatically.")
-    endif()
 endif()
 
 # ---------------------------------------------------------------------------

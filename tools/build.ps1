@@ -19,13 +19,6 @@
                from source via vcpkg and is slow.
     release    same as debug, optimized.
 
-.PARAMETER NoDeploy
-    Build the plugin without copying it into the mods folder, and without the
-    running-game check that guards the copy. For compiling while Skyrim is up:
-    an SKSE plugin cannot hot-reload, and the game holds the deployed .dll
-    open, so the copy would fail -- but the compile and link are still worth
-    having. The next run without this switch copies as usual.
-
 .PARAMETER Analyze
     Compile our own targets under MSVC's static analyser (/analyze). A
     different engine from clang-tidy's, so it finds different things; the
@@ -42,8 +35,7 @@
 .EXAMPLE
     .\tools\build.ps1 -Preset core -Test
     .\tools\build.ps1 -Preset debug
-    .\tools\build.ps1 -Preset debug -NoDeploy
-    .\tools\build.ps1 -Preset debug -Analyze -NoDeploy
+    .\tools\build.ps1 -Preset debug -Analyze
     .\tools\build.ps1 -Preset core-cov -Coverage
 #>
 [CmdletBinding()]
@@ -52,7 +44,6 @@ param(
     [string] $Preset = 'core',
     [switch] $Test,
     [switch] $Fresh,
-    [switch] $NoDeploy,
     [switch] $Analyze,
     [switch] $Coverage
 )
@@ -149,46 +140,6 @@ if ($Preset -in 'debug', 'release') {
     }
 }
 
-# Where the built DLL gets deployed. Resolve this here rather than trusting the
-# ambient environment: setting a User-scope variable does not reach processes
-# whose shell started earlier, so a freshly-set SKYRIM_MODS_FOLDER is invisible
-# to the build and the plugin silently never deploys.
-if ($Preset -in 'debug', 'release') {
-    if (-not $env:SKYRIM_MODS_FOLDER) {
-        $env:SKYRIM_MODS_FOLDER = [Environment]::GetEnvironmentVariable('SKYRIM_MODS_FOLDER', 'User')
-    }
-    if (-not $env:SKYRIM_MODS_FOLDER) {
-        $fallback = Join-Path $repo 'MO2\mods'
-        if (Test-Path $fallback) { $env:SKYRIM_MODS_FOLDER = $fallback }
-    }
-    if ($NoDeploy) {
-        Write-Host "  not deploying (-NoDeploy); the .dll stays in build\$Preset" -ForegroundColor DarkGray
-    } elseif ($env:SKYRIM_MODS_FOLDER) {
-        Write-Host "  deploying to $env:SKYRIM_MODS_FOLDER\FollowerTactics" -ForegroundColor DarkGray
-    } else {
-        Write-Warning "SKYRIM_MODS_FOLDER is unset and MO2\mods was not found; the DLL will not be deployed."
-    }
-}
-
-# An SKSE plugin cannot hot-reload, and while the game is running it holds the
-# deployed DLL open -- so the post-build copy into the MO2 mod folder fails with
-# a wall of linker command line and a terse "Error copying file". Catch it here
-# and say what is actually wrong.
-if ($Preset -in 'debug', 'release' -and -not $NoDeploy) {
-    $game = Get-Process -Name 'SkyrimSE', 'SkyrimVR' -ErrorAction SilentlyContinue
-    if ($game) {
-        throw @"
-Skyrim is running (PID $($game.Id -join ', ')), which locks the deployed DLL.
-
-The build would link fine and then fail copying to
-  $env:SKYRIM_MODS_FOLDER\FollowerTactics\SKSE\Plugins\
-
-Close the game and re-run. SKSE plugins cannot hot-reload, so a rebuild always
-means a restart of the game anyway.
-"@
-    }
-}
-
 $buildDir = Join-Path $repo "build\$Preset"
 if ($Fresh -and (Test-Path $buildDir)) {
     Write-Host "Removing $buildDir" -ForegroundColor Yellow
@@ -199,11 +150,8 @@ Push-Location $repo
 try {
     if ($Coverage -and $Preset -ne 'core-cov') { throw "-Coverage needs the core-cov preset (instrumented build); got '$Preset'." }
     Write-Host "`n== configure ($Preset) ==" -ForegroundColor Cyan
-    # FT_DEPLOY is a cached CMake option, so it is passed on EVERY configure:
-    # a -NoDeploy run must not leave the next plain run silently not copying.
-    $deploy = if ($NoDeploy) { 'OFF' } else { 'ON' }
     $analyzeFlag = if ($Analyze) { 'ON' } else { 'OFF' }
-    cmake --preset $Preset "-DFT_DEPLOY=$deploy" "-DFT_ANALYZE=$analyzeFlag"
+    cmake --preset $Preset "-DFT_ANALYZE=$analyzeFlag"
     if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
     Write-Host "`n== build ($Preset) ==" -ForegroundColor Cyan

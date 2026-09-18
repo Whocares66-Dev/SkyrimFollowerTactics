@@ -57,13 +57,10 @@ entry point.)
 .\tools\build.ps1 -Preset debug            # SKSE plugin. First run builds CommonLibSSE-NG.
 .\tools\build.ps1 -Preset core-asan -Test  # same core tests, under AddressSanitizer
 .\tools\build.ps1 -Preset core-cov -Coverage  # same, under clang-cl; which lines the tests reach
-.\tools\build.ps1 -Preset debug -Analyze -NoDeploy  # any preset, under MSVC's static analyser
+.\tools\build.ps1 -Preset debug -Analyze    # any preset, under MSVC's static analyser
 ```
 
-`-Fresh` wipes the preset's build directory first. `-NoDeploy` builds the plugin
-without copying it into the mods folder and without the running-game guard, for
-compiling while Skyrim is up (it holds the deployed DLL open); the next plain
-run copies as usual. `-Analyze` compiles our targets with `/analyze` (findings are
+`-Fresh` wipes the preset's build directory first. `-Analyze` compiles our targets with `/analyze` (findings are
 C6xxx warnings; several times slower; the cached flag recompiles our sources on the
 way in and out). `-Coverage` needs `core-cov`, runs the tests once and prints per-file
 line coverage of `src/core`, with the line-by-line HTML in `build\core-cov\coverage\html`.
@@ -75,11 +72,11 @@ sanitizer runtimes are the "C++ Clang tools for Windows" component. ASan on MSVC
 memory misuse, not leaks (LeakSanitizer has no Windows build); UBSan is clang-only and
 its runtime is present, unused so far.
 
-`.\tools\package.ps1` builds the release plugin and writes `dist\follower-tactics-<version>.zip`, a mod root (one DLL and a README) to install from the archive in Mod Organizer; the version is `project(... VERSION)` in CMakeLists.txt. `dist/` is ignored.
+`.\tools\package.ps1` builds the release plugin once and writes TWO mod roots to `dist/` (a DLL, an ini and a README each, installable from the archive in Mod Organizer): `follower-tactics-<version>.zip` with `level = info`, what a player installs, and `follower-tactics-<version>-test.zip` with `level = debug`, ours to install here and never published. The DLL in them is the same file -- the log level is a runtime setting, and an MSVC debug build is not shippable at all, since it links a debug CRT nobody has -- and the test zip's ini is the player's with its level line rewritten, so the two cannot drift. The log's banner names the level it read, so an installed copy says which zip it came from. Packaging refuses if `assets/FollowerTactics.ini` is not on `info`. `dist/` is ignored.
 
-`SKYRIM_MODS_FOLDER` is set to `MO2\mods`; the build deploys to
-`MO2\mods\FollowerTactics\SKSE\Plugins\`. New mods appear **unticked** in MO2 -- tick it
-or the DLL never loads.
+`.\tools\release.ps1 patch|minor|major` cuts a release: bumps `project(... VERSION)` in CMakeLists.txt (the one place the version lives, and where the DLL's `FT_VERSION` comes from), runs the core tests and the release build, commits, tags `v<version>`, pushes, and makes the GitHub release with the player's zip attached -- **only** that one: the test zip stays in `dist/`, since a second download labelled "test" on the release page is an invitation to install the wrong one. A **tag** is git's name for a commit; a **release** is GitHub's object on top of one, and the only thing that can carry a built file. `-DryRun` says what it would do, `-Draft` leaves the release unpublished, `-Force` skips the clean-tree and up-to-date checks -- but never the branch check: **a release is only ever cut from master**. Below 1.0 it is marked prerelease. Needs the GitHub CLI, logged in (`gh auth login`).
+
+**A build copies the DLL nowhere.** To try a change in game, run `.\tools\package.ps1` and install `dist\follower-tactics-<version>-test.zip` in Mod Organizer as any other mod -- the same archive a tester gets. Until 2026-09-18 a build landed the DLL straight in a mod folder named by `SKYRIM_MODS_FOLDER`, which put one machine's layout in the build, made every plugin build refuse to run while the game was up (it holds that DLL open), and tested something no player installs. New mods appear **unticked** in MO2 -- tick it or the DLL never loads. (`tools\deploy-tests.ps1`, which copies the console `bat/` scripts into the game folders, is a different thing and stays.)
 
 Last verified green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 18 (`core-cov`), 2026-09-09. Counts -- how many cases, what percentage covered -- are deliberately not kept here: they move with every test added, and a number that goes stale in a week teaches you to distrust the page. Run the presets and read the numbers off them.
 
@@ -92,7 +89,7 @@ project:
 .\tools\build.ps1 -Preset core -Test        # 1. tests
 cmake --build --preset core --target format # 2. formatter, rewrites in place
 cmake --build --preset core --target tidy   # 3. linter, src/core (seconds; only what changed)
-.\tools\build.ps1 -Preset debug             # 4. plugin builds and deploys
+.\tools\build.ps1 -Preset debug             # 4. the plugin builds
 ```
 
 (2) and (3) need the developer environment, so run them from a shell where
