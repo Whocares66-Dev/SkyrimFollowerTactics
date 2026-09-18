@@ -312,13 +312,16 @@ The first is prose to read while playing: every line, filtered by the level set 
 
 `tools/disasm.py <address-library-id>` disassembles a function from
 SkyrimSE.exe; `--vtable <id>` dumps a vtable, `--lookup <rva>` names the
-function an address falls in. The installed exe is SteamStub-encrypted and
-reads as noise: point `SKYRIM_EXE` at a copy unpacked with Steamless (never
-the installed file). While the game is running, `tools/livedisasm.py` reads
-the decrypted code out of the live process instead, with the same modes plus
-`--callers <id>` (every call into a function) and `--bytes`. `dev/MAGIC.md`
-"Forms at runtime" and `dev/UNIQUE.md` are what has been read with them so
-far.
+function an address falls in. `--version 1.7.104` first picks the build:
+the exes live unpacked under `C:\Modding\SkyrimVersions\` (the installed
+one is SteamStub-encrypted and reads as noise) and the database comes from
+`AddressLibrary/`, any format; 1.6.1170 by default. `tools/addrlib.py --all
+<ids>` looks IDs up in every build's database at once. While the game is
+running, `tools/livedisasm.py` reads the decrypted code out of the live
+process instead, with the same modes plus `--callers <id>` (every call into
+a function) and `--bytes`. `dev/VERSIONS.md` "Builds on disk" is which
+builds there are and how to get another; `dev/MAGIC.md` "Forms at runtime"
+and `dev/UNIQUE.md` are what has been read with them so far.
 
 ## Reading a save
 
