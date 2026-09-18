@@ -404,15 +404,14 @@ struct Rule
 {
     bool enabled{true};
 
-    // The condition negated: the rule holds when it does NOT. The Not
-    // column in the editor, ticked.
-    //
-    // For a group subject this reads "no one": `NOT Enemy: Undead` holds
-    // when not one enemy is undead. So a negated condition binds NOBODY
-    // -- there is no matched enemy to act on -- and the targets that mean
-    // "the one the condition matched" are not offered for it
-    // (IsActionTargetValidFor). The action falls back to the follower, as
-    // it does under a Self condition.
+    // The condition negated: the Not column in the editor, ticked. Asked
+    // of each actor the subject names, so it holds of one the plain
+    // condition does not hold of: `NOT Enemy: Undead` is an enemy that is
+    // not undead, and binds that enemy, as the plain rule binds an undead
+    // one. Of the follower, the player or a named follower it is simply
+    // the condition's opposite. Among several, the nearest binds whatever
+    // the measure: "not below 50%" ranks nobody. The targets and the log
+    // read the binding as they do under the plain rule.
     //
     // Not every condition can be negated: CanNegate says which.
     bool negated{false};
@@ -569,16 +568,15 @@ struct RuleSet
 // Enemy or Attacker and nothing else. The casts are aimed anywhere but a
 // corpse (a spell may be); which spells suit which target is the menu's
 // business, since core does not know a spell's delivery.
-// `negated` is the rule's Not: a negated condition matches nobody, so the
-// targets that mean "the one the condition matched" -- an ally, a corpse --
-// have no one to resolve to and are refused.
-[[nodiscard]] bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target, bool negated = false) noexcept;
+[[nodiscard]] bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target) noexcept;
 
-// Can this condition be negated at all? Every one but three. `Any` is the
-// always-true condition and negates to a rule that can never fire; the
-// fight's two edges are moments, and "not the moment the fight began" is
-// every other tick of it, which is not a thing anyone means by Not. The
-// editor leaves the Not cell dead for these three and says why.
+// Can this condition be negated at all? `Any` is the always-true condition
+// and negates to a rule that can never fire; the fight's two edges are
+// moments, and "not the moment the fight began" is every other tick of it,
+// which is not a thing anyone means by Not; an extreme -- the lowest
+// health, the highest level -- is which of the group, not something one of
+// them is or is not, and Corpse: None is a question about the group too.
+// The editor leaves the Not cell dead for these and says why.
 [[nodiscard]] bool CanNegate(PredicateKind predicate) noexcept;
 [[nodiscard]] bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept;
 

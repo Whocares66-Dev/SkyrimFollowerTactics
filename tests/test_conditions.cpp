@@ -503,7 +503,7 @@ TEST_CASE("a negated condition holds exactly when the plain one does not", "[not
     s.health = {10.0f, 100.0f};
     REQUIRE(FirstVerdict(rs, s) == Verdict::Fired);
 
-    // Negated: the other way round, and it binds the follower.
+    // Negated: the other way round, of the same one.
     rs.rules[0].negated = true;
     REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
     s.health = {100.0f, 100.0f};
@@ -512,73 +512,119 @@ TEST_CASE("a negated condition holds exactly when the plain one does not", "[not
     REQUIRE(d.subjectId() == s.self);
 }
 
-TEST_CASE("a negated group condition means no one, and binds nobody", "[not]")
+TEST_CASE("a negated group condition binds one the plain one does not hold of", "[not]")
 {
-    // "No enemy is undead" -- true while none is, false the moment one is.
+    // "An enemy that is not undead": whichever one is not, and none when
+    // every enemy is. The Enemy target is that one, as under the plain rule.
     Snapshot s = Party();
     s.spells.known.push_back(kFirebolt);
     Rule r = About(SubjectKind::Enemy, PredicateKind::Type);
     r.typeKind = TypeKind::Undead;
     r.negated = true;
-    r.actionTarget = ActionTargetKind::Self;
+    r.actionTarget = ActionTargetKind::Enemy;
     r.FirstAction().kind = ActionKind::CastSpell;
     r.FirstAction().form = kFirebolt;
     RuleSet rs;
     rs.rules.push_back(r);
 
+    // Nobody undead: the nearer of the two.
     Decision d;
     REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
-    // Nobody matched, so the follower is the subject, not an enemy.
-    REQUIRE(d.subjectId() == s.self);
+    REQUIRE(d.subjectId() == kEnemy);
+    REQUIRE(d.targetId() == kEnemy);
 
+    // The near one undead: the far one is the enemy that is not.
+    s.enemies[0].traits.kinds = Bit(TypeKind::Undead);
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    REQUIRE(d.subjectId() == kFarEnemy);
+    REQUIRE(d.targetId() == kFarEnemy);
+
+    // Both undead: nobody.
     s.enemies[1].traits.kinds = Bit(TypeKind::Undead);
     REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
 }
 
-TEST_CASE("a negated condition has no matched one to act on", "[not]")
+TEST_CASE("a negated condition binds the nearest, whatever the measure", "[not]")
 {
-    // The targets that mean "the one the condition matched" are refused:
-    // there is no such one, by definition.
-    REQUIRE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Ally));
-    REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Ally, ActionTargetKind::Ally, true));
-    REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Corpse, ActionTargetKind::Corpse, true));
-    // Enemy and Attacker do not need one: the follower's own fight answers
-    // the first, whoever last hit them the second.
-    REQUIRE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Enemy, true));
-    REQUIRE(IsActionTargetValidFor(SubjectKind::Self, ActionTargetKind::Attacker, true));
+    // Plain "below 50%" hands over the most hurt; "not below 50%" ranks by
+    // nothing, so the nearest of those above the line. The far one is the
+    // more hurt, which is what the plain ordering would pick if it still
+    // applied.
+    Snapshot s = Party();
+    s.spells.known.push_back(kFirebolt);
+    s.enemies[0].health = {90.0f, 100.0f};
+    s.enemies[1].health = {60.0f, 100.0f};
+    Rule r = About(SubjectKind::Enemy, PredicateKind::HealthPctBelow);
+    r.conditionArg = 0.5f;
+    r.negated = true;
+    r.actionTarget = ActionTargetKind::Enemy;
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = kFirebolt;
+    RuleSet rs;
+    rs.rules.push_back(r);
+    Decision d;
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    REQUIRE(d.subjectId() == kEnemy);
 
-    // Reconcile puts a rule back in order when the Not goes on.
+    // The near one below the line is out, and the far one binds.
+    s.enemies[0].health = {10.0f, 100.0f};
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    REQUIRE(d.subjectId() == kFarEnemy);
+}
+
+TEST_CASE("a negated condition keeps the one it matched for the targets that name them", "[not]")
+{
+    // Ally under "NOT Ally: below 50%" is the ally that is not hurt, as it
+    // is the hurt one under the plain rule. The pairing does not change
+    // with the Not, and Reconcile leaves the target alone.
     Rule r = About(SubjectKind::Ally, PredicateKind::HealthPctBelow);
     r.conditionArg = 0.5f;
     r.actionTarget = ActionTargetKind::Ally;
     r.negated = true;
     Reconcile(r);
-    REQUIRE(r.actionTarget == ActionTargetKind::Self);
+    REQUIRE(r.actionTarget == ActionTargetKind::Ally);
 
-    // And an enemy rule aims at whoever the follower is fighting.
     Snapshot s = Party();
-    s.currentTarget = kEnemy;
     s.spells.known.push_back(kFirebolt);
-    Rule e = About(SubjectKind::Enemy, PredicateKind::Type);
-    e.typeKind = TypeKind::Undead;
-    e.negated = true;
-    e.actionTarget = ActionTargetKind::Enemy;
-    e.FirstAction().kind = ActionKind::CastSpell;
-    e.FirstAction().form = kFirebolt;
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = kFirebolt;
     RuleSet rs;
-    rs.rules.push_back(e);
+    rs.rules.push_back(r);
+
+    // Everyone well: the nearest ally, the player.
     Decision d;
     REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
-    REQUIRE(d.targetId() == kEnemy);
+    REQUIRE(d.subjectId() == kPlayerFormID);
+    REQUIRE(d.targetId() == kPlayerFormID);
+
+    // The player hurt: the other follower is the ally who is not.
+    Player(s).health = {10.0f, 100.0f};
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    REQUIRE(d.subjectId() == kOtherFollower);
+    REQUIRE(d.targetId() == kOtherFollower);
+
+    // Everyone hurt: nobody.
+    s.allies[1].health = {10.0f, 100.0f};
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
 }
 
-TEST_CASE("three conditions cannot be negated, and a Not on them is dropped", "[not]")
+TEST_CASE("the conditions that cannot be negated, and a Not on them is dropped", "[not]")
 {
     REQUIRE_FALSE(CanNegate(PredicateKind::Any));
     REQUIRE_FALSE(CanNegate(PredicateKind::CombatBegins));
     REQUIRE_FALSE(CanNegate(PredicateKind::CombatEnds));
+    // An extreme is which of the group, not something one of them is or is
+    // not: asked per actor it holds of everyone and negates to nobody.
+    REQUIRE_FALSE(CanNegate(PredicateKind::HealthLowest));
+    REQUIRE_FALSE(CanNegate(PredicateKind::ResistanceHighest));
+    REQUIRE_FALSE(CanNegate(PredicateKind::LevelHighest));
+    REQUIRE_FALSE(CanNegate(PredicateKind::LevelLowest));
+    // "No corpse" is about the group too; "there is one" is the plain
+    // Level condition.
+    REQUIRE_FALSE(CanNegate(PredicateKind::CorpseNone));
     REQUIRE(CanNegate(PredicateKind::HealthPctBelow));
     REQUIRE(CanNegate(PredicateKind::Status));
+    REQUIRE(CanNegate(PredicateKind::Attacking));
 
     // Reconcile clears it, so switching a negated rule to Any leaves a rule
     // that still fires rather than one that never can.
@@ -631,7 +677,7 @@ TEST_CASE("a negation does not invert the two guards around the condition", "[no
     REQUIRE(FirstVerdict(bad, fresh) == Verdict::InvalidCondition);
 }
 
-TEST_CASE("a negation is asked of every subject, and keeps the targets that need no match", "[not]")
+TEST_CASE("a negation is asked of every subject that is one actor", "[not]")
 {
     Snapshot s = Party();
     s.spells.known.push_back(kFirebolt);
@@ -668,36 +714,17 @@ TEST_CASE("a negation is asked of every subject, and keeps the targets that need
         s.allies[1].health = {10.0f, 100.0f};
         REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
 
-        // Away, the named one satisfies nothing, so the negation holds --
-        // "not hurt" is true of someone who is not here to be hurt. The
-        // rule is the player's to write that way; the plain twin reports
-        // ConditionFalse in the same case.
+        // Away, there is no one to ask, either way round: the Not is of
+        // the actor, and an absent actor is nothing at all.
         s.allies.erase(s.allies.begin() + 1);
-        REQUIRE(FirstVerdict(rs, s) == Verdict::Fired);
-    }
-
-    SECTION("the party as a group")
-    {
-        Rule r = About(SubjectKind::Ally, PredicateKind::HealthPctBelow);
-        r.conditionArg = 0.5f;
-        r.negated = true;
-        cast(r);
-        RuleSet rs;
-        rs.rules.push_back(r);
-
-        // "No ally is hurt": true of a whole party, false as soon as one is.
-        Decision d;
-        REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
-        REQUIRE(d.subjectId() == s.self);
-        Player(s).health = {10.0f, 100.0f};
         REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
     }
 
     SECTION("the attacker target still resolves")
     {
         // Attacker is whoever last hit the actor the condition bound, and a
-        // negated condition binds the follower, so it reads their own
-        // attacker -- the same as under a Self condition.
+        // negated Self condition binds the follower, so it reads their own
+        // attacker.
         Rule r = About(SubjectKind::Self, PredicateKind::Status);
         r.statusKind = StatusKind::Poisoned;
         r.negated = true;
@@ -711,28 +738,5 @@ TEST_CASE("a negation is asked of every subject, and keeps the targets that need
         Decision d;
         REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
         REQUIRE(d.targetId() == kEnemy);
-    }
-
-    SECTION("the corpse question, the other way round")
-    {
-        // Corpse: None negated is "there IS one the spell could raise". It
-        // binds the follower, not the corpse, so the spell goes on them and
-        // the Corpse target is refused (the menu does not offer it).
-        Rule r = About(SubjectKind::Corpse, PredicateKind::CorpseNone);
-        r.negated = true;
-        cast(r);
-        RuleSet rs;
-        rs.rules.push_back(r);
-
-        REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
-        s.corpses.push_back({0x301, 5, 200.0f});
-        Decision d;
-        REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
-        // The corpse question reports no subject either way round: the
-        // special case is the predicate's, not the negation's, so a negated
-        // one says what its plain twin says.
-        REQUIRE(d.subjectId() == 0);
-        REQUIRE(d.targetId() == s.self);
-        REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Corpse, ActionTargetKind::Corpse, true));
     }
 }

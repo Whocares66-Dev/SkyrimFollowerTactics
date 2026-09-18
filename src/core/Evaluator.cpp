@@ -110,22 +110,29 @@ ActorId MemberTarget(const Rule &r, const Snapshot &s)
 }
 
 // Does one member of a group -- an ally, the player among them, or an
-// enemy -- satisfy the rule's predicate? The common questions, and the
+// enemy -- satisfy the rule's condition? The common questions, and the
 // enemy's own two; IsPredicateValidFor keeps an ally from being asked
-// those.
+// those. The rule's Not is asked here, of each one, so that a negated
+// condition holds of a member the plain one does not: "NOT Enemy: Undead"
+// is an enemy that is not undead.
 bool MemberSatisfies(const ActorView &v, const Rule &r, const Snapshot &s)
 {
+    bool held = false;
     switch (r.predicate)
     {
     case PredicateKind::Attacking:
-        return v.target != 0 && v.target == MemberId(r);
+        held = v.target != 0 && v.target == MemberId(r);
+        break;
     case PredicateKind::AttackedBy: {
         const ActorId target = MemberTarget(r, s);
-        return target != 0 && v.id == target;
+        held = target != 0 && v.id == target;
+        break;
     }
     default:
-        return Common(r, FactsOf(v)).value_or(false);
+        held = Common(r, FactsOf(v)).value_or(false);
+        break;
     }
+    return held != r.negated;
 }
 
 // Does the predicate want the MOST of its measure -- an above, or a
@@ -141,9 +148,12 @@ bool WantsMost(PredicateKind p)
 // hurt one, about high armour the best armoured, about resistance to fire
 // the most or least resistant to fire; anything else binds the nearest.
 // That rule matters -- it is what makes "enemy below 30% health" mean the
-// WEAKEST such enemy rather than an arbitrary one.
+// WEAKEST such enemy rather than an arbitrary one. Negated, the measure
+// ranks nobody -- "not below 30%" names no direction -- so the nearest.
 bool Better(const Rule &r, const ActorView &candidate, const ActorView &best)
 {
+    if (r.negated)
+        return candidate.distance < best.distance;
     const auto c = MeasureOf(r, FactsOf(candidate));
     const auto b = MeasureOf(r, FactsOf(best));
     if (!c || !b)
@@ -295,7 +305,7 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
         held = Common(r, FactsOf(s)).value_or(false);
         break;
     }
-    return held ? Match(s.self) : NoMatch();
+    return held != r.negated ? Match(s.self) : NoMatch();
 }
 
 // The player: the ally with their id, asked as any ally is. Not in the
@@ -308,7 +318,7 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
 
 } // namespace
 
-// Who the condition itself matches, before the rule's Not is applied.
+// Who the condition matches, the rule's Not included.
 Binding MatchSubject(const Rule &r, const Snapshot &s)
 {
     switch (r.subject)
@@ -350,24 +360,15 @@ Binding MatchSubject(const Rule &r, const Snapshot &s)
 
 Binding EvaluateCondition(const Rule &r, const Snapshot &s)
 {
-    // The two guards are about the QUESTION, not its answer, so they are
-    // outside the negation: a pair that cannot be asked stays unanswered,
-    // and the farewell pass after a fight stays the moment it is. Negated
-    // inside them, "NOT Enemy: Undead" would hold on a tick with no enemies
-    // to ask about and on the tick after the fight, which is how a Not rule
-    // would fire where its plain twin was never even evaluated.
+    // The two guards are about the QUESTION, not its answer: a pair that
+    // cannot be asked stays unanswered, and the farewell pass after a fight
+    // stays the moment it is. The rule's Not is asked of each actor inside
+    // the match (MemberSatisfies, EvaluateSelf), never of these.
     if (!IsPredicateValidFor(r.subject, r.predicate) || !IsDamageKindValidFor(r.predicate, r.damageKind))
         return NoMatch();
     if (s.combatEnded && r.predicate != PredicateKind::CombatEnds)
         return NoMatch();
-
-    const Binding matched = MatchSubject(r, s);
-    if (!r.negated)
-        return matched;
-    // Negated: it holds when nothing satisfied it, and binds the follower
-    // themself, there being no matched ally or enemy to bind. The targets
-    // that would have wanted one are refused (IsActionTargetValidFor).
-    return matched ? NoMatch() : Match(s.self);
+    return MatchSubject(r, s);
 }
 
 ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, bool *ok)
@@ -394,9 +395,7 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
         // whoever the follower is fighting; and with no one, the nearest
         // enemy sensed -- a cast has to go at someone, and nearest is what
         // the follower's own AI would pick.
-        // Not under a NOT: a negated enemy condition matched no enemy,
-        // so "the enemy" is the one the follower is fighting, below.
-        if (r.subject == SubjectKind::Enemy && !r.negated)
+        if (r.subject == SubjectKind::Enemy)
             return binding.ok ? yes(binding.id) : no();
         if (s.currentTarget != 0)
             return yes(s.currentTarget);
@@ -412,7 +411,7 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
         // under it has no one; the menu does not offer that pairing.
         if (r.actionTarget == ActionTargetKind::Corpse && r.predicate == PredicateKind::CorpseNone)
             return no();
-        return binding.ok && IsActionTargetValidFor(r.subject, r.actionTarget, r.negated) ? yes(binding.id) : no();
+        return binding.ok && IsActionTargetValidFor(r.subject, r.actionTarget) ? yes(binding.id) : no();
     case ActionTargetKind::Follower:
         for (const auto &a : s.allies)
             if (a.id == r.actionTargetForm && a.id != kPlayerFormID)
@@ -846,7 +845,7 @@ Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, Actor
     // never be answered is an authoring mistake, not a condition that
     // happens to be untrue right now, and the log must not send
     // someone off to investigate a follower's health for nothing.
-    if (!IsPredicateValidFor(r.subject, r.predicate) || !IsActionTargetValidFor(r.subject, r.actionTarget, r.negated) ||
+    if (!IsPredicateValidFor(r.subject, r.predicate) || !IsActionTargetValidFor(r.subject, r.actionTarget) ||
         !IsDamageKindValidFor(r.predicate, r.damageKind) || (r.negated && !CanNegate(r.predicate)))
         return Verdict::InvalidCondition;
     const Binding binding = EvaluateCondition(r, snap);

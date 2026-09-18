@@ -250,7 +250,8 @@ void RestartCooldown(EvalContext &ctx, const Action &a, ActorId target, double n
 // predicates bind the lowest-health member, everything else binds the nearest.
 // Ties keep the earlier member in snapshot order. That rule matters -- it is
 // what makes "enemy below 30% health" mean the *weakest* such enemy rather than
-// an arbitrary one.
+// an arbitrary one. A negated condition binds the nearest member the plain one
+// does not hold of: "NOT enemy below 30%" names no direction to rank by.
 Binding EvaluateCondition(const Rule &r, const Snapshot &snap);
 
 // Resolve the action's recipient. `binding` is the condition's result, used

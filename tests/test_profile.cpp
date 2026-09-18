@@ -959,15 +959,17 @@ TEST_CASE("a negated condition rides the file, and a Not nothing can take is dro
     REQUIRE(plain.profile.has_value());
     REQUIRE_FALSE(plain.profile->rules.rules[0].negated);
 
-    // A Not on one of the three conditions that cannot take one is dropped
-    // and the RULE is kept: what the file says about the condition itself is
-    // still good, and the flag would only make it unanswerable. Hand-edited
-    // files are the only way to get here; the editor's cell is dead.
-    for (const char *predicate : {"any", "combat-begins", "combat-ends"})
+    // A Not on a condition that cannot take one is dropped and the RULE is
+    // kept: what the file says about the condition itself is still good,
+    // and the flag would only make it unanswerable. Hand-edited files are
+    // the only way to get here; the editor's cell is dead.
+    for (const auto [subject, predicate] :
+         {std::pair{"self", "any"}, std::pair{"self", "combat-begins"}, std::pair{"self", "combat-ends"},
+          std::pair{"enemy", "health-lowest"}, std::pair{"corpse", "corpse-none"}})
     {
         const std::string hand = std::string(R"({
-            "if": { "subject": "self", "predicate": ")") +
-                                 predicate + R"(", "not": true },
+            "if": { "subject": ")") +
+                                 subject + R"(", "predicate": ")" + predicate + R"(", "not": true },
             "then": { "target": "self", "do": [ { "action": "drink-strongest", "effect": "Restore Health" } ] }
         })";
         const auto one = ReadProfile(OneRuleFile(hand), kHex);

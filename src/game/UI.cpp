@@ -1975,7 +1975,7 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
 
     for (const Heading &heading : headings)
     {
-        if (!ft::IsActionTargetValidFor(rule.subject, heading.target, rule.negated))
+        if (!ft::IsActionTargetValidFor(rule.subject, heading.target))
             continue;
         // Under "Corpse: None" there is no corpse to aim at.
         if (heading.target == ft::ActionTargetKind::Corpse && rule.predicate == ft::PredicateKind::CorpseNone)
@@ -2400,7 +2400,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         {
             // The same cell-wide switch as On, with the same tick in it: a
             // rule's condition is negated by ticking it, and the row then
-            // reads "not <condition>". Three conditions cannot be negated
+            // reads "not <condition>". Some conditions cannot be negated
             // (ft::CanNegate), and their cell is dead and says why.
             const bool can = ft::CanNegate(rule.predicate);
             const Im::ImVec2 pos = Im::GetCursorScreenPos();
@@ -2415,9 +2415,6 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             else if (CellClicked(("##not" + rowId).c_str(), Im::GetFrameHeight()))
             {
                 rule.negated = !rule.negated;
-                // A negated condition matches nobody, so a target that
-                // wanted the one it matched is put back to Self.
-                ft::Reconcile(rule);
                 changed = true;
             }
             if (can && available && Im::IsItemHovered(0))
