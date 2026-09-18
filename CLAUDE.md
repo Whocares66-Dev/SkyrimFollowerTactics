@@ -15,7 +15,7 @@ tested against without Skyrim (not yet built; what is known, what to measure fir
 `dev/EVENTS.md` is the game events: what tactics record, the last 1,000 kept in memory for the panel, and the per-session files and their archive (built 2026-09-14; not yet verified in play);
 `dev/MODIFIERS.md` is where a follower's bonuses come from and how to total them (perk
 entry points over actor values; research and thoughts, with the open questions);
-`dev/VERSIONS.md` is every address, vtable slot and layout taken from one build of the game (1.6.1170) rather than from CommonLib, to resolve before shipping; add a row when you add one;
+`dev/VERSIONS.md` is every address, vtable slot and layout taken from the game rather than from CommonLib, each an (SE, AE) pair named in `src/game/Addresses.h` and read on 1.5.97 and 1.6.1170, and how to check them against another build; add a row and a name when you add one;
 `dev/TODO.md` is what is still to do.
 
 ## The one architectural rule
