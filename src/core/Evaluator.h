@@ -40,6 +40,7 @@ enum class Verdict : std::uint8_t
     Busy,             // it can, but not this evaluation: the follower is mid-cast on one of ours
     Casting,          // a cast rule, while the follower is mid-cast on a spell of their own: it waits
     Recovering,       // a shout rule, while the voice is still recovering from the last shout: it waits
+    PowerUsed,        // a greater power used today: once a day, until the day turns
     InvalidCondition, // this subject/predicate pair is not answerable at all
     Queued,           // an edge rule whose list waits behind another's on the same edge
     NotReached,       // an earlier rule already fired
@@ -235,6 +236,12 @@ using ActionTrace = std::vector<std::vector<Verdict>>;
 // action.
 Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace = nullptr,
                   ActionTrace *actionTrace = nullptr);
+
+// Every action's availability now, rule by rule, with nothing decided and
+// nothing changed: what the panel greys an action by and says why on its
+// hover. The target is the one the rule's condition binds now, or nobody
+// where it does not hold, which the target-keyed checks read as such.
+[[nodiscard]] ActionTrace ProbeAvailability(const RuleSet &rs, const Snapshot &snap, const EvalContext &ctx);
 
 // Start an action's cooldown again from `now`: the moment it is over. A
 // drink or an equip is over when it is dispatched, and Evaluate's own stamp

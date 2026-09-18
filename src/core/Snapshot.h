@@ -398,6 +398,15 @@ struct SpellState
 {
     std::vector<std::uint32_t> known;
     std::vector<std::uint32_t> active;
+    // The greater powers used today: the engine keeps them on the actor and
+    // refuses one until the day turns, so a rule for one reports it rather
+    // than firing into the refusal every cooldown.
+    std::vector<std::uint32_t> usedToday;
+
+    [[nodiscard]] bool UsedToday(std::uint32_t form) const
+    {
+        return std::find(usedToday.begin(), usedToday.end(), form) != usedToday.end();
+    }
 
     // What each known spell costs THEM, in magicka, with their perks and skill
     // already applied. The game computes it; core only compares it against

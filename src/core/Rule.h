@@ -653,6 +653,12 @@ struct Capabilities
 {
     bool castingAvailable{true};
 
+    // Not to be done for THIS actor at all, ever: what the player's body
+    // has no route for (game/PlayerCast.h says which). The menu leaves
+    // those actions out, and a rule of one from a hand-edited profile
+    // reports Unsupported, as a cast does without cast records.
+    std::array<bool, static_cast<std::size_t>(ActionKind::COUNT)> unsupported{};
+
     // Supported in general but not available for THIS evaluation -- the
     // follower mid-cast on one of ours. A busy action is skipped exactly
     // like an unsupported one, so the next rule gets its turn and no cooldown
@@ -661,7 +667,7 @@ struct Capabilities
 
     [[nodiscard]] bool Supports(ActionKind a) const noexcept
     {
-        return a != ActionKind::None && (castingAvailable || !IsCast(a));
+        return a != ActionKind::None && !unsupported[static_cast<std::size_t>(a)] && (castingAvailable || !IsCast(a));
     }
 
     [[nodiscard]] bool Busy(ActionKind a) const noexcept

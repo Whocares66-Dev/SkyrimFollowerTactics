@@ -13,3 +13,13 @@
 
 player.tgm
 player.additem f 10000
+
+; The player's own tactics (dev/PLAYER.md): a scroll to read from a
+; hand, a shield and a sword for the bashes and the lent hand, and the
+; three minor restore potions ftmake gives a follower.
+player.additem 000A44AE 3
+player.additem 00012EB6 1
+player.additem 00012EB7 1
+player.additem 0003EADE 3
+player.additem 0003EAE1 3
+player.additem 00039BE8 3

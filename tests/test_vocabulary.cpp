@@ -355,25 +355,26 @@ TEST_CASE("the argument shape tells the UI which widget to draw", "[vocabulary]"
     REQUIRE(ArgumentFor(PredicateKind::CombatBegins) == ArgumentKind::None);
 }
 
-TEST_CASE("every value has display text and help text", "[vocabulary]")
+TEST_CASE("every value has display text, and help text only where the name does not say it all", "[vocabulary]")
 {
-    // Cheap way to make adding a vocabulary entry force a decision about what
-    // it means to a player, rather than shipping a blank dropdown or tooltip.
+    // A blank dropdown entry is a bug; a blank tooltip is the rule. Help text
+    // is for what the name leaves unsaid -- what a pin promises, what a
+    // weakness reads as -- and a tooltip that repeats the label is noise.
+    // So a display name is required of everything, and help of nothing;
+    // what has help is checked to say something the label does not.
     for (std::size_t i = 0; i < static_cast<std::size_t>(PredicateKind::COUNT); ++i)
     {
         const auto v = static_cast<PredicateKind>(i);
         REQUIRE(DisplayName(v).size() > 0);
-        // Any says it all in its name, and a Type leaf is the kind's own
-        // name: neither has a tooltip, on purpose. Nor has Armor.
-        if (v != PredicateKind::Any && v != PredicateKind::Type && v != PredicateKind::ArmorPctBelow &&
-            v != PredicateKind::ArmorPctAbove)
-            REQUIRE(Describe(v).size() > 0);
+        if (const auto help = Describe(v); !help.empty())
+            REQUIRE(Str(help) != Str(DisplayName(v)));
     }
     for (std::size_t i = 0; i < static_cast<std::size_t>(ActionKind::COUNT); ++i)
     {
         const auto v = static_cast<ActionKind>(i);
         REQUIRE(DisplayName(v).size() > 0);
-        REQUIRE(Describe(v).size() > 0);
+        if (const auto help = Describe(v); !help.empty())
+            REQUIRE(Str(help) != Str(DisplayName(v)));
     }
 }
 

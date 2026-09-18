@@ -170,6 +170,7 @@ inline constexpr Module forms{"forms"};
 inline constexpr Module hits{"hits"};
 inline constexpr Module packages{"packages"};
 inline constexpr Module pins{"pins"};
+inline constexpr Module player{"player"};
 inline constexpr Module plugin{"plugin"};
 inline constexpr Module profiles{"profiles"};
 inline constexpr Module sensors{"sensors"};

@@ -7,6 +7,7 @@
 #include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
+#include "game/PlayerCast.h"
 #include "game/Profiles.h"
 #include "game/Sensors.h"
 #include "game/Sheet.h"
@@ -89,6 +90,11 @@ std::unordered_set<ft::ActorId> g_disabledFollowers;
 // Followers currently in bleedout, so the transition is logged once rather
 // than every tick.
 std::unordered_set<ft::ActorId> g_bleedingOut;
+
+// Why the player's evaluation is held, or null while it is not: logged on
+// change, for the same reason. The reasons are literals (PlayerHeld), so
+// the pointer is the comparison.
+const char *g_playerHeld = nullptr;
 
 // Per-follower rules. Absent means "has not been edited", and the default set
 // is handed out instead -- so a new follower costs nothing until someone
@@ -203,6 +209,18 @@ const ft::RuleSet kNoRules;
 ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
 {
     ft::Capabilities caps;
+    // The player's casts go through the input handler, not the cast
+    // records (game/PlayerCast.h), and what their body has no route for is
+    // marked off, so a rule of it says so. Ours in flight holds every
+    // action, as a follower's does below.
+    if (actor->IsPlayerRef())
+    {
+        for (std::size_t i = 0; i < caps.unsupported.size(); ++i)
+            caps.unsupported[i] = !PlayerSupports(static_cast<ft::ActionKind>(i));
+        if (IsPlayerMidCast())
+            caps.busy.fill(true);
+        return caps;
+    }
     caps.castingAvailable = HasCastForms(actor);
 
     // A cast of OURS still in the air -- the lease is held from the request
@@ -453,6 +471,17 @@ void FillTactics(RE::Actor *actor, FollowerView &v)
             }
         }
     }
+
+    // What each action could do this moment, for the cells: the tick's own
+    // judgement over a fresh snapshot and the actor's cooldowns, deciding
+    // nothing. Out of a fight the snapshot is not otherwise built, so this
+    // is the one place it costs anything, once per page.
+    {
+        auto &state = g_followers[v.id];
+        state.eval.caps = RuntimeCapabilities(actor);
+        v.availability = ft::ProbeAvailability(rules, BuildSnapshot(actor, TacticsSeconds()), state.eval);
+    }
+
     if (renamed)
         SetRules(v.id, std::move(rules));
 }
@@ -864,6 +893,41 @@ void Tick()
         }
     }
 
+    // The player, under rules of their own (dev/PLAYER.md). Found by hand,
+    // since they carry no teammate flag, and given what a follower is
+    // given less what is a follower's alone: no cast records, no pins, no
+    // packages. Held while the player is somewhere an automatic cast is
+    // wrong -- in dialogue, in furniture, mounted, in beast form
+    // (PlayerHeld) -- and said once each way. The edges survive a hold as
+    // they survive a bleedout above.
+    if (auto *player = RE::PlayerCharacter::GetSingleton(); player && !player->IsDead())
+    {
+        LoadIfNew(player);
+        auto &state = g_followers[player->GetFormID()];
+        if (state.inFlight && !IsPlayerMidCast())
+        {
+            ft::RestartCooldown(state.eval, state.inFlight->action, state.inFlight->target, now);
+            state.inFlight.reset();
+        }
+        const char *held = PlayerHeld(player);
+        if (held != g_playerHeld)
+        {
+            log::tactics.event(log::Level::Info, held ? "player.held" : "player.free", player,
+                               {{"reason", held ? held : ""}}, "{} {}", Describe(player),
+                               held ? std::string("is ") + held + " -- tactics held" : "is free -- tactics resume");
+            g_playerHeld = held;
+        }
+        const bool fighting = player->IsInCombat();
+        const bool began = fighting && !state.fighting;
+        const bool ended = !fighting && state.fighting;
+        if (g_enabled.load() && (fighting || ended || state.eval.InProgress()) && !held &&
+            IsFollowerEnabled(player->GetFormID()))
+        {
+            state.fighting = fighting;
+            EvaluateFollower(player, now, began, ended);
+        }
+    }
+
     // Armed cast requests are withdrawn from here, whether or not anyone is
     // still fighting: a request must not outlive the moment it was made for.
     TickPackages(now, followers);
@@ -915,7 +979,7 @@ ft::RuleSet GetRules(ft::ActorId id)
 namespace
 {
 // The player's page. Guarded by the views' lock.
-std::optional<CharacterView> g_playerView;
+std::optional<FollowerView> g_playerView;
 
 // The page as it stands, into `out`; left as it is where there is no page
 // yet, which is a blank one and the right thing to build onto. Copied into a
@@ -924,7 +988,7 @@ std::optional<CharacterView> g_playerView;
 // a move for nothing. It also keeps the analyser out of MSVC's optional,
 // whose constructed storage it reads as uninitialised and then reports the
 // move that follows as an assignment of garbage.
-void CopyPlayerPage(CharacterView &out)
+void CopyPlayerPage(FollowerView &out)
 {
     std::scoped_lock lock(g_viewMutex);
     if (g_playerView)
@@ -968,7 +1032,7 @@ void RefreshShownPage()
     const auto started = std::chrono::steady_clock::now();
     if (actor->IsPlayerRef())
     {
-        CharacterView v;
+        FollowerView v;
         CopyPlayerPage(v);
         v.player = true;
         FillVitals(actor, v, actor->IsInCombat());
@@ -995,7 +1059,7 @@ void RefreshShownPage()
                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
 }
 
-std::optional<CharacterView> ObservePlayer()
+std::optional<FollowerView> ObservePlayer()
 {
     std::scoped_lock lock(g_viewMutex);
     return g_playerView;
@@ -1043,11 +1107,13 @@ std::optional<FollowerView> ObserveFollower(ft::ActorId id)
 
 namespace
 {
-// The fast tick: every 50 ms while a blow is in flight, and not otherwise. A
-// bash is steps -- the block raised, the bash sent once it is up -- and a power
-// attack's record has to go back the moment its swing ends; at the half-second
-// turn the follower's AI lowers the block between two steps, or the procedure
-// starts a second power attack.
+// The fast tick: every 50 ms while a blow or a cast on the player is in
+// flight, and not otherwise. A bash is steps -- the block raised, the bash
+// sent once it is up -- and a power attack's record has to go back the moment
+// its swing ends; at the half-second turn the follower's AI lowers the block
+// between two steps, or the procedure starts a second power attack. The
+// player's cast is steps too, and its release has to land the moment the
+// caster is ready.
 constexpr double kFastInterval = 0.05;
 std::atomic_bool g_fastQueued{false};
 
@@ -1058,6 +1124,7 @@ void FastTick()
     const double now = TacticsSeconds();
     TickWeaponLeases(now);
     TickBashes(now);
+    TickPlayerCasts(now);
 }
 } // namespace
 
@@ -1093,7 +1160,7 @@ void Install()
                 else
                     g_tickQueued.store(false);
             }
-            else if ((AnyWeaponLease() || AnyBashInFlight()) && !g_fastQueued.exchange(true))
+            else if ((AnyWeaponLease() || AnyBashInFlight() || AnyPlayerCastInFlight()) && !g_fastQueued.exchange(true))
             {
                 if (task)
                     task->AddTask([] {

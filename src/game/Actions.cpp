@@ -4,12 +4,19 @@
 #include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
+#include "game/PlayerCast.h"
 #include "game/Sensors.h"
 #include "game/Sheet.h"
 #include "game/Util.h"
 
+#include "RE/B/BGSAction.h"
+#include "RE/C/CombatAnimation.h"
+
 #include <algorithm>
 #include <cmath>
+
+// wingdi.h names a GetObject of its own, over the default-object lookup.
+#undef GetObject
 
 namespace ft::game
 {
@@ -236,6 +243,42 @@ ActionResult ResultOf(CastRequest request)
     return ActionResult::NoSuchAction;
 }
 
+// A power attack on the player's own body: the engine's action the attack
+// handler sends for a hold past the power-attack delay (read from
+// 1.6.1170: the right, left or dual power attack action by the hands),
+// through the graph as a CombatAnimation, as a follower's bash goes.
+bool PerformPlayerPowerAttack(RE::Actor *player, ft::Swing swing)
+{
+    auto *defaults = RE::BGSDefaultObjectManager::GetSingleton();
+    using Object = RE::BGSDefaultObjectManager::DefaultObject;
+    const auto id = swing == ft::Swing::Left   ? Object::kActionLeftPowerAttack
+                    : swing == ft::Swing::Both ? Object::kActionDualPowerAttack
+                                               : Object::kActionRightPowerAttack;
+    auto *action = defaults ? defaults->GetObject<RE::BGSAction>(id) : nullptr;
+    auto *anim = action ? RE::CombatAnimation::Create(player, action) : nullptr;
+    if (!anim)
+        return false;
+    const bool performed = anim->Execute();
+    anim->~CombatAnimation();
+    RE::free(anim);
+    return performed;
+}
+
+// The same for a cast on the player's own body (game/PlayerCast.h).
+ActionResult ResultOf(PlayerCastRequest request)
+{
+    switch (request)
+    {
+    case PlayerCastRequest::Started:
+        return ActionResult::Requested;
+    case PlayerCastRequest::AlreadyCasting:
+        return ActionResult::Busy;
+    case PlayerCastRequest::SpellMissing:
+        return ActionResult::MissingItem;
+    }
+    return ActionResult::NoSuchAction;
+}
+
 } // namespace
 
 const char *CannotCastText(std::uint32_t reason) noexcept
@@ -382,6 +425,14 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             delivery = asSpell;
         if (!form || (shout && !form->As<RE::TESShout>()) || (!shout && !form->As<RE::SpellItem>()))
             return ActionResult::MissingItem;
+        // The player's own voice, by the shout control; a power or shout
+        // goes at whom the player aims, as their own does.
+        if (actor->IsPlayerRef())
+        {
+            const auto request = RequestPlayerVoice(actor, action.form, ruleIndex, ruleName);
+            log::actions.debug("{} on the player: {}", shout ? "shout" : "power", ToString(request));
+            return ResultOf(request);
+        }
         std::uint32_t targetId = actor->GetFormID();
         if (delivery && delivery->GetDelivery() != RE::MagicSystem::Delivery::kSelf && target != 0 &&
             target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
@@ -395,6 +446,14 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
 
     case ft::ActionKind::CastSpell:
     case ft::ActionKind::UseScroll: {
+        // The player casts from their own hand, by a press of its control
+        // (game/PlayerCast.h), and aims as they aim; a scroll is not read yet.
+        if (actor->IsPlayerRef())
+        {
+            const auto request = RequestPlayerCast(actor, action.form, action.arg, action.dual, ruleIndex, ruleName);
+            log::actions.debug("cast on the player: {}", ToString(request));
+            return ResultOf(request);
+        }
         // The package route. Who the spell goes at. A Self-delivery spell (Fast Healing,
         // Oakflesh) cannot take a target. Anything else goes at whom the
         // RULE aimed it: the ally it matched, the player, their attacker --
@@ -458,6 +517,12 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             ReleaseKind(actor, ft::KindOf(action.kind), ft::TakesHand(action.kind) ? action.hand : Hand::None);
             return ActionResult::Performed;
         }
+        // The player's is a plain equip: a pin is a leash on a combat AI
+        // the player does not run.
+        if (actor->IsPlayerRef())
+            return WearNow(actor, action.form, WearRequest::Equip, action.hand, action.variant)
+                       ? ActionResult::Performed
+                       : ActionResult::MissingItem;
         return PinNow(actor, action.form, action.hand, action.variant) ? ActionResult::Performed
                                                                        : ActionResult::MissingItem;
 
@@ -468,10 +533,12 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     case ft::ActionKind::Bash:
     case ft::ActionKind::PowerBash: {
         // At an enemy who is not the follower's target, point them there
-        // first, as Attack does.
+        // first, as Attack does. The player aims for themself: the blow
+        // goes where they are looking.
+        const bool player = actor->IsPlayerRef();
         const auto current = actor->GetActorRuntimeData().currentCombatTarget.get();
         const std::uint32_t currentId = current ? current->GetFormID() : 0;
-        const bool elsewhere = target != 0 && target != actor->GetFormID();
+        const bool elsewhere = !player && target != 0 && target != actor->GetFormID();
         if (elsewhere && target != currentId)
         {
             if (PointAt(actor, target) != ActionResult::Performed)
@@ -482,12 +549,27 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             return ActionResult::MissingItem;
 
         // A bash is made from a block, as the engine makes one: raised, the
-        // bash asked for once it is up, lowered (game/Blows.h).
+        // bash asked for once it is up, lowered (game/Blows.h). The same
+        // actions the attack handler sends for the player's own block and
+        // attack, so the sequence is theirs too, aimed by nobody.
         if (action.kind != ft::ActionKind::PowerAttack)
-            return RequestBash(actor, target, action.kind == ft::ActionKind::PowerBash, ruleIndex, ruleName) ==
-                           BashRequest::Started
+            return RequestBash(actor, player ? 0 : target, action.kind == ft::ActionKind::PowerBash, ruleIndex,
+                               ruleName) == BashRequest::Started
                        ? ActionResult::Requested
                        : ActionResult::Busy;
+
+        if (player)
+        {
+            auto *state = actor->AsActorState();
+            if (!state || !state->IsWeaponDrawn())
+                return ActionResult::WeaponSheathed;
+            if (state->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone)
+                return ActionResult::MidSwing;
+            const bool sent = PerformPlayerPowerAttack(actor, blow.swing);
+            log::actions.debug("power attack: {} by the engine's action ({:.0f} stamina){}", Describe(actor),
+                               blow.stamina, sent ? "" : " -- the action was refused");
+            return sent ? ActionResult::Performed : ActionResult::GraphRefused;
+        }
 
         // A power attack with the right hand's weapon goes through the
         // follower's UseWeapon record, which waits for their own swing to end

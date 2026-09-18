@@ -8,6 +8,7 @@
 #include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
+#include "game/PlayerCast.h"
 #include "game/Profiles.h"
 #include "game/Tactics.h"
 #include "game/UI.h"
@@ -70,6 +71,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
                                       fresh ? "a new game begins" : "a save is loaded");
                 ft::game::ResetPackages();
                 ft::game::ResetBashes();
+                ft::game::ResetPlayerCasts();
             }
 
             // Sent before the engine writes the save (SKSE's SaveGame hook
@@ -78,11 +80,13 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
             // shouting a re-typed power: all of it would go into the file, and
             // the packages are runtime forms that the save cannot bring back
             // whole. Every lease ends here, so the save holds nothing of ours.
-            // A bash in flight ends too, its block lowered if it raised one.
+            // A bash in flight ends too, its block lowered if it raised one;
+            // and a cast on the player's body, the lent hand given back.
             if (message->type == SKSE::MessagingInterface::kSaveGame)
             {
                 ft::game::ReleaseAllLeases("saving");
                 ft::game::EndAllBashes("saving");
+                ft::game::EndAllPlayerCasts("saving");
                 // After the releases, so a cast the save cut short reads as
                 // resolved before the save that cut it. SKSE passes the save's
                 // name as the message's data.

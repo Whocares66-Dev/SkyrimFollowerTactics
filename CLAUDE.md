@@ -16,6 +16,7 @@ tested against without Skyrim (not yet built; what is known, what to measure fir
 `dev/MODIFIERS.md` is where a follower's bonuses come from and how to total them (perk
 entry points over actor values; research and thoughts, with the open questions);
 `dev/VERSIONS.md` is every address, vtable slot and layout taken from the game rather than from CommonLib, each an (SE, AE) pair named in `src/game/Addresses.h` and read on 1.5.97 and 1.6.1170, and how to check them against another build; add a row and a name when you add one;
+`dev/PLAYER.md` is the player under tactics: what carries over, how a cast is performed on the player's body through a synthesized press (the attack and shout handlers as read from the executable), what running rules out of combat needs, and what is verified in play and what is not (built 2026-09-18 on `wip-player-tactics`);
 `dev/TODO.md` is what is still to do.
 
 ## The one architectural rule
@@ -294,6 +295,8 @@ one JSON record per follower with the rules, the switch and the player's pins, w
 when the game saves and taken back when the tick first sees the follower after a load
 (`dev/PROFILES.md`; built 2026-09-04, not yet verified in play). Still missing:
 shareable named profiles. Actions to come are in `dev/ACTIONS.md`.
+
+**The player under tactics (built 2026-09-18 on `wip-player-tactics`; casts, dual casts, a shout, powers and the blows seen in play the same day).** The player is evaluated in a fight as a follower is, under rules of their own on a Tactics tab of their page, saved as a follower's are. Cast, Dual Cast, Scroll, Power and Shout are performed on the player's own body through the game's input handlers, by synthesized presses of the hand's attack controls or the shout control (`src/game/PlayerCast.cpp`, `dev/PLAYER.md`); the blows go by the engine's own attack actions; the equips are plain equips, and the player's snapshot carries what they wear where a follower's carries the pin book. Attack alone is left out. Out of combat is not built: it is to be a second list, not a field on the rule.
 
 **Defaults (2026-09-04):** a follower starts with NO rules; both switches start on,
 which is safe because an empty list does nothing. A fresh install changes nothing

@@ -120,7 +120,7 @@ constexpr std::array<Entry<ActionKind>, 33> kActions{{
     // "drink-weakest" -- don't burn a strong potion on a scratch -- beside
     // "drink-strongest", the effect named on the action.
     {ActionKind::None, "none", "None"},
-    {ActionKind::Attack, "attack", "Attack"},
+    {ActionKind::Attack, "attack", "Focus on target"},
     {ActionKind::PowerAttack, "power-attack", "Power Attack"},
     {ActionKind::Bash, "bash", "Bash"},
     {ActionKind::PowerBash, "power-bash", "Power Bash"},
@@ -383,75 +383,27 @@ std::string_view Describe(PredicateKind v) noexcept
         return ""; // says it all in its name; no tooltip
     case PredicateKind::HealthPctBelow:
         return "Health under this share of its maximum.";
-    case PredicateKind::HealthPctAbove:
-        return "Health over this share of its maximum.";
-    case PredicateKind::MagickaPctBelow:
-        return "Magicka under this share of its maximum.";
-    case PredicateKind::MagickaPctAbove:
-        return "Magicka over this share of its maximum.";
-    case PredicateKind::StaminaPctBelow:
-        return "Stamina under this share of its maximum.";
-    case PredicateKind::StaminaPctAbove:
-        return "Stamina over this share of its maximum.";
+    // Only where the name does not say it all: a tooltip that repeats the
+    // label, or common sense, is noise (2026-09-18).
     case PredicateKind::CombatBegins:
-        return "A fight has just begun.";
+        return "Runs immediately after combat starts";
     case PredicateKind::CombatEnds:
-        return "A fight has just ended; no other condition holds on that pass.";
-    case PredicateKind::Type:
-        return ""; // the kind's own name says it; no tooltip
-    case PredicateKind::Status:
-        return "In this state right now.";
-    case PredicateKind::ArmorPctBelow:
-    case PredicateKind::ArmorPctAbove:
-        return ""; // no tooltip
-    case PredicateKind::ResistancePctBelow:
-        return "Resistance to that kind of damage under this much; a weakness is below zero.";
-    case PredicateKind::ResistancePctAbove:
-        return "Resistance to that kind of damage over this much; 100% is immune.";
-    case PredicateKind::StaminaLowest:
-        return "The one with the least stamina.";
-    case PredicateKind::StaminaHighest:
-        return "The one with the most stamina.";
-    case PredicateKind::MagickaLowest:
-        return "The one with the least magicka.";
-    case PredicateKind::MagickaHighest:
-        return "The one with the most magicka.";
-    case PredicateKind::ResistanceLowest:
-        return "The one least resistant to that kind of damage.";
-    case PredicateKind::ResistanceHighest:
-        return "The one most resistant to that kind of damage.";
-    case PredicateKind::HitType:
-        return "Attacks with this type of damage";
+        return "Runs immediately after combat ends";
     case PredicateKind::HitBy:
-        return "Hit by this type of damage in last few seconds";
+        return "In the last few seconds.";
     case PredicateKind::Attacking:
-        return "Attacking that member of the party: they are its combat target.";
+        return "This enemy's target is that party member.";
     case PredicateKind::AttackedBy:
-        return "Attacked by that member of the party: it is their combat target.";
-    case PredicateKind::HealthLowest:
-        return "The one with the least health.";
-    case PredicateKind::HealthHighest:
-        return "The one with the most health.";
-    case PredicateKind::ArmorLowest:
-        return "The least armoured one.";
-    case PredicateKind::ArmorHighest:
-        return "The best armoured one.";
+        return "That party member's target is this enemy.";
     case PredicateKind::SummonNone:
-        return "Commands no summon or raised corpse right now.";
     case PredicateKind::SummonActive:
-        return "Commands a summon or a raised corpse right now.";
+        return "A summon or a raised corpse.";
     case PredicateKind::WeaponChargeNeeded:
         return "An enchanted weapon in hand cannot pay for one more hit.";
-    case PredicateKind::WeaponPoisonNone:
-        return "A weapon in hand takes a poison and has none on it.";
-    case PredicateKind::WeaponPoisonActive:
-        return "A weapon in hand has a poison on it.";
     case PredicateKind::CorpseNone:
-        return "No corpse nearby that the rule's spell could raise.";
     case PredicateKind::LevelHighest:
-        return "The nearby corpse of the highest level the rule's spell can raise.";
     case PredicateKind::LevelLowest:
-        return "The nearby corpse of the lowest level the rule's spell can raise.";
+        return "Counts only corpses the rule's Reanimate spell can raise.";
     default:
         return "";
     }
@@ -486,80 +438,26 @@ std::string_view Noun(ActionKind v) noexcept
 
 std::string_view Describe(ActionKind v) noexcept
 {
+    // Only where the name does not say it all, as for a predicate: what a
+    // pin promises, what "strongest" means of a soul gem, what "any" is
+    // drawn from.
     switch (v)
     {
-    case ActionKind::None:
-        return "Nothing.";
-    case ActionKind::DrinkStrongest:
-        return "Drink the strongest potion with this effect.";
-    case ActionKind::DrinkWeakest:
-        return "Drink the weakest potion with this effect.";
     case ActionKind::ChargeStrongestSoulGem:
-        return "Recharge the weapon in hand that needs it with the largest soul gem that would not overfill it.";
+        return "The largest soul gem that would not overfill the weapon.";
     case ActionKind::ChargeWeakestSoulGem:
-        return "Recharge the weapon in hand that needs it with the smallest soul gem carried.";
-    case ActionKind::ChargeSoulGem:
-        return "Recharge the weapon in hand that needs it with this soul gem.";
-    case ActionKind::ApplyStrongest:
-        return "Put the strongest poison with this effect on the weapon in hand.";
-    case ActionKind::ApplyWeakest:
-        return "Put the weakest poison with this effect on the weapon in hand.";
+        return "The smallest soul gem carried.";
     case ActionKind::ApplyAny:
-        return "Apply any poison";
+        return "Any poison carried.";
     case ActionKind::DrinkAny:
-        return "Drink a potion that applies a buff";
-    case ActionKind::ApplyPoison:
-        return "Put this poison on the weapon in hand.";
-    case ActionKind::DrinkPotion:
-        return "Drink this potion.";
-    case ActionKind::EatStrongestFood:
-        return "Eat the strongest food with this effect.";
-    case ActionKind::EatWeakestFood:
-        return "Eat the weakest food with this effect.";
+        return "Any potion carried that applies a buff.";
     case ActionKind::EatAnyFood:
-        return "Eat a food that applies a buff";
-    case ActionKind::EatStrongestIngredient:
-        return "Eat the strongest ingredient with this effect.";
-    case ActionKind::EatWeakestIngredient:
-        return "Eat the weakest ingredient with this effect.";
-    case ActionKind::EatFood:
-        return "Eat this food.";
-    case ActionKind::EatIngredient:
-        return "Eat this ingredient.";
-    case ActionKind::CastSpell:
-        return "Cast this spell now.";
-    case ActionKind::UsePower:
-        return "Use this power now.";
-    case ActionKind::Shout:
-        return "Shout this now.";
-    case ActionKind::UseScroll:
-        return "Read this scroll now: cast from a hand, no magicka, the scroll spent.";
+        return "Any food carried that applies a buff.";
     case ActionKind::EquipWeapon:
-        return "Hold this in that hand until another rule or the Inventory tab lets go.";
     case ActionKind::EquipSpell:
-        return "Ready this spell in that hand until another rule or the Magic tab lets go.";
     case ActionKind::EquipArrows:
-        return "Use this ammunition until another rule or the Inventory tab lets go.";
-    case ActionKind::EquipStrongestArrows:
-        return "Use the hardest-hitting arrows.";
-    case ActionKind::EquipWeakestArrows:
-        return "Use the weakest arrows.";
     case ActionKind::EquipArmor:
-        return "Wear this until another rule or the Inventory tab lets go.";
-    case ActionKind::Attack:
-        return "Attack them: make them the combat target, and fight however the follower fights. Nothing happens "
-               "if they already are.";
-    case ActionKind::PowerAttack:
-        return "One power attack at them with what is in hand -- a blade, a two-hander, both hands, the fists -- "
-               "pointing the follower at them first if need be. Needs the stamina it costs.";
-    case ActionKind::Bash:
-        return "One bash at them with what blocks -- the shield or torch, or the weapon in the right hand with the "
-               "left hand empty: the interrupt against a caster. Pointing the follower at them first if need be. "
-               "Needs the stamina it costs.";
-    case ActionKind::PowerBash:
-        return "One power bash at them with what blocks -- the shield or torch, or the weapon in the right hand "
-               "with the left hand empty: the hardest stagger of any blow. Pointing the follower at them first if "
-               "need be. Needs the stamina it costs.";
+        return "Equip until replaced by player or another rule";
     default:
         return "";
     }

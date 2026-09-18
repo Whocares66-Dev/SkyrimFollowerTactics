@@ -343,7 +343,12 @@ bool CanDualCast(RE::Actor *actor, RE::SpellItem *spell)
 {
     if (!actor || !spell || !IsCastable(spell) || SpellGrip(spell) != ft::Grip::Either)
         return false;
-    if (!CurrentSettings().requireDualCastPerks)
+    // The setting is about followers, whose package forces a dual cast the
+    // perk or no. The player's own handler asks this entry point before it
+    // pairs two presses into a dual cast (dev/PLAYER.md "The pairing"),
+    // and two presses it does not pair are two single casts: so for the
+    // player the perk is asked whatever the setting says.
+    if (!CurrentSettings().requireDualCastPerks && !actor->IsPlayerRef())
         return true;
     float allowed = 0.0f;
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kCanDualCastSpell, actor, spell, &allowed);
@@ -1285,8 +1290,9 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
 bool PowerBashPerkMet(RE::Actor *actor)
 {
     // The Block tree's Power Bash perk (058F67). The idle tree asks it of
-    // the player alone, so a follower needs it only where Settings says so.
-    if (!CurrentSettings().requirePowerBashPerk)
+    // the player alone, so a follower needs it only where Settings says so,
+    // and the player needs it whatever Settings says.
+    if (!CurrentSettings().requirePowerBashPerk && !(actor && actor->IsPlayerRef()))
         return true;
     constexpr std::uint32_t kPowerBashPerk = 0x00058F67;
     auto *perk = RE::TESForm::LookupByID<RE::BGSPerk>(kPowerBashPerk);
@@ -1611,7 +1617,9 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         view.traits = ReadTraits(other);
         return view;
     };
-    if (player && !player->IsDead())
+    // Not the player among their own allies: built for the player, Self
+    // is the player, and the party is the followers.
+    if (player && !player->IsDead() && player != actor)
         s.allies.push_back(viewOf(player));
     if (auto *lists = RE::ProcessLists::GetSingleton())
     {
@@ -1719,9 +1727,15 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     ForEachSpell(actor, [&s, actor](RE::SpellItem *spell) {
         // A power is known too, for a Use power rule; it costs nothing and
         // is not held in a hand, so it is in neither of the lists below.
+        // A greater power used today is in effect until the day turns: the
+        // engine keeps the ones used on the actor and its cast check refuses
+        // them, so the rule reports it and falls through rather than firing
+        // into the refusal every cooldown.
         if (IsPower(spell))
         {
             s.spells.known.push_back(spell->GetFormID());
+            if (spell->GetSpellType() == RE::MagicSystem::SpellType::kPower && actor->IsInCastPowerList(spell))
+                s.spells.usedToday.push_back(spell->GetFormID());
             return;
         }
         if (!IsCastable(spell))
@@ -1787,14 +1801,42 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         for (const ft::ItemVariant &variant : variants)
             s.loadout.push_back(DescribeHoldable(actor, object, variant));
     }
-    s.pins = PinsOf(s.self);
+    // The player's "pins" are what they have on: an equip rule of theirs is
+    // done when the thing is worn, and nothing chooses for them to pin
+    // against (game/Pins.h, WornAsPins).
+    s.pins = actor->IsPlayerRef() ? WornAsPins(actor) : PinsOf(s.self);
 
-    ForEachActiveEffect(actor, [&s](RE::ActiveEffect &ae) {
+    // A shout's running effect belongs to its word's spell, not to the shout
+    // record a rule names, so the shouts known are looked up by their words
+    // and marked active by the shout: a Become Ethereal rule then waits
+    // while it holds, as a Dragonhide rule does.
+    std::vector<RE::TESShout *> shouts;
+    if (auto *npc = actor->GetActorBase())
+    {
+        if (auto *list = npc->GetSpellList())
+        {
+            for (std::uint32_t i = 0; i < list->numShouts; ++i)
+                if (list->shouts[i] && !IsWrapperShout(list->shouts[i]->GetFormID()))
+                    shouts.push_back(list->shouts[i]);
+        }
+    }
+    ForEachActiveEffect(actor, [&s, &shouts](RE::ActiveEffect &ae) {
         // Instant effects have already happened and never lapse, so
         // treating them as "still up" would block the rule forever.
         if (!ae.spell || ae.duration <= 0.0f || ae.elapsedSeconds >= ae.duration)
             return;
         s.spells.active.push_back(ae.spell->GetFormID());
+        for (RE::TESShout *shout : shouts)
+        {
+            for (const auto &variation : shout->variations)
+            {
+                if (variation.spell == ae.spell)
+                {
+                    s.spells.active.push_back(shout->GetFormID());
+                    return;
+                }
+            }
+        }
     });
 
     return s;

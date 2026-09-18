@@ -9,8 +9,8 @@ namespace ft::game::ui
 
 // The panel's top tabs. Also what the game thread builds by: the page on
 // screen is the only one anyone can be reading, so it is the only one built
-// (game/Tactics.h, RefreshShownPage). CombatStyle and Tactics are a
-// follower's page alone.
+// (game/Tactics.h, RefreshShownPage). CombatStyle is a follower's page
+// alone; Tactics is everyone's.
 enum class Tab
 {
     None,

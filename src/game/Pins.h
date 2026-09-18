@@ -132,6 +132,19 @@ bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand,
 // hand).
 void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands = Hand::None);
 
+// One request against the book now, on the game thread, for the rules: the
+// panel's RequestWear without the queue. A plain Equip is what the player's
+// rules make -- a pin is a leash on a combat AI the player does not run.
+bool WearNow(RE::Actor *actor, std::uint32_t form, WearRequest request, Hand hand,
+             const std::optional<ft::ItemVariant> &variant = std::nullopt);
+
+// What the actor has on and in hand, worded as pins: each hand's thing
+// with its copy, the armour worn, the ammunition. The player's snapshot
+// carries these where a follower's carries the book, so an equip rule of
+// theirs is done when the thing is worn, as a follower's is when it is
+// pinned, and nothing else in the evaluator changes. Game thread.
+[[nodiscard]] std::vector<Pin> WornAsPins(RE::Actor *actor);
+
 // This follower's pins, as the planner and the snapshot take them.
 [[nodiscard]] std::vector<Pin> PinsOf(ft::ActorId id);
 
@@ -159,6 +172,13 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins);
 
 // Forget every book, pins and bans: before a save loads, and on a new game.
 void ForgetPins();
+
+// The engine's own unequip of a spell from a hand (source 0 the left, 1 the
+// right, 2 the voice) and of a shout, on this frame: what the Papyrus
+// natives tail-call, reached by ID (game/Addresses.h). What gives the
+// player's hand back after a cast lent it (game/PlayerCast.h).
+void UnequipSpellNow(RE::Actor *actor, RE::SpellItem *spell, std::uint32_t source);
+void UnequipShoutNow(RE::Actor *actor, RE::TESShout *shout);
 
 // The planner's description of a form: what it is, which hands its record
 // lets it take, whether the combat AI would choose it, which body slots it

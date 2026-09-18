@@ -22,7 +22,7 @@ namespace ft::game
 
 // What the sheet tabs show of one actor -- Character, Inventory, Magic,
 // Summons, Effects, Skills -- worded on the game thread. A follower's view
-// is this and their tactics; the player's page is this alone.
+// is this and their tactics, and so is the player's since 2026-09-18.
 //
 // The UI renders on the render thread while the tick runs on the game thread,
 // so nothing hands out a pointer into live state -- callers get a snapshot they
@@ -37,7 +37,8 @@ struct CharacterView
     std::string name;
     // The player's own page. Their equip cells equip and unequip and no
     // more: a pin and a ban are a leash on the combat AI, and nothing is
-    // choosing for the player.
+    // choosing for the player. Their rules offer what their body has a
+    // route for (game/PlayerCast.h, PlayerSupports).
     bool player{false};
     bool inCombat{false};
 
@@ -101,6 +102,12 @@ struct FollowerView : CharacterView
     // What the editor greys a rule by (core/Editor.h), from the same scans
     // as the menus above.
     ft::Holdings holdings;
+    // Every action's availability as the page was built, rule by rule
+    // (core/Evaluator.h, ProbeAvailability): what the action cell greys by
+    // and says on its hover -- not enough magicka, the voice recovering, a
+    // power used today. Read against a fresh snapshot and the actor's own
+    // cooldowns, decided nothing.
+    ft::ActionTrace availability;
 };
 
 // Everything the UI needs, all copied. Includes followers who are NOT fighting:
@@ -153,7 +160,9 @@ void ForgetSession();
 // magic page costs ~92 ms to build. Game thread.
 void RefreshShownPage();
 
-[[nodiscard]] std::optional<CharacterView> ObservePlayer();
+// The player's page: the sheet, and since 2026-09-18 their tactics too, so
+// it is a follower's view with `player` set (dev/PLAYER.md).
+[[nodiscard]] std::optional<FollowerView> ObservePlayer();
 
 // Start ticking. Safe to call once, after kDataLoaded.
 void Install();

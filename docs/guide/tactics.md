@@ -151,3 +151,5 @@ A rule whose [condition](#conditions) or [action](#actions) is invalid is unavai
 ![Tactic unavailable]({{ "/assets/img/panel/tactic_unavailable.png" | relative_url }}){: .screenshot loading="lazy"}
 
 If there are multiple actions for a rule, the rule is unavailable if **all** actions are invalid. If only some actions are invalid, the invalid ones are skipped.
+
+An action that cannot be done at the moment is also greyed, and its hover says why: not enough magicka for the spell, a shout still recovering, a greater power already used today, an action used too recently. This is read when the page is built, so it shows the state at the moment the panel was opened. An action that is simply already in effect, a buff still running or nothing to unequip, is not greyed: that is what the rule waits on.

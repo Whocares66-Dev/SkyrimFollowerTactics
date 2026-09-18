@@ -315,6 +315,18 @@ TEST_CASE("an unsupported action never fires", "[evaluator]")
     const auto d = Evaluate(rs, s, ctx, &trace);
     REQUIRE_FALSE(d.Fired());
     REQUIRE(trace.at(0) == Verdict::Unsupported);
+
+    // And any one action can be marked off for an actor -- the player's
+    // body has no route for a blow or a pin -- with the same word, and the
+    // rest untouched: the potion beneath still fires.
+    rs.rules.push_back(HealBelow(0.5f));
+    EvalContext player;
+    player.caps.unsupported[static_cast<std::size_t>(ActionKind::CastSpell)] = true;
+    trace.clear();
+    const auto e = Evaluate(rs, s, player, &trace);
+    REQUIRE(e.Fired());
+    REQUIRE(e.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::Unsupported);
 }
 
 // ---------------------------------------------------------------------------
@@ -4020,4 +4032,77 @@ TEST_CASE("a bash and a power bash are blows of their own, priced apart", "[reso
     REQUIRE(IsBlow(ActionKind::Bash));
     REQUIRE(IsBlow(ActionKind::PowerBash));
     REQUIRE_FALSE(IsBlow(ActionKind::Attack));
+}
+
+// ---------------------------------------------------------------------------
+// A greater power used today, and the probe the panel greys by.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("a greater power used today is reported, and is not waited for", "[spell]")
+{
+    RuleSet rs;
+    rs.rules.push_back(HealBelow(0.5f));
+    rs.rules[0].FirstAction() = {};
+    rs.rules[0].FirstAction().kind = ActionKind::UsePower;
+    rs.rules[0].FirstAction().form = 0xE40C3; // Battle Cry
+    rs.rules.push_back(HealBelow(0.5f));
+
+    Snapshot s = Healthy();
+    s.health = {40.0f, 100.0f};
+    s.spells.known.push_back(0xE40C3);
+    s.spells.usedToday.push_back(0xE40C3);
+    EvalContext ctx;
+
+    Trace trace;
+    const auto d = Evaluate(rs, s, ctx, &trace);
+    // Not transient: the potion beneath fires on the same tick.
+    REQUIRE(d.Fired());
+    REQUIRE(d.ruleIndex == 1);
+    REQUIRE(trace.at(0) == Verdict::PowerUsed);
+    REQUIRE(std::string(Explain(Verdict::PowerUsed, ActionKind::UsePower)) == "power already used today");
+
+    // Tomorrow it fires.
+    s.spells.usedToday.clear();
+    EvalContext fresh;
+    trace.clear();
+    const auto e = Evaluate(rs, s, fresh, &trace);
+    REQUIRE(e.Fired());
+    REQUIRE(e.ruleIndex == 0);
+}
+
+TEST_CASE("the probe says every action's availability and decides nothing", "[panel]")
+{
+    RuleSet rs;
+    // A cast the follower cannot afford, then a potion, then a power used
+    // today: three reasons on three rules, all read on one probe.
+    rs.rules.push_back(HealBelow(0.5f));
+    rs.rules[0].FirstAction() = {};
+    rs.rules[0].FirstAction().kind = ActionKind::CastSpell;
+    rs.rules[0].FirstAction().form = 0x12FCD;
+    rs.rules.push_back(HealBelow(0.5f));
+    rs.rules.push_back(HealBelow(0.5f));
+    rs.rules[2].FirstAction() = {};
+    rs.rules[2].FirstAction().kind = ActionKind::UsePower;
+    rs.rules[2].FirstAction().form = 0xE40C3;
+    rs.rules[2].actions.push_back(rs.rules[1].FirstAction()); // and a potion after it
+
+    Snapshot s = Healthy();
+    s.spells.known = {0x12FCD, 0xE40C3};
+    s.spells.costs.push_back({0x12FCD, 150.0f});
+    s.spells.usedToday.push_back(0xE40C3);
+    // Out of a fight, with the conditions false: the probe is about the
+    // actions, not the conditions.
+    s.inCombat = false;
+    EvalContext ctx;
+    const EvalContext before = ctx;
+
+    const ActionTrace probe = ProbeAvailability(rs, s, ctx);
+    REQUIRE(probe.size() == 3);
+    REQUIRE(probe[0].at(0) == Verdict::CannotAfford);
+    REQUIRE(probe[1].at(0) == Verdict::Fired);
+    REQUIRE(probe[2].at(0) == Verdict::PowerUsed);
+    REQUIRE(probe[2].at(1) == Verdict::Fired);
+    // Nothing decided, nothing on cooldown.
+    REQUIRE(ctx.blocked.size() == before.blocked.size());
+    REQUIRE_FALSE(ctx.InProgress());
 }

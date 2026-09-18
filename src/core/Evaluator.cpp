@@ -636,6 +636,8 @@ Verdict CastAvailability(const Action &a, const Snapshot &snap)
         if (snap.magicka.current < (a.dual ? snap.spells.DualCostOf(a.form) : snap.spells.CostOf(a.form)))
             return Verdict::CannotAfford;
     }
+    if (a.kind == ActionKind::UsePower && snap.spells.UsedToday(a.form))
+        return Verdict::PowerUsed;
     if (snap.traits.Has(StatusKind::Casting))
         return Verdict::Casting;
     if ((a.kind == ActionKind::Shout || a.kind == ActionKind::UsePower) && snap.voiceRecovery > 0.0f)
@@ -756,6 +758,8 @@ bool Transient(Verdict v)
 {
     return v == Verdict::Busy || v == Verdict::Casting || v == Verdict::Recovering || v == Verdict::ActionCooldown;
 }
+// (A power used today is not transient: the day turns in hours, and a
+// list waiting on it would wait the fight out.)
 
 // Do the NEXT action of a list, from `from`, in order: one per tick, like
 // nested rules firing on successive ticks. Not as many as can be done at
@@ -862,6 +866,24 @@ Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, Actor
 void RestartCooldown(EvalContext &ctx, const Action &a, ActorId target, double now)
 {
     ctx.Block(CooldownKey(a, target), now + MinimumCooldown(a.kind));
+}
+
+ActionTrace ProbeAvailability(const RuleSet &rs, const Snapshot &snap, const EvalContext &ctx)
+{
+    ActionTrace out(rs.rules.size());
+    std::vector<Pin> heldAbove;
+    for (std::size_t i = 0; i < rs.rules.size(); ++i)
+    {
+        const Rule &r = rs.rules[i];
+        ActorId subject = 0;
+        ActorId target = 0;
+        // The target only: what the condition says is not the question here.
+        static_cast<void>(Admit(r, snap, ctx, subject, target));
+        out[i].reserve(r.actions.size());
+        for (const Action &a : r.actions)
+            out[i].push_back(Availability(a, snap, ctx, r.actionTarget, target, heldAbove));
+    }
+    return out;
 }
 
 Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace, ActionTrace *actionTrace)
@@ -1038,11 +1060,10 @@ const char *Explain(Verdict v, ActionKind action) noexcept
         return ToString(v);
 
     case Verdict::NoMeleeWeapon:
-        return action == ActionKind::PowerAttack ? "nothing in hand that swings"
-                                                 : "nothing that blocks to bash with: a shield, a torch, or one weapon";
+        return action == ActionKind::PowerAttack ? "nothing to power attack with" : "nothing to bash with";
 
     case Verdict::NothingToPoison:
-        return "no weapon in hand takes a poison";
+        return "no weapon in hand can be poisoned";
 
     case Verdict::NothingToCharge:
         return "no enchanted weapon in hand";
@@ -1052,8 +1073,10 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return "already pinned, or nothing of that kind pinned to let go";
         if (action == ActionKind::Attack)
             return "already fighting them";
-        if (action == ActionKind::UsePower || action == ActionKind::Shout)
+        if (action == ActionKind::UsePower)
             return "that power is still running";
+        if (action == ActionKind::Shout)
+            return "that shout is still running";
         if (IsApply(action))
             return "every weapon in hand is already poisoned";
         if (IsCharge(action))
@@ -1099,7 +1122,7 @@ const char *ToString(Verdict v) noexcept
     case Verdict::NoMeleeWeapon:
         return "nothing in hand for that blow";
     case Verdict::NoPerk:
-        return "has not got the perk Settings requires for it";
+        return "lacks the perk Settings requires for it";
     case Verdict::NoStamina:
         return "not enough stamina";
     case Verdict::OutOfReach:
@@ -1118,6 +1141,8 @@ const char *ToString(Verdict v) noexcept
         return "mid-cast on their own spell, waiting";
     case Verdict::Recovering:
         return "shout on cooldown, waiting";
+    case Verdict::PowerUsed:
+        return "power already used today";
     case Verdict::InvalidCondition:
         return "invalid condition";
     case Verdict::Queued:
@@ -1176,6 +1201,8 @@ const char *WireName(Verdict v) noexcept
         return "casting";
     case Verdict::Recovering:
         return "recovering";
+    case Verdict::PowerUsed:
+        return "power-used";
     case Verdict::InvalidCondition:
         return "invalid-condition";
     case Verdict::Queued:

@@ -16,6 +16,7 @@
 #include "core/Vocabulary.h"
 #include "game/Log.h"
 #include "game/Pins.h"
+#include "game/PlayerCast.h"
 #include "game/Settings.h"
 #include "game/Sheet.h"
 #include "game/Tactics.h"
@@ -758,8 +759,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
         std::uint32_t form;
         std::string label;
     };
-    std::vector<Heading> headings{{ft::SubjectKind::Self, 0, std::string(ft::DisplayName(ft::SubjectKind::Self))},
-                                  {ft::SubjectKind::Player, 0, std::string(ft::DisplayName(ft::SubjectKind::Player))}};
+    std::vector<Heading> headings{{ft::SubjectKind::Self, 0, std::string(ft::DisplayName(ft::SubjectKind::Self))}};
+    // On the player's own page Self is the player, and the Player heading
+    // would say it twice.
+    if (!view.player)
+        headings.push_back({ft::SubjectKind::Player, 0, std::string(ft::DisplayName(ft::SubjectKind::Player))});
     for (const auto &peer : SortedPeers(view))
         headings.push_back({ft::SubjectKind::Follower, peer.id, peer.name});
     headings.push_back({ft::SubjectKind::Ally, 0, std::string(ft::DisplayName(ft::SubjectKind::Ally))});
@@ -979,8 +983,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     pick(label.c_str(), predicate, x);
                 };
                 member(view.id, "Self");
-                Im::Separator();
-                member(0, std::string(ft::DisplayName(ft::SubjectKind::Player)));
+                if (!view.player)
+                {
+                    Im::Separator();
+                    member(0, std::string(ft::DisplayName(ft::SubjectKind::Player)));
+                }
                 if (const auto peers = SortedPeers(view); !peers.empty())
                 {
                     Im::Separator();
@@ -1255,8 +1262,67 @@ bool TargetAvailable(const ft::Rule &rule, const FollowerView &view)
     return ft::TargetHad(rule, view.holdings);
 }
 
-// Why a rule is set aside, for its switch; null when it is not.
-const char *SetAsideReason(const ft::Rule &rule, const FollowerView &view)
+// Why an action could not be done this moment, for its cell's hover, or
+// empty for one that could -- or one whose only obstacle is the fight
+// itself (no fight on, no one to aim at, out of reach, a hand a rule above
+// holds), or one already in effect (a buff still up, a "none" with nothing
+// to take off), which is what the rule waits on and not the action being
+// unavailable: a Combat end rule's "unequip" reads as done all the way
+// through the fight it is written for. The words are the panel's where a
+// player would read them most; the rest are the verdict's own,
+// capitalised.
+std::string UnavailableText(ft::Verdict verdict, ft::ActionKind kind)
+{
+    switch (verdict)
+    {
+    case ft::Verdict::CannotAfford:
+        return "Not enough magicka";
+    case ft::Verdict::NoStamina:
+        return "Not enough stamina";
+    case ft::Verdict::PowerUsed:
+        return "Greater power can only be used once per day";
+    case ft::Verdict::Recovering:
+        return kind == ft::ActionKind::Shout ? "Still recovering from the last shout"
+                                             : "Voice still recovering from the last shout";
+    case ft::Verdict::ActionCooldown:
+        return "Used too recently";
+    case ft::Verdict::Casting:
+        return "Already casting a spell";
+    case ft::Verdict::Busy:
+        return "A cast from another rule is still in progress";
+    case ft::Verdict::CannotDualCast:
+        return "Cannot dual cast that spell";
+    case ft::Verdict::AboveSkill:
+    case ft::Verdict::NoMeleeWeapon:
+    case ft::Verdict::NoPerk:
+    case ft::Verdict::NothingToPoison:
+    case ft::Verdict::NothingToCharge:
+    case ft::Verdict::NoResource:
+    case ft::Verdict::Unsupported: {
+        std::string text(ft::Explain(verdict, kind));
+        if (!text.empty())
+            text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+        return text;
+    }
+    default:
+        return {};
+    }
+}
+
+// The probe's verdict for one action of one rule, as the page was built;
+// available where the page has none for it.
+ft::Verdict VerdictAt(const FollowerView &view, std::size_t rule, std::size_t action)
+{
+    if (rule < view.availability.size() && action < view.availability[rule].size())
+        return view.availability[rule][action];
+    return ft::Verdict::Fired;
+}
+
+// Why a rule is set aside, for its switch; empty when it is not. A rule
+// whose things are missing or whose follower is away (core/Editor.h), and
+// one none of whose actions could be done this moment (UnavailableText):
+// its one action's reason, or a word for several.
+std::string SetAsideReason(const ft::Rule &rule, const FollowerView &view, std::size_t ruleIndex)
 {
     switch (ft::RuleSetAside(rule, view.holdings))
     {
@@ -1267,7 +1333,18 @@ const char *SetAsideReason(const ft::Rule &rule, const FollowerView &view)
     case ft::Aside::None:
         break;
     }
-    return nullptr;
+    if (rule.actions.empty())
+        return {};
+    std::string first;
+    for (std::size_t a = 0; a < rule.actions.size(); ++a)
+    {
+        const std::string why = UnavailableText(VerdictAt(view, ruleIndex, a), rule.actions[a].kind);
+        if (why.empty())
+            return {};
+        if (first.empty())
+            first = why;
+    }
+    return rule.actions.size() == 1 ? first : std::string("No action can be done right now");
 }
 
 std::string ActionText(const ft::Action &act, const FollowerView &view)
@@ -1601,7 +1678,11 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         lastGroup = g;
         return true;
     };
-    const auto valid = [&](ft::ActionKind action) { return ft::IsActionValidFor(target, action); };
+    // Valid on this target, and one the player's body has a route for when
+    // this is the player's page (game/PlayerCast.h).
+    const auto valid = [&](ft::ActionKind action) {
+        return ft::IsActionValidFor(target, action) && (!view.player || PlayerSupports(action));
+    };
 
     // One leaf that picks a policy: the strongest of a kind, the weakest.
     const auto policy = [&](ft::ActionKind kind) {
@@ -1910,26 +1991,30 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
 // condition cannot supply: "Ally" on this side means the ally the condition
 // matched, so it is offered only when the condition is about one.
 bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *addAnother, ft::Rule &rule,
-                bool setAside)
+                bool setAside, ft::Verdict verdict = ft::Verdict::Fired)
 {
     bool changed = false;
 
     // An action naming a thing the follower no longer has, or aimed at a
     // follower who is away, is greyed, with the reason on it -- and still
     // opens: the potion drunk up wants choosing again, here, not deleting
-    // and writing afresh. The colour is pushed round the cell alone, so
-    // the menu it opens reads as usual; `setAside` greys it with the rest
-    // of a row set aside for its condition.
-    const char *reason = !TargetAvailable(rule, view)  ? kFollowerAway
-                         : !ActionAvailable(act, view) ? kNotAvailable
-                                                       : nullptr;
+    // and writing afresh. So is one that could not be done this moment --
+    // the magicka short, the voice recovering, a power used today
+    // (UnavailableText) -- which reads as it was when the page was built.
+    // The colour is pushed round the cell alone, so the menu it opens reads
+    // as usual; `setAside` greys it with the rest of a row set aside for
+    // its condition.
+    const std::string now = UnavailableText(verdict, act.kind);
+    const std::string reason = !TargetAvailable(rule, view)  ? kFollowerAway
+                               : !ActionAvailable(act, view) ? kNotAvailable
+                                                             : now;
     Im::ImVec2 below;
     {
-        const DimText grey(setAside || reason != nullptr);
+        const DimText grey(setAside || !reason.empty());
         below = CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
     }
-    if (reason && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Im::SetTooltip("%s", reason);
+    if (!reason.empty() && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+        Im::SetTooltip("%s", reason.c_str());
 
     PushPopupChrome();
     Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
@@ -1963,8 +2048,10 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
     // followers by name, any ally; then the threats -- the attacker, and
     // the enemy (the condition's, or the one being fought).
     std::vector<Heading> headings{
-        {ft::ActionTargetKind::Self, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Self))},
-        {ft::ActionTargetKind::Player, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Player))}};
+        {ft::ActionTargetKind::Self, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Self))}};
+    if (!view.player)
+        headings.push_back(
+            {ft::ActionTargetKind::Player, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Player))});
     for (const auto &peer : SortedPeers(view))
         headings.push_back({ft::ActionTargetKind::Follower, peer.id, peer.name});
     headings.push_back({ft::ActionTargetKind::Ally, 0, std::string(ft::DisplayName(ft::ActionTargetKind::Ally))});
@@ -2142,7 +2229,8 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::TableNextRow(0, 0.0f);
 
             Im::TableSetColumnIndex(0);
-            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr, rule, false))
+            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr, rule, false,
+                           VerdictAt(view, ruleIndex, a)))
                 changed = true;
 
             Im::TableSetColumnIndex(1);
@@ -2340,8 +2428,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // the switch and on the cell concerned. It keeps its text, its
         // place and its delete; the switch's own state is untouched, so the
         // rule comes back as it was when the thing, or the follower, does.
-        const char *setAside = SetAsideReason(rule, view);
-        const bool available = setAside == nullptr;
+        const std::string setAside = SetAsideReason(rule, view, i);
+        const bool available = setAside.empty();
         Im::TableNextRow(0, 0.0f);
         if (i % 2 == 1)
             Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg0, stripe, -1);
@@ -2358,7 +2446,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 // Slashed at the end of the row, once its height is known.
                 Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
                 if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", setAside);
+                    Im::SetTooltip("%s", setAside.c_str());
             }
             else if (CellClicked(("##on" + rowId).c_str(), Im::GetFrameHeight()))
             {
@@ -2408,7 +2496,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             {
                 Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
                 if (can && Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", setAside);
+                    Im::SetTooltip("%s", setAside.c_str());
                 else if (Im::IsItemHovered(0))
                     Im::SetTooltip("Condition cannot be negated");
             }
@@ -2418,7 +2506,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 changed = true;
             }
             if (can && available && Im::IsItemHovered(0))
-                Im::SetTooltip(rule.negated ? "Click to unnegate condition" : "Click to negate condition");
+                Im::SetTooltip(rule.negated ? "Click to remove the NOT" : "Click to negate condition");
 
             if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.negated && can)
             {
@@ -2463,7 +2551,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // One action: edited here, in its row. Its menu offers a
             // second, and the rule then opens as a drawer.
             bool addAnother = false;
-            if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother, rule, !available))
+            if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother, rule, !available,
+                           VerdictAt(view, i, 0)))
                 changed = true;
             if (addAnother)
             {
@@ -5316,7 +5405,7 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // reports no hover unless asked, and the greyed switch is exactly when
     // the hover has something to say.
     if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Im::SetTooltip("%s", !all              ? "Tactics are turned off for all followers in Settings"
+        Im::SetTooltip("%s", !all              ? "Tactics are turned off for the party in Settings"
                              : followerEnabled ? "Click to turn off tactics"
                                                : "Click to turn on tactics");
     if (toggled && all)
@@ -5522,15 +5611,16 @@ Tab g_shownTab = Tab::None;
 ft::ActorId g_shownPage = 0;
 
 // The tab a page opens on, on the frame it is drawn after another page's;
-// None on the frames after, when its bar keeps the choice. The player's
-// page has no Combat Style or Tactics, and opens on Character from either.
+// None on the frames after, when its bar keeps the choice. The first page
+// drawn opens on Tactics, which is what the mod is for. The player's page
+// has no Combat Style, and opens on Tactics from it.
 Tab CarriedTab(const CharacterView &view)
 {
     if (view.id == g_shownPage)
         return Tab::None;
     g_shownPage = view.id;
-    if (view.player && (g_shownTab == Tab::CombatStyle || g_shownTab == Tab::Tactics))
-        return Tab::Character;
+    if (g_shownTab == Tab::None || (view.player && g_shownTab == Tab::CombatStyle))
+        return Tab::Tactics;
     return g_shownTab;
 }
 
@@ -5603,9 +5693,8 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
 }
 
 // One page per follower: the sheet's tabs, then how their combat AI is
-// tuned and what they have been told to do. The first page drawn opens on
-// Tactics, which is what the mod is for; every page after opens on the tab
-// the last one showed (CarriedTab).
+// tuned and what they have been told to do. It opens on the tab CarriedTab
+// gives it.
 void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
 {
     // Where the tab row begins and ends, kept for the status put at its
@@ -5616,10 +5705,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
     if (!Im::BeginTabBar("follower##tabs"))
         return;
 
-    const bool firstPage = g_shownTab == Tab::None;
-    Tab carried = CarriedTab(view);
-    if (firstPage)
-        carried = Tab::Tactics;
+    const Tab carried = CarriedTab(view);
 
     DrawSheetTabs(view, carried);
     // What the combat AI is tuned by, before what it is told: a rule works
@@ -5752,8 +5838,8 @@ void DrawSettings()
     // live the same way. No heading over it: the page's title is above it
     // and it is the only switch there.
     const bool enabled = IsEnabled();
-    if (toggle("enabledAll", enabled, "Enable tactics for all followers", "Click to turn on tactics for all followers",
-               "Click to turn off tactics for all followers"))
+    if (toggle("enabledAll", enabled, "Enable tactics for party", "Click to turn on tactics for the party",
+               "Click to turn off tactics for the party"))
         SetEnabled(!enabled);
 
     Im::Spacing();
@@ -5762,17 +5848,21 @@ void DrawSettings()
     CentredHeading("Customize");
     ft::Settings settings = CurrentSettings();
     const ft::Settings was = settings;
+    // All three are followers' alone, and each says so: a combat style is a
+    // thing only an NPC has, which not every player knows; the player's own
+    // dual cast is paired by the engine behind its perk check
+    // (game/PlayerCast.h); and the player has no blow to require a perk of.
     if (toggle("requireDualWieldStyle", settings.requireDualWieldStyle, "Require dual wield combat style",
-               "Click to require dual wield combat style for dual wielding",
-               "Click to not require dual wield combat style for dual wielding"))
+               "Click to require dual wield combat style for dual wielding (follower only)",
+               "Click to not require dual wield combat style for dual wielding (follower only)"))
         settings.requireDualWieldStyle = !settings.requireDualWieldStyle;
     if (toggle("requireDualCastPerks", settings.requireDualCastPerks, "Require Dual Casting perks",
-               "Click to require the school's Dual Casting perk for dual casting",
-               "Click to not require the school's Dual Casting perk for dual casting"))
+               "Click to require the school's Dual Casting perk for dual casting (follower only)",
+               "Click to not require the school's Dual Casting perk for dual casting (follower only)"))
         settings.requireDualCastPerks = !settings.requireDualCastPerks;
     if (toggle("requirePowerBashPerk", settings.requirePowerBashPerk, "Require Power Bash perk",
-               "Click to require the Power Bash perk for power bashing",
-               "Click to not require the Power Bash perk for power bashing"))
+               "Click to require the Power Bash perk for power bashing (follower only)",
+               "Click to not require the Power Bash perk for power bashing (follower only)"))
         settings.requirePowerBashPerk = !settings.requirePowerBashPerk;
     if (settings.requireDualWieldStyle != was.requireDualWieldStyle ||
         settings.requireDualCastPerks != was.requireDualCastPerks ||
@@ -5785,8 +5875,9 @@ void __stdcall RenderSettings()
     DrawSettings();
 }
 
-// The player's page: the sheet's tabs alone, in a tab bar of its own, on
-// the tab carried from the last page drawn.
+// The player's page: the sheet's tabs and their tactics, in a tab bar of
+// its own, on the tab carried from the last page drawn. No Combat Style:
+// the player runs no combat AI to be tuned.
 void __stdcall RenderPlayer()
 {
     // Nothing until the first frame's refresh has built the page: a frame.
@@ -5798,14 +5889,20 @@ void __stdcall RenderPlayer()
     // player's page ever sat at that standstill -- blank, for good.
     if (auto *player = RE::PlayerCharacter::GetSingleton(); player && !view)
     {
-        // The player's page has no Combat Style or Tactics tab, as CarriedTab
-        // knows: either carries over to Character.
-        const bool sheet = g_shownTab != Tab::None && g_shownTab != Tab::CombatStyle && g_shownTab != Tab::Tactics;
-        ShowingPage(player->GetFormID(), sheet ? g_shownTab : Tab::Character);
+        // The player's page has no Combat Style tab, as CarriedTab knows: it
+        // carries over to Tactics.
+        const bool sheet = g_shownTab != Tab::None && g_shownTab != Tab::CombatStyle;
+        ShowingPage(player->GetFormID(), sheet ? g_shownTab : Tab::Tactics);
     }
     if (!view || !Im::BeginTabBar("player##tabs"))
         return;
-    DrawSheetTabs(*view, CarriedTab(*view));
+    const Tab carried = CarriedTab(*view);
+    DrawSheetTabs(*view, carried);
+    if (BeginSheetTab("Tactics", Tab::Tactics, carried))
+    {
+        TabBody(Tab::Tactics, view->id, [&] { DrawTactics(GetRules(view->id), *view); });
+        Im::EndTabItem();
+    }
     Im::EndTabBar();
 }
 

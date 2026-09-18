@@ -470,6 +470,8 @@ bool Worn(RE::Actor *actor, RE::TESBoundObject *object, Hand hands,
     return carried.entry && carried.entry->IsWorn();
 }
 
+} // namespace
+
 // The engine's own unequips, which CommonLib declares for neither spell nor
 // shout. The Papyrus natives behind Actor.UnequipSpell and
 // Actor.UnequipShout are thin wrappers: they null-check, and tail-call
@@ -498,6 +500,9 @@ void UnequipShoutNow(RE::Actor *actor, RE::TESShout *shout)
     static REL::Relocation<func_t> func{addr::kUnequipShout};
     func(manager, actor, shout);
 }
+
+namespace
+{
 
 // Take a spell out of a hand, or an item off. A no-op when it is not
 // there, like EquipSpellIn: a spell's unequip is a native call and a
@@ -1596,6 +1601,55 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
 
 } // namespace
 
+bool WearNow(RE::Actor *actor, std::uint32_t form, WearRequest request, Hand hand,
+             const std::optional<ft::ItemVariant> &variant)
+{
+    auto *thing = actor ? RE::TESForm::LookupByID(form) : nullptr;
+    return thing && Wear(actor, thing, request, hand, false, variant);
+}
+
+std::vector<Pin> WornAsPins(RE::Actor *actor)
+{
+    std::vector<Pin> pins;
+    if (!actor)
+        return pins;
+    const auto add = [&](RE::TESForm *form, const std::optional<ft::ItemVariant> &variant, Hand hand) {
+        Holdable thing = DescribeHoldable(actor, form, variant);
+        // A two-hander reads from both hands and is one thing in both.
+        for (Pin &pin : pins)
+        {
+            if (pin.thing.form == thing.form && ft::SameVariant(pin.thing.variant, thing.variant))
+            {
+                pin.hands = Hand::Both;
+                return;
+            }
+        }
+        pins.push_back({std::move(thing), hand});
+    };
+    for (const Hand hand : {Hand::Left, Hand::Right})
+    {
+        RE::TESForm *held = actor->GetEquippedObject(hand == Hand::Left);
+        if (!held)
+            continue;
+        std::optional<ft::ItemVariant> variant;
+        if (auto *object = held->As<RE::TESBoundObject>(); object && !held->Is(RE::FormType::Spell))
+            variant = VariantOf(WornList(actor, object, hand));
+        add(held, variant, hand);
+    }
+    if (auto *changes = actor->GetInventoryChanges(); changes && changes->entryList)
+    {
+        for (auto *entry : *changes->entryList)
+        {
+            if (!entry || !entry->object || !entry->object->IsArmor() || !entry->IsWorn())
+                continue;
+            add(entry->object, VariantOf(WornList(actor, entry->object, Hand::None)), Hand::None);
+        }
+    }
+    if (auto *ammo = actor->GetCurrentAmmo())
+        add(ammo, std::nullopt, Hand::None);
+    return pins;
+}
+
 void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand,
                  std::optional<ft::ItemVariant> variant, RE::ExtraDataList *row)
 {
@@ -1746,15 +1800,18 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
     std::vector<bool> overridden;
     {
         std::scoped_lock lock(g_pinMutex);
-        const auto it = g_pins.find(actor->GetFormID());
-        if (it == g_pins.end())
-            return;
-        std::erase_if(it->second, [&](const Pin &pin) {
-            if (pin.thing.kind != kind || (hands != Hand::None && !Overlap(pin.hands, hands)))
-                return false;
-            released.push_back(pin);
-            return true;
-        });
+        // No book is an empty one: the player has none, and their "none"
+        // still takes the kind off below (2026-09-18: it returned here, and
+        // a Combat end rule's unequip did nothing).
+        if (const auto it = g_pins.find(actor->GetFormID()); it != g_pins.end())
+        {
+            std::erase_if(it->second, [&](const Pin &pin) {
+                if (pin.thing.kind != kind || (hands != Hand::None && !Overlap(pin.hands, hands)))
+                    return false;
+                released.push_back(pin);
+                return true;
+            });
+        }
         const auto remembered = g_pinsBeforeFight.find(actor->GetFormID());
         const bool fighting = g_fighting.contains(actor->GetFormID()) && remembered != g_pinsBeforeFight.end();
         for (const Pin &pin : released)
