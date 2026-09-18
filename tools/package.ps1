@@ -62,7 +62,7 @@ foreach ($flavour in @(
     Copy-Item $dll $plugins
     Set-Content -Path (Join-Path $plugins 'FollowerTactics.ini') -Encoding UTF8 `
         -Value ($ini -replace '(?m)^level\s*=\s*info\s*$', "level = $($flavour.Level)")
-    Copy-Item $readme $stage
+    Copy-Item $readme, (Join-Path $root 'LICENSE') $stage
     if ($flavour.Notes) { Set-Content -Path (Join-Path $stage 'TEST-BUILD.txt') -Value $flavour.Notes -Encoding UTF8 }
 
     $zip = Join-Path $dist "follower-tactics-$version$($flavour.Suffix).zip"

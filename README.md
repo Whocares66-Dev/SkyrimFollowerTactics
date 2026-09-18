@@ -40,3 +40,7 @@ Leave combat, save, and uninstall through your mod manager.
 Read the [user guide](https://whocares66-dev.github.io/SkyrimFollowerTactics/) for feature details and screenshots. Its [About](docs/index.md) and [Getting started](docs/guide/getting-started.md) pages are the source for this overview.
 
 The guide's source and preview instructions are in [docs/](docs/README.md). Developer notes live in [dev/](dev/), including [setup](dev/SETUP.md), [testing](dev/TESTING.md), and [runtime dependencies](dev/VERSIONS.md).
+
+## License
+
+[GPL-3.0](LICENSE).
