@@ -108,6 +108,7 @@ add_library(ft_core STATIC
     src/core/Breakdown.cpp
     src/core/Clock.cpp
     src/core/CoSave.cpp
+    src/core/Coordinator.cpp
     src/core/CustomSkills.cpp
     src/core/Editor.cpp
     src/core/Effects.cpp

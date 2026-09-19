@@ -1,5 +1,6 @@
 #include "game/Tactics.h"
 
+#include "core/Coordinator.h"
 #include "core/Evaluator.h"
 #include "core/Tick.h"
 #include "core/Vocabulary.h"
@@ -64,16 +65,13 @@ int g_lastFollowerCount = -1;
 
 struct FollowerState
 {
-    ft::EvalContext eval;
+    // The turn's own state: the fight's edges, the evaluation context and
+    // the request in flight (core/Coordinator.h).
+    ft::ActorRun run;
     // The verdicts last reported for each rule, and the rules they were for:
     // new rules, or a new fight, report afresh.
     ft::Trace reported;
     ft::RuleSet reportedRules;
-    // The fight's edges and the list evaluated last (core/Tick.h).
-    ft::ActorTick tick;
-    // The requested action in flight -- a cast, a shout, a power attack, a
-    // bash -- whose cooldown starts again when it is over.
-    std::optional<ft::Decision::Step> inFlight;
 };
 
 std::unordered_map<ft::ActorId, FollowerState> g_followers;
@@ -482,9 +480,9 @@ void FillTactics(RE::Actor *actor, FollowerView &v, ft::Moment moment)
     // anything, once per page.
     {
         auto &state = g_followers[v.id];
-        state.eval.caps = RuntimeCapabilities(actor);
+        state.run.eval.caps = RuntimeCapabilities(actor);
         v.availability = ft::ProbeAvailability(
-            rules.Of(moment), BuildSnapshot(actor, TacticsSeconds(), ft::SpellsNamedBy(rules)), state.eval);
+            rules.Of(moment), BuildSnapshot(actor, TacticsSeconds(), ft::SpellsNamedBy(rules)), state.run.eval);
     }
 }
 
@@ -591,25 +589,47 @@ void RefreshRoster(const std::vector<RE::Actor *> &followers)
 // One list: the combat list in a fight and on its edges, the idle list out
 // of one. The tick chooses (below); the context is one, so a cooldown
 // spent by either holds for both.
-void EvaluateFollower(RE::Actor *actor, double now, const ft::TickPlan &plan, const ft::ActorRules &lists)
+ft::ActorTick::Now ReadTick(ft::ActorId id, const ft::ActorRules &rules, bool fighting, bool held);
+
+// One actor's turn. The order -- a finished request's cooldown, the list
+// to evaluate, the snapshot, the rules -- is core's (core/Coordinator.h,
+// DecideTurn, tested); this reads the actor, builds the snapshot when one
+// is asked for, performs the action decided and says what happened.
+void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool held)
 {
     const ft::ActorId id = actor->GetFormID();
     auto &state = g_followers[id];
-    const bool began = plan.began;
-    const bool ended = plan.ended;
-    const ft::Moment moment = *plan.list;
+    const bool player = actor->IsPlayerRef();
 
-    state.eval.caps = RuntimeCapabilities(actor);
+    ft::TickFacts facts;
+    facts.now = ReadTick(id, lists, actor->IsInCombat(), held);
+    facts.caps = RuntimeCapabilities(actor);
+    facts.busy = player ? IsPlayerMidCast() : (IsMidCast(actor) || IsMidBash(actor));
 
-    const auto started = std::chrono::steady_clock::now();
+    // The cost measured is the snapshot and the evaluation -- the rules'
+    // own. The panel's pages are not in it: they are built when someone is
+    // looking at one, not from here. Timed from inside the snapshot, since
+    // a turn that evaluates nothing builds none.
+    auto started = std::chrono::steady_clock::now();
+    const auto snapshot = [&](ft::Moment) {
+        started = std::chrono::steady_clock::now();
+        return BuildSnapshot(actor, now, ft::SpellsNamedBy(lists));
+    };
 
-    ft::Snapshot snapshot = BuildSnapshot(actor, now, ft::SpellsNamedBy(lists));
+    ft::Trace trace;
+    ft::ActionTrace actionTrace;
+    const ft::TickResult turn = ft::DecideTurn(state.run, lists, facts, now, snapshot, &trace, &actionTrace);
+    if (!turn)
+        return;
+    g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
+    const ft::Moment moment = *turn.plan.list;
+    const ft::Snapshot &snap = turn.snapshot;
     // Who is who, once per fight, so the Ally and Enemy subjects can be
-    // read against the log. The fight's edge is the tick's (below); what
-    // it resets in the evaluation context -- the cooldowns, a list part
-    // way through -- the core resets on the same edge, where it is tested.
-    if (began)
+    // read against the log. The fight's edge is the tick's; what it resets
+    // in the evaluation context -- the cooldowns, a list part way through
+    // -- the core resets on the same edge, where it is tested.
+    if (turn.plan.began)
     {
         const auto names = [](const auto &views) {
             std::string out;
@@ -627,98 +647,81 @@ void EvaluateFollower(RE::Actor *actor, double now, const ft::TickPlan &plan, co
                 out.push_back(v.id);
             return out;
         };
-        log::tactics.event(
-            log::Level::Info, "combat.entered", actor,
-            {{"allies", log::Actors(ids(snapshot.allies))}, {"enemies", log::Actors(ids(snapshot.enemies))}},
-            "{} entered combat -- tactics engaged; allies: {} -- enemies: {}", Describe(actor), names(snapshot.allies),
-            names(snapshot.enemies));
+        log::tactics.event(log::Level::Info, "combat.entered", actor,
+                           {{"allies", log::Actors(ids(snap.allies))}, {"enemies", log::Actors(ids(snap.enemies))}},
+                           "{} entered combat -- tactics engaged; allies: {} -- enemies: {}", Describe(actor),
+                           names(snap.allies), names(snap.enemies));
     }
-    snapshot.combatBegan = began;
-    snapshot.combatEnded = ended;
-
     // The other edge. One evaluation runs after a fight ends, for the rules
     // that ask about exactly that, and this is it -- so a query can bracket a
     // fight between the two events rather than guessing where it stopped.
-    if (ended)
+    if (turn.plan.ended)
         log::tactics.event(log::Level::Info, "combat.left", actor, {}, "{} left combat -- the Combat end rules run",
                            Describe(actor));
-
-    // This follower's own rules, the version the tick read.
-    const ft::RuleSet &rules = lists.Of(moment);
-    ft::Trace trace;
-    ft::ActionTrace actionTrace;
-    const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
-
-    // The cost measured is the snapshot and the evaluation -- the rules'
-    // own. The panel's pages are not in it: they are built when someone is
-    // looking at one, not from here.
-    g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
     // New rules, a new fight, or the other list, report every rule's
     // verdict afresh. The farewell evaluation reports nothing: every
     // standing rule turns false on it at once, which says only that the
     // fight is over.
-    if (began || rules != state.reportedRules)
+    const ft::RuleSet &rules = lists.Of(moment);
+    if (turn.plan.began || rules != state.reportedRules)
     {
         state.reported.clear();
         state.reportedRules = rules;
     }
-    if (!ended)
+    if (!turn.plan.ended)
         ReportVerdicts(actor, rules, trace, actionTrace, state.reported);
 
-    if (decision.Fired())
-    {
-        // The one action of the tick; the rest of the rule's list follows,
-        // one per tick.
-        // The rule as its list began: after a reorder or a delete, the index
-        // names another rule.
-        const std::string &label = decision.rule.label;
-        {
-            const auto &step = *decision.step;
-            // A requested cast's, power attack's or bash's outcome follows
-            // when it is over, as rule.resolved, naming the rule given here.
-            const auto result = Execute(step.action, step.target, actor, decision.ruleIndex, label);
-            if (result == ActionResult::Requested)
-                state.inFlight = step;
-
-            // Whom the condition bound and whom the action went at, by
-            // reference and base, and the thing it used: the potion a policy
-            // chose, the spell, the item and which copy of it.
-            std::vector<log::Field> fields{{"list", moment == ft::Moment::Idle ? "idle" : "combat"},
-                                           {"ruleIndex", decision.ruleIndex},
-                                           {"ruleName", label},
-                                           {"subjectKind", ft::WireName(decision.rule.subject)}};
-            log::AppendActor(fields, "subjectFormId", "subjectBaseFormId", "subjectName", step.subject);
-            fields.emplace_back("action", ft::WireName(step.action.kind));
-            log::AppendActor(fields, "targetFormId", "targetBaseFormId", "targetName", step.target);
-            if (step.action.form != 0)
-                log::AppendForm(fields, "formId", "formName", step.action.form);
-            if (ft::IsEquip(step.action.kind))
-                fields.emplace_back("variant", ft::VariantText(step.action.variant));
-            fields.emplace_back("outcome", ToString(result));
-            fields.emplace_back("followerHealthPct", snapshot.health.Pct());
-            log::tactics.event(log::Level::Info, "rule.fired", actor, fields,
-                               "{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
-                               decision.ruleIndex, label, ft::WireName(step.action.kind), ToString(result),
-                               snapshot.health.current, snapshot.health.max, snapshot.health.Pct() * 100.0);
-
-            // Requested is not a failure: a cast's own outcome follows when
-            // its package is released.
-            if (result != ActionResult::Performed && result != ActionResult::Requested)
-            {
-                // A rule that fires but does not take effect is the failure
-                // worth shouting about: the engine believed it acted, and it
-                // did not.
-                log::tactics.event(log::Level::Warn, "rule.actionFailed", actor,
-                                   {{"ruleIndex", decision.ruleIndex},
-                                    {"ruleName", label},
-                                    {"action", ft::WireName(step.action.kind)},
-                                    {"reason", ToString(result)}},
-                                   "{} action did NOT take effect: {}", Describe(actor), ToString(result));
-            }
-        }
-
+    if (!turn.Fired())
         return;
+
+    // The one action of the tick; the rest of the rule's list follows,
+    // one per tick. The rule as its list began: after a reorder or a
+    // delete, the index names another rule.
+    const ft::Decision &decision = turn.decision;
+    const ft::Decision::Step &step = *decision.step;
+    const std::string &label = decision.rule.label;
+    // A requested cast's, power attack's or bash's outcome follows when
+    // it is over, as rule.resolved, naming the rule given here.
+    const ActionResult result = Execute(step.action, step.target, actor, decision.ruleIndex, label);
+    ft::NoteOutcome(state.run, decision,
+                    result == ActionResult::Performed   ? ft::ActionOutcome::Performed
+                    : result == ActionResult::Requested ? ft::ActionOutcome::Requested
+                                                        : ft::ActionOutcome::Failed);
+
+    // Whom the condition bound and whom the action went at, by reference
+    // and base, and the thing it used: the potion a policy chose, the
+    // spell, the item and which copy of it.
+    std::vector<log::Field> fields{{"list", moment == ft::Moment::Idle ? "idle" : "combat"},
+                                   {"ruleIndex", decision.ruleIndex},
+                                   {"ruleName", label},
+                                   {"subjectKind", ft::WireName(decision.rule.subject)}};
+    log::AppendActor(fields, "subjectFormId", "subjectBaseFormId", "subjectName", step.subject);
+    fields.emplace_back("action", ft::WireName(step.action.kind));
+    log::AppendActor(fields, "targetFormId", "targetBaseFormId", "targetName", step.target);
+    if (step.action.form != 0)
+        log::AppendForm(fields, "formId", "formName", step.action.form);
+    if (ft::IsEquip(step.action.kind))
+        fields.emplace_back("variant", ft::VariantText(step.action.variant));
+    fields.emplace_back("outcome", ToString(result));
+    fields.emplace_back("followerHealthPct", snap.health.Pct());
+    log::tactics.event(log::Level::Info, "rule.fired", actor, fields,
+                       "{} FIRED rule {} \"{}\" [{}] -> {} [health {:.0f}/{:.0f} = {:.0f}%]", Describe(actor),
+                       decision.ruleIndex, label, ft::WireName(step.action.kind), ToString(result), snap.health.current,
+                       snap.health.max, snap.health.Pct() * 100.0);
+
+    // Requested is not a failure: a cast's own outcome follows when its
+    // package is released.
+    if (result != ActionResult::Performed && result != ActionResult::Requested)
+    {
+        // A rule that fires but does not take effect is the failure worth
+        // shouting about: the engine believed it acted, and it did not.
+        log::tactics.event(log::Level::Warn, "rule.actionFailed", actor,
+                           {{"ruleIndex", decision.ruleIndex},
+                            {"ruleName", label},
+                            {"action", ft::WireName(step.action.kind)},
+                            {"reason", ToString(result)}},
+                           "{} action did NOT take effect: {}", Describe(actor), ToString(result));
     }
 }
 
@@ -882,8 +885,6 @@ void Tick()
     // is not blank while you are standing there authoring rules.
     for (auto *follower : followers)
     {
-        const bool fighting = follower->IsInCombat();
-
         // Both switches must be on. A follower turned off still appears in the
         // panel, and still reports whether they are fighting -- they are simply
         // not evaluated.
@@ -903,22 +904,11 @@ void Tick()
                 g_bleedingOut.erase(follower->GetFormID());
         }
 
-        // The edges of a fight, and which list this tick is for, are the
-        // core's to decide (core/Tick.h, ActorTick): held down through an
-        // edge, the follower still owes the fight its first evaluation, or
-        // the farewell one.
-        auto &state = g_followers[follower->GetFormID()];
-        // A request ended since the last tick: its cooldown runs from now,
-        // the end, not from the decision (MinimumCooldown in core/Rule.h).
-        if (state.inFlight && !IsMidCast(follower) && !IsMidBash(follower))
-        {
-            ft::RestartCooldown(state.eval, state.inFlight->action, state.inFlight->target, now);
-            state.inFlight.reset();
-        }
-        const ft::ActorRules lists = RulesOf(follower->GetFormID());
-        if (const ft::TickPlan plan =
-                state.tick.Plan(state.eval, ReadTick(follower->GetFormID(), lists, fighting, down)))
-            EvaluateFollower(follower, now, plan, lists);
+        // The turn itself: a finished request's cooldown, the list this
+        // tick is for and its edges, the evaluation, the action. Held down
+        // through an edge, the follower still owes the fight its first
+        // evaluation, or the farewell one.
+        RunTurn(follower, now, RulesOf(follower->GetFormID()), down);
     }
 
     // The player, under rules of their own (dev/PLAYER.md). Found by hand,
@@ -931,12 +921,6 @@ void Tick()
     if (auto *player = RE::PlayerCharacter::GetSingleton(); player && !player->IsDead())
     {
         LoadIfNew(player);
-        auto &state = g_followers[player->GetFormID()];
-        if (state.inFlight && !IsPlayerMidCast())
-        {
-            ft::RestartCooldown(state.eval, state.inFlight->action, state.inFlight->target, now);
-            state.inFlight.reset();
-        }
         const char *held = PlayerHeld(player);
         if (held != g_playerHeld)
         {
@@ -945,10 +929,7 @@ void Tick()
                                held ? std::string("is ") + held + " -- tactics held" : "is free -- tactics resume");
             g_playerHeld = held;
         }
-        const ft::ActorRules lists = RulesOf(player->GetFormID());
-        if (const ft::TickPlan plan = state.tick.Plan(
-                state.eval, ReadTick(player->GetFormID(), lists, player->IsInCombat(), held != nullptr)))
-            EvaluateFollower(player, now, plan, lists);
+        RunTurn(player, now, RulesOf(player->GetFormID()), held != nullptr);
     }
 
     // Armed cast requests are withdrawn from here, whether or not anyone is

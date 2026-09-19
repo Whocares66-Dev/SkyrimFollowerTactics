@@ -1,18 +1,17 @@
-// The tick as the game runs it for one actor, over the production pieces
-// together: the planner (ActorTick), the evaluator, the action's result
-// as the game reports it, and the cooldown restarted when a requested
-// action is over (RestartCooldown). The game's Tick does exactly this per
-// actor (game/Tactics.cpp); this harness does it with the action's result
-// scripted, so the composition is tested rather than the stages alone
-// (the review of 2026-09-19 found a defect between two tested stages).
+// One actor's turn, over the production coordinator: the request that
+// finished puts its action back on cooldown, the tick chooses a list, the
+// snapshot is asked for only when there is one to evaluate, the rules
+// decide, and what came of the action is noted. The game's Tick calls the
+// same DecideTurn and NoteOutcome for a follower and for the player
+// (game/Tactics.cpp, RunTurn); this drives them with the actor's facts and
+// the dispatch's answer scripted, so the composition is tested rather than
+// the stages alone.
 
 #include <catch2/catch_test_macros.hpp>
 
 #include "Build.h"
-#include "core/Evaluator.h"
-#include "core/Tick.h"
+#include "core/Coordinator.h"
 
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -35,167 +34,220 @@ Rule CastHeal()
     return cast;
 }
 
-// One actor under the tick, as game/Tactics.cpp keeps them: the planner's
-// standing, the evaluator's context, the requested action in flight.
-struct Actor
+// What the game reads of the actor, as RuntimeCapabilities and ReadTick
+// build it: ours in flight holds every action.
+TickFacts Facts(bool fighting, bool busy, bool idleHasRules = false, bool held = false)
 {
-    ActorTick tick;
-    EvalContext ctx;
-    std::optional<Decision::Step> inFlight;
-    std::vector<std::string> fired; // the labels, in order
+    TickFacts facts;
+    facts.now.fighting = fighting;
+    facts.now.held = held;
+    facts.now.idleHasRules = idleHasRules;
+    facts.busy = busy;
+    facts.caps.busy.fill(busy);
+    return facts;
+}
+
+// One actor under the tick, with the snapshot and the dispatch scripted.
+struct Turn
+{
+    ActorRun run;
+    Snapshot base = test::Healthy();
+    ActionOutcome answer{ActionOutcome::Performed};
+    int snapshots{0};               // how often a snapshot was asked for
+    std::vector<std::string> fired; // the rules that acted, in order
+
+    TickResult Tick(const ActorRules &rules, const TickFacts &facts, double now)
+    {
+        const auto snapshot = [&](Moment) {
+            ++snapshots;
+            Snapshot s = base;
+            s.now = now;
+            s.inCombat = facts.now.fighting;
+            return s;
+        };
+        TickResult result = DecideTurn(run, rules, facts, now, snapshot);
+        if (result.Fired())
+        {
+            fired.push_back(result.decision.rule.label);
+            NoteOutcome(run, result.decision, answer);
+        }
+        return result;
+    }
 };
 
-// What the game's Execute would answer.
-enum class Result
+ActorRules CombatOnly(Rule rule)
 {
-    Performed,
-    Requested,
-    Failed
-};
-
-// One tick: the completion of a request that is over, the plan, the
-// evaluation, the dispatch. `busy` is what the game reads of the actor
-// (IsMidCast, IsMidBash); `execute` is the game's dispatch.
-template <class Execute>
-std::optional<Decision> Tick(Actor &actor, const ActorRules &rules, Snapshot snapshot, bool fighting, bool busy,
-                             double now, Execute execute)
-{
-    if (actor.inFlight && !busy)
-    {
-        RestartCooldown(actor.ctx, actor.inFlight->action, actor.inFlight->target, now);
-        actor.inFlight.reset();
-    }
-    // As RuntimeCapabilities reads it: ours in flight holds every action.
-    actor.ctx.caps.busy.fill(busy);
-    ActorTick::Now seen;
-    seen.fighting = fighting;
-    seen.idleHasRules = !rules.idle.rules.empty();
-    const TickPlan plan = actor.tick.Plan(actor.ctx, seen);
-    if (!plan)
-        return std::nullopt;
-    snapshot.now = now;
-    snapshot.inCombat = fighting;
-    snapshot.combatBegan = plan.began;
-    snapshot.combatEnded = plan.ended;
-    const Decision d = Evaluate(rules.Of(*plan.list), snapshot, actor.ctx);
-    if (d.Fired())
-    {
-        actor.fired.push_back(d.rule.label);
-        if (execute(*d.step) == Result::Requested)
-            actor.inFlight = *d.step;
-    }
-    return d;
+    ActorRules rules;
+    rules.combat.rules.push_back(std::move(rule));
+    return rules;
 }
 
 } // namespace
 
-TEST_CASE("a requested cast's cooldown runs from its end, not from the decision", "[coordinator]")
+TEST_CASE("a requested cast stays in flight, and its cooldown runs from the end", "[coordinator]")
 {
-    ActorRules rules;
-    rules.combat.rules.push_back(CastHeal());
-    Snapshot s = test::Healthy();
-    s.spells.known.push_back(kHeal);
-    Actor lydia;
-    const auto requested = [](const Decision::Step &) { return Result::Requested; };
+    const ActorRules rules = CombatOnly(CastHeal());
+    Turn lydia;
+    lydia.base.spells.known.push_back(kHeal);
+    lydia.answer = ActionOutcome::Requested;
 
     // The fight's first tick: the cast fires and is in flight.
-    auto d = Tick(lydia, rules, s, true, false, 100.0, requested);
-    REQUIRE(d);
-    REQUIRE(d->Fired());
-    REQUIRE(lydia.inFlight);
-    REQUIRE(lydia.inFlight->action.form == kHeal);
+    TickResult turn = lydia.Tick(rules, Facts(true, false), 100.0);
+    REQUIRE(turn);
+    REQUIRE(turn.plan.began);
+    REQUIRE(turn.Fired());
+    REQUIRE(lydia.run.inFlight);
+    REQUIRE(lydia.run.inFlight->action.form == kHeal);
 
-    // Mid-cast: the rule is on the decision's own cooldown, and past that
-    // the capabilities say busy -- ours in flight holds every action -- so
-    // nothing fires again however long the cast takes.
+    // Mid-cast: every action is held, so nothing fires however long the
+    // cast runs -- past the decision's own cooldown too.
     const double minimum = MinimumCooldown(ActionKind::CastSpell);
-    for (double now = 100.5; now <= 100.0 + minimum + 0.5; now += 0.5)
+    for (double at = 100.5; at <= 100.0 + minimum + 1.0; at += 0.5)
     {
-        d = Tick(lydia, rules, s, true, true, now, requested);
-        REQUIRE_FALSE(d->Fired());
+        turn = lydia.Tick(rules, Facts(true, true), at);
+        REQUIRE_FALSE(turn.Fired());
+        REQUIRE(lydia.run.inFlight);
     }
-    REQUIRE(lydia.inFlight);
-    REQUIRE(lydia.fired.size() == 1);
 
-    // Over at 102.5: the cooldown starts again from here, replacing the
-    // decision's, so the next cast waits the minimum from the end.
-    const double over = 102.5;
-    d = Tick(lydia, rules, s, true, false, over, requested);
-    REQUIRE_FALSE(lydia.inFlight);
-    REQUIRE_FALSE(d->Fired());
-    const double again = over + minimum;
-    d = Tick(lydia, rules, s, true, false, again - 0.1, requested);
-    REQUIRE_FALSE(d->Fired());
-    d = Tick(lydia, rules, s, true, false, again, requested);
-    REQUIRE(d->Fired());
+    // Over at 103.5: the cooldown starts from the end, and the next cast
+    // waits the minimum from there rather than from the decision.
+    const double over = 103.5;
+    turn = lydia.Tick(rules, Facts(true, false), over);
+    REQUIRE(turn.completed);
+    REQUIRE_FALSE(lydia.run.inFlight);
+    REQUIRE_FALSE(turn.Fired());
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(true, false), over + minimum - 0.1).Fired());
+    REQUIRE(lydia.Tick(rules, Facts(true, false), over + minimum).Fired());
     REQUIRE(lydia.fired.size() == 2);
 }
 
-TEST_CASE("a performed action restarts nothing; a failed one is not in flight", "[coordinator]")
+TEST_CASE("a performed action is done with; a refused one leaves nothing in flight", "[coordinator]")
 {
-    ActorRules rules;
-    rules.combat.rules.push_back(test::HealBelow(0.5f, "heal"));
-    Snapshot s = test::Healthy();
-    s.health = {40.0f, 100.0f};
-    Actor lydia;
+    const ActorRules rules = CombatOnly(test::HealBelow(0.5f, "heal"));
+    Turn lydia;
+    lydia.base.health = {40.0f, 100.0f};
 
-    auto d = Tick(lydia, rules, s, true, false, 100.0, [](const Decision::Step &) { return Result::Performed; });
-    REQUIRE(d->Fired());
-    REQUIRE_FALSE(lydia.inFlight);
+    REQUIRE(lydia.Tick(rules, Facts(true, false), 100.0).Fired());
+    REQUIRE_FALSE(lydia.run.inFlight);
     // The potion's cooldown is the decision's, and runs from 100.
     const double again = 100.0 + MinimumCooldown(ActionKind::DrinkStrongest);
-    REQUIRE_FALSE(Tick(lydia, rules, s, true, false, again - 0.1, [](const Decision::Step &) {
-                      return Result::Performed;
-                  })->Fired());
-    REQUIRE(
-        Tick(lydia, rules, s, true, false, again, [](const Decision::Step &) { return Result::Performed; })->Fired());
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(true, false), again - 0.1).Fired());
+    REQUIRE(lydia.Tick(rules, Facts(true, false), again).Fired());
 
-    Actor failing;
-    d = Tick(failing, rules, s, true, false, 100.0, [](const Decision::Step &) { return Result::Failed; });
-    REQUIRE(d->Fired());
-    REQUIRE_FALSE(failing.inFlight);
+    Turn refused;
+    refused.base.health = {40.0f, 100.0f};
+    refused.answer = ActionOutcome::Failed;
+    REQUIRE(refused.Tick(rules, Facts(true, false), 100.0).Fired());
+    REQUIRE_FALSE(refused.run.inFlight);
 }
 
-TEST_CASE("two actors under one tick share nothing", "[coordinator]")
+TEST_CASE("no list to evaluate, no snapshot read", "[coordinator]")
 {
-    ActorRules rules;
-    rules.combat.rules.push_back(CastHeal());
-    Snapshot s = test::Healthy();
-    s.spells.known.push_back(kHeal);
-    Actor lydia;
-    Actor jenassa;
-    const auto requested = [](const Decision::Step &) { return Result::Requested; };
+    const ActorRules rules = CombatOnly(test::HealBelow(0.5f, "heal"));
+    Turn lydia;
+    lydia.base.health = {40.0f, 100.0f};
 
-    REQUIRE(Tick(lydia, rules, s, true, false, 100.0, requested)->Fired());
-    // Jenassa joins the fight a second later: a first evaluation, a cast
-    // and a cooldown of Jenassa's own, while Lydia is mid-cast.
-    auto d = Tick(jenassa, rules, s, true, false, 101.0, requested);
-    REQUIRE(d->Fired());
-    REQUIRE(jenassa.inFlight);
-    REQUIRE(lydia.inFlight);
-    REQUIRE_FALSE(Tick(lydia, rules, s, true, true, 101.0, requested)->Fired());
+    // Out of a fight with no idle rules there is nothing to decide, so the
+    // inventory is never scanned.
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(false, false), 100.0));
+    REQUIRE(lydia.snapshots == 0);
+    // Held -- bleeding out, or the player in dialogue -- the same, even in
+    // a fight.
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(true, false, false, true), 100.5));
+    REQUIRE(lydia.snapshots == 0);
+    // Fighting and free: one snapshot, one evaluation.
+    REQUIRE(lydia.Tick(rules, Facts(true, false), 101.0));
+    REQUIRE(lydia.snapshots == 1);
 }
 
-TEST_CASE("the fight's edges through the whole tick: a Combat begins rule fires once, after a hold too",
-          "[coordinator]")
+TEST_CASE("a request completes while the actor is held, and the cooldown still restarts", "[coordinator]")
+{
+    const ActorRules rules = CombatOnly(CastHeal());
+    Turn lydia;
+    lydia.base.spells.known.push_back(kHeal);
+    lydia.answer = ActionOutcome::Requested;
+    REQUIRE(lydia.Tick(rules, Facts(true, false), 100.0).Fired());
+
+    // Bleeding out as the cast ends: nothing is evaluated, but the request
+    // is over and its cooldown runs from here.
+    const TickResult held = lydia.Tick(rules, Facts(true, false, false, true), 102.0);
+    REQUIRE(held.completed);
+    REQUIRE_FALSE(held);
+    REQUIRE_FALSE(lydia.run.inFlight);
+    REQUIRE(lydia.snapshots == 1);
+    const double minimum = MinimumCooldown(ActionKind::CastSpell);
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(true, false), 102.0 + minimum - 0.1).Fired());
+    REQUIRE(lydia.Tick(rules, Facts(true, false), 102.0 + minimum).Fired());
+}
+
+TEST_CASE("a switched-off list hands the actor to the other one, through the whole turn", "[coordinator]")
+{
+    ActorRules rules = CombatOnly(test::HealBelow(0.5f, "combat heal"));
+    rules.idle.moment = Moment::Idle;
+    rules.idle.rules.push_back(test::HealBelow(0.5f, "idle heal"));
+    Turn lydia;
+    lydia.base.health = {40.0f, 100.0f};
+
+    TickFacts off = Facts(true, false, true);
+    off.now.combatEnabled = false;
+    // In a fight with the combat list off: the idle list is not evaluated
+    // in a fight either, so nothing runs and nothing is scanned.
+    REQUIRE_FALSE(lydia.Tick(rules, off, 100.0));
+    REQUIRE(lydia.snapshots == 0);
+
+    // Out of the fight, still off: the farewell is spent on the silenced
+    // list and the idle list has its turn on the same tick.
+    TickFacts after = Facts(false, false, true);
+    after.now.combatEnabled = false;
+    const TickResult turn = lydia.Tick(rules, after, 100.5);
+    REQUIRE(turn.plan.list == Moment::Idle);
+    REQUIRE_FALSE(turn.plan.ended);
+    REQUIRE(turn.Fired());
+    REQUIRE(lydia.fired == std::vector<std::string>{"idle heal"});
+}
+
+TEST_CASE("two actors take their turns without touching each other's state", "[coordinator]")
+{
+    const ActorRules rules = CombatOnly(CastHeal());
+    Turn lydia;
+    Turn jenassa;
+    for (Turn *who : {&lydia, &jenassa})
+    {
+        who->base.spells.known.push_back(kHeal);
+        who->answer = ActionOutcome::Requested;
+    }
+
+    REQUIRE(lydia.Tick(rules, Facts(true, false), 100.0).Fired());
+    // The second actor joins a second later: a first evaluation and a cast
+    // of their own, while the first is still mid-cast.
+    REQUIRE(jenassa.Tick(rules, Facts(true, false), 101.0).Fired());
+    REQUIRE(lydia.run.inFlight);
+    REQUIRE(jenassa.run.inFlight);
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(true, true), 101.0).Fired());
+
+    // One finishing does not free the other.
+    REQUIRE(lydia.Tick(rules, Facts(true, false), 102.0).completed);
+    REQUIRE_FALSE(jenassa.Tick(rules, Facts(true, true), 102.0).completed);
+    REQUIRE(jenassa.run.inFlight);
+}
+
+TEST_CASE("the fight's edges through the whole turn, and a fresh session", "[coordinator]")
 {
     Rule onBegin = test::HealBelow(2.0f, "on begin");
     onBegin.predicate = PredicateKind::CombatBegins;
-    ActorRules rules;
-    rules.combat.rules.push_back(onBegin);
-    Snapshot s = test::Healthy();
-    Actor lydia;
-    const auto performed = [](const Decision::Step &) { return Result::Performed; };
+    const ActorRules rules = CombatOnly(onBegin);
+    Turn lydia;
 
-    REQUIRE(Tick(lydia, rules, s, true, false, 100.0, performed)->Fired());
-    REQUIRE_FALSE(Tick(lydia, rules, s, true, false, 100.5, performed)->Fired());
-    // The fight ends and another begins: once more.
-    REQUIRE_FALSE(Tick(lydia, rules, s, false, false, 101.0, performed)->Fired());
-    REQUIRE_FALSE(Tick(lydia, rules, s, false, false, 101.5, performed));
-    REQUIRE(Tick(lydia, rules, s, true, false, 102.0, performed)->Fired());
+    REQUIRE(lydia.Tick(rules, Facts(true, false), 100.0).Fired());
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(true, false), 100.5).Fired());
+    // The farewell evaluation, then nothing with no idle rules.
+    REQUIRE(lydia.Tick(rules, Facts(false, false), 101.0).plan.ended);
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(false, false), 101.5));
+    // A second fight begins it again.
+    REQUIRE(lydia.Tick(rules, Facts(true, false), 102.0).Fired());
     REQUIRE(lydia.fired.size() == 2);
 
     // A new session: the standing is fresh, and the next fight begins anew.
-    lydia = Actor{};
-    REQUIRE(Tick(lydia, rules, s, true, false, 200.0, performed)->Fired());
+    lydia.run = ActorRun{};
+    REQUIRE(lydia.Tick(rules, Facts(true, false), 200.0).Fired());
 }
