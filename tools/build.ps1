@@ -26,6 +26,14 @@
     slower, and the flag is cached, so this run and the next plain run each
     recompile our sources (not CommonLibSSE). Works with any preset.
 
+.PARAMETER Jobs
+    How many compilations to run at once. The default leaves two of the
+    machine's cores to everything else, so a build does not take the
+    desktop with it; pass a number to override, or 0 for that default.
+    Also exported as CMAKE_BUILD_PARALLEL_LEVEL, so a `cmake --build`
+    run afterwards in the same shell -- the `tidy` and `format` targets --
+    takes the same limit without being told again.
+
 .PARAMETER Coverage
     After building, run the tests once and report line coverage of src/core
     (the `coverage` target). Only the core-cov preset is instrumented, so
@@ -45,7 +53,8 @@ param(
     [switch] $Test,
     [switch] $Fresh,
     [switch] $Analyze,
-    [switch] $Coverage
+    [switch] $Coverage,
+    [int] $Jobs = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -147,6 +156,14 @@ if ($Fresh -and (Test-Path $buildDir)) {
     Remove-Item -Recurse -Force $buildDir
 }
 
+$cores = [Environment]::ProcessorCount
+$parallel = if ($Jobs -gt 0) { $Jobs } else { [Math]::Max(1, $cores - 2) }
+# Ninja's own default is the core count plus two, which leaves the machine
+# with nothing while a build runs. Exported as well as passed, so the tidy
+# and format targets run from the same shell inherit it.
+$env:CMAKE_BUILD_PARALLEL_LEVEL = $parallel
+Show-Line "  jobs   $parallel of $cores cores"
+
 Push-Location $repo
 try {
     if ($Coverage -and $Preset -ne 'core-cov') { throw "-Coverage needs the core-cov preset (instrumented build); got '$Preset'." }
@@ -156,7 +173,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
     Show-Line "`n== build ($Preset) ==" -Colour Cyan
-    cmake --build --preset $Preset
+    cmake --build --preset $Preset --parallel $parallel
     if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
 
     if ($Test) {
@@ -167,7 +184,7 @@ try {
 
     if ($Coverage) {
         Show-Line "`n== coverage ($Preset) ==" -Colour Cyan
-        cmake --build --preset $Preset --target coverage
+        cmake --build --preset $Preset --parallel $parallel --target coverage
         if ($LASTEXITCODE -ne 0) { throw "coverage failed ($LASTEXITCODE)" }
     }
     Show-Line "`nOK" -Colour Green

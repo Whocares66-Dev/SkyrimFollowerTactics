@@ -62,6 +62,8 @@ entry point.)
 .\tools\build.ps1 -Preset debug -Analyze    # any preset, under MSVC's static analyser
 ```
 
+Every build leaves two of the machine's cores free, so it does not take the desktop with it: ninja's own default is the core count plus two. `-Jobs <n>` overrides it, and the level is exported as `CMAKE_BUILD_PARALLEL_LEVEL`, so a `cmake --build` afterwards in the same shell -- the `tidy` and `format` targets -- takes the same limit.
+
 `-Fresh` wipes the preset's build directory first. `-Analyze` compiles our targets with `/analyze` (findings are
 C6xxx warnings; several times slower; the cached flag recompiles our sources on the
 way in and out). `-Coverage` needs `core-cov`, runs the tests once and prints per-file
