@@ -1,5 +1,6 @@
 #include "game/Packages.h"
 
+#include "core/Lease.h"
 #include "game/Addresses.h"
 #include "game/Forms.h"
 #include "game/Log.h"
@@ -38,17 +39,16 @@ RE::TESForm *g_canary = nullptr;
 // that did not had not started by 4 s either. The window only costs anything
 // in that second case -- it is how long they stand held and unreactive -- so
 // it is set just above the slowest measured start.
-constexpr double kArmWindowSeconds = 2.5;
+// The value is core's: ft::kArmWindowSeconds (core/Lease.h).
 // A shout slot releases on the voice's fire event. Measured (2026-09-05,
 // Voice of the Emperor through a one-word wrapper): request to fire 0.3 s
 // and 1.5 s, the shout animation itself 0.3 s. Three seconds is the never-
 // started case, as 2.5 s is for a hand cast; a bit longer because the AI
 // had a second's hesitation on one of the two.
-constexpr double kVoiceArmWindowSeconds = 3.0;
+// The value is core's: ft::kVoiceArmWindowSeconds.
 // A power attack's: the AI's pick-up, as for a cast, and the weapon drawn if
 // it is away. Stepped back once the swing is seen, so the swing runs out.
-constexpr double kWeaponArmWindowSeconds = 3.0;
-constexpr double kWeaponSwingSeconds = 3.0;
+// The values are core's: ft::kWeaponArmWindowSeconds, ft::kWeaponSwingSeconds.
 
 // The condition, as an owned resource.
 //
@@ -167,13 +167,10 @@ struct Slot
     // holder.
     RE::TESConditionItem *condition = nullptr;
     std::optional<SlotLease> lease;
-    double armedAt = 0.0;
-    double until = 0.0;
-    bool seenRunning = false;
-
-    // A concentration stream: the fire event is its start, not a release.
-    bool sustained = false;
-    float sustain = 0.0f; // how long it was asked to run
+    // The lease's standing -- the deadline, the pick-up, the one-shot
+    // extensions, the swing -- and each tick's step from it: core's
+    // (core/Lease.h, AdvanceCast and AdvanceWeapon), tested.
+    ft::LeaseState run;
     // A power attack's price and reach, and the follower's stamina and
     // distance to the target when it was asked: what rule.resolved sets
     // beside the same at the end.
@@ -182,7 +179,6 @@ struct Slot
     float staminaAtArm = -1.0f;
     float distanceAtArm = -1.0f;
     float headingAtArm = -1.0f; // degrees between their facing and the target
-    bool streaming = false;     // our fire event has been seen
     // Whom the stream is aimed at, so it can stop when they are dead.
     RE::ActorHandle target;
 
@@ -202,12 +198,8 @@ struct Slot
     std::atomic<std::uint32_t> holder{0};
     std::atomic<std::uint32_t> spellId{0};
     std::atomic<std::uint32_t> shoutId{0};
-    bool extended = false;
-    // A power attack's record (RequestPowerAttack), and whether its swing has
-    // been seen. Beside the other flags: between the pointers they padded
-    // the slot past what the linter allows.
+    // A power attack's record (RequestPowerAttack).
     bool weapon = false;
-    bool swinging = false;
     // Whom the record was aimed at when armed (the holder, for a self-cast)
     // and the rule that asked for it (given to Arm; -1 when idle): what the
     // release reports as rule.resolved. Kept as an id because the handle
@@ -1127,7 +1119,7 @@ void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId,
     log::AppendForm(fields, "formId", "formName", slot.spell);
     log::AppendActor(fields, "targetFormId", "targetBaseFormId", "targetName", slot.targetId);
     fields.emplace_back("outcome", outcome);
-    fields.emplace_back("pickedUp", slot.seenRunning);
+    fields.emplace_back("pickedUp", slot.run.seenRunning);
     fields.emplace_back("placedIn", slot.placedIn ? slot.placedIn : "nowhere");
     std::string blowNote;
     if (slot.weapon)
@@ -1253,11 +1245,11 @@ void Release(Slot &slot)
     slot.fired.store(false, std::memory_order_relaxed);
     slot.stopped.store(false, std::memory_order_relaxed);
     slot.begun.store(false, std::memory_order_relaxed);
-    slot.extended = false;
-    slot.seenRunning = false;
-    slot.streaming = false;
+    slot.run.extended = false;
+    slot.run.seenRunning = false;
+    slot.run.streaming = false;
     slot.attackAtArm = nullptr;
-    slot.swinging = false;
+    slot.run.swinging = false;
     slot.attackEvent.clear();
     slot.targetId = 0;
     slot.ruleIndex = -1;
@@ -1339,19 +1331,16 @@ namespace
 // this points the slot's condition at the follower and asks the AI to look.
 CastRequest Arm(Slot &slot, RE::Actor *actor, float sustain, double window, int ruleIndex, std::string_view ruleName)
 {
-    slot.armedAt = TacticsSeconds();
     slot.ruleIndex = ruleIndex;
     slot.ruleName = ruleName;
     // The window covers the AI's start-up latency. For a stream it is
     // extended when the stream actually starts (see the tick), so a stream
-    // that never starts does not hold them for the sustain on top.
-    slot.until = slot.armedAt + window;
-    slot.sustain = sustain;
-    slot.seenRunning = false;
+    // that never starts does not hold them for the sustain on top. Whether
+    // it streams is the request's, set before this.
+    slot.run = ft::ArmLease(TacticsSeconds(), window, slot.run.sustained, sustain, slot.weapon);
     slot.fired.store(false, std::memory_order_relaxed);
     slot.stopped.store(false, std::memory_order_relaxed);
     slot.begun.store(false, std::memory_order_relaxed);
-    slot.extended = false;
 
     // Registering the sink is what makes a fire event reach us at all. On
     // every request, not once per actor: the graph is rebuilt on a cell
@@ -1391,7 +1380,7 @@ CastRequest Arm(Slot &slot, RE::Actor *actor, float sustain, double window, int 
     const auto *current = actor->GetCurrentPackage();
     log::packages.debug("current package after evaluate: {:08X} ({})", current ? current->GetFormID() : 0,
                         current == slot.package ? "OURS" : "not ours yet -- watching");
-    slot.seenRunning = current == slot.package;
+    slot.run.seenRunning = current == slot.package;
 
     return CastRequest::Armed;
 }
@@ -1458,7 +1447,7 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
     // not the end of this one.
     // A spell or a scroll: both MagicItems with a casting type.
     auto *spellItem = RE::TESForm::LookupByID<RE::MagicItem>(spellFormID);
-    slot.sustained = spellItem && spellItem->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
+    slot.run.sustained = spellItem && spellItem->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
     // A scroll is spent by the read. Whether the engine spends it on a
     // package cast is the open question, so the count is kept and one is
     // taken by hand on the fire event if it did not drop (SpendScroll).
@@ -1471,7 +1460,7 @@ CastRequest RequestCast(RE::Actor *actor, std::uint32_t spellFormID, std::uint32
             slot.scrollsBefore = it->second;
     }
     const float sustain = sustainSeconds > 0.0f ? sustainSeconds : kDefaultSustainSeconds;
-    if (slot.sustained)
+    if (slot.run.sustained)
     {
         if (SetPackageCastTime(slot.package, sustain))
             log::packages.debug("{:08X} sustains {} for {:.1f} s", PackageId(slot), log::NameOf(spellItem), sustain);
@@ -1585,7 +1574,7 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
     SetPackageTarget(slot.package, target);
     slot.target = target ? target->GetHandle() : RE::ActorHandle{};
     slot.targetId = target ? target->GetFormID() : actor->GetFormID();
-    slot.sustained = false;
+    slot.run.sustained = false;
     log::packages.info("{}: {:08X} voices {:08X} at {}", log::NameOf(actor), PackageId(slot), formID,
                        target ? fmt::format("{:08X} \"{}\"", target->GetFormID(), log::NameOf(target))
                               : std::string("self"));
@@ -1644,64 +1633,55 @@ const RE::BGSAttackData *AttackDataOf(RE::Actor *actor)
 void TickWeaponSlot(Slot &slot, double now)
 {
     auto actor = slot.lease->Actor();
+    ft::LeaseSeen seen;
+    seen.holder = actor != nullptr;
+    const RE::BGSAttackData *attackData = nullptr;
+    if (actor)
+    {
+        seen.running = actor->GetCurrentPackage() == slot.package;
+        auto *state = actor->AsActorState();
+        const auto attack = state ? state->GetAttackState() : RE::ATTACK_STATE_ENUM::kNone;
+        attackData = AttackDataOf(actor.get());
+        // A swing of their own running when the lease began is not ours;
+        // once they are between swings, any power attack is.
+        if (attack == RE::ATTACK_STATE_ENUM::kNone)
+            slot.attackAtArm = nullptr;
+        seen.attacking = attack != RE::ATTACK_STATE_ENUM::kNone;
+        seen.ourPowerSwing = attackData && attackData != slot.attackAtArm &&
+                             attackData->data.flags.all(RE::AttackData::AttackFlag::kPowerAttack);
+        seen.inOverrideList = slot.overrideList != nullptr;
+    }
+    const ft::LeaseStep step = ft::AdvanceWeapon(slot.run, seen, now);
     if (!actor)
     {
-        ReportResolved(slot, nullptr, slot.lease->FormID(), "holder vanished", now - slot.armedAt);
+        ReportResolved(slot, nullptr, slot.lease->FormID(), step.finish, now - slot.run.armedAt);
         Release(slot);
         return;
     }
-    const bool running = actor->GetCurrentPackage() == slot.package;
-    if (running && !slot.seenRunning)
-    {
-        slot.seenRunning = true;
+    if (step.pickedUp)
         log::packages.debug("{} is RUNNING {:08X} (power attack) after {:.2f} s", Describe(actor.get()),
-                            PackageId(slot), now - slot.armedAt);
-    }
-    auto *state = actor->AsActorState();
-    const auto attack = state ? state->GetAttackState() : RE::ATTACK_STATE_ENUM::kNone;
-    const auto *attackData = AttackDataOf(actor.get());
-    // A swing of their own running when the lease began is not ours; once
-    // they are between swings, any power attack is.
-    if (attack == RE::ATTACK_STATE_ENUM::kNone)
-        slot.attackAtArm = nullptr;
-    if (!slot.swinging && slot.seenRunning && attack != RE::ATTACK_STATE_ENUM::kNone && attackData &&
-        attackData != slot.attackAtArm && attackData->data.flags.all(RE::AttackData::AttackFlag::kPowerAttack))
+                            PackageId(slot), now - slot.run.armedAt);
+    if (step.swingSeen)
     {
-        slot.swinging = true;
         slot.fired.store(true, std::memory_order_relaxed);
-        slot.attackEvent = attackData->event.c_str();
-        slot.until = (std::max)(slot.until, now + kWeaponSwingSeconds);
+        slot.attackEvent = attackData ? attackData->event.c_str() : "";
         log::packages.info("{} power attacks: {} after {:.2f} s", Describe(actor.get()), slot.attackEvent,
-                           now - slot.armedAt);
+                           now - slot.run.armedAt);
     }
-
     // Turned toward the target while no swing of ours is under way: the
     // procedure attacks only a target in front, and in a fight it does not
-    // turn the follower itself. In an override list the record leaves combat
-    // running, and facing is combat's.
-    if (!slot.swinging && !slot.overrideList)
+    // turn the follower itself. In an override list the record leaves
+    // combat running, and facing is combat's.
+    if (step.turnToward)
     {
         if (const auto target = slot.target.get())
             TurnToward(actor.get(), target.get());
     }
-
-    const char *why = nullptr;
-    if (slot.swinging && attack == RE::ATTACK_STATE_ENUM::kNone)
-        why = "power attack made";
-    else if (slot.seenRunning && !running)
-        why = slot.swinging ? "package ended mid-swing" : "package ended";
-    else if (now >= slot.until)
-    {
-        if (!slot.seenRunning)
-            why = "deadline, AI never picked it up";
-        else
-            why = slot.swinging ? "deadline, still swinging" : "deadline, no power attack";
-    }
-    if (!why)
+    if (!step.finish)
         return;
-    ReportResolved(slot, actor.get(), actor->GetFormID(), why, now - slot.armedAt);
+    ReportResolved(slot, actor.get(), actor->GetFormID(), step.finish, now - slot.run.armedAt);
     log::packages.debug("{} releases {:08X} after {:.2f} s: {}", Describe(actor.get()), PackageId(slot),
-                        now - slot.armedAt, why);
+                        now - slot.run.armedAt, step.finish);
     Release(slot);
 }
 } // namespace
@@ -1744,8 +1724,8 @@ CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, const B
         return CastRequest::SpellNotInSlot;
     }
     slot.spell = weapon->GetFormID();
-    slot.sustained = false;
-    slot.swinging = false;
+    slot.run.sustained = false;
+    slot.run.swinging = false;
     slot.attackEvent.clear();
     slot.attackAtArm = AttackDataOf(actor);
     slot.staminaCost = plan.stamina;
@@ -1805,11 +1785,11 @@ void ResetPackages()
         // As Release leaves a slot: no target handle outlives its lease.
         slot.target = {};
         SetPackageTarget(slot.package, nullptr, slot.targetInput);
-        slot.seenRunning = false;
-        slot.streaming = false;
-        slot.extended = false;
+        slot.run.seenRunning = false;
+        slot.run.streaming = false;
+        slot.run.extended = false;
         slot.attackAtArm = nullptr;
-        slot.swinging = false;
+        slot.run.swinging = false;
         slot.attackEvent.clear();
         slot.fired.store(false, std::memory_order_relaxed);
         slot.stopped.store(false, std::memory_order_relaxed);
@@ -1828,10 +1808,10 @@ void ReleaseAllLeases(const char *why)
             return;
         {
             const auto holder = slot.lease->Actor();
-            ReportResolved(slot, holder.get(), slot.lease->FormID(), why, TacticsSeconds() - slot.armedAt);
+            ReportResolved(slot, holder.get(), slot.lease->FormID(), why, TacticsSeconds() - slot.run.armedAt);
         }
         log::packages.debug("{:08X} held by {:08X} released after {:.1f} s: {}", PackageId(slot), slot.lease->FormID(),
-                            TacticsSeconds() - slot.armedAt, why);
+                            TacticsSeconds() - slot.run.armedAt, why);
         Release(slot);
     });
 }
@@ -1864,76 +1844,52 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         }
 
         auto actor = slot.lease->Actor();
+        ft::LeaseSeen seen;
+        seen.holder = actor != nullptr;
+        if (actor)
+        {
+            seen.running = actor->GetCurrentPackage() == slot.package;
+            seen.fired = slot.fired.load(std::memory_order_relaxed);
+            seen.stopped = slot.stopped.load(std::memory_order_relaxed);
+            seen.begun = slot.begun.load(std::memory_order_relaxed);
+            // A stream at a corpse is wasted magicka and a follower
+            // standing still.
+            seen.targetDead = slot.run.sustained && slot.target && slot.target.get() && slot.target.get()->IsDead();
+        }
+        const ft::LeaseKind kind = slot.power     ? ft::LeaseKind::Power
+                                   : slot.wrapper ? ft::LeaseKind::Shout
+                                                  : ft::LeaseKind::Spell;
+        // ONE release, with a reason. The deadline is the guarantee: a
+        // record is never held past it, whatever the game did or did not
+        // do; the fire and the AI moving on only end the hold sooner.
+        const ft::LeaseStep step = ft::AdvanceCast(slot.run, seen, kind, now);
         if (!actor)
         {
             // Unloaded or gone. The lease's destructor finds no actor and
             // clears nothing; the sweep above catches them if they come back.
-            ReportResolved(slot, nullptr, slot.lease->FormID(), "holder vanished", now - slot.armedAt);
+            ReportResolved(slot, nullptr, slot.lease->FormID(), step.finish, now - slot.run.armedAt);
             log::packages.debug("{:08X} holder vanished -- released", PackageId(slot));
             Release(slot);
             return;
         }
         const std::string name = NameOr(actor.get(), "?");
-
-        const bool running = actor->GetCurrentPackage() == slot.package;
-        if (running && !slot.seenRunning)
-        {
-            slot.seenRunning = true;
+        if (step.pickedUp)
             log::packages.debug("{} is RUNNING {:08X} (spell {:08X}) after {:.1f} s", name, PackageId(slot), slot.spell,
-                                now - slot.armedAt);
-        }
-
-        // ONE release, with a reason. The deadline is the guarantee: a record
-        // is never held past it, whatever the game did or did not do. The
-        // other two are only signals that the hold can end sooner -- the spell
-        // has left their hand, or the AI has already moved on -- so a follower
-        // is not kept for four seconds after a one-second cast.
-        // A stream that has started gets its sustain added to the window,
-        // once, from the moment it started.
-        if (slot.sustained && !slot.streaming && slot.fired.load(std::memory_order_relaxed))
-        {
-            slot.streaming = true;
-            slot.until = now + slot.sustain + 1.0;
-            log::packages.debug("{} stream started on {:08X} -- {:.1f} s to run", name, PackageId(slot), slot.sustain);
-        }
-        // A cast or shout that has begun is not taken away: the deadline
-        // steps back once so the animation, however long this one's is, gets
-        // to its fire event. The fire event is what releases; this only keeps
-        // the deadline from landing in the middle of it. The graph's own
-        // BeginCast events say when, so no animation's length is assumed.
-        if (!slot.extended && slot.begun.load(std::memory_order_relaxed))
-        {
-            slot.extended = true;
-            slot.until = (std::max)(slot.until, now + 3.0);
+                                now - slot.run.armedAt);
+        if (step.streamExtended)
+            log::packages.debug("{} stream started on {:08X} -- {:.1f} s to run", name, PackageId(slot),
+                                slot.run.sustain);
+        if (step.beginExtended)
             log::packages.debug("{} began the {} on {:08X} after {:.1f} s -- deadline stepped back", name,
-                                slot.shouting ? "shout" : "cast", PackageId(slot), now - slot.armedAt);
-        }
-
-        const char *why = nullptr;
-        if (!slot.sustained && slot.fired.load(std::memory_order_relaxed))
-        {
-            why = slot.power ? "power fired" : slot.wrapper ? "shout fired" : "spell fired";
+                                slot.shouting ? "shout" : "cast", PackageId(slot), now - slot.run.armedAt);
+        if (!step.finish)
+            return;
+        if (step.fired)
             SpendScroll(slot, actor.get());
-        }
-        else if (slot.sustained && slot.stopped.load(std::memory_order_relaxed))
-            why = "stream ended";
-        else if (slot.sustained && slot.target && slot.target.get() && slot.target.get()->IsDead())
-            why = "target dead"; // a stream at a corpse is wasted magicka and a follower standing still
-        else if (slot.seenRunning && !running)
-            why = "package ended";
-        else if (now >= slot.until)
-            why = slot.seenRunning ? (slot.streaming ? "deadline, stream still running"
-                                      : slot.wrapper ? "deadline, shout never ended"
-                                                     : "deadline, never cast")
-                                   : "deadline, AI never picked it up";
-
-        if (why)
-        {
-            ReportResolved(slot, actor.get(), actor->GetFormID(), why, now - slot.armedAt);
-            log::packages.debug("{} releases {:08X} after {:.1f} s: {}", name, PackageId(slot), now - slot.armedAt,
-                                why);
-            Release(slot);
-        }
+        ReportResolved(slot, actor.get(), actor->GetFormID(), step.finish, now - slot.run.armedAt);
+        log::packages.debug("{} releases {:08X} after {:.1f} s: {}", name, PackageId(slot), now - slot.run.armedAt,
+                            step.finish);
+        Release(slot);
     });
 }
 

@@ -1,5 +1,6 @@
 #include "Log.h"
 
+#include "core/LogSettings.h"
 #include "core/Sessions.h"
 
 #include <array>
@@ -9,6 +10,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <mutex>
 #include <optional>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -67,98 +69,23 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 2> kSessionF
 
 // --- the ini ---------------------------------------------------------------
 //
-// Hand-parsed, and deliberately: the whole file is two keys, and a dependency
-// (or a settings framework) to read them would cost more than it saves. If a
-// third section ever appears this moves out into its own file.
-
-struct Settings
-{
-    Level level{Level::Info};
-    bool events{true};
-};
-
-[[nodiscard]] std::string_view Trim(std::string_view text) noexcept
-{
-    const auto space = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
-    while (!text.empty() && space(text.front()))
-        text.remove_prefix(1);
-    while (!text.empty() && space(text.back()))
-        text.remove_suffix(1);
-    return text;
-}
-
-[[nodiscard]] bool IsTrue(std::string_view text) noexcept
-{
-    return text == "1" || text == "true" || text == "TRUE" || text == "True" || text == "yes" || text == "on";
-}
-
-[[nodiscard]] bool IsFalse(std::string_view text) noexcept
-{
-    return text == "0" || text == "false" || text == "FALSE" || text == "False" || text == "no" || text == "off";
-}
-
 // Data/SKSE/Plugins/FollowerTactics.ini, beside the .dll. Relative to the
 // process, which the game runs from its own root; under MO2 the virtual file
 // system resolves it to whichever mod supplies it, same as the .dll itself.
 //
-// An absent file is the normal case, not an error: the defaults below are what
-// a fresh install runs on, and this reports nothing when there is nothing to
-// report. (It cannot report anyway -- it runs before the log is open.)
-[[nodiscard]] Settings ReadSettings(std::vector<std::string> &notes)
+// An absent file is the normal case, not an error: the defaults are what a
+// fresh install runs on, and this reports nothing when there is nothing to
+// report. (It cannot report anyway -- it runs before the log is open.) What
+// the text means is core's (core/LogSettings.h).
+[[nodiscard]] IniSettings ReadSettings(std::vector<std::string> &notes)
 {
-    Settings settings;
-
     std::ifstream file("Data/SKSE/Plugins/FollowerTactics.ini");
     if (!file)
-        return settings;
+        return {};
 
     notes.emplace_back("settings read from Data/SKSE/Plugins/FollowerTactics.ini");
-
-    std::string section;
-    std::string raw;
-    while (std::getline(file, raw))
-    {
-        std::string_view line = Trim(raw);
-        if (line.empty() || line.front() == ';' || line.front() == '#')
-            continue;
-
-        if (line.front() == '[')
-        {
-            const auto close = line.find(']');
-            section = close == std::string_view::npos ? std::string{} : std::string(line.substr(1, close - 1));
-            continue;
-        }
-
-        const auto equals = line.find('=');
-        if (equals == std::string_view::npos)
-            continue;
-
-        const std::string_view key = Trim(line.substr(0, equals));
-        const std::string_view value = Trim(line.substr(equals + 1));
-
-        if (section != "Log")
-            continue;
-
-        if (key == "level")
-        {
-            if (!ParseLevel(value, settings.level))
-                notes.push_back(fmt::format("level \"{}\" is not one of error/warn/info/debug -- using info", value));
-        }
-        else if (key == "events")
-        {
-            // A word that is neither is said, not read as off: "events =
-            // yse" silently losing the sidecar would be found only by its
-            // absence.
-            if (IsTrue(value))
-                settings.events = true;
-            else if (IsFalse(value))
-                settings.events = false;
-            else
-                notes.push_back(fmt::format("events \"{}\" is not true or false -- using true", value));
-        }
-    }
-
-    return settings;
+    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return ParseIniSettings(text, notes);
 }
 
 // "2026-09-09T14:02:11.400Z". UTC, milliseconds, sortable, and the same shape
@@ -435,7 +362,7 @@ void Emit(Level level, std::string_view event, RE::Actor *who, std::span<const F
 void Init()
 {
     std::vector<std::string> notes;
-    const Settings settings = ReadSettings(notes);
+    const IniSettings settings = ReadSettings(notes);
 
     const auto directory = SKSE::log::log_directory();
     if (!directory)

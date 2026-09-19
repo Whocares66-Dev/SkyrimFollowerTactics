@@ -5,6 +5,7 @@
 #include "core/Blows.h"
 #include "core/CustomSkills.h"
 #include "core/Effects.h"
+#include "core/Party.h"
 
 #include "game/CustomSkillsFramework.h"
 #include "game/Hits.h"
@@ -1602,28 +1603,17 @@ void Charge(Step step, std::chrono::steady_clock::time_point since)
     ++cost.samples;
 }
 
-// The bag: the potions, food and ingredients; the scrolls, which join the
-// known list since knowing and carrying are the one question for a Scroll
-// rule; the loadout as the pin book sees it, spells and items, with each
-// variant the bag holds; what is pinned; the soul gems. Every one a walk of
-// the inventory, and a step of its own on the cost line. (Read on demand
-// for a day, 2026-09-19: on the player it measured about a millisecond of
-// a 20 ms snapshot, not worth the machinery.)
+// The bag: the potions, food and ingredients; the items of the loadout as
+// the pin book sees them, with each variant the bag holds; what is pinned.
+// Each a walk of the inventory, and a step of its own on the cost line.
+// The scrolls, the spells of the loadout and the soul gems are the spell
+// step's (BuildSnapshot), once: until 2026-09-19 this repeated all three,
+// left over from a day of reading the bag on demand (on the player it
+// measured about a millisecond of a 20 ms snapshot, not worth the
+// machinery).
 void FillBag(RE::Actor *actor, ft::Snapshot &s)
 {
     ScanPotions(actor, s.potions);
-    // A scroll carried is "known" for a Scroll rule: knowing and carrying
-    // are the one question for it, and it costs no magicka.
-    for (const auto &[object, entry] :
-         actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::Scroll); }))
-        if (object && entry.first > 0)
-            s.spells.known.push_back(object->GetFormID());
-    // As the pin book sees the spells, for an equip rule.
-    ForEachSpell(actor, [&s, actor](RE::SpellItem *spell) {
-        if (IsPower(spell) || !IsCastable(spell))
-            return;
-        s.loadout.push_back(DescribeHoldable(actor, spell));
-    });
     // What they could hold or wear, as the pin book sees it, and what is
     // pinned. A walk of their inventory that keeps only the equipable kinds;
     // the potion scan above walks it too, and the two could share one pass
@@ -1666,7 +1656,6 @@ void FillBag(RE::Actor *actor, ft::Snapshot &s)
     // done when the thing is worn, and nothing chooses for them to pin
     // against (game/Pins.h, WornAsPins).
     s.pins = actor->IsPlayerRef() ? WornAsPins(actor) : PinsOf(s.self);
-    s.soulGems = ScanSoulGems(actor);
 }
 
 ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::uint32_t> &priced)
@@ -1706,11 +1695,10 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
     // target" resolves to.
     s.currentTarget = LiveTargetOf(actor);
 
-    // The party and the enemies, by definition (dev/CONDITIONS.md 6). An
-    // ally is the player and every other actor with the teammate flag; an
-    // enemy is anyone the compass paints red for the player, in combat and
-    // hostile to them. One walk of the loaded actors, alive ones only, each
-    // read the same way: the player is the first ally.
+    // The party, the enemies and the corpses: who is who is core's
+    // (core/Party.h, AssembleParty, tested) over one walk of the loaded
+    // actors, each read the same way; the views are then built for the
+    // ones chosen, in the order the plan gives.
     auto *player = RE::PlayerCharacter::GetSingleton();
     const auto viewOf = [&](RE::Actor *other) {
         ft::ActorView view;
@@ -1726,57 +1714,51 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
         Charge(Step::Traits, started);
         return view;
     };
-    // Not the player among their own allies: built for the player, Self
-    // is the player, and the party is the followers.
-    if (player && !player->IsDead() && player != actor)
-        s.allies.push_back(viewOf(player));
+    std::vector<ft::ActorSeen> loaded;
+    std::unordered_map<ft::ActorId, RE::Actor *> byId;
     if (auto *lists = RE::ProcessLists::GetSingleton())
     {
-        lists->ForEachHighActor([&](RE::Actor *otherPtr) {
-            if (!otherPtr)
-                return RE::BSContainer::ForEachResult::kContinue;
-            RE::Actor &other = *otherPtr;
-            if (&other == actor || &other == player || other.IsDead())
-                return RE::BSContainer::ForEachResult::kContinue;
-            if (other.IsPlayerTeammate())
-                s.allies.push_back(viewOf(&other));
-            else if (player && other.IsInCombat() && other.IsHostileToActor(player))
-                s.enemies.push_back(viewOf(&other));
-            return RE::BSContainer::ForEachResult::kContinue;
-        });
-    }
-    // The corpses: the dead nearby that a Reanimate could take. Not one
-    // already commanded (a raised corpse is someone's), not one the effect's
-    // own condition refuses (the MagicNoReanimate keyword, 06F6FB, which is
-    // the Reanimate archetype's one condition), and within the reach a rule
-    // could act on. The level is what the spell's cap is measured against.
-    if (auto *lists = RE::ProcessLists::GetSingleton())
-    {
-        constexpr float kCorpseReach = 3000.0f;
         auto *noReanimate = RE::TESForm::LookupByID<RE::BGSKeyword>(kMagicNoReanimateKeyword);
         lists->ForEachHighActor([&](RE::Actor *otherPtr) {
-            if (!otherPtr)
+            if (!otherPtr || otherPtr == player)
                 return RE::BSContainer::ForEachResult::kContinue;
             RE::Actor &other = *otherPtr;
-            if (&other == actor || !other.IsDead() || other.IsCommandedActor())
-                return RE::BSContainer::ForEachResult::kContinue;
-            if (noReanimate && other.HasKeyword(noReanimate))
-                return RE::BSContainer::ForEachResult::kContinue;
-            const float distance = actor->GetPosition().GetDistance(other.GetPosition());
-            if (distance > kCorpseReach)
-                return RE::BSContainer::ForEachResult::kContinue;
-            s.corpses.push_back({other.GetFormID(), static_cast<int>(other.GetLevel()), distance});
+            ft::ActorSeen seen;
+            seen.id = other.GetFormID();
+            seen.dead = other.IsDead();
+            if (!seen.dead)
+            {
+                seen.teammate = other.IsPlayerTeammate();
+                seen.inCombat = other.IsInCombat();
+                seen.hostile = player && other.IsHostileToActor(player);
+            }
+            else
+            {
+                seen.commanded = other.IsCommandedActor();
+                seen.noReanimate = noReanimate && other.HasKeyword(noReanimate);
+                seen.distance = actor->GetPosition().GetDistance(other.GetPosition());
+                seen.level = static_cast<int>(other.GetLevel());
+            }
+            loaded.push_back(seen);
+            byId[seen.id] = otherPtr;
             return RE::BSContainer::ForEachResult::kContinue;
         });
     }
-
-    // The follower's own target is an enemy whether or not the player is
-    // in its fight yet.
-    if (s.currentTarget != 0 && !s.Enemy(s.currentTarget))
-    {
-        if (auto *target = RE::TESForm::LookupByID<RE::Actor>(s.currentTarget))
-            s.enemies.push_back(viewOf(target));
-    }
+    if (player)
+        byId[player->GetFormID()] = player;
+    const ft::PartyPlan party = ft::AssembleParty(actor->GetFormID(), player ? player->GetFormID() : 0,
+                                                  player && !player->IsDead(), loaded, s.currentTarget);
+    const auto actorOf = [&](ft::ActorId id) -> RE::Actor * {
+        const auto it = byId.find(id);
+        return it != byId.end() ? it->second : RE::TESForm::LookupByID<RE::Actor>(id);
+    };
+    for (const ft::ActorId id : party.allies)
+        if (auto *other = actorOf(id))
+            s.allies.push_back(viewOf(other));
+    for (const ft::ActorId id : party.enemies)
+        if (auto *other = actorOf(id))
+            s.enemies.push_back(viewOf(other));
+    s.corpses = party.corpses;
 
     lap(Step::Party);
     for (const bool left : {false, true})
@@ -4554,61 +4536,83 @@ ft::ItemVariant VariantOf(const RE::ExtraDataList *list)
     return variant;
 }
 
-std::int32_t CountVariant(RE::Actor *actor, RE::TESBoundObject *object, const std::optional<ft::ItemVariant> &variant)
+namespace
 {
+// The list's marks and count as a row, for the questions asked of one
+// list: what the core's ListWorn and WornIn read.
+ft::BagRow MarksOf(const RE::ExtraDataList *list)
+{
+    ft::BagRow row;
+    row.wornRight = list->HasType(RE::ExtraDataType::kWorn);
+    row.wornLeft = list->HasType(RE::ExtraDataType::kWornLeft);
+    row.count = list->GetCount();
+    row.token = list;
+    return row;
+}
+} // namespace
+
+Bag ViewBag(RE::Actor *actor, RE::TESBoundObject *object)
+{
+    Bag bag;
+    bag.view.weapon = object && object->IsWeapon();
     const Carried carried = CarriedOf(actor, object);
     if (carried.count <= 0)
-        return 0;
-    if (!variant)
-        return carried.count;
-    std::int32_t named = 0;
-    std::int32_t listed = 0;
+        return bag;
+    bag.view.total = carried.count;
     if (carried.entry && carried.entry->extraLists)
     {
-        for (const auto *list : *carried.entry->extraLists)
+        for (auto *list : *carried.entry->extraLists)
         {
             if (!list)
                 continue;
-            listed += list->GetCount();
-            if (ft::SameVariant(VariantOf(list), *variant))
-                named += list->GetCount();
+            ft::BagRow row = MarksOf(list);
+            row.variant = VariantOf(list);
+            row.ownRow = RowOfItsOwn(list);
+            bag.view.rows.push_back(std::move(row));
+            bag.lists.push_back(list);
         }
     }
-    // The listless remainder is plain.
-    if (variant->IsPlain())
-        named += (std::max)(0, carried.count - listed);
-    return named;
+    return bag;
+}
+
+RE::ExtraDataList *Bag::ListOf(const ft::BagRow *row) const noexcept
+{
+    return row ? lists[view.IndexOf(row)] : nullptr;
+}
+
+RE::ExtraDataList *Bag::ListAt(std::optional<std::size_t> index) const noexcept
+{
+    return index && *index < lists.size() ? lists[*index] : nullptr;
+}
+
+std::int32_t CountVariant(RE::Actor *actor, RE::TESBoundObject *object, const std::optional<ft::ItemVariant> &variant)
+{
+    return ft::CountVariant(ViewBag(actor, object).view, variant);
 }
 
 RE::ExtraDataList *WornVariantList(RE::Actor *actor, RE::TESBoundObject *object, const ft::ItemVariant &variant,
                                    Hand hands)
 {
-    return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
-        return WornIn(object, &list, hands) && ft::SameVariant(VariantOf(&list), variant);
-    });
+    const Bag bag = ViewBag(actor, object);
+    return bag.ListOf(ft::WornVariantRow(bag.view, variant, hands));
 }
 
 RE::ExtraDataList *UnwornVariantList(RE::Actor *actor, RE::TESBoundObject *object, const ft::ItemVariant &variant)
 {
-    if (RE::ExtraDataList *stack = ListOf(actor, object, [&](const RE::ExtraDataList &list) {
-            return !ListWorn(&list, Hand::None) && !RowOfItsOwn(&list) && ft::SameVariant(VariantOf(&list), variant);
-        }))
-        return stack;
-    return ListOf(actor, object, [&](const RE::ExtraDataList &list) {
-        return !ListWorn(&list, Hand::None) && ft::SameVariant(VariantOf(&list), variant);
-    });
+    const Bag bag = ViewBag(actor, object);
+    return bag.ListOf(ft::UnwornVariantRow(bag.view, variant));
 }
 
 RE::ExtraDataList *WornStackList(RE::Actor *actor, RE::TESBoundObject *object, Hand hands)
 {
-    return ListOf(actor, object,
-                  [&](const RE::ExtraDataList &list) { return WornIn(object, &list, hands) && !RowOfItsOwn(&list); });
+    const Bag bag = ViewBag(actor, object);
+    return bag.ListOf(ft::WornStackRow(bag.view, hands));
 }
 
 RE::ExtraDataList *UnwornStackList(RE::Actor *actor, RE::TESBoundObject *object)
 {
-    return ListOf(actor, object,
-                  [&](const RE::ExtraDataList &list) { return !ListWorn(&list, Hand::None) && !RowOfItsOwn(&list); });
+    const Bag bag = ViewBag(actor, object);
+    return bag.ListOf(ft::UnwornStackRow(bag.view));
 }
 
 bool RowOfItsOwn(const RE::ExtraDataList *list)
@@ -4625,37 +4629,12 @@ RE::ExtraDataList *ListOfAddress(RE::Actor *actor, RE::TESBoundObject *object, c
 
 std::vector<ft::ItemVariant> RowsOf(RE::Actor *actor, RE::TESBoundObject *object)
 {
-    std::vector<ft::ItemVariant> rows;
-    const Carried carried = CarriedOf(actor, object);
-    if (carried.count <= 0)
-        return rows;
-    std::int32_t apart = 0;
-    if (carried.entry && carried.entry->extraLists)
-    {
-        for (const auto *list : *carried.entry->extraLists)
-        {
-            if (!list || !RowOfItsOwn(list))
-                continue;
-            apart += list->GetCount();
-            rows.push_back(VariantOf(list));
-        }
-    }
-    if (carried.count > apart)
-        rows.emplace_back(); // the plain stack: the listless copies and the folded lists
-    return rows;
+    return ft::RowsOf(ViewBag(actor, object).view);
 }
 
 bool HasListlessCopy(RE::Actor *actor, RE::TESBoundObject *object)
 {
-    const Carried carried = CarriedOf(actor, object);
-    if (carried.count <= 0)
-        return false;
-    std::int32_t listed = 0;
-    if (carried.entry && carried.entry->extraLists)
-        for (const auto *list : *carried.entry->extraLists)
-            if (list)
-                listed += list->GetCount();
-    return carried.count > listed;
+    return ViewBag(actor, object).view.HasListlessCopy();
 }
 
 std::string ListEntries(const RE::ExtraDataList *list)
@@ -4674,27 +4653,16 @@ std::string ListEntries(const RE::ExtraDataList *list)
 
 bool ListWorn(const RE::ExtraDataList *list, Hand hands)
 {
-    if (!list)
-        return false;
-    const bool right = list->HasType(RE::ExtraDataType::kWorn);
-    const bool left = list->HasType(RE::ExtraDataType::kWornLeft);
-    switch (hands)
-    {
-    case Hand::Left:
-        return left;
-    case Hand::Right:
-    case Hand::Both: // a two-hander sits in the right
-        return right;
-    default:
-        return left || right;
-    }
+    return list && ft::ListWorn(MarksOf(list), hands);
 }
 
 bool WornIn(const RE::TESBoundObject *object, const RE::ExtraDataList *list, Hand hands)
 {
-    if (object && !object->IsWeapon())
-        return hands == Hand::Right ? false : ListWorn(list, Hand::None);
-    return ListWorn(list, hands);
+    if (!list)
+        return false;
+    ft::BagView kind;
+    kind.weapon = !object || object->IsWeapon();
+    return ft::WornIn(kind, MarksOf(list), hands);
 }
 
 RE::TESObjectWEAP *PoisonableWeaponIn(RE::Actor *actor, bool left)

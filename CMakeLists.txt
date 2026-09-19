@@ -102,19 +102,29 @@ include(ClangTools)
 # the code you are writing belongs in src/game/ instead.
 # ---------------------------------------------------------------------------
 add_library(ft_core STATIC
+    src/core/BagView.cpp
+    src/core/Bash.cpp
     src/core/Blows.cpp
     src/core/Breakdown.cpp
+    src/core/Clock.cpp
+    src/core/CoSave.cpp
     src/core/CustomSkills.cpp
     src/core/Editor.cpp
     src/core/Effects.cpp
     src/core/Evaluator.cpp
     src/core/EventRing.cpp
     src/core/HitTable.cpp
+    src/core/Lease.cpp
     src/core/Loadout.cpp
     src/core/LogEvent.cpp
+    src/core/LogSettings.cpp
+    src/core/PlayerCast.cpp
+    src/core/Party.cpp
     src/core/Profile.cpp
     src/core/Rule.cpp
     src/core/Sessions.cpp
+    src/core/Table.cpp
+    src/core/Tick.cpp
     src/core/Vocabulary.cpp
 )
 target_include_directories(ft_core PUBLIC src)

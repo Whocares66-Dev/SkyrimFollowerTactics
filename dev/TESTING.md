@@ -1,4 +1,96 @@
-# Test harness
+# Testing
+
+## The game layer without Skyrim
+
+An assessment of what in `src/game` can be tested without the game was written on 2026-09-19 (commit d926e57 has it in full) and acted on the same day on `wip-game-test`. Its thesis holds and is now the way things are done: a decision the game makes from facts it has already read moves into core over a plain description of those facts, the game keeps the reads and the engine calls, and the fast presets test the decision. Each extraction switched the game over in the same commit, with no behaviour change unless the commit says so.
+
+What was built, each in core with a test file of its own:
+
+- `core/Clock.h` (`GameClock`): the calendar's hour and timescale into the seconds every cooldown, lease and hit window is measured on. `TacticsSeconds` reads the calendar and hands the numbers over. The tests pin what the hour alone cannot tell -- exactly a day is no time, an hour set back reads as the next day's -- as accepted.
+- `core/Tick.h` (`ActorTick`): which list a tick evaluates for an actor and whether it is the fight's first evaluation or the farewell one, over what the tick reads (fighting, held, each list's switch, whether the idle list has rules). Writing the cases found a defect: a list switched off was still owed the fight's edges, so a follower with the combat list off never ran the idle list again after a fight. A switched-off list now spends the edge and drops its own sequence.
+- `core/CoSave.h`: the framing of the co-save's records and the reading of a loaded set (unknown record, newer schema, cut short, the later of two under one key). A string's length was taken at its word and the string sized to it; a length past the record's end is now refused, and a record over sixteen megabytes is not read at all.
+- `core/LogSettings.h`: the ini's text into the level and the events switch. The note for a value that does not read now names what stands rather than claiming the default.
+- `core/BagView.h`: `dev/GAME_MODEL.md` part one, step one. One form's copies as the game reads them off the actor's entry -- variant, the engine's stackability verdict, the raw worn marks, count, the list as a token -- and over it the listless remainder, the marks read by the object's kind, the variant count, the worn and unworn rows of a variant and of the plain stack, the tab's rows, the engine's view for `EnginePick`, and `PlanEquip`, which copy an equip takes for the row clicked, the plain stack or the variant. `EquipPinned`'s list-choosing is the plan; the scenarios of 2026-09-12 are in `tests/test_bag.cpp` by number where a decision over the view was the bug.
+
+What of the assessment was checked and held: `RowOfItsOwn` delegates to the engine's `IsInventoryStackable`; `ReadString` resized from an untrusted length; the ini's diagnostics named the default whatever stood; the clock is hour-only and reads a backwards hour as midnight; the sensor file is 4,859 lines; every function number it cites appears in the research documents it names. Its order of work is right; the four smaller extractions went first because each was an afternoon and the bag view the largest.
+
+Still to extract, in the shape `ActorTick` has -- a state, a struct of what was read, a plan out, the game calling the engine from the plan: the follower lease state machine (`Packages.cpp`, `TickPackages` and `TickWeaponSlot`), the player cast state machine (`PlayerCast.cpp`, `Advance`), the bash transitions (`Blows.cpp`), and snapshot assembly (`Sensors.cpp`, `BuildSnapshot`, one family at a time). Then `GAME_MODEL.md` part two, the fake engine and the eleven scenarios end to end, folding in the watchdog simulation of `test_loadout.cpp`.
+
+Judged not worth extracting yet: the hit sinks' classification (`Hits.cpp` is fifty lines of engine reads over the tested `HitTable`); the poison dose and recharge arithmetic (two lines each, the rest engine calls); the settings owner. The panel's cell readers, the click's next request, the sort and the filters in `UI.cpp` are free of ImGui calls and could be tested (a review of 2026-09-19 made the point; "ImGui-bound" was too broad), but each is a few lines over row types that live in game headers, so they are low on the list rather than off it. The assessment's eight reverse-engineering questions are research, not tests, and stay where `dev/UNIQUE.md` and `dev/TODO.md` keep them. Its harness advice is followed as written: Catch2 only, no fake `RE::Actor`, no vtable patching, no sleeps; every timer test supplies `now`, every bag is built by hand.
+
+Found by the review of 2026-09-19 and fixed the same day: the tick handed an idle list's leftover sequence to a combat list switched on mid-fight (`core/Tick.h`, now dropped on the handoff, tested through the evaluator); the rules page wrote a renamed copy of the list back whole after building a snapshot, over any edit the panel made meanwhile (now renamed in place under the lock, the rename a tested core function, `RefreshActionNames`); the bag step of the snapshot repeated the spell step's scrolls, spells and soul gems. The review's design notes still open: capture an actor's two rule lists once per tick so pricing and evaluation read one version; carry the panel's request as a value with the copy question (`EquipAsk`) rather than an origin flag; the pin watchdog's fight lifecycle (`NoteFight`, `EnforcePins`) and `MarkPins` as transitions over the books.
+
+What these tests do not establish: the adapters. `ViewBag` reading the entry, `ReadTick` reading the switches, the serialization calls, the calendar read and the file read are verified only in play, and none of the five extractions has been run in game since the switch (2026-09-19). The coverage report (`core-cov -Coverage`) now includes the new files; it says nothing about `src/game`, as before.
+
+## Identity across time: what a token, an id and a request are good for
+
+The rule for every handle that crosses from one tick to another, written down so a test can hold the adapters to it (the review of 2026-09-19 asked for this before the lease work).
+
+- **A row token** (`BagRow::token`, the list's address) is good for the bag it was read from and for a later bag of the same actor only after `BagView::RowOfToken` finds it again. Finding it proves the address is a list in the bag now; it does not prove it is the same copy, since the engine reuses addresses. That is accepted: the panel's click is confirmed against what the row shows, and a wrong match equips a copy of the same form that happens to be at that address, which the watchdog then judges by the book. An exact-row request never substitutes another copy (`PlanEquip`, `EquipAsk::Row`); a variant request may.
+- **An actor id** (`ActorId`, the form id) names the actor within one session of the loaded world. After a load, `ForgetSession` drops every per-actor state that holds one, and a package lease's handle is abandoned, not released, because the handle may resolve to an unrelated actor in the new world (`SlotLease::Abandon`). Nothing keeps an `RE::Actor *` across a tick; every tick looks the actor up again.
+- **A panel request** (`RequestWear`, queued by actor id, form id, variant and row token to the game thread) is resolved on the game thread against the bag then: the actor looked up, the form looked up, the token matched. A request queued before a load is answered against the new world by those same lookups, which is wrong in principle and harmless in practice (the click is the player's, moments old). A session number on requests would make it right; not done, since no case has shown it.
+- **A cooldown restart** is keyed by the action in flight and the actor no longer being busy (`FollowerState::inFlight`, `IsMidCast`, `IsMidBash`), not by a request id. Two requests cannot be in flight for one actor at once, so the inference holds today. A request id becomes necessary the day one can.
+
+## Ledger: the review's backlog, and where each item stands
+
+A review of 2026-09-19 (kept locally as `dev/REVIEW.md`, a scratchpad outside the tree) listed what else in `src/game` decides from facts already read. This is the working list, one line each, updated as items land; the commit named is where. An item is done when the decision is in core with tests and the game calls it, or when the review's design note is applied. Nothing here is verified in play until `dev/TODO.md` says so.
+
+Simplifications (fewer owners first):
+
+- [x] Duplicate snapshot producers in `FillBag` -- `160c921`.
+- [x] Rules page renaming in place under the lock -- `0d1b1dd`.
+- [x] Capture an actor's two rule lists once per tick (`ActorRules`, core/Tick.h); `SpellsNamedBy` a pure function of them, each spell once; one version for pricing and evaluation.
+- [x] The wear request's origin as `By::Player` or `By::Rule` in `Pins.cpp`, the copy question (`EquipAsk`) derived from it in one place, Equip and Pin sharing `PutOn`. Not a request struct: the five callers pass six arguments each, and a struct would only rename them.
+- [x] The meaning of each `ActionResult` per action, written on the enum (`game/Actions.h`).
+
+Transitions (state in, plan out):
+
+- [x] The tick's choice of list and edges (`core/Tick.h`) -- `53f1401`, `c1c7784`.
+- [x] Follower spell and voice lease: `LeaseState`, `AdvanceCast` (core/Lease.h); the tick reads the engine and the sink's flags into a `LeaseSeen`, acts on the step. Cleanup order stays in `Release`.
+- [x] Weapon lease: `AdvanceWeapon`. The "their own swing at arm time" reading stays in the game (it compares attack-data pointers) and arrives as one flag.
+- [x] Player cast: `CastState`, `AdvancePlayerCast` (core/PlayerCast.h), every step, window and reason, the commands through a callback the test records. Still in the game, engine reads through and through: `ChooseHand`, `Lend`, `Restore`, `PlayerHeld`, `FireSeen`'s capture.
+- [x] Bash and block: `BashState`, `AdvanceBash` (core/Bash.h). The two actions answer at once, so the step performs them through a callback the test scripts; the game's `Advance` reads the actor, performs, and captures the attack event on the first bash seen.
+- [x] A coordinator harness (`tests/test_coordinator.cpp`): the tick as the game runs it per actor over the production planner, evaluator and cooldown restart, the action's result scripted and the busy capability set as `RuntimeCapabilities` sets it. (A first version left the capabilities out and reported a refire the game never makes; corrected the same day.)
+- [ ] The pin watchdog's fight lifecycle (`NoteFight`, `EnforcePins`) over the books.
+
+Snapshot assembly (one family at a time):
+
+- [x] Party and corpses: `AssembleParty` (core/Party.h) over the facts one walk reads of each loaded actor; the game builds the views for the ids chosen, in the plan's order. The two walks became one.
+- [ ] Spells and effects (scrolls known when carried, wrapper shouts, no unlocked word, powers used today, instant and expired effects, only named spells priced).
+- [ ] Buffs, consumable effects, applicability.
+- [ ] Stats, reach and body radius.
+- [ ] Hands and attack plans (`DescribeHands`, `PlanPowerAttack`, `PlanBash`, `DualWieldAllowed`).
+- [ ] Poison and recharge planning (`WeaponToPoison`, `ChargeWeapon`).
+- [ ] Hit sinks' classification into the tested `HitTable`.
+
+Inventory beyond the view:
+
+- [x] The bag view and `PlanEquip` -- `7161001`.
+- [ ] `MarkPins` as row annotations over the books, no mutation.
+- [ ] `ScanInventory` a consumer of one row partition rather than partitioning rows itself.
+- [x] The identity and freshness contract: written above ("Identity across time").
+
+The panel's decisions:
+
+- [ ] Cell readers, the click's next request, `CellRank`.
+- [x] The sort's order and the filter's matching (`core/Table.h`: `SortRows`, `Compare`, `ContainsNoCase`, `AnyContains`); the panel reads the sort spec and composes each list's cells, which stay with its row types.
+- [ ] Open-row state across a move or a delete.
+- [ ] Source navigation (`SourcePage`, `ItemPageOf`).
+- [ ] `SyncFollowers` with its clock and pending set made explicit.
+
+Other seams:
+
+- [ ] `FindStack` destination choice.
+- [ ] Roster cleanup in `Tick` (away, dismissed, dead).
+- [ ] `ReportVerdicts` over `VerdictChanges`.
+- [ ] Profile lifecycle (`ClaimSaved`, `IdentifyFollower`, carry-forward, revert).
+- [ ] Log emit and archive with temporary directories.
+- [ ] Custom skills loading and tree assembly.
+- [ ] Remaining-time and description helpers (`Magic.cpp`, `Inventory.cpp`).
+
+Not planned: a `GameAdapter` class. The discipline it names is followed; the recording backend arrives with the coordinator harness, not before.
+
+## Existing console harness
 
 The Phase 1 scenario — player + follower + hostile monster, follower drinks a potion at low
 health — needs **no Creation Kit work at all**. It's four console batch files.

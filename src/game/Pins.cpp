@@ -305,8 +305,19 @@ std::string CasterState(RE::Actor *actor)
 void UnequipForm(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
                  const std::optional<ft::ItemVariant> &variant = std::nullopt);
 
+// Whose request: the player's, from the panel, or a rule's -- the watchdog's
+// putting-back counts as the rule's. One fact with three consequences,
+// each where it applies: the log names them; a rule's pin in a fight goes
+// over the remembered book and the player's into it; and the panel is
+// exact about the copy where a rule means the variant (EquipPinned).
+enum class By : std::uint8_t
+{
+    Player,
+    Rule
+};
+
 void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
-                 const std::optional<ft::ItemVariant> &variant, RE::ExtraDataList *row = nullptr, bool exact = false)
+                 const std::optional<ft::ItemVariant> &variant, RE::ExtraDataList *row = nullptr, By by = By::Rule)
 {
     auto *manager = RE::ActorEquipManager::GetSingleton();
     if (!manager)
@@ -348,73 +359,24 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
     // handed armour. The watchdog's putting-back sounds too: it only acts
     // when the thing is actually off, so each sound marks a real event.
     //
-    // Which copy goes is the caller's kind of question. The panel is exact:
-    // the row clicked -- its list, or the plain stack's own copies, a list
-    // of the stack or a listless copy by null -- and a copy of that row
-    // already in the hand is the incumbent, nothing done; one in the other
-    // hand comes across. A rule or the watchdog means the variant, and has
-    // the leeway: a copy of it already in the hand is the incumbent; else
-    // one of the stack before a row of its own (the poisoned dagger shares
-    // the plain variant), a listless copy by null, and the only copy in the
-    // other hand brought across. The engine leaves a worn list where it is,
-    // whichever hand is asked (measured 2026-09-12), so a copy that comes
-    // across is taken off there first. A row token is matched against the
-    // bag's lists by address and never dereferenced unmatched: the copy may
-    // have left since the scan.
-    const bool oneHand = object->IsWeapon() && (hands == Hand::Left || hands == Hand::Right);
-    const Hand other = Without(Hand::Both, hands);
-    RE::ExtraDataList *list = nullptr;
-    bool listless = false; // a copy with no list: null names it
-    if (exact && row)
-    {
-        list = ListOfAddress(actor, object, row);
-        if (!list || WornIn(object, list, hands))
-            return;
-        if (ListWorn(list, Hand::None))
-        {
-            if (!oneHand)
-                return;
-            UnequipForm(actor, form, other, now, variant);
-        }
-    }
-    else if (exact)
-    {
-        if (WornStackList(actor, object, hands))
-            return;
-        list = UnwornStackList(actor, object);
-        if (!list && HasListlessCopy(actor, object))
-            listless = true;
-        if (!list && !listless)
-        {
-            if (!oneHand)
-                return;
-            list = WornStackList(actor, object, other);
-            if (!list)
-                return;
-            UnequipForm(actor, form, other, now, variant);
-        }
-    }
-    else
-    {
-        const bool worn =
-            variant ? WornVariantList(actor, object, *variant, hands) != nullptr : EquippedIn(actor, object, hands);
-        if (worn)
-            return;
-        list = variant ? UnwornVariantList(actor, object, *variant) : UnwornList(actor, object);
-        if (list && variant && variant->IsPlain() && RowOfItsOwn(list) && HasListlessCopy(actor, object))
-        {
-            list = nullptr;
-            listless = true;
-        }
-        if (!list && !listless && oneHand && CountVariant(actor, object, variant) < 2)
-        {
-            list = variant ? WornVariantList(actor, object, *variant, other) : WornList(actor, object, other);
-            if (list)
-                UnequipForm(actor, form, other, now, variant);
-        }
-        if (!list && !listless && variant && !(variant->IsPlain() && HasListlessCopy(actor, object)))
-            return;
-    }
+    // Which copy goes is the caller's kind of question -- the row clicked,
+    // the plain stack, or the variant -- and the core's to answer over a
+    // view of the bag (core/BagView.h, PlanEquip, tested): the incumbent
+    // left alone, the stack before a row of its own, a listless copy by
+    // null, the only copy in the other hand brought across and taken off
+    // there first. A row token is matched against the bag's lists by
+    // address and never dereferenced unmatched: the copy may have left
+    // since the scan. The engine's own reading of the hand stands in for
+    // the incumbent when the form is asked for, whichever copy.
+    const Bag bag = ViewBag(actor, object);
+    const ft::EquipAsk ask = by == By::Rule ? ft::EquipAsk::Variant : row ? ft::EquipAsk::Row : ft::EquipAsk::Stack;
+    const bool formWorn = ask == ft::EquipAsk::Variant && !variant && EquippedIn(actor, object, hands);
+    const ft::EquipPlan plan = ft::PlanEquip(bag.view, ask, variant, hands, row, formWorn);
+    if (!plan.proceed)
+        return;
+    if (plan.unequipOther)
+        UnequipForm(actor, form, Without(Hand::Both, hands), now, variant);
+    RE::ExtraDataList *list = bag.ListAt(plan.row);
     log::pins.debug("{} equip {}{}: list [{}]{}", Describe(actor), log::NameOf(form), HandTag(hands), ListEntries(list),
                     row ? (list == row ? " (the row clicked)" : " (the row clicked is gone)") : "");
     manager->EquipObject(actor, object, list, 1, slot, !now, false, true, false);
@@ -1420,9 +1382,21 @@ namespace
 // One request against the book, on the game thread: the panel's task and
 // the rules' tick both come here. False when a pin is refused, so a rule's
 // refused pin is not reported done.
-bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, bool fromPanel,
+// Ready a thing in its hands: the only copy moving across comes off the
+// other hand first, or the engine, finding none free, conjures a second
+// (02:05, the doubled dagger).
+void PutOn(RE::Actor *actor, RE::TESForm *thing, Hand hands, const std::optional<ft::ItemVariant> &variant,
+           RE::ExtraDataList *row, By by, bool moving)
+{
+    if (moving)
+        UnequipForm(actor, thing, Without(Hand::Both, hands), true, variant);
+    EquipPinned(actor, thing, hands, true, variant, row, by);
+}
+
+bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, By by,
           const std::optional<ft::ItemVariant> &variant = std::nullopt, RE::ExtraDataList *row = nullptr)
 {
+    const bool fromPanel = by == By::Player;
     const ft::ActorId id = actor->GetFormID();
     const Holdable described = DescribeHoldable(actor, thing, variant);
     Hand hands = HandsFor(described.grip, hand);
@@ -1463,7 +1437,7 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     // Conflicts): its pin goes, and since the engine's equip of one hand
     // leaves the other alone, the weapon is taken off below as well.
     const bool dualWield = DualWieldAllowed(actor);
-    const char *const by = fromPanel ? "player" : "rule";
+    const char *const who = fromPanel ? "player" : "rule";
     {
         std::scoped_lock lock(g_pinMutex);
         auto &pins = g_pins[id];
@@ -1478,7 +1452,7 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
             const auto bans = g_bans.find(id);
             if (bans != g_bans.end() && IsBanned(bans->second, described))
             {
-                std::vector<log::Field> fields = ItemFields(described.form, variant, hands, by);
+                std::vector<log::Field> fields = ItemFields(described.form, variant, hands, who);
                 fields.emplace_back("inCombat", g_fighting.contains(id));
                 log::pins.event(log::Level::Info, "ban.overridden", actor, fields,
                                 "{} a rule pins banned {} -- the pin holds while it lasts", Describe(actor),
@@ -1496,7 +1470,7 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
                                                                  : PinRequest::Ban;
         if (request != WearRequest::Unban && request != WearRequest::Unequip)
         {
-            ApplyToBook(actor, pins, bookRequest, described, hands, moving, dualWield, by, before);
+            ApplyToBook(actor, pins, bookRequest, described, hands, moving, dualWield, who, before);
             if (fromPanel && g_fighting.contains(id)) [[maybe_unused]]
                 const auto mirrored =
                     ApplyRequest(g_pinsBeforeFight[id], bookRequest, described, hands, moving, dualWield);
@@ -1535,31 +1509,27 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     switch (request)
     {
     case WearRequest::Equip:
-        log::pins.event(log::Level::Info, "equip.applied", actor, ItemFields(described.form, variant, hands, by),
+        log::pins.event(log::Level::Info, "equip.applied", actor, ItemFields(described.form, variant, hands, who),
                         "{} told to ready {}{} (not pinned)", Describe(actor), name, HandTag(hands));
-        if (moving)
-            UnequipForm(actor, thing, Without(Hand::Both, hands), true, variant);
-        EquipPinned(actor, thing, hands, true, variant, row, fromPanel);
+        PutOn(actor, thing, hands, variant, row, by, moving);
         break;
     case WearRequest::Unequip:
         log::pins.info("{} told to put away {}{}", Describe(actor), name, HandTag(hands));
         UnequipForm(actor, thing, hands, true, variant);
         break;
     case WearRequest::Ban:
-        log::pins.event(log::Level::Info, "ban.applied", actor, ItemFields(described.form, variant, Hand::None, by),
+        log::pins.event(log::Level::Info, "ban.applied", actor, ItemFields(described.form, variant, Hand::None, who),
                         "{} told never to use {} (banned)", Describe(actor), name);
         TakeOffEverywhere(actor, thing, described, true);
         break;
     case WearRequest::Unban:
-        log::pins.event(log::Level::Info, "ban.released", actor, ItemFields(described.form, variant, Hand::None, by),
+        log::pins.event(log::Level::Info, "ban.released", actor, ItemFields(described.form, variant, Hand::None, who),
                         "{} may use {} again (ban lifted)", Describe(actor), name);
         break;
     case WearRequest::Pin:
-        log::pins.event(log::Level::Info, "pin.applied", actor, ItemFields(described.form, variant, hands, by),
-                        "{} told to ready {}{} (pinned, by the {})", Describe(actor), name, HandTag(hands), by);
-        if (moving)
-            UnequipForm(actor, thing, Without(Hand::Both, hands), true, variant);
-        EquipPinned(actor, thing, hands, true, variant, row, fromPanel);
+        log::pins.event(log::Level::Info, "pin.applied", actor, ItemFields(described.form, variant, hands, who),
+                        "{} told to ready {}{} (pinned, by the {})", Describe(actor), name, HandTag(hands), who);
+        PutOn(actor, thing, hands, variant, row, by, moving);
         // Which hand a weapon or spell lands in is the AI's call as much
         // as ours: say what was asked and where it went, so the rule can
         // be read off the log.
@@ -1605,7 +1575,7 @@ bool WearNow(RE::Actor *actor, std::uint32_t form, WearRequest request, Hand han
              const std::optional<ft::ItemVariant> &variant)
 {
     auto *thing = actor ? RE::TESForm::LookupByID(form) : nullptr;
-    return thing && Wear(actor, thing, request, hand, false, variant);
+    return thing && Wear(actor, thing, request, hand, By::Rule, variant);
 }
 
 std::vector<Pin> WornAsPins(RE::Actor *actor)
@@ -1665,7 +1635,7 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         auto *thing = RE::TESForm::LookupByID(form);
         if (!actor || !thing)
             return;
-        Wear(actor, thing, request, hand, true, variant, row);
+        Wear(actor, thing, request, hand, By::Player, variant, row);
         // The page the panel is on, at once: the clock is frozen while it is
         // open, so the tick's own refresh is held and the cell would
         // otherwise answer only when the panel closed.
@@ -1779,11 +1749,11 @@ bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand, const std::optional
     // record gives it, whatever was asked.
     if (hand == Hand::Both && DescribeHoldable(actor, thing).grip == Grip::Either)
     {
-        const bool left = Wear(actor, thing, WearRequest::Pin, Hand::Left, false, variant);
-        const bool right = Wear(actor, thing, WearRequest::Pin, Hand::Right, false, variant);
+        const bool left = Wear(actor, thing, WearRequest::Pin, Hand::Left, By::Rule, variant);
+        const bool right = Wear(actor, thing, WearRequest::Pin, Hand::Right, By::Rule, variant);
         return left && right;
     }
-    return Wear(actor, thing, WearRequest::Pin, hand, false, variant);
+    return Wear(actor, thing, WearRequest::Pin, hand, By::Rule, variant);
 }
 
 void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
@@ -1933,32 +1903,12 @@ EquipShoutFn g_equipShout = nullptr;
 std::vector<VariantInBag> VariantsInBag(RE::Actor *actor, RE::TESBoundObject *object,
                                         std::vector<RE::ExtraDataList *> &lists)
 {
-    std::vector<VariantInBag> copies;
-    lists.clear();
-    const Carried carried = CarriedOf(actor, object);
-    if (carried.count <= 0)
-        return copies;
-    std::int32_t distinct = 0;
-    std::vector<VariantInBag> listed;
-    if (carried.entry && carried.entry->extraLists)
-    {
-        for (auto *list : *carried.entry->extraLists)
-        {
-            if (!list)
-                continue;
-            const bool isDistinct = RowOfItsOwn(list);
-            if (isDistinct)
-                distinct += list->GetCount();
-            listed.push_back({VariantOf(list), !isDistinct, ListWorn(list, Hand::None)});
-            lists.push_back(list);
-        }
-    }
-    if (carried.count > distinct)
-    {
-        copies.push_back({ItemVariant{}, true, false});
+    const Bag bag = ViewBag(actor, object);
+    std::vector<VariantInBag> copies = ft::CopiesForEngine(bag.view);
+    lists = bag.lists;
+    // The plain stack, when the core put it first, is the null list.
+    if (copies.size() > lists.size())
         lists.insert(lists.begin(), nullptr);
-    }
-    copies.insert(copies.end(), listed.begin(), listed.end());
     return copies;
 }
 

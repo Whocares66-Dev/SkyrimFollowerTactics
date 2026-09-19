@@ -1,5 +1,6 @@
 #include "game/PlayerCast.h"
 
+#include "core/PlayerCast.h"
 #include "game/Actions.h"
 #include "game/Log.h"
 #include "game/Magic.h"
@@ -17,58 +18,12 @@ namespace ft::game
 namespace
 {
 
-// Each step's window, from the moment the step began. Long enough for the
-// thing asked for to show, short enough that the hand is not held for long
-// by a cast that is not coming: a lent hand shows the spell on the next
-// update; a draw is under a second; a charge is the spell's own time (a
-// master spell's is seconds) and a little; a fire-and-forget spell leaves
-// the hand within a second of the release.
-constexpr double kLendSeconds = 1.0;
-constexpr double kDrawSeconds = 2.0;
-constexpr double kHandsFreeSeconds = 2.0;
-constexpr double kChargeSlackSeconds = 2.0;
-constexpr double kFireSeconds = 2.0;
-constexpr double kSettleSeconds = 2.0;
+// The steps, their windows and the run's standing are core's
+// (core/PlayerCast.h, AdvancePlayerCast); this reads the player and
+// sends the presses and the equips.
 // How long a concentration spell's stream is held with no time named by the
 // rule. The same default a follower's stream takes (game/Packages.cpp).
 constexpr float kDefaultSustainSeconds = 3.0f;
-// How long the shout control is held for the words, at most: the engine
-// charges a word about every half second of a hold, and fires whatever is
-// charged on the release.
-constexpr double kWordsSeconds = 3.0;
-
-enum class Step : std::uint8_t
-{
-    Lending,   // the spell put in the hand, or the power in the voice; waiting for it to show
-    Drawing,   // the hands drawn if they were sheathed; waiting for drawn
-    Pressing,  // waiting for the hands to be free of the player's own doing, then the press
-    Charging,  // pressed; watching the caster for Ready (or, for a stream, for Casting)
-    Holding,   // a stream: held for its sustain, then released
-    Firing,    // released; waiting for the fire event
-    Restoring, // waiting for the caster to be idle, then the hands given back
-};
-
-const char *Name(Step step) noexcept
-{
-    switch (step)
-    {
-    case Step::Lending:
-        return "lending";
-    case Step::Drawing:
-        return "drawing";
-    case Step::Pressing:
-        return "pressing";
-    case Step::Charging:
-        return "charging";
-    case Step::Holding:
-        return "holding";
-    case Step::Firing:
-        return "firing";
-    case Step::Restoring:
-        return "restoring";
-    }
-    return "?";
-}
 
 // What a hand held before the spell was lent it, to be put back after: a
 // spell, or an item and which copy of it, or nothing. The copy is kept as
@@ -86,22 +41,11 @@ struct Held
 
 struct Run
 {
-    bool voice = false;
-    // From both hands at once: the spell in each, the two controls pressed
-    // on one frame, which the handler pairs into a dual press.
-    bool dual = false;
+    // The run's standing: the step, the times, the outcome, the reason.
+    ft::CastState state;
     std::uint32_t form = 0;
     RE::MagicItem *spell = nullptr; // the spell, or a power; a shout's first word
     RE::TESForm *voiceForm = nullptr;
-    // For a shout: the highest word unlocked (0 for the first alone), which
-    // the control is held for; and the level the shout went off at.
-    int wordsWanted = 0;
-    int wordsHeld = -1;
-    // For a power: on the engine's used-power list before the press. A
-    // power goes off on the release with no voice animation and no fire
-    // event (seen 2026-09-18, four powers), and the list taking it is what
-    // says it fired.
-    bool usedBefore = false;
     // The hand the cast is from -- Left, Right, or Both for a two-handed
     // spell -- and the caster asked about it: the left's for both, which is
     // where the handler sends a two-handed press.
@@ -111,28 +55,9 @@ struct Run
     std::array<bool, 2> lent{};
     RE::TESForm *voiceBefore = nullptr;
     bool voiceLent = false;
-    bool drew = false;
-    bool pressed = false;
-    bool released = false;
-    bool fired = false;
-    bool sustained = false;
-    float sustain = 0.0f;
-    Step step = Step::Lending;
-    double requestedAt = 0.0;
-    double stepAt = 0.0;
-    double pressedAt = -1.0;
-    double readyAt = -1.0;
-    double releasedAt = -1.0;
-    double firedAt = -1.0;
-    // The highest caster state seen after the press: what the charge got
-    // to, for a cast that never fired.
-    int highestState = -1;
     float magickaAtRequest = 0.0f;
     int ruleIndex = -1;
     std::string ruleName;
-    // Why the run ended, set by the step that ended it; the outcome is
-    // `fired`.
-    std::string reason;
 };
 
 // One at a time: the player has one body. Game thread; the flag is the
@@ -267,9 +192,9 @@ ft::Hand PressedHand(const Run &run)
 // one hand's.
 void PressFor(const Run &run)
 {
-    if (run.voice)
+    if (run.state.voice)
         SendButton(VoiceHandler(), ShoutControl(), 1.0f, 0.0f);
-    else if (run.dual)
+    else if (run.state.dual)
     {
         SendHand(ft::Hand::Left, 1.0f, 0.0f);
         SendHand(ft::Hand::Right, 1.0f, 0.0f);
@@ -283,10 +208,10 @@ void PressFor(const Run &run)
 // release until that button comes up.
 void ReleaseFor(const Run &run, double now)
 {
-    const auto held = static_cast<float>(now - run.pressedAt);
-    if (run.voice)
+    const auto held = static_cast<float>(now - run.state.pressedAt);
+    if (run.state.voice)
         SendButton(VoiceHandler(), ShoutControl(), 0.0f, held);
-    else if (run.dual)
+    else if (run.state.dual)
     {
         SendHand(ft::Hand::Left, 0.0f, held);
         SendHand(ft::Hand::Right, 0.0f, held);
@@ -412,7 +337,7 @@ void Lend(RE::Actor *player, Run &run)
     }
     // A dual cast is the spell in each hand, one equip per hand; a
     // two-handed spell takes both with one.
-    if (run.dual)
+    if (run.state.dual)
     {
         for (const bool left : {true, false})
             if (SpellIn(player, left) != run.spell)
@@ -494,7 +419,7 @@ void Restore(RE::Actor *player, Run &run)
 
 RE::MagicCaster *CasterOf(RE::Actor *player, const Run &run)
 {
-    return player->GetMagicCaster(run.voice ? RE::MagicSystem::CastingSource::kOther : run.source);
+    return player->GetMagicCaster(run.state.voice ? RE::MagicSystem::CastingSource::kOther : run.source);
 }
 
 int StateOf(const RE::MagicCaster *caster)
@@ -584,43 +509,37 @@ const char *Refused(RE::MagicCaster *caster, RE::MagicItem *spell)
 
 // --- the run ----------------------------------------------------------------
 
-void Begin(Run &run, Step step, double now)
-{
-    run.step = step;
-    run.stepAt = now;
-}
-
 const char *HandName(const Run &run)
 {
-    if (run.voice)
+    if (run.state.voice)
         return "voice";
     return run.hand == ft::Hand::Both ? "both" : run.hand == ft::Hand::Left ? "left" : "right";
 }
 
 void Report(const Run &run, RE::Actor *player, double now)
 {
-    const auto since = [&run](double at) { return at < 0.0 ? -1.0 : at - run.requestedAt; };
+    const auto since = [&run](double at) { return at < 0.0 ? -1.0 : at - run.state.requestedAt; };
     const float magickaNow = player ? player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagicka) : -1.0f;
     std::vector<log::Field> fields{{"ruleIndex", run.ruleIndex},
                                    {"ruleName", run.ruleName},
-                                   {"kind", run.voice ? "voice" : "cast"},
-                                   {"outcome", run.fired ? "cast" : "not-cast"},
-                                   {"reason", run.reason},
-                                   {"durationS", now - run.requestedAt}};
+                                   {"kind", run.state.voice ? "voice" : "cast"},
+                                   {"outcome", run.state.fired ? "cast" : "not-cast"},
+                                   {"reason", run.state.reason},
+                                   {"durationS", now - run.state.requestedAt}};
     log::AppendForm(fields, "formId", "formName", run.form);
     fields.emplace_back("hand", HandName(run));
     fields.emplace_back("lent", run.lent[0] || run.lent[1] || run.voiceLent || run.before[0].spell ||
                                     run.before[0].item || run.before[1].spell || run.before[1].item);
-    fields.emplace_back("drew", run.drew);
-    fields.emplace_back("pressedS", since(run.pressedAt));
-    fields.emplace_back("readyS", since(run.readyAt));
-    fields.emplace_back("releasedS", since(run.releasedAt));
-    fields.emplace_back("firedS", since(run.firedAt));
-    fields.emplace_back("highestState", run.highestState);
+    fields.emplace_back("drew", run.state.drew);
+    fields.emplace_back("pressedS", since(run.state.pressedAt));
+    fields.emplace_back("readyS", since(run.state.readyAt));
+    fields.emplace_back("releasedS", since(run.state.releasedAt));
+    fields.emplace_back("firedS", since(run.state.firedAt));
+    fields.emplace_back("highestState", run.state.highestState);
     if (run.voiceForm && run.voiceForm->Is(RE::FormType::Shout))
     {
-        fields.emplace_back("wordsWanted", run.wordsWanted);
-        fields.emplace_back("wordsHeld", run.wordsHeld);
+        fields.emplace_back("wordsWanted", run.state.wordsWanted);
+        fields.emplace_back("wordsHeld", run.state.wordsHeld);
     }
     fields.emplace_back("magickaAtRequest", static_cast<double>(run.magickaAtRequest));
     fields.emplace_back("magickaAtEnd", static_cast<double>(magickaNow));
@@ -629,30 +548,32 @@ void Report(const Run &run, RE::Actor *player, double now)
                       "{:.2f} s, released at {:.2f} s, fired at {:.2f} s; caster state reached {}; magicka {:.0f} -> "
                       "{:.0f})",
                       player ? log::NameOf(player) : "the player", run.ruleIndex, run.ruleName,
-                      run.voice ? "power or shout" : "cast", run.fired ? "cast" : "not cast", run.reason,
-                      now - run.requestedAt, HandName(run), run.drew ? ", drawn for it" : "",
-                      (run.lent[0] || run.lent[1] || run.voiceLent) ? ", lent" : "", since(run.pressedAt),
-                      since(run.readyAt), since(run.releasedAt), since(run.firedAt), run.highestState,
-                      run.magickaAtRequest, magickaNow);
+                      run.state.voice ? "power or shout" : "cast", run.state.fired ? "cast" : "not cast",
+                      run.state.reason, now - run.state.requestedAt, HandName(run),
+                      run.state.drew ? ", drawn for it" : "",
+                      (run.lent[0] || run.lent[1] || run.voiceLent) ? ", lent" : "", since(run.state.pressedAt),
+                      since(run.state.readyAt), since(run.state.releasedAt), since(run.state.firedAt),
+                      run.state.highestState, run.magickaAtRequest, magickaNow);
 }
 
 // Let go of a press not yet released -- at Ready that fires, earlier it
 // cancels -- then give everything back and report.
 void Finish(Run &run, RE::Actor *player, const char *reason, double now)
 {
-    if (run.reason.empty())
-        run.reason = reason;
-    log::player.debug("{}: over while {} -- {}", player ? Describe(player) : "the player", Name(run.step), run.reason);
-    if (player && run.pressed && !run.released)
+    if (run.state.reason.empty())
+        run.state.reason = reason;
+    log::player.debug("{}: over while {} -- {}", player ? Describe(player) : "the player", ft::ToString(run.state.step),
+                      run.state.reason);
+    if (player && run.state.pressed && !run.state.released)
     {
-        run.released = true;
-        run.releasedAt = now;
+        run.state.released = true;
+        run.state.releasedAt = now;
         ReleaseFor(run, now);
     }
     if (player)
     {
         Restore(player, run);
-        if (run.drew)
+        if (run.state.drew)
             player->DrawWeaponMagicHands(false);
     }
     Report(run, player, now);
@@ -661,7 +582,7 @@ void Finish(Run &run, RE::Actor *player, const char *reason, double now)
 // Whether the fire event for this run has come.
 bool FireSeen(const Run &run)
 {
-    if (run.voice)
+    if (run.state.voice)
         return g_firedVoice.load(std::memory_order_relaxed);
     const std::uint32_t left = g_firedLeft.load(std::memory_order_relaxed);
     const std::uint32_t right = g_firedRight.load(std::memory_order_relaxed);
@@ -676,225 +597,96 @@ void ClearFireFlags()
 }
 
 // One step, where the run can take it; the reason it is over, or null while
-// it goes on. Each step's `late` is measured from when the step began.
+// it goes on. The step is core's (AdvancePlayerCast); this reads the player
+// into what it asks about and performs the commands it sends.
 const char *Advance(Run &run, RE::Actor *player, double now)
 {
-    if (!player)
-        return "player vanished";
-    auto *state = player->AsActorState();
-    if (!state)
+    ft::CastSeen seen;
+    auto *state = player ? player->AsActorState() : nullptr;
+    if (player && !state)
         return "no actor state";
-    const auto &runtime = player->GetActorRuntimeData();
-    const auto late = [&](double window) { return now - run.stepAt >= window; };
-
-    if (run.step == Step::Lending)
+    seen.player = player != nullptr;
+    RE::MagicCaster *caster = nullptr;
+    if (player)
     {
-        bool placed = false;
-        if (run.voice)
-        {
-            placed = runtime.selectedPower == run.voiceForm;
-            if (!placed && !run.voiceLent)
-            {
-                run.voiceBefore = runtime.selectedPower;
-                run.voiceLent = true;
-                auto *manager = RE::ActorEquipManager::GetSingleton();
-                if (auto *shout = run.voiceForm->As<RE::TESShout>(); shout && manager)
-                    manager->EquipShout(player, shout);
-                else if (auto *power = run.voiceForm->As<RE::SpellItem>(); power && manager)
-                    manager->EquipSpell(player, power, Slot(kVoiceSlot));
-                return nullptr;
-            }
-        }
-        else
-        {
-            placed = SpellPlaced(player, run);
-            if (!placed && !run.lent[0] && !run.lent[1])
-            {
-                Lend(player, run);
-                return nullptr;
-            }
-        }
-        if (!placed)
-            return late(kLendSeconds)
-                       ? (run.voice ? "the voice would not take it" : "the hand would not take the spell")
-                       : nullptr;
-        Begin(run, Step::Drawing, now);
-    }
-
-    if (run.step == Step::Drawing)
-    {
-        // A shout needs no hands out. A press while sheathed only draws, so
-        // the draw is asked for here and the press waits for it.
-        if (run.voice || state->GetWeaponState() == RE::WEAPON_STATE::kDrawn)
-            Begin(run, Step::Pressing, now);
-        else
-        {
-            if (!run.drew && state->GetWeaponState() == RE::WEAPON_STATE::kSheathed)
-            {
-                run.drew = true;
-                player->DrawWeaponMagicHands(true);
-            }
-            return late(kDrawSeconds) ? "deadline, hands never drawn" : nullptr;
-        }
-    }
-
-    if (run.step == Step::Pressing)
-    {
-        auto *caster = CasterOf(player, run);
-        // The player's own doing holds the press: a swing, a block, a cast
-        // of their own in this hand, the other hand's button down.
-        // The pairing that makes a dual cast wants every caster idle, the
-        // other hand's and the voice's too.
-        const bool othersIdle =
-            !run.dual || (Idle(player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand)) &&
-                          Idle(player->GetMagicCaster(RE::MagicSystem::CastingSource::kOther)));
-        const bool free = Idle(caster) && othersIdle && state->GetAttackState() == RE::ATTACK_STATE_ENUM::kNone &&
-                          !player->IsBlocking() &&
-                          (run.voice || (!ButtonHeld(AttackHandler(), true) && !ButtonHeld(AttackHandler(), false)));
-        if (!free)
-            return late(kHandsFreeSeconds) ? "deadline, hands never free" : nullptr;
-        if (const char *why = Refused(caster, run.spell))
-        {
-            run.reason = std::string("the engine refuses it: ") + why;
-            return "refused";
-        }
-        run.pressed = true;
-        run.pressedAt = now;
-        run.usedBefore = run.voice && OnUsedList(player, run.spell);
-        ClearFireFlags();
-        PressFor(run);
-        log::player.debug("{}: pressed for {} ({} hand{})", Describe(player),
-                          log::NameOf(run.voiceForm ? run.voiceForm : run.spell), HandName(run),
-                          run.dual ? ", dual" : "");
-        Begin(run, Step::Charging, now);
-        return nullptr;
-    }
-
-    auto *caster = CasterOf(player, run);
-    run.highestState = (std::max)(run.highestState, StateOf(caster));
-
-    if (run.step == Step::Charging)
-    {
-        if (run.voice)
-        {
-            // A power is a tap, released on the next tick. A shout is held
-            // while the engine charges its words, with the holds the keyboard
-            // would send, and released once the highest word unlocked is
-            // charged or the hold has gone on long enough.
-            const bool shout = run.voiceForm && run.voiceForm->Is(RE::FormType::Shout);
-            const int charged = shout ? WordsCharged(player) : -1;
-            // One word unlocked is a tap: nothing to charge past the first.
-            if (shout && run.wordsWanted > 0 && charged < run.wordsWanted && !late(kWordsSeconds))
-            {
-                SendButton(VoiceHandler(), ShoutControl(), 1.0f, static_cast<float>(now - run.pressedAt));
-                return nullptr;
-            }
-            run.wordsHeld = charged;
-            log::player.debug("{}: before the release: {}{}", Describe(player), VoiceText(player, caster, run.spell),
-                              shout ? fmt::format(", words charged {} of {}", charged, run.wordsWanted) : "");
-            run.released = true;
-            run.releasedAt = now;
-            ReleaseFor(run, now);
-            log::player.debug("{}: after the release: {}", Describe(player), VoiceText(player, caster, run.spell));
-            Begin(run, Step::Firing, now);
-            return nullptr;
-        }
+        const auto &runtime = player->GetActorRuntimeData();
+        seen.placed = run.state.voice ? runtime.selectedPower == run.voiceForm : SpellPlaced(player, run);
+        const auto weapon = state->GetWeaponState();
+        seen.weapon = weapon == RE::WEAPON_STATE::kDrawn      ? ft::CastSeen::Weapon::Drawn
+                      : weapon == RE::WEAPON_STATE::kSheathed ? ft::CastSeen::Weapon::Sheathed
+                                                              : ft::CastSeen::Weapon::Other;
+        caster = CasterOf(player, run);
+        seen.casterIdle = Idle(caster);
+        seen.casterHasSpell = caster && caster->currentSpell;
         const auto casterState = caster ? caster->state.get() : RE::MagicCaster::State::kNone;
-        // With a spell in each hand the handler holds a single press back,
-        // waiting for the other hand inside its pairing window, and replays
-        // it as a plain press only once a hold outlasts the window
-        // (dev/PLAYER.md). The keyboard's holds do that in play; here they
-        // are sent while the caster has not begun, and stop the moment it
-        // has.
-        if (!run.dual && caster && !caster->currentSpell && casterState == RE::MagicCaster::State::kNone)
-            SendHand(PressedHand(run), 1.0f, static_cast<float>(now - run.pressedAt));
-        // A stream is not released at Ready: it is held from when it starts.
-        if (run.sustained && casterState == RE::MagicCaster::State::kCasting)
+        seen.caster = casterState == RE::MagicCaster::State::kNone      ? ft::CastSeen::Caster::None
+                      : casterState == RE::MagicCaster::State::kCasting ? ft::CastSeen::Caster::Casting
+                      : casterState == RE::MagicCaster::State::kReady   ? ft::CastSeen::Caster::Ready
+                                                                        : ft::CastSeen::Caster::Other;
+        seen.casterState = StateOf(caster);
+        seen.othersIdle = Idle(player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand)) &&
+                          Idle(player->GetMagicCaster(RE::MagicSystem::CastingSource::kOther));
+        seen.attacking = state->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone;
+        seen.blocking = player->IsBlocking();
+        seen.buttonHeld = ButtonHeld(AttackHandler(), true) || ButtonHeld(AttackHandler(), false);
+        // Asked of the engine only where the step would press.
+        if (run.state.step == ft::CastStep::Pressing)
+            seen.refusal = Refused(caster, run.spell);
+        seen.wordsCharged = run.state.shout ? WordsCharged(player) : -1;
+        seen.onUsedList = run.state.voice && OnUsedList(player, run.spell);
+        seen.fireSeen = FireSeen(run);
+    }
+    const auto perform = [&](ft::CastCommand command) {
+        switch (command)
         {
-            run.readyAt = now;
-            Begin(run, Step::Holding, now);
-            return nullptr;
+        case ft::CastCommand::LendVoice: {
+            run.voiceBefore = player->GetActorRuntimeData().selectedPower;
+            run.voiceLent = true;
+            auto *manager = RE::ActorEquipManager::GetSingleton();
+            if (auto *shout = run.voiceForm->As<RE::TESShout>(); shout && manager)
+                manager->EquipShout(player, shout);
+            else if (auto *power = run.voiceForm->As<RE::SpellItem>(); power && manager)
+                manager->EquipSpell(player, power, Slot(kVoiceSlot));
+            break;
         }
-        if (!run.sustained && casterState == RE::MagicCaster::State::kReady)
-        {
-            run.readyAt = now;
-            run.released = true;
-            run.releasedAt = now;
+        case ft::CastCommand::LendHands:
+            Lend(player, run);
+            break;
+        case ft::CastCommand::Draw:
+            player->DrawWeaponMagicHands(true);
+            break;
+        case ft::CastCommand::Press:
+            ClearFireFlags();
+            PressFor(run);
+            log::player.debug("{}: pressed for {} ({} hand{})", Describe(player),
+                              log::NameOf(run.voiceForm ? run.voiceForm : run.spell), HandName(run),
+                              run.state.dual ? ", dual" : "");
+            break;
+        case ft::CastCommand::HoldPress:
+            SendButton(VoiceHandler(), ShoutControl(), 1.0f, static_cast<float>(now - run.state.pressedAt));
+            break;
+        case ft::CastCommand::ReplayPress:
+            SendHand(PressedHand(run), 1.0f, static_cast<float>(now - run.state.pressedAt));
+            break;
+        case ft::CastCommand::Release:
             ReleaseFor(run, now);
-            Begin(run, Step::Firing, now);
-            return nullptr;
+            if (run.state.voice)
+                log::player.debug("{}: after the release: {}", Describe(player), VoiceText(player, caster, run.spell));
+            break;
+        case ft::CastCommand::MarkPowerUsed:
+            MarkPowerUsed(player, run.spell);
+            break;
         }
-        // Idle again with nothing having fired: the player's own release, or
-        // something that interrupted the charge.
-        if (Idle(caster) && run.highestState > 0)
-            return "the charge was cut short";
-        const double window = kChargeSlackSeconds + (run.spell ? run.spell->GetChargeTime() : 0.0f);
-        return late(window) ? "deadline, never ready" : nullptr;
-    }
-
-    if (run.step == Step::Holding)
-    {
-        if (FireSeen(run) && run.firedAt < 0.0)
-            run.firedAt = now;
-        if (Idle(caster))
-        {
-            run.fired = run.firedAt >= 0.0;
-            return run.fired ? "stream ended early" : "the stream was cut short";
-        }
-        if (now - run.stepAt < run.sustain)
-            return nullptr;
-        run.released = true;
-        run.releasedAt = now;
-        ReleaseFor(run, now);
-        run.fired = run.firedAt >= 0.0;
-        Begin(run, Step::Restoring, now);
-        return nullptr;
-    }
-
-    if (run.step == Step::Firing)
-    {
-        // A power fires on the release with nothing to see but the engine's
-        // used-power list taking it.
-        const bool powerLanded = run.voice && !run.usedBefore && OnUsedList(player, run.spell);
-        if (FireSeen(run) || powerLanded)
-        {
-            run.fired = true;
-            run.firedAt = now;
-            if (run.voice)
-                MarkPowerUsed(player, run.spell);
-            Begin(run, Step::Restoring, now);
-        }
-        // The voice caster sits idle while a shout plays -- the shout is the
-        // process's, not the caster's -- so only a hand's cast is given up
-        // on when its caster is idle again; the voice waits for its event.
-        else if (!run.voice && Idle(caster) && late(0.1))
-            return "released, ended without firing";
-        else
-            return late(kFireSeconds) ? "released, never fired" : nullptr;
-    }
-
-    if (run.step == Step::Restoring)
-    {
-        // The hands go back once the cast's own animation is over, so the
-        // swap does not cut it off.
-        if (Idle(caster) || late(kSettleSeconds))
-        {
-            if (!run.fired)
-                return "released, never fired";
-            if (run.voice)
-                return run.voiceForm && run.voiceForm->Is(RE::FormType::Shout) ? "shout fired" : "power cast";
-            return run.sustained ? "stream ended" : "spell fired";
-        }
-    }
-    return nullptr;
+    };
+    return ft::AdvancePlayerCast(run.state, seen, now, perform);
 }
 
 PlayerCastRequest Start(RE::Actor *player, Run run)
 {
     if (g_run)
         return PlayerCastRequest::AlreadyCasting;
-    run.requestedAt = TacticsSeconds();
-    run.stepAt = run.requestedAt;
+    run.state.requestedAt = TacticsSeconds();
+    run.state.stepAt = run.state.requestedAt;
     run.magickaAtRequest = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagicka);
     // The library's AddAnimationGraphEventSink looks for the sink first, so
     // asking on every request adds it once.
@@ -905,7 +697,7 @@ PlayerCastRequest Start(RE::Actor *player, Run run)
                       log::NameOf(g_run->voiceForm ? g_run->voiceForm : g_run->spell), HandName(*g_run));
     // The first step now rather than on the next fast tick: a spell already
     // in a drawn hand is pressed on this frame.
-    TickPlayerCasts(g_run->requestedAt);
+    TickPlayerCasts(g_run->state.requestedAt);
     return PlayerCastRequest::Started;
 }
 
@@ -972,12 +764,13 @@ PlayerCastRequest RequestPlayerCast(RE::Actor *player, std::uint32_t spellFormID
     run.spell = spell;
     // A dual cast is both hands, and the handler fires it from the left's
     // caster; only a spell either hand takes can be cast from both.
-    run.dual = dualCast && GripOf(spell) == ft::Grip::Either;
-    run.hand = run.dual ? ft::Hand::Both : ChooseHand(player, spell);
+    run.state.dual = dualCast && GripOf(spell) == ft::Grip::Either;
+    run.hand = run.state.dual ? ft::Hand::Both : ChooseHand(player, spell);
     run.source = run.hand == ft::Hand::Right ? RE::MagicSystem::CastingSource::kRightHand
                                              : RE::MagicSystem::CastingSource::kLeftHand;
-    run.sustained = spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
-    run.sustain = sustainSeconds > 0.0f ? sustainSeconds : kDefaultSustainSeconds;
+    run.state.sustained = spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
+    run.state.sustain = sustainSeconds > 0.0f ? sustainSeconds : kDefaultSustainSeconds;
+    run.state.chargeTime = spell->GetChargeTime();
     run.ruleIndex = ruleIndex;
     run.ruleName = ruleName;
     return Start(player, std::move(run));
@@ -990,13 +783,14 @@ PlayerCastRequest RequestPlayerVoice(RE::Actor *player, std::uint32_t formID, in
     if (auto *shout = form ? form->As<RE::TESShout>() : nullptr)
     {
         run.spell = shout->variations[0].spell;
-        run.wordsWanted = (std::max)(0, HighestUnlockedWord(shout));
+        run.state.wordsWanted = (std::max)(0, HighestUnlockedWord(shout));
+        run.state.shout = true;
     }
     else if (auto *power = form ? form->As<RE::SpellItem>() : nullptr; power && IsPower(power))
         run.spell = power;
     else
         return PlayerCastRequest::SpellMissing;
-    run.voice = true;
+    run.state.voice = true;
     run.form = formID;
     run.voiceForm = form;
     run.ruleIndex = ruleIndex;

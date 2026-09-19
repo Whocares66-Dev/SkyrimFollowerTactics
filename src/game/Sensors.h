@@ -5,6 +5,7 @@
 // RE::-free and unit tested; everything below is imperative Skyrim code that
 // can only be verified by playing. Keep this file thin and obvious.
 
+#include "core/BagView.h"
 #include "core/Blows.h"
 #include "core/Breakdown.h"
 #include "core/Rule.h"
@@ -63,6 +64,20 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
 // keeps this per actor, NPCs too; negative or nonsense (an hour or more)
 // reads as "can shout".
 [[nodiscard]] float VoiceRecoveryOf(RE::Actor *actor);
+
+// One form's copies in the bag, read once: the core's view of them
+// (core/BagView.h) with each row's list beside it, so a row the core
+// chooses maps back to the list the engine is handed. Every question
+// below that used to walk the lists asks the view.
+struct Bag
+{
+    ft::BagView view;
+    std::vector<RE::ExtraDataList *> lists; // one per view.rows, in order
+    // The list of a row the core chose; null for none.
+    [[nodiscard]] RE::ExtraDataList *ListOf(const ft::BagRow *row) const noexcept;
+    [[nodiscard]] RE::ExtraDataList *ListAt(std::optional<std::size_t> index) const noexcept;
+};
+[[nodiscard]] Bag ViewBag(RE::Actor *actor, RE::TESBoundObject *object);
 
 // The hands are asked one at a time, and answered per COPY: with the same
 // dagger in each hand -- two entries of one record -- the left's poison and

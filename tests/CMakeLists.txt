@@ -18,19 +18,30 @@ if(NOT Catch2_FOUND)
 endif()
 
 add_executable(ft_tests
+    test_bag.cpp
+    test_bash.cpp
     test_blows.cpp
     test_breakdown.cpp
+    test_clock.cpp
     test_conditions.cpp
+    test_coordinator.cpp
+    test_cosave.cpp
     test_customskills.cpp
     test_editor.cpp
     test_evaluator.cpp
     test_eventring.cpp
     test_hits.cpp
     test_idle.cpp
+    test_lease.cpp
     test_loadout.cpp
     test_logevent.cpp
+    test_logsettings.cpp
+    test_party.cpp
+    test_playercast.cpp
     test_profile.cpp
     test_sessions.cpp
+    test_table.cpp
+    test_tick.cpp
     test_vocabulary.cpp)
 # nlohmann_json is found or fetched by the top-level CMakeLists, beside ft_core;
 # the profile tests parse the serialiser's output back to check its shape.

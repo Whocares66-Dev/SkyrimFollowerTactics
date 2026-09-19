@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -89,5 +90,11 @@ enum class Aside : std::uint8_t
 
 // How many of the rule's actions are not had.
 [[nodiscard]] std::size_t ActionsNotHad(const Rule &rule, const Holdings &has);
+
+// A rule reads as the thing it names is called now, and keeps that name
+// while the thing is away (Action::name). `currentName` is the name the
+// bag or the spell list gives the action's form today, or empty for a
+// thing not there. Renames in place; returns whether anything changed.
+[[nodiscard]] bool RefreshActionNames(RuleSet &rules, const std::function<std::string(const Action &)> &currentName);
 
 } // namespace ft

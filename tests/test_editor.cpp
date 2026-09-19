@@ -344,3 +344,37 @@ TEST_CASE("every action that chooses its thing needs something to choose", "[edi
         REQUIRE_FALSE(ActionHad(a, nothing));
     }
 }
+
+TEST_CASE("a rule takes the name its thing has now, and keeps the old one while it is away", "[editor]")
+{
+    RuleSet rules;
+    rules.rules.push_back(test::HealBelow(0.5f));
+    Rule equip;
+    equip.FirstAction().kind = ActionKind::EquipWeapon;
+    equip.FirstAction().form = 0x12EB7;
+    equip.FirstAction().name = "Iron Dagger";
+    rules.rules.push_back(equip);
+
+    // The dagger tempered and renamed at the grindstone: the rule follows.
+    const auto renamed = [](const Action &a) { return a.form == 0x12EB7 ? std::string("Iron Dagger (Fine)") : ""; };
+    REQUIRE(RefreshActionNames(rules, renamed));
+    REQUIRE(rules.rules[1].actions[0].name == "Iron Dagger (Fine)");
+    // The same again: nothing to change.
+    REQUIRE_FALSE(RefreshActionNames(rules, renamed));
+
+    // The dagger sold: the rule keeps its last name.
+    const auto gone = [](const Action &) { return std::string{}; };
+    REQUIRE_FALSE(RefreshActionNames(rules, gone));
+    REQUIRE(rules.rules[1].actions[0].name == "Iron Dagger (Fine)");
+
+    // A policy names no form and is never asked.
+    bool asked = false;
+    const auto counting = [&](const Action &) {
+        asked = true;
+        return std::string("x");
+    };
+    RuleSet policy;
+    policy.rules.push_back(test::HealBelow(0.5f));
+    REQUIRE_FALSE(RefreshActionNames(policy, counting));
+    REQUIRE_FALSE(asked);
+}

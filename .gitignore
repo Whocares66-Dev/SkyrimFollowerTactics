@@ -70,3 +70,6 @@ extern/SKSEMenuFramework/SKSEMenuFramework.h
 SSEEdit/
 CrashLogger/
 
+
+# A local scratchpad for review notes, not part of the tree.
+dev/REVIEW.md

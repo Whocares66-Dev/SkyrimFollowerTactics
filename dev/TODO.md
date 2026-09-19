@@ -186,6 +186,7 @@ in `dev/PLAN.md`.
 - **The shipped ini's `level = debug`** contradicts the default it documents (`info`); left as it is while the dist zip is being tested.
 - **Recruiting from the console.** `cqf DialogueFollower SetFollower <refid>`
   should fill the alias without the dialogue; unverified.
+- **The five extractions of 2026-09-19, in play** (`wip-game-test`; `dev/TESTING.md` "The game layer without Skyrim"). Each moved a decision into core and switched the game over without a behaviour change, and none has been run in game since. To see: a save loads with its tactics and settings (`the save holds tactics for N follower(s)` in the log, the rules on the page); the ini still sets the level (the banner names it); a fight begins and ends with `combat.entered` and `combat.left` once each, and the idle list runs after; a follower with the combat list switched off runs the idle list after a fight (the fix); the panel's click on a row, on the plain stack, and on a copy worn in the other hand still equips the copy clicked (`equip ... list [...]` at debug names it); a pinned dagger the engine moved comes back across.
 - **Package tests.** The cast records and leases have no unit tests because they
   touch the game. A seam that lets the tick and release logic run against a
   fake actor would cover the release paths.

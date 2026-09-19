@@ -17,6 +17,7 @@ tested against without Skyrim (not yet built; what is known, what to measure fir
 entry points over actor values; research and thoughts, with the open questions);
 `dev/VERSIONS.md` is every address, vtable slot and layout taken from the game rather than from CommonLib, each an (SE, AE) pair named in `src/game/Addresses.h` and read on 1.5.97 and 1.6.1170, and how to check them against another build; add a row and a name when you add one;
 `dev/PLAYER.md` is the player under tactics: what carries over, how a cast is performed on the player's body through a synthesized press (the attack and shout handlers as read from the executable), what running rules out of combat needs, and what is verified in play and what is not (built 2026-09-18 on `wip-player-tactics`);
+`dev/TESTING.md` is what of `src/game` is tested without Skyrim and how, what is still to extract, and the console harness for play;
 `dev/TODO.md` is what is still to do.
 
 ## The one architectural rule

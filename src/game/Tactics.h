@@ -13,6 +13,7 @@
 #include "game/Profiles.h"
 #include "game/Sensors.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -138,6 +139,12 @@ using SharedView = std::shared_ptr<const FollowerView>;
 // without a version check.
 [[nodiscard]] ft::RuleSet GetRules(ft::ActorId id, ft::Moment moment);
 void SetRules(ft::ActorId id, ft::RuleSet rules);
+// The names of the things the actor's rules name, refreshed in place on
+// the current list (core/Editor.h, RefreshActionNames). Not a SetRules of
+// a copy read earlier: the panel edits the list from the render thread,
+// and a copy written back whole would put an edit made meanwhile under it.
+void RefreshActionNames(ft::ActorId id, ft::Moment moment,
+                        const std::function<std::string(const ft::Action &)> &currentName);
 
 // The rules, the switch and the player's pins live in the save, one
 // record per follower (game/Profiles.h). Edits are the session's state,

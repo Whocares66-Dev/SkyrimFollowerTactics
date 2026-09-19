@@ -1,5 +1,6 @@
 #include "game/Blows.h"
 
+#include "core/Bash.h"
 #include "game/Log.h"
 #include "game/Util.h"
 
@@ -15,60 +16,19 @@ namespace ft::game
 namespace
 {
 
-// From the request to the block lowered. Long enough for a swing in progress
-// to end and a block to come up; a request still waiting then is given up,
-// and says at which step.
-constexpr double kDeadlineSeconds = 2.0;
-// How long a bash that was taken is watched for the bash attack state. The
-// animation is under a second; one not seen by then was not made.
-constexpr double kWatchSeconds = 1.5;
-// How long a request that had to wait -- for the follower's own swing to
-// end, or the block to come up -- holds the bash once the hands are free
-// with the block up. Asked for on the tick the wait ended, the tree chose an
-// ordinary attack or nothing: no bash in eight such requests, where ten of
-// twelve that went straight through bashed (2026-09-15).
-constexpr double kSettleSeconds = 0.25;
-
-enum class Step : std::uint8_t
-{
-    Ready,    // waiting for the weapon drawn and no swing, then the block
-    Blocking, // waiting for the block to be up, then the bash
-    Bashing   // the bash was taken; watched until it ends
-};
+// The deadlines, the steps and the waits are core's (core/Bash.h,
+// AdvanceBash), with the measurements behind them.
 
 struct Run
 {
     RE::ActorHandle actor;
     RE::ActorHandle target;
     std::uint32_t id = 0;
-    bool power = false;
-    Step step = Step::Ready;
-    double requestedAt = 0.0;
-    double blockAskedAt = -1.0;
-    double blockUpAt = -1.0;
-    double sentAt = -1.0;
-    // Since when the hands have been free (the weapon drawn, no attack), and
-    // free with the block up; -1 while they are not.
-    double freeSince = -1.0;
-    double steadySince = -1.0;
-    // When the bash attack state was first seen, and when it was over; -1
-    // for not yet. A bash is short, and one cut off shorter still.
-    double bashFrom = -1.0;
-    double bashEnd = -1.0;
+    // The request's standing: the step, the waits, the refusals, the times.
+    ft::BashState state;
     // The follower's stamina when the request was made: what a bash the
     // engine made was charged against.
     float staminaAtRequest = -1.0f;
-    // Lowered at the end only if this request raised it: a block the
-    // follower already held is their AI's to lower.
-    bool raised = false;
-    bool alreadyBlocking = false;
-    bool sawBash = false;
-    bool waited = false;   // a step could not go on at once; the bash settles first
-    int blockRefusals = 0; // the left attack action was turned away
-    int bashRefusals = 0;  // the bash was turned away with the block up
-    // The first attack state other than a bash seen once the bash was taken,
-    // -1 for none: a swing the tree chose over the bash.
-    int otherAttackState = -1;
     int ruleIndex = -1;
     std::string ruleName;
     // The event of the attack data current when the bash state was first
@@ -83,12 +43,12 @@ std::atomic<int> g_inFlight{0};
 
 const char *EventOf(const Run &run) noexcept
 {
-    return run.power ? "bashPowerStart" : "bashStart";
+    return run.state.power ? "bashPowerStart" : "bashStart";
 }
 
 const char *KindOf(const Run &run) noexcept
 {
-    return run.power ? "power bash" : "bash";
+    return run.state.power ? "power bash" : "bash";
 }
 
 // rule.resolved, as a cast's release reports it, with the timings this
@@ -96,10 +56,10 @@ const char *KindOf(const Run &run) noexcept
 // up, when the bash was taken, and how often each step was turned away.
 void Report(const Run &run, RE::Actor *actor, const char *reason, double now)
 {
-    const auto since = [&run](double at) { return at < 0.0 ? -1.0 : at - run.requestedAt; };
+    const auto since = [&run](double at) { return at < 0.0 ? -1.0 : at - run.state.requestedAt; };
     double bashSeconds = -1.0;
-    if (run.bashFrom >= 0.0)
-        bashSeconds = (run.bashEnd >= 0.0 ? run.bashEnd : now) - run.bashFrom;
+    if (run.state.bashFrom >= 0.0)
+        bashSeconds = (run.state.bashEnd >= 0.0 ? run.state.bashEnd : now) - run.state.bashFrom;
     const float staminaNow = actor ? actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina) : -1.0f;
     std::vector<log::Field> fields;
     if (!actor)
@@ -107,19 +67,19 @@ void Report(const Run &run, RE::Actor *actor, const char *reason, double now)
     fields.emplace_back("ruleIndex", run.ruleIndex);
     fields.emplace_back("ruleName", run.ruleName);
     fields.emplace_back("kind", KindOf(run));
-    fields.emplace_back("outcome", run.sawBash ? "made" : "not-made");
+    fields.emplace_back("outcome", run.state.sawBash ? "made" : "not-made");
     fields.emplace_back("reason", reason);
-    fields.emplace_back("durationS", now - run.requestedAt);
-    fields.emplace_back("alreadyBlocking", run.alreadyBlocking);
-    fields.emplace_back("blockRaised", run.raised);
-    fields.emplace_back("blockUpS", since(run.blockUpAt));
-    fields.emplace_back("sentS", since(run.sentAt));
-    fields.emplace_back("waited", run.waited);
-    fields.emplace_back("handsFreeS", since(run.freeSince));
-    fields.emplace_back("steadyS", since(run.steadySince));
-    fields.emplace_back("blockRefusals", run.blockRefusals);
-    fields.emplace_back("bashRefusals", run.bashRefusals);
-    fields.emplace_back("attackStateSeen", run.otherAttackState);
+    fields.emplace_back("durationS", now - run.state.requestedAt);
+    fields.emplace_back("alreadyBlocking", run.state.alreadyBlocking);
+    fields.emplace_back("blockRaised", run.state.raised);
+    fields.emplace_back("blockUpS", since(run.state.blockUpAt));
+    fields.emplace_back("sentS", since(run.state.sentAt));
+    fields.emplace_back("waited", run.state.waited);
+    fields.emplace_back("handsFreeS", since(run.state.freeSince));
+    fields.emplace_back("steadyS", since(run.state.steadySince));
+    fields.emplace_back("blockRefusals", run.state.blockRefusals);
+    fields.emplace_back("bashRefusals", run.state.bashRefusals);
+    fields.emplace_back("attackStateSeen", run.state.otherAttackState);
     fields.emplace_back("bashS", bashSeconds);
     fields.emplace_back("attackEvent", run.attackEvent);
     fields.emplace_back("staminaAtRequest", static_cast<double>(run.staminaAtRequest));
@@ -129,17 +89,18 @@ void Report(const Run &run, RE::Actor *actor, const char *reason, double now)
                      "taken at {:.2f} s{}, "
                      "refused {} block + {} bash; bash state {:.2f} s, stamina {:.0f} -> {:.0f})",
                      actor ? log::NameOf(actor) : log::Id(run.id), run.ruleIndex, run.ruleName, KindOf(run),
-                     run.sawBash ? "made" : "not made", reason, now - run.requestedAt,
-                     run.alreadyBlocking ? "already up"
-                     : run.raised        ? "raised"
-                                         : "not raised",
-                     since(run.blockUpAt), since(run.steadySince), since(run.sentAt), run.waited ? " after a wait" : "",
-                     run.blockRefusals, run.bashRefusals, bashSeconds, run.staminaAtRequest, staminaNow);
+                     run.state.sawBash ? "made" : "not made", reason, now - run.state.requestedAt,
+                     run.state.alreadyBlocking ? "already up"
+                     : run.state.raised        ? "raised"
+                                               : "not raised",
+                     since(run.state.blockUpAt), since(run.state.steadySince), since(run.state.sentAt),
+                     run.state.waited ? " after a wait" : "", run.state.blockRefusals, run.state.bashRefusals,
+                     bashSeconds, run.staminaAtRequest, staminaNow);
 }
 
 void Finish(const Run &run, RE::Actor *actor, const char *reason, double now)
 {
-    if (run.raised && actor)
+    if (run.state.raised && actor)
     {
         const bool lowered = RE::CombatAnimation::Execute(actor, RE::CombatAnimation::ANIM::kActionLeftRelease);
         log::blows.debug("{}: block lowered{}", Describe(actor), lowered ? "" : " -- the release was turned away");
@@ -173,123 +134,56 @@ const RE::BGSAttackData *AttackDataOf(RE::Actor *actor)
 }
 
 // One step, where the request can take it; the reason it is over, or null
-// while it goes on.
+// while it goes on. The step is core's (AdvanceBash); this reads the actor
+// and performs the two actions it asks for.
 const char *Advance(Run &run, RE::Actor *actor, double now)
 {
-    if (!actor)
-        return "holder vanished";
-    auto *state = actor->AsActorState();
-    if (!state)
+    ft::BashSeen seen;
+    seen.holder = actor != nullptr;
+    auto *state = actor ? actor->AsActorState() : nullptr;
+    if (actor && !state)
         return "no actor state";
-    const auto attack = state->GetAttackState();
-    const bool late = now - run.requestedAt >= kDeadlineSeconds;
-
-    if (run.step == Step::Ready)
+    if (state)
     {
-        if (late)
-        {
-            if (!state->IsWeaponDrawn())
-                return "deadline, weapon never drawn";
-            return run.blockRefusals > 0 ? "deadline, block refused" : "deadline, still mid-swing";
-        }
-        if (!state->IsWeaponDrawn() || attack != RE::ATTACK_STATE_ENUM::kNone)
-        {
-            run.waited = true;
-            run.freeSince = -1.0;
-            return nullptr;
-        }
-        if (run.freeSince < 0.0)
-            run.freeSince = now;
-        if (actor->IsBlocking())
-            run.alreadyBlocking = true;
-        else
-        {
+        const auto attack = state->GetAttackState();
+        seen.weaponDrawn = state->IsWeaponDrawn();
+        seen.blocking = actor->IsBlocking();
+        seen.attack = attack == RE::ATTACK_STATE_ENUM::kNone   ? ft::BashSeen::Attack::None
+                      : attack == RE::ATTACK_STATE_ENUM::kBash ? ft::BashSeen::Attack::Bash
+                                                               : ft::BashSeen::Attack::Other;
+        seen.attackState = static_cast<int>(attack);
+    }
+    const bool sawBashBefore = run.state.sawBash;
+    const auto perform = [&](ft::BashCommand command) {
+        if (command == ft::BashCommand::RaiseBlock)
             // The combat AI's own way up, from its Block behaviour: the left
             // attack action, which the idle tree resolves into a block for
             // what is in the hands.
-            if (run.blockAskedAt < 0.0)
-                run.blockAskedAt = now;
-            run.raised = RE::CombatAnimation::Execute(actor, RE::CombatAnimation::ANIM::kActionLeftAttack);
-            if (!run.raised)
-            {
-                ++run.blockRefusals;
-                run.waited = true;
-                return nullptr;
-            }
-        }
-        run.step = Step::Blocking;
-    }
-
-    if (run.step == Step::Blocking)
-    {
-        if (late)
-        {
-            if (run.blockUpAt < 0.0)
-                return "deadline, block never up";
-            return run.bashRefusals > 0 ? "deadline, bash refused from the block" : "deadline, never steady";
-        }
-        // The follower's own AI may swing again, or drop the block, while
-        // this waits; either starts the settle over.
-        if (!actor->IsBlocking() || attack != RE::ATTACK_STATE_ENUM::kNone)
-        {
-            run.waited = true;
-            run.steadySince = -1.0;
-            return nullptr;
-        }
-        if (run.blockUpAt < 0.0)
-            run.blockUpAt = now;
-        if (run.steadySince < 0.0)
-            run.steadySince = now;
-        if (run.waited && now - run.steadySince < kSettleSeconds)
-            return nullptr;
+            return RE::CombatAnimation::Execute(actor, RE::CombatAnimation::ANIM::kActionLeftAttack);
         // A bash is the right attack action from the block, which the tree
         // resolves into bashStart; the action is what sets the bash attack
         // state. A power bash is the same action carrying bashPowerStart.
         bool taken = false;
-        if (run.power)
+        if (run.state.power)
             taken = PerformRightAttackWith(actor, EventOf(run));
         else if (const auto target = run.target.get())
             taken = RE::CombatAnimation::Execute(actor, target.get(), RE::CombatAnimation::ANIM::kActionRightAttack);
         else
             taken = RE::CombatAnimation::Execute(actor, RE::CombatAnimation::ANIM::kActionRightAttack);
-        if (!taken)
-        {
-            ++run.bashRefusals;
-            return nullptr;
-        }
-        run.sentAt = now;
-        run.step = Step::Bashing;
-        log::blows.debug("{}: {} taken {:.2f} s after the request", Describe(actor),
-                         run.power ? "the right attack action carrying bashPowerStart"
-                                   : "the right attack action from the block",
-                         now - run.requestedAt);
-        return nullptr;
-    }
-
-    if (attack == RE::ATTACK_STATE_ENUM::kBash)
-    {
-        if (!run.sawBash)
-        {
-            run.bashFrom = now;
-            if (const auto *data = AttackDataOf(actor))
-                run.attackEvent = data->event.c_str();
-        }
-        run.sawBash = true;
-    }
-    else if (run.sawBash)
-    {
-        run.bashEnd = now;
-        return "bash made";
-    }
-    else if (attack != RE::ATTACK_STATE_ENUM::kNone && run.otherAttackState < 0)
-        run.otherAttackState = static_cast<int>(attack);
-    if (now - run.sentAt >= kWatchSeconds)
-    {
-        if (run.sawBash)
-            return "watch over, still bashing";
-        return run.otherAttackState >= 0 ? "taken, an attack but no bash" : "taken, never bashed";
-    }
-    return nullptr;
+        if (taken)
+            log::blows.debug("{}: {} taken {:.2f} s after the request", Describe(actor),
+                             run.state.power ? "the right attack action carrying bashPowerStart"
+                                             : "the right attack action from the block",
+                             now - run.state.requestedAt);
+        return taken;
+    };
+    const char *over = ft::AdvanceBash(run.state, seen, now, perform);
+    // The attack the engine made current on the first bash seen: its event
+    // says which bash it was.
+    if (!sawBashBefore && run.state.sawBash)
+        if (const auto *data = AttackDataOf(actor))
+            run.attackEvent = data->event.c_str();
+    return over;
 }
 
 } // namespace
@@ -304,11 +198,10 @@ BashRequest RequestBash(RE::Actor *actor, std::uint32_t targetId, bool power, in
         run.target = target->GetHandle();
     run.staminaAtRequest = actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
     run.id = actor->GetFormID();
-    run.power = power;
     run.ruleIndex = ruleIndex;
     run.ruleName = ruleName;
-    run.requestedAt = TacticsSeconds();
-    const double now = run.requestedAt;
+    const double now = TacticsSeconds();
+    run.state = ft::RequestBashAt(now, power);
     g_runs.push_back(std::move(run));
     log::blows.debug("{}: {} requested", Describe(actor), power ? "power bash" : "bash");
     // The first step now rather than on the next fast tick: a follower who is

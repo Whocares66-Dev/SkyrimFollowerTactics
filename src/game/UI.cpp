@@ -14,6 +14,7 @@
 
 #include "core/Breakdown.h"
 #include "core/Effects.h"
+#include "core/Table.h"
 #include "core/Vocabulary.h"
 #include "game/Addresses.h"
 #include "game/Log.h"
@@ -3605,15 +3606,6 @@ bool FilterBox(const char *id, char *buffer, std::size_t size)
     return changed;
 }
 
-bool ContainsNoCase(const std::string &text, const char *needle)
-{
-    const auto same = [](char a, char b) {
-        return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
-    };
-    const std::string_view n(needle);
-    return n.empty() || std::search(text.begin(), text.end(), n.begin(), n.end(), same) != text.end();
-}
-
 // A list's filter box, and on its line against the right edge how many of
 // the list's rows the filter leaves: "12 items", "3 of 12 items". Above the
 // table, not under it, where a long list pushed the count out of sight;
@@ -3629,15 +3621,6 @@ void FilterRow(const char *id, char *buffer, std::size_t size, const std::functi
     Im::SameLine((std::max)(0.0f, right - TextWidth(text)), -1.0f);
     Im::AlignTextToFramePadding();
     Im::TextDisabled("%s", text.c_str());
-}
-
-// Does any of a row's cells, as its table shows them, hold the filter's
-// text? A filter on the name alone missed what the other columns are for:
-// "Fire" among the spells, "Heavy" among the armour.
-bool AnyContains(const std::vector<std::string> &cells, const char *needle)
-{
-    return std::any_of(cells.begin(), cells.end(),
-                       [needle](const std::string &cell) { return ContainsNoCase(cell, needle); });
 }
 
 // Text flush with the right edge of the current table cell, for a column of
@@ -4080,34 +4063,19 @@ bool ItemShown(const InventoryItem &item, const InventoryTabState &state)
     return AnyContains(cells, g_inventoryList.filter);
 }
 
-// Which of two numbers comes first, as a column's compare answers it: -1, 0
-// or 1.
-int Compare(double a, double b)
-{
-    return a < b ? -1 : (a > b ? 1 : 0);
-}
-
-// Put the rows in the order the table's header asks for. Every list sorts
-// the same way and only the column differs, so the column is all a list
-// says: `compare` answers -1, 0 or 1 for two rows in the column named.
-// Ties go by name whichever way the column points, so rows that are equal
-// under it keep one order rather than shuffling as the sort runs again; a
-// table whose header has not been clicked yet has no spec, and its rows are
-// left in the order they came.
+// Put the rows in the order the table's header asks for: the column and
+// the direction are read off the table's sort spec, the order itself is
+// core's (core/Table.h, SortRows, tested). A table whose header has not
+// been clicked yet has no spec, and its rows are left in the order they
+// came.
 template <typename Row, typename Compared> void SortRows(std::vector<const Row *> &rows, const Compared &compare)
 {
     const auto *specs = Im::TableGetSortSpecs();
     if (!specs || specs->SpecsCount < 1 || !specs->Specs)
         return;
     const auto &spec = specs->Specs[0];
-    const auto column = static_cast<Column>(spec.ColumnUserID);
-    const bool ascending = spec.SortDirection != Im::ImGuiSortDirection_Descending;
-    std::stable_sort(rows.begin(), rows.end(), [&](const Row *a, const Row *b) {
-        const int c = compare(*a, *b, column);
-        if (c == 0)
-            return a->name < b->name;
-        return ascending ? c < 0 : c > 0;
-    });
+    ft::SortRows(rows, compare, static_cast<Column>(spec.ColumnUserID),
+                 spec.SortDirection != Im::ImGuiSortDirection_Descending);
 }
 
 // The rows to show, in the order the table's header asks for. Sorted every

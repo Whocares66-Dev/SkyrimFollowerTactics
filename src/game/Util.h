@@ -29,17 +29,9 @@ namespace ft::game
 
 // THE tactics clock: GAME time, expressed in real seconds at the current
 // timescale. Every cooldown and every package lease is measured on this.
-//
-// Game time is the clock the game itself paces things by, and it already has
-// every property we want: it stops in menus and while the world is frozen, so
-// a request armed just before the panel opened is exactly as old when it
-// closes; and it jumps on wait, sleep and fast travel, which expires every
-// cooldown -- also what we want. Timescale (20 by default) is divided out at
-// each step, so "2 s" means two real seconds of play whatever the timescale.
-//
-// Read from the hour-of-day global, not "hours passed": the latter is a float
-// that loses sub-second precision after a few hundred game days, the former
-// stays within 0..24 and precise. Day wraps are counted here. Any thread.
+// A reading of the calendar's hour and timescale, handed to core's
+// GameClock (core/Clock.h), which says why game time and what the hour
+// alone cannot tell. Any thread.
 [[nodiscard]] double TacticsSeconds();
 
 // "Lydia (000A2C94)" -- name plus FormID, because in a test cell you will have

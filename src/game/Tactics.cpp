@@ -1,6 +1,7 @@
 #include "game/Tactics.h"
 
 #include "core/Evaluator.h"
+#include "core/Tick.h"
 #include "core/Vocabulary.h"
 #include "game/Actions.h"
 #include "game/Blows.h"
@@ -68,12 +69,8 @@ struct FollowerState
     // new rules, or a new fight, report afresh.
     ft::Trace reported;
     ft::RuleSet reportedRules;
-    // In combat on the last tick, for the edges: the first evaluation of a
-    // fight, and the one farewell evaluation after it.
-    bool fighting{false};
-    // Which list was evaluated last, and so whose a list in progress is:
-    // one context serves both, and a tick hands the actor to one list.
-    ft::Moment moment{ft::Moment::Combat};
+    // The fight's edges and the list evaluated last (core/Tick.h).
+    ft::ActorTick tick;
     // The requested action in flight -- a cast, a shout, a power attack, a
     // bash -- whose cooldown starts again when it is over.
     std::optional<ft::Decision::Step> inFlight;
@@ -121,21 +118,22 @@ std::unordered_map<ft::ActorId, ft::RuleSet> &RuleSetsOf(ft::Moment moment)
 // at the next save. Game thread only.
 std::unordered_map<ft::ActorId, Identity> g_identities;
 
-// The spells an actor's rules cast, from both lists: what the snapshot
-// prices (Sensors.h, BuildSnapshot). A rule added in the panel is in the
-// next tick's list, so a newly named spell is priced on the tick it could
-// first fire.
-std::vector<std::uint32_t> SpellsNamedBy(ft::ActorId id)
+// An actor's two lists, read together under the one lock (core/Tick.h,
+// ActorRules): the tick and the page each take one copy and decide
+// everything from it.
+ft::ActorRules RulesOf(ft::ActorId id)
 {
-    std::vector<std::uint32_t> named;
+    ft::ActorRules rules;
+    rules.combat.moment = ft::Moment::Combat;
+    rules.idle.moment = ft::Moment::Idle;
+    std::scoped_lock lock(g_rulesMutex);
     for (const auto moment : {ft::Moment::Combat, ft::Moment::Idle})
     {
-        for (const ft::Rule &rule : GetRules(id, moment).rules)
-            for (const ft::Action &action : rule.actions)
-                if (action.kind == ft::ActionKind::CastSpell && action.form != 0)
-                    named.push_back(action.form);
+        const auto &sets = RuleSetsOf(moment);
+        if (const auto it = sets.find(id); it != sets.end())
+            (moment == ft::Moment::Idle ? rules.idle : rules.combat) = it->second;
     }
-    return named;
+    return rules;
 }
 
 // First sight of a follower: take their record from the loaded save, if
@@ -174,8 +172,9 @@ std::vector<Filed> ProfilesToSave()
         f.profile.followerForm = who.form;
         f.profile.enabled = IsFollowerEnabled(id, ft::Moment::Combat);
         f.profile.idleEnabled = IsFollowerEnabled(id, ft::Moment::Idle);
-        f.profile.rules = GetRules(id, ft::Moment::Combat);
-        f.profile.idleRules = GetRules(id, ft::Moment::Idle);
+        ft::ActorRules rules = RulesOf(id);
+        f.profile.rules = std::move(rules.combat);
+        f.profile.idleRules = std::move(rules.idle);
         f.profile.pins = PlayerPinsOf(id);
         f.profile.bans = BansOf(id);
         filed.push_back(std::move(f));
@@ -440,9 +439,9 @@ void FillTactics(RE::Actor *actor, FollowerView &v, ft::Moment moment)
         if (option.dualCast)
             v.holdings.dualCastable.push_back(option.form);
     }
-    // Asked here rather than of the snapshot: out of a fight there is no
-    // snapshot to speak of, and the editor greys a rule then as much as in
-    // one. The perk alone, not what is in the hands: a follower with no
+    // Asked here rather than of the snapshot: out of a fight a snapshot is
+    // built only for an idle list with rules, and the editor greys a rule
+    // then as much as in one. The perk alone, not what is in the hands: a follower with no
     // shield still has the perk or has not.
     v.holdings.powerBashPerk = PowerBashPerkMet(actor);
     for (const auto &item : v.inventory)
@@ -484,36 +483,24 @@ void FillTactics(RE::Actor *actor, FollowerView &v, ft::Moment moment)
                 return option.name;
         return {};
     };
-    ft::RuleSet rules = GetRules(v.id, moment);
-    bool renamed = false;
-    for (ft::Rule &rule : rules.rules)
-    {
-        for (ft::Action &action : rule.actions)
-        {
-            if (!ft::NamesForm(action.kind) || action.form == 0)
-                continue;
-            const std::string now = currentName(action);
-            if (!now.empty() && now != action.name)
-            {
-                action.name = now;
-                renamed = true;
-            }
-        }
-    }
+    // On the list itself, under its lock, before the snapshot below is
+    // built: the page's copy is for the page. (Until 2026-09-19 the copy,
+    // renamed, was written back whole after the build, over any edit the
+    // panel made from the render thread meanwhile.)
+    RefreshActionNames(v.id, moment, currentName);
+    const ft::ActorRules rules = RulesOf(v.id);
 
     // What each action could do this moment, for the cells: the tick's own
     // judgement over a fresh snapshot and the actor's cooldowns, deciding
-    // nothing. Out of a fight the snapshot is not otherwise built, so this
-    // is the one place it costs anything, once per page.
+    // nothing. Out of a fight the snapshot is built only for an idle list
+    // with rules, so for most actors this is the one place it costs
+    // anything, once per page.
     {
         auto &state = g_followers[v.id];
         state.eval.caps = RuntimeCapabilities(actor);
-        v.availability =
-            ft::ProbeAvailability(rules, BuildSnapshot(actor, TacticsSeconds(), SpellsNamedBy(v.id)), state.eval);
+        v.availability = ft::ProbeAvailability(
+            rules.Of(moment), BuildSnapshot(actor, TacticsSeconds(), ft::SpellsNamedBy(rules)), state.eval);
     }
-
-    if (renamed)
-        SetRules(v.id, std::move(rules));
 }
 
 // One page of the sheet, the seven a follower and the player both have. The
@@ -619,17 +606,19 @@ void RefreshRoster(const std::vector<RE::Actor *> &followers)
 // One list: the combat list in a fight and on its edges, the idle list out
 // of one. The tick chooses (below); the context is one, so a cooldown
 // spent by either holds for both.
-void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended, ft::Moment moment)
+void EvaluateFollower(RE::Actor *actor, double now, const ft::TickPlan &plan, const ft::ActorRules &lists)
 {
     const ft::ActorId id = actor->GetFormID();
     auto &state = g_followers[id];
+    const bool began = plan.began;
+    const bool ended = plan.ended;
+    const ft::Moment moment = *plan.list;
 
     state.eval.caps = RuntimeCapabilities(actor);
-    state.moment = moment;
 
     const auto started = std::chrono::steady_clock::now();
 
-    ft::Snapshot snapshot = BuildSnapshot(actor, now, SpellsNamedBy(id));
+    ft::Snapshot snapshot = BuildSnapshot(actor, now, ft::SpellsNamedBy(lists));
 
     // Who is who, once per fight, so the Ally and Enemy subjects can be
     // read against the log. The fight's edge is the tick's (below); what
@@ -669,9 +658,8 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended, ft::
         log::tactics.event(log::Level::Info, "combat.left", actor, {}, "{} left combat -- the Combat end rules run",
                            Describe(actor));
 
-    // This follower's own rules, not a shared static -- the whole point of
-    // making them per-follower.
-    const ft::RuleSet rules = GetRules(id, moment);
+    // This follower's own rules, the version the tick read.
+    const ft::RuleSet &rules = lists.Of(moment);
     ft::Trace trace;
     ft::ActionTrace actionTrace;
     const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
@@ -806,21 +794,18 @@ bool EvaluationHeld()
     return pausedMenu || frozenClock;
 }
 
-// Which of an actor's two lists this tick evaluates, or neither. The
-// combat list in a fight, on its farewell, and while a list of its own is
-// in progress -- the Combat end lists run on after the fight, one action
-// per tick. Otherwise the idle list, while it has rules or a list of its
-// own in progress: out of a fight nothing else is decided, so an actor
-// with no idle rules costs no snapshot at all. The fight's first tick goes
-// to the combat list whatever the idle list was doing; the core drops the
-// idle list's sequence on that edge.
-std::optional<ft::Moment> ListToEvaluate(const FollowerState &state, bool fighting, bool ended, ft::ActorId id)
+// What the tick reads of an actor for the core's choice of list
+// (core/Tick.h): whether they are fighting, whether anything can be
+// performed, and the switches.
+ft::ActorTick::Now ReadTick(ft::ActorId id, const ft::ActorRules &rules, bool fighting, bool held)
 {
-    if (fighting || ended || (state.eval.InProgress() && state.moment == ft::Moment::Combat))
-        return ft::Moment::Combat;
-    if (state.eval.InProgress() || !GetRules(id, ft::Moment::Idle).rules.empty())
-        return ft::Moment::Idle;
-    return std::nullopt;
+    ft::ActorTick::Now now;
+    now.fighting = fighting;
+    now.held = held || !g_enabled.load();
+    now.combatEnabled = IsFollowerEnabled(id, ft::Moment::Combat);
+    now.idleEnabled = IsFollowerEnabled(id, ft::Moment::Idle);
+    now.idleHasRules = !rules.idle.rules.empty();
+    return now;
 }
 
 // Pacing lives on a separate thread; the work itself runs on the game thread via
@@ -933,16 +918,10 @@ void Tick()
                 g_bleedingOut.erase(follower->GetFormID());
         }
 
-        // The edges of a fight, from the tick: one evaluation is the first
-        // of the fight, and one more runs after it ends, for the rules that
-        // ask about exactly that. The Combat end lists that evaluation
-        // queues run one action per tick, so evaluation goes on out of the
-        // fight while one is in progress; the core decides nothing else on
-        // those ticks.
-        // An edge is used up only by an evaluation. Held down or switched
-        // off through it, the follower still owes the fight its first
-        // evaluation, or the farewell one -- a heal-after-the-fight rule is
-        // exactly what someone just up from bleeding out needs.
+        // The edges of a fight, and which list this tick is for, are the
+        // core's to decide (core/Tick.h, ActorTick): held down through an
+        // edge, the follower still owes the fight its first evaluation, or
+        // the farewell one.
         auto &state = g_followers[follower->GetFormID()];
         // A request ended since the last tick: its cooldown runs from now,
         // the end, not from the decision (MinimumCooldown in core/Rule.h).
@@ -951,19 +930,10 @@ void Tick()
             ft::RestartCooldown(state.eval, state.inFlight->action, state.inFlight->target, now);
             state.inFlight.reset();
         }
-        const bool began = fighting && !state.fighting;
-        const bool ended = !fighting && state.fighting;
-
-        // The list this tick is for, then that list's own switch.
-        if (g_enabled.load() && !down)
-        {
-            if (const auto list = ListToEvaluate(state, fighting, ended, follower->GetFormID());
-                list && IsFollowerEnabled(follower->GetFormID(), *list))
-            {
-                state.fighting = fighting;
-                EvaluateFollower(follower, now, began, ended, *list);
-            }
-        }
+        const ft::ActorRules lists = RulesOf(follower->GetFormID());
+        if (const ft::TickPlan plan =
+                state.tick.Plan(state.eval, ReadTick(follower->GetFormID(), lists, fighting, down)))
+            EvaluateFollower(follower, now, plan, lists);
     }
 
     // The player, under rules of their own (dev/PLAYER.md). Found by hand,
@@ -990,18 +960,10 @@ void Tick()
                                held ? std::string("is ") + held + " -- tactics held" : "is free -- tactics resume");
             g_playerHeld = held;
         }
-        const bool fighting = player->IsInCombat();
-        const bool began = fighting && !state.fighting;
-        const bool ended = !fighting && state.fighting;
-        if (g_enabled.load() && !held)
-        {
-            if (const auto list = ListToEvaluate(state, fighting, ended, player->GetFormID());
-                list && IsFollowerEnabled(player->GetFormID(), *list))
-            {
-                state.fighting = fighting;
-                EvaluateFollower(player, now, began, ended, *list);
-            }
-        }
+        const ft::ActorRules lists = RulesOf(player->GetFormID());
+        if (const ft::TickPlan plan = state.tick.Plan(
+                state.eval, ReadTick(player->GetFormID(), lists, player->IsInCombat(), held != nullptr)))
+            EvaluateFollower(player, now, plan, lists);
     }
 
     // Armed cast requests are withdrawn from here, whether or not anyone is
@@ -1169,6 +1131,16 @@ void SetRules(ft::ActorId id, ft::RuleSet rules)
 {
     std::scoped_lock lock(g_rulesMutex);
     RuleSetsOf(rules.moment)[id] = std::move(rules);
+}
+
+void RefreshActionNames(ft::ActorId id, ft::Moment moment,
+                        const std::function<std::string(const ft::Action &)> &currentName)
+{
+    std::scoped_lock lock(g_rulesMutex);
+    auto &sets = RuleSetsOf(moment);
+    const auto it = sets.find(id);
+    if (it != sets.end()) [[maybe_unused]]
+        const bool renamed = ft::RefreshActionNames(it->second, currentName);
 }
 
 void ForgetSession()

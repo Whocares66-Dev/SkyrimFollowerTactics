@@ -1,5 +1,6 @@
 #include "game/Profiles.h"
 
+#include "core/CoSave.h"
 #include "game/Log.h"
 #include "game/Settings.h"
 #include "game/Tactics.h"
@@ -18,13 +19,8 @@ namespace
 // block on the next save when the plugin is gone -- which is what makes
 // removing the mod clean.
 constexpr std::uint32_t kPluginId = 'FTAC';
-// One record per follower: the key, then the JSON text, each as a length
-// and the bytes. The record's version is the format's schema number, so
-// a record from a newer build says so before it is parsed.
-constexpr std::uint32_t kFollowerRecord = 'PROF';
-// One record for the player's own choices, which belong to no follower:
-// what the Settings page requires (game/Settings.h), as JSON text.
-constexpr std::uint32_t kSettingsRecord = 'SETT';
+// The records themselves -- a follower's, the settings' -- are framed in
+// core (core/CoSave.h); this opens, writes and reads them.
 
 // The records the loaded save holds, by key, until a follower claims
 // theirs. Whatever is still here when the game saves is written back as
@@ -32,25 +28,15 @@ constexpr std::uint32_t kSettingsRecord = 'SETT';
 // made while they are away. Game thread.
 std::unordered_map<std::string, std::string> g_saved;
 
-bool WriteString(const SKSE::SerializationInterface *intfc, const std::string &s)
+bool WriteRecord(const SKSE::SerializationInterface *intfc, std::uint32_t type, const std::string &payload)
 {
-    const auto length = static_cast<std::uint32_t>(s.size());
-    return intfc->WriteRecordData(length) && (length == 0 || intfc->WriteRecordData(s.data(), length));
-}
-
-bool ReadString(const SKSE::SerializationInterface *intfc, std::string &s)
-{
-    std::uint32_t length = 0;
-    if (intfc->ReadRecordData(length) != sizeof length)
-        return false;
-    s.resize(length);
-    return length == 0 || intfc->ReadRecordData(s.data(), length) == length;
+    return intfc->OpenRecord(type, static_cast<std::uint32_t>(ft::kProfileSchema)) &&
+           (payload.empty() || intfc->WriteRecordData(payload.data(), static_cast<std::uint32_t>(payload.size())));
 }
 
 bool WriteFollower(const SKSE::SerializationInterface *intfc, const std::string &key, const std::string &text)
 {
-    return intfc->OpenRecord(kFollowerRecord, static_cast<std::uint32_t>(ft::kProfileSchema)) &&
-           WriteString(intfc, key) && WriteString(intfc, text);
+    return WriteRecord(intfc, ft::kFollowerRecord, ft::PackFollower(key, text));
 }
 
 void OnSave(SKSE::SerializationInterface *intfc)
@@ -59,8 +45,7 @@ void OnSave(SKSE::SerializationInterface *intfc)
     // where the tick reads it (game/Tactics.h); it goes in the same record.
     ft::Settings settings = CurrentSettings();
     settings.tacticsEnabled = IsEnabled();
-    if (!intfc->OpenRecord(kSettingsRecord, static_cast<std::uint32_t>(ft::kProfileSchema)) ||
-        !WriteString(intfc, ft::WriteSettings(settings)))
+    if (!WriteRecord(intfc, ft::kSettingsRecord, ft::PackSettings(ft::WriteSettings(settings))))
         log::profiles.error("could not write the settings to the save");
 
     std::size_t live = 0;
@@ -86,48 +71,52 @@ void OnSave(SKSE::SerializationInterface *intfc)
     log::profiles.info("saved {} follower record(s), {} carried from the loaded save", live, carried);
 }
 
+// Each record's bytes in full, as SKSE describes them, then core's
+// reading of the lot. A record longer than any of ours could be is not
+// read at all: SKSE skips what is left unread when the next is asked for.
 void OnLoad(SKSE::SerializationInterface *intfc)
 {
     g_saved.clear();
+    std::vector<ft::CoSaveRecord> records;
     std::uint32_t type = 0;
     std::uint32_t version = 0;
     std::uint32_t length = 0;
     while (intfc->GetNextRecordInfo(type, version, length))
     {
-        if (type == kSettingsRecord)
+        if (length > ft::kMaxRecordBytes)
         {
-            std::string text;
-            if (!ReadString(intfc, text))
-            {
-                log::profiles.error("the settings record is cut short -- the defaults stand");
-                continue;
-            }
-            if (const auto settings = ft::ReadSettings(text))
-            {
-                SetSettings(*settings);
-                SetEnabled(settings->tacticsEnabled);
-            }
-            else
-                log::profiles.warn("the settings record could not be read -- the defaults stand");
+            log::profiles.error("co-save record {:08X} claims {} bytes -- not ours to read, skipped", type, length);
             continue;
         }
-        if (type != kFollowerRecord)
+        std::string payload(length, '\0');
+        if (length != 0 && intfc->ReadRecordData(payload.data(), length) != length)
         {
-            log::profiles.warn("co-save record {:08X} is not one this build knows -- skipped", type);
+            log::profiles.error("co-save record {:08X} is cut short -- skipped", type);
             continue;
         }
-        std::string key;
-        std::string text;
-        if (!ReadString(intfc, key) || !ReadString(intfc, text))
-        {
-            log::profiles.error("a co-save record is cut short -- skipped");
-            continue;
-        }
-        if (version > static_cast<std::uint32_t>(ft::kProfileSchema))
-            log::profiles.warn("{}: saved by a newer build (schema {}) -- reading what this one understands", key,
-                               version);
-        g_saved[key] = std::move(text);
+        records.push_back({type, version, std::move(payload)});
     }
+
+    ft::CoSaveContents contents = ft::UnpackCoSave(records);
+    for (const auto &[level, note] : contents.notes)
+    {
+        if (level == log::Level::Error)
+            log::profiles.error("{}", note);
+        else
+            log::profiles.warn("{}", note);
+    }
+    if (contents.settings)
+    {
+        if (const auto settings = ft::ReadSettings(*contents.settings))
+        {
+            SetSettings(*settings);
+            SetEnabled(settings->tacticsEnabled);
+        }
+        else
+            log::profiles.warn("the settings record could not be read -- the defaults stand");
+    }
+    for (ft::SavedFollower &saved : contents.followers)
+        g_saved[saved.key] = std::move(saved.text);
     log::profiles.info("the save holds tactics for {} follower(s)", g_saved.size());
 }
 

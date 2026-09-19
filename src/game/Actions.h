@@ -17,6 +17,15 @@ namespace ft::game
 // Why an action did not happen, for the log. The rule engine already explains
 // why a rule did not *fire*; this explains why a rule that fired did not take
 // effect, which is a different and much more suspicious failure.
+// What a result is evidence of, per action, since the levels differ: a
+// drink or an equip (Consume, the equip actions) says Performed when the
+// engine's equip call was made and took the item -- for a queued equip
+// its effect shows on the actor's next update, and nothing here proves
+// the potion was drunk; a poison or a charge says Performed when the
+// extra data was written and the ability refreshed; a cast, a scroll, a
+// shout, a power, a power attack or a bash says Requested, and its
+// outcome follows as rule.resolved when the lease or the run is over,
+// which is when its cooldown starts (game/Tactics.cpp, inFlight).
 enum class ActionResult : std::uint8_t
 {
     Performed,

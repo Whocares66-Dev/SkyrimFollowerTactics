@@ -1,6 +1,6 @@
 # A model of the engine, for the tests
 
-A plan, not yet built. What we would need to test the item-handling logic against the engine as we have measured it, without running Skyrim; what is already known well enough to write down; what has to be read or measured first. `dev/UNIQUE.md` holds the measurements themselves and stays the single record of them; this file says how they would become executable.
+Part one -- the view and the decisions over it -- is built (2026-09-19, `src/core/BagView.h`); part two, the fake engine, is still a plan. What we would need to test the item-handling logic against the engine as we have measured it, without running Skyrim; what is already known well enough to write down; what has to be read or measured first. `dev/UNIQUE.md` holds the measurements themselves and stays the single record of them; this file says how they would become executable.
 
 ## Why
 
@@ -93,13 +93,13 @@ Each is one of today's, as a test over the fake bag, in the order they were foun
 
 ## Where it would live
 
-- `src/core/BagView.h`: the view and the decisions over it, tested in `tests/test_bag.cpp` by hand-built views first, before the fake engine exists.
+- `src/core/BagView.h`: the view and the decisions over it, tested in `tests/test_bag.cpp` by hand-built views first, before the fake engine exists. **Built 2026-09-19** (`wip-game-test`): the view, the questions over it and `PlanEquip`, the game switched over, nothing behaving differently; not yet run in play since the switch.
 - `tests/model/`: the fake engine, one file for the state and one for the behaviours, each behaviour's comment its citation.
 - `dev/UNIQUE.md` stays the record of measurements and gains a line per new one; this file points there and never repeats a number.
 
 ## Order
 
-1. The view and the decisions in core, the game switched over to them, nothing behaving differently. Tests over hand-built views for each decision.
+1. The view and the decisions in core, the game switched over to them, nothing behaving differently. Tests over hand-built views for each decision. **Done 2026-09-19.**
 2. The fake engine with the behaviours that have a source today, the watchdog simulation folded in.
 3. The eleven scenarios, then every open item above as it is read.
 

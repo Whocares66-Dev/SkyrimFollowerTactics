@@ -100,4 +100,24 @@ std::size_t ActionsNotHad(const Rule &rule, const Holdings &has)
                                                   [&](const Action &action) { return !ActionHad(action, has); }));
 }
 
+bool RefreshActionNames(RuleSet &rules, const std::function<std::string(const Action &)> &currentName)
+{
+    bool renamed = false;
+    for (Rule &rule : rules.rules)
+    {
+        for (Action &action : rule.actions)
+        {
+            if (!NamesForm(action.kind) || action.form == 0)
+                continue;
+            const std::string now = currentName(action);
+            if (!now.empty() && now != action.name)
+            {
+                action.name = now;
+                renamed = true;
+            }
+        }
+    }
+    return renamed;
+}
+
 } // namespace ft

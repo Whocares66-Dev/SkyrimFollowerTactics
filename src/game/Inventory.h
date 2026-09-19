@@ -56,7 +56,7 @@ struct InventoryItem
     // each a row of their own, as the game's menu shows them, numbered from
     // 1 in the entry's order. 0 is the plain stack. So the form repeats
     // across rows, and a row is named by Key(); a pin, a ban and a rule's
-    // equip are by form, and go for every row of it.
+    // equip name the row's variant (below), or the form for every row.
     std::uint32_t stack{0};
     // The row's variant: what a pin, a ban or a rule on this row names.
     // Coarser than the row: the poisoned dagger and the clean stack are one
