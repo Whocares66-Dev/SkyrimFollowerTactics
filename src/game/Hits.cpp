@@ -1,5 +1,6 @@
 #include "game/Hits.h"
 
+#include "core/HitKinds.h"
 #include "game/Log.h"
 #include "game/Util.h"
 
@@ -21,6 +22,13 @@ constexpr double kWindow = 3.0;
 // by the tick: locked.
 std::mutex g_mutex;
 ft::HitTable g_hits;
+
+} // namespace
+
+ft::Resist ResistOf(const RE::EffectSetting *base);
+
+namespace
+{
 
 void Note(ft::ActorId target, DamageKind kind, ft::ActorId attacker)
 {
@@ -45,28 +53,21 @@ class HitSink : public RE::BSTEventSink<RE::TESHitEvent>
             return RE::BSEventNotifyControl::kContinue;
         const ft::ActorId target = IdOf(ev->target);
         const ft::ActorId attacker = IdOf(ev->cause);
+        // What the hit counts as is core's (core/HitKinds.h, tested); this
+        // reads the event.
+        ft::HitSeen hit;
+        hit.projectile = ev->projectile != 0;
         auto *source = RE::TESForm::LookupByID(ev->source);
         if (auto *magic = source ? source->As<RE::MagicItem>() : nullptr)
         {
+            hit.magic = true;
             for (const auto *effect : ResolvedEffects(*magic))
-            {
                 if (effect->baseEffect->IsDetrimental())
-                {
-                    Note(target, DamageKind::Magic, attacker);
-                    Note(target, KindOfEffect(effect->baseEffect), attacker);
-                }
-            }
-            // A poison's effects say poison by their resist value; a poison
-            // with none still is one.
-            if (magic->IsPoison())
-                Note(target, DamageKind::Poison, attacker);
-            return RE::BSEventNotifyControl::kContinue;
+                    hit.detrimental.push_back(ResistOf(effect->baseEffect));
+            hit.poison = magic->IsPoison();
         }
-        // A weapon, a fist, a trap. One that arrived as a projectile -- an
-        // arrow, a bolt -- is ranged; anything else is a blow. A rule can
-        // answer the archer, or the one in the follower's face, in
-        // particular.
-        Note(target, ev->projectile != 0 ? DamageKind::Ranged : DamageKind::Melee, attacker);
+        for (const DamageKind kind : ft::KindsOfHit(hit))
+            Note(target, kind, attacker);
         return RE::BSEventNotifyControl::kContinue;
     }
 };
@@ -118,12 +119,26 @@ RE::ActorValue ResistValueOf(DamageKind kind)
     }
 }
 
+ft::Resist ResistOf(const RE::EffectSetting *base)
+{
+    switch (base->data.resistVariable)
+    {
+    case RE::ActorValue::kResistFire:
+        return ft::Resist::Fire;
+    case RE::ActorValue::kResistFrost:
+        return ft::Resist::Frost;
+    case RE::ActorValue::kResistShock:
+        return ft::Resist::Shock;
+    case RE::ActorValue::kPoisonResist:
+        return ft::Resist::Poison;
+    default:
+        return ft::Resist::Other;
+    }
+}
+
 DamageKind KindOfEffect(const RE::EffectSetting *base)
 {
-    for (const auto kind : {DamageKind::Fire, DamageKind::Frost, DamageKind::Shock, DamageKind::Poison})
-        if (base->data.resistVariable == ResistValueOf(kind))
-            return kind;
-    return DamageKind::Magic;
+    return ft::KindOfResist(ResistOf(base));
 }
 
 void WatchHits()

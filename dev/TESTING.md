@@ -61,7 +61,7 @@ Snapshot assembly (one family at a time):
 - [ ] Stats, reach and body radius. Left: `ReadStat` is one line of arithmetic over three engine reads, and the reach is the engine's own; nothing to decide.
 - [x] Attack plans: the events by swing and the power attack's base cost (core/Blows.h); `DescribeHands` and `DualWieldAllowed` stay engine reads.
 - [x] Poison and recharge: `HandToPoison` and `ChargeAfterRecharge` (core/Blows.h).
-- [ ] Hit sinks' classification into the tested `HitTable`.
+- [x] Hit sinks: `KindsOfHit` and `KindOfResist` (core/HitKinds.h) over what the event says; the sinks read the event and note the kinds.
 
 Inventory beyond the view:
 
@@ -72,20 +72,20 @@ Inventory beyond the view:
 
 The panel's decisions:
 
-- [ ] Cell readers, the click's next request, `CellRank`.
+- [ ] Cell readers, the click's next request, `CellRank`. Left: each is one expression over the panel's row types, and `WearRequest` is the game's enum; moving them would move the row types with them for no decision gained.
 - [x] The sort's order and the filter's matching (`core/Table.h`: `SortRows`, `Compare`, `ContainsNoCase`, `AnyContains`); the panel reads the sort spec and composes each list's cells, which stay with its row types.
 - [x] Open-row state: `OpenRows` (core/OpenRows.h) keeps which drawers are open and follows the rules through a move or a removal; the panel opens, closes and asks.
-- [ ] Source navigation (`SourcePage`, `ItemPageOf`).
-- [ ] `SyncFollowers` with its clock and pending set made explicit.
+- [ ] Source navigation. Left: page and detail ids are the panel's own; nothing a rule or a follower depends on.
+- [x] `SyncFollowers`: `MenuSlots` (core/MenuSlots.h) decides who has which slot, when a batch of newcomers is added and when a slot is freed, with the steady clock handed in; the panel adds and deletes the entries.
 
 Other seams:
 
 - [x] `FindStack`: `ChooseStack` (core/Lease.h) over the places in the order the game finds them.
-- [ ] Roster cleanup in `Tick` (away, dismissed, dead).
+- [ ] Roster cleanup in `Tick`. Left: one boolean, nearby or else gone when not a teammate or dead, with a comment that says why.
 - [x] `ReportVerdicts`: the action a verdict is worded for is `ExplainedKind` (core/Evaluator.h); `VerdictChanges` was core already.
-- [ ] Profile lifecycle (`ClaimSaved`, `IdentifyFollower`, carry-forward, revert).
-- [ ] Log emit and archive with temporary directories.
-- [ ] Custom skills loading and tree assembly.
+- [ ] Profile lifecycle. Left: `ClaimSaved` and the carry-forward are twenty lines over the tested `CoSave` and `Profile`; the identity choice reads the actor's records. An in-play check in `dev/TODO.md` covers the lifecycle.
+- [ ] Log emit and archive. Left: the naming and retention are `Sessions`, tested; what remains is spdlog and the filesystem, which a temporary-directory harness could cover but which has not failed.
+- [ ] Custom skills loading. Left: the parser and the tree order are tested in `CustomSkills`; the loader is a directory walk and a form lookup.
 - [x] Remaining time: `RemainingOn` (core/Spells.h) over the effects as read. The description helpers (`ReplaceNoCase` and the text assembly) are formatting over strings and stay with the sheets.
 
 Not planned: a `GameAdapter` class. The discipline it names is followed; the recording backend arrives with the coordinator harness, not before.

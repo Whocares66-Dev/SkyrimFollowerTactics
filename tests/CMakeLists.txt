@@ -31,6 +31,7 @@ add_executable(ft_tests
     test_effects.cpp
     test_evaluator.cpp
     test_eventring.cpp
+    test_hitkinds.cpp
     test_hits.cpp
     test_idle.cpp
     test_lease.cpp
@@ -38,6 +39,7 @@ add_executable(ft_tests
     test_logevent.cpp
     test_logsettings.cpp
     test_marks.cpp
+    test_menuslots.cpp
     test_openrows.cpp
     test_openrows.cpp
     test_party.cpp

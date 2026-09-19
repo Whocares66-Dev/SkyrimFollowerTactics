@@ -14,6 +14,7 @@
 
 #include "core/Breakdown.h"
 #include "core/Effects.h"
+#include "core/MenuSlots.h"
 #include "core/OpenRows.h"
 #include "core/Table.h"
 #include "core/Vocabulary.h"
@@ -5856,19 +5857,15 @@ void DrawFollower(const FollowerView &view)
 
 constexpr std::size_t kSlots = 64;
 
-struct Slot
-{
-    ft::ActorId id{0}; // 0: free
-    std::string name;  // as registered, for the entry's path
-};
-
+// Who has which slot, and when a newcomer is added: core's
+// (core/MenuSlots.h, tested), with the clock handed in.
 std::mutex g_slotMutex;
-std::array<Slot, kSlots> g_slots{};
+ft::MenuSlots g_slots{kSlots};
 
 [[nodiscard]] ft::ActorId SlotOwner(std::size_t slot)
 {
     std::scoped_lock lock(g_slotMutex);
-    return slot < kSlots ? g_slots[slot].id : 0;
+    return g_slots.OwnerOf(slot);
 }
 
 void DrawSlot(std::size_t slot)
@@ -6050,32 +6047,17 @@ void SyncFollowers()
     static const auto renderers = Renderers(std::make_index_sequence<kSlots>{});
 
     const auto followers = ObserveFollowers();
-    const auto present = [&](ft::ActorId id) {
-        for (const auto &view : followers)
-        {
-            if (view->id == id)
-                return true;
-        }
-        return false;
-    };
+    std::vector<ft::ActorId> ids;
+    std::vector<ft::MenuSlot> present;
+    for (const auto &view : followers)
+    {
+        ids.push_back(view->id);
+        present.push_back({view->id, view->name});
+    }
 
     // Dismissed: delete the entry where the framework allows it, and free
     // the slot. Where it does not, the slot stays theirs, so the entry still
     // reads as their page if they are recruited again.
-    {
-        std::scoped_lock lock(g_slotMutex);
-        for (auto &slot : g_slots)
-        {
-            if (slot.id == 0 || present(slot.id))
-                continue;
-            if (SKSEMenuFramework::DeleteSection("Follower Tactics/Followers/" + slot.name))
-            {
-                log::ui.debug("menu entry removed for {}", slot.name);
-                slot = {};
-            }
-        }
-    }
-
     // New: the first free slot, in name order, so the followers who appear
     // together list alphabetically. The frameworks in the field export
     // only AddSectionItem and AddWindow (dumpbin, 2026-09-11): an entry,
@@ -6083,65 +6065,36 @@ void SyncFollowers()
     // goes after them. A load reveals the party over a few ticks -- Serana
     // a tick after the other three, and at the end of the list -- so the
     // newcomers are held until nobody new has appeared for a moment, and
-    // added as one batch.
-    std::vector<const FollowerView *> arriving;
+    // added as one batch. On the steady clock: this is pacing, not play.
+    std::vector<ft::MenuSlots::Placed> placed;
     {
         std::scoped_lock lock(g_slotMutex);
-        for (const auto &view : followers)
+        for (const std::size_t slot : g_slots.Gone(ids))
         {
-            bool known = false;
-            for (const auto &slot : g_slots)
-                known = known || slot.id == view->id;
-            if (!known)
-                arriving.push_back(view.get());
-        }
-    }
-    static std::unordered_set<ft::ActorId> pending;
-    static std::chrono::steady_clock::time_point lastArrival;
-    std::unordered_set<ft::ActorId> now;
-    for (const auto *view : arriving)
-        now.insert(view->id);
-    if (now != pending)
-    {
-        pending = std::move(now);
-        lastArrival = std::chrono::steady_clock::now();
-    }
-    if (pending.empty() || std::chrono::steady_clock::now() - lastArrival < std::chrono::seconds(2))
-        return;
-    pending.clear();
-
-    std::sort(arriving.begin(), arriving.end(),
-              [](const FollowerView *a, const FollowerView *b) { return a->name < b->name; });
-    for (const auto *viewPtr : arriving)
-    {
-        const auto &view = *viewPtr;
-        std::size_t index = kSlots;
-        {
-            std::scoped_lock lock(g_slotMutex);
-            for (std::size_t i = 0; i < kSlots; ++i)
+            const std::string name = g_slots.NameOf(slot);
+            if (SKSEMenuFramework::DeleteSection("Follower Tactics/Followers/" + name))
             {
-                if (g_slots[i].id == 0)
-                {
-                    index = i;
-                    g_slots[i] = {view.id, view.name};
-                    break;
-                }
+                log::ui.debug("menu entry removed for {}", name);
+                g_slots.Free(slot);
             }
         }
+        placed = g_slots.Arrivals(present, NowSeconds(), 2.0);
+    }
+    for (const auto &[index, who] : placed)
+    {
         if (index == kSlots)
         {
             // Said once, since the panel would otherwise just lack a
             // name.
             static std::unordered_set<ft::ActorId> said;
-            if (said.insert(view.id).second)
-                log::ui.warn("no menu entry for {}: all {} are taken", view.name, kSlots);
+            if (said.insert(who.id).second)
+                log::ui.warn("no menu entry for {}: all {} are taken", who.name, kSlots);
             continue;
         }
-
         // Under a Followers subsection, apart from Settings: the path's
         // components are the tree.
-        SKSEMenuFramework::FullPathAddSectionItem("Follower Tactics/Followers/" + view.name, renderers[index]);
-        log::ui.debug("menu entry added for {} (slot {})", view.name, index);
+        SKSEMenuFramework::FullPathAddSectionItem("Follower Tactics/Followers/" + who.name, renderers[index]);
+        log::ui.debug("menu entry added for {} (slot {})", who.name, index);
     }
 }
 

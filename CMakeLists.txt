@@ -113,12 +113,14 @@ add_library(ft_core STATIC
     src/core/Effects.cpp
     src/core/Evaluator.cpp
     src/core/EventRing.cpp
+    src/core/HitKinds.cpp
     src/core/HitTable.cpp
     src/core/Lease.cpp
     src/core/Loadout.cpp
     src/core/LogEvent.cpp
     src/core/LogSettings.cpp
     src/core/Marks.cpp
+    src/core/MenuSlots.cpp
     src/core/OpenRows.cpp
     src/core/OpenRows.cpp
     src/core/PlayerCast.cpp
