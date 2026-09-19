@@ -6,6 +6,7 @@
 #include "core/CustomSkills.h"
 #include "core/Effects.h"
 #include "core/Party.h"
+#include "core/Spells.h"
 
 #include "game/CustomSkillsFramework.h"
 #include "game/Hits.h"
@@ -1789,109 +1790,105 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
         s.targetRunning = RunningEffects(mark);
 
     lap(Step::Hands);
-    // Spells: what they know, what is running, what is in hand. All three are
-    // ids only -- Snapshot never sees an RE:: type -- and all three are needed
-    // to tell "cannot", "already up" and "already held" apart in the status
-    // column.
-    // The shouts on the base record, for a Shout rule: known, cost nothing,
-    // held in no hand.
+    // Spells: what they know, what is running, what is in hand. All three
+    // are ids only -- Snapshot never sees an RE:: type -- and which of the
+    // records read is known, used today, castable or active is core's
+    // (core/Spells.h, ClassifySpells and ActiveSpells, tested); this reads
+    // the records, and prices the castable spells a rule names.
+    std::vector<ft::SpellSeen> seen;
+    std::vector<ft::ShoutWords> shoutWords;
     if (auto *npc = actor->GetActorBase())
     {
         if (auto *list = npc->GetSpellList())
         {
             for (std::uint32_t i = 0; i < list->numShouts; ++i)
             {
-                // A shout with no word unlocked is nobody's to shout, so it
-                // is not known here either: a rule that names one reports the
-                // shout missing rather than firing into silence.
-                if (list->shouts[i] && !IsWrapperShout(list->shouts[i]->GetFormID()) &&
-                    HighestUnlockedWord(list->shouts[i]) >= 0)
-                    s.spells.known.push_back(list->shouts[i]->GetFormID());
+                RE::TESShout *shout = list->shouts[i];
+                if (!shout)
+                    continue;
+                ft::SpellSeen fact;
+                fact.id = shout->GetFormID();
+                fact.kind = ft::SpellSeen::Kind::Shout;
+                fact.wrapper = IsWrapperShout(fact.id);
+                fact.highestWord = HighestUnlockedWord(shout);
+                seen.push_back(fact);
+                if (fact.wrapper)
+                    continue;
+                ft::ShoutWords words;
+                words.shout = fact.id;
+                for (const auto &variation : shout->variations)
+                    words.words.push_back(variation.spell ? variation.spell->GetFormID() : 0);
+                shoutWords.push_back(std::move(words));
             }
         }
     }
-    // A scroll carried is "known" for a Scroll rule: knowing and carrying
-    // are the one question for it, and it costs no magicka.
     for (const auto &[object, entry] :
          actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::Scroll); }))
-        if (object && entry.first > 0)
-            s.spells.known.push_back(object->GetFormID());
-    ForEachSpell(actor, [&s, actor, &priced](RE::SpellItem *spell) {
-        // A power is known too, for a Use power rule; it costs nothing and
-        // is not held in a hand, so it is in neither of the lists below.
-        // A greater power used today is in effect until the day turns: the
-        // engine keeps the ones used on the actor and its cast check refuses
-        // them, so the rule reports it and falls through rather than firing
-        // into the refusal every cooldown.
+    {
+        if (!object)
+            continue;
+        ft::SpellSeen fact;
+        fact.id = object->GetFormID();
+        fact.kind = ft::SpellSeen::Kind::Scroll;
+        fact.carried = entry.first;
+        seen.push_back(fact);
+    }
+    std::unordered_map<std::uint32_t, RE::SpellItem *> spellsById;
+    ForEachSpell(actor, [&](RE::SpellItem *spell) {
+        ft::SpellSeen fact;
+        fact.id = spell->GetFormID();
         if (IsPower(spell))
         {
-            s.spells.known.push_back(spell->GetFormID());
-            if (spell->GetSpellType() == RE::MagicSystem::SpellType::kPower && actor->IsInCastPowerList(spell))
-                s.spells.usedToday.push_back(spell->GetFormID());
-            return;
+            fact.kind = ft::SpellSeen::Kind::Power;
+            fact.greater = spell->GetSpellType() == RE::MagicSystem::SpellType::kPower;
+            fact.usedToday = fact.greater && actor->IsInCastPowerList(spell);
         }
-        if (!IsCastable(spell))
-            return;
-        s.spells.known.push_back(spell->GetFormID());
-        // And as the pin book sees it, for an equip rule.
+        else
+        {
+            fact.castable = IsCastable(spell);
+            spellsById[fact.id] = spell;
+        }
+        seen.push_back(fact);
+    });
+    const ft::SpellsKnown known = ft::ClassifySpells(seen);
+    s.spells.known.insert(s.spells.known.end(), known.known.begin(), known.known.end());
+    s.spells.usedToday.insert(s.spells.usedToday.end(), known.usedToday.begin(), known.usedToday.end());
+    for (const std::uint32_t id : known.castable)
+    {
+        RE::SpellItem *spell = spellsById[id];
+        // As the pin book sees it, for an equip rule.
         s.loadout.push_back(DescribeHoldable(actor, spell));
         // Priced only if a rule names it (Sensors.h): the engine's cost
         // calculation is the dear part of the whole snapshot.
-        if (std::find(priced.begin(), priced.end(), spell->GetFormID()) == priced.end())
-            return;
-        // Their cost, not the base cost: CalculateMagickaCost applies their skill
-        // and perks, which is what the AI will charge them.
+        if (std::find(priced.begin(), priced.end(), id) == priced.end())
+            continue;
+        // Their cost, not the base cost: CalculateMagickaCost applies their
+        // skill and perks, which is what the AI will charge them.
         const bool dualable = CanDualCast(actor, spell);
-        s.spells.costs.push_back({spell->GetFormID(), spell->CalculateMagickaCost(actor), dualable,
-                                  dualable ? DualCastCost(actor, spell) : 0.0f});
+        s.spells.costs.push_back(
+            {id, spell->CalculateMagickaCost(actor), dualable, dualable ? DualCastCost(actor, spell) : 0.0f});
         // A Reanimate's cap: the level of corpse it can raise is its
         // effect's magnitude (Reanimate Corpse 13, Revenant 21, Dread
-        // Zombie 30) -- as SHE casts it, perks and Fortify effects in, the
+        // Zombie 30) -- as they cast it, perks and Fortify effects in, the
         // same way the engine judges the corpse. The Corpse subject
         // measures the dead against it.
         for (const auto *effect : ResolvedEffects(*spell))
         {
             if (IsReanimate(effect))
             {
-                s.spells.caps.push_back({spell->GetFormID(), static_cast<int>(ActualMagnitude(actor, spell, effect))});
+                s.spells.caps.push_back({id, static_cast<int>(ActualMagnitude(actor, spell, effect))});
                 break;
             }
         }
-    });
+    }
 
     lap(Step::Spells);
-    // A shout's running effect belongs to its word's spell, not to the shout
-    // record a rule names, so the shouts known are looked up by their words
-    // and marked active by the shout: a Become Ethereal rule then waits
-    // while it holds, as a Dragonhide rule does.
-    std::vector<RE::TESShout *> shouts;
-    if (auto *npc = actor->GetActorBase())
-    {
-        if (auto *list = npc->GetSpellList())
-        {
-            for (std::uint32_t i = 0; i < list->numShouts; ++i)
-                if (list->shouts[i] && !IsWrapperShout(list->shouts[i]->GetFormID()))
-                    shouts.push_back(list->shouts[i]);
-        }
-    }
-    ForEachActiveEffect(actor, [&s, &shouts](RE::ActiveEffect &ae) {
-        // Instant effects have already happened and never lapse, so
-        // treating them as "still up" would block the rule forever.
-        if (!ae.spell || ae.duration <= 0.0f || ae.elapsedSeconds >= ae.duration)
-            return;
-        s.spells.active.push_back(ae.spell->GetFormID());
-        for (RE::TESShout *shout : shouts)
-        {
-            for (const auto &variation : shout->variations)
-            {
-                if (variation.spell == ae.spell)
-                {
-                    s.spells.active.push_back(shout->GetFormID());
-                    return;
-                }
-            }
-        }
+    std::vector<ft::EffectSeen> effects;
+    ForEachActiveEffect(actor, [&effects](RE::ActiveEffect &ae) {
+        effects.push_back({ae.spell ? ae.spell->GetFormID() : 0, ae.duration, ae.elapsedSeconds});
     });
+    const auto active = ft::ActiveSpells(effects, shoutWords);
+    s.spells.active.insert(s.spells.active.end(), active.begin(), active.end());
 
     lap(Step::Effects);
     FillBag(actor, s);

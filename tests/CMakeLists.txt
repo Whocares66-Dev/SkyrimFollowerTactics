@@ -41,6 +41,7 @@ add_executable(ft_tests
     test_playercast.cpp
     test_profile.cpp
     test_sessions.cpp
+    test_spells.cpp
     test_table.cpp
     test_tick.cpp
     test_vocabulary.cpp

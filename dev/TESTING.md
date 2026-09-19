@@ -56,7 +56,7 @@ Transitions (state in, plan out):
 Snapshot assembly (one family at a time):
 
 - [x] Party and corpses: `AssembleParty` (core/Party.h) over the facts one walk reads of each loaded actor; the game builds the views for the ids chosen, in the plan's order. The two walks became one.
-- [ ] Spells and effects (scrolls known when carried, wrapper shouts, no unlocked word, powers used today, instant and expired effects, only named spells priced).
+- [x] Spells and effects: `ClassifySpells` and `ActiveSpells` (core/Spells.h) over the records and the effect list as read; the snapshot prices the castable spells a rule names as before.
 - [ ] Buffs, consumable effects, applicability.
 - [ ] Stats, reach and body radius.
 - [ ] Hands and attack plans (`DescribeHands`, `PlanPowerAttack`, `PlanBash`, `DualWieldAllowed`).

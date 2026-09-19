@@ -124,6 +124,7 @@ add_library(ft_core STATIC
     src/core/Profile.cpp
     src/core/Rule.cpp
     src/core/Sessions.cpp
+    src/core/Spells.cpp
     src/core/Table.cpp
     src/core/Tick.cpp
     src/core/Vocabulary.cpp
