@@ -126,6 +126,7 @@ add_library(ft_core STATIC
     src/core/Table.cpp
     src/core/Tick.cpp
     src/core/Vocabulary.cpp
+    src/core/Watchdog.cpp
 )
 target_include_directories(ft_core PUBLIC src)
 target_compile_features(ft_core PUBLIC cxx_std_23)

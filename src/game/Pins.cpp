@@ -4,6 +4,7 @@
 
 #include "game/Pins.h"
 
+#include "core/Watchdog.h"
 #include "game/Addresses.h"
 
 #include "game/Log.h"
@@ -676,8 +677,9 @@ void ReportEnforced(RE::Actor *actor, const Pin &pin, RE::TESForm *form, bool fi
 // too, so it is what comes back. Keyed by follower; the transitions are
 // read on the watchdog's tick, which already asks IsInCombat every half
 // second.
-std::unordered_map<ft::ActorId, std::vector<Pin>> g_pinsBeforeFight;
-std::unordered_set<ft::ActorId> g_fighting;
+// Each actor's book across a fight (core/Watchdog.h): what was pinned
+// before it, given back after it.
+std::unordered_map<ft::ActorId, ft::FightBook> g_fights;
 
 // The fight is over: what it pinned is let go, what it displaced is pinned
 // again, and the watchdog, running next in the same pass and now out of
@@ -689,9 +691,8 @@ std::unordered_set<ft::ActorId> g_fighting;
 // left Jenassa stripped after a fight that began with an empty book
 // (21:02). Under g_pinMutex. Returns what it let go and pinned again, for
 // the rest of the watchdog's pass.
-AfterFight RestorePinsAfterFight(RE::Actor *actor, std::vector<Pin> &pins, const std::vector<Pin> &before)
+void ReportAfterFight(RE::Actor *actor, const AfterFight &settle)
 {
-    const AfterFight settle = SettleAfterFight(pins, before);
     for (const Released &gone : settle.released)
     {
         auto *thing = RE::TESForm::LookupByID(gone.form);
@@ -725,36 +726,26 @@ AfterFight RestorePinsAfterFight(RE::Actor *actor, std::vector<Pin> &pins, const
                         "{} fight over -- {}{} pinned again, as before it", Describe(actor), log::NameOf(thing),
                         HandTag(pin.hands));
     }
-    pins = before;
     if (settle.released.empty() && settle.restored.empty())
-        return settle;
+        return;
     // A fresh start for the refusal log: the book is what it was.
     g_refusedLogged.clear();
     actor->Update3DModel();
-    return settle;
 }
 
 // Note a follower entering or leaving combat, and return what the end of a
 // fight let go and pinned again. Under g_pinMutex.
 AfterFight NoteFight(RE::Actor *actor, std::vector<Pin> &pins, bool fighting)
 {
-    const ft::ActorId id = actor->GetFormID();
-    const bool was = g_fighting.contains(id);
-    if (fighting && !was)
-    {
-        g_fighting.insert(id);
-        g_pinsBeforeFight[id] = pins;
-        if (!pins.empty())
-            log::pins.debug("{} fight begins -- {} pin(s) remembered for after it", Describe(actor), pins.size());
+    ft::FightBook &book = g_fights[actor->GetFormID()];
+    const bool began = fighting && !book.fighting;
+    const auto settled = book.Note(pins, fighting);
+    if (began && !pins.empty())
+        log::pins.debug("{} fight begins -- {} pin(s) remembered for after it", Describe(actor), pins.size());
+    if (!settled)
         return {};
-    }
-    if (!fighting && was)
-    {
-        g_fighting.erase(id);
-        if (auto saved = g_pinsBeforeFight.extract(id); !saved.empty())
-            return RestorePinsAfterFight(actor, pins, saved.mapped());
-    }
-    return {};
+    ReportAfterFight(actor, *settled);
+    return *settled;
 }
 
 void EnforcePins(const std::vector<RE::Actor *> &followers)
@@ -817,55 +808,54 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             // for items as for spells; if this line repeats, the detour has
             // missed a path, and the hand state beside it says which.
             const bool casting = IsMidCast(actor);
+            ft::PinSeen seen;
+            const char *why = "taken off";
+            std::optional<ft::ItemVariant> variant;
             if (pin->thing.IsVoice())
             {
                 // A shout is no bound object and a power is no hand spell:
                 // readied or not is the voice slot, and back it goes.
-                const bool on = InVoice(actor, form);
-                if (on)
-                    ClearReport(g_pinsEnforced, key);
-                if (PutBackNow(*pin, on, fighting, casting))
-                {
-                    ReportEnforced(actor, *pin, form, FirstReport(g_pinsEnforced, key), "put away from the voice");
-                    todo.push_back({actor, form, hands, false, {}, std::nullopt});
-                }
+                seen.on = InVoice(actor, form);
+                why = "put away from the voice";
             }
             else if (form->Is(RE::FormType::Spell))
             {
-                const bool on = EquippedIn(actor, form, hands);
-                if (on)
-                    ClearReport(g_pinsEnforced, key);
-                if (PutBackNow(*pin, on, fighting, casting))
-                {
-                    ReportEnforced(actor, *pin, form, FirstReport(g_pinsEnforced, key), "put away");
-                    todo.push_back({actor, form, hands, false, {}, std::nullopt});
-                }
+                seen.on = EquippedIn(actor, form, hands);
+                why = "put away";
             }
             else if (auto *object = form->As<RE::TESBoundObject>())
             {
                 // A pin on a variant asks after its rows: none left, the
                 // pin goes; on, by a row of the variant worn where the pin
                 // says, not the form's.
-                const std::optional<ft::ItemVariant> &variant = pin->thing.variant;
-                const bool gone = CountVariant(actor, object, variant) <= 0;
-                if (gone)
-                {
-                    std::vector<log::Field> fields = ItemFields(object->GetFormID(), variant, hands, "game");
-                    fields.emplace_back("reason", "no longer carried");
-                    log::pins.event(log::Level::Info, "pin.released", actor, fields,
-                                    "{} no longer carries {} -- pin dropped", Describe(actor), log::NameOf(object));
-                    ClearReport(g_pinsEnforced, key);
-                    pin = pins.erase(pin);
-                    continue;
-                }
-                const bool on = Worn(actor, object, hands, variant);
-                if (on)
-                    ClearReport(g_pinsEnforced, key);
-                if (PutBackNow(*pin, on, fighting, casting))
-                {
-                    ReportEnforced(actor, *pin, object, FirstReport(g_pinsEnforced, key), "taken off");
-                    todo.push_back({actor, object, hands, false, {}, variant});
-                }
+                variant = pin->thing.variant;
+                seen.carried = CountVariant(actor, object, variant) > 0;
+                seen.on = seen.carried && Worn(actor, object, hands, variant);
+            }
+            else
+            {
+                ++pin;
+                continue;
+            }
+            if (seen.on)
+                ClearReport(g_pinsEnforced, key);
+            switch (ft::JudgePin(*pin, seen, fighting, casting))
+            {
+            case ft::PinVerdict::Drop: {
+                std::vector<log::Field> fields = ItemFields(form->GetFormID(), variant, hands, "game");
+                fields.emplace_back("reason", "no longer carried");
+                log::pins.event(log::Level::Info, "pin.released", actor, fields,
+                                "{} no longer carries {} -- pin dropped", Describe(actor), log::NameOf(form));
+                ClearReport(g_pinsEnforced, key);
+                pin = pins.erase(pin);
+                continue;
+            }
+            case ft::PinVerdict::PutBack:
+                ReportEnforced(actor, *pin, form, FirstReport(g_pinsEnforced, key), why);
+                todo.push_back({actor, form, hands, false, {}, variant});
+                break;
+            case ft::PinVerdict::Keep:
+                break;
             }
             ++pin;
         }
@@ -898,25 +888,27 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                 continue;
             }
             const ViolationKey key{actor->GetFormID(), ban->form, Hand::None};
-            // A ban on a variant holds while a row of it is in the bag,
-            // and goes when none is: it has nothing left to promise about.
-            if (ban->variant)
-            {
-                auto *object = thing->As<RE::TESBoundObject>();
-                if (object && CountVariant(actor, object, ban->variant) <= 0)
-                {
-                    std::vector<log::Field> fields = ItemFields(ban->form, ban->variant, Hand::None, "game");
-                    fields.emplace_back("reason", "no longer carried");
-                    log::pins.event(log::Level::Info, "ban.released", actor, fields,
-                                    "{} no longer carries {} -- ban dropped", Describe(actor), log::NameOf(thing));
-                    ClearReport(g_bansEnforced, key);
-                    ban = it->second.erase(ban);
-                    continue;
-                }
-            }
             const Holdable described = DescribeHoldable(actor, thing, ban->variant);
-            const bool pinned = pins && FindPin(*pins, described);
-            if (pinned || !OnAnywhere(actor, thing, described))
+            ft::BanSeen seen;
+            // A ban on a variant holds while a row of it is in the bag, and
+            // goes when none is: it has nothing left to promise about.
+            if (ban->variant)
+                if (auto *object = thing->As<RE::TESBoundObject>())
+                    seen.carried = CountVariant(actor, object, ban->variant) > 0;
+            seen.pinned = pins && FindPin(*pins, described);
+            seen.on = OnAnywhere(actor, thing, described);
+            const ft::BanVerdict verdict = ft::JudgeBan(*ban, seen);
+            if (verdict == ft::BanVerdict::Drop)
+            {
+                std::vector<log::Field> fields = ItemFields(ban->form, ban->variant, Hand::None, "game");
+                fields.emplace_back("reason", "no longer carried");
+                log::pins.event(log::Level::Info, "ban.released", actor, fields,
+                                "{} no longer carries {} -- ban dropped", Describe(actor), log::NameOf(thing));
+                ClearReport(g_bansEnforced, key);
+                ban = it->second.erase(ban);
+                continue;
+            }
+            if (verdict == ft::BanVerdict::Keep)
             {
                 ClearReport(g_bansEnforced, key);
                 ++ban;
@@ -1443,17 +1435,14 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         auto &pins = g_pins[id];
         // A rule's pin in a fight goes over what the follower had before it:
         // the pins remembered for after the fight, overridden while it lasts.
-        const auto remembered = g_pinsBeforeFight.find(id);
-        const std::vector<Pin> *before = !fromPanel && g_fighting.contains(id) && remembered != g_pinsBeforeFight.end()
-                                             ? &remembered->second
-                                             : nullptr;
+        const std::vector<Pin> *before = !fromPanel ? g_fights[id].Remembered() : nullptr;
         if (!fromPanel && request == WearRequest::Pin)
         {
             const auto bans = g_bans.find(id);
             if (bans != g_bans.end() && IsBanned(bans->second, described))
             {
                 std::vector<log::Field> fields = ItemFields(described.form, variant, hands, who);
-                fields.emplace_back("inCombat", g_fighting.contains(id));
+                fields.emplace_back("inCombat", g_fights[id].fighting);
                 log::pins.event(log::Level::Info, "ban.overridden", actor, fields,
                                 "{} a rule pins banned {} -- the pin holds while it lasts", Describe(actor),
                                 log::NameOf(thing));
@@ -1471,9 +1460,8 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
         if (request != WearRequest::Unban && request != WearRequest::Unequip)
         {
             ApplyToBook(actor, pins, bookRequest, described, hands, moving, dualWield, who, before);
-            if (fromPanel && g_fighting.contains(id)) [[maybe_unused]]
-                const auto mirrored =
-                    ApplyRequest(g_pinsBeforeFight[id], bookRequest, described, hands, moving, dualWield);
+            if (fromPanel)
+                g_fights[id].Mirror(bookRequest, described, hands, moving, dualWield);
         }
         if (request == WearRequest::Ban)
             Ban(g_bans[id], described.form, described.variant);
@@ -1646,13 +1634,16 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
 std::vector<ft::PinEntry> PlayerPinsOf(ft::ActorId id)
 {
     std::scoped_lock lock(g_pinMutex);
-    const auto &book = g_fighting.contains(id) ? g_pinsBeforeFight : g_pins;
     std::vector<ft::PinEntry> entries;
-    if (const auto it = book.find(id); it != book.end())
-    {
-        for (const Pin &pin : it->second)
+    const std::vector<Pin> *book = nullptr;
+    if (const auto fight = g_fights.find(id); fight != g_fights.end())
+        book = fight->second.Remembered();
+    if (!book)
+        if (const auto it = g_pins.find(id); it != g_pins.end())
+            book = &it->second;
+    if (book)
+        for (const Pin &pin : *book)
             entries.push_back({pin.thing.form, pin.thing.variant, pin.hands});
-    }
     return entries;
 }
 
@@ -1724,8 +1715,7 @@ void ForgetPins()
     std::scoped_lock lock(g_pinMutex);
     g_pins.clear();
     g_bans.clear();
-    g_pinsBeforeFight.clear();
-    g_fighting.clear();
+    g_fights.clear();
     g_refusedLogged.clear();
     g_pinsEnforced.clear();
     g_bansEnforced.clear();
@@ -1782,10 +1772,9 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
                 return true;
             });
         }
-        const auto remembered = g_pinsBeforeFight.find(actor->GetFormID());
-        const bool fighting = g_fighting.contains(actor->GetFormID()) && remembered != g_pinsBeforeFight.end();
+        const std::vector<Pin> *remembered = g_fights[actor->GetFormID()].Remembered();
         for (const Pin &pin : released)
-            overridden.push_back(fighting && FindPin(remembered->second, pin.thing.form, pin.thing.variant));
+            overridden.push_back(remembered && FindPin(*remembered, pin.thing.form, pin.thing.variant));
         g_refusedLogged.clear();
         ClearReports(g_pinsEnforced, actor->GetFormID());
     }

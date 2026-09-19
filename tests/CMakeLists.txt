@@ -42,7 +42,8 @@ add_executable(ft_tests
     test_sessions.cpp
     test_table.cpp
     test_tick.cpp
-    test_vocabulary.cpp)
+    test_vocabulary.cpp
+    test_watchdog.cpp)
 # nlohmann_json is found or fetched by the top-level CMakeLists, beside ft_core;
 # the profile tests parse the serialiser's output back to check its shape.
 target_link_libraries(ft_tests PRIVATE ft_core Catch2::Catch2WithMain nlohmann_json::nlohmann_json)

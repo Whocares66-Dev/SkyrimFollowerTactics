@@ -51,7 +51,7 @@ Transitions (state in, plan out):
 - [x] Player cast: `CastState`, `AdvancePlayerCast` (core/PlayerCast.h), every step, window and reason, the commands through a callback the test records. Still in the game, engine reads through and through: `ChooseHand`, `Lend`, `Restore`, `PlayerHeld`, `FireSeen`'s capture.
 - [x] Bash and block: `BashState`, `AdvanceBash` (core/Bash.h). The two actions answer at once, so the step performs them through a callback the test scripts; the game's `Advance` reads the actor, performs, and captures the attack event on the first bash seen.
 - [x] A coordinator harness (`tests/test_coordinator.cpp`): the tick as the game runs it per actor over the production planner, evaluator and cooldown restart, the action's result scripted and the busy capability set as `RuntimeCapabilities` sets it. (A first version left the capabilities out and reported a refire the game never makes; corrected the same day.)
-- [ ] The pin watchdog's fight lifecycle (`NoteFight`, `EnforcePins`) over the books.
+- [x] The pin watchdog's fight lifecycle: `FightBook` (core/Watchdog.h) remembers, mirrors the panel's word and settles; `JudgePin` and `JudgeBan` answer each tick over what the game reads. `EnforcePins` reads, judges, reports and defers the equips as before.
 
 Snapshot assembly (one family at a time):
 
