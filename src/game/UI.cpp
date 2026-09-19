@@ -16,6 +16,7 @@
 #include "core/Effects.h"
 #include "core/MenuSlots.h"
 #include "core/OpenRows.h"
+#include "core/Rows.h"
 #include "core/Table.h"
 #include "core/Vocabulary.h"
 #include "game/Addresses.h"
@@ -3862,25 +3863,10 @@ void DrawCategoryRow(const CharacterView &view, InventoryTabState &state)
 // The inventory table's columns, by id rather than by position: which of
 // them a list shows depends on the category, and a sort spec names the
 // column by this id.
-enum class Column : unsigned
-{
-    Name = 1,
-    Type,
-    Damage,
-    Armor,
-    Weight,
-    Value,
-    Equipped,
-    School,
-    Level,
-    Cast,
-    Cost,
-    Left,
-    Right,
-    Magnitude,
-    Remaining,
-    Source
-};
+// The columns, and the order each list takes in one, are core's
+// (core/Rows.h, tested); the table's header carries the column's number
+// and the direction.
+using ft::Column;
 
 // A cell that says whether something is on -- in a hand, or worn -- with a
 // tick, a pin beside it if we are keeping it there, and, when clickable, a
@@ -3916,58 +3902,19 @@ void SlashCell()
 // the state on its own and reading less of it (2026-09-10). The cell is
 // core's (EquipCell, core/Marks.h), with its rank and its next request.
 
-// The readers, one per table and cell. The row's dimming is the same
-// state: disabled or banned.
-bool Disabled(const InventoryItem &item)
-{
-    return item.setAside;
-}
-EquipCell LeftCell(const InventoryItem &item)
-{
-    return {item.handItem && !item.rightOnly, Disabled(item), item.equippedLeft, item.pinnedLeft, item.banned};
-}
-EquipCell RightCell(const InventoryItem &item)
-{
-    return {item.handItem && !item.leftOnly, Disabled(item), item.equippedRight, item.pinnedRight, item.banned};
-}
-EquipCell WornCell(const InventoryItem &item)
-{
-    return {!item.handItem, Disabled(item), item.worn, item.pinned, item.banned};
-}
-
-bool VoiceEntry(const MagicEntry &entry)
-{
-    return entry.category == MagicCategory::Shouts || entry.category == MagicCategory::Powers;
-}
-// A spell above the follower's skill is disabled, and takes no hand at
-// all, as the tactics menus offer it for neither casting nor pinning: one
-// rule, not an equip-only state beside it. A shout with no word unlocked
-// is disabled the same way, and for the same reason: nothing the panel
-// does to it can make the follower shout it.
-bool Disabled(const MagicEntry &entry)
-{
-    return entry.setAside || entry.aboveSkill || entry.locked;
-}
-EquipCell LeftCell(const MagicEntry &entry)
-{
-    return {VoiceEntry(entry) || (entry.leftAllowed && !entry.aboveSkill), Disabled(entry), entry.equippedLeft,
-            entry.pinnedLeft, entry.banned};
-}
-EquipCell RightCell(const MagicEntry &entry)
-{
-    return {VoiceEntry(entry) || (entry.rightAllowed && !entry.aboveSkill), Disabled(entry), entry.equippedRight,
-            entry.pinnedRight, entry.banned};
-}
-EquipCell VoiceCell(const MagicEntry &entry)
-{
-    return {!entry.locked, Disabled(entry), entry.equipped, entry.pinned, entry.banned};
-}
+// The readers are core's (core/Rows.h, tested): a cell of a row, and
+// whether the row is dim.
+using ft::Dimmed;
+using ft::LeftCell;
+using ft::RightCell;
+using ft::VoiceCell;
+using ft::VoiceEntry;
+using ft::WornCell;
 
 // A click walks the cell round: unequipped, equipped, pinned, banned, and
 // back to unequipped. Each state is one request to the game thread.
 void OnCell(const char *id, const CharacterView &view, std::uint32_t form, const EquipCell &cell, Hand hand,
-            bool clickable, const std::optional<ft::ItemVariant> &variant = std::nullopt,
-            RE::ExtraDataList *row = nullptr)
+            bool clickable, const std::optional<ft::ItemVariant> &variant = std::nullopt, const void *row = nullptr)
 {
     const Im::ImVec2 pos = Im::GetCursorScreenPos();
     if (!cell.allowed)
@@ -3990,46 +3937,16 @@ void OnCell(const char *id, const CharacterView &view, std::uint32_t form, const
     DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), cell.on, cell.pinned, cell.banned);
 }
 
-// Which columns an inventory list shows, by its category: the table lays
-// them out by these, and the filter searches the cells they show.
-struct ItemColumns
-{
-    bool weapons{false};     // a damage column
-    bool armour{false};      // an armour column
-    bool scrolls{false};     // cast and magnitude columns
-    bool consumables{false}; // the second column says what the thing does, not its type
-};
-
+// Which columns a list shows, which cells the filter searches and whether
+// a row is on the list at all are core's (core/Rows.h, tested).
 ItemColumns ColumnsOf(const InventoryTabState &state)
 {
-    const auto is = [&state](ItemCategory category) { return state.category == static_cast<int>(category); };
-    ItemColumns columns;
-    columns.weapons = is(ItemCategory::Weapons) || is(ItemCategory::Arrows);
-    columns.armour = is(ItemCategory::Armor);
-    columns.scrolls = is(ItemCategory::Scrolls);
-    columns.consumables = columns.scrolls || is(ItemCategory::Potions) || is(ItemCategory::Poisons) ||
-                          is(ItemCategory::Food) || is(ItemCategory::Ingredients);
-    return columns;
+    return ft::ColumnsOf(state.category);
 }
 
-// Is the row on the list: in its category, with the filter's text in a cell
-// the list shows for it, the numbers as they print.
 bool ItemShown(const InventoryItem &item, const InventoryTabState &state)
 {
-    if (state.category >= 0 && static_cast<int>(item.category) != state.category)
-        return false;
-    const ItemColumns columns = ColumnsOf(state);
-    std::vector<std::string> cells{item.name, columns.consumables ? item.effect : item.type, Fmt("%.1f", item.weight),
-                                   std::to_string(item.value)};
-    if (const float stat = columns.weapons ? item.damage : columns.armour ? item.armor : 0.0f; stat > 0.0f)
-        cells.push_back(Fmt("%.0f", stat));
-    if (columns.scrolls)
-    {
-        cells.push_back(item.cast);
-        if (item.magnitude > 0.0f)
-            cells.push_back(Fmt("%.0f", item.magnitude));
-    }
-    return AnyContains(cells, g_inventoryList.filter);
+    return ft::ItemShown(item, state.category, g_inventoryList.filter);
 }
 
 // Put the rows in the order the table's header asks for: the column and
@@ -4059,35 +3976,7 @@ std::vector<const InventoryItem *> VisibleItems(const CharacterView &view, const
             rows.push_back(&item);
     }
 
-    SortRows(rows, [](const InventoryItem &a, const InventoryItem &b, Column column) -> int {
-        switch (column)
-        {
-        case Column::Type:
-            // The consumables' lists show the effect in this column.
-            return a.effect.empty() && b.effect.empty() ? a.type.compare(b.type) : a.effect.compare(b.effect);
-        case Column::Damage:
-            return Compare(a.damage, b.damage);
-        case Column::Armor:
-            return Compare(a.armor, b.armor);
-        case Column::Cast:
-            return a.cast.compare(b.cast);
-        case Column::Magnitude:
-            return Compare(a.magnitude, b.magnitude);
-        case Column::Weight:
-            return Compare(a.weight, b.weight);
-        case Column::Value:
-            return Compare(a.value, b.value);
-        case Column::Equipped:
-            return Compare(CellRank(WornCell(a)), CellRank(WornCell(b)));
-        case Column::Left:
-            return Compare(CellRank(LeftCell(a)), CellRank(LeftCell(b)));
-        case Column::Right:
-            return Compare(CellRank(RightCell(a)), CellRank(RightCell(b)));
-        case Column::Name:
-        default:
-            return a.name.compare(b.name);
-        }
-    });
+    SortRows(rows, ft::CompareItems);
     return rows;
 }
 
@@ -4236,7 +4125,7 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
         // hand it would take -- the whole row goes to the disabled colour.
         // Not on All, where nothing can be equipped and the dimming would
         // have no cell to explain it.
-        const bool dim = (Disabled(*item) || item->banned) && state.category >= 0;
+        const bool dim = (Dimmed(*item) || item->banned) && state.category >= 0;
         const DimText grey(dim);
         Im::TableSetColumnIndex(0);
 
@@ -4554,24 +4443,7 @@ const char *MagicNoun(int category, bool voice)
 // with the filter's text in a cell the list shows for it.
 bool MagicShown(const MagicEntry &entry, const MagicList &list)
 {
-    if (VoiceEntry(entry) != list.voice)
-        return false;
-    const int category = list.state.category;
-    if (category >= 0 && static_cast<int>(entry.category) != category)
-        return false;
-    std::vector<std::string> cells{entry.name, entry.type, entry.cast};
-    // The three a voice list has no room for; School only where the All
-    // list shows it.
-    if (!list.voice)
-    {
-        if (category < 0)
-            cells.push_back(entry.school);
-        cells.push_back(entry.level);
-        cells.push_back(entry.cost);
-    }
-    if (entry.magnitude > 0.0f)
-        cells.push_back(Fmt("%.0f", entry.magnitude));
-    return AnyContains(cells, list.shared.filter);
+    return ft::MagicShown(entry, list.state.category, list.voice, list.shared.filter);
 }
 
 std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const MagicList &list)
@@ -4583,34 +4455,7 @@ std::vector<const MagicEntry *> VisibleMagic(const CharacterView &view, const Ma
             rows.push_back(&entry);
     }
 
-    SortRows(rows, [](const MagicEntry &a, const MagicEntry &b, Column column) -> int {
-        switch (column)
-        {
-        case Column::School:
-            return a.school.compare(b.school);
-        case Column::Type:
-            return a.type.compare(b.type);
-        case Column::Level:
-            return Compare(a.levelValue, b.levelValue);
-        case Column::Cast:
-            // The delivery behind the word first, so Self, Touch and Target
-            // group; the word itself only tells two of one delivery apart.
-            return a.castValue != b.castValue ? Compare(a.castValue, b.castValue) : a.cast.compare(b.cast);
-        case Column::Cost:
-            return Compare(a.costValue, b.costValue);
-        case Column::Magnitude:
-            return Compare(a.magnitude, b.magnitude);
-        case Column::Equipped:
-            return Compare(CellRank(VoiceCell(a)), CellRank(VoiceCell(b)));
-        case Column::Left:
-            return Compare(CellRank(LeftCell(a)), CellRank(LeftCell(b)));
-        case Column::Right:
-            return Compare(CellRank(RightCell(a)), CellRank(RightCell(b)));
-        case Column::Name:
-        default:
-            return a.name.compare(b.name);
-        }
-    });
+    SortRows(rows, ft::CompareMagic);
     return rows;
 }
 
@@ -4743,7 +4588,7 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
         // skill, so the AI would not choose it: the whole row is drawn in
         // the disabled colour, ticks included, since every glyph takes the
         // text colour.
-        const bool dim = (Disabled(*entry) || entry->banned) && !allList;
+        const bool dim = (Dimmed(*entry) || entry->banned) && !allList;
         const DimText grey(dim);
         Im::TableSetColumnIndex(0);
         Im::ImVec2 pos = Im::GetCursorScreenPos();
@@ -4874,10 +4719,7 @@ void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
 // Does the row hold the filter's text in a cell the table shows?
 bool EffectShown(const EffectRow &row)
 {
-    std::vector<std::string> cells{row.name, row.remainingText, row.source};
-    if (row.magnitude != 0.0f)
-        cells.push_back(Fmt("%.0f", row.magnitude));
-    return AnyContains(cells, g_effectsFilter);
+    return ft::EffectShown(row, g_effectsFilter);
 }
 
 // The rows that pass the filter, in the order the header asks for.
@@ -4890,23 +4732,7 @@ std::vector<const EffectRow *> VisibleEffects(const CharacterView &view)
             rows.push_back(&row);
     }
 
-    SortRows(rows, [](const EffectRow &a, const EffectRow &b, Column column) -> int {
-        // No duration sorts after every duration: it is the one that never
-        // runs out.
-        const auto left = [](const EffectRow &e) { return e.remaining < 0.0f ? 1.0e9f : e.remaining; };
-        switch (column)
-        {
-        case Column::Magnitude:
-            return Compare(a.magnitude, b.magnitude);
-        case Column::Remaining:
-            return Compare(left(a), left(b));
-        case Column::Source:
-            return a.source.compare(b.source);
-        case Column::Name:
-        default:
-            return a.name.compare(b.name);
-        }
-    });
+    SortRows(rows, ft::CompareEffects);
     return rows;
 }
 

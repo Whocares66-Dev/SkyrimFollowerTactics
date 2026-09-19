@@ -108,7 +108,7 @@ namespace ft::game
 // on the poisoned dagger readies the poisoned dagger and not the clean
 // one beside it, which is the same variant.
 void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None,
-                 std::optional<ft::ItemVariant> variant = std::nullopt, RE::ExtraDataList *row = nullptr);
+                 std::optional<ft::ItemVariant> variant = std::nullopt, const void *row = nullptr);
 
 // The rules' side of the same book, on the game thread, from the tick. A
 // rule's pin is the panel's pin: it goes in the same book, shows in the

@@ -127,6 +127,7 @@ add_library(ft_core STATIC
     src/core/Party.cpp
     src/core/Profile.cpp
     src/core/Reach.cpp
+    src/core/Rows.cpp
     src/core/Rule.cpp
     src/core/Sessions.cpp
     src/core/Spells.cpp

@@ -13,6 +13,10 @@
 namespace ft
 {
 
+// A number as a cell prints it: "%.0f", "%.1f". What the filter searches,
+// so the text it matches is the text on screen.
+[[nodiscard]] std::string Fmt(const char *format, double value);
+
 // Does the text hold the needle, whatever the case? An empty needle is in
 // everything.
 [[nodiscard]] bool ContainsNoCase(std::string_view text, std::string_view needle) noexcept;

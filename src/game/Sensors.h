@@ -10,6 +10,7 @@
 #include "core/Breakdown.h"
 #include "core/Rule.h"
 #include "core/Snapshot.h"
+#include "core/Views.h"
 
 #include <functional>
 #include <memory>
@@ -349,70 +350,6 @@ void ForEachSpell(RE::Actor *actor, const std::function<void(RE::SpellItem *)> &
 inline constexpr unsigned kGlyphTick = 0xF00C;
 inline constexpr unsigned kGlyphPin = 0xF08D;
 
-struct SheetRow
-{
-    std::string label;
-    std::string value;
-    unsigned icon{0};      // a Font Awesome codepoint drawn instead of the value, when set
-    unsigned icon2{0};     // a second glyph after the first: the pin beside the tick
-    std::string modifiers; // Skills tab only: "+35% damage, -17% cost"
-    std::string note;      // plain hover text on the value; empty for none
-    // The value written out as the calculation that made it, hover text
-    // on the value. Drawn in place of `note` when it has lines.
-    ft::Breakdown breakdown;
-    // The Modifiers cell in pieces, each with its own breakdown: "+50%
-    // damage" and "-50% cost" are two figures and hover apart. Drawn in
-    // place of `modifiers` when not empty.
-    struct ModifierPart
-    {
-        std::string text;
-        ft::Breakdown breakdown;
-    };
-    std::vector<ModifierPart> modifierParts;
-    // The columns an effect's row may carry after its value, each drawn
-    // only where some row has it: the duration, what is left of it, and
-    // the source, a link to `form` where that has a page. Hidden is the
-    // `mark`.
-    std::string extra;
-    std::string remaining;
-    std::string link;
-    // An effect's description with its numbers filled in, for a table
-    // with a wrapped last column of them.
-    std::string description;
-    // Rows revealed by expanding this one: a skill's perks. Empty means the
-    // row is a plain line and cannot be opened.
-    std::vector<SheetRow> detail;
-    // The inventory item this row names, if any: a click on it opens the
-    // item's page on the Inventory tab. 0 for a row that names nothing.
-    std::uint32_t form{0};
-    // Why the row is set aside -- a perk whose conditions fail for this
-    // actor -- shown on the name; empty for a row that counts.
-    std::string aside;
-    // A glyph in the third column, where the table has one: an effect's
-    // tick for Hidden. 0 for none.
-    unsigned mark{0};
-    // The Equipped row of a page (EquippedRow), where the pin glyph goes.
-    bool equipped{false};
-};
-
-struct SheetSection
-{
-    std::string title;
-    std::vector<SheetRow> rows;
-    // The heading this section sits under when several share one -- Attack
-    // over a Right Hand table and a Left Hand table. Empty means the title
-    // is the heading.
-    std::string group;
-    // Why the whole section is set aside -- a shout's word the player has
-    // not unlocked -- shown on its label, which is greyed with its rows.
-    // The heading over a group is not: it covers the sections that count
-    // too. Empty for a section that counts. Initialised here rather than
-    // left bare so the sections brace-built from their first three fields
-    // stay as they are: clang-tidy makes a field with no initializer of
-    // its own a missing-field-initializer error at every one of them.
-    std::string aside{};
-};
-
 // Who a record's conditions are asked of: the Subject and the Target the
 // engine passes. For an effect that is the one it lands on and whoever
 // cast it (dev/CONDITIONS.md 10). A party the page cannot name is null,
@@ -440,40 +377,6 @@ struct ConditionParties
 // the game names it, its magnitude, what is left of it, and where it comes
 // from -- the spell, the potion, or for an enchantment the worn item that
 // carries it, "Robes of Health" rather than the enchantment record's name.
-struct EffectRow
-{
-    // The base effect and what applied it, together the row's identity:
-    // the same effect can run twice from two sources.
-    std::uint32_t form{0};
-    std::uint32_t sourceForm{0};
-    // What the source's name links to, where it has a page: the worn item
-    // behind an enchantment, else the spell. The panel decides whether a
-    // page exists, by its own lists.
-    std::uint32_t linkForm{0};
-    std::string name;
-    float magnitude{0.0f};
-    float duration{0.0f};      // in all; 0 for one with no duration
-    float remaining{-1.0f};    // seconds left; below zero for one with no duration
-    std::string remainingText; // empty for one with no duration
-    std::string source;
-    // False when the effect is running but changes nothing for this actor:
-    // Fortify One-handed on a follower, which writes a value nothing on a
-    // follower reads. Listed greyed, hovering as "Not applied".
-    bool applied{true};
-    // False while the effect is on the list but not acting (Spellbreaker's
-    // ward off the block), by the engine's own flag and not by asking the
-    // conditions again: a magic effect record's conditions are asked once,
-    // when it lands, and can read false ever after (Adamant's Bastion asks
-    // whether the cast was dual). Listed greyed, hovering as "Inactive".
-    bool active{true};
-
-    // The page: the effect's numbers as the first section, then what its
-    // source does, effect by effect, each opening on its conditions -- the
-    // perk page's shape -- and the description with the magnitude and
-    // duration filled in, as the item card shows it.
-    std::vector<SheetSection> detail;
-    std::string description;
-};
 
 // What a follower commands right now: a summon or a raised corpse, for the
 // Summons tab. Its numbers come from its own actor, its page from the same

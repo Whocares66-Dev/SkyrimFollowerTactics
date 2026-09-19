@@ -75,6 +75,8 @@ The panel's decisions:
 - [x] The click's next request and a cell's rank: `NextWearRequest`, `CellRank`, `EquipCell` and `WearRequest` in core/Marks.h. The readers that fill a cell from a row stay with the row types.
 - [x] The sort's order and the filter's matching (`core/Table.h`: `SortRows`, `Compare`, `ContainsNoCase`, `AnyContains`); the panel reads the sort spec and composes each list's cells, which stay with its row types.
 - [x] Open-row state: `OpenRows` (core/OpenRows.h) keeps which drawers are open and follows the rules through a move or a removal; the panel opens, closes and asks.
+- [x] The panel's view types in core (`core/Views.h`): a sheet's rows and sections, an inventory row, a magic entry, an effect row. They were plain already but sat in headers that declare engine calls, so nothing over them could be tested; the row's list is now an opaque token, as the identity contract above has it.
+- [x] Which rows a list shows and what each cell of one says (`core/Rows.h`): the columns a category calls for, the cells the filter searches with the numbers as they print, the voice list against the schools', and the equip cells of an item and of a magic entry.
 - [ ] Source navigation. Left: page and detail ids are the panel's own; nothing a rule or a follower depends on.
 - [x] `SyncFollowers`: `MenuSlots` (core/MenuSlots.h) decides who has which slot, when a batch of newcomers is added and when a slot is freed, with the steady clock handed in; the panel adds and deletes the entries.
 

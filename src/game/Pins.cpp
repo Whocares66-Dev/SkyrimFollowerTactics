@@ -319,7 +319,7 @@ enum class By : std::uint8_t
 };
 
 void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
-                 const std::optional<ft::ItemVariant> &variant, RE::ExtraDataList *row = nullptr, By by = By::Rule)
+                 const std::optional<ft::ItemVariant> &variant, const void *row = nullptr, By by = By::Rule)
 {
     auto *manager = RE::ActorEquipManager::GetSingleton();
     if (!manager)
@@ -380,7 +380,8 @@ void EquipPinned(RE::Actor *actor, RE::TESForm *form, Hand hands, bool now,
         UnequipForm(actor, form, Without(Hand::Both, hands), now, variant);
     RE::ExtraDataList *list = bag.ListAt(plan.row);
     log::pins.debug("{} equip {}{}: list [{}]{}", Describe(actor), log::NameOf(form), HandTag(hands), ListEntries(list),
-                    row ? (list == row ? " (the row clicked)" : " (the row clicked is gone)") : "");
+                    row ? (static_cast<const void *>(list) == row ? " (the row clicked)" : " (the row clicked is gone)")
+                        : "");
     manager->EquipObject(actor, object, list, 1, slot, !now, false, true, false);
     if (now && log::Enabled(log::Level::Debug))
     {
@@ -1343,7 +1344,7 @@ namespace
 // other hand first, or the engine, finding none free, conjures a second
 // (02:05, the doubled dagger).
 void PutOn(RE::Actor *actor, RE::TESForm *thing, Hand hands, const std::optional<ft::ItemVariant> &variant,
-           RE::ExtraDataList *row, By by, bool moving)
+           const void *row, By by, bool moving)
 {
     if (moving)
         UnequipForm(actor, thing, Without(Hand::Both, hands), true, variant);
@@ -1351,7 +1352,7 @@ void PutOn(RE::Actor *actor, RE::TESForm *thing, Hand hands, const std::optional
 }
 
 bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, By by,
-          const std::optional<ft::ItemVariant> &variant = std::nullopt, RE::ExtraDataList *row = nullptr)
+          const std::optional<ft::ItemVariant> &variant = std::nullopt, const void *row = nullptr)
 {
     const bool fromPanel = by == By::Player;
     const ft::ActorId id = actor->GetFormID();
@@ -1574,7 +1575,7 @@ std::vector<Pin> WornAsPins(RE::Actor *actor)
 }
 
 void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand,
-                 std::optional<ft::ItemVariant> variant, RE::ExtraDataList *row)
+                 std::optional<ft::ItemVariant> variant, const void *row)
 {
     auto *task = SKSE::GetTaskInterface();
     if (!task)
