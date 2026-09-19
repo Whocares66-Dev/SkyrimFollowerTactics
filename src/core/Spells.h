@@ -71,4 +71,8 @@ struct ShoutWords
 [[nodiscard]] std::vector<std::uint32_t> ActiveSpells(std::span<const EffectSeen> effects,
                                                       std::span<const ShoutWords> shouts);
 
+// The seconds left on the longest effect one of `sources` is running, or
+// 0 for none. A power's source is itself; a shout's are its words' spells.
+[[nodiscard]] float RemainingOn(std::span<const EffectSeen> effects, std::span<const std::uint32_t> sources) noexcept;
+
 } // namespace ft

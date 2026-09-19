@@ -81,3 +81,16 @@ TEST_CASE("active: an effect with time left names its spell, and its shout when 
     REQUIRE(ActiveSpells({}, shouts).empty());
     REQUIRE(ActiveSpells(effects, {}) == std::vector<std::uint32_t>{0x12FCD, 0x13E0B, 0x13E0D});
 }
+
+TEST_CASE("the time left on a source's effect: the longest, none for an unrelated or instant one", "[spells]")
+{
+    std::vector<EffectSeen> effects;
+    effects.push_back({0x13E0A, 10.0f, 4.0f});  // a word: 6 left
+    effects.push_back({0x13E0B, 30.0f, 29.0f}); // another word: 1 left
+    effects.push_back({0x12FCD, 60.0f, 0.0f});  // unrelated
+    effects.push_back({0x13E0C, 0.0f, 0.0f});   // instant
+    const std::vector<std::uint32_t> words{0x13E0A, 0x13E0B, 0x13E0C};
+    REQUIRE(RemainingOn(effects, words) == 6.0f);
+    REQUIRE(RemainingOn(effects, std::vector<std::uint32_t>{0x3EADE}) == 0.0f);
+    REQUIRE(RemainingOn({}, words) == 0.0f);
+}

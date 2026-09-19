@@ -63,3 +63,27 @@ std::vector<std::uint32_t> ActiveSpells(std::span<const EffectSeen> effects, std
 }
 
 } // namespace ft
+
+namespace ft
+{
+
+float RemainingOn(std::span<const EffectSeen> effects, std::span<const std::uint32_t> sources) noexcept
+{
+    float best = 0.0f;
+    for (const EffectSeen &effect : effects)
+    {
+        if (effect.spell == 0 || effect.duration <= 0.0f)
+            continue;
+        bool ours = false;
+        for (const std::uint32_t source : sources)
+            ours = ours || source == effect.spell;
+        if (!ours)
+            continue;
+        const float left = effect.duration - effect.elapsed;
+        if (left > best)
+            best = left;
+    }
+    return best;
+}
+
+} // namespace ft

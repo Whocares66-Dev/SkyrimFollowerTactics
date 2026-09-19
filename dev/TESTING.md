@@ -74,7 +74,7 @@ The panel's decisions:
 
 - [ ] Cell readers, the click's next request, `CellRank`.
 - [x] The sort's order and the filter's matching (`core/Table.h`: `SortRows`, `Compare`, `ContainsNoCase`, `AnyContains`); the panel reads the sort spec and composes each list's cells, which stay with its row types.
-- [ ] Open-row state across a move or a delete.
+- [x] Open-row state: `OpenRows` (core/OpenRows.h) keeps which drawers are open and follows the rules through a move or a removal; the panel opens, closes and asks.
 - [ ] Source navigation (`SourcePage`, `ItemPageOf`).
 - [ ] `SyncFollowers` with its clock and pending set made explicit.
 
@@ -86,7 +86,7 @@ Other seams:
 - [ ] Profile lifecycle (`ClaimSaved`, `IdentifyFollower`, carry-forward, revert).
 - [ ] Log emit and archive with temporary directories.
 - [ ] Custom skills loading and tree assembly.
-- [ ] Remaining-time and description helpers (`Magic.cpp`, `Inventory.cpp`).
+- [x] Remaining time: `RemainingOn` (core/Spells.h) over the effects as read. The description helpers (`ReplaceNoCase` and the text assembly) are formatting over strings and stay with the sheets.
 
 Not planned: a `GameAdapter` class. The discipline it names is followed; the recording backend arrives with the coordinator harness, not before.
 

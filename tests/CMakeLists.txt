@@ -38,6 +38,8 @@ add_executable(ft_tests
     test_logevent.cpp
     test_logsettings.cpp
     test_marks.cpp
+    test_openrows.cpp
+    test_openrows.cpp
     test_party.cpp
     test_playercast.cpp
     test_profile.cpp

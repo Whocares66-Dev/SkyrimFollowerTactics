@@ -119,6 +119,8 @@ add_library(ft_core STATIC
     src/core/LogEvent.cpp
     src/core/LogSettings.cpp
     src/core/Marks.cpp
+    src/core/OpenRows.cpp
+    src/core/OpenRows.cpp
     src/core/PlayerCast.cpp
     src/core/Party.cpp
     src/core/Profile.cpp

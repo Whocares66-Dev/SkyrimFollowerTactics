@@ -14,6 +14,7 @@
 
 #include "core/Breakdown.h"
 #include "core/Effects.h"
+#include "core/OpenRows.h"
 #include "core/Table.h"
 #include "core/Vocabulary.h"
 #include "game/Addresses.h"
@@ -2100,35 +2101,26 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::M
 // ID stack includes which table PIECE it landed in (see DrawSections) --
 // which changes as soon as a row above it opens, at which point ImGui
 // would forget the row was open. Render thread only.
-std::unordered_set<std::string> g_openRows;
+ft::OpenRows g_openRows;
 
 float DisclosureWidth();
 void DrawDisclosure(Im::ImVec2 pos, bool open);
 std::string RuleKey(ft::ActorId follower, std::size_t index)
 {
-    return "rule/" + std::to_string(follower) + "/" + std::to_string(index);
+    return ft::OpenRows::Key(follower, index);
 }
 
 // The open state follows the rule when rules are moved or removed, so a
-// drawer does not stay behind at an index another rule has taken.
+// drawer does not stay behind at an index another rule has taken
+// (core/OpenRows.h, tested).
 void MoveOpenState(ft::ActorId follower, std::size_t from, std::size_t to)
 {
-    const bool fromOpen = g_openRows.erase(RuleKey(follower, from)) > 0;
-    const bool toOpen = g_openRows.erase(RuleKey(follower, to)) > 0;
-    if (fromOpen)
-        g_openRows.insert(RuleKey(follower, to));
-    if (toOpen)
-        g_openRows.insert(RuleKey(follower, from));
+    g_openRows.Move(follower, from, to);
 }
 
 void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
 {
-    g_openRows.erase(RuleKey(follower, at));
-    for (std::size_t i = at + 1; i < count; ++i)
-    {
-        if (g_openRows.erase(RuleKey(follower, i)) > 0)
-            g_openRows.insert(RuleKey(follower, i - 1));
-    }
+    g_openRows.Remove(follower, at, count);
 }
 
 // The Order cell's three buttons -- up, down, remove -- centred in the cell
@@ -2568,7 +2560,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             if (addAnother)
             {
                 rule.actions.emplace_back();
-                g_openRows.insert(key);
+                g_openRows.Open(key);
             }
         }
         else
@@ -2589,7 +2581,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // one. A Button counts the baseline as its own frame padding and
             // stays put: measured on this font, 50 px of row became 44, which
             // is what a one-action row and the drawer's own rows are.
-            open = g_openRows.count(key) > 0;
+            open = g_openRows.IsOpen(key);
             const Im::ImVec2 pos = Im::GetCursorScreenPos();
             const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
             Im::PushStyleColor(Im::ImGuiCol_Button, invisible);
@@ -2604,9 +2596,9 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             {
                 open = !open;
                 if (open)
-                    g_openRows.insert(key);
+                    g_openRows.Open(key);
                 else
-                    g_openRows.erase(key);
+                    g_openRows.Close(key);
             }
             if (Im::IsItemHovered(0))
                 Im::TableSetBgColor(Im::ImGuiTableBgTarget_CellBg, hovered, -1);
@@ -3154,7 +3146,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 // for the row, padding and all, so it fits by construction.
                 // The marker and the name are then drawn over it.
                 const std::string key = section.title + "/" + row.label + "#" + std::to_string(rowIndex);
-                open = g_openRows.count(key) > 0;
+                open = g_openRows.IsOpen(key);
 
                 const Im::ImVec2 pos = Im::GetCursorScreenPos();
                 const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
@@ -3169,9 +3161,9 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 {
                     open = !open;
                     if (open)
-                        g_openRows.insert(key);
+                        g_openRows.Open(key);
                     else
-                        g_openRows.erase(key);
+                        g_openRows.Close(key);
                 }
                 if (Im::IsItemHovered(0))
                     Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg1, hovered, -1);

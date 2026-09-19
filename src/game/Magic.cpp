@@ -1,5 +1,7 @@
 #include "game/Magic.h"
 
+#include "core/Spells.h"
+
 #include "core/Vocabulary.h"
 #include "game/Sheet.h"
 
@@ -27,16 +29,15 @@ namespace
 // follower, so the caller asks about both.
 float RemainingOn(RE::Actor *who, const std::vector<const RE::MagicItem *> &sources)
 {
-    float best = 0.0f;
-    ForEachActiveEffect(who, [&](RE::ActiveEffect &effect) {
-        const auto *ae = &effect;
-        if (!ae->spell || ae->duration <= 0.0f)
-            return;
-        if (std::find(sources.begin(), sources.end(), ae->spell) == sources.end())
-            return;
-        best = (std::max)(best, ae->duration - ae->elapsedSeconds);
+    std::vector<ft::EffectSeen> effects;
+    ForEachActiveEffect(who, [&effects](RE::ActiveEffect &ae) {
+        effects.push_back({ae.spell ? ae.spell->GetFormID() : 0, ae.duration, ae.elapsedSeconds});
     });
-    return best;
+    std::vector<std::uint32_t> ids;
+    for (const RE::MagicItem *source : sources)
+        if (source)
+            ids.push_back(source->GetFormID());
+    return ft::RemainingOn(effects, ids);
 }
 
 // The Time section of a power's or shout's page: Cooldown, the voice's
