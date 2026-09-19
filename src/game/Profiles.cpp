@@ -172,21 +172,20 @@ Identity IdentifyFollower(RE::Actor *actor)
     Identity who;
     who.name = DisplayNameOf(actor);
 
+    // Which record, and the key's form, are core's (core/CoSave.h, tested).
     auto stable = [](RE::TESForm *f) { return f && !f->IsDynamicForm() && f->GetFile(0); };
-    RE::TESForm *record = actor->GetActorBase();
-    if (!stable(record))
-        record = actor;
-    if (stable(record))
+    RE::TESForm *base = actor->GetActorBase();
+    const ft::KeyedBy by = ft::ChooseKeyRecord(stable(base), stable(actor));
+    if (by == ft::KeyedBy::Dynamic)
     {
-        who.key = fmt::format("{}-{:X}", record->GetFile(0)->GetFilename(), record->GetLocalFormID());
-        who.form = GameFormCodec().encode(record->GetFormID());
-    }
-    else
-    {
-        who.key = fmt::format("dynamic-{:08X}", actor->GetFormID());
+        who.key = ft::DynamicKey(actor->GetFormID());
         who.form = fmt::format("0x{:X}", actor->GetFormID());
         log::profiles.warn("{} has no record in any plugin -- tactics keyed by reference id", Describe(actor));
+        return who;
     }
+    RE::TESForm *record = by == ft::KeyedBy::Base ? base : actor;
+    who.key = ft::FollowerKey(record->GetFile(0)->GetFilename(), record->GetLocalFormID());
+    who.form = GameFormCodec().encode(record->GetFormID());
     return who;
 }
 

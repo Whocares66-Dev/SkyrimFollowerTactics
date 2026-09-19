@@ -22,7 +22,33 @@ std::string Hex8(std::uint32_t value)
     return out;
 }
 
+// The same with no leading zeros, "A2C94", as a plugin's own id is
+// written; "0" for zero.
+std::string Hex(std::uint32_t value)
+{
+    std::string out = Hex8(value);
+    const auto first = out.find_first_not_of('0');
+    return first == std::string::npos ? "0" : out.substr(first);
+}
+
 } // namespace
+
+KeyedBy ChooseKeyRecord(bool baseInPlugin, bool referenceInPlugin) noexcept
+{
+    if (baseInPlugin)
+        return KeyedBy::Base;
+    return referenceInPlugin ? KeyedBy::Reference : KeyedBy::Dynamic;
+}
+
+std::string FollowerKey(std::string_view plugin, std::uint32_t localId)
+{
+    return std::string(plugin) + "-" + Hex(localId);
+}
+
+std::string DynamicKey(std::uint32_t referenceId)
+{
+    return "dynamic-" + Hex8(referenceId);
+}
 
 void PutString(std::string &out, std::string_view s)
 {

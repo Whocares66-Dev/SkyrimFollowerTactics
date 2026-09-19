@@ -170,3 +170,17 @@ TEST_CASE("a record's tag reads as the four characters, first most significant",
     REQUIRE(kFollowerRecord == 0x50524F46u);
     REQUIRE(kSettingsRecord == 0x53455454u);
 }
+
+TEST_CASE("a follower's key: the base record's plugin and id, else the reference's, else its runtime id", "[cosave]")
+{
+    REQUIRE(ChooseKeyRecord(true, true) == KeyedBy::Base);
+    REQUIRE(ChooseKeyRecord(true, false) == KeyedBy::Base);
+    REQUIRE(ChooseKeyRecord(false, true) == KeyedBy::Reference);
+    REQUIRE(ChooseKeyRecord(false, false) == KeyedBy::Dynamic);
+    // The wire form, which every save's tactics are filed under.
+    REQUIRE(FollowerKey("Skyrim.esm", 0xA2C94) == "Skyrim.esm-A2C94");
+    REQUIRE(FollowerKey("Dawnguard.esm", 0x2B74) == "Dawnguard.esm-2B74");
+    REQUIRE(FollowerKey("Some Mod.esp", 0) == "Some Mod.esp-0");
+    REQUIRE(DynamicKey(0xFF000DE0) == "dynamic-FF000DE0");
+    REQUIRE(DynamicKey(0x14) == "dynamic-00000014");
+}

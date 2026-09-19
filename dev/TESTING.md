@@ -83,7 +83,7 @@ Other seams:
 - [x] `FindStack`: `ChooseStack` (core/Lease.h) over the places in the order the game finds them.
 - [ ] Roster cleanup in `Tick`. Left: one boolean, nearby or else gone when not a teammate or dead, with a comment that says why.
 - [x] `ReportVerdicts`: the action a verdict is worded for is `ExplainedKind` (core/Evaluator.h); `VerdictChanges` was core already.
-- [ ] Profile lifecycle. Left: `ClaimSaved` and the carry-forward are twenty lines over the tested `CoSave` and `Profile`; the identity choice reads the actor's records. An in-play check in `dev/TODO.md` covers the lifecycle.
+- [x] The key a follower's record is filed under: `ChooseKeyRecord`, `FollowerKey`, `DynamicKey` (core/CoSave.h), the wire form pinned by test. `ClaimSaved` and the carry-forward stay: a map extract and a loop over the tested `CoSave` and `Profile`.
 - [ ] Log emit and archive. Left: the naming and retention are `Sessions`, tested; what remains is spdlog and the filesystem, which a temporary-directory harness could cover but which has not failed.
 - [ ] Custom skills loading. Left: the parser and the tree order are tested in `CustomSkills`; the loader is a directory walk and a form lookup.
 - [x] Remaining time: `RemainingOn` (core/Spells.h) over the effects as read. The description helpers (`ReplaceNoCase` and the text assembly) are formatting over strings and stay with the sheets.

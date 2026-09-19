@@ -54,6 +54,21 @@ void PutString(std::string &out, std::string_view s);
 // was.
 [[nodiscard]] std::optional<std::string_view> TakeString(std::string_view &in) noexcept;
 
+// The key a follower's record is filed under: the plugin that defines
+// the record and its id within it, "Skyrim.esm-A2C94", which survives a
+// load order change where a runtime id does not. The base record when it
+// is a plugin's, else the placed reference when that is, else the
+// reference's runtime id, "dynamic-FF000DE0", as good as it gets.
+enum class KeyedBy : std::uint8_t
+{
+    Base,
+    Reference,
+    Dynamic
+};
+[[nodiscard]] KeyedBy ChooseKeyRecord(bool baseInPlugin, bool referenceInPlugin) noexcept;
+[[nodiscard]] std::string FollowerKey(std::string_view plugin, std::uint32_t localId);
+[[nodiscard]] std::string DynamicKey(std::uint32_t referenceId);
+
 // The payloads.
 [[nodiscard]] std::string PackFollower(std::string_view key, std::string_view text);
 [[nodiscard]] std::string PackSettings(std::string_view text);
