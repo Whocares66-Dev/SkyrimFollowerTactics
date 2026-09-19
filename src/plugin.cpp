@@ -44,7 +44,10 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
     // the ini says -- and writes a version banner. Every line then went
     // through its logger, the ini's level never applied to a release build,
     // and the lines our Init wrote were truncated away (2026-09-11).
-    SKSE::Init(skse, {.log = false});
+    // The trampoline is for the one call-site rewrite the panel makes, the
+    // input queue's hand-off (ui::Install): fourteen bytes, a five-byte
+    // call's worth. The function-entry hooks go through Detours instead.
+    SKSE::Init(skse, {.log = false, .trampoline = true, .trampolineSize = 14});
 
     ft::log::plugin.info("FollowerTactics starting up");
 

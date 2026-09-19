@@ -42,6 +42,14 @@ inline constexpr REL::RelocationID kUnequipShout{37948, 38904};
 inline constexpr REL::RelocationID kTurnToward{36818, 37834};
 inline constexpr REL::RelocationID kStopTurning{36823, 37839};
 
+// BSInputDeviceManager's per-frame hand-off of the input queue to its
+// sinks, and the offset inside it of the one call that does the handing:
+// the call SKSE Menu Framework rewrites to read the keys, and that the
+// panel rewrites after it so Escape can be kept from closing the menu
+// (UI.cpp, dev/VERSIONS.md).
+inline constexpr REL::RelocationID kInputQueueDispatch{67315, 68617};
+inline constexpr std::ptrdiff_t kInputQueueDispatchCall = 0x7B;
+
 // The global map from a quest alias to its BGSOverridePackCollection: this
 // is its capacity field, 0x0C into a BSTScatterTable whose layout
 // Packages.cpp copies (CommonLib maps the container but not this global).

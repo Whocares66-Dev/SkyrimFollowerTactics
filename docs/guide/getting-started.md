@@ -36,6 +36,8 @@ To bring up the interface, open the SKSE Menu (default key <kbd>F1</kbd>) and se
 
 ![Interface]({{ "/assets/img/panel/settings.png" | relative_url }}){: .screenshot loading="lazy"}
 
+On a tab with a `Filter` box, <kbd>Space</kbd> puts the cursor in the box and <kbd>Esc</kbd> takes it out again, keeping what you typed, as in SkyUI's lists. <kbd>Esc</kbd> closes the menu only when the cursor is not in the box.
+
 The player and followers start with no [tactics]({{ '/tactics/' | relative_url }}). Add combat rules on the `Tactics` tab and out-of-combat rules on `Idle Tactics`. Nothing changes until you add a rule.
 
 ## Saving your changes

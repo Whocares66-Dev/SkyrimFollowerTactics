@@ -15,6 +15,7 @@
 #include "core/Breakdown.h"
 #include "core/Effects.h"
 #include "core/Vocabulary.h"
+#include "game/Addresses.h"
 #include "game/Log.h"
 #include "game/Pins.h"
 #include "game/PlayerCast.h"
@@ -3365,6 +3366,18 @@ ListView g_shoutList;
 char g_effectsFilter[kFilterLen]{};
 char g_perksFilter[kFilterLen]{};
 
+// The keys a list answers as SkyUI's do: Space puts the cursor in the
+// page's filter box, Escape takes it out again. Escape would otherwise
+// close the whole menu -- the framework closes on any Escape event, on
+// the input thread, before the frame that would have shown the box
+// active -- so its press is taken out of the queue there (TakeEscape) and
+// answered on the render thread instead.
+bool g_focusFilter = false;              // render thread: the box drawn next takes the keyboard
+std::atomic<bool> g_filterDrawn{false};  // a filter box was drawn this frame
+std::atomic<bool> g_filterActive{false}; // the cursor was in one, as of the last frame drawn
+std::atomic<bool> g_leaveFilter{false};  // a taken Escape, for the render thread to act on
+std::atomic<bool> g_escapeTaken{false};  // input thread: the taken press has not been released
+
 struct InventoryTabState
 {
     std::uint64_t detail{0}; // the row open in detail, by InventoryItem::Key; 0 for the list
@@ -3557,7 +3570,13 @@ bool FilterBox(const char *id, char *buffer, std::size_t size)
     // hover to the item drawn first unless it allows overlap: without this
     // the cross could be seen but never clicked.
     Im::SetNextItemAllowOverlap();
+    if (g_focusFilter)
+        Im::SetKeyboardFocusHere();
+    g_focusFilter = false;
     bool changed = Im::InputTextWithHint(id, "Filter", buffer, size);
+    // One box a frame, so this frame's answer is the whole answer.
+    g_filterDrawn.store(true, std::memory_order_relaxed);
+    g_filterActive.store(Im::IsItemActive(), std::memory_order_relaxed);
     if (buffer[0] == '\0')
         return changed;
 
@@ -5583,6 +5602,8 @@ void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
     case Event::kOpenMenu:
     case Event::kCloseMenu:
         g_shownNow.store(0, std::memory_order_relaxed);
+        g_filterActive.store(false, std::memory_order_relaxed);
+        g_leaveFilter.store(false, std::memory_order_relaxed);
         break;
     case Event::kBeforeRender:
         g_drawnThisFrame.store(false, std::memory_order_relaxed);
@@ -5590,10 +5611,82 @@ void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
     case Event::kAfterRender:
         if (!g_drawnThisFrame.load(std::memory_order_relaxed))
             g_shownNow.store(0, std::memory_order_relaxed);
+        // A frame with no filter box drawn -- another tab, another mod's
+        // section -- has no cursor in one, whatever the last frame said.
+        if (!g_filterDrawn.exchange(false, std::memory_order_relaxed))
+            g_filterActive.store(false, std::memory_order_relaxed);
         break;
     default:
         break;
     }
+}
+
+// The input queue's hand-off to its sinks, on the game's input thread.
+// The framework rewrites the same call when it loads and closes its menu
+// on any Escape event there, before its callbacks and before ImGui sees
+// the key; ours is written at data load, after its, so the call reaches
+// ours first, and an Escape pressed with the cursor in a filter box is
+// unlinked from the queue before the framework reads it. The events of
+// the same press that follow -- held, released -- go too: the framework
+// closes on those as well.
+using DispatchInputQueue = void (*)(RE::BSTEventSource<RE::InputEvent *> *, RE::InputEvent *const *);
+DispatchInputQueue g_dispatchInputQueue = nullptr;
+
+void TakeEscape(RE::InputEvent **link)
+{
+    while (RE::InputEvent *event = *link)
+    {
+        const RE::ButtonEvent *button = event->AsButtonEvent();
+        const bool escape = button && button->GetDevice() == RE::INPUT_DEVICE::kKeyboard &&
+                            button->GetIDCode() == static_cast<std::uint32_t>(RE::BSKeyboardDevice::Key::kEscape);
+        bool take = false;
+        if (escape && g_escapeTaken.load(std::memory_order_relaxed))
+        {
+            take = true;
+            if (button->IsUp())
+                g_escapeTaken.store(false, std::memory_order_relaxed);
+        }
+        else if (escape && button->IsDown() && g_filterActive.load(std::memory_order_relaxed))
+        {
+            take = true;
+            g_escapeTaken.store(true, std::memory_order_relaxed);
+            g_leaveFilter.store(true, std::memory_order_relaxed);
+        }
+        if (take)
+            *link = event->next;
+        else
+            link = &event->next;
+    }
+}
+
+void DispatchInputQueueHook(RE::BSTEventSource<RE::InputEvent *> *source, RE::InputEvent *const *events)
+{
+    // The head lives in the caller's frame, and the framework rewrites it
+    // the same way.
+    if (events)
+        TakeEscape(const_cast<RE::InputEvent **>(events));
+    g_dispatchInputQueue(source, events);
+}
+
+void KeepEscapeFromClosingTheMenu()
+{
+    const REL::Relocation<std::uintptr_t> site{addr::kInputQueueDispatch, addr::kInputQueueDispatchCall};
+    g_dispatchInputQueue = reinterpret_cast<DispatchInputQueue>(
+        SKSE::GetTrampoline().write_call<5>(site.address(), &DispatchInputQueueHook));
+    // Whose call was displaced says whether ours runs first: the
+    // framework's thunk if it hooked before us, the engine's own function
+    // if it has not hooked yet and will wrap ours, in which case it closes
+    // the menu before the press reaches here.
+    HMODULE owner = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCWSTR>(g_dispatchInputQueue), &owner);
+    if (owner == GetMenuFrameworkModule())
+        log::ui.info("input queue call at {:X} rewritten ahead of SKSE Menu Framework's: Escape leaves the filter box",
+                     site.address());
+    else
+        log::ui.warn("input queue call at {:X} rewritten, but not ahead of SKSE Menu Framework's (displaced {:X}): "
+                     "Escape will close the menu from the filter box",
+                     site.address(), reinterpret_cast<std::uintptr_t>(g_dispatchInputQueue));
 }
 
 void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
@@ -5608,8 +5701,18 @@ void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
     Im::PushStyleVar(Im::ImGuiStyleVar_WindowPadding, Im::ImVec2(2.0f, 0.0f));
     const bool open = Im::BeginChild(id.c_str(), Im::ImVec2(0.0f, 0.0f), Im::ImGuiChildFlags_AlwaysUseWindowPadding, 0);
     Im::PopStyleVar(1);
+    // Escape, taken from the queue while the cursor was in the filter box,
+    // takes the cursor out and leaves the text: the box's own answer to
+    // the key would put the text back as it was when the cursor went in.
+    if (g_leaveFilter.exchange(false, std::memory_order_relaxed))
+        Im::ClearActiveID();
+    // Space, with the cursor in no box, puts it in this body's filter box.
+    // Cleared after the body: a tab with no box has nowhere to put it, and
+    // the next tab drawn must not inherit it.
+    g_focusFilter = !Im::IsAnyItemActive() && Im::IsKeyPressed(Im::ImGuiKey_Space, false);
     if (open)
         draw();
+    g_focusFilter = false;
     Im::EndChild();
 }
 
@@ -6097,6 +6200,7 @@ void Install()
     // Registered for the life of the game: the event unregisters when freed.
     static const auto *menuEvents = SKSEMenuFramework::AddEvent(OnMenuEvent, 0.0f);
     (void)menuEvents;
+    KeepEscapeFromClosingTheMenu();
 
     SKSEMenuFramework::SetSection("Follower Tactics");
     SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
