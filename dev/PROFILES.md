@@ -39,6 +39,15 @@ Nothing is written on a panel close or by the tick. Close the game without savin
       ] }
     }
   ],
+  "idleEnabled": true,
+  "idleRules": [
+    {
+      "enabled": true,
+      "label": "keep the skin up",
+      "if": { "subject": "self", "predicate": "any" },
+      "then": { "target": "self", "do": [ { "action": "cast-spell", "form": "0x5AD5C~Skyrim.esm" } ] }
+    }
+  ],
   "pins": [
     { "form": "0x13989~Skyrim.esm", "variant": {}, "hand": "both" },
     { "form": "0x12E49~Skyrim.esm", "variant": { "enchant": [ { "effect": "0x581F7~Skyrim.esm", "mag": 25 } ], "label": "Warden" } }
@@ -51,8 +60,10 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 |---|---|
 | `schema` | the format's version; see below. Also the co-save record's version |
 | `follower.name`, `follower.form` | who the record is for, for the log. Never read back: the record's key says whose it is |
-| `enabled` | the follower's own switch, from the Tactics tab. Off silences the list without losing it |
-| `rules[]` | in order; first match wins, as in the panel |
+| `enabled` | the follower's own switch, from the Tactics tab. Off silences the combat list without losing it |
+| `idleEnabled` | the same for the idle list, from the Idle Tactics tab; the two are separate. Absent is on |
+| `rules[]` | in order; first match wins, as in the panel. The combat list: evaluated in a fight and on its edges |
+| `idleRules[]` | the same shape; the Idle Tactics tab's list, evaluated out of a fight (`dev/PLAYER.md` "Out of combat"). Absent is none. A rule of what that list has no use for -- an enemy, a fight's edge -- is kept and reads as an invalid condition |
 | `rules[].enabled`, `rules[].label` | the row's tick and its free text. `label` is omitted when empty |
 | `if.subject`, `if.predicate` | the condition's two halves, by wire name |
 | `if.arg` | the threshold, present only for predicates that take one: a 0..1 fraction for the percent ones |

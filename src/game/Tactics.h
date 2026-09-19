@@ -13,6 +13,7 @@
 #include "game/Profiles.h"
 #include "game/Sensors.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -25,9 +26,12 @@ namespace ft::game
 // is this and their tactics, and so is the player's since 2026-09-18.
 //
 // The UI renders on the render thread while the tick runs on the game thread,
-// so nothing hands out a pointer into live state -- callers get a snapshot they
-// own. Copying a handful of small vectors once per UI frame is far cheaper than
-// the alternative of holding a lock across rendering.
+// so nothing hands out a pointer into live state: a view is published whole
+// and never edited after -- a change is a fresh copy put in its place -- and
+// the render thread shares the published one for the frame (SharedView).
+// Until 2026-09-18 each frame took a copy of it instead, which for the
+// player's page is 190 spells each with its sections and description, deep
+// copied sixty times a second: the panel's lag.
 struct CharacterView
 {
     ft::ActorId id{0};
@@ -110,15 +114,18 @@ struct FollowerView : CharacterView
     ft::ActionTrace availability;
 };
 
-// Everything the UI needs, all copied. Includes followers who are NOT fighting:
-// tactics are authored before a fight, so the panel has to show them then.
-// One follower's alone, for the page that draws one: every open page copied
-// every follower's view each frame until 2026-09-11.
-[[nodiscard]] std::vector<FollowerView> ObserveFollowers();
-[[nodiscard]] std::optional<FollowerView> ObserveFollower(ft::ActorId id);
+// Everything the UI needs, shared and immutable. Includes followers who are
+// NOT fighting: tactics are authored before a fight, so the panel has to
+// show them then. One follower's alone, for the page that draws one: every
+// open page copied every follower's view each frame until 2026-09-11.
+using SharedView = std::shared_ptr<const FollowerView>;
+[[nodiscard]] std::vector<SharedView> ObserveFollowers();
+[[nodiscard]] SharedView ObserveFollower(ft::ActorId id);
 
 // This follower's rules, as a copy: none until someone writes some, so a
-// fresh install changes nothing.
+// fresh install changes nothing. Two lists each, one per moment (core/Rule.h
+// Moment): the combat list, and the idle list evaluated out of a fight. A
+// set knows its moment, so a write needs no second word.
 //
 // Copy in, copy out. Rule sets hold a handful of rules, so copying is cheap,
 // and it removes a whole class of problem: the UI edits its own copy across as
@@ -129,7 +136,7 @@ struct FollowerView : CharacterView
 // held (LoadIfNew); the tick reads. A follower's list is never edited by
 // two of those at once, which is what makes read-modify-write safe here
 // without a version check.
-[[nodiscard]] ft::RuleSet GetRules(ft::ActorId id);
+[[nodiscard]] ft::RuleSet GetRules(ft::ActorId id, ft::Moment moment);
 void SetRules(ft::ActorId id, ft::RuleSet rules);
 
 // The rules, the switch and the player's pins live in the save, one
@@ -162,7 +169,7 @@ void RefreshShownPage();
 
 // The player's page: the sheet, and since 2026-09-18 their tactics too, so
 // it is a follower's view with `player` set (dev/PLAYER.md).
-[[nodiscard]] std::optional<FollowerView> ObservePlayer();
+[[nodiscard]] SharedView ObservePlayer();
 
 // Start ticking. Safe to call once, after kDataLoaded.
 void Install();
@@ -175,7 +182,10 @@ void SetEnabled(bool enabled);
 // Per follower, on top of the global switch. A follower is evaluated only when
 // both are on. Both start on: with no rules by default, on is safe, and the
 // switch is for silencing a written list without losing it.
-void SetFollowerEnabled(ft::ActorId id, bool enabled);
-[[nodiscard]] bool IsFollowerEnabled(ft::ActorId id);
+// One switch per list: the Tactics tab's and the Idle Tactics tab's are
+// each their own, so a follower's fight can be silenced and their upkeep
+// kept, or the other way about.
+void SetFollowerEnabled(ft::ActorId id, ft::Moment moment, bool enabled);
+[[nodiscard]] bool IsFollowerEnabled(ft::ActorId id, ft::Moment moment);
 
 } // namespace ft::game

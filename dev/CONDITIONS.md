@@ -16,7 +16,7 @@ conditions take a *kind* as well as, or instead of, a number:
 | Condition | Kind | Number |
 |---|---|---|
 | Type | man: Breton, Imperial, Nord, Redguard; elf: Dark Elf, Falmer, High Elf, Snow Elf, Wood Elf; beast: Argonian, Khajiit, Orc; creature: Animal, Automaton, Daedra, Dragon, Giant, Spriggan, Troll, Undead, Vampire, Werewolf; or any of a group (see 2a) | none |
-| Status | poisoned, burning, frostbitten, shocked, paralyzed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking (not all about everyone, see 9) | none |
+| Status | poisoned, burning, frostbitten, shocked, paralyzed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking, diseased (not all about everyone, see 9) | none |
 | Resistance | fire, frost, shock, magic, poison | a percent, below or above (0 included, see 4); or lowest / highest |
 | Hit by | any; melee, ranged, magic; fire, frost, shock, poison | none |
 | Attacks with (`hit-type`) | melee, ranged, magic; fire, frost, shock, poison -- no "any", see 9 | none |
@@ -55,6 +55,7 @@ All from the actor, per tick. "Effect" means a walk of
 | blocking | `Actor::IsBlocking()` | high |
 | casting | a `magicCasters[]` slot in `kCharging`/`kCasting` | medium |
 | sneaking | `Actor::IsSneaking()` | high, already read |
+| diseased | an effect whose `spell->GetSpellType()` is `kDisease` (added 2026-09-18) | medium: vanilla diseases are Disease-type spells and show as active effects; not yet seen in play |
 
 The vanilla condition functions (`HasMagicEffectKeyword`, `IsStaggered`,
 `GetAttacked`...) can be built at runtime as a `TESConditionItem`, but the
@@ -231,6 +232,8 @@ Under every subject the conditions come in groups with a divider between: Any; C
 The player is "Player" everywhere in the panel, never by name: a long name breaks the layout.
 
 **Statuses** that no action could answer are not asked about the follower themself: bleeding out, casting, fleeing and staggered. The player neither bleeds out nor flees. About anyone else every status is a fair question (`IsStatusValidFor`).
+
+**The idle list** (2026-09-18, `dev/PLAYER.md` "Out of combat") offers less, since there is no enemy out of a fight: no Enemy, and no Attacking or Attacked by with it; no Combat start or end; no Hit by; no Enemy or Attacker target; no Attack or blow; no Fleeing. The `IsXValidIn(moment, ...)` five in `core/Rule.h` say so, the menus read them, and the evaluator reports a rule of one as an invalid condition.
 
 **Attacking and Attacked by** (Targeting and Target of until 2026-09-09) replace the old "attacking player" and "target of player": each opens on the members of the party -- Self, Player, the other followers by name -- so `Enemy: Attacked by Player` is the one the player is fighting and `Enemy: Attacking <Lydia>` the one going for Lydia. The member goes on the wire as `"member": "player"` or the follower's form; the wire names are `attacking` and `attacked-by`. `Enemy: Attacked by <this follower>` is the follower's own target, which was a subject of its own ("Target") until 2026-09-08; one place for one question.
 

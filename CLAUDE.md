@@ -271,9 +271,7 @@ At the original 150 ms tick that was ~0.3 ms/second for one follower; eight foll
 The tick is now 500 ms (one decision per half-second "turn"), so the cost is lower still.
 
 So the three things `PLAN.md` 3.2/3.3 called for -- staggered scheduling, cached expensive
-sensors, dependency-driven sensor activation -- are **not needed yet**, and building them
-now would be optimising a cost that is two orders of magnitude under budget. Revisit only
-if this number moves. It is logged every 5 s of combat, so drift is visible.
+sensors, dependency-driven sensor activation -- are **not needed** on a follower's bag. On the player's the number is different: **20 ms per evaluation** in Nordic Souls (2026-09-18), every half-second while a list waits or idle rules run. Reading the bag on demand was built and taken out the next day: it saved about a millisecond of the twenty. The cost line times each step of the snapshot (self, party, each other actor's traits, hands, spells, effects, the bag), and it named the step: **spells, 19 ms**, the engine's magicka cost calculation over every spell the player knows, twice for the dual cast. The snapshot now prices only the spells the actor's rules name (`dev/PLAYER.md` "Cost"). Logged every 5 s of evaluation, so drift is visible.
 
 **Casting — WORKS end to end (2026-09-02 13:15).** `dev/MAGIC.md` "The eighth attempt":
 UseMagic packages put at the front of the follower's own package stack, gated by a
@@ -296,7 +294,7 @@ when the game saves and taken back when the tick first sees the follower after a
 (`dev/PROFILES.md`; built 2026-09-04, not yet verified in play). Still missing:
 shareable named profiles. Actions to come are in `dev/ACTIONS.md`.
 
-**The player under tactics (built 2026-09-18 on `wip-player-tactics`; casts, dual casts, a shout, powers and the blows seen in play the same day).** The player is evaluated in a fight as a follower is, under rules of their own on a Tactics tab of their page, saved as a follower's are. Cast, Dual Cast, Scroll, Power and Shout are performed on the player's own body through the game's input handlers, by synthesized presses of the hand's attack controls or the shout control (`src/game/PlayerCast.cpp`, `dev/PLAYER.md`); the blows go by the engine's own attack actions; the equips are plain equips, and the player's snapshot carries what they wear where a follower's carries the pin book. Attack alone is left out. Out of combat is not built: it is to be a second list, not a field on the rule.
+**The player under tactics (built 2026-09-18 on `wip-player-tactics`; casts, dual casts, a shout, powers and the blows seen in play the same day).** The player is evaluated in a fight as a follower is, under rules of their own on a Tactics tab of their page, saved as a follower's are. Cast, Dual Cast, Scroll, Power and Shout are performed on the player's own body through the game's input handlers, by synthesized presses of the hand's attack controls or the shout control (`src/game/PlayerCast.cpp`, `dev/PLAYER.md`); the blows go by the engine's own attack actions; the equips are plain equips, and the player's snapshot carries what they wear where a follower's carries the pin book. Attack alone is left out. **Out of combat is a second list (built 2026-09-18 on `wip-idle-tactics`, not yet verified in play):** an Idle Tactics tab after Tactics, on a follower's page and the player's, the same editor over a list of its own, evaluated out of a fight as the combat list is in one; a list carries its moment (`RuleSet::moment`), one context serves both, and the idle list offers no Enemy, no Attacker, no Combat start or end, no Hit by, no Attack or blow, no Fleeing (`dev/PLAYER.md` "Out of combat"). Diseased is a status since the same day.
 
 **Defaults (2026-09-04):** a follower starts with NO rules; both switches start on,
 which is safe because an empty list does nothing. A fresh install changes nothing

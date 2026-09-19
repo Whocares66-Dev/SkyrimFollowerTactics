@@ -71,6 +71,9 @@ struct FollowerState
     // In combat on the last tick, for the edges: the first evaluation of a
     // fight, and the one farewell evaluation after it.
     bool fighting{false};
+    // Which list was evaluated last, and so whose a list in progress is:
+    // one context serves both, and a tick hands the actor to one list.
+    ft::Moment moment{ft::Moment::Combat};
     // The requested action in flight -- a cast, a shout, a power attack, a
     // bash -- whose cooldown starts again when it is over.
     std::optional<ft::Decision::Step> inFlight;
@@ -85,7 +88,13 @@ std::unordered_map<ft::ActorId, FollowerState> g_followers;
 // enabled without needing an entry. Written by the panel and by a load,
 // read by the tick: guarded.
 std::mutex g_disabledMutex;
-std::unordered_set<ft::ActorId> g_disabledFollowers;
+// A set per list, the combat list's and the idle list's.
+std::array<std::unordered_set<ft::ActorId>, 2> g_disabledFollowers;
+
+std::unordered_set<ft::ActorId> &DisabledIn(ft::Moment moment)
+{
+    return g_disabledFollowers[static_cast<std::size_t>(moment)];
+}
 
 // Followers currently in bleedout, so the transition is logged once rather
 // than every tick.
@@ -96,16 +105,38 @@ std::unordered_set<ft::ActorId> g_bleedingOut;
 // the pointer is the comparison.
 const char *g_playerHeld = nullptr;
 
-// Per-follower rules. Absent means "has not been edited", and the default set
-// is handed out instead -- so a new follower costs nothing until someone
-// actually changes something.
+// Per-follower rules, a map per moment. Absent means "has not been edited",
+// and the default set is handed out instead -- so a new follower costs
+// nothing until someone actually changes something.
 std::mutex g_rulesMutex;
-std::unordered_map<ft::ActorId, ft::RuleSet> g_ruleSets;
+std::array<std::unordered_map<ft::ActorId, ft::RuleSet>, 2> g_ruleSets;
+
+std::unordered_map<ft::ActorId, ft::RuleSet> &RuleSetsOf(ft::Moment moment)
+{
+    return g_ruleSets[static_cast<std::size_t>(moment)];
+}
 
 // How each follower is filed, learned the first time the tick sees them
 // and kept for the session: a dismissed follower's rules are still theirs
 // at the next save. Game thread only.
 std::unordered_map<ft::ActorId, Identity> g_identities;
+
+// The spells an actor's rules cast, from both lists: what the snapshot
+// prices (Sensors.h, BuildSnapshot). A rule added in the panel is in the
+// next tick's list, so a newly named spell is priced on the tick it could
+// first fire.
+std::vector<std::uint32_t> SpellsNamedBy(ft::ActorId id)
+{
+    std::vector<std::uint32_t> named;
+    for (const auto moment : {ft::Moment::Combat, ft::Moment::Idle})
+    {
+        for (const ft::Rule &rule : GetRules(id, moment).rules)
+            for (const ft::Action &action : rule.actions)
+                if (action.kind == ft::ActionKind::CastSpell && action.form != 0)
+                    named.push_back(action.form);
+    }
+    return named;
+}
 
 // First sight of a follower: take their record from the loaded save, if
 // it holds one. Before any view of them is published, so what the panel
@@ -121,15 +152,11 @@ void LoadIfNew(RE::Actor *follower)
         return;
     {
         std::scoped_lock lock(g_rulesMutex);
-        g_ruleSets[id] = std::move(profile->rules);
+        RuleSetsOf(ft::Moment::Combat)[id] = std::move(profile->rules);
+        RuleSetsOf(ft::Moment::Idle)[id] = std::move(profile->idleRules);
     }
-    {
-        std::scoped_lock lock(g_disabledMutex);
-        if (profile->enabled)
-            g_disabledFollowers.erase(id);
-        else
-            g_disabledFollowers.insert(id);
-    }
+    SetFollowerEnabled(id, ft::Moment::Combat, profile->enabled);
+    SetFollowerEnabled(id, ft::Moment::Idle, profile->idleEnabled);
     AdoptPins(follower, profile->pins);
     AdoptBans(follower, profile->bans);
 }
@@ -145,8 +172,10 @@ std::vector<Filed> ProfilesToSave()
         f.who = who;
         f.profile.followerName = who.name;
         f.profile.followerForm = who.form;
-        f.profile.enabled = IsFollowerEnabled(id);
-        f.profile.rules = GetRules(id);
+        f.profile.enabled = IsFollowerEnabled(id, ft::Moment::Combat);
+        f.profile.idleEnabled = IsFollowerEnabled(id, ft::Moment::Idle);
+        f.profile.rules = GetRules(id, ft::Moment::Combat);
+        f.profile.idleRules = GetRules(id, ft::Moment::Idle);
         f.profile.pins = PlayerPinsOf(id);
         f.profile.bans = BansOf(id);
         filed.push_back(std::move(f));
@@ -163,7 +192,7 @@ namespace
 // so it is guarded. The lock is held only for the copy in or out -- never
 // across rendering, and never across BuildSnapshot.
 std::mutex g_viewMutex;
-std::vector<FollowerView> g_view;
+std::vector<SharedView> g_view;
 
 // Per-evaluation cost, in microseconds. dev/PLAN.md 3.2 sets a budget -- total
 // tick cost across 8 followers under 0.5 ms/frame amortised -- and insists it be
@@ -386,7 +415,7 @@ void FillMagic(RE::Actor *actor, CharacterView &v)
 // they carry or know. A follower's spell list changes rarely, but it does
 // change (a console addspell is exactly such a change), so it is re-read
 // rather than kept until something says otherwise.
-void FillTactics(RE::Actor *actor, FollowerView &v)
+void FillTactics(RE::Actor *actor, FollowerView &v, ft::Moment moment)
 {
     FillInventory(actor, v);
     FillMagic(actor, v);
@@ -455,7 +484,7 @@ void FillTactics(RE::Actor *actor, FollowerView &v)
                 return option.name;
         return {};
     };
-    ft::RuleSet rules = GetRules(v.id);
+    ft::RuleSet rules = GetRules(v.id, moment);
     bool renamed = false;
     for (ft::Rule &rule : rules.rules)
     {
@@ -479,7 +508,8 @@ void FillTactics(RE::Actor *actor, FollowerView &v)
     {
         auto &state = g_followers[v.id];
         state.eval.caps = RuntimeCapabilities(actor);
-        v.availability = ft::ProbeAvailability(rules, BuildSnapshot(actor, TacticsSeconds()), state.eval);
+        v.availability =
+            ft::ProbeAvailability(rules, BuildSnapshot(actor, TacticsSeconds(), SpellsNamedBy(v.id)), state.eval);
     }
 
     if (renamed)
@@ -530,7 +560,10 @@ void FillPage(RE::Actor *actor, FollowerView &v, ui::Tab tab)
         v.combatStyle = BuildCombatStyleSheet(actor);
         break;
     case ui::Tab::Tactics:
-        FillTactics(actor, v);
+        FillTactics(actor, v, ft::Moment::Combat);
+        break;
+    case ui::Tab::IdleTactics:
+        FillTactics(actor, v, ft::Moment::Idle);
         break;
     default:
         FillPage(actor, static_cast<CharacterView &>(v), tab);
@@ -538,48 +571,65 @@ void FillPage(RE::Actor *actor, FollowerView &v, ui::Tab tab)
     }
 }
 
+// The views' lock held.
+std::vector<SharedView>::iterator FindView(ft::ActorId id)
+{
+    return std::find_if(g_view.begin(), g_view.end(), [id](const SharedView &v) { return v->id == id; });
+}
+
 void PublishOne(FollowerView v)
 {
     std::scoped_lock lock(g_viewMutex);
-    for (auto &existing : g_view)
-    {
-        if (existing.id == v.id)
-        {
-            existing = std::move(v);
-            return;
-        }
-    }
-    g_view.push_back(std::move(v));
+    const auto it = FindView(v.id);
+    auto published = std::make_shared<const FollowerView>(std::move(v));
+    if (it != g_view.end())
+        *it = std::move(published);
+    else
+        g_view.push_back(std::move(published));
 }
 
 // Everyone under tactics has an entry, so the panel can list them and open a
 // page: their name and whether they are fighting, nothing scanned. A page is
-// built when someone opens it, not because the follower exists.
+// built when someone opens it, not because the follower exists. A view is
+// shared with the render thread as published, so one that changes is a
+// fresh copy put in its place, and one that has not is left alone.
 void RefreshRoster(const std::vector<RE::Actor *> &followers)
 {
     std::scoped_lock lock(g_viewMutex);
     for (auto *follower : followers)
     {
         const ft::ActorId id = follower->GetFormID();
-        const auto it = std::find_if(g_view.begin(), g_view.end(), [id](const FollowerView &v) { return v.id == id; });
-        FollowerView &v = it != g_view.end() ? *it : g_view.emplace_back();
-        v.id = id;
-        v.name = DisplayNameOf(follower);
-        v.inCombat = follower->IsInCombat();
-        v.nearby = true; // collected above, so with the player by definition
+        const std::string name = DisplayNameOf(follower);
+        const bool fighting = follower->IsInCombat();
+        const auto it = FindView(id);
+        if (it != g_view.end() && (*it)->name == name && (*it)->inCombat == fighting && (*it)->nearby)
+            continue;
+        auto v = it != g_view.end() ? std::make_shared<FollowerView>(**it) : std::make_shared<FollowerView>();
+        v->id = id;
+        v->name = name;
+        v->inCombat = fighting;
+        v->nearby = true; // collected above, so with the player by definition
+        if (it != g_view.end())
+            *it = std::move(v);
+        else
+            g_view.push_back(std::move(v));
     }
 }
 
-void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
+// One list: the combat list in a fight and on its edges, the idle list out
+// of one. The tick chooses (below); the context is one, so a cooldown
+// spent by either holds for both.
+void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended, ft::Moment moment)
 {
     const ft::ActorId id = actor->GetFormID();
     auto &state = g_followers[id];
 
     state.eval.caps = RuntimeCapabilities(actor);
+    state.moment = moment;
 
     const auto started = std::chrono::steady_clock::now();
 
-    ft::Snapshot snapshot = BuildSnapshot(actor, now);
+    ft::Snapshot snapshot = BuildSnapshot(actor, now, SpellsNamedBy(id));
 
     // Who is who, once per fight, so the Ally and Enemy subjects can be
     // read against the log. The fight's edge is the tick's (below); what
@@ -621,7 +671,7 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
 
     // This follower's own rules, not a shared static -- the whole point of
     // making them per-follower.
-    const ft::RuleSet rules = GetRules(id);
+    const ft::RuleSet rules = GetRules(id, moment);
     ft::Trace trace;
     ft::ActionTrace actionTrace;
     const ft::Decision decision = ft::Evaluate(rules, snapshot, state.eval, &trace, &actionTrace);
@@ -631,10 +681,11 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
     // looking at one, not from here.
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
-    // New rules, or a new fight, report every rule's verdict afresh. The
-    // farewell evaluation reports nothing: every standing rule turns false on
-    // it at once, which says only that the fight is over.
-    if (began || rules.rules != state.reportedRules.rules)
+    // New rules, a new fight, or the other list, report every rule's
+    // verdict afresh. The farewell evaluation reports nothing: every
+    // standing rule turns false on it at once, which says only that the
+    // fight is over.
+    if (began || rules != state.reportedRules)
     {
         state.reported.clear();
         state.reportedRules = rules;
@@ -660,7 +711,8 @@ void EvaluateFollower(RE::Actor *actor, double now, bool began, bool ended)
             // Whom the condition bound and whom the action went at, by
             // reference and base, and the thing it used: the potion a policy
             // chose, the spell, the item and which copy of it.
-            std::vector<log::Field> fields{{"ruleIndex", decision.ruleIndex},
+            std::vector<log::Field> fields{{"list", moment == ft::Moment::Idle ? "idle" : "combat"},
+                                           {"ruleIndex", decision.ruleIndex},
                                            {"ruleName", label},
                                            {"subjectKind", ft::WireName(decision.rule.subject)}};
             log::AppendActor(fields, "subjectFormId", "subjectBaseFormId", "subjectName", step.subject);
@@ -752,6 +804,23 @@ bool EvaluationHeld()
                               (pausedMenu && frozenClock) ? " + " : "", frozenClock ? "frozen clock" : "");
     }
     return pausedMenu || frozenClock;
+}
+
+// Which of an actor's two lists this tick evaluates, or neither. The
+// combat list in a fight, on its farewell, and while a list of its own is
+// in progress -- the Combat end lists run on after the fight, one action
+// per tick. Otherwise the idle list, while it has rules or a list of its
+// own in progress: out of a fight nothing else is decided, so an actor
+// with no idle rules costs no snapshot at all. The fight's first tick goes
+// to the combat list whatever the idle list was doing; the core drops the
+// idle list's sequence on that edge.
+std::optional<ft::Moment> ListToEvaluate(const FollowerState &state, bool fighting, bool ended, ft::ActorId id)
+{
+    if (fighting || ended || (state.eval.InProgress() && state.moment == ft::Moment::Combat))
+        return ft::Moment::Combat;
+    if (state.eval.InProgress() || !GetRules(id, ft::Moment::Idle).rules.empty())
+        return ft::Moment::Idle;
+    return std::nullopt;
 }
 
 // Pacing lives on a separate thread; the work itself runs on the game thread via
@@ -885,11 +954,15 @@ void Tick()
         const bool began = fighting && !state.fighting;
         const bool ended = !fighting && state.fighting;
 
-        if (g_enabled.load() && (fighting || ended || state.eval.InProgress()) && !down &&
-            IsFollowerEnabled(follower->GetFormID()))
+        // The list this tick is for, then that list's own switch.
+        if (g_enabled.load() && !down)
         {
-            state.fighting = fighting;
-            EvaluateFollower(follower, now, began, ended);
+            if (const auto list = ListToEvaluate(state, fighting, ended, follower->GetFormID());
+                list && IsFollowerEnabled(follower->GetFormID(), *list))
+            {
+                state.fighting = fighting;
+                EvaluateFollower(follower, now, began, ended, *list);
+            }
         }
     }
 
@@ -920,11 +993,14 @@ void Tick()
         const bool fighting = player->IsInCombat();
         const bool began = fighting && !state.fighting;
         const bool ended = !fighting && state.fighting;
-        if (g_enabled.load() && (fighting || ended || state.eval.InProgress()) && !held &&
-            IsFollowerEnabled(player->GetFormID()))
+        if (g_enabled.load() && !held)
         {
-            state.fighting = fighting;
-            EvaluateFollower(player, now, began, ended);
+            if (const auto list = ListToEvaluate(state, fighting, ended, player->GetFormID());
+                list && IsFollowerEnabled(player->GetFormID(), *list))
+            {
+                state.fighting = fighting;
+                EvaluateFollower(player, now, began, ended, *list);
+            }
         }
     }
 
@@ -942,12 +1018,20 @@ void Tick()
     {
         std::scoped_lock lock(g_viewMutex);
         for (auto &v : g_view)
-            v.nearby = std::any_of(followers.begin(), followers.end(),
-                                   [&v](const RE::Actor *f) { return f->GetFormID() == v.id; });
-        std::erase_if(g_view, [](const FollowerView &v) {
-            if (v.nearby)
+        {
+            const bool nearby = std::any_of(followers.begin(), followers.end(),
+                                            [&v](const RE::Actor *f) { return f->GetFormID() == v->id; });
+            if (nearby == v->nearby)
+                continue;
+            // Shared as published: a change is a copy, as in RefreshRoster.
+            auto marked = std::make_shared<FollowerView>(*v);
+            marked->nearby = nearby;
+            v = std::move(marked);
+        }
+        std::erase_if(g_view, [](const SharedView &v) {
+            if (v->nearby)
                 return false;
-            const auto *actor = RE::TESForm::LookupByID<RE::Actor>(v.id);
+            const auto *actor = RE::TESForm::LookupByID<RE::Actor>(v->id);
             return !actor || !actor->IsPlayerTeammate() || actor->IsDead();
         });
     }
@@ -963,23 +1047,39 @@ void Tick()
         log::tactics.info("{} evaluations, avg {:.0f} us, max {:.0f} us  (budget: under "
                           "500 us/frame across all followers)",
                           g_cost.samples, g_cost.AvgUs(), g_cost.maxUs);
+        // Each step of the snapshot beside the whole, so a slow one is
+        // named: a line for a debug log, not a player's.
+        std::string steps;
+        for (const StepCost &step : TakeSnapshotCosts())
+        {
+            if (step.samples == 0)
+                continue;
+            steps += fmt::format("{}{} avg {:.0f} us max {:.0f}", steps.empty() ? "" : ", ", step.name,
+                                 step.totalUs / static_cast<double>(step.samples), step.maxUs);
+        }
+        log::tactics.debug("snapshot steps: {}", steps);
         g_cost.Reset();
     }
 }
 
 } // namespace
 
-ft::RuleSet GetRules(ft::ActorId id)
+ft::RuleSet GetRules(ft::ActorId id, ft::Moment moment)
 {
     std::scoped_lock lock(g_rulesMutex);
-    const auto it = g_ruleSets.find(id);
-    return it == g_ruleSets.end() ? kNoRules : it->second;
+    const auto &sets = RuleSetsOf(moment);
+    const auto it = sets.find(id);
+    if (it != sets.end())
+        return it->second;
+    ft::RuleSet none = kNoRules;
+    none.moment = moment;
+    return none;
 }
 
 namespace
 {
 // The player's page. Guarded by the views' lock.
-std::optional<FollowerView> g_playerView;
+SharedView g_playerView;
 
 // The page as it stands, into `out`; left as it is where there is no page
 // yet, which is a blank one and the right thing to build onto. Copied into a
@@ -1000,9 +1100,9 @@ void CopyFollowerPage(ft::ActorId id, FollowerView &out)
     std::scoped_lock lock(g_viewMutex);
     for (const auto &view : g_view)
     {
-        if (view.id == id)
+        if (view->id == id)
         {
-            out = view;
+            out = *view;
             return;
         }
     }
@@ -1038,7 +1138,7 @@ void RefreshShownPage()
         FillVitals(actor, v, actor->IsInCombat());
         FillPage(actor, v, shown.tab);
         std::scoped_lock lock(g_viewMutex);
-        g_playerView = std::move(v);
+        g_playerView = std::make_shared<const FollowerView>(std::move(v));
     }
     else
     {
@@ -1059,7 +1159,7 @@ void RefreshShownPage()
                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
 }
 
-std::optional<FollowerView> ObservePlayer()
+SharedView ObservePlayer()
 {
     std::scoped_lock lock(g_viewMutex);
     return g_playerView;
@@ -1068,7 +1168,7 @@ std::optional<FollowerView> ObservePlayer()
 void SetRules(ft::ActorId id, ft::RuleSet rules)
 {
     std::scoped_lock lock(g_rulesMutex);
-    g_ruleSets[id] = std::move(rules);
+    RuleSetsOf(rules.moment)[id] = std::move(rules);
 }
 
 void ForgetSession()
@@ -1082,27 +1182,27 @@ void ForgetSession()
     ForgetPins();
     {
         std::scoped_lock lock(g_rulesMutex);
-        g_ruleSets.clear();
+        for (auto &sets : g_ruleSets)
+            sets.clear();
     }
     {
         std::scoped_lock lock(g_disabledMutex);
-        g_disabledFollowers.clear();
+        for (auto &disabled : g_disabledFollowers)
+            disabled.clear();
     }
 }
 
-std::vector<FollowerView> ObserveFollowers()
+std::vector<SharedView> ObserveFollowers()
 {
     std::scoped_lock lock(g_viewMutex);
     return g_view;
 }
 
-std::optional<FollowerView> ObserveFollower(ft::ActorId id)
+SharedView ObserveFollower(ft::ActorId id)
 {
     std::scoped_lock lock(g_viewMutex);
-    for (const auto &view : g_view)
-        if (view.id == id)
-            return view;
-    return std::nullopt;
+    const auto it = FindView(id);
+    return it != g_view.end() ? *it : nullptr;
 }
 
 namespace
@@ -1174,19 +1274,19 @@ void Install()
     }).detach();
 }
 
-void SetFollowerEnabled(ft::ActorId id, bool enabled)
+void SetFollowerEnabled(ft::ActorId id, ft::Moment moment, bool enabled)
 {
     std::scoped_lock lock(g_disabledMutex);
     if (enabled)
-        g_disabledFollowers.erase(id);
+        DisabledIn(moment).erase(id);
     else
-        g_disabledFollowers.insert(id);
+        DisabledIn(moment).insert(id);
 }
 
-bool IsFollowerEnabled(ft::ActorId id)
+bool IsFollowerEnabled(ft::ActorId id, ft::Moment moment)
 {
     std::scoped_lock lock(g_disabledMutex);
-    return !g_disabledFollowers.contains(id);
+    return !DisabledIn(moment).contains(id);
 }
 
 void SetEnabled(bool enabled)

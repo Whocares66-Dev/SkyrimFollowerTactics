@@ -56,6 +56,16 @@
     "url": "/tactics/",
     "headings": [
       {
+        "title": "Player tactics",
+        "anchor": "player-tactics",
+        "level": 2
+      },
+      {
+        "title": "Idle Tactics",
+        "anchor": "idle-tactics",
+        "level": 2
+      },
+      {
         "title": "Conditions",
         "anchor": "conditions",
         "level": 2
@@ -101,13 +111,13 @@
         "level": 2
       },
       {
-        "title": "All followers",
-        "anchor": "all-followers",
+        "title": "Whole party",
+        "anchor": "whole-party",
         "level": 3
       },
       {
-        "title": "Per follower",
-        "anchor": "per-follower",
+        "title": "Per character",
+        "anchor": "per-character",
         "level": 3
       },
       {

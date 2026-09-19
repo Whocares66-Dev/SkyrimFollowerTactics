@@ -979,3 +979,35 @@ TEST_CASE("a negated condition rides the file, and a Not nothing can take is dro
         REQUIRE_FALSE(one.profile->rules.rules[0].negated);
     }
 }
+
+TEST_CASE("Idle rules persist separately and older profiles have none", "[profile][idle]")
+{
+    Profile p;
+    p.rules.rules.push_back(HealBelow(0.3f));
+    auto idle = HealBelow(0.9f);
+    idle.predicate = PredicateKind::Status;
+    idle.conditionArg = 0.0f;
+    idle.statusKind = StatusKind::Diseased;
+    p.idleRules.rules.push_back(idle);
+    // Its own switch, off here while the combat list's stays on.
+    p.idleEnabled = false;
+    auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.profile);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->enabled);
+    REQUIRE_FALSE(read.profile->idleEnabled);
+    REQUIRE(read.profile->rules.rules == p.rules.rules);
+    REQUIRE(read.profile->idleRules.rules == p.idleRules.rules);
+    // The list comes back knowing when it runs.
+    REQUIRE(read.profile->idleRules.moment == Moment::Idle);
+    REQUIRE(read.profile->rules.moment == Moment::Combat);
+    auto old = nlohmann::json::parse(WriteProfile(p, kHex));
+    old.erase("idleRules");
+    old.erase("idleEnabled");
+    read = ReadProfile(old.dump(), kHex);
+    REQUIRE(read.profile);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->idleRules.rules.empty());
+    REQUIRE(read.profile->idleEnabled);
+    REQUIRE(read.profile->rules.rules == p.rules.rules);
+}

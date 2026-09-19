@@ -466,10 +466,38 @@ struct Rule
     [[nodiscard]] bool operator==(const Rule &) const = default;
 };
 
+// When a list runs: in a fight, or out of one. A rule's moment is not a
+// property of the rule but of the list it sits in (dev/PLAYER.md "Out of
+// combat"): the combat list is evaluated in a fight and on its two edges,
+// the idle list out of one, and a rule wanted in both is written twice.
+enum class Moment : std::uint8_t
+{
+    Combat,
+    Idle
+};
+
 struct RuleSet
 {
     std::vector<Rule> rules;
+    Moment moment{Moment::Combat};
+
+    [[nodiscard]] bool operator==(const RuleSet &) const = default;
 };
+
+// What the idle list has no use for. Out of a fight there is no enemy:
+// not the Enemy subject, its two predicates with it, nor the Enemy and
+// Attacker targets, nor Attack and the blows that go at one. The fight's
+// edges are the combat list's own, and Hit by is a fight being had.
+// Fleeing is a fight's state. Nothing here is a matter of what the
+// snapshot carries -- every one of these is answerable out of a fight,
+// and answers false -- so it is a menu question as much as an evaluator
+// one: the editor leaves them out, and the evaluator reports a rule of one
+// InvalidCondition, as it does a pair the subject cannot answer.
+[[nodiscard]] bool IsSubjectValidIn(Moment moment, SubjectKind subject) noexcept;
+[[nodiscard]] bool IsPredicateValidIn(Moment moment, PredicateKind predicate) noexcept;
+[[nodiscard]] bool IsStatusValidIn(Moment moment, StatusKind status) noexcept;
+[[nodiscard]] bool IsActionTargetValidIn(Moment moment, ActionTargetKind target) noexcept;
+[[nodiscard]] bool IsActionValidIn(Moment moment, ActionKind action) noexcept;
 
 // How long the world takes to reflect this action, in seconds.
 //

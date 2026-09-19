@@ -667,6 +667,27 @@ struct PerkPage
 // potions and the loadout, and the party and the enemies by definition:
 // allies are the player and the other teammates, enemies whoever is in
 // combat and hostile to the player (dev/CONDITIONS.md 6).
-ft::Snapshot BuildSnapshot(RE::Actor *actor, double now);
+//
+// `priced` is the spells a rule names: those alone are priced -- their
+// magicka cost, whether they dual cast and at what cost, a Reanimate's cap
+// -- since only a Cast rule's own spell is ever read from the prices, and
+// pricing every spell the player knows measured 19 ms of a 20 ms snapshot
+// (2026-09-19, Nordic Souls: the engine's cost calculation walks the perk
+// entry points per spell, twice for the dual cast). Every spell is still
+// listed as known and in the loadout.
+ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::uint32_t> &priced);
+
+// Where a snapshot's time goes, step by step -- self, party, hands,
+// spells, effects, the bag -- each with its microseconds since last asked,
+// in build order. On the tick's cost line, so a slow snapshot names its
+// step. Game thread.
+struct StepCost
+{
+    const char *name{""};
+    double totalUs{0.0};
+    double maxUs{0.0};
+    std::uint64_t samples{0};
+};
+[[nodiscard]] std::vector<StepCost> TakeSnapshotCosts();
 
 } // namespace ft::game

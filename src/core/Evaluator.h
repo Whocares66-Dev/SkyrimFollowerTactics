@@ -233,7 +233,11 @@ using ActionTrace = std::vector<std::vector<Verdict>>;
 
 // Pure. Reads the snapshot, mutates only ctx's bookkeeping when a rule fires.
 // Pass a trace to get a verdict per rule, and an action trace for one per
-// action.
+// action. The list's moment (RuleSet::moment) says when it decides: the
+// combat list in a fight and on its edges, the idle list out of one. One
+// context serves an actor's two lists -- a cooldown is the action's, not
+// the list's, and a list in progress is whichever began last -- so the
+// caller evaluates one list per tick, never both.
 Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace = nullptr,
                   ActionTrace *actionTrace = nullptr);
 

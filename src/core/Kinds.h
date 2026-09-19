@@ -25,6 +25,9 @@ enum class StatusKind : std::uint8_t
     Blocking,
     Casting,
     Sneaking,
+    // A disease running: an effect whose spell is of the Disease type.
+    // About anyone; the idle list's cure rule is what it is for.
+    Diseased,
 
     COUNT
 };

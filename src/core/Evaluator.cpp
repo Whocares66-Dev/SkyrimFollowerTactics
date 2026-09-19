@@ -834,7 +834,8 @@ Verdict Summary(const Decision &decision, const std::vector<Verdict> &verdicts)
 // bound, and against whom it acts.
 // Fired here means admitted; anything else is the verdict that stopped it,
 // and stands for the rule in the trace.
-Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, ActorId &subject, ActorId &target)
+Verdict Admit(const Rule &r, Moment moment, const Snapshot &snap, const EvalContext &ctx, ActorId &subject,
+              ActorId &target)
 {
     if (!r.enabled)
         return Verdict::Disabled;
@@ -849,8 +850,14 @@ Verdict Admit(const Rule &r, const Snapshot &snap, const EvalContext &ctx, Actor
     // never be answered is an authoring mistake, not a condition that
     // happens to be untrue right now, and the log must not send
     // someone off to investigate a follower's health for nothing.
+    // The same of a rule its list has no use for -- an enemy in the idle
+    // list -- which a hand-edited profile can hold and the editor never
+    // offers.
     if (!IsPredicateValidFor(r.subject, r.predicate) || !IsActionTargetValidFor(r.subject, r.actionTarget) ||
-        !IsDamageKindValidFor(r.predicate, r.damageKind) || (r.negated && !CanNegate(r.predicate)))
+        !IsDamageKindValidFor(r.predicate, r.damageKind) || (r.negated && !CanNegate(r.predicate)) ||
+        !IsSubjectValidIn(moment, r.subject) || !IsPredicateValidIn(moment, r.predicate) ||
+        (r.predicate == PredicateKind::Status && !IsStatusValidIn(moment, r.statusKind)) ||
+        !IsActionTargetValidIn(moment, r.actionTarget))
         return Verdict::InvalidCondition;
     const Binding binding = EvaluateCondition(r, snap);
     if (!binding)
@@ -878,7 +885,7 @@ ActionTrace ProbeAvailability(const RuleSet &rs, const Snapshot &snap, const Eva
         ActorId subject = 0;
         ActorId target = 0;
         // The target only: what the condition says is not the question here.
-        static_cast<void>(Admit(r, snap, ctx, subject, target));
+        static_cast<void>(Admit(r, rs.moment, snap, ctx, subject, target));
         out[i].reserve(r.actions.size());
         for (const Action &a : r.actions)
             out[i].push_back(Availability(a, snap, ctx, r.actionTarget, target, heldAbove));
@@ -903,14 +910,23 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
 
     Decision decision;
 
+    // The idle list decides nothing in a fight, and a list of its own in
+    // progress is dropped with the combat list's on the fight's first edge
+    // (below): the tick hands a fight to the combat list, so this is a
+    // guard, not a path.
+    const bool idle = rs.moment == Moment::Idle;
+    if (idle && snap.inCombat)
+        return decision;
+
     // The edge of a fight. What a rule was in the middle of is dropped: the
     // fight it was for is over, or a new one has begun. Then every rule on
     // this edge is looked at first, wherever it sits in the list, and the
     // lists of those that hold are queued in order, one after another, to
     // run one action per tick from here -- the edge holds for this one
     // evaluation, and a rule not begun on it would never be. The rest of
-    // the list gets a turn only if the edge rules can do nothing.
-    const bool edge = snap.combatBegan || snap.combatEnded;
+    // the list gets a turn only if the edge rules can do nothing. The
+    // edges are the combat list's: the idle list is never handed one.
+    const bool edge = !idle && (snap.combatBegan || snap.combatEnded);
     const PredicateKind at = snap.combatBegan ? PredicateKind::CombatBegins : PredicateKind::CombatEnds;
     if (edge)
     {
@@ -930,7 +946,7 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
                 continue;
             ActorId subject = 0;
             ActorId target = 0;
-            const Verdict admitted = Admit(r, snap, ctx, subject, target);
+            const Verdict admitted = Admit(r, rs.moment, snap, ctx, subject, target);
             if (admitted != Verdict::Fired)
             {
                 put(i, admitted);
@@ -969,10 +985,11 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
             return decision;
     }
 
-    // Out of a fight only the Combat end lists run, and they have: the
-    // farewell evaluation itself goes on, so the trace can say the standing
-    // rules are false on it, but the ticks after it decide nothing.
-    if (!snap.inCombat && !snap.combatEnded)
+    // Out of a fight only the Combat end lists of the combat list run, and
+    // they have: the farewell evaluation itself goes on, so the trace can
+    // say the standing rules are false on it, but the ticks after it decide
+    // nothing. The idle list's standing rules are for exactly those ticks.
+    if (!idle && !snap.inCombat && !snap.combatEnded)
         return decision;
 
     // What the satisfied equip rules above hold. An equip rule whose
@@ -995,7 +1012,7 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
 
         ActorId subject = 0;
         ActorId target = 0;
-        const Verdict admitted = Admit(r, snap, ctx, subject, target);
+        const Verdict admitted = Admit(r, rs.moment, snap, ctx, subject, target);
         if (admitted != Verdict::Fired)
         {
             put(i, admitted);

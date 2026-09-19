@@ -421,6 +421,10 @@ struct SpellState
         bool dualable{false};
         float dualMagicka{0.0f};
     };
+    // Of the spells a rule names, not of every spell known: the game prices
+    // those alone (game/Sensors.h, BuildSnapshot), since only a Cast rule's
+    // own spell is read from here. A spell not here reads as costing
+    // nothing, which only a hand-edited rule can reach.
     std::vector<Cost> costs;
 
     [[nodiscard]] bool CanDualCast(std::uint32_t form) const

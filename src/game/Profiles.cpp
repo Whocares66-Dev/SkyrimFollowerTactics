@@ -229,7 +229,8 @@ std::optional<ft::Profile> ClaimSaved(const Identity &who)
         log::profiles.warn("{}: the saved tactics could not be read -- starting with none", who.name);
         return std::nullopt;
     }
-    log::profiles.info("{}: {} rule(s) and {} pin(s) from the save, {}", who.name, read.profile->rules.rules.size(),
+    log::profiles.info("{}: {} rule(s), {} idle rule(s) and {} pin(s) from the save, {}", who.name,
+                       read.profile->rules.rules.size(), read.profile->idleRules.rules.size(),
                        read.profile->pins.size(), read.profile->enabled ? "on" : "off");
     return std::move(read.profile);
 }

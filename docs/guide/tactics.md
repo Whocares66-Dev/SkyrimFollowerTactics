@@ -8,17 +8,33 @@ has_toc: false
 
 # Tactics
 
-Tactics are condition-action rules, evaluated every 0.5s (a "tick") for all followers for which they are enabled.
-
-The player is not AI-controlled, and therefore has no tactics.
-{: .note }
+Tactics are condition-action rules, evaluated every 0.5s (a "tick") for the player and followers for which they are enabled.
 
 ![Tactics]({{ "/assets/img/panel/tactics.png" | relative_url }}){: .screenshot loading="lazy"}
 
 The list is evaluated top-down. When a [**condition**](#conditions) is met, the corresponding [**actions**](#actions) are tried. If none can be executed, evaluation moves to the next rule in the same tick. See [Unavailable](#unavailable).
 
-Tactics are **only applied in combat** (with the exception of `Combat end`; see [below](#conditions-explained)).
-{: .note }
+The **Tactics** tab runs in combat, including `Combat start` and `Combat end` rules. **Idle Tactics** runs out of combat. Each character has both lists; add a rule to both if you want it in both.
+
+## Player tactics
+
+The player's page has the same rule editor. Use it to drink potions, cast spells, use powers and shouts, or change equipment automatically.
+
+The player aims their own spells and blows. `Attack` is not offered; `Power Attack`, `Bash`, and `Power Bash` are. Equip actions last until you or another rule replace the item; they do not pin it.
+
+Automatic casts use your hands and normal casting animations. Tactics pause during dialogue, while mounted, swimming, using furniture, knocked down, in a kill move or beast form, or when fighting controls are disabled.
+
+## Idle Tactics
+
+Use **Idle Tactics** to maintain buffs, heal after a fight, cure diseases, or change equipment out of combat.
+
+![Idle tactics]({{ "/assets/img/panel/idle_tactics.png" | relative_url }}){: .screenshot loading="lazy"}
+
+For example, `IF Self: Any THEN Self: Cast Oakflesh` recasts the spell when its effect expires. Use `Self: Diseased` to trigger a cure, or a health percentage condition to heal.
+
+Combat-only choices are omitted: enemy conditions and targets, `Combat start`, `Combat end`, `Hit by`, `Fleeing`, `Attacker`, attacks, and bashes.
+
+`Combat end` actions finish before idle rules begin. When combat starts, any remaining actions in the idle sequence are dropped.
 
 ## Conditions
 
@@ -26,10 +42,10 @@ To set a condition, first select a **target** by clicking on the condition cell:
 
 ![Condition target]({{ "/assets/img/panel/condition_target.png" | relative_url }}){: .screenshot loading="lazy"}
 
-- `Self` is the follower.
+- `Self` is the character whose tactics you are editing.
 - `Player` is the player.
 - `Follower` is a specific follower, chosen by name.
-- `Ally` is the player or another follower.
+- `Ally` is another party member: the player or a follower. In the player's rules, it means a follower.
 - `Enemy` is any NPC hostile to the player.
 - `Corpse` is a dead body in the area.
 
@@ -43,7 +59,7 @@ Most conditions are self-explanatory. A few are worth highlighting.
 
 `Combat start` is checked the first tick after combat begins. `Combat start` rules are checked first, before other rules. If there are multiple `Combat start` rules, their actions are concatenated in rule order.
 
-`Combat end` is checked the first tick after combat ends. Unlike other rules, these are evaluated outside of combat. If there are multiple `Combat end` rules, their actions are concatenated in rule order.
+`Combat end` is checked the first tick after combat ends, before idle rules. If there are multiple `Combat end` rules, their actions are concatenated in rule order.
 
 `Attacks with` is the kind of attack the target uses (e.g. Melee or Magic, Fire or Frost).
 
@@ -67,7 +83,7 @@ Actions, like [conditions](#conditions), first require a target:
 
 ![Action target]({{ "/assets/img/panel/action_target.png" | relative_url }}){: .screenshot loading="lazy"}
 
-`Ally`, `Enemy`, and `Corpse` are the one the condition matched. `Enemy` under a condition not about an enemy is whoever the follower is fighting, or else the nearest enemy. `Attacker` is whoever last hit the condition's target.
+`Ally`, `Enemy`, and `Corpse` are the one the condition matched. `Enemy` under a condition not about an enemy is whoever the character is fighting, or else the nearest enemy. `Attacker` is whoever last hit the condition's target.
 
 Then an action:
 
@@ -106,6 +122,8 @@ Both switches are **off by default**, so followers can use these actions without
 
 These switches apply to all followers and are [saved with the game]({{ '/getting-started/' | relative_url }}#saving-your-changes).
 
+The player always needs the corresponding perks for `Dual Cast` and `Power Bash`, regardless of these switches.
+
 ### Multiple Actions
 
 More than one action is allowed for a rule.
@@ -120,19 +138,19 @@ An action that fires goes on cooldown for its target: about 3s for potions, food
 
 ## Enabling / Disabling
 
-### All followers
+### Whole party
 
-Tactics can be enabled or disabled for all followers in the `Settings` menu.
+`Enable tactics for party` in `Settings` controls both lists for the player and all followers.
 
 ![Settings]({{ "/assets/img/panel/settings.png" | relative_url }}){: .screenshot loading="lazy"}
 
-### Per follower
+### Per character
 
-Rules can be enabled or disabled for each follower.
+The `Enabled` switch controls the current list for that character. Combat and idle tactics can be enabled independently.
 
 ![Tactics char disabled]({{ "/assets/img/panel/tactics_char_disabled.png" | relative_url }}){: .screenshot loading="lazy"}
 
-Clicking the `On` header can enable / disable all rules individually.
+Clicking the `On` header toggles all rules in the current list.
 
 ![Tactics disable all]({{ "/assets/img/panel/tactics_disable_all.png" | relative_url }}){: .screenshot loading="lazy"}
 

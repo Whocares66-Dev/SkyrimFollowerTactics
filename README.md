@@ -1,12 +1,12 @@
 # Follower Tactics
 
-**Follower Tactics** is a Skyrim mod for managing follower equipment and combat tactics, inspired by [Dragon Age: Origins](https://dragonage.fandom.com/wiki/Tactics_(Origins)) and [Pillars of Eternity II](https://www.gamepressure.com/pillars-of-eternity-2/partys-ai/z1ae65).
+**Follower Tactics** is a Skyrim mod for player and follower tactics, with follower equipment management. It is inspired by [Dragon Age: Origins](https://dragonage.fandom.com/wiki/Tactics_(Origins)) and [Pillars of Eternity II](https://www.gamepressure.com/pillars-of-eternity-2/partys-ai/z1ae65).
 
 ![Follower Tactics interface](docs/assets/img/panel/main.png)
 
 ## Features
 
-- Customize followers' combat behavior with condition-action [tactics](https://whocares66-dev.github.io/SkyrimFollowerTactics/tactics/).
+- Set condition-action [tactics](https://whocares66-dev.github.io/SkyrimFollowerTactics/tactics/) for the player and followers, with separate combat and idle rules.
 - Inspect player and follower inventory, magic, skills, active effects, and more.
 - Manage follower equipment with [pins and bans](https://whocares66-dev.github.io/SkyrimFollowerTactics/equip-states/).
 - Install as an SKSE plugin, with no ESP.

@@ -23,6 +23,7 @@ enum class Tab
     Skills,
     CombatStyle,
     Tactics,
+    IdleTactics,
 };
 
 // Whose page is on screen and which tab of it; None for a closed panel, and

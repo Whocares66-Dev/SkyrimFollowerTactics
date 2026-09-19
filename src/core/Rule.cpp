@@ -270,6 +270,43 @@ bool IsStatusValidFor(SubjectKind subject, StatusKind status) noexcept
     }
 }
 
+bool IsSubjectValidIn(Moment moment, SubjectKind subject) noexcept
+{
+    return moment == Moment::Combat || subject != SubjectKind::Enemy;
+}
+
+bool IsPredicateValidIn(Moment moment, PredicateKind predicate) noexcept
+{
+    if (moment == Moment::Combat)
+        return true;
+    switch (predicate)
+    {
+    case PredicateKind::CombatBegins:
+    case PredicateKind::CombatEnds:
+    case PredicateKind::HitBy:
+    case PredicateKind::Attacking:
+    case PredicateKind::AttackedBy:
+        return false;
+    default:
+        return true;
+    }
+}
+
+bool IsStatusValidIn(Moment moment, StatusKind status) noexcept
+{
+    return moment == Moment::Combat || status != StatusKind::Fleeing;
+}
+
+bool IsActionTargetValidIn(Moment moment, ActionTargetKind target) noexcept
+{
+    return moment == Moment::Combat || (target != ActionTargetKind::Enemy && target != ActionTargetKind::Attacker);
+}
+
+bool IsActionValidIn(Moment moment, ActionKind action) noexcept
+{
+    return moment == Moment::Combat || (action != ActionKind::Attack && !IsBlow(action));
+}
+
 bool IsDamageKindValidFor(PredicateKind predicate, DamageKind kind) noexcept
 {
     if (predicate == PredicateKind::HitType)

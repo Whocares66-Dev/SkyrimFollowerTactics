@@ -1512,6 +1512,8 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
                         break;
                     }
                 }
+                if (ae->spell && ae->spell->GetSpellType() == RE::MagicSystem::SpellType::kDisease)
+                    traits.Set(ft::StatusKind::Diseased);
                 if (ae->spell && ae->spell->IsPoison())
                     traits.Set(ft::StatusKind::Poisoned);
                 switch (base->GetArchetype())
@@ -1570,7 +1572,104 @@ std::uint32_t Roll()
     return gen();
 }
 
-ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
+// The steps of a snapshot, in the order BuildSnapshot takes them: the
+// actor's own stats, blows and traits; the party, the enemies and the
+// corpses; the hands; the spells known with their costs; the effects
+// running; the bag. Each timed, so the cost line says which one a slow snapshot is
+// paying for rather than the whole.
+enum class Step : std::size_t
+{
+    Self,
+    Party,
+    // The allies' and enemies' traits alone, one sample each, inside Party.
+    Traits,
+    Hands,
+    Spells,
+    Effects,
+    Bag,
+    COUNT
+};
+constexpr std::array<const char *, static_cast<std::size_t>(Step::COUNT)> kStepNames{
+    "self", "party", "traits(each, in party)", "hands", "spells", "effects", "bag"};
+std::array<StepCost, static_cast<std::size_t>(Step::COUNT)> g_stepCost;
+
+void Charge(Step step, std::chrono::steady_clock::time_point since)
+{
+    const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - since).count();
+    StepCost &cost = g_stepCost[static_cast<std::size_t>(step)];
+    cost.totalUs += us;
+    cost.maxUs = (std::max)(cost.maxUs, us);
+    ++cost.samples;
+}
+
+// The bag: the potions, food and ingredients; the scrolls, which join the
+// known list since knowing and carrying are the one question for a Scroll
+// rule; the loadout as the pin book sees it, spells and items, with each
+// variant the bag holds; what is pinned; the soul gems. Every one a walk of
+// the inventory, and a step of its own on the cost line. (Read on demand
+// for a day, 2026-09-19: on the player it measured about a millisecond of
+// a 20 ms snapshot, not worth the machinery.)
+void FillBag(RE::Actor *actor, ft::Snapshot &s)
+{
+    ScanPotions(actor, s.potions);
+    // A scroll carried is "known" for a Scroll rule: knowing and carrying
+    // are the one question for it, and it costs no magicka.
+    for (const auto &[object, entry] :
+         actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::Scroll); }))
+        if (object && entry.first > 0)
+            s.spells.known.push_back(object->GetFormID());
+    // As the pin book sees the spells, for an equip rule.
+    ForEachSpell(actor, [&s, actor](RE::SpellItem *spell) {
+        if (IsPower(spell) || !IsCastable(spell))
+            return;
+        s.loadout.push_back(DescribeHoldable(actor, spell));
+    });
+    // What they could hold or wear, as the pin book sees it, and what is
+    // pinned. A walk of their inventory that keeps only the equipable kinds;
+    // the potion scan above walks it too, and the two could share one pass
+    // if the cost ever showed, which at tens of microseconds it does not.
+    for (const auto &[object, entry] : actor->GetInventory())
+    {
+        if (!object || entry.first <= 0)
+            continue;
+        if (!(object->Is(RE::FormType::Weapon) || object->Is(RE::FormType::Armor) || object->Is(RE::FormType::Ammo) ||
+              object->Is(RE::FormType::Light)))
+            continue;
+        // The form, whichever variant; and each variant the bag holds once,
+        // for a rule that names one (Action::variant). A variant's count is
+        // summed over its rows.
+        s.loadout.push_back(DescribeHoldable(actor, object));
+        std::vector<ft::ItemVariant> variants;
+        const auto noted = [&](const ft::ItemVariant &variant) {
+            return std::any_of(variants.begin(), variants.end(),
+                               [&](const ft::ItemVariant &had) { return ft::SameVariant(had, variant); });
+        };
+        std::int32_t listed = 0;
+        auto *lists = entry.second ? entry.second->extraLists : nullptr;
+        if (lists)
+        {
+            for (const auto *list : *lists)
+            {
+                if (!list)
+                    continue;
+                listed += list->GetCount();
+                if (ft::ItemVariant variant = VariantOf(list); !noted(variant))
+                    variants.push_back(std::move(variant));
+            }
+        }
+        if (entry.first > listed && !noted(ft::ItemVariant{}))
+            variants.emplace_back();
+        for (const ft::ItemVariant &variant : variants)
+            s.loadout.push_back(DescribeHoldable(actor, object, variant));
+    }
+    // The player's "pins" are what they have on: an equip rule of theirs is
+    // done when the thing is worn, and nothing chooses for them to pin
+    // against (game/Pins.h, WornAsPins).
+    s.pins = actor->IsPlayerRef() ? WornAsPins(actor) : PinsOf(s.self);
+    s.soulGems = ScanSoulGems(actor);
+}
+
+ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::uint32_t> &priced)
 {
     ft::Snapshot s;
 
@@ -1580,6 +1679,13 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     s.self = actor->GetFormID();
     s.now = now;
     s.roll = Roll();
+
+    // Where the time goes, step by step, for the cost line (TakeSnapshotCosts).
+    auto last = std::chrono::steady_clock::now();
+    const auto lap = [&last](Step step) {
+        Charge(step, last);
+        last = std::chrono::steady_clock::now();
+    };
 
     s.health = ReadStat(actor, RE::ActorValue::kHealth);
     s.magicka = ReadStat(actor, RE::ActorValue::kMagicka);
@@ -1594,6 +1700,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     }
 
     s.traits = ReadTraits(actor);
+    lap(Step::Self);
 
     // Whom the follower is fighting, as the engine sees it: what "current
     // target" resolves to.
@@ -1614,7 +1721,9 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         view.distance = actor->GetPosition().GetDistance(other->GetPosition());
         view.reachDistance = ReachDistance(actor, other);
         view.target = LiveTargetOf(other);
+        const auto started = std::chrono::steady_clock::now();
         view.traits = ReadTraits(other);
+        Charge(Step::Traits, started);
         return view;
     };
     // Not the player among their own allies: built for the player, Self
@@ -1669,7 +1778,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
             s.enemies.push_back(viewOf(target));
     }
 
-    ScanPotions(actor, s.potions);
+    lap(Step::Party);
     for (const bool left : {false, true})
     {
         auto &hand = left ? s.leftWeapon : s.rightWeapon;
@@ -1697,6 +1806,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
     if (auto *mark = s.currentTarget ? RE::TESForm::LookupByID<RE::Actor>(s.currentTarget) : nullptr)
         s.targetRunning = RunningEffects(mark);
 
+    lap(Step::Hands);
     // Spells: what they know, what is running, what is in hand. All three are
     // ids only -- Snapshot never sees an RE:: type -- and all three are needed
     // to tell "cannot", "already up" and "already held" apart in the status
@@ -1724,7 +1834,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
          actor->GetInventory([](RE::TESBoundObject &obj) { return obj.Is(RE::FormType::Scroll); }))
         if (object && entry.first > 0)
             s.spells.known.push_back(object->GetFormID());
-    ForEachSpell(actor, [&s, actor](RE::SpellItem *spell) {
+    ForEachSpell(actor, [&s, actor, &priced](RE::SpellItem *spell) {
         // A power is known too, for a Use power rule; it costs nothing and
         // is not held in a hand, so it is in neither of the lists below.
         // A greater power used today is in effect until the day turns: the
@@ -1741,6 +1851,12 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
         if (!IsCastable(spell))
             return;
         s.spells.known.push_back(spell->GetFormID());
+        // And as the pin book sees it, for an equip rule.
+        s.loadout.push_back(DescribeHoldable(actor, spell));
+        // Priced only if a rule names it (Sensors.h): the engine's cost
+        // calculation is the dear part of the whole snapshot.
+        if (std::find(priced.begin(), priced.end(), spell->GetFormID()) == priced.end())
+            return;
         // Their cost, not the base cost: CalculateMagickaCost applies their skill
         // and perks, which is what the AI will charge them.
         const bool dualable = CanDualCast(actor, spell);
@@ -1759,53 +1875,9 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
                 break;
             }
         }
-        // And as the pin book sees it, for an equip rule.
-        s.loadout.push_back(DescribeHoldable(actor, spell));
     });
 
-    // What they could hold or wear, as the pin book sees it, and what is
-    // pinned. A walk of their inventory that keeps only the equipable kinds;
-    // the potion scan above walks it too, and the two could share one pass
-    // if the cost ever showed, which at tens of microseconds it does not.
-    for (const auto &[object, entry] : actor->GetInventory())
-    {
-        if (!object || entry.first <= 0)
-            continue;
-        if (!(object->Is(RE::FormType::Weapon) || object->Is(RE::FormType::Armor) || object->Is(RE::FormType::Ammo) ||
-              object->Is(RE::FormType::Light)))
-            continue;
-        // The form, whichever variant; and each variant the bag holds once,
-        // for a rule that names one (Action::variant). A variant's count is
-        // summed over its rows.
-        s.loadout.push_back(DescribeHoldable(actor, object));
-        std::vector<ft::ItemVariant> variants;
-        const auto noted = [&](const ft::ItemVariant &variant) {
-            return std::any_of(variants.begin(), variants.end(),
-                               [&](const ft::ItemVariant &had) { return ft::SameVariant(had, variant); });
-        };
-        std::int32_t listed = 0;
-        auto *lists = entry.second ? entry.second->extraLists : nullptr;
-        if (lists)
-        {
-            for (const auto *list : *lists)
-            {
-                if (!list)
-                    continue;
-                listed += list->GetCount();
-                if (ft::ItemVariant variant = VariantOf(list); !noted(variant))
-                    variants.push_back(std::move(variant));
-            }
-        }
-        if (entry.first > listed && !noted(ft::ItemVariant{}))
-            variants.emplace_back();
-        for (const ft::ItemVariant &variant : variants)
-            s.loadout.push_back(DescribeHoldable(actor, object, variant));
-    }
-    // The player's "pins" are what they have on: an equip rule of theirs is
-    // done when the thing is worn, and nothing chooses for them to pin
-    // against (game/Pins.h, WornAsPins).
-    s.pins = actor->IsPlayerRef() ? WornAsPins(actor) : PinsOf(s.self);
-
+    lap(Step::Spells);
     // A shout's running effect belongs to its word's spell, not to the shout
     // record a rule names, so the shouts known are looked up by their words
     // and marked active by the shout: a Become Ethereal rule then waits
@@ -1838,6 +1910,10 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now)
             }
         }
     });
+
+    lap(Step::Effects);
+    FillBag(actor, s);
+    lap(Step::Bag);
 
     return s;
 }
@@ -4768,4 +4844,16 @@ std::vector<ft::Snapshot::SoulGemView> ScanSoulGems(RE::Actor *actor)
     return out;
 }
 
+std::vector<StepCost> TakeSnapshotCosts()
+{
+    std::vector<StepCost> out;
+    for (std::size_t i = 0; i < g_stepCost.size(); ++i)
+    {
+        StepCost step = g_stepCost[i];
+        step.name = kStepNames[i];
+        out.push_back(step);
+        g_stepCost[i] = {};
+    }
+    return out;
+}
 } // namespace ft::game

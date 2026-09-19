@@ -36,11 +36,11 @@ To bring up the interface, open the SKSE Menu (default key <kbd>F1</kbd>) and se
 
 ![Interface]({{ "/assets/img/panel/settings.png" | relative_url }}){: .screenshot loading="lazy"}
 
-A follower starts with no [tactics]({{ '/tactics/' | relative_url }}). Nothing changes until you add a rule.
+The player and followers start with no [tactics]({{ '/tactics/' | relative_url }}). Add combat rules on the `Tactics` tab and out-of-combat rules on `Idle Tactics`. Nothing changes until you add a rule.
 
 ## Saving your changes
 
-Tactics, follower enable / disable switches, pins, bans, and Settings choices are saved when you save the game, including quicksaves and autosaves. There is no separate save button for the mod.
+Both tactics lists, their enable / disable switches, pins, bans, and Settings choices are saved when you save the game, including quicksaves and autosaves. There is no separate save button for the mod.
 
 Loading an earlier save restores the choices saved with it. Closing the panel does not save changes, and quitting without saving loses them. These choices belong to each game save; they are not shared across characters or new games.
 

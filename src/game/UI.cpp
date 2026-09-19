@@ -5,7 +5,8 @@
 // when the fight ended, so it goes to the events log (dev/EVENTS.md).
 //
 // Everything here runs on the render thread. It never touches an RE::Actor and
-// never reaches into live engine state -- ObserveFollowers() hands back a copy.
+// never reaches into live engine state -- the Observe* calls hand back a
+// published view, shared and never edited after (game/Tactics.h).
 // Reading a follower's inventory from the render thread would be a good way to
 // crash the game.
 
@@ -725,7 +726,7 @@ std::vector<FollowerView::Peer> SortedPeers(const FollowerView &view)
     return peers;
 }
 
-bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, bool setAside)
+bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, ft::Moment moment, bool setAside)
 {
     bool changed = false;
 
@@ -774,6 +775,9 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     {
         const ft::SubjectKind subject = heading.subject;
         const std::uint32_t form = heading.form;
+        // No Enemy in the idle list: there is none out of a fight.
+        if (!ft::IsSubjectValidIn(moment, subject))
+            continue;
         if (!BeginCascade(heading.label.c_str()))
             continue;
 
@@ -864,7 +868,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
         for (std::size_t pi = 0; pi < static_cast<std::size_t>(ft::PredicateKind::COUNT); ++pi)
         {
             const auto predicate = static_cast<ft::PredicateKind>(pi);
-            if (!ft::IsPredicateValidFor(subject, predicate))
+            if (!ft::IsPredicateValidFor(subject, predicate) || !ft::IsPredicateValidIn(moment, predicate))
                 continue;
             // An above predicate is listed under its below counterpart's
             // heading, after a divider, not as a heading of its own; the
@@ -1047,7 +1051,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     continue;
                 std::vector<ft::StatusKind> kinds;
                 for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::StatusKind::COUNT); ++ki)
-                    if (ft::IsStatusValidFor(subject, static_cast<ft::StatusKind>(ki)))
+                    if (ft::IsStatusValidFor(subject, static_cast<ft::StatusKind>(ki)) &&
+                        ft::IsStatusValidIn(moment, static_cast<ft::StatusKind>(ki)))
                         kinds.push_back(static_cast<ft::StatusKind>(ki));
                 std::sort(kinds.begin(), kinds.end(),
                           [](ft::StatusKind a, ft::StatusKind b) { return ft::DisplayName(a) < ft::DisplayName(b); });
@@ -1650,7 +1655,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 // for this follower -- the player, with no spell that suits -- is left out,
 // by the same checks that fill the menu rather than a copy of them.
 bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, std::uint32_t form,
-                 const FollowerView &view, bool probe = false)
+                 const FollowerView &view, ft::Moment moment, bool probe = false)
 {
     bool changed = false;
     // Is this heading the rule's current target? Only then is an item under
@@ -1678,10 +1683,12 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         lastGroup = g;
         return true;
     };
-    // Valid on this target, and one the player's body has a route for when
-    // this is the player's page (game/PlayerCast.h).
+    // Valid on this target and in this list -- no blow out of a fight --
+    // and one the player's body has a route for when this is the player's
+    // page (game/PlayerCast.h).
     const auto valid = [&](ft::ActionKind action) {
-        return ft::IsActionValidFor(target, action) && (!view.player || PlayerSupports(action));
+        return ft::IsActionValidFor(target, action) && ft::IsActionValidIn(moment, action) &&
+               (!view.player || PlayerSupports(action));
     };
 
     // One leaf that picks a policy: the strongest of a kind, the weakest.
@@ -1990,8 +1997,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
 // subject, then predicate. The headings are the same cast, less those the
 // condition cannot supply: "Ally" on this side means the ally the condition
 // matched, so it is offered only when the condition is about one.
-bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool *addAnother, ft::Rule &rule,
-                bool setAside, ft::Verdict verdict = ft::Verdict::Fired)
+bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::Moment moment, bool *addAnother,
+                ft::Rule &rule, bool setAside, ft::Verdict verdict = ft::Verdict::Fired)
 {
     bool changed = false;
 
@@ -2062,18 +2069,20 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, bool 
 
     for (const Heading &heading : headings)
     {
-        if (!ft::IsActionTargetValidFor(rule.subject, heading.target))
+        // Nor an Enemy or an Attacker to aim at, in the idle list.
+        if (!ft::IsActionTargetValidFor(rule.subject, heading.target) ||
+            !ft::IsActionTargetValidIn(moment, heading.target))
             continue;
         // Under "Corpse: None" there is no corpse to aim at.
         if (heading.target == ft::ActionTargetKind::Corpse && rule.predicate == ft::PredicateKind::CorpseNone)
             continue;
         // Nothing this follower could do to them: no heading, rather than one
         // that opens on an empty menu.
-        if (!ActionItems(rule, act, heading.target, heading.form, view, true))
+        if (!ActionItems(rule, act, heading.target, heading.form, view, moment, true))
             continue;
         if (!BeginCascade(heading.label.c_str()))
             continue;
-        if (ActionItems(rule, act, heading.target, heading.form, view))
+        if (ActionItems(rule, act, heading.target, heading.form, view, moment))
             changed = true;
         Im::EndMenu();
     }
@@ -2190,8 +2199,8 @@ void OrderButtons(const std::string &id, float row, std::size_t index, std::size
 // column -- its left edge on Then's border, its right on the table's --
 // with Order the parent's width, so its columns line up with the parent's
 // and need no headings of their own. Returns whether the rules changed.
-bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView &view, float left, float right,
-                       float spacing)
+bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView &view, ft::Moment moment, float left,
+                       float right, float spacing)
 {
     // Seamless with the row above: the drawer's left border on the Then
     // column's, its top border ON the row's bottom border, so the two lines
@@ -2229,7 +2238,7 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::TableNextRow(0, 0.0f);
 
             Im::TableSetColumnIndex(0);
-            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, nullptr, rule, false,
+            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, moment, nullptr, rule, false,
                            VerdictAt(view, ruleIndex, a)))
                 changed = true;
 
@@ -2526,7 +2535,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         }
 
         Im::TableSetColumnIndex(3);
-        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, !available))
+        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, rules.moment, !available))
             changed = true;
 
         Im::TableSetColumnIndex(4);
@@ -2551,8 +2560,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // One action: edited here, in its row. Its menu offers a
             // second, and the rule then opens as a drawer.
             bool addAnother = false;
-            if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, &addAnother, rule, !available,
-                           VerdictAt(view, i, 0)))
+            if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, rules.moment, &addAnother, rule,
+                           !available, VerdictAt(view, i, 0)))
                 changed = true;
             if (addAnother)
             {
@@ -2646,7 +2655,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // The drawer: close this piece, draw beneath, reopen for the rest.
         endPiece();
         BeginDimmed(!rule.enabled);
-        if (DrawActionsDrawer(rule, i, view, thenLeft, right, spacing))
+        if (DrawActionsDrawer(rule, i, view, rules.moment, thenLeft, right, spacing))
             changed = true;
         EndDimmed();
         drawerOpen = true;
@@ -5379,16 +5388,17 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
 {
     Im::Spacing();
 
-    // This follower's switch. The UI runs on the render thread and the tick
-    // on the game thread, so the setter takes a lock rather than writing
-    // shared state directly.
+    // This list's switch -- the combat list's and the idle list's are each
+    // their own. The UI runs on the render thread and the tick on the game
+    // thread, so the setter takes a lock rather than writing shared state
+    // directly.
     //
     // Read LIVE, not from the view. The view is rebuilt by the tick, and the
     // tick is held while this panel has the clock frozen -- so a copy taken
     // from it showed the old state until the panel closed and a tick ran.
     // The global switch on the Settings page never had this problem because
     // it reads its flag directly; this now does the same.
-    const bool followerEnabled = IsFollowerEnabled(view.id);
+    const bool followerEnabled = IsFollowerEnabled(view.id, rules.moment);
     // With the Settings switch off nothing here runs whatever this switch
     // says, so the switch and its word are greyed like the rules beneath,
     // and the hover says where to look. Not toggled while greyed: the
@@ -5404,12 +5414,13 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // On the switch, not the word, as on the Settings page. A disabled item
     // reports no hover unless asked, and the greyed switch is exactly when
     // the hover has something to say.
+    const bool idle = rules.moment == ft::Moment::Idle;
     if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
         Im::SetTooltip("%s", !all              ? "Tactics are turned off for the party in Settings"
-                             : followerEnabled ? "Click to turn off tactics"
-                                               : "Click to turn on tactics");
+                             : followerEnabled ? (idle ? "Click to turn off idle tactics" : "Click to turn off tactics")
+                                               : (idle ? "Click to turn on idle tactics" : "Click to turn on tactics"));
     if (toggled && all)
-        SetFollowerEnabled(view.id, !followerEnabled);
+        SetFollowerEnabled(view.id, rules.moment, !followerEnabled);
     Im::SameLine(0.0f, kCellPadX);
     Im::AlignTextToFramePadding();
     Im::Text("Enabled");
@@ -5692,10 +5703,28 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
     }
 }
 
+// The two lists, a tab each, on a follower's page and the player's alike:
+// what they have been told to do in a fight, and out of one. The rules are
+// read live rather than off the view: the view is rebuilt on a page
+// change, and an edit must show on the next frame.
+void DrawTacticsTabs(const FollowerView &view, Tab carried)
+{
+    if (BeginSheetTab("Tactics", Tab::Tactics, carried))
+    {
+        TabBody(Tab::Tactics, view.id, [&] { DrawTactics(GetRules(view.id, ft::Moment::Combat), view); });
+        Im::EndTabItem();
+    }
+    if (BeginSheetTab("Idle Tactics", Tab::IdleTactics, carried))
+    {
+        TabBody(Tab::IdleTactics, view.id, [&] { DrawTactics(GetRules(view.id, ft::Moment::Idle), view); });
+        Im::EndTabItem();
+    }
+}
+
 // One page per follower: the sheet's tabs, then how their combat AI is
 // tuned and what they have been told to do. It opens on the tab CarriedTab
 // gives it.
-void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
+void DrawFollower(const FollowerView &view)
 {
     // Where the tab row begins and ends, kept for the status put at its
     // right below.
@@ -5718,11 +5747,7 @@ void DrawFollower(const ft::RuleSet &rules, const FollowerView &view)
         });
         Im::EndTabItem();
     }
-    if (BeginSheetTab("Tactics", Tab::Tactics, carried))
-    {
-        TabBody(Tab::Tactics, view.id, [&] { DrawTactics(rules, view); });
-        Im::EndTabItem();
-    }
+    DrawTacticsTabs(view, carried);
 
     Im::EndTabBar();
 
@@ -5794,7 +5819,7 @@ void DrawSlot(std::size_t slot)
 
     if (const auto view = ObserveFollower(id))
     {
-        DrawFollower(GetRules(view->id), *view);
+        DrawFollower(*view);
         return;
     }
 
@@ -5898,11 +5923,7 @@ void __stdcall RenderPlayer()
         return;
     const Tab carried = CarriedTab(*view);
     DrawSheetTabs(*view, carried);
-    if (BeginSheetTab("Tactics", Tab::Tactics, carried))
-    {
-        TabBody(Tab::Tactics, view->id, [&] { DrawTactics(GetRules(view->id), *view); });
-        Im::EndTabItem();
-    }
+    DrawTacticsTabs(*view, carried);
     Im::EndTabBar();
 }
 
@@ -5950,6 +5971,8 @@ const char *Name(Tab tab)
         return "combatstyle";
     case Tab::Tactics:
         return "tactics";
+    case Tab::IdleTactics:
+        return "idle";
     case Tab::None:
     default:
         return "none";
@@ -5967,7 +5990,7 @@ void SyncFollowers()
     const auto present = [&](ft::ActorId id) {
         for (const auto &view : followers)
         {
-            if (view.id == id)
+            if (view->id == id)
                 return true;
         }
         return false;
@@ -6005,9 +6028,9 @@ void SyncFollowers()
         {
             bool known = false;
             for (const auto &slot : g_slots)
-                known = known || slot.id == view.id;
+                known = known || slot.id == view->id;
             if (!known)
-                arriving.push_back(&view);
+                arriving.push_back(view.get());
         }
     }
     static std::unordered_set<ft::ActorId> pending;

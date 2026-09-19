@@ -72,6 +72,10 @@ struct Profile
     // as much as the list does.
     bool enabled{true};
     RuleSet rules;
+    // The second list, the one evaluated out of a fight (Moment::Idle),
+    // with a switch of its own; absent from the file is none, and on.
+    RuleSet idleRules{{}, Moment::Idle};
+    bool idleEnabled{true};
     // The player's pins: what stays in which hand, or stays on. A form and
     // its hands are all the file needs; what the thing IS is read off its
     // record again on the way in. The game takes a saved pin back only if

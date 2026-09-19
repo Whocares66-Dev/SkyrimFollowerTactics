@@ -2,7 +2,7 @@
 
 **Status: built in a fight, 2026-09-18, on `wip-player-tactics`; nothing verified in play.** The player is evaluated in a fight as a follower is, under rules of their own on a Tactics tab of their page, with Cast, Power and Shout performed on their own body (`src/game/PlayerCast.cpp`) and the consumables as they were; Attack, the blows, the pins, scrolls and dual casts are left out of their menus. The reading this was built on: the code on master, the CommonLibSSE-NG headers, the load order's Concentrated Poison perk, four Nexus pages, and the attack and shout handlers read from the unpacked 1.6.1170 executable with `tools/disasm.py` ("The handler, read from the executable" below). Every claim about what the engine does in play is unverified until the list under "To verify in play" is run.
 
-The goal as asked: mostly **out of combat** -- keep an armour spell up without recasting it by hand -- and in combat the things that do not take the character away from the player. Out of combat is not built (below).
+The goal as asked: mostly **out of combat** -- keep an armour spell up without recasting it by hand -- and in combat the things that do not take the character away from the player. Out of combat is a second list, built 2026-09-18 on `wip-idle-tactics` and not yet verified in play (below).
 
 ## The short answer
 
@@ -96,9 +96,21 @@ When not to start one, beyond the gates under Out of combat: mid-swing, blocking
 
 **Decided 2026-09-18: a second list, not a field on the rule.** The per-rule In combat / Out of combat / Always recommended below was built and taken out the same day: a rule's moment is not a property of the rule but of the list it sits in. Out-of-combat tactics are to be a list of their own beside the combat one -- a tab, or a section that folds -- the same editor over it, evaluated out of a fight as the combat list is in one. The rest of this section is what that needs of the tick and the gates, and stands.
 
-### The gate today
+### As built (2026-09-18, `wip-idle-tactics`; not yet verified in play)
 
-Tactics are a combat system by construction, in three places:
+**A list carries its moment.** `RuleSet::moment` (`core/Rule.h`) is Combat or Idle, and `Evaluate` reads it: the combat list decides in a fight and on its two edges as before; the idle list decides out of a fight and nothing in one, is never handed an edge, and its standing rules run on exactly the ticks the combat list's do not. Each actor has one list of each, in the tick's map per moment (`GetRules(id, moment)`; a set knows its moment, so `SetRules` takes no second word), in the save as `idleRules` beside `rules` (`dev/PROFILES.md`), and on the panel as an **Idle Tactics** tab after Tactics, on a follower's page and the player's, the same editor over it (`DrawTacticsTabs`).
+
+**One context serves both lists.** A cooldown is the action's, not the list's: a potion drunk on the fight's last tick is not drunk again on the first tick after it. A list in progress is whichever began last, and the tick remembers which (`FollowerState::moment`): the Combat end lists run on after the fight before the idle list gets a turn, and the fight's first edge drops an idle list in progress as it drops anything else. Tested in `tests/test_idle.cpp`.
+
+**Which list a tick evaluates** is `ListToEvaluate` (`Tactics.cpp`): the combat list in a fight, on its farewell, and while a list of its own is in progress; else the idle list, while it has rules or a list in progress; else nobody, so an actor with no idle rules costs no snapshot out of a fight, as before. The same for the player, under the holds `PlayerHeld` already gates. The events log's `rule.fired` carries `list`, "combat" or "idle".
+
+**What the idle list leaves out** (`IsSubjectValidIn` and the four beside it, `core/Rule.h`): there is no enemy out of a fight, so no Enemy subject and no Attacking or Attacked by with it, no Enemy or Attacker target, no Attack and no blow; the edges are the combat list's; Hit by is a fight being had; Fleeing is a fight's state. Everything else -- the measures, the other statuses, what is wielded, the summons, the corpses, the allies' extremes -- is offered and answered as in the combat list. The editor leaves them out of the idle list's menus; a hand-edited profile carrying one reads InvalidCondition, as a pair the subject cannot answer does. One status came with it, about anyone: **Diseased**, an effect running whose spell is of the Disease type. (Injured, health under its maximum, was built and taken out the same day: the health percent conditions say it.)
+
+**Followers too.** The tab is on every page; a follower's cast through the package has never been run outside a fight, and that is the first thing to watch.
+
+### The gate before it
+
+Tactics were a combat system by construction, in three places:
 
 - the tick evaluates an actor only while fighting, on the farewell evaluation, or with a list in progress (`Tactics.cpp`, `Tick`);
 - `Evaluate` decides nothing out of a fight after the Combat end lists (`Evaluator.cpp`, "Out of a fight only the Combat end lists run");
@@ -110,7 +122,7 @@ Tactics are a combat system by construction, in three places:
 
 **What a rule needs is to say when it runs** -- and the answer is the list it is in (decided above). A rule wanted in both lists is written twice, which is the cost accepted; an "Out of combat" predicate would take the rule's one condition, so `Out of combat and sneaking -> Muffle` could not be written, and a field on the rule puts a second axis on every row. The existing edges keep their meaning: Combat begins and Combat ends are the combat list's, and their moment is the edge.
 
-**Cost.** Out of combat the tick builds no snapshot today. It would build one for an actor with at least one rule that runs out of combat, and for nobody else. The player's bag is the largest there is (the magic page was 92 ms, most of it descriptions the snapshot does not build); the snapshot's cost on a real player's bag is to be measured before anything is cached.
+**Cost.** Out of combat the tick builds a snapshot for an actor with at least one idle rule, and for nobody else. Measured 2026-09-18 in Nordic Souls: **20 ms per evaluation** of the player, every half-second, three idle rules. Reading the bag on demand (`dev/PLAN.md` 3.2's dependency-driven activation) was built and taken out the next day: with it the evaluation read 19 ms and no bag walked, so the four walks of the bag were about a millisecond of the twenty. The one evaluation before the two followers appeared cost under a millisecond. So the cost line times each step of the snapshot -- self, party, each other actor's traits, hands, spells, effects, the bag -- and the log named it: **spells, 19 ms of the 20** (self 80 us, party 50 us, the bag 800 us). That step priced every spell the player knows through the engine's `CalculateMagickaCost`, twice for the dual cast, which walks the perk entry points per spell; only a Cast rule's own spell is ever read from the prices. Since 2026-09-19 `BuildSnapshot` takes the spells the actor's rules name (`SpellsNamedBy`, both lists) and prices those alone; every spell is still listed as known and in the loadout. The corpses were never walked (level and distance only), nor are the allies' and enemies' bags (the armour figure is two engine reads).
 
 **When not to act, though time runs.** The clock gate already holds everything in a paused menu or behind the panel. Out of combat the player is also in states where an automatic cast or drink is wrong: in dialogue (the dialogue menu does not pause), with controls disabled by a scene (`ControlMap::IsFightingControlsEnabled`), in furniture or at a crafting station, mounted (`IsOnMount`), in a kill move, in beast form, invisible (a cast breaks it, as the player's own would, so a buff rule must not undo the player's Invisibility), and with the 3D not loaded. Each a state read on the tick, not a timer.
 
@@ -145,5 +157,4 @@ One session, a character with Oakflesh, vanilla Healing, a racial power and a sh
 ## Open
 
 1. Lending a hand: the draw, the sheathe and the swap back for every upkeep cast. Acceptable, or should a cast wait until a hand is free or the hands are already drawn?
-2. The out-of-combat list: a tab of its own, or a section of the Tactics tab that folds?
-3. Out-of-combat lists for followers too? The tick's change is the same one; a follower's cast through the package has never been run outside a fight.
+2. The idle list in play: a follower's cast through the package out of a fight, the player's buff upkeep (`IF Self: Any THEN Cast Oakflesh` on the Idle Tactics tab, recast when the effect is gone), the switch from one list to the other across a fight's edges, and the snapshot's cost on the player's bag every half-second out of a fight.

@@ -26,6 +26,7 @@ add_executable(ft_tests
     test_evaluator.cpp
     test_eventring.cpp
     test_hits.cpp
+    test_idle.cpp
     test_loadout.cpp
     test_logevent.cpp
     test_profile.cpp

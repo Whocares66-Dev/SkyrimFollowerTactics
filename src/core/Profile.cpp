@@ -495,10 +495,15 @@ std::string WriteProfile(const Profile &profile, const FormCodec &codec)
     who["form"] = profile.followerForm;
     j["follower"] = std::move(who);
     j["enabled"] = profile.enabled;
+    j["idleEnabled"] = profile.idleEnabled;
     json rules = json::array();
     for (const Rule &r : profile.rules.rules)
         rules.push_back(WriteRule(r, codec));
     j["rules"] = std::move(rules);
+    json idleRules = json::array();
+    for (const Rule &r : profile.idleRules.rules)
+        idleRules.push_back(WriteRule(r, codec));
+    j["idleRules"] = std::move(idleRules);
     json pins = json::array();
     for (const PinEntry &pin : profile.pins)
     {
@@ -550,6 +555,7 @@ ReadResult ReadProfile(std::string_view text, const FormCodec &codec)
         p.followerForm = Str(*who, "form").value_or("");
     }
     p.enabled = Bool(j, "enabled").value_or(true);
+    p.idleEnabled = Bool(j, "idleEnabled").value_or(true);
 
     const auto rules = j.find("rules");
     if (rules == j.end() || !rules->is_array())
@@ -569,6 +575,17 @@ ReadResult ReadProfile(std::string_view text, const FormCodec &codec)
             }
             if (auto rule = ReadRule(r, codec, result.warnings, where))
                 p.rules.rules.push_back(std::move(*rule));
+            ++index;
+        }
+    }
+
+    if (const auto idle = j.find("idleRules"); idle != j.end() && idle->is_array())
+    {
+        std::size_t index = 0;
+        for (const json &r : *idle)
+        {
+            if (auto rule = ReadRule(r, codec, result.warnings, "idle rule " + std::to_string(index)))
+                p.idleRules.rules.push_back(std::move(*rule));
             ++index;
         }
     }
