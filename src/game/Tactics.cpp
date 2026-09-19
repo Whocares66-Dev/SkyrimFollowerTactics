@@ -323,11 +323,6 @@ std::string ActionNames(const ft::Rule &rule)
     return names.empty() ? "none" : names;
 }
 
-ft::ActionKind FirstKind(const ft::Rule &rule)
-{
-    return rule.actions.empty() ? ft::ActionKind::None : rule.actions.front().kind;
-}
-
 // Why each rule did or did not act, when that changes (core's
 // VerdictChanges): the events log's answer to "why didn't they drink", which
 // the panel's Status column gave for half a second. At debug in the prose
@@ -340,19 +335,9 @@ void ReportVerdicts(RE::Actor *actor, const ft::RuleSet &rules, const ft::Trace 
     {
         const ft::Rule &rule = rules.rules[i];
         // Worded for the action the verdict is about: the first one reached.
-        ft::ActionKind kind = FirstKind(rule);
-        if (i < actionTrace.size())
-        {
-            const auto &verdicts = actionTrace[i];
-            for (std::size_t a = 0; a < verdicts.size() && a < rule.actions.size(); ++a)
-            {
-                if (verdicts[a] != ft::Verdict::NotReached)
-                {
-                    kind = rule.actions[a].kind;
-                    break;
-                }
-            }
-        }
+        const ft::ActionKind kind =
+            ft::ExplainedKind(rule, i < actionTrace.size() ? std::span<const ft::Verdict>(actionTrace[i])
+                                                           : std::span<const ft::Verdict>{});
         const std::string_view reason = ft::Explain(trace[i], kind);
         log::tactics.event(
             log::Level::Debug, "rule.verdict", actor,

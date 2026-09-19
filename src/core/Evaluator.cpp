@@ -1268,3 +1268,16 @@ std::uint32_t ChooseSoulGem(const std::vector<Snapshot::SoulGemView> &gems, floa
 }
 
 } // namespace ft
+
+namespace ft
+{
+
+ActionKind ExplainedKind(const Rule &rule, std::span<const Verdict> actionVerdicts) noexcept
+{
+    for (std::size_t a = 0; a < actionVerdicts.size() && a < rule.actions.size(); ++a)
+        if (actionVerdicts[a] != Verdict::NotReached)
+            return rule.actions[a].kind;
+    return rule.actions.empty() ? ActionKind::None : rule.actions.front().kind;
+}
+
+} // namespace ft

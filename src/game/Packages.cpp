@@ -978,32 +978,29 @@ struct Stack
 // is not evaluated in a fight.
 Stack FindStack(RE::Actor *actor, bool overrideLists)
 {
-    Stack fullest;
+    // The places, in the order the game finds them; which is chosen is
+    // core's (core/Lease.h, ChooseStack, tested).
     const auto *running = actor->GetCurrentPackage();
+    std::vector<ft::StackSeen> seen;
+    std::vector<Stack> places;
     auto *extra = actor->extraList.GetByType<RE::ExtraAliasInstanceArray>();
     if (extra)
     {
-        std::uint32_t most = 0;
         for (const auto *inst : extra->aliases)
         {
             if (!inst || !inst->instancedPackages)
                 continue;
             auto *packages = const_cast<RE::BSTArray<RE::TESPackage *> *>(inst->instancedPackages);
-            if (running && std::find(packages->begin(), packages->end(), running) != packages->end())
-                return {packages, nullptr, "alias packages", AliasName(*inst)};
-            if (packages->size() > most)
-            {
-                most = packages->size();
-                fullest = {packages, nullptr, "alias packages", AliasName(*inst)};
-            }
+            const bool holds = running && std::find(packages->begin(), packages->end(), running) != packages->end();
+            seen.push_back({false, holds, packages->size()});
+            places.push_back({packages, nullptr, "alias packages", AliasName(*inst)});
         }
     }
     if (overrideLists && running)
     {
-        Stack found;
-        const auto holding = [running, &found](const RE::BGSOverridePackCollection *lists, std::string owner) {
+        const auto add = [&](const RE::BGSOverridePackCollection *lists, const std::string &owner) {
             if (!lists)
-                return false;
+                return;
             const std::array<std::pair<RE::BGSListForm *, const char *>, 4> named{
                 {{lists->enterCombatOverRidePackList, "combat override list"},
                  {lists->spectatorOverRidePackList, "spectator override list"},
@@ -1011,24 +1008,23 @@ Stack FindStack(RE::Actor *actor, bool overrideLists)
                  {lists->guardWarnOverRidePackList, "guard warn override list"}}};
             for (const auto &[list, kind] : named)
             {
-                if (list && std::find(list->forms.begin(), list->forms.end(), running) != list->forms.end())
-                {
-                    found = {nullptr, list, kind, std::move(owner)};
-                    return true;
-                }
+                if (!list)
+                    continue;
+                const bool holds = std::find(list->forms.begin(), list->forms.end(), running) != list->forms.end();
+                seen.push_back({true, holds, 0});
+                places.push_back({nullptr, list, kind, owner});
             }
-            return false;
         };
         if (extra)
         {
             for (const auto *inst : extra->aliases)
-                if (inst && holding(OverrideListsOf(inst->alias), AliasName(*inst)))
-                    return found;
+                if (inst)
+                    add(OverrideListsOf(inst->alias), AliasName(*inst));
         }
-        if (holding(actor->GetActorBase(), "their record"))
-            return found;
+        add(actor->GetActorBase(), "their record");
     }
-    return fullest;
+    const auto chosen = ft::ChooseStack(seen, overrideLists && running);
+    return chosen ? places[*chosen] : Stack{};
 }
 
 void PutOnStack(const Stack &stack, RE::TESPackage *pkg)

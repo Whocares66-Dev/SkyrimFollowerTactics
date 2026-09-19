@@ -11,6 +11,9 @@
 // -- stay the game's. No Skyrim.
 
 #include <algorithm>
+#include <cstddef>
+#include <optional>
+#include <span>
 
 namespace ft
 {
@@ -97,5 +100,20 @@ struct LeaseStep
 
 [[nodiscard]] LeaseStep AdvanceCast(LeaseState &state, const LeaseSeen &seen, LeaseKind kind, double now) noexcept;
 [[nodiscard]] LeaseStep AdvanceWeapon(LeaseState &state, const LeaseSeen &seen, double now) noexcept;
+
+// Where a record goes to reach the follower. The places, in the order the
+// game finds them: each alias's package array, then, when override lists
+// are allowed, each alias's override lists and the record's. The choice:
+// the first alias array the running package came from, where it is
+// evaluated first; else the first override list holding it; else the
+// fullest alias array with anything in it, the quest that drives them;
+// else none.
+struct StackSeen
+{
+    bool overrideList{false}; // an override list, not an alias array
+    bool holdsRunning{false}; // the running package is in it
+    std::size_t size{0};      // an alias array's packages
+};
+[[nodiscard]] std::optional<std::size_t> ChooseStack(std::span<const StackSeen> places, bool overrideLists) noexcept;
 
 } // namespace ft

@@ -116,3 +116,32 @@ LeaseStep AdvanceWeapon(LeaseState &state, const LeaseSeen &seen, double now) no
 }
 
 } // namespace ft
+
+namespace ft
+{
+
+std::optional<std::size_t> ChooseStack(std::span<const StackSeen> places, bool overrideLists) noexcept
+{
+    std::optional<std::size_t> fullest;
+    std::size_t most = 0;
+    for (std::size_t i = 0; i < places.size(); ++i)
+    {
+        const StackSeen &place = places[i];
+        if (place.overrideList)
+            continue;
+        if (place.holdsRunning)
+            return i;
+        if (place.size > most)
+        {
+            most = place.size;
+            fullest = i;
+        }
+    }
+    if (overrideLists)
+        for (std::size_t i = 0; i < places.size(); ++i)
+            if (places[i].overrideList && places[i].holdsRunning)
+                return i;
+    return fullest;
+}
+
+} // namespace ft

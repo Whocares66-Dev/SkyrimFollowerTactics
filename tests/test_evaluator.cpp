@@ -4106,3 +4106,18 @@ TEST_CASE("the probe says every action's availability and decides nothing", "[pa
     REQUIRE(ctx.blocked.size() == before.blocked.size());
     REQUIRE_FALSE(ctx.InProgress());
 }
+
+TEST_CASE("a verdict is worded for the first action reached", "[evaluator]")
+{
+    Rule two = HealBelow(0.5f);
+    two.actions.push_back(two.actions.front());
+    two.actions.back().kind = ActionKind::CastSpell;
+    const std::vector<Verdict> secondReached{Verdict::NotReached, Verdict::NoResource};
+    REQUIRE(ExplainedKind(two, secondReached) == ActionKind::CastSpell);
+    const std::vector<Verdict> firstReached{Verdict::ActionCooldown, Verdict::NotReached};
+    REQUIRE(ExplainedKind(two, firstReached) == ActionKind::DrinkStrongest);
+    const std::vector<Verdict> none{Verdict::NotReached, Verdict::NotReached};
+    REQUIRE(ExplainedKind(two, none) == ActionKind::DrinkStrongest);
+    REQUIRE(ExplainedKind(two, {}) == ActionKind::DrinkStrongest);
+    REQUIRE(ExplainedKind(Rule{}, {}) == ActionKind::None);
+}

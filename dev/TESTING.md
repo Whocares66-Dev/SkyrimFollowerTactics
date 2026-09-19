@@ -80,9 +80,9 @@ The panel's decisions:
 
 Other seams:
 
-- [ ] `FindStack` destination choice.
+- [x] `FindStack`: `ChooseStack` (core/Lease.h) over the places in the order the game finds them.
 - [ ] Roster cleanup in `Tick` (away, dismissed, dead).
-- [ ] `ReportVerdicts` over `VerdictChanges`.
+- [x] `ReportVerdicts`: the action a verdict is worded for is `ExplainedKind` (core/Evaluator.h); `VerdictChanges` was core already.
 - [ ] Profile lifecycle (`ClaimSaved`, `IdentifyFollower`, carry-forward, revert).
 - [ ] Log emit and archive with temporary directories.
 - [ ] Custom skills loading and tree assembly.

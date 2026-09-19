@@ -244,3 +244,23 @@ TEST_CASE("a power attack that never comes, or is cut off", "[lease]")
     inList.inOverrideList = true;
     REQUIRE_FALSE(AdvanceWeapon(listed, inList, 100.5).turnToward);
 }
+
+TEST_CASE("a record goes to the running package's array, else an override list holding it, else the fullest", "[lease]")
+{
+    // Two alias arrays, the second holding the running package; two
+    // override lists, the first holding it.
+    std::vector<StackSeen> places{{false, false, 3}, {false, true, 1}, {true, true, 0}, {true, false, 0}};
+    REQUIRE(ChooseStack(places, true) == 1);
+    REQUIRE(ChooseStack(places, false) == 1);
+    // Nothing running in an array: the override list, when allowed.
+    places[1].holdsRunning = false;
+    REQUIRE(ChooseStack(places, true) == 2);
+    // Not allowed: the fullest array.
+    REQUIRE(ChooseStack(places, false) == 0);
+    // Nothing holds it: the fullest; empty arrays are nobody's.
+    places[2].holdsRunning = false;
+    REQUIRE(ChooseStack(places, true) == 0);
+    const std::vector<StackSeen> empty{{false, false, 0}, {true, false, 0}};
+    REQUIRE_FALSE(ChooseStack(empty, true));
+    REQUIRE_FALSE(ChooseStack({}, true));
+}

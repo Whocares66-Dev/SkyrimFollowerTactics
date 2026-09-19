@@ -8,6 +8,7 @@
 #include "Snapshot.h"
 
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace ft
@@ -279,6 +280,11 @@ const char *ToString(Verdict v) noexcept;
 // different things depending on the action, and the wording has to follow or
 // the log misdirects exactly when it is being read most carefully.
 [[nodiscard]] const char *Explain(Verdict v, ActionKind action) noexcept;
+
+// The action a rule's verdict is worded for: the first one reached, by
+// its verdicts; the rule's first action when none was, or when the
+// verdicts are not there; None for a rule with no action.
+[[nodiscard]] ActionKind ExplainedKind(const Rule &rule, std::span<const Verdict> actionVerdicts) noexcept;
 
 // The verdict as the events log names it: "condition-false", "no-resource".
 // A key a query is written against, so it never follows a change of wording.
