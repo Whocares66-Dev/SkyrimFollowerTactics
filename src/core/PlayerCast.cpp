@@ -37,6 +37,42 @@ const char *ToString(CastStep step) noexcept
     return "?";
 }
 
+std::vector<HandRestore> PlanRestore(const HeldSlot &left, const HeldSlot &right)
+{
+    std::vector<HandRestore> steps;
+    bool restoredTwoHander = false;
+    for (const bool isLeft : {true, false})
+    {
+        const HeldSlot &held = isLeft ? left : right;
+        if (!held.lent)
+            continue;
+        if (held.spell != 0)
+        {
+            steps.push_back({isLeft, RestoreWhat::Spell, held.spell});
+            continue;
+        }
+        if (held.item != 0)
+        {
+            if (held.twoHanded && restoredTwoHander)
+                continue;
+            restoredTwoHander = restoredTwoHander || held.twoHanded;
+            steps.push_back({isLeft, RestoreWhat::Item, held.item});
+            continue;
+        }
+        steps.push_back({isLeft, RestoreWhat::KeepBorrowed, 0});
+    }
+    return steps;
+}
+
+VoiceRestore PlanVoiceRestore(bool lent, bool hadBefore, bool weLentAShout) noexcept
+{
+    if (!lent)
+        return VoiceRestore::None;
+    if (hadBefore)
+        return VoiceRestore::PutBack;
+    return weLentAShout ? VoiceRestore::ReleaseShout : VoiceRestore::ReleasePower;
+}
+
 const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
                               const std::function<void(CastCommand)> &perform)
 {

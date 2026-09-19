@@ -400,3 +400,75 @@ TEST_CASE("each step has a name for the log", "[playercast]")
     REQUIRE(std::string(ToString(CastStep::Firing)) == "firing");
     REQUIRE(std::string(ToString(CastStep::Restoring)) == "restoring");
 }
+
+TEST_CASE("each borrowed hand gets back what it held, the left first", "[playercast]")
+{
+    HeldSlot left;
+    left.lent = true;
+    left.spell = 0x12FCD;
+    HeldSlot right;
+    right.lent = true;
+    right.item = 0x13989;
+    const auto steps = PlanRestore(left, right);
+    REQUIRE(steps.size() == 2);
+    REQUIRE(steps[0].left);
+    REQUIRE(steps[0].what == RestoreWhat::Spell);
+    REQUIRE(steps[0].form == 0x12FCD);
+    REQUIRE_FALSE(steps[1].left);
+    REQUIRE(steps[1].what == RestoreWhat::Item);
+    REQUIRE(steps[1].form == 0x13989);
+
+    // A hand that was not borrowed is not touched.
+    HeldSlot untouched;
+    REQUIRE(PlanRestore(left, untouched).size() == 1);
+    REQUIRE(PlanRestore(untouched, untouched).empty());
+
+    // A hand that held nothing keeps what it was lent.
+    HeldSlot empty;
+    empty.lent = true;
+    const auto kept = PlanRestore(empty, untouched);
+    REQUIRE(kept.size() == 1);
+    REQUIRE(kept[0].what == RestoreWhat::KeepBorrowed);
+}
+
+TEST_CASE("a two-hander goes back once; two copies of one dagger both go back", "[playercast]")
+{
+    // The greatsword reads from both hands: one equip puts it back.
+    HeldSlot left;
+    left.lent = true;
+    left.item = 0x1359D;
+    left.twoHanded = true;
+    HeldSlot right = left;
+    const auto once = PlanRestore(left, right);
+    REQUIRE(once.size() == 1);
+    REQUIRE(once[0].left);
+
+    // Two copies of one dagger are two weapons: each hand gets one back.
+    // Comparing the form alone dropped the second (fixed 2026-09-19).
+    HeldSlot leftDagger;
+    leftDagger.lent = true;
+    leftDagger.item = 0x1397E;
+    HeldSlot rightDagger = leftDagger;
+    const auto both = PlanRestore(leftDagger, rightDagger);
+    REQUIRE(both.size() == 2);
+    REQUIRE(both[0].left);
+    REQUIRE_FALSE(both[1].left);
+    REQUIRE(both[0].form == both[1].form);
+
+    // A two-hander borrowed from one hand alone still goes back.
+    HeldSlot none;
+    const auto single = PlanRestore(none, right);
+    REQUIRE(single.size() == 1);
+    REQUIRE_FALSE(single[0].left);
+}
+
+TEST_CASE("the voice gets back what it held, or gives up what it was lent", "[playercast]")
+{
+    REQUIRE(PlanVoiceRestore(false, true, true) == VoiceRestore::None);
+    REQUIRE(PlanVoiceRestore(true, true, true) == VoiceRestore::PutBack);
+    REQUIRE(PlanVoiceRestore(true, true, false) == VoiceRestore::PutBack);
+    // Nothing there before: the borrowed shout or power comes off, where a
+    // hand would have kept it.
+    REQUIRE(PlanVoiceRestore(true, false, true) == VoiceRestore::ReleaseShout);
+    REQUIRE(PlanVoiceRestore(true, false, false) == VoiceRestore::ReleasePower);
+}

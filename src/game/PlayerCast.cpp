@@ -351,34 +351,40 @@ void Lend(RE::Actor *player, Run &run)
 }
 
 // Give the hands back: what each held before, or nothing.
+// What each borrowed hand and the voice get back is core's
+// (core/PlayerCast.h, PlanRestore and PlanVoiceRestore, tested); this
+// reads what was held, performs the equips, and resolves each copy
+// against the bag as it stands now.
 void Restore(RE::Actor *player, Run &run)
 {
     auto *manager = RE::ActorEquipManager::GetSingleton();
     if (!manager)
         return;
-    // A two-handed weapon reads from both hands and is put back once.
-    RE::TESBoundObject *restored = nullptr;
-    for (const bool left : {true, false})
-    {
-        const std::size_t i = left ? 0 : 1;
-        if (!run.lent[i])
-            continue;
-        run.lent[i] = false;
+    const auto slotOf = [&run](std::size_t i) {
+        ft::HeldSlot slot;
+        slot.lent = run.lent[i];
         const Held &held = run.before[i];
-        log::player.debug("{}: the {} hand back to {}", Describe(player), left ? "left" : "right",
-                          held.spell  ? log::NameOf(held.spell)
-                          : held.item ? log::NameOf(held.item)
-                                      : std::string("nothing"));
-        if (held.spell)
+        slot.spell = held.spell ? held.spell->GetFormID() : 0;
+        slot.item = held.item ? held.item->GetFormID() : 0;
+        // A two-handed weapon, a bow or a crossbow reads from both hands.
+        const auto *weapon = held.item ? held.item->As<RE::TESObjectWEAP>() : nullptr;
+        slot.twoHanded = weapon && TwoHanded(weapon);
+        return slot;
+    };
+    for (const ft::HandRestore &step : ft::PlanRestore(slotOf(0), slotOf(1)))
+    {
+        const std::size_t i = step.left ? 0 : 1;
+        const Held &held = run.before[i];
+        switch (step.what)
         {
-            manager->EquipSpell(player, held.spell, Slot(left ? kLeftHandSlot : kRightHandSlot));
-            continue;
-        }
-        if (held.item)
-        {
-            if (held.item == restored)
-                continue;
-            restored = held.item;
+        case ft::RestoreWhat::Spell:
+            log::player.debug("{}: the {} hand back to {}", Describe(player), step.left ? "left" : "right",
+                              log::NameOf(held.spell));
+            manager->EquipSpell(player, held.spell, Slot(step.left ? kLeftHandSlot : kRightHandSlot));
+            break;
+        case ft::RestoreWhat::Item: {
+            log::player.debug("{}: the {} hand back to {}", Describe(player), step.left ? "left" : "right",
+                              log::NameOf(held.item));
             // A weapon into the hand it came from; a shield or a torch has
             // a slot of its own. Not queued: the player's equip lands now.
             // The copy's list is the one the bag holds NOW for that variant,
@@ -387,32 +393,50 @@ void Restore(RE::Actor *player, Run &run)
             const bool weapon = held.item->Is(RE::FormType::Weapon);
             RE::ExtraDataList *extra = UnwornVariantList(player, held.item, held.variant);
             manager->EquipObject(player, held.item, extra, 1,
-                                 weapon ? Slot(left ? kLeftHandSlot : kRightHandSlot) : nullptr,
+                                 weapon ? Slot(step.left ? kLeftHandSlot : kRightHandSlot) : nullptr,
                                  /*queueEquip*/ false, /*forceEquip*/ false, /*playSounds*/ false,
                                  /*applyNow*/ false);
-            continue;
+            break;
         }
-        // An empty hand keeps the spell. Unequipped after the cast, the
-        // next lend into that hand played the equip animation twice (seen
-        // in play 2026-09-18, the engine's own doing on one equip call);
-        // left in place, once. An empty hand was holding nothing the player
-        // chose, and a spell it has just cast is the least surprising thing
-        // to find there.
-        log::player.debug("{}: {} left in the {} hand, which held nothing", Describe(player), log::NameOf(run.spell),
-                          left ? "left" : "right");
+        case ft::RestoreWhat::KeepBorrowed:
+            // An empty hand keeps the spell. Unequipped after the cast, the
+            // next lend into that hand played the equip animation twice (seen
+            // in play 2026-09-18, the engine's own doing on one equip call);
+            // left in place, once. An empty hand was holding nothing the player
+            // chose, and a spell it has just cast is the least surprising thing
+            // to find there.
+            log::player.debug("{}: {} left in the {} hand, which held nothing", Describe(player),
+                              log::NameOf(run.spell), step.left ? "left" : "right");
+            break;
+        }
     }
-    if (run.voiceLent)
+    run.lent[0] = false;
+    run.lent[1] = false;
+
+    auto *beforeShout = run.voiceBefore ? run.voiceBefore->As<RE::TESShout>() : nullptr;
+    auto *beforePower = run.voiceBefore ? run.voiceBefore->As<RE::SpellItem>() : nullptr;
+    auto *ourShout = run.voiceForm ? run.voiceForm->As<RE::TESShout>() : nullptr;
+    auto *ourPower = run.voiceForm ? run.voiceForm->As<RE::SpellItem>() : nullptr;
+    switch (ft::PlanVoiceRestore(run.voiceLent, beforeShout || beforePower, ourShout != nullptr))
     {
-        run.voiceLent = false;
-        if (auto *shout = run.voiceBefore ? run.voiceBefore->As<RE::TESShout>() : nullptr)
-            manager->EquipShout(player, shout);
-        else if (auto *power = run.voiceBefore ? run.voiceBefore->As<RE::SpellItem>() : nullptr)
-            manager->EquipSpell(player, power, Slot(kVoiceSlot));
-        else if (auto *ourShout = run.voiceForm ? run.voiceForm->As<RE::TESShout>() : nullptr)
+    case ft::VoiceRestore::PutBack:
+        if (beforeShout)
+            manager->EquipShout(player, beforeShout);
+        else if (beforePower)
+            manager->EquipSpell(player, beforePower, Slot(kVoiceSlot));
+        break;
+    case ft::VoiceRestore::ReleaseShout:
+        if (ourShout)
             UnequipShoutNow(player, ourShout);
-        else if (auto *ourPower = run.voiceForm ? run.voiceForm->As<RE::SpellItem>() : nullptr)
+        break;
+    case ft::VoiceRestore::ReleasePower:
+        if (ourPower)
             UnequipSpellNow(player, ourPower, 2);
+        break;
+    case ft::VoiceRestore::None:
+        break;
     }
+    run.voiceLent = false;
 }
 
 // --- the caster -------------------------------------------------------------

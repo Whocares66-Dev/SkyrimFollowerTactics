@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace ft
 {
@@ -138,6 +139,52 @@ enum class CastCommand : std::uint8_t
     Release,      // the release
     MarkPowerUsed // the power onto the used list
 };
+
+// ---- Giving the hands and the voice back.
+//
+// What a hand held before the cast borrowed it, as the game read it.
+struct HeldSlot
+{
+    bool lent{false};       // this hand was borrowed; the others are not touched
+    std::uint32_t spell{0}; // the spell it held; 0 for none
+    std::uint32_t item{0};  // the item it held; 0 for none
+    bool twoHanded{false};  // the item fills both hands, so it goes back once
+};
+
+enum class RestoreWhat : std::uint8_t
+{
+    Spell,       // put the spell back in this hand
+    Item,        // put the item back in this hand
+    KeepBorrowed // the hand was empty: it keeps what it was lent
+};
+
+struct HandRestore
+{
+    bool left{false};
+    RestoreWhat what{RestoreWhat::KeepBorrowed};
+    std::uint32_t form{0};
+};
+
+// What each borrowed hand gets back, the left hand first. A hand that held
+// nothing keeps the spell it was lent: unequipped after the cast, the next
+// lend into that hand played the equip animation twice (2026-09-18), and a
+// hand that was empty was holding nothing the player chose. A two-handed
+// weapon reads from both hands and is put back once; two copies of ONE
+// one-handed form are two weapons and are both put back (before
+// 2026-09-19 the second was dropped, since only the form was compared).
+[[nodiscard]] std::vector<HandRestore> PlanRestore(const HeldSlot &left, const HeldSlot &right);
+
+// What the voice gets back: what it held before, or, where it held
+// nothing, the shout or power we lent it is taken off -- unlike a hand,
+// the voice slot does not keep it.
+enum class VoiceRestore : std::uint8_t
+{
+    None,         // the voice was not borrowed
+    PutBack,      // what it held before
+    ReleaseShout, // it held nothing and we lent a shout
+    ReleasePower  // it held nothing and we lent a power
+};
+[[nodiscard]] VoiceRestore PlanVoiceRestore(bool lent, bool hadBefore, bool weLentAShout) noexcept;
 
 // One step, where the run can take it; the reason it is over, or null
 // while it goes on. Each step's window is measured from when the step
