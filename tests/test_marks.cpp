@@ -123,3 +123,55 @@ TEST_CASE("a row with no pin of its own is set aside by the pins in the way, or 
     // The pinned thing itself is not set aside by its own pin.
     REQUIRE_FALSE(RowAsideOf(one, OneHander(kDagger), false).aside);
 }
+
+TEST_CASE("a follower's cell walks round: equip, pin, ban, unban; the player's only equips and unequips", "[marks]")
+{
+    EquipCell cell;
+    REQUIRE(NextWearRequest(cell, false) == WearRequest::Equip);
+    cell.on = true;
+    REQUIRE(NextWearRequest(cell, false) == WearRequest::Pin);
+    cell.pinned = true;
+    REQUIRE(NextWearRequest(cell, false) == WearRequest::Ban);
+    cell.banned = true;
+    cell.pinned = false;
+    cell.on = false;
+    REQUIRE(NextWearRequest(cell, false) == WearRequest::Unban);
+
+    // A pin whose thing the AI swapped out is still a pin: the click bans.
+    EquipCell swapped;
+    swapped.pinned = true;
+    REQUIRE(NextWearRequest(swapped, false) == WearRequest::Ban);
+    // A banned thing found on: the click unbans.
+    EquipCell bannedOn;
+    bannedOn.banned = true;
+    bannedOn.on = true;
+    REQUIRE(NextWearRequest(bannedOn, false) == WearRequest::Unban);
+
+    // The player: on or off, whatever the book says.
+    REQUIRE(NextWearRequest(EquipCell{}, true) == WearRequest::Equip);
+    REQUIRE(NextWearRequest(bannedOn, true) == WearRequest::Unequip);
+    REQUIRE(NextWearRequest(swapped, true) == WearRequest::Equip);
+}
+
+TEST_CASE("a sorted column: pinned, equipped, unequipped, banned, then what cannot be held", "[marks]")
+{
+    EquipCell pinned;
+    pinned.pinned = true;
+    pinned.on = true;
+    EquipCell on;
+    on.on = true;
+    const EquipCell off;
+    EquipCell banned;
+    banned.banned = true;
+    EquipCell dim;
+    dim.disabled = true;
+    dim.pinned = true;
+    EquipCell slashed;
+    slashed.allowed = false;
+    REQUIRE(CellRank(pinned) == 0);
+    REQUIRE(CellRank(on) == 1);
+    REQUIRE(CellRank(off) == 2);
+    REQUIRE(CellRank(banned) == 3);
+    REQUIRE(CellRank(dim) == 4);
+    REQUIRE(CellRank(slashed) == 4);
+}

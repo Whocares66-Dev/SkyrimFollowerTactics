@@ -49,4 +49,39 @@ struct RowAside
 };
 [[nodiscard]] RowAside RowAsideOf(const std::vector<Pin> &pins, const Holdable &described, bool dualWield);
 
+// What the panel asks of a thing: the five requests a cell's click makes.
+enum class WearRequest
+{
+    Equip,
+    Unequip,
+    Pin,
+    Ban,
+    Unban
+};
+
+// An equip cell of the panel, in one hand or worn: whether it can take the
+// thing at all, whether the row is dim (set aside by a pin, or above their
+// skill), and the thing's state there.
+struct EquipCell
+{
+    bool allowed{true}; // false: slashed, the cell cannot take the thing
+    bool disabled{false};
+    bool on{false};
+    bool pinned{false};
+    bool banned{false};
+};
+
+// A click walks the cell round: unequipped, equipped, pinned, banned, and
+// back to unequipped. Banned and pinned are read first: a pin whose thing
+// the AI has swapped out is still a pin, and a ban is a ban whatever is
+// on. The player's cell only equips and unequips: the pin and the ban are
+// a leash on the combat AI, and nothing chooses for the player.
+[[nodiscard]] WearRequest NextWearRequest(const EquipCell &cell, bool player) noexcept;
+
+// The order of a cell when its column is sorted, ascending: pinned, then
+// equipped, then unequipped, then banned, then disabled -- the dim row,
+// and the slashed cell that cannot take it at all. What the follower holds
+// to comes first, what cannot be held last.
+[[nodiscard]] int CellRank(const EquipCell &cell) noexcept;
+
 } // namespace ft

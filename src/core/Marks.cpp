@@ -67,3 +67,30 @@ RowAside RowAsideOf(const std::vector<Pin> &pins, const Holdable &described, boo
 }
 
 } // namespace ft
+
+namespace ft
+{
+
+WearRequest NextWearRequest(const EquipCell &cell, bool player) noexcept
+{
+    if (player)
+        return cell.on ? WearRequest::Unequip : WearRequest::Equip;
+    if (cell.banned)
+        return WearRequest::Unban;
+    if (cell.pinned)
+        return WearRequest::Ban;
+    return cell.on ? WearRequest::Pin : WearRequest::Equip;
+}
+
+int CellRank(const EquipCell &cell) noexcept
+{
+    if (!cell.allowed || cell.disabled)
+        return 4;
+    if (cell.banned)
+        return 3;
+    if (cell.pinned)
+        return 0;
+    return cell.on ? 1 : 2;
+}
+
+} // namespace ft

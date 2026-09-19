@@ -9,6 +9,7 @@
 // combat AI when it asks what to hold. Game thread only.
 
 #include "core/Loadout.h"
+#include "core/Marks.h"
 #include "core/Profile.h"
 #include "game/Inventory.h"
 #include "game/Magic.h"
@@ -98,15 +99,8 @@ namespace ft::game
 // the pinned things back on and takes the banned ones off.
 //
 // Callable from any thread: the work is queued to the game thread. The
-// pins go into the save with the rules (game/Profiles.h).
-enum class WearRequest
-{
-    Equip,
-    Unequip,
-    Pin,
-    Ban,
-    Unban
-};
+// pins go into the save with the rules (game/Profiles.h). The requests are
+// core's (WearRequest, core/Marks.h), as is which one a cell's click makes.
 
 // `variant` is which row of the form; none for the form itself. `row` is
 // the clicked row's own list (InventoryItem::row) when it has one: the

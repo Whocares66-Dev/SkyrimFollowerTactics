@@ -72,7 +72,7 @@ Inventory beyond the view:
 
 The panel's decisions:
 
-- [ ] Cell readers, the click's next request, `CellRank`. Left: each is one expression over the panel's row types, and `WearRequest` is the game's enum; moving them would move the row types with them for no decision gained.
+- [x] The click's next request and a cell's rank: `NextWearRequest`, `CellRank`, `EquipCell` and `WearRequest` in core/Marks.h. The readers that fill a cell from a row stay with the row types.
 - [x] The sort's order and the filter's matching (`core/Table.h`: `SortRows`, `Compare`, `ContainsNoCase`, `AnyContains`); the panel reads the sort spec and composes each list's cells, which stay with its row types.
 - [x] Open-row state: `OpenRows` (core/OpenRows.h) keeps which drawers are open and follows the rules through a move or a removal; the panel opens, closes and asks.
 - [ ] Source navigation. Left: page and detail ids are the panel's own; nothing a rule or a follower depends on.

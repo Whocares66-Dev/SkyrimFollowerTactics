@@ -3913,15 +3913,8 @@ void SlashCell()
 // by. The two read the SAME struct, from the same reader, so a cell cannot
 // sort otherwise than it looks -- a spell above the follower's skill was
 // drawn slashed and sorted among the unequipped once, the sort re-deriving
-// the state on its own and reading less of it (2026-09-10).
-struct EquipCell
-{
-    bool allowed{true};   // false: slashed, the cell cannot take the thing
-    bool disabled{false}; // the row is dim: set aside by a pin, or above their skill
-    bool on{false};
-    bool pinned{false};
-    bool banned{false};
-};
+// the state on its own and reading less of it (2026-09-10). The cell is
+// core's (EquipCell, core/Marks.h), with its rank and its next request.
 
 // The readers, one per table and cell. The row's dimming is the same
 // state: disabled or banned.
@@ -3984,15 +3977,7 @@ void OnCell(const char *id, const CharacterView &view, std::uint32_t form, const
     }
     if (clickable)
     {
-        // Banned and pinned first: a pin whose thing the AI has swapped out
-        // is still a pin, and a ban is a ban whatever is on. The player's
-        // cell only equips and unequips: the pin and the ban are a leash on
-        // the combat AI, and nothing chooses for the player.
-        const WearRequest next = view.player   ? (cell.on ? WearRequest::Unequip : WearRequest::Equip)
-                                 : cell.banned ? WearRequest::Unban
-                                 : cell.pinned ? WearRequest::Ban
-                                 : cell.on     ? WearRequest::Pin
-                                               : WearRequest::Equip;
+        const WearRequest next = ft::NextWearRequest(cell, view.player);
         if (CellClicked(id))
             RequestWear(view.id, form, next, hand, variant, row);
         if (Im::IsItemHovered(0))
@@ -4003,15 +3988,6 @@ void OnCell(const char *id, const CharacterView &view, std::uint32_t form, const
                                                           : "Unequipped. Click to equip.");
     }
     DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), cell.on, cell.pinned, cell.banned);
-}
-
-// The order of an equip cell when its column is sorted, ascending: pinned,
-// then equipped, then unequipped, then banned, then disabled -- the dim
-// row, and the slashed cell that cannot take it at all. What the follower
-// holds to comes first, what cannot be held last.
-int CellRank(const EquipCell &cell)
-{
-    return !cell.allowed || cell.disabled ? 4 : cell.banned ? 3 : cell.pinned ? 0 : cell.on ? 1 : 2;
 }
 
 // Which columns an inventory list shows, by its category: the table lays
