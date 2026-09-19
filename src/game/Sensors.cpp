@@ -84,12 +84,14 @@ bool Harmful(const RE::EffectSetting *base)
 // and needs no check. Muffle is a PeakValueModifier like Waterbreathing and
 // so still reads as a buff here -- left in, since it does at least do
 // something for a follower, but noted rather than guarded.
+bool ReadsSkillMods(const RE::Actor *actor);
+bool ReadsSkillPowerMods(const RE::Actor *actor);
+ft::EffectShape ShapeOf(const RE::EffectSetting *base, float duration);
 bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base);
 bool Buffs(const RE::Actor *actor, const RE::EffectSetting *base, const RE::Effect::EffectItem &item)
 {
-    return item.duration > 0 && !Harmful(base) &&
-           base->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier) &&
-           base->data.primaryAV != RE::ActorValue::kWaterBreathing && EffectApplies(actor, base);
+    return ft::IsBuff(ShapeOf(base, static_cast<float>(item.duration)), ReadsSkillMods(actor),
+                      ReadsSkillPowerMods(actor));
 }
 
 // Every effect a consumable gives, by the name the game shows, with the
@@ -212,23 +214,31 @@ bool ReadsSkillPowerMods(const RE::Actor *actor);
 // Destruction's DestructionModifier -- is read only by the two hidden perks
 // a follower does not carry (dev/RESEARCH.md 6): the value moves, and
 // nothing looks at it.
-bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base)
+// The record's shape, for core's EffectApplies and IsBuff (core/Effects.h).
+ft::EffectShape ShapeOf(const RE::EffectSetting *base, float duration)
 {
     using Archetype = RE::EffectArchetypes::ArchetypeID;
+    ft::EffectShape shape;
     const auto archetype = base->GetArchetype();
-    if (archetype != Archetype::kValueModifier && archetype != Archetype::kPeakValueModifier &&
-        archetype != Archetype::kDualValueModifier)
-        return true;
+    shape.valueModifier = archetype == Archetype::kValueModifier || archetype == Archetype::kPeakValueModifier ||
+                          archetype == Archetype::kDualValueModifier;
+    shape.peakValue = base->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier);
     const auto av = static_cast<int>(base->data.primaryAV);
     constexpr int kFirstModifier = static_cast<int>(RE::ActorValue::kOneHandedModifier);
     constexpr int kLastModifier = static_cast<int>(RE::ActorValue::kEnchantingModifier);
     constexpr int kFirstPower = static_cast<int>(RE::ActorValue::kOneHandedPowerModifier);
     constexpr int kLastPower = static_cast<int>(RE::ActorValue::kEnchantingPowerModifier);
-    if (av >= kFirstModifier && av <= kLastModifier)
-        return ReadsSkillMods(actor);
-    if (av >= kFirstPower && av <= kLastPower)
-        return ReadsSkillPowerMods(actor);
-    return true;
+    shape.skillModifier = av >= kFirstModifier && av <= kLastModifier;
+    shape.skillPower = av >= kFirstPower && av <= kLastPower;
+    shape.harmful = Harmful(base);
+    shape.waterbreathing = base->data.primaryAV == RE::ActorValue::kWaterBreathing;
+    shape.duration = duration;
+    return shape;
+}
+
+bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base)
+{
+    return ft::EffectApplies(ShapeOf(base, 0.0f), ReadsSkillMods(actor), ReadsSkillPowerMods(actor));
 }
 
 } // namespace
@@ -1247,24 +1257,21 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     case ft::Swing::Both:
         if (!right || !left)
             return plan;
-        plan.event = "attackPowerStartDualWield";
         break;
     case ft::Swing::Right:
         if (!right)
             return plan;
-        plan.event = "attackPowerStartInPlace";
         break;
     case ft::Swing::Left:
         if (!left)
             return plan;
-        plan.event = "attackPowerStartInPlaceLeftHand";
         break;
     case ft::Swing::Fists:
-        plan.event = "attackPowerStartInPlace";
         break;
     case ft::Swing::None:
         return plan;
     }
+    plan.event = ft::PowerAttackEvent(plan.swing);
 
     // The cost as the engine's own routine prices a power attack (26429 on
     // 1.6.1170, which the UseWeapon procedure asks too; dev/ACTIONS.md 6):
@@ -1274,9 +1281,9 @@ BlowPlan PlanPowerAttack(RE::Actor *actor)
     // Attack Stamina entry point with that weapon, or Unarmed; then the
     // attack's own stamina multiplier. A left-hand swing is priced by the
     // right hand, as the engine prices it.
-    float cost = ((right ? right->GetWeight() : 1.0f) * GameSetting("fStaminaAttackWeaponMult", 1.0f) +
-                  GameSetting("fStaminaAttackWeaponBase", 20.0f)) *
-                 GameSetting("fPowerAttackStaminaPenalty", 2.0f);
+    float cost = ft::PowerAttackStamina(
+        right ? right->GetWeight() : 1.0f, GameSetting("fStaminaAttackWeaponMult", 1.0f),
+        GameSetting("fStaminaAttackWeaponBase", 20.0f), GameSetting("fPowerAttackStaminaPenalty", 2.0f));
     if (auto *priced = right ? right : RE::TESForm::LookupByID<RE::TESObjectWEAP>(kUnarmedWeapon))
         RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModPowerAttackStamina, actor, priced,
                                             &cost);
@@ -1306,7 +1313,7 @@ BlowPlan PlanBash(RE::Actor *actor, bool power)
     BlowPlan plan;
     if (!actor || !ft::BashesWith(DescribeHands(actor)))
         return plan;
-    plan.event = power ? "bashPowerStart" : "bashStart";
+    plan.event = ft::BashEvent(power);
     if (power)
         plan.perk = PowerBashPerkMet(actor);
     // The cost as the engine prices a bash (26429): the setting for the kind
@@ -4679,13 +4686,14 @@ RE::TESObjectWEAP *PoisonableWeaponIn(RE::Actor *actor, bool left)
 
 WeaponInHand WeaponToPoison(RE::Actor *actor)
 {
-    for (const bool left : {false, true})
-    {
-        const Hand hand = left ? Hand::Left : Hand::Right;
-        auto *weapon = PoisonableWeaponIn(actor, left);
-        if (weapon && !WeaponPoisoned(actor, weapon, hand))
-            return {weapon, hand};
-    }
+    auto *right = PoisonableWeaponIn(actor, false);
+    auto *left = PoisonableWeaponIn(actor, true);
+    const Hand hand = ft::HandToPoison(right != nullptr, right && WeaponPoisoned(actor, right, Hand::Right),
+                                       left != nullptr, left && WeaponPoisoned(actor, left, Hand::Left));
+    if (hand == Hand::Right)
+        return {right, hand};
+    if (hand == Hand::Left)
+        return {left, hand};
     return {};
 }
 

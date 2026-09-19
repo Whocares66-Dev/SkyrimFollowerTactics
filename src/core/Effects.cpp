@@ -124,3 +124,25 @@ std::string_view EffectLabel(std::string_view effect) noexcept
 }
 
 } // namespace ft
+
+namespace ft
+{
+
+bool EffectApplies(const EffectShape &shape, bool readsSkillMods, bool readsSkillPowerMods) noexcept
+{
+    if (!shape.valueModifier)
+        return true;
+    if (shape.skillModifier)
+        return readsSkillMods;
+    if (shape.skillPower)
+        return readsSkillPowerMods;
+    return true;
+}
+
+bool IsBuff(const EffectShape &shape, bool readsSkillMods, bool readsSkillPowerMods) noexcept
+{
+    return shape.duration > 0.0f && !shape.harmful && shape.peakValue && !shape.waterbreathing &&
+           EffectApplies(shape, readsSkillMods, readsSkillPowerMods);
+}
+
+} // namespace ft

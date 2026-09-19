@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Loadout.h"
+
 #include <cstdint>
 
 // What the hands can strike with: the rules of a swing and a bash, from
@@ -51,5 +53,26 @@ enum class Swing : std::uint8_t
 // block, nor can two hands each holding something, nor the fists, nor a
 // spell hand.
 [[nodiscard]] bool BashesWith(Hands hands) noexcept;
+
+// The race's attack event for the swing: dual, in place, in place with
+// the left hand; the fists swing in place. Null for no swing.
+[[nodiscard]] const char *PowerAttackEvent(Swing swing) noexcept;
+// bashStart, or bashPowerStart.
+[[nodiscard]] const char *BashEvent(bool power) noexcept;
+
+// The cost as the engine's own routine prices a power attack (26429 on
+// 1.6.1170, dev/ACTIONS.md 6), before the perk entry point and the
+// attack's own multiplier: the RIGHT hand's weapon's weight, 1 with none
+// there, times fStaminaAttackWeaponMult, plus fStaminaAttackWeaponBase,
+// times fPowerAttackStaminaPenalty -- 1, 20 and 2 in vanilla.
+[[nodiscard]] float PowerAttackStamina(float rightWeight, float weaponMult, float weaponBase, float penalty) noexcept;
+
+// Which hand a poison goes on: the right hand's weapon if it takes one
+// and is clean, else the left's; None when neither. A staff takes none.
+[[nodiscard]] Hand HandToPoison(bool rightTakes, bool rightPoisoned, bool leftTakes, bool leftPoisoned) noexcept;
+
+// A weapon's charge after a soul gem: the soul's value, never negative,
+// added to what is left and capped at the full charge.
+[[nodiscard]] float ChargeAfterRecharge(float charge, float maxCharge, float soul) noexcept;
 
 } // namespace ft

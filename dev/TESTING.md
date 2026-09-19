@@ -57,10 +57,10 @@ Snapshot assembly (one family at a time):
 
 - [x] Party and corpses: `AssembleParty` (core/Party.h) over the facts one walk reads of each loaded actor; the game builds the views for the ids chosen, in the plan's order. The two walks became one.
 - [x] Spells and effects: `ClassifySpells` and `ActiveSpells` (core/Spells.h) over the records and the effect list as read; the snapshot prices the castable spells a rule names as before.
-- [ ] Buffs, consumable effects, applicability.
-- [ ] Stats, reach and body radius.
-- [ ] Hands and attack plans (`DescribeHands`, `PlanPowerAttack`, `PlanBash`, `DualWieldAllowed`).
-- [ ] Poison and recharge planning (`WeaponToPoison`, `ChargeWeapon`).
+- [x] Buffs and applicability: `EffectShape`, `EffectApplies`, `IsBuff` (core/Effects.h); the game reads the record into the shape.
+- [ ] Stats, reach and body radius. Left: `ReadStat` is one line of arithmetic over three engine reads, and the reach is the engine's own; nothing to decide.
+- [x] Attack plans: the events by swing and the power attack's base cost (core/Blows.h); `DescribeHands` and `DualWieldAllowed` stay engine reads.
+- [x] Poison and recharge: `HandToPoison` and `ChargeAfterRecharge` (core/Blows.h).
 - [ ] Hit sinks' classification into the tested `HitTable`.
 
 Inventory beyond the view:

@@ -50,3 +50,50 @@ bool BashesWith(Hands hands) noexcept
 }
 
 } // namespace ft
+
+namespace ft
+{
+
+const char *PowerAttackEvent(Swing swing) noexcept
+{
+    switch (swing)
+    {
+    case Swing::Both:
+        return "attackPowerStartDualWield";
+    case Swing::Right:
+    case Swing::Fists:
+        return "attackPowerStartInPlace";
+    case Swing::Left:
+        return "attackPowerStartInPlaceLeftHand";
+    case Swing::None:
+    default:
+        return nullptr;
+    }
+}
+
+const char *BashEvent(bool power) noexcept
+{
+    return power ? "bashPowerStart" : "bashStart";
+}
+
+float PowerAttackStamina(float rightWeight, float weaponMult, float weaponBase, float penalty) noexcept
+{
+    return (rightWeight * weaponMult + weaponBase) * penalty;
+}
+
+Hand HandToPoison(bool rightTakes, bool rightPoisoned, bool leftTakes, bool leftPoisoned) noexcept
+{
+    if (rightTakes && !rightPoisoned)
+        return Hand::Right;
+    if (leftTakes && !leftPoisoned)
+        return Hand::Left;
+    return Hand::None;
+}
+
+float ChargeAfterRecharge(float charge, float maxCharge, float soul) noexcept
+{
+    const float added = charge + (soul > 0.0f ? soul : 0.0f);
+    return added < maxCharge ? added : maxCharge;
+}
+
+} // namespace ft

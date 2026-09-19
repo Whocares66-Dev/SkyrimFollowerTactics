@@ -28,6 +28,7 @@ add_executable(ft_tests
     test_cosave.cpp
     test_customskills.cpp
     test_editor.cpp
+    test_effects.cpp
     test_evaluator.cpp
     test_eventring.cpp
     test_hits.cpp

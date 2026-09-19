@@ -38,4 +38,28 @@ struct EffectEntry
 // never catches. Left out of the bottles' effects at the scan.
 [[nodiscard]] bool EffectUseless(std::string_view effect) noexcept;
 
+// An effect's record, as read, for whether it does anything for the actor
+// and whether it is a buff.
+struct EffectShape
+{
+    bool valueModifier{false}; // a Value, PeakValue or DualValue modifier archetype
+    bool peakValue{false};     // the PeakValueModifier archetype in particular
+    bool skillModifier{false}; // its value is a skill modifier (OneHandedModifier ... EnchantingModifier)
+    bool skillPower{false};    // its value is a skill power modifier
+    bool harmful{false};
+    bool waterbreathing{false};
+    float duration{0.0f};
+};
+
+// Does this effect change anything for this actor? A value-modifying
+// effect on a skill modifier -- Fortify One-handed's OneHandedModifier,
+// Fortify Destruction's DestructionModifier -- is read only by the two
+// hidden perks a follower does not carry (dev/RESEARCH.md 6): the value
+// moves, and nothing looks at it.
+[[nodiscard]] bool EffectApplies(const EffectShape &shape, bool readsSkillMods, bool readsSkillPowerMods) noexcept;
+
+// A buff: lasting, not harmful, a peak value modifier the actor reads, and
+// not waterbreathing, which does nothing for a follower.
+[[nodiscard]] bool IsBuff(const EffectShape &shape, bool readsSkillMods, bool readsSkillPowerMods) noexcept;
+
 } // namespace ft

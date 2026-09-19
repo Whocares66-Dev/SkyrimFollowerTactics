@@ -170,7 +170,7 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
     float value = it->charge;
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModSoulGemRecharge, actor,
                                         static_cast<RE::TESForm *>(weapon), &value);
-    const float charge = (std::min)(state.charge + (std::max)(value, 0.0f), state.maxCharge);
+    const float charge = ft::ChargeAfterRecharge(state.charge, state.maxCharge, value);
     if (auto *xCharge = worn->GetByType<RE::ExtraCharge>())
         xCharge->charge = charge;
     else
