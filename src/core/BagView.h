@@ -102,8 +102,18 @@ struct BagView
 // or not worn at all.
 [[nodiscard]] const BagRow *WornStackRow(const BagView &view, Hand hands) noexcept;
 [[nodiscard]] const BagRow *UnwornStackRow(const BagView &view) noexcept;
-// The form's rows as the Inventory tab splits them, by variant: one per
-// row of its own, and the plain stack once when any copy is in it.
+// The form's rows as the Inventory tab splits them: one per row of its
+// own, in the entry's order, each the row's copies; then the plain stack
+// once, when any copy is in it -- the folded lists and the listless
+// remainder together. What the tab draws and what the whole-form
+// questions take (RowsOf, the variants alone).
+struct DisplayRow
+{
+    std::optional<std::size_t> row; // the view's row, or none for the plain stack
+    int count{0};
+    ItemVariant variant;
+};
+[[nodiscard]] std::vector<DisplayRow> DisplayRows(const BagView &view);
 [[nodiscard]] std::vector<ItemVariant> RowsOf(const BagView &view);
 // The bag as the engine's own equip sees it, for EnginePick: the plain
 // stack first when any copy is in it, then each list in order.

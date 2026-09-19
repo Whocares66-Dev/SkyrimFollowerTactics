@@ -78,6 +78,9 @@ struct Bag
     [[nodiscard]] RE::ExtraDataList *ListAt(std::optional<std::size_t> index) const noexcept;
 };
 [[nodiscard]] Bag ViewBag(RE::Actor *actor, RE::TESBoundObject *object);
+// The same from an entry already in hand -- the whole-bag scan walks the
+// inventory once and has each entry.
+[[nodiscard]] Bag ViewOf(RE::TESBoundObject *object, std::int32_t count, const RE::InventoryEntryData *entry);
 
 // The hands are asked one at a time, and answered per COPY: with the same
 // dagger in each hand -- two entries of one record -- the left's poison and

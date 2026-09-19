@@ -684,47 +684,43 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
         // what the game's menu does per stack -- and the rest from one
         // holding the remainder. A temporary entry owns only its list
         // container; the lists themselves stay the bag's.
-        auto plainCount = static_cast<std::int32_t>(count);
+        // Which rows the tab shows is core's (core/BagView.h, DisplayRows),
+        // over the same view the equips read: one algorithm for what a row
+        // is, not one here and one there.
+        const Bag bag = ViewOf(object, static_cast<std::int32_t>(count), entry);
         RE::InventoryEntryData plain(object, 0);
         std::uint32_t stack = 0;
-        if (entry && entry->extraLists)
+        for (std::size_t i = 0; i < bag.view.rows.size(); ++i)
         {
-            for (auto *list : *entry->extraLists)
-            {
-                if (!list)
-                    continue;
-                const ft::ItemVariant variant = VariantOf(list);
-                const bool apart = RowOfItsOwn(list);
-                // Which entries a list carries and whether that kept it
-                // apart, said once per shape per bag at debug, so a row that
-                // reads wrong against the game's menu has its list in the
-                // log.
-                static std::unordered_set<std::string> seen;
-                const std::string shape = ListEntries(list);
-                if (seen.insert(
-                            fmt::format("{:08X}:{:08X}:{}:{}", actor->GetFormID(), object->GetFormID(), shape, apart))
-                        .second)
-                    log::sensors.debug("{} {} list [{}] x{}: {}", Describe(actor), NameOf(object), shape,
-                                       list->GetCount(), apart ? "a row of its own" : "folded into the stack");
-                if (!apart)
-                {
-                    plain.AddExtraList(list);
-                    continue;
-                }
-                const std::int32_t copies = list->GetCount();
-                RE::InventoryEntryData one(object, copies);
-                one.AddExtraList(list);
-                plainCount -= copies;
-                const std::size_t before = out.size();
-                DescribeStack(actor, object, &one, copies, ++stack, variant, out);
-                if (out.size() > before)
-                    out.back().row = list;
-            }
+            const ft::BagRow &row = bag.view.rows[i];
+            // Which entries a list carries and whether that kept it apart,
+            // said once per shape per bag at debug, so a row that reads
+            // wrong against the game's menu has its list in the log.
+            static std::unordered_set<std::string> seen;
+            const std::string shape = ListEntries(bag.lists[i]);
+            if (seen.insert(
+                        fmt::format("{:08X}:{:08X}:{}:{}", actor->GetFormID(), object->GetFormID(), shape, row.ownRow))
+                    .second)
+                log::sensors.debug("{} {} list [{}] x{}: {}", Describe(actor), NameOf(object), shape, row.count,
+                                   row.ownRow ? "a row of its own" : "folded into the stack");
+            if (!row.ownRow)
+                plain.AddExtraList(bag.lists[i]);
         }
-        if (plainCount > 0)
+        for (const ft::DisplayRow &drawn : ft::DisplayRows(bag.view))
         {
-            plain.countDelta = plainCount;
-            DescribeStack(actor, object, &plain, plainCount, 0, ft::ItemVariant{}, out);
+            if (!drawn.row)
+            {
+                plain.countDelta = drawn.count;
+                DescribeStack(actor, object, &plain, drawn.count, 0, ft::ItemVariant{}, out);
+                continue;
+            }
+            RE::ExtraDataList *list = bag.lists[*drawn.row];
+            RE::InventoryEntryData one(object, drawn.count);
+            one.AddExtraList(list);
+            const std::size_t before = out.size();
+            DescribeStack(actor, object, &one, drawn.count, ++stack, drawn.variant, out);
+            if (out.size() > before)
+                out.back().row = list;
         }
     }
 

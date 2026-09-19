@@ -151,6 +151,20 @@ TEST_CASE("the rows of the tab: each row of its own, and the stack once", "[bag]
     REQUIRE(rows[1].IsPlain());
     REQUIRE(rows[2].IsPlain());
     REQUIRE(CountVariant(view, Plain()) == 5); // three folded, one listless, one poisoned
+    // As the tab draws them: the rows of their own with their copies, then
+    // the stack with the folded three and the listless one.
+    const auto drawn = DisplayRows(view);
+    REQUIRE(drawn.size() == 3);
+    REQUIRE(drawn[0].row == 1);
+    REQUIRE(drawn[0].count == 1);
+    REQUIRE(drawn[1].row == 2);
+    REQUIRE_FALSE(drawn[2].row);
+    REQUIRE(drawn[2].count == 4);
+    REQUIRE(drawn[2].variant.IsPlain());
+    // A stale count below the rows of their own: no stack row, no
+    // negative count.
+    const BagView stale = Weapon(1, {Row(0, Tempered(), true, Hand::None, 2)});
+    REQUIRE(DisplayRows(stale).size() == 1);
     REQUIRE(CountVariant(view, Tempered()) == 1);
     REQUIRE(CountVariant(view, Named("Frost Fang")) == 0);
 

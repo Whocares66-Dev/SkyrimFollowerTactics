@@ -67,7 +67,7 @@ Inventory beyond the view:
 
 - [x] The bag view and `PlanEquip` -- `7161001`.
 - [ ] `MarkPins` as row annotations over the books, no mutation.
-- [ ] `ScanInventory` a consumer of one row partition rather than partitioning rows itself.
+- [x] `ScanInventory` draws the rows `DisplayRows` (core/BagView.h) gives it, over the view built from the entry it already holds (`ViewOf`); `RowsOf` is the same partition's variants. One algorithm for what a row is.
 - [x] The identity and freshness contract: written above ("Identity across time").
 
 The panel's decisions:

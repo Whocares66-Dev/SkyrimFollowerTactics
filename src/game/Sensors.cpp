@@ -4553,15 +4553,20 @@ ft::BagRow MarksOf(const RE::ExtraDataList *list)
 
 Bag ViewBag(RE::Actor *actor, RE::TESBoundObject *object)
 {
+    const Carried carried = CarriedOf(actor, object);
+    return ViewOf(object, carried.count, carried.entry.get());
+}
+
+Bag ViewOf(RE::TESBoundObject *object, std::int32_t count, const RE::InventoryEntryData *entry)
+{
     Bag bag;
     bag.view.weapon = object && object->IsWeapon();
-    const Carried carried = CarriedOf(actor, object);
-    if (carried.count <= 0)
+    if (count <= 0)
         return bag;
-    bag.view.total = carried.count;
-    if (carried.entry && carried.entry->extraLists)
+    bag.view.total = count;
+    if (entry && entry->extraLists)
     {
-        for (auto *list : *carried.entry->extraLists)
+        for (auto *list : *entry->extraLists)
         {
             if (!list)
                 continue;

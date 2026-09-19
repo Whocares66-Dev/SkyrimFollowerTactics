@@ -108,22 +108,31 @@ const BagRow *UnwornStackRow(const BagView &view) noexcept
     return FirstRow(view, [](const BagRow &row) { return !ListWorn(row, Hand::None) && !row.ownRow; });
 }
 
-std::vector<ItemVariant> RowsOf(const BagView &view)
+std::vector<DisplayRow> DisplayRows(const BagView &view)
 {
-    std::vector<ItemVariant> rows;
+    std::vector<DisplayRow> rows;
     if (view.total <= 0)
         return rows;
     int apart = 0;
-    for (const BagRow &row : view.rows)
+    for (std::size_t i = 0; i < view.rows.size(); ++i)
     {
+        const BagRow &row = view.rows[i];
         if (!row.ownRow)
             continue;
         apart += row.count;
-        rows.push_back(row.variant);
+        rows.push_back({i, row.count, row.variant});
     }
     if (view.total > apart)
-        rows.emplace_back(); // the plain stack: the listless copies and the folded lists
+        rows.push_back({std::nullopt, view.total - apart, ItemVariant{}}); // the plain stack
     return rows;
+}
+
+std::vector<ItemVariant> RowsOf(const BagView &view)
+{
+    std::vector<ItemVariant> variants;
+    for (const DisplayRow &row : DisplayRows(view))
+        variants.push_back(row.variant);
+    return variants;
 }
 
 std::vector<VariantInBag> CopiesForEngine(const BagView &view)
