@@ -248,3 +248,59 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
 }
 
 } // namespace ft
+
+namespace ft
+{
+
+HeldReason HeldBy(const HoldFacts &facts) noexcept
+{
+    if (!facts.loaded)
+        return HeldReason::NotLoaded;
+    if (facts.inDialogue)
+        return HeldReason::InDialogue;
+    if (facts.controlsDisabled)
+        return HeldReason::ControlsDisabled;
+    if (facts.inFurniture)
+        return HeldReason::InFurniture;
+    if (facts.knockedDown)
+        return HeldReason::KnockedDown;
+    if (facts.swimming)
+        return HeldReason::Swimming;
+    if (facts.mounted)
+        return HeldReason::Mounted;
+    if (facts.inKillMove)
+        return HeldReason::InKillMove;
+    if (facts.beastForm)
+        return HeldReason::BeastForm;
+    return HeldReason::None;
+}
+
+const char *ToString(HeldReason reason) noexcept
+{
+    switch (reason)
+    {
+    case HeldReason::NotLoaded:
+        return "not loaded";
+    case HeldReason::InDialogue:
+        return "in dialogue";
+    case HeldReason::ControlsDisabled:
+        return "fighting controls disabled";
+    case HeldReason::InFurniture:
+        return "in furniture";
+    case HeldReason::KnockedDown:
+        return "knocked down";
+    case HeldReason::Swimming:
+        return "swimming";
+    case HeldReason::Mounted:
+        return "mounted";
+    case HeldReason::InKillMove:
+        return "in a kill move";
+    case HeldReason::BeastForm:
+        return "in beast form";
+    case HeldReason::None:
+    default:
+        return "";
+    }
+}
+
+} // namespace ft

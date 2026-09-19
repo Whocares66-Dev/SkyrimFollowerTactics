@@ -472,3 +472,45 @@ TEST_CASE("the voice gets back what it held, or gives up what it was lent", "[pl
     REQUIRE(PlanVoiceRestore(true, false, true) == VoiceRestore::ReleaseShout);
     REQUIRE(PlanVoiceRestore(true, false, false) == VoiceRestore::ReleasePower);
 }
+
+TEST_CASE("the player's tactics are held for the first reason that holds", "[playercast]")
+{
+    HoldFacts free;
+    REQUIRE(HeldBy(free) == HeldReason::None);
+    REQUIRE(std::string(ToString(HeldReason::None)).empty());
+
+    HoldFacts loading;
+    loading.loaded = false;
+    loading.inDialogue = true;
+    REQUIRE(HeldBy(loading) == HeldReason::NotLoaded);
+
+    // The order is the order asked: a player knocked down on a horse reads
+    // as knocked down, and one in dialogue with the controls away reads as
+    // in dialogue.
+    HoldFacts both;
+    both.knockedDown = true;
+    both.mounted = true;
+    REQUIRE(HeldBy(both) == HeldReason::KnockedDown);
+    HoldFacts talking;
+    talking.inDialogue = true;
+    talking.controlsDisabled = true;
+    REQUIRE(HeldBy(talking) == HeldReason::InDialogue);
+
+    // Each on its own, and its wording.
+    const std::vector<std::pair<bool HoldFacts::*, HeldReason>> each{
+        {&HoldFacts::inDialogue, HeldReason::InDialogue},
+        {&HoldFacts::controlsDisabled, HeldReason::ControlsDisabled},
+        {&HoldFacts::inFurniture, HeldReason::InFurniture},
+        {&HoldFacts::knockedDown, HeldReason::KnockedDown},
+        {&HoldFacts::swimming, HeldReason::Swimming},
+        {&HoldFacts::mounted, HeldReason::Mounted},
+        {&HoldFacts::inKillMove, HeldReason::InKillMove},
+        {&HoldFacts::beastForm, HeldReason::BeastForm}};
+    for (const auto &[flag, reason] : each)
+    {
+        HoldFacts facts;
+        facts.*flag = true;
+        REQUIRE(HeldBy(facts) == reason);
+        REQUIRE_FALSE(std::string(ToString(reason)).empty());
+    }
+}

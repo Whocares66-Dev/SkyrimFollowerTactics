@@ -42,6 +42,7 @@
 // The player's own press of the same button lands in the same state machine
 // and stands: their release fires or cancels ours.
 
+#include "core/PlayerCast.h"
 #include "core/Rule.h"
 
 #include <cstdint>
@@ -68,7 +69,7 @@ namespace ft::game
 // move, knocked down, swimming, in beast form, the 3D not loaded. Each a
 // state read now, not a timer. The tick holds the player's evaluation while
 // one applies, and says so once.
-[[nodiscard]] const char *PlayerHeld(RE::Actor *player);
+[[nodiscard]] ft::HeldReason PlayerHeld(RE::Actor *player);
 
 enum class PlayerCastRequest : std::uint8_t
 {

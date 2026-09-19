@@ -95,10 +95,9 @@ std::unordered_set<ft::ActorId> &DisabledIn(ft::Moment moment)
 // than every tick.
 std::unordered_set<ft::ActorId> g_bleedingOut;
 
-// Why the player's evaluation is held, or null while it is not: logged on
-// change, for the same reason. The reasons are literals (PlayerHeld), so
-// the pointer is the comparison.
-const char *g_playerHeld = nullptr;
+// Why the player's evaluation is held, or None while it is not: logged
+// on change, for the same reason (core/PlayerCast.h, HeldReason).
+ft::HeldReason g_playerHeld = ft::HeldReason::None;
 
 // Per-follower rules, a map per moment. Absent means "has not been edited",
 // and the default set is handed out instead -- so a new follower costs
@@ -921,15 +920,17 @@ void Tick()
     if (auto *player = RE::PlayerCharacter::GetSingleton(); player && !player->IsDead())
     {
         LoadIfNew(player);
-        const char *held = PlayerHeld(player);
+        const ft::HeldReason held = PlayerHeld(player);
         if (held != g_playerHeld)
         {
-            log::tactics.event(log::Level::Info, held ? "player.held" : "player.free", player,
-                               {{"reason", held ? held : ""}}, "{} {}", Describe(player),
-                               held ? std::string("is ") + held + " -- tactics held" : "is free -- tactics resume");
+            const bool holding = held != ft::HeldReason::None;
+            log::tactics.event(log::Level::Info, holding ? "player.held" : "player.free", player,
+                               {{"reason", ft::ToString(held)}}, "{} {}", Describe(player),
+                               holding ? std::string("is ") + ft::ToString(held) + " -- tactics held"
+                                       : "is free -- tactics resume");
             g_playerHeld = held;
         }
-        RunTurn(player, now, RulesOf(player->GetFormID()), held != nullptr);
+        RunTurn(player, now, RulesOf(player->GetFormID()), held != ft::HeldReason::None);
     }
 
     // Armed cast requests are withdrawn from here, whether or not anyone is

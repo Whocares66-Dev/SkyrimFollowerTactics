@@ -140,6 +140,42 @@ enum class CastCommand : std::uint8_t
     MarkPowerUsed // the power onto the used list
 };
 
+// Why the player's own tactics are held, or None while they are not:
+// somewhere an automatic cast is wrong. Asked in this order, so a player
+// knocked down while mounted reads as knocked down; the first that holds
+// is the one reported, and the log says it once each way.
+enum class HeldReason : std::uint8_t
+{
+    None,
+    NotLoaded,
+    InDialogue,
+    ControlsDisabled, // the game has taken the fighting controls away
+    InFurniture,
+    KnockedDown,
+    Swimming,
+    Mounted,
+    InKillMove,
+    BeastForm // a werewolf or a vampire lord: not an NPC to the engine's keyword
+};
+
+// What the tick reads of the player for it. Each is a state now, never a
+// timer.
+struct HoldFacts
+{
+    bool loaded{true};
+    bool inDialogue{false};
+    bool controlsDisabled{false};
+    bool inFurniture{false};
+    bool knockedDown{false};
+    bool swimming{false};
+    bool mounted{false};
+    bool inKillMove{false};
+    bool beastForm{false};
+};
+[[nodiscard]] HeldReason HeldBy(const HoldFacts &facts) noexcept;
+// The reason as the log says it: "is in dialogue -- tactics held".
+[[nodiscard]] const char *ToString(HeldReason reason) noexcept;
+
 // ---- Giving the hands and the voice back.
 //
 // What a hand held before the cast borrowed it, as the game read it.

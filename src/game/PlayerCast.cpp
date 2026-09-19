@@ -732,32 +732,31 @@ bool PlayerSupports(ft::ActionKind kind) noexcept
     return kind != ft::ActionKind::Attack;
 }
 
-const char *PlayerHeld(RE::Actor *player)
+// The facts the hold is judged on; which of them wins is core's
+// (core/PlayerCast.h, HeldBy, tested).
+ft::HeldReason PlayerHeld(RE::Actor *player)
 {
-    if (!player || !player->Is3DLoaded())
-        return "not loaded";
-    if (auto *ui = RE::UI::GetSingleton(); ui && ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME))
-        return "in dialogue";
-    if (auto *controls = RE::ControlMap::GetSingleton(); controls && !controls->IsFightingControlsEnabled())
-        return "fighting controls disabled";
+    ft::HoldFacts facts;
+    facts.loaded = player && player->Is3DLoaded();
+    if (!facts.loaded)
+        return ft::HeldBy(facts);
+    if (auto *ui = RE::UI::GetSingleton())
+        facts.inDialogue = ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME);
+    if (auto *controls = RE::ControlMap::GetSingleton())
+        facts.controlsDisabled = !controls->IsFightingControlsEnabled();
     if (auto *state = player->AsActorState())
     {
-        if (state->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal)
-            return "in furniture";
-        if (state->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal)
-            return "knocked down";
-        if (state->IsSwimming())
-            return "swimming";
+        facts.inFurniture = state->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal;
+        facts.knockedDown = state->GetKnockState() != RE::KNOCK_STATE_ENUM::kNormal;
+        facts.swimming = state->IsSwimming();
     }
-    if (player->IsOnMount())
-        return "mounted";
-    if (player->IsInKillMove())
-        return "in a kill move";
+    facts.mounted = player->IsOnMount();
+    facts.inKillMove = player->IsInKillMove();
     // A beast race -- the werewolf, the vampire lord -- is not an NPC to the
     // engine's own keyword.
-    if (auto *race = player->GetRace(); race && !race->HasKeywordString("ActorTypeNPC"))
-        return "in beast form";
-    return nullptr;
+    auto *race = player->GetRace();
+    facts.beastForm = race && !race->HasKeywordString("ActorTypeNPC");
+    return ft::HeldBy(facts);
 }
 
 const char *ToString(PlayerCastRequest r) noexcept

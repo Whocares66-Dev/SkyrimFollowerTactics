@@ -83,6 +83,7 @@ The panel's decisions:
 Other seams:
 
 - [x] `FindStack`: `ChooseStack` (core/Lease.h) over the places in the order the game finds them.
+- [x] The player's hold reason as a value (`HeldReason`, `HeldBy` in core/PlayerCast.h): the order it is asked in, and the wording, tested; the game reads the facts. The tick compares reasons rather than string pointers.
 - [ ] Roster cleanup in `Tick`. Left: one boolean, nearby or else gone when not a teammate or dead, with a comment that says why.
 - [x] `ReportVerdicts`: the action a verdict is worded for is `ExplainedKind` (core/Evaluator.h); `VerdictChanges` was core already.
 - [x] The key a follower's record is filed under: `ChooseKeyRecord`, `FollowerKey`, `DynamicKey` (core/CoSave.h), the wire form pinned by test. `ClaimSaved` and the carry-forward stay: a map extract and a loop over the tested `CoSave` and `Profile`.
