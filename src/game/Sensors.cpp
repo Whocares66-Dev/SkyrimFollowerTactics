@@ -6,6 +6,7 @@
 #include "core/CustomSkills.h"
 #include "core/Effects.h"
 #include "core/Party.h"
+#include "core/Reach.h"
 #include "core/Spells.h"
 
 #include "game/CustomSkillsFramework.h"
@@ -1175,38 +1176,22 @@ namespace
 // whose cached result 37443 reads, on 1.6.1170): the bound max Y times the
 // scale, 16 for an empty box. Not CommonLib's Actor::GetBoundRadius, which
 // reads another field.
-float BodyRadius(const RE::TESObjectREFR &ref)
+// What the reach measure reads of an actor (core/Reach.h).
+ft::Body BodyOf(const RE::Actor &actor)
 {
-    constexpr float kEmptyBoxRadius = 16.0f;
-    const RE::NiPoint3 max = ref.GetBoundMax();
-    const RE::NiPoint3 min = ref.GetBoundMin();
-    return max.y - min.y > 0.0f ? max.y * ref.GetScale() : kEmptyBoxRadius;
+    const RE::NiPoint3 at = actor.GetPosition();
+    const RE::NiPoint3 min = actor.GetBoundMin();
+    const RE::NiPoint3 max = actor.GetBoundMax();
+    return {at.x, at.y, at.z, min.y, max.y, min.z, max.z, actor.GetScale()};
 }
 } // namespace
 
-// The engine's measure (47273 on 1.6.1170): centre to centre, flat when
-// their heights differ by 48 or more and either end of the attacker's
-// bounds lies within the target's, less both radii. Not mirrored: a pair of
-// flags on the two actors that has the engine test the overlap at any
-// difference in height; under 48 the flat and full distances differ by a
-// few units.
+// The engine's measure, core's (core/Reach.h, tested).
 float ReachDistance(const RE::Actor *from, const RE::Actor *to)
 {
     if (!from || !to)
         return (std::numeric_limits<float>::max)();
-    constexpr float kFlatFromHeight = 48.0f;
-    const RE::NiPoint3 a = from->GetPosition();
-    const RE::NiPoint3 b = to->GetPosition();
-    float distance = a.GetDistance(b);
-    if (std::abs(a.z - b.z) >= kFlatFromHeight)
-    {
-        const float bottom = b.z + to->GetBoundMin().z;
-        const float top = b.z + to->GetBoundMax().z;
-        const auto within = [bottom, top](float z) { return z >= bottom && z <= top; };
-        if (within(a.z + from->GetBoundMax().z) || within(a.z + from->GetBoundMin().z))
-            distance = std::hypot(a.x - b.x, a.y - b.y);
-    }
-    return distance - (BodyRadius(*from) + BodyRadius(*to));
+    return ft::ReachDistance(BodyOf(*from), BodyOf(*to));
 }
 
 namespace
