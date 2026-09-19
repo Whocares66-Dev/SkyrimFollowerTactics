@@ -66,7 +66,7 @@ Snapshot assembly (one family at a time):
 Inventory beyond the view:
 
 - [x] The bag view and `PlanEquip` -- `7161001`.
-- [ ] `MarkPins` as row annotations over the books, no mutation.
+- [x] `MarkPins`: which row a ban marks (`BansRow`), which row a pin marks (`PinOfRow`, the worn incumbent or every row of the variant while none is), why a row is set aside (`RowAsideOf`) -- core/Marks.h, tested; the panel reads its rows and writes the marks.
 - [x] `ScanInventory` draws the rows `DisplayRows` (core/BagView.h) gives it, over the view built from the entry it already holds (`ViewOf`); `RowsOf` is the same partition's variants. One algorithm for what a row is.
 - [x] The identity and freshness contract: written above ("Identity across time").
 

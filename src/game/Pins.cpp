@@ -4,6 +4,7 @@
 
 #include "game/Pins.h"
 
+#include "core/Marks.h"
 #include "core/Watchdog.h"
 #include "game/Addresses.h"
 
@@ -1182,17 +1183,15 @@ void ProbeCombatInventory(RE::Actor *actor)
 void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<MagicEntry> &magic)
 {
     std::scoped_lock lock(g_pinMutex);
-    // A row is marked by a ban on its variant, or on every copy of its form.
+    // Which row a ban marks, which a pin marks and why a row is set aside
+    // are core's (core/Marks.h, tested); this reads the rows and writes
+    // the marks.
     if (const auto bans = g_bans.find(actor->GetFormID()); bans != g_bans.end())
     {
-        const auto bansRow = [&](std::uint32_t form, const std::optional<ft::ItemVariant> &variant) {
-            return std::any_of(bans->second.begin(), bans->second.end(),
-                               [&](const Banned &b) { return b.form == form && SameVariant(b.variant, variant); });
-        };
         for (auto &item : items)
-            item.banned = bansRow(item.form, item.variant);
+            item.banned = ft::BansRow(bans->second, item.form, item.variant);
         for (auto &entry : magic)
-            entry.banned = bansRow(entry.form, {});
+            entry.banned = ft::BansRow(bans->second, entry.form, {});
     }
     const auto it = g_pins.find(actor->GetFormID());
     if (it == g_pins.end() || it->second.empty())
@@ -1223,43 +1222,14 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
                     row.icon2 = kGlyphPin;
     };
 
-    // A pin marks the incumbent: the worn row of its variant, where the pin
-    // says. A variant covers several rows (the clean stack and the poisoned
-    // dagger), and the marker goes on the one in the hand, which is what
-    // the follower is holding; with none worn -- the pin waiting on the
-    // watchdog -- every row of the variant is marked until one is. A pin on
-    // the form, whichever copy (a rule's), marks the same way over all
-    // its rows. The pins themselves are pruned by the watchdog, which asks
-    // the bag; the panel only marks.
-    const auto wornWhere = [&](const InventoryItem *row, Hand hands) {
-        if (!row)
-            return true; // a spell's entry: the pin's own hands say it all
-        return hands == Hand::None ? row->worn
-                                   : (Overlap(hands, Hand::Left) && row->equippedLeft) ||
-                                         (Overlap(hands, Hand::Right) && row->equippedRight);
-    };
-    const auto pinOfRow = [&](std::uint32_t form, const std::optional<ft::ItemVariant> &variant,
-                              const InventoryItem *row) -> const Pin * {
-        for (const Pin &pin : pins)
-        {
-            if (pin.thing.form != form || !SameVariant(pin.thing.variant, variant))
-                continue;
-            if (wornWhere(row, pin.hands))
-                return &pin;
-            // Not the incumbent: marked only while no row of the variant is.
-            const bool anyWorn = std::any_of(items.begin(), items.end(), [&](const InventoryItem &other) {
-                return other.form == form && SameVariant(pin.thing.variant, other.variant) &&
-                       wornWhere(&other, pin.hands);
-            });
-            if (!anyWorn)
-                return &pin;
-        }
-        return nullptr;
-    };
-    const auto mark = [&](std::uint32_t form, const std::optional<ft::ItemVariant> &variant, const InventoryItem *row,
-                          bool &left, bool &right, bool &aside, std::string &asideBy, bool &whole,
-                          std::vector<SheetSection> &detail) {
-        if (const Pin *pin = pinOfRow(form, variant, row))
+    // The item rows as the marking reads them, for which row a pin marks.
+    std::vector<ft::RowFacts> rows;
+    rows.reserve(items.size());
+    for (const auto &item : items)
+        rows.push_back({item.form, item.variant, true, item.worn, item.equippedLeft, item.equippedRight});
+    const auto mark = [&](const ft::RowFacts &row, bool &left, bool &right, bool &aside, std::string &asideBy,
+                          bool &whole, std::vector<SheetSection> &detail) {
+        if (const Pin *pin = ft::PinOfRow(pins, row, rows))
         {
             left = Overlap(pin->hands, Hand::Left);
             right = Overlap(pin->hands, Hand::Right);
@@ -1267,37 +1237,32 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
             pinGlyph(detail);
             return;
         }
-        auto *thing = RE::TESForm::LookupByID(form);
+        auto *thing = RE::TESForm::LookupByID(row.form);
         if (!thing)
             return;
-        const Holdable described = DescribeHoldable(actor, thing, variant);
-        aside = SetAside(asPlanned, described);
-        if (aside)
-            asideBy = why(Shadowing(asPlanned, described));
         // A one-hander beside a one-hander pinned in either hand, where the
         // style forbids two: greyed, and the reason on the name. Its cells
         // still take a click -- into the other hand, and the pinned one
         // comes off (Wear).
-        if (!aside && !dualWield)
-        {
-            for (const Pin &pin : asPlanned)
-            {
-                if ((pin.hands == Hand::Left || pin.hands == Hand::Right) && !SameThing(pin.thing, described) &&
-                    WouldDualWield(described, &pin.thing))
-                {
-                    aside = true;
-                    asideBy = "Cannot dual wield";
-                    break;
-                }
-            }
-        }
+        const ft::RowAside set = ft::RowAsideOf(asPlanned, DescribeHoldable(actor, thing, row.variant), dualWield);
+        aside = set.aside;
+        if (set.cannotDualWield)
+            asideBy = "Cannot dual wield";
+        else if (set.aside)
+            asideBy = why(set.shadowing);
     };
-    for (auto &item : items)
-        mark(item.form, item.variant, &item, item.pinnedLeft, item.pinnedRight, item.setAside, item.asideBy,
-             item.pinned, item.detail);
+    for (std::size_t i = 0; i < items.size(); ++i)
+    {
+        auto &item = items[i];
+        mark(rows[i], item.pinnedLeft, item.pinnedRight, item.setAside, item.asideBy, item.pinned, item.detail);
+    }
     for (auto &entry : magic)
-        mark(entry.form, {}, nullptr, entry.pinnedLeft, entry.pinnedRight, entry.setAside, entry.asideBy, entry.pinned,
-             entry.detail);
+    {
+        ft::RowFacts row;
+        row.form = entry.form;
+        row.item = false;
+        mark(row, entry.pinnedLeft, entry.pinnedRight, entry.setAside, entry.asideBy, entry.pinned, entry.detail);
+    }
 }
 
 // Put a spell in a hand -- Left, Right, or None for the engine's choice --
