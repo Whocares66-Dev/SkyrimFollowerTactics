@@ -9,7 +9,9 @@
 
 #include "Loadout.h"
 
+#include <cstddef>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace ft
@@ -76,5 +78,41 @@ enum class BanVerdict : std::uint8_t
 };
 
 [[nodiscard]] BanVerdict JudgeBan(const Banned &ban, const BanSeen &seen) noexcept;
+
+// ---- One actor's pass, in the order it is performed.
+//
+// The pins first, then the bans: the tick a fight ends, the fight's own
+// pins have just been let go, and a banned thing a rule had pinned for
+// the fight is found here unpinned and taken off in the same pass. A cast
+// of ours holding a hand suspends the bans altogether, as it suspends a
+// hand pin: taking the thing off would cut the cast.
+enum class WatchAct : std::uint8_t
+{
+    PutBack, // a pin's thing, off: put it back
+    TakeOff  // a banned thing, on and unpinned: take it off
+};
+
+struct WatchStep
+{
+    WatchAct act{WatchAct::PutBack};
+    std::size_t index{0}; // into the pins for PutBack, into the bans for TakeOff
+    // A ban enforced on a thing whose rule pin has just gone with the
+    // fight: the fight ending, not a promise broken.
+    bool afterFight{false};
+};
+
+struct WatchPlan
+{
+    std::vector<std::size_t> dropPins; // no copy of the pinned thing left
+    std::vector<std::size_t> dropBans; // a ban on a variant with no row left
+    std::vector<WatchStep> steps;
+};
+
+// `pinsSeen` and `bansSeen` are what the game read of each pin's and each
+// ban's thing, in the books' order. `lapsed` are the forms the end of a
+// fight has just let go.
+[[nodiscard]] WatchPlan PlanWatch(const std::vector<Pin> &pins, std::span<const PinSeen> pinsSeen, const Bans &bans,
+                                  std::span<const BanSeen> bansSeen, bool fighting, bool castInProgress,
+                                  std::span<const std::uint32_t> lapsed);
 
 } // namespace ft

@@ -10,7 +10,7 @@ using namespace ft;
 namespace
 {
 
-Holdable Dagger(std::uint32_t form = 0x12EB7)
+Holdable Dagger(std::uint32_t form = 0x1397E)
 {
     Holdable h;
     h.form = form;
@@ -169,4 +169,94 @@ TEST_CASE("a banned thing a rule pinned for the fight comes off the tick the fig
     seen.pinned = FindPin(pins, Dagger()) != nullptr;
     REQUIRE_FALSE(seen.pinned);
     REQUIRE(JudgeBan(ban, seen) == BanVerdict::TakeOff);
+}
+
+TEST_CASE("a pass puts the pins back first, then takes the banned things off", "[watchdog]")
+{
+    // A pin whose thing is off, one still on, one whose copies are gone;
+    // and two bans, one on a thing found on and one on a thing that is not.
+    std::vector<Pin> pins{PinOf(Dagger(), Hand::Right), PinOf(Cuirass(), Hand::None),
+                          PinOf(Dagger(0x13989), Hand::Left)};
+    PinSeen off;
+    PinSeen on;
+    on.on = true;
+    PinSeen gone;
+    gone.carried = false;
+    const std::vector<PinSeen> pinsSeen{off, on, gone};
+
+    Bans bans;
+    Ban(bans, 0x1397E);
+    Ban(bans, 0x13911);
+    BanSeen worn;
+    worn.on = true;
+    BanSeen away;
+    const std::vector<BanSeen> bansSeen{worn, away};
+
+    const WatchPlan plan = PlanWatch(pins, pinsSeen, bans, bansSeen, false, false, {});
+    REQUIRE(plan.dropPins == std::vector<std::size_t>{2});
+    REQUIRE(plan.dropBans.empty());
+    REQUIRE(plan.steps.size() == 2);
+    // The pin's put-back comes before the ban's take-off.
+    REQUIRE(plan.steps[0].act == WatchAct::PutBack);
+    REQUIRE(plan.steps[0].index == 0);
+    REQUIRE(plan.steps[1].act == WatchAct::TakeOff);
+    REQUIRE(plan.steps[1].index == 0);
+    REQUIRE_FALSE(plan.steps[1].afterFight);
+}
+
+TEST_CASE("one of our casts holds a hand: nothing is taken off, and a hand pin waits", "[watchdog]")
+{
+    std::vector<Pin> pins{PinOf(Dagger(), Hand::Right), PinOf(Cuirass(), Hand::None)};
+    PinSeen off;
+    const std::vector<PinSeen> pinsSeen{off, off};
+    Bans bans;
+    Ban(bans, 0x1397E);
+    BanSeen worn;
+    worn.on = true;
+    const std::vector<BanSeen> bansSeen{worn};
+
+    const WatchPlan plan = PlanWatch(pins, pinsSeen, bans, bansSeen, true, true, {});
+    // The armour goes back; the hand pin waits for the cast; no ban is
+    // enforced at all while a cast is in the air.
+    REQUIRE(plan.steps.size() == 1);
+    REQUIRE(plan.steps[0].act == WatchAct::PutBack);
+    REQUIRE(plan.steps[0].index == 1);
+    REQUIRE(plan.dropBans.empty());
+}
+
+TEST_CASE("a banned thing whose rule pin went with the fight is taken off, and says so", "[watchdog]")
+{
+    const std::vector<Pin> pins;
+    const std::vector<PinSeen> pinsSeen;
+    Bans bans;
+    Ban(bans, 0x1397E);
+    BanSeen worn;
+    worn.on = true;
+    const std::vector<BanSeen> bansSeen{worn};
+    const std::vector<std::uint32_t> lapsed{0x1397E};
+
+    const WatchPlan plan = PlanWatch(pins, pinsSeen, bans, bansSeen, false, false, lapsed);
+    REQUIRE(plan.steps.size() == 1);
+    REQUIRE(plan.steps[0].act == WatchAct::TakeOff);
+    REQUIRE(plan.steps[0].afterFight);
+    // Another form let go by the fight does not mark this one.
+    const std::vector<std::uint32_t> other{0x13989};
+    REQUIRE_FALSE(PlanWatch(pins, pinsSeen, bans, bansSeen, false, false, other).steps[0].afterFight);
+}
+
+TEST_CASE("a ban on a variant with no row left is dropped, and enforces nothing", "[watchdog]")
+{
+    const std::vector<Pin> pins;
+    const std::vector<PinSeen> pinsSeen;
+    Bans bans;
+    ItemVariant tempered;
+    tempered.tempering = 1.2f;
+    Ban(bans, 0x1397E, tempered);
+    BanSeen none;
+    none.carried = false;
+    const std::vector<BanSeen> bansSeen{none};
+
+    const WatchPlan plan = PlanWatch(pins, pinsSeen, bans, bansSeen, false, false, {});
+    REQUIRE(plan.dropBans == std::vector<std::size_t>{0});
+    REQUIRE(plan.steps.empty());
 }
