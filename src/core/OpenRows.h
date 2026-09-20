@@ -10,7 +10,7 @@
 
 #include <cstddef>
 #include <string>
-#include <unordered_set>
+#include <unordered_map>
 
 namespace ft
 {
@@ -25,7 +25,15 @@ class OpenRows
     // zero of one list opened and deleted rule zero of the other.
     [[nodiscard]] static std::string Key(ActorId actor, Moment moment, std::size_t index);
 
-    [[nodiscard]] bool IsOpen(const std::string &key) const noexcept;
+    // Whether a drawer is open. `whenUntouched` is what one the player has
+    // not clicked is: a rule's actions start EXPANDED, because a rule with
+    // three actions folded away reads as one action and the other two are
+    // the part you came to check (reported in play, 2026-09-19); a sheet's
+    // extra rows start folded, being detail asked for rather than the
+    // thing itself. Only a drawer the player has actually clicked is
+    // remembered, so changing a default moves every drawer that was left
+    // alone and none that was not.
+    [[nodiscard]] bool IsOpen(const std::string &key, bool whenUntouched) const noexcept;
     void Open(const std::string &key);
     void Close(const std::string &key);
 
@@ -37,7 +45,9 @@ class OpenRows
     void Clear() noexcept;
 
   private:
-    std::unordered_set<std::string> keys_;
+    // Only the drawers the player has clicked, and which way. Absent is
+    // "untouched", which the caller answers for.
+    std::unordered_map<std::string, bool> keys_;
 };
 
 } // namespace ft

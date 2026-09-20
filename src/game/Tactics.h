@@ -46,6 +46,16 @@ struct CharacterView
     // route for (game/PlayerCast.h, PlayerSupports).
     bool player{false};
     bool inCombat{false};
+    // With the player, and so fully simulated. False for a follower in
+    // another cell -- told to wait, or simply left behind: still theirs, and
+    // still under tactics when they catch up. Their page is kept and marked
+    // rather than dropped, since away and dismissed are different things;
+    // what it shows was read when they were last nearby, and their rules are
+    // the panel's to edit either way, being ours rather than the actor's.
+    // The page says so as a Status of "away", beside "combat" and "idle",
+    // because it is the state of the whole page and not a heading for one
+    // tab of it. The player is nearby by definition and never says it.
+    bool nearby{true};
 
     std::uint16_t level{0};
     ft::Stat health{};
@@ -79,13 +89,6 @@ struct CharacterView
 // sheet.
 struct FollowerView : CharacterView
 {
-    // With the player, and so fully simulated. False for a follower in
-    // another cell -- told to wait, or simply left behind: still theirs, and
-    // still under tactics when they catch up. Their page is kept and marked
-    // rather than dropped, since away and dismissed are different things;
-    // what it shows was read when they were last nearby, and their rules are
-    // the panel's to edit either way, being ours rather than the actor's.
-    bool nearby{true};
     // The other followers under tactics, by name, for the condition menu's
     // named subjects.
     struct Peer

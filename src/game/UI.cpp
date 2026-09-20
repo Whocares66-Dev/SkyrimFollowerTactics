@@ -160,6 +160,19 @@ float TextWidth(const std::string &text)
     return Im::CalcTextSize(text.c_str(), nullptr, false, -1.0f).x;
 }
 
+// A tooltip, and nothing at all when there is nothing to say. Several of
+// the strings that reach a tooltip are optional -- an action whose name
+// says it all has no note (`ft::Describe` gives ""), an item nobody set
+// aside has no reason -- and ImGui draws the frame whether or not there is
+// text in it, so an empty one is a little grey box that follows the cursor
+// and says nothing (reported in play, 2026-09-19). Every tooltip whose
+// text is a value rather than a literal goes through this.
+void Tooltip(std::string_view text)
+{
+    if (!text.empty())
+        Tooltip(text);
+}
+
 // Place text so its RIGHT edge lands on rightX. Right-aligning the labels is
 // what makes a label column read as a column: left-aligned, the gap between
 // each label and the thing it names is a different width on every row.
@@ -821,7 +834,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 changed = true;
             }
             if (const auto text = tip ? ft::Describe(which) : std::string_view{}; !text.empty() && Im::IsItemHovered(0))
-                Im::SetTooltip("%s", std::string(text).c_str());
+                Tooltip(text);
         };
 
         // A heading over a few leaves -- Combat: Start, End -- for the
@@ -1582,7 +1595,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
                     changed = true;
                 }
                 if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+                    Tooltip(ft::Describe(kind));
             }
         }
         if (!rows.empty())
@@ -1706,7 +1719,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             choose();
         }
         if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+            Tooltip(ft::Describe(kind));
     };
     const auto carried = [&](ft::ConsumableKind kind) {
         bool any = false;
@@ -1792,7 +1805,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         else if (kind == ft::ActionKind::DrinkWeakest)
             Im::SetTooltip("%s", "Drink the weakest potion that applies a buff");
         else
-            Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+            Tooltip(ft::Describe(kind));
     };
     const auto byEffect = [&](ft::ConsumableKind ckind, ft::ActionKind strongestKind, ft::ActionKind weakestKind,
                               ft::ActionKind namedKind, ft::ActionKind anyKind = ft::ActionKind::None) {
@@ -1829,7 +1842,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                     choose();
                 }
                 if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", std::string(ft::Describe(kind)).c_str());
+                    Tooltip(ft::Describe(kind));
             }
             Im::EndMenu();
         }
@@ -1987,7 +2000,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         {
             const bool open = BeginCascade(NounHeading(kind).c_str());
             if (Im::IsItemHovered(0))
-                Im::SetTooltip("%s", std::string(ft::DisplayName(kind)).c_str());
+                Tooltip(ft::DisplayName(kind));
             if (!open)
                 continue;
             if (EquipMenu(act, kind, view))
@@ -2026,7 +2039,7 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::M
         below = CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
     }
     if (!reason.empty() && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Im::SetTooltip("%s", reason.c_str());
+        Tooltip(reason);
 
     PushPopupChrome();
     Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
@@ -2356,9 +2369,15 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // read in: "not enemy: undead".
         Im::TableSetupColumn("NOT", Im::ImGuiTableColumnFlags_WidthFixed, notWidth, 0);
         Im::TableSetupColumn("Condition", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-        // The wider share, because an action reads as a phrase ("Drink magicka
-        // potion") where a condition is mostly short words and a number.
-        Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.25f, 0);
+        // Seven parts to the condition's four. An action reads as a phrase
+        // and the long ones are long -- "Self: Strongest Fortify Health
+        // Regeneration food" -- where a condition is mostly short words and
+        // a number. Settled by looking at both ends in play (2026-09-19):
+        // at 1.25 the action was cut off with the condition column half
+        // empty beside it, and at 2.0 "Self: Weapon charge: needed" was cut
+        // off instead. Neither column has room for its longest at once, so
+        // this is where the cut falls on the rarer one.
+        Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.75f, 0);
         Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
         if (piece == 1)
         {
@@ -2451,7 +2470,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 // Slashed at the end of the row, once its height is known.
                 Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
                 if (Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", setAside.c_str());
+                    Tooltip(setAside);
             }
             else if (CellClicked(("##on" + rowId).c_str(), Im::GetFrameHeight()))
             {
@@ -2501,7 +2520,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             {
                 Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
                 if (can && Im::IsItemHovered(0))
-                    Im::SetTooltip("%s", setAside.c_str());
+                    Tooltip(setAside);
                 else if (Im::IsItemHovered(0))
                     Im::SetTooltip("Condition cannot be negated");
             }
@@ -2583,7 +2602,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // one. A Button counts the baseline as its own frame padding and
             // stays put: measured on this font, 50 px of row became 44, which
             // is what a one-action row and the drawer's own rows are.
-            open = g_openRows.IsOpen(key);
+            open = g_openRows.IsOpen(key, true);
             const Im::ImVec2 pos = Im::GetCursorScreenPos();
             const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
             Im::PushStyleColor(Im::ImGuiCol_Button, invisible);
@@ -2796,12 +2815,12 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
             if (CellClicked(("##" + id + "/" + sub.label).c_str()))
                 onLink(sub.form);
             if (aside && Im::IsItemHovered(0))
-                Im::SetTooltip("%s", sub.aside.c_str());
+                Tooltip(sub.aside);
             Im::SetCursorScreenPos(pos);
         }
         Im::Text("%s", sub.label.c_str());
         if (aside && !(sub.form != 0 && onLink) && Im::IsItemHovered(0))
-            Im::SetTooltip("%s", sub.aside.c_str());
+            Tooltip(sub.aside);
         Im::TableSetColumnIndex(1);
         Im::Text("%s", sub.value.c_str());
         Im::TableSetColumnIndex(2);
@@ -3148,7 +3167,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 // for the row, padding and all, so it fits by construction.
                 // The marker and the name are then drawn over it.
                 const std::string key = section.title + "/" + row.label + "#" + std::to_string(rowIndex);
-                open = g_openRows.IsOpen(key);
+                open = g_openRows.IsOpen(key, false);
 
                 const Im::ImVec2 pos = Im::GetCursorScreenPos();
                 const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
@@ -3177,7 +3196,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Im::Text("%s", row.label.c_str());
             }
             if (!row.aside.empty() && Im::IsItemHovered(0))
-                Im::SetTooltip("%s", row.aside.c_str());
+                Tooltip(row.aside);
 
             Im::TableSetColumnIndex(1);
             if (row.form != 0 && onLink && !modifiers)
@@ -3531,7 +3550,7 @@ float DrawNameBadges(Im::ImDrawList *draw, const InventoryItem &item, Im::ImVec2
         const Im::ImVec2 from{x, at.y};
         badge(0xF714, kPoison); // skull-crossbones
         if (draw && Im::IsMouseHoveringRect(from, {x - kBadgeGap, at.y + h}, true))
-            Im::SetTooltip("%s", item.poison.rows.front().label.c_str());
+            Tooltip(item.poison.rows.front().label);
     }
     if (item.stolen)
         badge(0xF256, kStolen); // hand
@@ -4142,7 +4161,7 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
         // reason and nothing else; what a pin means belongs in a help
         // section, not on every row.
         if (dim && Im::IsItemHovered(0))
-            Im::SetTooltip("%s", item->banned ? "Banned" : item->asideBy.c_str());
+            Tooltip(item->banned ? "Banned" : item->asideBy);
         Im::SetCursorScreenPos(pos);
         std::string name = item->name;
         if (item->count > 1)
@@ -4623,7 +4642,7 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
         else if (dim && entry->banned && Im::IsItemHovered(0))
             Im::SetTooltip("%s", "Banned");
         else if (dim && entry->setAside && Im::IsItemHovered(0))
-            Im::SetTooltip("%s", entry->asideBy.c_str());
+            Tooltip(entry->asideBy);
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", entry->name.c_str());
 
@@ -5083,7 +5102,10 @@ void DrawCharacter(const CharacterView &view)
     // out from measured widths so every column is flush and nothing depends on
     // the length of an English word.
     const std::string levelText = std::to_string(static_cast<unsigned>(view.level));
-    const std::string statusText = view.inCombat ? "in combat" : "idle";
+    // Away outranks the fight: a follower left behind may still be marked
+    // in combat, and what the page is telling you first is that every
+    // reading on it is the last one taken rather than what is true now.
+    const std::string statusText = !view.nearby ? "away" : view.inCombat ? "combat" : "idle";
     char carriedBuf[64];
     std::snprintf(carriedBuf, sizeof(carriedBuf), "%.0f / %.0f", view.carriedWeight, view.carryCapacity);
     const std::string carriedText = carriedBuf;
@@ -5116,7 +5138,7 @@ void DrawCharacter(const CharacterView &view)
     DrawStatRow(
         geo, "Stamina", view.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Status",
         [&] {
-            if (view.inCombat)
+            if (view.inCombat && view.nearby)
                 Im::TextColored(Im::ImVec4(0.95f, 0.65f, 0.35f, 1.0f), "%s", statusText.c_str());
             else
                 Im::TextDisabled("%s", statusText.c_str());
@@ -5592,11 +5614,6 @@ void DrawTacticsTabs(const FollowerView &view, Tab carried)
 // gives it.
 void DrawFollower(const FollowerView &view)
 {
-    // Where the tab row begins and ends, kept for the status put at its
-    // right below.
-    const Im::ImVec2 barPos = Im::GetCursorScreenPos();
-    const float barRight = barPos.x + Im::GetContentRegionAvail().x;
-
     if (!Im::BeginTabBar("follower##tabs"))
         return;
 
@@ -5616,25 +5633,6 @@ void DrawFollower(const FollowerView &view)
     DrawTacticsTabs(view, carried);
 
     Im::EndTabBar();
-
-    // Still theirs, just not here. A status at the right of the tab row
-    // rather than a line of its own above it: it is the state of the whole
-    // page, true of every tab, and not a heading for one. Said in two words
-    // and not explained -- the page below is the answer to what it shows,
-    // and the rules on it are the player's to write either way. Drawn after
-    // the bar so it lands on the bar's line: the cursor goes back up to the
-    // row it was on, and a frame's padding centres the text against the
-    // height of a tab.
-    if (!view.nearby)
-    {
-        const Im::ImVec2 resume = Im::GetCursorScreenPos();
-        const auto *style = Im::GetStyle();
-        const char *away = "Not nearby";
-        Im::SetCursorScreenPos(
-            Im::ImVec2(barRight - TextWidth(away), barPos.y + (style ? style->FramePadding.y : 0.0f)));
-        Im::TextDisabled("%s", away);
-        Im::SetCursorScreenPos(resume);
-    }
 }
 
 // --- menu entries -----------------------------------------------------------
@@ -5714,7 +5712,7 @@ void DrawSettings()
         const bool clicked = GlyphButton(id, Im::GetFrameHeight(), Glyph::Tick, on);
         Im::PopStyleVar(1);
         if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", on ? toTurnOff : toTurnOn);
+            Tooltip(on ? toTurnOff : toTurnOn);
         Im::SameLine(0.0f, kCellPadX);
         Im::AlignTextToFramePadding();
         Im::Text("%s", label);
