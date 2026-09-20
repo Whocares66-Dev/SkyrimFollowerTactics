@@ -3536,11 +3536,9 @@ std::atomic<bool> g_escapeTaken{false};  // input thread: the taken press has no
 // tabs to the strip of chips under it, W back up. A tab with no strip --
 // every sheet, and every detail page -- keeps them on the tabs: the row is
 // put back at the end of a body that drew none, so S on such a tab does
-// nothing rather than swallowing the A and D after it. Nothing marks which
-// row has the keys: the selected tab and the selected chip are each already
-// lit, the player is the one who moved the keys between them with W and S,
-// and a press that lands on the wrong row shows itself and is undone by the
-// key opposite.
+// nothing rather than swallowing the A and D after it. Which row has them
+// is marked by weakening the other's selection rather than by lighting this
+// one: see kRestingChip below.
 // Render thread only, and read nowhere while an item has the keyboard: in
 // a filter box, A and D are letters.
 enum class KeyRow
@@ -3551,6 +3549,15 @@ enum class KeyRow
 KeyRow g_keyRow = KeyRow::Tabs;
 bool g_chipsDrawn = false; // this tab's body drew a chip strip
 int g_chipStep = 0;        // -1 / 1: the strip drawn next moves its choice by this
+
+// The row without the keys shows its selection weakened, which is the whole
+// of the mark: no colour is introduced for it. The bar has the theme's own
+// answer already -- ImGuiCol_TabUnfocusedActive is what ImGui paints a
+// selected tab whose bar is not the focus -- so it is read straight out of
+// the style and follows whatever theme the player installed. A chip strip
+// is ours and has no second colour, so a resting chip takes this much of
+// the selected tint instead.
+constexpr float kRestingChip = 0.45f;
 
 struct InventoryTabState
 {
@@ -4044,6 +4051,16 @@ void DrawChips(const std::vector<Chip> &chips, int &selected)
     const float right = Im::GetCursorPosX() + Im::GetContentRegionAvail().x;
     auto *draw = Im::GetWindowDrawList();
 
+    // Hovered and active are left alone: the mouse answers the same whether
+    // the keys are here or not.
+    const bool resting = g_keyRow != KeyRow::Chips;
+    if (resting)
+    {
+        Im::ImVec4 header = style->Colors[Im::ImGuiCol_Header];
+        header.w *= kRestingChip;
+        Im::PushStyleColor(Im::ImGuiCol_Header, header);
+    }
+
     FontAwesome::PushSolid();
     const Im::ImFont *iconFont = Im::GetFont();
     const float iconSize = Im::GetFontSize();
@@ -4084,6 +4101,9 @@ void DrawChips(const std::vector<Chip> &chips, int &selected)
             Im::ImDrawListManager::AddText(draw, iconFont, iconSize, {pos.x + padX, pos.y}, ink, icon.c_str());
         Im::ImDrawListManager::AddText(draw, {pos.x + padX + iconWidth + gap, pos.y}, ink, chip.label.c_str());
     }
+
+    if (resting)
+        Im::PopStyleColor(1);
 }
 
 // The category strip a list draws above its table: All, then every category
@@ -5842,7 +5862,16 @@ Tab PageTab(const CharacterView &view)
 // while it is open.
 bool BeginSheetTab(const char *label, Tab tab, Tab select)
 {
-    if (!Im::BeginTabItem(label, nullptr, select == tab ? Im::ImGuiTabItemFlags_SetSelected : 0))
+    // Pushed and popped around the one call, which is where ImGui paints
+    // the tab: every tab of every bar comes through here, so the bar is
+    // weakened in one place rather than at each page that draws one.
+    const bool resting = g_keyRow == KeyRow::Chips;
+    if (resting)
+        Im::PushStyleColor(Im::ImGuiCol_TabActive, Im::GetStyle()->Colors[Im::ImGuiCol_TabUnfocusedActive]);
+    const bool open = Im::BeginTabItem(label, nullptr, select == tab ? Im::ImGuiTabItemFlags_SetSelected : 0);
+    if (resting)
+        Im::PopStyleColor(1);
+    if (!open)
         return false;
     g_shownTab = tab;
     return true;
