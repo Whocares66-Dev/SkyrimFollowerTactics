@@ -70,6 +70,36 @@ TEST_CASE("a fight remembers the book on the way in and gives it back on the way
     REQUIRE_FALSE(book.Note(pins, false));
 }
 
+TEST_CASE("a pin made out of a fight is not the fight's, and survives one", "[watchdog]")
+{
+    // An idle rule equips while nothing is happening. A rule's pin is the
+    // FIGHT'S, and this one was made in no fight: there is no edge out of
+    // idle for it to be settled on, and a follower who was told to hold
+    // something while walking about must not be undressed by the end of
+    // the next skirmish. The book only ever lets go of what it did not
+    // have on the way in.
+    FightBook book;
+    std::vector<Pin> pins{PinOf(Dagger(), Hand::Right)};
+
+    // A fight comes and goes over it, and it is still there.
+    REQUIRE_FALSE(book.Note(pins, true));
+    const auto settled = book.Note(pins, false);
+    REQUIRE(settled);
+    REQUIRE(settled->released.empty());
+    REQUIRE(settled->restored.empty());
+    REQUIRE(pins.size() == 1);
+    REQUIRE(pins[0].thing.form == Dagger().form);
+
+    // And a second, so nothing is lost by the round trip through the
+    // remembered book either.
+    REQUIRE_FALSE(book.Note(pins, true));
+    const auto again = book.Note(pins, false);
+    REQUIRE(again);
+    REQUIRE(again->released.empty());
+    REQUIRE(pins.size() == 1);
+    REQUIRE(pins[0].thing.form == Dagger().form);
+}
+
 TEST_CASE("the panel's word mid-fight is the new normal; a rule's is for the fight", "[watchdog]")
 {
     FightBook book;
