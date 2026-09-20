@@ -3513,11 +3513,9 @@ char g_perksFilter[kFilterLen]{};
 // reopened on the one it was left on is where the player put it.
 void ClearFilters()
 {
-    g_inventoryList.filter[0] = '\0';
-    g_magicList.filter[0] = '\0';
-    g_shoutList.filter[0] = '\0';
-    g_effectsFilter[0] = '\0';
-    g_perksFilter[0] = '\0';
+    for (char *filter :
+         {g_inventoryList.filter, g_magicList.filter, g_shoutList.filter, g_effectsFilter, g_perksFilter})
+        filter[0] = '\0';
 }
 
 // The keys a list answers as SkyUI's do: Space puts the cursor in the
@@ -3532,7 +3530,6 @@ std::atomic<bool> g_filterDrawn{false};  // a filter box was drawn this frame
 std::atomic<bool> g_filterActive{false}; // the cursor was in one, as of the last frame drawn
 std::atomic<bool> g_leaveFilter{false};  // a taken Escape, for the render thread to act on
 std::atomic<bool> g_escapeTaken{false};  // input thread: the taken press has not been released
-std::atomic<bool> g_clearFilters{false}; // the panel opened or closed: empty every box before the next frame
 
 // A page answers the movement keys as the game does, one row at a time: A
 // and D step along the row that has the keys, S goes down from the bar of
@@ -3619,6 +3616,62 @@ PanelState &Panel(ft::ActorId id)
 {
     return g_panels[id];
 }
+
+// The top tab on the page drawn last, and whose page that was. Followers
+// share one tab bar and the player has another, and ImGui keeps each bar's
+// choice apart, so the tab is carried from page to page here: the Skills of
+// one follower, then of the player, then of the next follower. Render
+// thread only.
+Tab g_shownTab = Tab::None;
+ft::ActorId g_shownPage = 0;
+
+// Leaving a tab's detail page: it closes, and the page goes back where the
+// page came from -- the list it is filed under, or the sheet a link opened
+// it from, whose tab is selected again. `home` is the tab the state belongs
+// to. Both ways out go through here: the back arrow, which always goes
+// back, and the panel closing on the page, which goes back only for the tab
+// that was being read.
+template <typename State> void CloseDetail(PanelState &panel, State &state, Tab home, bool back = true)
+{
+    if (back && state.detail != 0 && state.openedFrom != home)
+        panel.select = state.openedFrom;
+    state.detail = 0;
+    state.openedFrom = home;
+}
+
+// Every detail page, closed. A detail page -- an item, a spell, an effect,
+// a perk -- is a place the player stepped into, and stepping out of the
+// panel is stepping out of it: what the tab should be showing when the
+// panel comes back is where the back arrow would have gone, which for a
+// weapon opened from the Character sheet is the sheet and not the Inventory
+// list it is filed under.
+//
+// Only the tab that was on screen is sent anywhere: a page can hold an open
+// detail on several tabs at once, and only the one being read has a "back"
+// the player would recognise. Effects and Skills detail pages have no
+// origin -- nothing links into them from another tab -- so closing them is
+// the whole of it. The chip and the tab are otherwise left where they are:
+// those are where the player put the panel down, not what they were reading
+// on it.
+void CloseDetails()
+{
+    for (auto &entry : g_panels)
+    {
+        PanelState &panel = entry.second;
+        const bool read = entry.first == g_shownPage;
+        CloseDetail(panel, panel.inventory, Tab::Inventory, read && g_shownTab == Tab::Inventory);
+        CloseDetail(panel, panel.magic, Tab::Magic, read && g_shownTab == Tab::Magic);
+        CloseDetail(panel, panel.shouts, Tab::Shouts, read && g_shownTab == Tab::Shouts);
+        panel.effects = {};
+        panel.skills = {};
+    }
+}
+
+// The panel opened or closed, and the pages are to be put back to how they
+// are first met -- no filter text, no detail page -- before another frame
+// is drawn. Set on the framework's event and acted on inside a frame, which
+// is the one place known to be the render thread.
+std::atomic<bool> g_resetPages{false};
 
 // --- inventory ---------------------------------------------------------------
 
@@ -4486,12 +4539,7 @@ void DrawItemDetail(const InventoryItem &item, PanelState &panel)
 {
     Im::Spacing();
     if (BackButton())
-    {
-        // Back to wherever this was opened from: the list, or the sheet.
-        panel.inventory.detail = 0;
-        if (panel.inventory.openedFrom != Tab::Inventory)
-            panel.select = panel.inventory.openedFrom;
-    }
+        CloseDetail(panel, panel.inventory, Tab::Inventory);
     DetailName(item.name, NameTint(item));
     NameBadges(item, false, true);
     DetailSubtitle(item.type);
@@ -4896,11 +4944,11 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
     Im::PopStyleVar(1);
 }
 
-void DrawMagicDetail(const MagicEntry &entry, MagicTabState &state)
+void DrawMagicDetail(const MagicEntry &entry, PanelState &panel, MagicTabState &state, Tab home)
 {
     Im::Spacing();
     if (BackButton())
-        state.detail = 0;
+        CloseDetail(panel, state, home);
     DetailName(entry.name);
     DetailSubtitle(entry.school);
 
@@ -5171,14 +5219,7 @@ void DrawMagicPage(const CharacterView &view, const MagicList &list)
         {
             if (entry.form == state.detail)
             {
-                DrawMagicDetail(entry, state);
-                // Back to wherever this was opened from: the list, or the
-                // sheet, whose tab is selected again.
-                if (state.detail == 0 && state.openedFrom != list.home)
-                {
-                    Panel(view.id).select = state.openedFrom;
-                    state.openedFrom = list.home;
-                }
+                DrawMagicDetail(entry, Panel(view.id), state, list.home);
                 return;
             }
         }
@@ -5582,15 +5623,18 @@ void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
         g_shownNow.store(0, std::memory_order_relaxed);
         g_filterActive.store(false, std::memory_order_relaxed);
         g_leaveFilter.store(false, std::memory_order_relaxed);
-        g_clearFilters.store(true, std::memory_order_relaxed);
+        g_resetPages.store(true, std::memory_order_relaxed);
         break;
     case Event::kBeforeRender:
         g_drawnThisFrame.store(false, std::memory_order_relaxed);
-        // Emptied here rather than where the menu closed: the open and
-        // close events are the framework's, and nothing says they are on
-        // this thread, while a frame's own events are.
-        if (g_clearFilters.exchange(false, std::memory_order_relaxed))
+        // Done here rather than where the menu closed: the open and close
+        // events are the framework's, and nothing says they are on this
+        // thread, while a frame's own events are.
+        if (g_resetPages.exchange(false, std::memory_order_relaxed))
+        {
             ClearFilters();
+            CloseDetails();
+        }
         break;
     case Event::kAfterRender:
         if (!g_drawnThisFrame.load(std::memory_order_relaxed))
@@ -5713,14 +5757,6 @@ void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
     Im::EndChild();
 }
 
-// The top tab on the page drawn last, and whose page that was. Followers
-// share one tab bar and the player has another, and ImGui keeps each bar's
-// choice apart, so the tab is carried from page to page here: the Skills of
-// one follower, then of the player, then of the next follower. Render
-// thread only.
-Tab g_shownTab = Tab::None;
-ft::ActorId g_shownPage = 0;
-
 // The tab a page opens on, on the frame it is drawn after another page's;
 // None on the frames after, when its bar keeps the choice. The first page
 // drawn opens on Tactics, which is what the mod is for. The player's page
@@ -5786,6 +5822,20 @@ void StepPage(PanelState &panel, bool player)
         g_chipStep = step;
     else
         panel.select = StepTab(g_shownTab, step, player);
+}
+
+// The tab a page is to show this frame: what a link on a sheet, a back
+// arrow or A and D have asked for, consumed here so it acts for one frame
+// only; else the tab carried from the last page. Reading the movement keys
+// is part of the question, since they are one of the three things that ask.
+Tab PageTab(const CharacterView &view)
+{
+    PanelState &panel = Panel(view.id);
+    const Tab carried = CarriedTab(view);
+    StepPage(panel, view.player);
+    const Tab select = panel.select != Tab::None ? panel.select : carried;
+    panel.select = Tab::None;
+    return select;
 }
 
 // A top tab: selected when `select` names it, and noted as the tab shown
@@ -5891,15 +5941,7 @@ void DrawFollower(const FollowerView &view)
     if (!Im::BeginTabBar("follower##tabs"))
         return;
 
-    // The tab to show: what a link on a sheet, the back arrow on a detail
-    // page or A and D just asked for, consumed here so it acts for one frame
-    // only; else the tab carried from the last page.
-    PanelState &panel = Panel(view.id);
-    const Tab carried = CarriedTab(view);
-    StepPage(panel, view.player);
-    const Tab select = panel.select != Tab::None ? panel.select : carried;
-    panel.select = Tab::None;
-
+    const Tab select = PageTab(view);
     DrawSheetTabs(view, select);
     // What the combat AI is tuned by, before what it is told: a rule works
     // with, or against, these numbers.
@@ -6062,11 +6104,7 @@ void __stdcall RenderPlayer()
     }
     if (!view || !Im::BeginTabBar("player##tabs"))
         return;
-    PanelState &panel = Panel(view->id);
-    const Tab carried = CarriedTab(*view);
-    StepPage(panel, true);
-    const Tab select = panel.select != Tab::None ? panel.select : carried;
-    panel.select = Tab::None;
+    const Tab select = PageTab(*view);
     DrawSheetTabs(*view, select);
     DrawTacticsTabs(*view, select);
     Im::EndTabBar();
