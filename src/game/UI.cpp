@@ -3534,6 +3534,27 @@ std::atomic<bool> g_leaveFilter{false};  // a taken Escape, for the render threa
 std::atomic<bool> g_escapeTaken{false};  // input thread: the taken press has not been released
 std::atomic<bool> g_clearFilters{false}; // the panel opened or closed: empty every box before the next frame
 
+// A page answers the movement keys as the game does, one row at a time: A
+// and D step along the row that has the keys, S goes down from the bar of
+// tabs to the strip of chips under it, W back up. A tab with no strip --
+// every sheet, and every detail page -- keeps them on the tabs: the row is
+// put back at the end of a body that drew none, so S on such a tab does
+// nothing rather than swallowing the A and D after it. Nothing marks which
+// row has the keys: the selected tab and the selected chip are each already
+// lit, the player is the one who moved the keys between them with W and S,
+// and a press that lands on the wrong row shows itself and is undone by the
+// key opposite.
+// Render thread only, and read nowhere while an item has the keyboard: in
+// a filter box, A and D are letters.
+enum class KeyRow
+{
+    Tabs,
+    Chips,
+};
+KeyRow g_keyRow = KeyRow::Tabs;
+bool g_chipsDrawn = false; // this tab's body drew a chip strip
+int g_chipStep = 0;        // -1 / 1: the strip drawn next moves its choice by this
+
 struct InventoryTabState
 {
     std::uint64_t detail{0}; // the row open in detail, by InventoryItem::Key; 0 for the list
@@ -3946,6 +3967,23 @@ struct Chip
 
 void DrawChips(const std::vector<Chip> &chips, int &selected)
 {
+    // Said before the strip is drawn, so a body that ends without one puts
+    // the keys back on the tabs. One strip a tab, so this says it for the
+    // whole body.
+    g_chipsDrawn = true;
+    // A and D walk the strip, wrapping at both ends: the row is short and
+    // reading it as a ring costs a press fewer than turning back at the end.
+    // By id and not by index -- a chip's id is its category, or the summon's
+    // reference -- so the walk starts from whatever is selected now.
+    if (g_chipStep != 0 && !chips.empty())
+    {
+        const auto at = std::find_if(chips.begin(), chips.end(), [&](const Chip &c) { return c.id == selected; });
+        const int count = static_cast<int>(chips.size());
+        const int from = at == chips.end() ? 0 : static_cast<int>(at - chips.begin());
+        selected = chips[static_cast<std::size_t>((from + g_chipStep + count) % count)].id;
+        g_chipStep = 0;
+    }
+
     const auto *style = Im::GetStyle();
     const float padX = style->FramePadding.x;
     const float spacing = style->ItemSpacing.x;
@@ -5660,10 +5698,18 @@ void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
     // Cleared after the body: a tab with no box has nowhere to put it, and
     // the next tab drawn must not inherit it.
     g_focusFilter = !Im::IsAnyItemActive() && Im::IsKeyPressed(Im::ImGuiKey_Space, false);
+    g_chipsDrawn = false;
     if (open)
         draw();
     g_focusFilter = false;
     g_clearFilter = false;
+    // A body with no chip strip has no row to go down to, so the keys stay
+    // on the tabs whatever S asked for. This is what makes S safe to answer
+    // before the body is drawn, which is where it has to be answered: the
+    // strip is inside the body and needs this frame's step.
+    if (!g_chipsDrawn)
+        g_keyRow = KeyRow::Tabs;
+    g_chipStep = 0;
     Im::EndChild();
 }
 
@@ -5689,6 +5735,59 @@ Tab CarriedTab(const CharacterView &view)
     return g_shownTab;
 }
 
+// The bar's tabs in the order they are drawn: DrawSheetTabs' seven, then
+// Combat Style, then the two lists. That is the order they are declared in
+// too, and the order this array must keep -- A and D read the bar off it,
+// and a tab out of place here steps to the wrong neighbour.
+constexpr std::array<Tab, 10> kBarOrder{Tab::Character, Tab::Inventory,  Tab::Magic,  Tab::Shouts,
+                                        Tab::Summons,   Tab::Effects,    Tab::Skills, Tab::CombatStyle,
+                                        Tab::Tactics,   Tab::IdleTactics};
+
+// The tab `step` places along the bar from `from`, wrapping at both ends. A
+// page draws every tab it has -- an empty one says so in its body rather
+// than going away -- so the bar is kBarOrder, less the Combat Style the
+// player's page has not got.
+Tab StepTab(Tab from, int step, bool player)
+{
+    std::array<Tab, kBarOrder.size()> bar{};
+    std::size_t count = 0;
+    for (const Tab tab : kBarOrder)
+        if (!(player && tab == Tab::CombatStyle))
+            bar[count++] = tab;
+
+    std::size_t at = 0;
+    for (std::size_t i = 0; i < count; ++i)
+        if (bar[i] == from)
+            at = i;
+    return bar[(at + static_cast<std::size_t>(static_cast<int>(count) + step)) % count];
+}
+
+// A page's answer to the movement keys, read once before its bar is drawn:
+// the chip strip lives inside the bar and wants this frame's step. The tab
+// is asked for through `select`, the way a link on a sheet asks, and the
+// caller resolves that on the line after, so the bar moves on this frame.
+//
+// Nothing is read while an item has the keyboard. In a filter box A and D
+// are letters, and the box is what Space put the cursor in.
+void StepPage(PanelState &panel, bool player)
+{
+    if (Im::IsAnyItemActive())
+        return;
+    if (Im::IsKeyPressed(Im::ImGuiKey_W, false))
+        g_keyRow = KeyRow::Tabs;
+    if (Im::IsKeyPressed(Im::ImGuiKey_S, false))
+        g_keyRow = KeyRow::Chips;
+
+    const int step = static_cast<int>(Im::IsKeyPressed(Im::ImGuiKey_D, false)) -
+                     static_cast<int>(Im::IsKeyPressed(Im::ImGuiKey_A, false));
+    if (step == 0)
+        return;
+    if (g_keyRow == KeyRow::Chips)
+        g_chipStep = step;
+    else
+        panel.select = StepTab(g_shownTab, step, player);
+}
+
 // A top tab: selected when `select` names it, and noted as the tab shown
 // while it is open.
 bool BeginSheetTab(const char *label, Tab tab, Tab select)
@@ -5702,17 +5801,13 @@ bool BeginSheetTab(const char *label, Tab tab, Tab select)
 // The sheet's tabs, inside the caller's tab bar, reading left to right as
 // who they are, what they carry, what they can cast, what they can shout,
 // what they command, what is running on them and what they can do: a
-// follower's page and the player's alike. `carried` is CarriedTab's answer
-// for this page.
-void DrawSheetTabs(const CharacterView &view, Tab carried)
+// follower's page and the player's alike. `select` is the tab the page is to
+// show, resolved by the caller: every tab of the bar is asked the same
+// question, so the resolving is done once, above all three of the calls that
+// draw one.
+void DrawSheetTabs(const CharacterView &view, Tab select)
 {
-    // A pending switch, from a link on the sheet or the back arrow on an
-    // item page, consumed here so it acts for one frame only; else the tab
-    // carried from the last page.
     PanelState &panel = Panel(view.id);
-    const Tab select = panel.select != Tab::None ? panel.select : carried;
-    panel.select = Tab::None;
-
     if (BeginSheetTab("Character", Tab::Character, select))
     {
         TabBody(Tab::Character, view.id, [&] { DrawCharacter(view); });
@@ -5761,14 +5856,14 @@ void DrawSheetTabs(const CharacterView &view, Tab carried)
 // what they have been told to do in a fight, and out of one. The rules are
 // read live rather than off the view: the view is rebuilt on a page
 // change, and an edit must show on the next frame.
-void DrawTacticsTabs(const FollowerView &view, Tab carried)
+void DrawTacticsTabs(const FollowerView &view, Tab select)
 {
-    if (BeginSheetTab("Tactics", Tab::Tactics, carried))
+    if (BeginSheetTab("Tactics", Tab::Tactics, select))
     {
         TabBody(Tab::Tactics, view.id, [&] { DrawTactics(GetRules(view.id, ft::Moment::Combat), view); });
         Im::EndTabItem();
     }
-    if (BeginSheetTab("Idle Tactics", Tab::IdleTactics, carried))
+    if (BeginSheetTab("Idle Tactics", Tab::IdleTactics, select))
     {
         TabBody(Tab::IdleTactics, view.id, [&] { DrawTactics(GetRules(view.id, ft::Moment::Idle), view); });
         Im::EndTabItem();
@@ -5796,12 +5891,19 @@ void DrawFollower(const FollowerView &view)
     if (!Im::BeginTabBar("follower##tabs"))
         return;
 
+    // The tab to show: what a link on a sheet, the back arrow on a detail
+    // page or A and D just asked for, consumed here so it acts for one frame
+    // only; else the tab carried from the last page.
+    PanelState &panel = Panel(view.id);
     const Tab carried = CarriedTab(view);
+    StepPage(panel, view.player);
+    const Tab select = panel.select != Tab::None ? panel.select : carried;
+    panel.select = Tab::None;
 
-    DrawSheetTabs(view, carried);
+    DrawSheetTabs(view, select);
     // What the combat AI is tuned by, before what it is told: a rule works
     // with, or against, these numbers.
-    if (BeginSheetTab("Combat Style", Tab::CombatStyle, carried))
+    if (BeginSheetTab("Combat Style", Tab::CombatStyle, select))
     {
         TabBody(Tab::CombatStyle, view.id, [&] {
             Im::Spacing();
@@ -5809,7 +5911,7 @@ void DrawFollower(const FollowerView &view)
         });
         Im::EndTabItem();
     }
-    DrawTacticsTabs(view, carried);
+    DrawTacticsTabs(view, select);
 
     Im::EndTabBar();
 }
@@ -5960,9 +6062,13 @@ void __stdcall RenderPlayer()
     }
     if (!view || !Im::BeginTabBar("player##tabs"))
         return;
+    PanelState &panel = Panel(view->id);
     const Tab carried = CarriedTab(*view);
-    DrawSheetTabs(*view, carried);
-    DrawTacticsTabs(*view, carried);
+    StepPage(panel, true);
+    const Tab select = panel.select != Tab::None ? panel.select : carried;
+    panel.select = Tab::None;
+    DrawSheetTabs(*view, select);
+    DrawTacticsTabs(*view, select);
     Im::EndTabBar();
 }
 
