@@ -5,6 +5,7 @@
 // draws and clicks (game/UI.cpp); the book-keeping is here, tested. No
 // Skyrim, no ImGui.
 
+#include "Rule.h"
 #include "Snapshot.h"
 
 #include <cstddef>
@@ -17,18 +18,22 @@ namespace ft
 class OpenRows
 {
   public:
-    // The key the panel names a rule's row by: "rule/<actor>/<index>".
-    [[nodiscard]] static std::string Key(ActorId actor, std::size_t index);
+    // The key the panel names a rule's row by: the actor, the list the
+    // rule is in and its place in it, "rule/<actor>/combat/<index>". The
+    // list is part of it because an actor has two, and a drawer open on
+    // the combat list is not the idle list's: keyed by index alone, rule
+    // zero of one list opened and deleted rule zero of the other.
+    [[nodiscard]] static std::string Key(ActorId actor, Moment moment, std::size_t index);
 
     [[nodiscard]] bool IsOpen(const std::string &key) const noexcept;
     void Open(const std::string &key);
     void Close(const std::string &key);
 
-    // Two rules swapped: their drawers swap with them.
-    void Move(ActorId actor, std::size_t from, std::size_t to);
+    // Two rules of one list swapped: their drawers swap with them.
+    void Move(ActorId actor, Moment moment, std::size_t from, std::size_t to);
     // A rule removed from a list of `count`: its drawer goes, and the
-    // drawers of the rules after it move up one.
-    void Remove(ActorId actor, std::size_t at, std::size_t count);
+    // drawers of the rules after it in that list move up one.
+    void Remove(ActorId actor, Moment moment, std::size_t at, std::size_t count);
     void Clear() noexcept;
 
   private:

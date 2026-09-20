@@ -2107,22 +2107,22 @@ ft::OpenRows g_openRows;
 
 float DisclosureWidth();
 void DrawDisclosure(Im::ImVec2 pos, bool open);
-std::string RuleKey(ft::ActorId follower, std::size_t index)
+std::string RuleKey(ft::ActorId follower, ft::Moment moment, std::size_t index)
 {
-    return ft::OpenRows::Key(follower, index);
+    return ft::OpenRows::Key(follower, moment, index);
 }
 
 // The open state follows the rule when rules are moved or removed, so a
 // drawer does not stay behind at an index another rule has taken
 // (core/OpenRows.h, tested).
-void MoveOpenState(ft::ActorId follower, std::size_t from, std::size_t to)
+void MoveOpenState(ft::ActorId follower, ft::Moment moment, std::size_t from, std::size_t to)
 {
-    g_openRows.Move(follower, from, to);
+    g_openRows.Move(follower, moment, from, to);
 }
 
-void RemoveOpenState(ft::ActorId follower, std::size_t at, std::size_t count)
+void RemoveOpenState(ft::ActorId follower, ft::Moment moment, std::size_t at, std::size_t count)
 {
-    g_openRows.Remove(follower, at, count);
+    g_openRows.Remove(follower, moment, at, count);
 }
 
 // The Order cell's three buttons -- up, down, remove -- centred in the cell
@@ -2549,7 +2549,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         const float thenLeft = Im::GetCursorScreenPos().x - kCellPadX - 1.0f;
         if (rule.actions.empty())
             rule.actions.emplace_back();
-        const std::string key = RuleKey(view.id, i);
+        const std::string key = RuleKey(view.id, rules.moment, i);
         bool open = false;
         if (rule.actions.size() == 1)
         {
@@ -2677,12 +2677,12 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     if (moveFrom >= 0 && moveTo >= 0 && moveTo < static_cast<int>(rules.rules.size()))
     {
         std::swap(rules.rules[static_cast<std::size_t>(moveFrom)], rules.rules[static_cast<std::size_t>(moveTo)]);
-        MoveOpenState(view.id, static_cast<std::size_t>(moveFrom), static_cast<std::size_t>(moveTo));
+        MoveOpenState(view.id, rules.moment, static_cast<std::size_t>(moveFrom), static_cast<std::size_t>(moveTo));
         changed = true;
     }
     if (removeAt >= 0)
     {
-        RemoveOpenState(view.id, static_cast<std::size_t>(removeAt), rules.rules.size());
+        RemoveOpenState(view.id, rules.moment, static_cast<std::size_t>(removeAt), rules.rules.size());
         rules.rules.erase(rules.rules.begin() + removeAt);
         changed = true;
     }
