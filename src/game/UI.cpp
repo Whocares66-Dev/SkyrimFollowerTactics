@@ -3507,17 +3507,32 @@ ListView g_shoutList;
 char g_effectsFilter[kFilterLen]{};
 char g_perksFilter[kFilterLen]{};
 
+// Every filter box, emptied at once. A filter is what the player is looking
+// for now, not a setting: a page reopened shows the whole list again. The
+// chips are not touched -- a category is a place in the panel, and a list
+// reopened on the one it was left on is where the player put it.
+void ClearFilters()
+{
+    g_inventoryList.filter[0] = '\0';
+    g_magicList.filter[0] = '\0';
+    g_shoutList.filter[0] = '\0';
+    g_effectsFilter[0] = '\0';
+    g_perksFilter[0] = '\0';
+}
+
 // The keys a list answers as SkyUI's do: Space puts the cursor in the
-// page's filter box, Escape takes it out again. Escape would otherwise
-// close the whole menu -- the framework closes on any Escape event, on
-// the input thread, before the frame that would have shown the box
-// active -- so its press is taken out of the queue there (TakeEscape) and
-// answered on the render thread instead.
+// page's filter box, Escape takes it out and empties it. Escape would
+// otherwise close the whole menu -- the framework closes on any Escape
+// event, on the input thread, before the frame that would have shown the
+// box active -- so its press is taken out of the queue there (TakeEscape)
+// and answered on the render thread instead.
 bool g_focusFilter = false;              // render thread: the box drawn next takes the keyboard
+bool g_clearFilter = false;              // render thread: the box drawn next empties itself
 std::atomic<bool> g_filterDrawn{false};  // a filter box was drawn this frame
 std::atomic<bool> g_filterActive{false}; // the cursor was in one, as of the last frame drawn
 std::atomic<bool> g_leaveFilter{false};  // a taken Escape, for the render thread to act on
 std::atomic<bool> g_escapeTaken{false};  // input thread: the taken press has not been released
+std::atomic<bool> g_clearFilters{false}; // the panel opened or closed: empty every box before the next frame
 
 struct InventoryTabState
 {
@@ -3718,6 +3733,22 @@ bool FilterBox(const char *id, char *buffer, std::size_t size)
     // One box a frame, so this frame's answer is the whole answer.
     g_filterDrawn.store(true, std::memory_order_relaxed);
     g_filterActive.store(Im::IsItemActive(), std::memory_order_relaxed);
+    // Escape emptied the box as well as leaving it. AFTER the box is drawn,
+    // never before: a box the cursor leaves having been TYPED IN writes the
+    // text it was holding back over the buffer on that frame (ImGui parks it
+    // in InputTextDeactivatedState and applies it when the box reads as
+    // deactivated-after-edit), so a buffer emptied ahead of the call is
+    // filled again by the call itself. Emptied before, Escape cleared a box
+    // the player had only put the cursor in and left one they had typed in
+    // -- the edit is the whole difference (2026-09-20). The cross below
+    // clears from here, and works, for the same reason. The box's pixels are
+    // one frame behind on the clearing frame; the rows below are not.
+    if (g_clearFilter)
+    {
+        g_clearFilter = false;
+        buffer[0] = '\0';
+        changed = true;
+    }
     if (buffer[0] == '\0')
         return changed;
 
@@ -5513,9 +5544,15 @@ void __stdcall OnMenuEvent(SKSEMenuFramework::Model::EventType type)
         g_shownNow.store(0, std::memory_order_relaxed);
         g_filterActive.store(false, std::memory_order_relaxed);
         g_leaveFilter.store(false, std::memory_order_relaxed);
+        g_clearFilters.store(true, std::memory_order_relaxed);
         break;
     case Event::kBeforeRender:
         g_drawnThisFrame.store(false, std::memory_order_relaxed);
+        // Emptied here rather than where the menu closed: the open and
+        // close events are the framework's, and nothing says they are on
+        // this thread, while a frame's own events are.
+        if (g_clearFilters.exchange(false, std::memory_order_relaxed))
+            ClearFilters();
         break;
     case Event::kAfterRender:
         if (!g_drawnThisFrame.load(std::memory_order_relaxed))
@@ -5611,10 +5648,14 @@ void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
     const bool open = Im::BeginChild(id.c_str(), Im::ImVec2(0.0f, 0.0f), Im::ImGuiChildFlags_AlwaysUseWindowPadding, 0);
     Im::PopStyleVar(1);
     // Escape, taken from the queue while the cursor was in the filter box,
-    // takes the cursor out and leaves the text: the box's own answer to
-    // the key would put the text back as it was when the cursor went in.
+    // takes the cursor out and empties the box. The box's own answer to the
+    // key is neither: it puts the text back as it was when the cursor went
+    // in, and the panel never sees the key anyway.
     if (g_leaveFilter.exchange(false, std::memory_order_relaxed))
+    {
         Im::ClearActiveID();
+        g_clearFilter = true;
+    }
     // Space, with the cursor in no box, puts it in this body's filter box.
     // Cleared after the body: a tab with no box has nowhere to put it, and
     // the next tab drawn must not inherit it.
@@ -5622,6 +5663,7 @@ void TabBody(Tab tab, ft::ActorId actor, const std::function<void()> &draw,
     if (open)
         draw();
     g_focusFilter = false;
+    g_clearFilter = false;
     Im::EndChild();
 }
 
