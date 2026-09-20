@@ -1933,6 +1933,23 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
     return out;
 }
 
+namespace
+{
+
+// The school the menus group a spell or a scroll under, read the same way
+// the Magic tab reads it (game/Magic.h): the costliest effect's skill.
+// Other where there is none, so a spell with no school is still offered
+// rather than dropped for want of a heading.
+ft::MagicCategory SchoolOfSpell(const RE::MagicItem *item)
+{
+    const auto *costliest = item ? item->GetCostliestEffectItem() : nullptr;
+    const auto *effect = costliest ? costliest->baseEffect : nullptr;
+    const ft::MagicCategory school = SchoolOf(effect ? effect->GetMagickSkill() : RE::ActorValue::kNone);
+    return school == ft::MagicCategory::COUNT ? ft::MagicCategory::Other : school;
+}
+
+} // namespace
+
 std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
 {
     std::vector<SpellOption> out;
@@ -1953,10 +1970,11 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         if (name.empty())
             return; // nameless entries are internal; nothing to show a player
         const bool reanimate = std::ranges::any_of(ResolvedEffects(*spell), IsReanimate);
-        out.push_back(SpellOption{
-            spell->GetFormID(), std::move(name), spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
-            spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
-            !power && CanDualCast(actor, spell), power ? SpellOption::Kind::Power : SpellOption::Kind::Spell});
+        out.push_back(SpellOption{spell->GetFormID(), std::move(name),
+                                  spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
+                                  spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
+                                  !power && CanDualCast(actor, spell),
+                                  power ? SpellOption::Kind::Power : SpellOption::Kind::Spell, SchoolOfSpell(spell)});
     });
 
     // The scrolls carried, by the scroll's own delivery: a Self one under
@@ -1974,7 +1992,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         out.push_back(SpellOption{scroll->GetFormID(), std::move(name),
                                   scroll->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
                                   scroll->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate, false,
-                                  SpellOption::Kind::Scroll});
+                                  SpellOption::Kind::Scroll, SchoolOfSpell(scroll)});
     }
 
     // The shouts on the base record. A shout's delivery is its first word's

@@ -238,6 +238,12 @@ struct SpellOption
         Scroll // carried, not known: read once and spent
     };
     Kind kind{Kind::Spell};
+    // Which school the spell and equip menus group it under, by the
+    // costliest effect's skill as the Magic tab reads it (game/Magic.h,
+    // SchoolOf). Other for a spell with no school -- a vampire's Drain
+    // Life, a race's ability cast as a spell. Meaningless on a power or a
+    // shout, which are not grouped.
+    ft::MagicCategory school{ft::MagicCategory::Other};
 };
 
 // How far a swing has to reach to strike `to`, as the engine's melee test

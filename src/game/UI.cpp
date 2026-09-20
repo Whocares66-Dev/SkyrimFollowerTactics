@@ -1506,6 +1506,66 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
            name;
 }
 
+// A follower who has read every tome has a spell menu nobody can find
+// anything in, so the casts and the equips are grouped by school. The
+// order the Magic tab lists them in, with Other last for a spell that has
+// none -- a vampire's Drain Life, a race's ability cast as a spell.
+constexpr std::array<MagicCategory, 6> kSchools{MagicCategory::Alteration,  MagicCategory::Conjuration,
+                                                MagicCategory::Destruction, MagicCategory::Illusion,
+                                                MagicCategory::Restoration, MagicCategory::Other};
+
+// Under this many, the schools cost more than they save: a follower with
+// four spells should not have to guess which heading one is under and open
+// it to find out. A short list stays flat.
+//
+// Counted over what the menu is ABOUT to offer, not over everything the
+// follower knows: the lists reaching DrawBySchool are already cut to the
+// target and the hand, so a follower with thirty spells of which four are
+// Self gets a flat list under Self and the schools under an enemy.
+constexpr std::size_t kGroupSchoolsAtLeast = 10;
+
+// One submenu per school over `items`, `schoolOf` saying which school an
+// item is in and `leaf` drawing one. A school nothing is in is not drawn:
+// a follower with only Restoration spells gets Restoration and no five
+// empty headings to open before finding it.
+template <typename Items, typename SchoolOf, typename Leaf>
+void DrawBySchool(const Items &items, SchoolOf schoolOf, Leaf leaf)
+{
+    const auto anyOf = [&](MagicCategory school) {
+        return std::any_of(items.begin(), items.end(), [&](const auto &item) { return schoolOf(item) == school; });
+    };
+    // Grouped only where it pays: enough of them that a flat list is hard
+    // to read, AND more than one school to divide them into. Twelve
+    // Destruction spells under a lone Destruction heading is a layer that
+    // tells the player nothing they did not know before opening it.
+    const auto schools = static_cast<std::size_t>(std::count_if(kSchools.begin(), kSchools.end(), anyOf));
+    if (items.size() < kGroupSchoolsAtLeast || schools < 2)
+    {
+        for (const auto &item : items)
+            leaf(item);
+        return;
+    }
+    for (const MagicCategory school : kSchools)
+    {
+        if (!anyOf(school))
+            continue;
+        if (!BeginCascade(DisplayName(school)))
+            continue;
+        for (const auto &item : items)
+            if (schoolOf(item) == school)
+                leaf(item);
+        Im::EndMenu();
+    }
+}
+
+// Which cast menus are grouped: the spells and the scrolls, a scroll being
+// a spell in a wrapper and carrying a school like one. A power and a shout
+// have no school and stay a flat list.
+bool SchoolGrouped(SpellOption::Kind kind)
+{
+    return kind == SpellOption::Kind::Spell || kind == SpellOption::Kind::Scroll;
+}
+
 // Is this spell offered for pinning in this hand? Not a shout or a power,
 // which take no hand; fits the hand; and not above the follower's skill,
 // which the combat AI would never choose -- so a pin on it would be a
@@ -1658,28 +1718,23 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             continue;
         // Unequip first: let go of that hand's pin. Both lets go of both.
         none(hand);
-        bool any = false;
         if (spell)
         {
+            // Grouped by school, as the casts are: this is the same list of
+            // spells and runs as long. Offered has already left out the
+            // shouts and powers, so what is left is the schools and Other.
+            std::vector<const MagicEntry *> offered;
             for (const auto &entry : view.magic)
-                any = any || Offered(entry, hand);
-        }
-        else
-        {
-            for (const auto &item : view.inventory)
-                any = any || (item.category == ItemCategory::Weapons && Fits(item.grip, hand, false));
-        }
-        if (any)
-            Im::Separator();
-        if (spell)
-        {
-            for (const auto &entry : view.magic)
-            {
-                if (!Offered(entry, hand))
-                    continue;
-                if (EquipLeaf(act, action, entry.form, entry.name, hand, {}, entry.name, entry.banned))
-                    changed = true;
-            }
+                if (Offered(entry, hand))
+                    offered.push_back(&entry);
+            if (!offered.empty())
+                Im::Separator();
+            DrawBySchool(
+                offered, [](const MagicEntry *entry) { return entry->category; },
+                [&](const MagicEntry *entry) {
+                    if (EquipLeaf(act, action, entry->form, entry->name, hand, {}, entry->name, entry->banned))
+                        changed = true;
+                });
         }
         else
         {
@@ -1687,6 +1742,8 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
             for (const auto &item : view.inventory)
                 if (item.category == ItemCategory::Weapons && Fits(item.grip, hand, false))
                     rows.push_back(&item);
+            if (!rows.empty())
+                Im::Separator();
             for (const InventoryItem *item : rows)
             {
                 if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, item->banned,
@@ -1974,24 +2031,29 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             return true;
         if (!BeginCascade(menu.label))
             continue;
-        for (const auto *option : suited)
-        {
-            const bool selected = here && act.kind == action && act.form == option->form && act.dual == menu.dual;
+        const auto leaf = [&](const SpellOption *optionPtr) {
+            const SpellOption &option = *optionPtr;
+            const bool selected = here && act.kind == action && act.form == option.form && act.dual == menu.dual;
             // Banned: dimmed as the equip leaves are, and still a choice,
             // for the reason EquipLeaf gives.
-            const bool banned = BannedForm(view, option->form);
-            if (CascadeItem(option->name.c_str(), selected,
+            const bool banned = BannedForm(view, option.form);
+            if (CascadeItem(option.name.c_str(), selected,
                             banned ? &Im::GetStyle()->Colors[Im::ImGuiCol_TextDisabled] : nullptr))
             {
                 act.kind = action;
-                act.form = option->form;
-                act.name = option->name;
+                act.form = option.form;
+                act.name = option.name;
                 act.dual = menu.dual;
                 choose();
             }
             if (banned && Im::IsItemHovered(0))
                 Im::SetTooltip("%s", "Banned");
-        }
+        };
+        if (SchoolGrouped(kind))
+            DrawBySchool(suited, [](const SpellOption *option) { return option->school; }, leaf);
+        else
+            for (const auto *option : suited)
+                leaf(option);
         Im::EndMenu();
     }
 
