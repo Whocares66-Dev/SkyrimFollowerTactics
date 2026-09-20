@@ -7,6 +7,9 @@
 // bottles in the bag; this only orders it.
 
 #include "Kinds.h"
+#include "Snapshot.h"
+
+#include <span>
 
 #include <string>
 #include <string_view>
@@ -61,5 +64,27 @@ struct EffectShape
 // A buff: lasting, not harmful, a peak value modifier the actor reads, and
 // not waterbreathing, which does nothing for a follower.
 [[nodiscard]] bool IsBuff(const EffectShape &shape, bool readsSkillMods, bool readsSkillPowerMods) noexcept;
+
+// One effect of a consumable as the game read it, in the item's own
+// order.
+struct ConsumableEffectSeen
+{
+    std::string name; // as the game shows it; empty for a nameless effect
+    float magnitude{0.0f};
+    float duration{0.0f};
+    EffectShape shape;
+};
+
+// Every effect a consumable gives, by the name the game shows, marked
+// harmful or not and judged a buff or not. EVERY one, the bane beside the
+// boon: which of them a rule may choose the item by is policy, and lives
+// in PotionStock::ChoosableBy. A nameless effect, and one no follower can
+// use, are left out. An ingredient eaten gives its FIRST effect and no
+// other -- the rest are for the alchemy table -- so only that one is
+// looked at, and an ingredient whose first effect is left out gives
+// nothing rather than falling through to the second.
+[[nodiscard]] std::vector<PotionStock::Effect> ConsumableEffectsOf(std::span<const ConsumableEffectSeen> effects,
+                                                                   ConsumableKind kind, bool readsSkillMods,
+                                                                   bool readsSkillPowerMods);
 
 } // namespace ft

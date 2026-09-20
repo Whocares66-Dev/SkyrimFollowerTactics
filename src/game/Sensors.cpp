@@ -57,7 +57,9 @@ bool Harmful(const RE::EffectSetting *base)
 // Read off the effect RECORD and not its name, so a mod's own Fortify
 // counts and no table of names has to be maintained: the archetype is
 // PeakValueModifier -- the engine's word for a temporary modifier it takes
-// back when the effect ends -- and the effect is a boon. Held against every
+// back when the effect ends -- and the effect is a boon; the judgement
+// itself is core's (core/Effects.h, IsBuff, tested), over the record's
+// shape this file reads. Held against every
 // vanilla alchemy effect (2026-09-16): every Fortify, Resist and Regenerate
 // answers yes; every Restore is a plain ValueModifier flagged No Duration
 // and answers no; Cure Disease and Cure Poison have archetypes of their
@@ -89,11 +91,6 @@ bool ReadsSkillMods(const RE::Actor *actor);
 bool ReadsSkillPowerMods(const RE::Actor *actor);
 ft::EffectShape ShapeOf(const RE::EffectSetting *base, float duration);
 bool EffectApplies(const RE::Actor *actor, const RE::EffectSetting *base);
-bool Buffs(const RE::Actor *actor, const RE::EffectSetting *base, const RE::Effect::EffectItem &item)
-{
-    return ft::IsBuff(ShapeOf(base, static_cast<float>(item.duration)), ReadsSkillMods(actor),
-                      ReadsSkillPowerMods(actor));
-}
 
 // Every effect a consumable gives, by the name the game shows, with the
 // item's magnitude and duration of each, marked harmful or not and judged a
@@ -107,22 +104,19 @@ bool Buffs(const RE::Actor *actor, const RE::EffectSetting *base, const RE::Effe
 std::vector<ft::PotionStock::Effect> ConsumableEffects(const RE::Actor *actor, RE::MagicItem *item,
                                                        ft::ConsumableKind kind)
 {
-    std::vector<ft::PotionStock::Effect> out;
     if (!item)
-        return out;
-    const bool firstOnly = kind == ft::ConsumableKind::Ingredient;
+        return {};
+    std::vector<ft::ConsumableEffectSeen> seen;
     for (auto *effect : ResolvedEffects(*item))
     {
         const auto *base = effect->baseEffect;
-        const bool harmful = Harmful(base);
         const char *name = base->GetFullName();
-        if (name && *name && !ft::EffectUseless(name))
-            out.push_back({name, effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration),
-                           Buffs(actor, base, effect->effectItem), harmful});
-        if (firstOnly)
-            break;
+        seen.push_back({name ? name : "", effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration),
+                        ShapeOf(base, static_cast<float>(effect->effectItem.duration))});
     }
-    return out;
+    // Which of them the rules see, and an ingredient's first effect alone,
+    // are core's (core/Effects.h, ConsumableEffectsOf, tested).
+    return ft::ConsumableEffectsOf(seen, kind, ReadsSkillMods(actor), ReadsSkillPowerMods(actor));
 }
 
 // VendorItemFood, Skyrim.esm: the keyword on the few ingredients that are

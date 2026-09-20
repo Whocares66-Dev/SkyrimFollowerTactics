@@ -145,4 +145,20 @@ bool IsBuff(const EffectShape &shape, bool readsSkillMods, bool readsSkillPowerM
            EffectApplies(shape, readsSkillMods, readsSkillPowerMods);
 }
 
+std::vector<PotionStock::Effect> ConsumableEffectsOf(std::span<const ConsumableEffectSeen> effects, ConsumableKind kind,
+                                                     bool readsSkillMods, bool readsSkillPowerMods)
+{
+    std::vector<PotionStock::Effect> out;
+    const bool firstOnly = kind == ConsumableKind::Ingredient;
+    for (const ConsumableEffectSeen &effect : effects)
+    {
+        if (!effect.name.empty() && !EffectUseless(effect.name))
+            out.push_back({effect.name, effect.magnitude, effect.duration,
+                           IsBuff(effect.shape, readsSkillMods, readsSkillPowerMods), effect.shape.harmful});
+        if (firstOnly)
+            break;
+    }
+    return out;
+}
+
 } // namespace ft

@@ -54,3 +54,69 @@ TEST_CASE("a buff lasts, helps, is a peak value the actor reads, and is not wate
     REQUIRE_FALSE(IsBuff(skill, false, false));
     REQUIRE(IsBuff(skill, true, false));
 }
+
+TEST_CASE("a consumable's effects: every one, by name, the bane beside the boon", "[effects]")
+{
+    using Seen = ConsumableEffectSeen;
+    EffectShape fortify;
+    fortify.valueModifier = true;
+    fortify.peakValue = true;
+    fortify.duration = 60.0f;
+    EffectShape restore;
+    EffectShape damage;
+    damage.harmful = true;
+    damage.duration = 10.0f;
+
+    // Sleeping Tree Sap: a boon and a bane, both kept, in the item's order.
+    const std::vector<Seen> mixed{{"Fortify Health", 100.0f, 60.0f, fortify}, {"Slow", 50.0f, 10.0f, damage}};
+    const auto both = ConsumableEffectsOf(mixed, ConsumableKind::Potion, false, false);
+    REQUIRE(both.size() == 2);
+    REQUIRE(both[0].name == "Fortify Health");
+    REQUIRE(both[0].buff);
+    REQUIRE_FALSE(both[0].harmful);
+    REQUIRE(both[1].name == "Slow");
+    REQUIRE(both[1].harmful);
+    REQUIRE_FALSE(both[1].buff);
+
+    // A restore lasts no time and is no buff, but is still an effect.
+    const std::vector<Seen> healing{{"Restore Health", 50.0f, 0.0f, restore}};
+    const auto one = ConsumableEffectsOf(healing, ConsumableKind::Potion, false, false);
+    REQUIRE(one.size() == 1);
+    REQUIRE_FALSE(one[0].buff);
+
+    // A nameless effect, and one no follower can use, are left out.
+    EffectShape disease;
+    const std::vector<Seen> useless{{"", 10.0f, 0.0f, restore}, {"Cure Disease", 0.0f, 0.0f, disease}};
+    REQUIRE(ConsumableEffectsOf(useless, ConsumableKind::Potion, false, false).empty());
+}
+
+TEST_CASE("an ingredient gives its first effect and no other, even when that one is left out", "[effects]")
+{
+    using Seen = ConsumableEffectSeen;
+    EffectShape plain;
+    const std::vector<Seen> two{{"Restore Health", 5.0f, 0.0f, plain}, {"Fortify Health", 20.0f, 60.0f, plain}};
+    const auto eaten = ConsumableEffectsOf(two, ConsumableKind::Ingredient, false, false);
+    REQUIRE(eaten.size() == 1);
+    REQUIRE(eaten[0].name == "Restore Health");
+    // Eaten as food, every effect counts.
+    REQUIRE(ConsumableEffectsOf(two, ConsumableKind::Food, false, false).size() == 2);
+
+    // The first effect is one no follower can use: nothing, rather than
+    // the second effect standing in for it.
+    const std::vector<Seen> firstUseless{{"Cure Disease", 0.0f, 0.0f, plain}, {"Fortify Health", 20.0f, 60.0f, plain}};
+    REQUIRE(ConsumableEffectsOf(firstUseless, ConsumableKind::Ingredient, false, false).empty());
+    REQUIRE(ConsumableEffectsOf(firstUseless, ConsumableKind::Potion, false, false).size() == 1);
+}
+
+TEST_CASE("a skill fortify counts as a buff only where a perk reads it", "[effects]")
+{
+    using Seen = ConsumableEffectSeen;
+    EffectShape skill;
+    skill.valueModifier = true;
+    skill.peakValue = true;
+    skill.skillModifier = true;
+    skill.duration = 60.0f;
+    const std::vector<Seen> one{{"Fortify One-handed", 20.0f, 60.0f, skill}};
+    REQUIRE_FALSE(ConsumableEffectsOf(one, ConsumableKind::Potion, false, false)[0].buff);
+    REQUIRE(ConsumableEffectsOf(one, ConsumableKind::Potion, true, false)[0].buff);
+}
