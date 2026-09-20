@@ -1,5 +1,6 @@
 #include "Log.h"
 
+#include "core/Archive.h"
 #include "core/LogSettings.h"
 #include "core/Sessions.h"
 
@@ -44,12 +45,6 @@ std::atomic<std::uint64_t> g_eventBytes{0};
 // or the copy.
 std::mutex g_recentMutex;
 EventRing g_recent{kRecentEvents};
-
-// A session's two files, and the ending each keeps in the archive.
-constexpr std::array<std::pair<std::string_view, std::string_view>, 2> kSessionFiles{{
-    {"FollowerTactics.events.jsonl", ".events.jsonl"},
-    {"FollowerTactics.log", ".log"},
-}};
 
 [[nodiscard]] spdlog::level::level_enum ToSpdlog(Level level) noexcept
 {
@@ -108,107 +103,9 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 2> kSessionF
                        utc.tm_hour, utc.tm_min, utc.tm_sec, millis);
 }
 
-// --- the archive -----------------------------------------------------------
-
-[[nodiscard]] std::string FirstLine(const std::filesystem::path &file)
-{
-    std::ifstream in(file);
-    std::string line;
-    std::getline(in, line);
-    return line;
-}
-
-// When a file was last written, to the second. Not when it was created: a
-// truncated file keeps its creation time, and NTFS gives a file made under a
-// name just renamed away the old file's.
-[[nodiscard]] std::optional<UtcTime> WrittenAt(const std::filesystem::path &file)
-{
-    std::error_code error;
-    const auto written = std::filesystem::last_write_time(file, error);
-    if (error)
-        return std::nullopt;
-    const auto system = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-        std::chrono::clock_cast<std::chrono::system_clock>(written));
-    const std::time_t raw = std::chrono::system_clock::to_time_t(system);
-    std::tm utc{};
-    if (gmtime_s(&utc, &raw) != 0)
-        return std::nullopt;
-    return UtcTime{utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday, utc.tm_hour, utc.tm_min, utc.tm_sec};
-}
-
-// The last session's pair moves into the archive under its start and end,
-// and the archive is pruned to kSessionsKept. Before either file opens, since
-// both open truncated; what it has to say goes into `notes`, written once the
-// log is open.
-void ArchivePrevious(const std::filesystem::path &directory, std::vector<std::string> &notes)
-{
-    namespace fs = std::filesystem;
-
-    std::optional<UtcTime> start;
-    std::optional<UtcTime> end;
-    for (const auto &[name, ending] : kSessionFiles)
-    {
-        const fs::path file = directory / name;
-        std::error_code missing;
-        if (!fs::exists(file, missing))
-            continue;
-        if (!start)
-            start = SessionStart(FirstLine(file));
-        if (const auto written = WrittenAt(file); written && (!end || *end < *written))
-            end = written;
-    }
-    if (!end)
-        return;
-
-    const fs::path archive = directory / "FollowerTactics";
-    std::error_code made;
-    fs::create_directories(archive, made);
-    const std::string stem = ArchiveStem(start, *end);
-    for (const auto &[name, ending] : kSessionFiles)
-    {
-        const fs::path file = directory / name;
-        std::error_code missing;
-        if (!fs::exists(file, missing))
-            continue;
-        const fs::path target = archive / (stem + std::string(ending));
-        std::error_code moved;
-        fs::rename(file, target, moved);
-        if (!moved)
-            continue;
-        // Held open by a program that does not share deletion, an editor say:
-        // a copy can still be kept, and opening the file truncates it as before.
-        std::error_code copied;
-        fs::copy_file(file, target, fs::copy_options::none, copied);
-        notes.push_back(copied
-                            ? fmt::format("{} could not be archived ({}) -- it is overwritten", name, moved.message())
-                            : fmt::format("{} could not be moved ({}) -- copied to {} instead", name, moved.message(),
-                                          target.filename().string()));
-    }
-
-    std::vector<std::string> stems;
-    std::error_code listed;
-    for (fs::directory_iterator it(archive, listed), done; !listed && it != done; it.increment(listed))
-    {
-        const std::string file = it->path().filename().string();
-        for (const auto &[name, ending] : kSessionFiles)
-        {
-            if (file.ends_with(ending))
-            {
-                stems.push_back(file.substr(0, file.size() - ending.size()));
-                break;
-            }
-        }
-    }
-    for (const std::string &old : StemsToDelete(std::move(stems), kSessionsKept))
-    {
-        for (const auto &[name, ending] : kSessionFiles)
-        {
-            std::error_code removed;
-            fs::remove(archive / (old + std::string(ending)), removed);
-        }
-    }
-}
-
+// The archive is core's (core/Archive.h): the naming and the retention
+// were already, and the disk work around them is testable against a
+// folder in the temporary directory rather than only in play.
 } // namespace
 
 bool Enabled(Level level) noexcept
@@ -368,7 +265,7 @@ void Init()
     if (!directory)
         return;
 
-    ArchivePrevious(*directory, notes);
+    ArchiveSession(*directory, notes);
     // One start for both files, read back at the next launch to name this
     // session's pair in the archive.
     const std::string began = Timestamp();

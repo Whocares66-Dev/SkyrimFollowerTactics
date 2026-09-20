@@ -102,6 +102,7 @@ include(ClangTools)
 # the code you are writing belongs in src/game/ instead.
 # ---------------------------------------------------------------------------
 add_library(ft_core STATIC
+    src/core/Archive.cpp
     src/core/BagView.cpp
     src/core/Bash.cpp
     src/core/Blows.cpp

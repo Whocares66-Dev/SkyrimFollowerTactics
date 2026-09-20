@@ -87,7 +87,7 @@ Other seams:
 - [ ] Roster cleanup in `Tick`. Left: one boolean, nearby or else gone when not a teammate or dead, with a comment that says why.
 - [x] `ReportVerdicts`: the action a verdict is worded for is `ExplainedKind` (core/Evaluator.h); `VerdictChanges` was core already.
 - [x] The save's lifecycle: the key a record is filed under (`ChooseKeyRecord`, `FollowerKey`, `DynamicKey`) and the records themselves (`SavedProfiles`: loaded, claimed once, carried into the next save, forgotten on a load or a new game), core/CoSave.h.
-- [ ] Log emit and archive. Left: the naming and retention are `Sessions`, tested; what remains is spdlog and the filesystem, which a temporary-directory harness could cover but which has not failed.
+- [x] The log's archive: `ArchiveSession` (core/Archive.h) moves the previous session's pair, falls back to a copy where a move is refused, and prunes to the sessions kept; tested against a real folder in the temporary directory, including a first run, half a pair, an undated session, and the files in the archive that are not ours to delete. The emit path (spdlog, the ceiling) stays in the game over the tested `Sessions` and `EventRing`.
 - [ ] Custom skills loading. Left: the parser and the tree order are tested in `CustomSkills`; the loader is a directory walk and a form lookup.
 - [x] Remaining time: `RemainingOn` (core/Spells.h) over the effects as read. The description helpers (`ReplaceNoCase` and the text assembly) are formatting over strings and stay with the sheets.
 

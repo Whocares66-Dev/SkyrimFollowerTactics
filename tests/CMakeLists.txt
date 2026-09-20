@@ -18,6 +18,7 @@ if(NOT Catch2_FOUND)
 endif()
 
 add_executable(ft_tests
+    test_archive.cpp
     test_bag.cpp
     test_bash.cpp
     test_blows.cpp
