@@ -300,7 +300,9 @@ std::vector<RE::Actor *> CollectManagedFollowers()
     {
         auto actor = handle.get();
         RE::Actor *raw = actor ? actor.get() : nullptr;
-        if (!raw || raw->IsDead() || !raw->IsPlayerTeammate())
+        // A horse, a dog or a familiar is a teammate to the engine and has
+        // nothing tactics can tell it to do (Sensors.h, IsPerson).
+        if (!raw || raw->IsDead() || !raw->IsPlayerTeammate() || !IsPerson(raw))
             continue;
 
         followers.push_back(raw);

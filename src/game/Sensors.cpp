@@ -4811,4 +4811,24 @@ std::vector<StepCost> TakeSnapshotCosts()
     }
     return out;
 }
+
+bool IsPerson(RE::Actor *actor)
+{
+    if (!actor)
+        return false;
+    struct Keywords
+    {
+        RE::BGSKeyword *npc, *animal, *creature;
+    };
+    static const Keywords k = [] {
+        const auto by = [](const char *id) { return RE::TESForm::LookupByEditorID<RE::BGSKeyword>(id); };
+        return Keywords{by("ActorTypeNPC"), by("ActorTypeAnimal"), by("ActorTypeCreature")};
+    }();
+    const auto has = [&](const RE::BGSKeyword *keyword) { return keyword && actor->HasKeyword(keyword); };
+    // Marked a person: that settles it, whatever else is on the race. A
+    // werewolf's beast race carries the creature keyword over an NPC.
+    if (has(k.npc))
+        return true;
+    return !has(k.animal) && !has(k.creature);
+}
 } // namespace ft::game

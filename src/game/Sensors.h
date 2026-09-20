@@ -611,4 +611,15 @@ struct StepCost
 };
 [[nodiscard]] std::vector<StepCost> TakeSnapshotCosts();
 
+// Whether tactics are for this actor at all: a person, not a beast.
+// Shadowmere is a player teammate, and so is a dog follower and a summoned
+// familiar -- none of them has a bag worth managing, a spell to place or a
+// hand to put a weapon in, and a page of tactics for a horse is a page
+// nobody can use (reported in play, 2026-09-19).
+//
+// The test is negative -- an animal or a creature that is NOT also marked
+// an NPC -- rather than a plain "must be an NPC", so a modded follower
+// whose race carries no type keyword at all keeps their page. Game thread.
+[[nodiscard]] bool IsPerson(RE::Actor *actor);
+
 } // namespace ft::game
