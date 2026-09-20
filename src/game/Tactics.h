@@ -52,9 +52,10 @@ struct CharacterView
     // rather than dropped, since away and dismissed are different things;
     // what it shows was read when they were last nearby, and their rules are
     // the panel's to edit either way, being ours rather than the actor's.
-    // The page says so as a Status of "away", beside "combat" and "idle",
-    // because it is the state of the whole page and not a heading for one
-    // tab of it. The player is nearby by definition and never says it.
+    // An away follower's sheet tabs say so instead of drawing readings
+    // nobody took (game/UI.cpp, AwayNotice); their tactics are not a
+    // reading and are theirs to write wherever they are. The player is
+    // nearby by definition.
     bool nearby{true};
 
     std::uint16_t level{0};

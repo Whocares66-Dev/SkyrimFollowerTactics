@@ -5206,10 +5206,7 @@ void DrawCharacter(const CharacterView &view)
     // out from measured widths so every column is flush and nothing depends on
     // the length of an English word.
     const std::string levelText = std::to_string(static_cast<unsigned>(view.level));
-    // Away outranks the fight: a follower left behind may still be marked
-    // in combat, and what the page is telling you first is that every
-    // reading on it is the last one taken rather than what is true now.
-    const std::string statusText = !view.nearby ? "away" : view.inCombat ? "combat" : "idle";
+    const std::string statusText = view.inCombat ? "combat" : "idle";
     char carriedBuf[64];
     std::snprintf(carriedBuf, sizeof(carriedBuf), "%.0f / %.0f", view.carriedWeight, view.carryCapacity);
     const std::string carriedText = carriedBuf;
@@ -5242,7 +5239,7 @@ void DrawCharacter(const CharacterView &view)
     DrawStatRow(
         geo, "Stamina", view.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Status",
         [&] {
-            if (view.inCombat && view.nearby)
+            if (view.inCombat)
                 Im::TextColored(Im::ImVec4(0.95f, 0.65f, 0.35f, 1.0f), "%s", statusText.c_str());
             else
                 Im::TextDisabled("%s", statusText.c_str());
@@ -5718,6 +5715,19 @@ void DrawTacticsTabs(const FollowerView &view, Tab carried)
 // gives it.
 void DrawFollower(const FollowerView &view)
 {
+    // Not here: the whole page, and not a tab of it, is the answer. Every
+    // sheet tab is a scan of a simulated actor and an away follower has
+    // none to give -- the page keeps what was read when they were last
+    // nearby, which for a tab never opened while they were is nothing at
+    // all. A bar of tabs each saying the same thing is worse than one line
+    // saying it once, so it reads as a dismissed page does: the line, and
+    // no tabs behind it (reported in play, 2026-09-19).
+    if (!view.nearby)
+    {
+        Im::TextDisabled("Follower is not nearby.");
+        return;
+    }
+
     if (!Im::BeginTabBar("follower##tabs"))
         return;
 

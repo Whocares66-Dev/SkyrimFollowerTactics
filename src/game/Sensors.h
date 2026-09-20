@@ -628,4 +628,25 @@ struct StepCost
 // whose race carries no type keyword at all keeps their page. Game thread.
 [[nodiscard]] bool IsPerson(RE::Actor *actor);
 
+// The engine's own word for a follower who was one and is not:
+// DismissedFollowerFaction, which the dismissal puts them in. A faction is
+// on the actor wherever they are, so this answers for a follower in
+// another hold as readily as for one standing here -- unlike the teammate
+// flag, which some frameworks leave set after a dismissal and which would
+// otherwise keep them on the panel. Game thread.
+inline constexpr std::uint32_t kDismissedFollowerFaction = 0x0005C84C;
+inline constexpr std::uint32_t kCurrentFollowerFaction = 0x0005C84E;
+inline constexpr std::uint32_t kPotentialFollowerFaction = 0x0005C84D;
+[[nodiscard]] bool IsDismissedFollower(RE::Actor *actor);
+
+// Which of the follower marks an actor actually carries, for the log:
+// "teammate=1 current=0 dismissed=0 potential=0". Written once per
+// follower as the panel first lists them, because which mark a given
+// follower mod maintains is not knowable from the records -- Inigo runs
+// his own follow system and is in none of the vanilla factions, so the
+// teammate flag is all there is to go on for him, and whether a framework
+// keeps CurrentFollowerFaction up to date decides whether we could ever
+// require it. Game thread.
+[[nodiscard]] std::string FollowerMarks(RE::Actor *actor);
+
 } // namespace ft::game

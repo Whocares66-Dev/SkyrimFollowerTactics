@@ -282,6 +282,32 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
 // machinery, and a correctness hazard, to avoid a few microseconds. The
 // expensive part of a tick is BuildSnapshot's inventory scan, and this gates
 // that already.
+// Whose page this is: a living teammate, a person -- a horse, a dog or a
+// familiar is a teammate to the engine and has nothing tactics can tell it
+// to do (Sensors.h, IsPerson) -- and not one the player has dismissed.
+//
+// The teammate flag is the broad test on purpose: every follower framework
+// sets it, so we integrate with all of them and depend on none. What it is
+// not is prompt -- a framework may leave it set after a dismissal -- so the
+// engine's own DismissedFollowerFaction has the last word. Currently
+// following is the question, and it is not the same question as nearby:
+// both answers hold for a follower waiting in another hold.
+bool IsManagedFollower(RE::Actor *raw)
+{
+    return raw && !raw->IsDead() && raw->IsPlayerTeammate() && IsPerson(raw) && !IsDismissedFollower(raw);
+}
+
+void CollectFrom(const RE::BSTArray<RE::ActorHandle> &handles, std::vector<RE::Actor *> &into)
+{
+    for (auto &handle : handles)
+    {
+        auto actor = handle.get();
+        RE::Actor *raw = actor ? actor.get() : nullptr;
+        if (IsManagedFollower(raw))
+            into.push_back(raw);
+    }
+}
+
 std::vector<RE::Actor *> CollectManagedFollowers()
 {
     std::vector<RE::Actor *> followers;
@@ -290,24 +316,18 @@ std::vector<RE::Actor *> CollectManagedFollowers()
     if (!processLists)
         return followers;
 
-    // High actors only: the fully simulated ones near the player.
+    // High actors only: the fully simulated ones near the player. Both who
+    // is evaluated and who is listed, deliberately -- being here is the only
+    // test that tells a follower who is coming back from one who is not,
+    // since a dismissed follower's marks are identical to a recruited one's
+    // (dev/TODO.md, the marks read in Nordic Souls on 2026-09-20). A
+    // follower who wanders off keeps the page they already had, marked.
     //
     // Note this does NOT filter on combat. Combat decides whether a follower is
     // EVALUATED, not whether they exist -- an earlier version conflated the two
     // and the panel stayed empty until a fight started, which is exactly when
     // you cannot calmly read it. Rules are authored before the fight.
-    for (auto &handle : processLists->highActorHandles)
-    {
-        auto actor = handle.get();
-        RE::Actor *raw = actor ? actor.get() : nullptr;
-        // A horse, a dog or a familiar is a teammate to the engine and has
-        // nothing tactics can tell it to do (Sensors.h, IsPerson).
-        if (!raw || raw->IsDead() || !raw->IsPlayerTeammate() || !IsPerson(raw))
-            continue;
-
-        followers.push_back(raw);
-    }
-
+    CollectFrom(processLists->highActorHandles, followers);
     return followers;
 }
 
@@ -575,6 +595,21 @@ void RefreshRoster(const std::vector<RE::Actor *> &followers)
         const auto it = FindView(id);
         if (it != g_view.end() && (*it)->name == name && (*it)->inCombat == fighting && (*it)->nearby)
             continue;
+        // Which marks they carry, as they first appear and whenever they
+        // CHANGE: which a follower mod maintains is not in the records
+        // (Sensors.h), and the telling comparison is one actor recruited
+        // against the same actor dismissed. Logged on the change so the
+        // two readings sit next to each other in the log; quiet otherwise.
+        {
+            static std::unordered_map<ft::ActorId, std::string> marks; // game thread, under the view lock
+            std::string now = FollowerMarks(follower);
+            const auto seen = marks.find(id);
+            if (seen == marks.end() || seen->second != now)
+            {
+                log::tactics.debug("listing {} -- {}", Describe(follower), now);
+                marks[id] = std::move(now);
+            }
+        }
         auto v = it != g_view.end() ? std::make_shared<FollowerView>(**it) : std::make_shared<FollowerView>();
         v->id = id;
         v->name = name;
@@ -959,11 +994,13 @@ void Tick()
             marked->nearby = nearby;
             v = std::move(marked);
         }
+        // One definition of whose page this is, asked here as it was asked
+        // when the roster was built: a follower dismissed while away has
+        // the same answer as one dismissed in front of you.
         std::erase_if(g_view, [](const SharedView &v) {
             if (v->nearby)
                 return false;
-            const auto *actor = RE::TESForm::LookupByID<RE::Actor>(v->id);
-            return !actor || !actor->IsPlayerTeammate() || actor->IsDead();
+            return !IsManagedFollower(RE::TESForm::LookupByID<RE::Actor>(v->id));
         });
     }
 

@@ -4830,6 +4830,28 @@ std::vector<StepCost> TakeSnapshotCosts()
     return out;
 }
 
+std::string FollowerMarks(RE::Actor *actor)
+{
+    if (!actor)
+        return "no actor";
+    const auto in = [actor](std::uint32_t id) {
+        const auto *faction = RE::TESForm::LookupByID<RE::TESFaction>(id);
+        return faction && actor->IsInFaction(faction) ? 1 : 0;
+    };
+    return fmt::format("teammate={} current={} dismissed={} potential={}", actor->IsPlayerTeammate() ? 1 : 0,
+                       in(kCurrentFollowerFaction), in(kDismissedFollowerFaction), in(kPotentialFollowerFaction));
+}
+
+bool IsDismissedFollower(RE::Actor *actor)
+{
+    if (!actor)
+        return false;
+    // Looked up each call rather than cached: the cache would be the one
+    // thing here that outlives a load, and a faction is a pointer lookup.
+    const auto *faction = RE::TESForm::LookupByID<RE::TESFaction>(kDismissedFollowerFaction);
+    return faction && actor->IsInFaction(faction);
+}
+
 bool IsPerson(RE::Actor *actor)
 {
     if (!actor)
