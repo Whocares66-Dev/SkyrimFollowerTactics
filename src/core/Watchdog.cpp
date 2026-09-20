@@ -40,9 +40,9 @@ PinVerdict JudgePin(const Pin &pin, const PinSeen &seen, bool fighting, bool cas
     return PinVerdict::Keep;
 }
 
-BanVerdict JudgeBan(const Banned &ban, const BanSeen &seen) noexcept
+BanVerdict JudgeBan(const BanSeen &seen) noexcept
 {
-    if (ban.variant && !seen.carried)
+    if (!seen.carried)
         return BanVerdict::Drop;
     if (seen.pinned || !seen.on)
         return BanVerdict::Keep;
@@ -74,7 +74,7 @@ WatchPlan PlanWatch(const std::vector<Pin> &pins, std::span<const PinSeen> pinsS
         return plan;
     for (std::size_t i = 0; i < bans.size() && i < bansSeen.size(); ++i)
     {
-        switch (JudgeBan(bans[i], bansSeen[i]))
+        switch (JudgeBan(bansSeen[i]))
         {
         case BanVerdict::Drop:
             plan.dropBans.push_back(i);

@@ -750,6 +750,31 @@ AfterFight NoteFight(RE::Actor *actor, std::vector<Pin> &pins, bool fighting)
     return *settled;
 }
 
+// Do they still HAVE it -- which is not the same as wearing it. A pin is
+// dropped for this and nothing else: taking a thing off is the player's or
+// the AI's business, and a pin exists precisely to answer that. Only an
+// item can go missing; a spell known and a shout unlocked are theirs for
+// good, so those are always carried, as PinSeen has it.
+//
+// Asked in two places and defined once, because the two disagreeing is the
+// bug this fixed: the watchdog dropped a pin only when the thing was gone,
+// while a load demanded it be WORN and forgot every pin on a thing the
+// follower had merely sheathed or swapped. Dismiss a follower, let them
+// change what they hold, save, load, take them back, and the pins were
+// gone while the bans -- which never asked -- were still there
+// (dev/PIN_RELOAD.md, reported in play 2026-09-19).
+bool StillCarried(RE::Actor *actor, RE::TESForm *thing, bool voice, const std::optional<ft::ItemVariant> &variant)
+{
+    if (!actor || !thing)
+        return false;
+    if (voice || thing->Is(RE::FormType::Spell))
+        return true;
+    auto *object = thing->As<RE::TESBoundObject>();
+    if (!object)
+        return true; // nothing that can be worn or readied: left alone
+    return CountVariant(actor, object, variant) > 0;
+}
+
 void EnforcePins(const std::vector<RE::Actor *> &followers)
 {
     // The book is read and changed under the lock; the engine is acted on
@@ -833,7 +858,7 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                 // pin goes; on, by a row of the variant worn where the pin
                 // says, not the form's.
                 read.variant = pin.thing.variant;
-                seen.carried = CountVariant(actor, object, read.variant) > 0;
+                seen.carried = StillCarried(actor, read.form, false, read.variant);
                 seen.on = seen.carried && Worn(actor, object, pin.hands, read.variant);
             }
             else
@@ -873,11 +898,10 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                 bansSeen.push_back(seen); // nothing on, nothing to do
                 continue;
             }
-            // A ban on a variant holds while a row of it is in the bag, and
-            // goes when none is: it has nothing left to promise about.
-            if (ban.variant)
-                if (auto *object = thing->As<RE::TESBoundObject>())
-                    seen.carried = CountVariant(actor, object, ban.variant) > 0;
+            // A ban holds while there is something for it to hold about,
+            // exactly as a pin does (StillCarried): a row of the variant it
+            // names, any copy of the form where it names none.
+            seen.carried = StillCarried(actor, thing, banDescribed.back().IsVoice(), ban.variant);
             seen.pinned = FindPin(pins, banDescribed.back()) != nullptr;
             seen.on = OnAnywhere(actor, thing, banDescribed.back());
             if (!seen.on || seen.pinned)
@@ -1636,14 +1660,16 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
         }
         const std::string name = NameOr(thing, "?");
         const Holdable described = DescribeHoldable(actor, thing, entry.variant);
-        auto *object = thing->As<RE::TESBoundObject>();
-        const bool on =
-            described.IsVoice() ? InVoice(actor, thing) : object && Worn(actor, object, entry.hands, entry.variant);
-        if (!on || !Pinnable(described))
+        // Carried, not worn. The watchdog puts it back on when they are
+        // next managed, which is what a pin is for; demanding it be worn
+        // here forgot the pin of anyone who had sheathed or swapped since
+        // the save.
+        const bool has = StillCarried(actor, thing, described.IsVoice(), entry.variant);
+        if (!has || !Pinnable(described))
         {
             log::pins.warn("{} saved pin on {}{} ({}) does not hold -- {} -- forgotten", Describe(actor), name,
                            HandTag(entry.hands), ft::VariantText(entry.variant),
-                           !on ? "not worn now" : "cannot be pinned");
+                           !has ? "no longer carried" : "cannot be pinned");
             continue;
         }
         AddPin(book, described, entry.hands, false);
@@ -1667,10 +1693,10 @@ void AdoptBans(RE::Actor *actor, const Bans &bans)
             log::pins.warn("{} saved ban {:08X} names nothing in this game -- forgotten", Describe(actor), ban.form);
             continue;
         }
-        // A ban on a variant holds only while a row of it is carried:
-        // none, and it has nothing to promise about.
-        auto *object = thing->As<RE::TESBoundObject>();
-        const bool present = !ban.variant || (object && CountVariant(actor, object, ban.variant) > 0);
+        // Carried, as a pin asks it: a row of the variant it names, any
+        // copy of the form where it names none.
+        const bool present =
+            StillCarried(actor, thing, DescribeHoldable(actor, thing, ban.variant).IsVoice(), ban.variant);
         if (!present)
         {
             log::pins.warn("{} saved ban on {} -- no longer carried -- forgotten", Describe(actor), log::NameOf(thing));

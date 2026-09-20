@@ -136,14 +136,19 @@ TEST_CASE("a ban takes a thing off unless a pin holds it, and lapses with its la
     none.carried = false;
     none.on = false;
 
-    REQUIRE(JudgeBan(form, on) == BanVerdict::TakeOff);
-    REQUIRE(JudgeBan(form, pinned) == BanVerdict::Keep);
-    REQUIRE(JudgeBan(form, off) == BanVerdict::Keep);
-    // A ban on the form holds with no copy carried; a ban on a variant
-    // goes with its last row.
-    REQUIRE(JudgeBan(form, none) == BanVerdict::Keep);
-    REQUIRE(JudgeBan(variant, none) == BanVerdict::Drop);
-    REQUIRE(JudgeBan(variant, on) == BanVerdict::TakeOff);
+    REQUIRE(JudgeBan(on) == BanVerdict::TakeOff);
+    REQUIRE(JudgeBan(pinned) == BanVerdict::Keep);
+    REQUIRE(JudgeBan(off) == BanVerdict::Keep);
+    // A mark holds while there is something for it to hold about, and
+    // goes with the last of it. The same rule a pin follows, deliberately:
+    // the two are one instruction about one thing, and a player who sets
+    // both expects them to last as long as each other. A ban on the form
+    // used to outlive every copy, on the reading that it had something to
+    // say the day another arrived; it is the reader that now answers what
+    // `carried` means of a form ban and of a variant ban, so the verdict
+    // has no need of the ban itself.
+    REQUIRE(JudgeBan(none) == BanVerdict::Drop);
+    REQUIRE(JudgeBan(on) == BanVerdict::TakeOff);
 }
 
 TEST_CASE("a banned thing a rule pinned for the fight comes off the tick the fight ends", "[watchdog]")
@@ -159,7 +164,7 @@ TEST_CASE("a banned thing a rule pinned for the fight comes off the tick the fig
     BanSeen seen;
     seen.on = true;
     seen.pinned = FindPin(pins, Dagger()) != nullptr;
-    REQUIRE(JudgeBan(ban, seen) == BanVerdict::Keep);
+    REQUIRE(JudgeBan(seen) == BanVerdict::Keep);
 
     // The fight ends: the pin is let go in place, and the same pass finds
     // the dagger on and unpinned.
@@ -168,7 +173,7 @@ TEST_CASE("a banned thing a rule pinned for the fight comes off the tick the fig
     REQUIRE_FALSE(settled->released[0].takeOff);
     seen.pinned = FindPin(pins, Dagger()) != nullptr;
     REQUIRE_FALSE(seen.pinned);
-    REQUIRE(JudgeBan(ban, seen) == BanVerdict::TakeOff);
+    REQUIRE(JudgeBan(seen) == BanVerdict::TakeOff);
 }
 
 TEST_CASE("a pass puts the pins back first, then takes the banned things off", "[watchdog]")

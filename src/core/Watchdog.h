@@ -65,7 +65,12 @@ enum class PinVerdict : std::uint8_t
 // What the tick reads of one ban's thing.
 struct BanSeen
 {
-    bool carried{true}; // a row of the banned variant is in the bag (only a ban on a variant asks)
+    // A thing of the ban is in the bag: a row of the variant it names, or
+    // any copy of the form where it names none. A spell or a shout is
+    // always carried, as a pin's is. The same question PinSeen asks, and
+    // the same answer: a mark holds while there is something for it to
+    // hold about.
+    bool carried{true};
     bool on{false};     // worn, in a hand, or in the voice, anywhere
     bool pinned{false}; // a pin holds it: a rule's instruction wins while it lasts
 };
@@ -77,7 +82,11 @@ enum class BanVerdict : std::uint8_t
     TakeOff // found on, unpinned: the ban is kept by taking it off
 };
 
-[[nodiscard]] BanVerdict JudgeBan(const Banned &ban, const BanSeen &seen) noexcept;
+// Over what was SEEN and nothing else: a ban on a variant and a ban on the
+// form are judged the same, which is why the ban itself is not passed. The
+// two differ in what `carried` means of them -- a row of the variant, or
+// any copy of the form -- and that is the reader's question, not this one.
+[[nodiscard]] BanVerdict JudgeBan(const BanSeen &seen) noexcept;
 
 // ---- One actor's pass, in the order it is performed.
 //

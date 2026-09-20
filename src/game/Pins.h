@@ -157,11 +157,13 @@ bool WearNow(RE::Actor *actor, std::uint32_t form, WearRequest request, Hand han
 void AdoptBans(RE::Actor *actor, const Bans &bans);
 
 // The pins from the follower's saved record, taken back into the book --
-// each only if the follower still has the thing on, in those hands; a pin
-// is a promise about what is worn, and a load re-dresses nobody. One that
-// does not hold is logged and forgotten: the thing is gone, or the save
-// was played on without the mod. Game thread, at first sight, before the
-// watchdog's first pass.
+// each only if the follower still CARRIES the thing, which is the one
+// question a pin is ever dropped for, here and in the watchdog alike
+// (Pins.cpp, StillCarried). Not whether it is worn: taking a thing off is
+// the player's or the AI's business, and a pin exists to answer that. The
+// watchdog puts it back on the first pass they are managed for. One whose
+// thing is gone is logged and forgotten. Game thread, at first sight,
+// before the watchdog's first pass.
 void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins);
 
 // Forget every book, pins and bans: before a save loads, and on a new game.
