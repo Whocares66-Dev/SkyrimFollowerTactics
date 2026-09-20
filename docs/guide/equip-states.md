@@ -16,6 +16,8 @@ Equippable items and abilities can be in one of several states:
 - [Banned](#banned) (never equip)
 - [Unavailable](#unavailable) (cannot equip)
 
+Pins and bans apply to followers. The player's equipment uses ordinary equip / unequip controls.
+
 ## Pinned
 
 **Pinning** an object forces the follower to equip it, and prevents them from unequipping it.

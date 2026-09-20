@@ -91,17 +91,23 @@ Then an action:
 
 **Actions are contextual**. A follower without [potions]({{ '/inventory/' | relative_url }}#potions) in their inventory will not see a `Potion` action. A [spell]({{ '/magic/' | relative_url }}) that targets `Self` will not show up under `Cast` for `Enemy`.
 
+Long spell and scroll menus are grouped by magic school. Short lists, powers, and shouts remain flat lists.
+
 **Actions respect gameplay rules**. A follower who doesn't meet the skill requirement to cast a spell cannot equip it. Per the base game, this limitation does not apply to the player.
 
 **Equip actions override [equipment settings]({{ '/equip-states/' | relative_url }}) during combat**. If a follower has an Iron Dagger pinned to their right hand, but an action says to equip a Steel Sword, the action takes precedence for the duration of combat. [Pins]({{ '/equip-states/' | relative_url }}#pinned) and [bans]({{ '/equip-states/' | relative_url }}#banned) are restored after combat.
 
 **Equip actions effectively [pin]({{ '/equip-states/' | relative_url }}#pinned) during combat**. An action that equips e.g. a Steel Sword in the right hand prevents the AI from equipping something else there. Only another rule can change the equipment.
 
+For followers, idle equip actions also create pins. Those pins become the equipment restored after the next fight. Player equip actions are ordinary equips and never create pins.
+
 ## Actions explained
 
 Most actions are self-explanatory. A few are worth highlighting.
 
-The `Any buff` action for `Potion` picks a random potion that applies a buff, e.g. Fortify Conjuration. A potion that fails to stack with an existing effect (i.e. one that has the same effect and magnitude as an active effect) is not picked.
+The `Any buff` action for `Potion` picks a random potion that adds or improves a buff, e.g. Fortify Conjuration. An alchemy effect already active at equal or greater magnitude does not count as an improvement.
+
+For potions, food, and ingredients, `Strongest` and `Weakest` choose by effect. `Weakest` keeps stronger items in reserve: if the weakest item's effect is already covered, it waits instead of consuming a stronger one. `Strongest` can replace a weaker active effect.
 
 ![Action any buff]({{ "/assets/img/panel/action_any_buff.png" | relative_url }}){: .screenshot loading="lazy"}
 

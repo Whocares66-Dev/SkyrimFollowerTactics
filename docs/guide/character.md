@@ -8,7 +8,7 @@ has_toc: false
 
 # Character
 
-The `Character` tab contains information about the follower, such as their health / stamina / magicka, level, and currently [equipped weapons]({{ '/inventory/' | relative_url }}#weapons).
+The `Character` tab contains information about the player or follower, such as their health / stamina / magicka, level, and currently [equipped weapons]({{ '/inventory/' | relative_url }}#weapons).
 
 ![Character]({{ "/assets/img/panel/character.png" | relative_url }}){: .screenshot loading="lazy"}
 

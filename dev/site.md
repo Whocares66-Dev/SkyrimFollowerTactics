@@ -1,5 +1,7 @@
 # Follower Tactics
 
+> Historical guide draft, retained for reference. The maintained user guide is in [docs/](../docs/README.md); this draft predates player and idle tactics.
+
 Follower Tactics is a Skyrim mod that allows combat tactics to be customized for followers. It is inspired by similar systems in [Dragon Age: Origins](https://dragonage.fandom.com/wiki/Tactics_(Origins)) and [Pillars of Eternity II](https://www.gamepressure.com/pillars-of-eternity-2/partys-ai/z1ae65).
 
 <main.png>

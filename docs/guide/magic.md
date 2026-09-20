@@ -8,7 +8,7 @@ has_toc: false
 
 # Magic
 
-The `Magic` tab contains information about a follower's spells, shouts, and powers.
+The `Magic` tab contains information about the player or follower's spells, grouped by school. Shouts and powers appear on the separate `Shouts` tab.
 
 ![Magic all]({{ "/assets/img/panel/magic_all.png" | relative_url }}){: .screenshot loading="lazy"}
 

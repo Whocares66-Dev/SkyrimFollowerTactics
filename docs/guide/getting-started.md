@@ -36,7 +36,11 @@ To bring up the interface, open the SKSE Menu (default key <kbd>F1</kbd>) and se
 
 ![Interface]({{ "/assets/img/panel/settings.png" | relative_url }}){: .screenshot loading="lazy"}
 
-On a tab with a `Filter` box, <kbd>Space</kbd> puts the cursor in the box and <kbd>Esc</kbd> takes it out again, keeping what you typed, as in SkyUI's lists. <kbd>Esc</kbd> closes the menu only when the cursor is not in the box.
+Use <kbd>A</kbd> / <kbd>D</kbd> to move across tabs. <kbd>S</kbd> moves keyboard navigation to the category chips; <kbd>W</kbd> returns it to the tabs. The row receiving keyboard input is highlighted more strongly. These shortcuts pause while you are editing a field.
+
+On a tab with a `Filter` box, <kbd>Space</kbd> puts the cursor in the box. <kbd>Esc</kbd> clears the filter and leaves the box; pressing it again closes the menu. Closing the menu clears all filters.
+
+The follower list shows nearby followers. An already-open page for a follower who has moved away displays `Follower is not nearby.` until they return.
 
 The player and followers start with no [tactics]({{ '/tactics/' | relative_url }}). Add combat rules on the `Tactics` tab and out-of-combat rules on `Idle Tactics`. Nothing changes until you add a rule.
 
