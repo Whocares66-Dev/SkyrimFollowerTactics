@@ -139,6 +139,38 @@ CoSaveContents UnpackCoSave(std::span<const CoSaveRecord> records)
     return contents;
 }
 
+void SavedProfiles::Load(std::vector<SavedFollower> followers)
+{
+    followers_ = std::move(followers);
+}
+
+void SavedProfiles::Forget() noexcept
+{
+    followers_.clear();
+}
+
+std::optional<std::string> SavedProfiles::Claim(std::string_view key)
+{
+    for (auto it = followers_.begin(); it != followers_.end(); ++it)
+    {
+        if (it->key != key)
+            continue;
+        std::string text = std::move(it->text);
+        followers_.erase(it);
+        return text;
+    }
+    return std::nullopt;
+}
+
+std::vector<SavedProfiles::Record> SavedProfiles::ToWrite(std::vector<Record> live) const
+{
+    std::vector<Record> out = std::move(live);
+    out.reserve(out.size() + followers_.size());
+    for (const SavedFollower &saved : followers_)
+        out.push_back({saved.key, saved.text});
+    return out;
+}
+
 const std::string *CoSaveContents::Follower(std::string_view key) const noexcept
 {
     for (const SavedFollower &saved : followers)

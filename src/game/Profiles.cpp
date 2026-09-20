@@ -26,7 +26,7 @@ constexpr std::uint32_t kPluginId = 'FTAC';
 // theirs. Whatever is still here when the game saves is written back as
 // it came: a dismissed follower's tactics survive any number of saves
 // made while they are away. Game thread.
-std::unordered_map<std::string, std::string> g_saved;
+ft::SavedProfiles g_saved;
 
 bool WriteRecord(const SKSE::SerializationInterface *intfc, std::uint32_t type, const std::string &payload)
 {
@@ -48,27 +48,26 @@ void OnSave(SKSE::SerializationInterface *intfc)
     if (!WriteRecord(intfc, ft::kSettingsRecord, ft::PackSettings(ft::WriteSettings(settings))))
         log::profiles.error("could not write the settings to the save");
 
-    std::size_t live = 0;
-    std::size_t carried = 0;
+    // What the live followers have now, then what the loaded save still
+    // holds for the ones away: which and in what order is core's
+    // (core/CoSave.h, SavedProfiles::ToWrite, tested).
+    std::vector<ft::SavedProfiles::Record> live;
     for (const Filed &filed : ProfilesToSave())
-    {
-        if (!WriteFollower(intfc, filed.who.key, ft::WriteProfile(filed.profile, GameFormCodec())))
-        {
-            log::profiles.error("{}: could not write tactics to the save", filed.who.name);
-            continue;
-        }
-        ++live;
-    }
-    for (const auto &[key, text] : g_saved)
+        live.push_back({filed.who.key, ft::WriteProfile(filed.profile, GameFormCodec())});
+    const std::size_t theirs = live.size();
+    std::size_t written = 0;
+    const auto records = g_saved.ToWrite(std::move(live));
+    for (const auto &[key, text] : records)
     {
         if (!WriteFollower(intfc, key, text))
         {
-            log::profiles.error("{}: could not write tactics back to the save", key);
+            log::profiles.error("{}: could not write tactics to the save", key);
             continue;
         }
-        ++carried;
+        ++written;
     }
-    log::profiles.info("saved {} follower record(s), {} carried from the loaded save", live, carried);
+    log::profiles.info("saved {} follower record(s), {} carried from the loaded save", theirs,
+                       written > theirs ? written - theirs : 0);
 }
 
 // Each record's bytes in full, as SKSE describes them, then core's
@@ -76,7 +75,7 @@ void OnSave(SKSE::SerializationInterface *intfc)
 // read at all: SKSE skips what is left unread when the next is asked for.
 void OnLoad(SKSE::SerializationInterface *intfc)
 {
-    g_saved.clear();
+    g_saved.Forget();
     std::vector<ft::CoSaveRecord> records;
     std::uint32_t type = 0;
     std::uint32_t version = 0;
@@ -115,16 +114,15 @@ void OnLoad(SKSE::SerializationInterface *intfc)
         else
             log::profiles.warn("the settings record could not be read -- the defaults stand");
     }
-    for (ft::SavedFollower &saved : contents.followers)
-        g_saved[saved.key] = std::move(saved.text);
-    log::profiles.info("the save holds tactics for {} follower(s)", g_saved.size());
+    g_saved.Load(std::move(contents.followers));
+    log::profiles.info("the save holds tactics for {} follower(s)", g_saved.Carried());
 }
 
 // Before a load and on a new game: nothing from the last session may
 // carry over. The new save's records follow, in OnLoad, or none do.
 void OnRevert(SKSE::SerializationInterface *)
 {
-    g_saved.clear();
+    g_saved.Forget();
     // The defaults, so a save with no settings record -- one made before
     // they existed, or by a build without them -- does not inherit the last
     // session's.
@@ -205,11 +203,11 @@ void InstallSerialization()
 
 std::optional<ft::Profile> ClaimSaved(const Identity &who)
 {
-    auto node = g_saved.extract(who.key);
-    if (node.empty())
+    const auto text = g_saved.Claim(who.key);
+    if (!text)
         return std::nullopt;
 
-    auto read = ft::ReadProfile(node.mapped(), GameFormCodec());
+    auto read = ft::ReadProfile(*text, GameFormCodec());
     for (const auto &warning : read.warnings)
         log::profiles.warn("{}: saved tactics: {}", who.name, warning);
     if (!read.profile)

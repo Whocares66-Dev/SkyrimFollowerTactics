@@ -101,4 +101,38 @@ struct CoSaveContents
 };
 [[nodiscard]] CoSaveContents UnpackCoSave(std::span<const CoSaveRecord> records);
 
+// The follower records a loaded save holds, until a follower claims
+// theirs. Whatever is still here when the game saves is written back as
+// it came, so a dismissed follower's tactics survive any number of saves
+// made while they are away; and a load, or a new game, forgets the lot
+// before the next save's records arrive.
+class SavedProfiles
+{
+  public:
+    void Load(std::vector<SavedFollower> followers);
+    void Forget() noexcept;
+
+    // The text filed under this key, taken out: from here on the follower
+    // is live and is written from the session's state, so a second claim
+    // finds nothing. Two references of one base share a key, and the
+    // first the tick sees claims it.
+    [[nodiscard]] std::optional<std::string> Claim(std::string_view key);
+    [[nodiscard]] std::size_t Carried() const noexcept
+    {
+        return followers_.size();
+    }
+
+    // What the save is written from: what the live followers have now,
+    // then what is still carried, each once and in that order.
+    struct Record
+    {
+        std::string key;
+        std::string text;
+    };
+    [[nodiscard]] std::vector<Record> ToWrite(std::vector<Record> live) const;
+
+  private:
+    std::vector<SavedFollower> followers_;
+};
+
 } // namespace ft

@@ -184,3 +184,53 @@ TEST_CASE("a follower's key: the base record's plugin and id, else the reference
     REQUIRE(DynamicKey(0xFF000DE0) == "dynamic-FF000DE0");
     REQUIRE(DynamicKey(0x14) == "dynamic-00000014");
 }
+
+TEST_CASE("a follower claims their record once; the rest are carried into the next save", "[cosave]")
+{
+    std::vector<CoSaveRecord> records;
+    records.push_back(Follower("Skyrim.esm-A2C94", "lydia"));
+    records.push_back(Follower("Skyrim.esm-1348A", "jenassa"));
+    records.push_back(Follower("Dawnguard.esm-2B6C", "serana"));
+
+    SavedProfiles saved;
+    saved.Load(UnpackCoSave(records).followers);
+    REQUIRE(saved.Carried() == 3);
+
+    // Lydia is seen by the tick and claims that record; a second claim
+    // finds nothing, as a second reference of one base does.
+    REQUIRE(saved.Claim("Skyrim.esm-A2C94") == "lydia");
+    REQUIRE_FALSE(saved.Claim("Skyrim.esm-A2C94"));
+    REQUIRE_FALSE(saved.Claim("Skyrim.esm-NOBODY"));
+    REQUIRE(saved.Carried() == 2);
+
+    // The save: what the live followers have now, then what is still
+    // carried -- the two who are away keep their tactics.
+    const std::vector<SavedProfiles::Record> live{{"Skyrim.esm-A2C94", "lydia, edited"}};
+    const auto records2 = saved.ToWrite(live);
+    REQUIRE(records2.size() == 3);
+    REQUIRE(records2[0].key == "Skyrim.esm-A2C94");
+    REQUIRE(records2[0].text == "lydia, edited");
+    REQUIRE(records2[1].key == "Skyrim.esm-1348A");
+    REQUIRE(records2[2].text == "serana");
+
+    // A load, or a new game, forgets the lot.
+    saved.Forget();
+    REQUIRE(saved.Carried() == 0);
+    REQUIRE_FALSE(saved.Claim("Skyrim.esm-1348A"));
+    REQUIRE(saved.ToWrite(live).size() == 1);
+}
+
+TEST_CASE("a save that holds nothing of ours writes only the live followers", "[cosave]")
+{
+    SavedProfiles saved;
+    saved.Load(UnpackCoSave({}).followers);
+    REQUIRE(saved.Carried() == 0);
+    const std::vector<SavedProfiles::Record> live{{"Skyrim.esm-A2C94", "lydia"}};
+    REQUIRE(saved.ToWrite(live).size() == 1);
+    // And a record that could not be read is not carried either: the
+    // reading dropped it before it got here.
+    std::vector<CoSaveRecord> bad;
+    bad.push_back({kFollowerRecord, kProfileSchema, ""});
+    saved.Load(UnpackCoSave(bad).followers);
+    REQUIRE(saved.Carried() == 0);
+}

@@ -86,7 +86,7 @@ Other seams:
 - [x] The player's hold reason as a value (`HeldReason`, `HeldBy` in core/PlayerCast.h): the order it is asked in, and the wording, tested; the game reads the facts. The tick compares reasons rather than string pointers.
 - [ ] Roster cleanup in `Tick`. Left: one boolean, nearby or else gone when not a teammate or dead, with a comment that says why.
 - [x] `ReportVerdicts`: the action a verdict is worded for is `ExplainedKind` (core/Evaluator.h); `VerdictChanges` was core already.
-- [x] The key a follower's record is filed under: `ChooseKeyRecord`, `FollowerKey`, `DynamicKey` (core/CoSave.h), the wire form pinned by test. `ClaimSaved` and the carry-forward stay: a map extract and a loop over the tested `CoSave` and `Profile`.
+- [x] The save's lifecycle: the key a record is filed under (`ChooseKeyRecord`, `FollowerKey`, `DynamicKey`) and the records themselves (`SavedProfiles`: loaded, claimed once, carried into the next save, forgotten on a load or a new game), core/CoSave.h.
 - [ ] Log emit and archive. Left: the naming and retention are `Sessions`, tested; what remains is spdlog and the filesystem, which a temporary-directory harness could cover but which has not failed.
 - [ ] Custom skills loading. Left: the parser and the tree order are tested in `CustomSkills`; the loader is a directory walk and a form lookup.
 - [x] Remaining time: `RemainingOn` (core/Spells.h) over the effects as read. The description helpers (`ReplaceNoCase` and the text assembly) are formatting over strings and stay with the sheets.
