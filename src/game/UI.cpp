@@ -187,6 +187,18 @@ std::string Elide(const std::string &text, float width)
     return tail;
 }
 
+// Whether the cursor is over the item just drawn, asked by RECT rather
+// than by id. ImGui tracks hover by id, and Im::Dummy adds its item with
+// none -- it is a spacer that happens to reserve a rect -- so
+// IsItemHovered is false over one however the cursor sits. The dead cells
+// of a set-aside row are Dummies, drawn dead precisely because they must
+// not be clicked, and their tooltips never fired (reported in play,
+// 2026-09-20: the reason a row was greyed could not be read anywhere).
+bool HoveringLastRect()
+{
+    return Im::IsMouseHoveringRect(Im::GetItemRectMin(), Im::GetItemRectMax(), true);
+}
+
 // A tooltip, and nothing at all when there is nothing to say. Several of
 // the strings that reach a tooltip are optional -- an action whose name
 // says it all has no note (`ft::Describe` gives ""), an item nobody set
@@ -197,7 +209,7 @@ std::string Elide(const std::string &text, float width)
 void Tooltip(std::string_view text)
 {
     if (!text.empty())
-        Tooltip(text);
+        Im::SetTooltip("%s", std::string(text).c_str());
 }
 
 // Place text so its RIGHT edge lands on rightX. Right-aligning the labels is
@@ -600,7 +612,7 @@ constexpr int kPopupChromeVars = 4;
 // Returns where the popup opens, the cell's bottom-left, for the caller to
 // set just before BeginPopup: set here, it would place whatever window opens
 // next instead, and a tooltip raised on the cell is one.
-Im::ImVec2 CellButtonOpensPopup(const char *id, const std::string &label)
+Im::ImVec2 CellButtonOpensPopup(const char *id, const std::string &label, bool *elided = nullptr)
 {
     // The highlight is the TABLE's, not the button's.
     //
@@ -626,26 +638,28 @@ Im::ImVec2 CellButtonOpensPopup(const char *id, const std::string &label)
     // reading as a list.
     Im::PushStyleVar(Im::ImGuiStyleVar_ButtonTextAlign, Im::ImVec2(0.0f, 0.5f));
 
-    // Cut to fit, with the whole of it on hover. Neither of the two wide
-    // columns can hold its longest phrase at any split of the width
-    // (reported in play, 2026-09-19: at one ratio the action was cut, at
-    // the next the condition), so nothing is lost rather than the loss
-    // being moved from one column to the other. A cell that fits is not
-    // given a tooltip at all -- there is nothing a hover could add, and a
-    // box that says back exactly what is on screen is noise.
+    // Cut to fit. Neither of the two wide columns can hold its longest
+    // phrase at any split of the width (reported in play, 2026-09-19: at
+    // one ratio the action was cut, at the next the condition), so nothing
+    // is lost rather than the loss being moved from one column to the
+    // other -- `elided` says it was cut and the CALLER puts the whole of it
+    // on the hover.
+    //
+    // The caller, and not this, because a tooltip set here would be a
+    // WINDOW opened between the button and the caller's own IsItemHovered,
+    // which asks about the last item drawn -- and the last item would no
+    // longer be the button. That is how the reason on a greyed action cell
+    // went silent (2026-09-20). Nothing here may come between the two.
     const auto *style = Im::GetStyle();
     const std::string shown = Elide(label, width - (style ? style->FramePadding.x * 2.0f : 0.0f));
+    if (elided)
+        *elided = shown != label;
 
     const bool clicked = Im::Button((shown + "##" + id).c_str(), Im::ImVec2(width, 0.0f));
     const bool hovered = Im::IsItemHovered(0);
 
     Im::PopStyleVar(2);
     Im::PopStyleColor(3);
-
-    // Before the caller's own: an unavailable cell has something more
-    // worth saying than its own text, and says it after this.
-    if (hovered && shown != label)
-        Tooltip(label);
 
     // Taken from the button just drawn, before anything moves the cursor.
     const Im::ImVec2 below{Im::GetItemRectMin().x, Im::GetItemRectMax().y};
@@ -786,7 +800,8 @@ std::vector<FollowerView::Peer> SortedPeers(const FollowerView &view)
     return peers;
 }
 
-bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, ft::Moment moment, bool setAside)
+bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, ft::Moment moment,
+                      const std::string &setAside)
 {
     bool changed = false;
 
@@ -797,11 +812,14 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     const bool available = ConditionAvailable(rule, view);
     Im::ImVec2 below;
     {
-        const DimText grey(setAside || !available);
+        const DimText grey(!setAside.empty() || !available);
         below = CellButtonOpensPopup(id, ConditionText(rule, view));
     }
+    // Only the named follower being gone, which is about the condition
+    // itself. Why the ROW is set aside belongs on the action cell, which
+    // is where the thing that is missing is named.
     if (!available && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Im::SetTooltip("%s", kFollowerAway);
+        Tooltip(kFollowerAway);
 
     PushPopupChrome();
     Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
@@ -2120,7 +2138,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
 // condition cannot supply: "Ally" on this side means the ally the condition
 // matched, so it is offered only when the condition is about one.
 bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::Moment moment, bool *addAnother,
-                ft::Rule &rule, bool setAside, ft::Verdict verdict = ft::Verdict::Fired)
+                ft::Rule &rule, const std::string &setAside, ft::Verdict verdict = ft::Verdict::Fired)
 {
     bool changed = false;
 
@@ -2137,13 +2155,20 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::M
     const std::string reason = !TargetAvailable(rule, view)  ? kFollowerAway
                                : !ActionAvailable(act, view) ? kNotAvailable
                                                              : now;
+    const std::string text = TargetText(rule, view) + ": " + ActionText(act, view);
     Im::ImVec2 below;
+    bool elided = false;
     {
-        const DimText grey(setAside || !reason.empty());
-        below = CellButtonOpensPopup(id, TargetText(rule, view) + ": " + ActionText(act, view));
+        const DimText grey(!setAside.empty() || !reason.empty());
+        below = CellButtonOpensPopup(id, text, &elided);
     }
-    if (!reason.empty() && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Tooltip(reason);
+    // The action's own reason first, else why the whole row is set aside,
+    // else the whole of the phrase where the cell had to cut it.
+    if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+    {
+        const std::string &why = reason.empty() ? setAside : reason;
+        Tooltip(!why.empty() ? why : (elided ? text : std::string{}));
+    }
 
     PushPopupChrome();
     Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
@@ -2351,7 +2376,7 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
             Im::TableNextRow(0, 0.0f);
 
             Im::TableSetColumnIndex(0);
-            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, moment, nullptr, rule, false,
+            if (ActionMenu(("##act" + actId).c_str(), rule.actions[a], view, moment, nullptr, rule, {},
                            VerdictAt(view, ruleIndex, a)))
                 changed = true;
 
@@ -2573,7 +2598,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             {
                 // Slashed at the end of the row, once its height is known.
                 Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
-                if (Im::IsItemHovered(0))
+                if (HoveringLastRect())
                     Tooltip(setAside);
             }
             else if (CellClicked(("##on" + rowId).c_str(), Im::GetFrameHeight()))
@@ -2623,10 +2648,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             if (!can || !available)
             {
                 Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
-                if (can && Im::IsItemHovered(0))
-                    Tooltip(setAside);
-                else if (Im::IsItemHovered(0))
-                    Im::SetTooltip("Condition cannot be negated");
+                if (HoveringLastRect())
+                    Tooltip(can ? setAside : std::string("Condition cannot be negated"));
             }
             else if (CellClicked(("##not" + rowId).c_str(), Im::GetFrameHeight()))
             {
@@ -2654,7 +2677,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         }
 
         Im::TableSetColumnIndex(3);
-        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, rules.moment, !available))
+        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, rules.moment, setAside))
             changed = true;
 
         Im::TableSetColumnIndex(4);
@@ -2680,7 +2703,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // second, and the rule then opens as a drawer.
             bool addAnother = false;
             if (ActionMenu(("##act" + rowId).c_str(), rule.actions.front(), view, rules.moment, &addAnother, rule,
-                           !available, VerdictAt(view, i, 0)))
+                           setAside, VerdictAt(view, i, 0)))
                 changed = true;
             if (addAnother)
             {
