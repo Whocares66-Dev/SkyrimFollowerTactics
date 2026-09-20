@@ -109,13 +109,29 @@ ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
     if (!worn)
         return ActionResult::MissingItem;
 
+    // The order is core's (core/Blows.h, PlanPoison, tested): the dose on
+    // the copy first, the vial spent after it.
     const std::int32_t doses = PoisonDoses(actor, weapon, poison);
-    worn->Add(new RE::ExtraPoison(poison, doses));
-    actor->RemoveItem(poison, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
-    // What the inventory menu's own routine plays after the dose goes on
-    // (read from the executable): the vial, as a UI sound. There is no
-    // character animation for it in the engine either.
-    RE::PlaySound("ITMPoisonUse");
+    for (const ft::ItemStep step : ft::PlanPoison(weapon != nullptr, worn != nullptr))
+    {
+        switch (step)
+        {
+        case ft::ItemStep::WriteDose:
+            worn->Add(new RE::ExtraPoison(poison, doses));
+            break;
+        case ft::ItemStep::SpendPoison:
+            actor->RemoveItem(poison, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+            break;
+        case ft::ItemStep::PlaySound:
+            // What the inventory menu's own routine plays after the dose
+            // goes on (read from the executable): the vial, as a UI sound.
+            // There is no character animation for it in the engine either.
+            RE::PlaySound("ITMPoisonUse");
+            break;
+        default:
+            break;
+        }
+    }
     log::actions.event(log::Level::Info, "poison.applied", actor,
                        {{"poisonFormId", log::Id(poison->GetFormID())},
                         {"poisonName", log::NameOf(poison)},
@@ -171,46 +187,65 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
     RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModSoulGemRecharge, actor,
                                         static_cast<RE::TESForm *>(weapon), &value);
     const float charge = ft::ChargeAfterRecharge(state.charge, state.maxCharge, value);
-    if (auto *xCharge = worn->GetByType<RE::ExtraCharge>())
-        xCharge->charge = charge;
-    else
+    const bool reusable = gem->HasKeywordString("ReusableSoulGem");
+    // The order is core's (core/Blows.h, PlanRecharge, tested): the charge
+    // written, the ability refreshed from it, the gem spent last.
+    for (const ft::ItemStep step : ft::PlanRecharge(weapon != nullptr, worn != nullptr, true, reusable))
     {
-        auto *fresh = new RE::ExtraCharge();
-        fresh->charge = charge;
-        worn->Add(fresh);
-    }
-    // The refresh is what puts the record's charge into the hand's
-    // ItemCharge actor value, the live copy the engine draws from and the
-    // meter reads (read from the executable: it sets that value from the
-    // record, or the full charge with no record). The engine's own
-    // recharge writes nothing else, so neither does this.
-    actor->UpdateWeaponAbility(weapon, worn, left);
-    if (gem->HasKeywordString("ReusableSoulGem"))
-    {
-        // The soul a reusable gem holds is ExtraSoul on its entry; the
-        // record's own soul is none. Cleared, the Star is empty and stays.
-        const Carried carried = CarriedOf(actor, gem);
-        auto *gemEntry = carried.entry.get();
-        bool emptied = false;
-        if (gemEntry && gemEntry->extraLists)
+        switch (step)
         {
-            for (auto *list : *gemEntry->extraLists)
+        case ft::ItemStep::WriteCharge:
+            if (auto *xCharge = worn->GetByType<RE::ExtraCharge>())
+                xCharge->charge = charge;
+            else
             {
-                if (list && list->GetSoulLevel() != RE::SOUL_LEVEL::kNone &&
-                    list->RemoveByType(RE::ExtraDataType::kSoul))
+                auto *fresh = new RE::ExtraCharge();
+                fresh->charge = charge;
+                worn->Add(fresh);
+            }
+            break;
+        case ft::ItemStep::RefreshAbility:
+            // The refresh is what puts the record's charge into the hand's
+            // ItemCharge actor value, the live copy the engine draws from
+            // and the meter reads (read from the executable: it sets that
+            // value from the record, or the full charge with no record).
+            // The engine's own recharge writes nothing else, so neither
+            // does this.
+            actor->UpdateWeaponAbility(weapon, worn, left);
+            break;
+        case ft::ItemStep::EmptyGem: {
+            // The soul a reusable gem holds is ExtraSoul on its entry; the
+            // record's own soul is none. Cleared, the Star is empty and stays.
+            const Carried carried = CarriedOf(actor, gem);
+            auto *gemEntry = carried.entry.get();
+            bool emptied = false;
+            if (gemEntry && gemEntry->extraLists)
+            {
+                for (auto *list : *gemEntry->extraLists)
                 {
-                    emptied = true;
-                    break;
+                    if (list && list->GetSoulLevel() != RE::SOUL_LEVEL::kNone &&
+                        list->RemoveByType(RE::ExtraDataType::kSoul))
+                    {
+                        emptied = true;
+                        break;
+                    }
                 }
             }
+            if (!emptied)
+                log::actions.warn("{} {} is reusable but its soul was not found on an extra list -- not emptied",
+                                  Describe(actor), log::NameOf(gem));
+            break;
         }
-        if (!emptied)
-            log::actions.warn("{} {} is reusable but its soul was not found on an extra list -- not emptied",
-                              Describe(actor), log::NameOf(gem));
+        case ft::ItemStep::SpendGem:
+            actor->RemoveItem(gem, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+            break;
+        case ft::ItemStep::PlaySound:
+            RE::PlaySound("UIEnchantRecharge");
+            break;
+        default:
+            break;
+        }
     }
-    else
-        actor->RemoveItem(gem, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
-    RE::PlaySound("UIEnchantRecharge");
     log::actions.event(log::Level::Info, "soul.spent", actor,
                        {{"gemFormId", log::Id(gem->GetFormID())},
                         {"gemName", log::NameOf(gem)},

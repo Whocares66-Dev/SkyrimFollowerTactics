@@ -3,6 +3,7 @@
 #include "Loadout.h"
 
 #include <cstdint>
+#include <vector>
 
 // What the hands can strike with: the rules of a swing and a bash, from
 // what each hand holds. The game side describes the hands and maps the
@@ -74,5 +75,30 @@ enum class Swing : std::uint8_t
 // A weapon's charge after a soul gem: the soul's value, never negative,
 // added to what is left and capped at the full charge.
 [[nodiscard]] float ChargeAfterRecharge(float charge, float maxCharge, float soul) noexcept;
+
+// ---- Putting a poison on, and a soul into a weapon: what the game does,
+// in order. Each step is an engine call, so the order is the contract:
+// the dose or the charge goes on the worn copy first, the weapon's
+// ability is refreshed from it, and only then is the consumable spent.
+// Refreshing before the write showed the old charge; spending first left
+// a gem gone with nothing to show for it.
+enum class ItemStep : std::uint8_t
+{
+    WriteDose,      // the poison and its hits onto the worn copy's list
+    WriteCharge,    // the charge onto the worn copy's list
+    RefreshAbility, // the record's charge into the hand's live value
+    SpendPoison,    // the vial, taken from the bag
+    SpendGem,       // an ordinary gem, taken from the bag
+    EmptyGem,       // a reusable gem: its soul cleared, the gem kept
+    PlaySound
+};
+
+// What the game read before putting a poison on: a hand's weapon that
+// takes one and is clean (HandToPoison), and the worn copy's list.
+[[nodiscard]] std::vector<ItemStep> PlanPoison(bool weapon, bool wornCopy);
+
+// The same for a soul gem: a weapon in need of a charge, its worn copy,
+// the gem carried, and whether the gem is reusable.
+[[nodiscard]] std::vector<ItemStep> PlanRecharge(bool weapon, bool wornCopy, bool gem, bool reusable);
 
 } // namespace ft

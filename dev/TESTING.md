@@ -60,7 +60,7 @@ Snapshot assembly (one family at a time):
 - [x] Buffs, applicability and the whole consumable projection: `EffectShape`, `EffectApplies`, `IsBuff` and `ConsumableEffectsOf` (core/Effects.h) -- every effect by name, the bane beside the boon, the nameless and the useless left out, an ingredient's first effect alone and nothing when that one is left out. The game reads each record into the shape.
 - [x] Reach and body radius: `ReachDistance` and `BodyRadius` (core/Reach.h), our reconstruction of the engine's measure, its 48-unit threshold and overlap test at their boundaries. `ReadStat` stays: one sum over three engine reads.
 - [x] Attack plans: the events by swing and the power attack's base cost (core/Blows.h); `DescribeHands` and `DualWieldAllowed` stay engine reads.
-- [x] Poison and recharge: `HandToPoison` and `ChargeAfterRecharge` (core/Blows.h).
+- [x] Poison and recharge: the hand and the arithmetic (`HandToPoison`, `ChargeAfterRecharge`) and the order of the engine calls (`PlanPoison`, `PlanRecharge`) -- the dose or the charge written first, the ability refreshed from it, the vial or the gem spent last, a reusable gem emptied instead, and nothing at all when there is no weapon, no worn copy or no gem.
 - [x] Hit sinks: `KindsOfHit` and `KindOfResist` (core/HitKinds.h) over what the event says; the sinks read the event and note the kinds.
 
 Inventory beyond the view:

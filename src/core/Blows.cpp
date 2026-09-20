@@ -96,4 +96,19 @@ float ChargeAfterRecharge(float charge, float maxCharge, float soul) noexcept
     return added < maxCharge ? added : maxCharge;
 }
 
+std::vector<ItemStep> PlanPoison(bool weapon, bool wornCopy)
+{
+    if (!weapon || !wornCopy)
+        return {};
+    return {ItemStep::WriteDose, ItemStep::SpendPoison, ItemStep::PlaySound};
+}
+
+std::vector<ItemStep> PlanRecharge(bool weapon, bool wornCopy, bool gem, bool reusable)
+{
+    if (!weapon || !gem || !wornCopy)
+        return {};
+    return {ItemStep::WriteCharge, ItemStep::RefreshAbility, reusable ? ItemStep::EmptyGem : ItemStep::SpendGem,
+            ItemStep::PlaySound};
+}
+
 } // namespace ft

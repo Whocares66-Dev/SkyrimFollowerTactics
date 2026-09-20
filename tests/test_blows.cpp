@@ -82,3 +82,32 @@ TEST_CASE("the attack events, the costs, the hand a poison goes on, the charge a
     REQUIRE(ChargeAfterRecharge(10.0f, 100.0f, -5.0f) == 10.0f);
     REQUIRE(ChargeAfterRecharge(100.0f, 100.0f, 0.0f) == 100.0f);
 }
+
+TEST_CASE("a poison goes on the worn copy, then the vial is spent", "[blows]")
+{
+    using namespace ft;
+    REQUIRE(PlanPoison(true, true) ==
+            std::vector<ItemStep>{ItemStep::WriteDose, ItemStep::SpendPoison, ItemStep::PlaySound});
+    // No weapon that takes one, or no copy of it worn: nothing is done,
+    // and the vial is not spent.
+    REQUIRE(PlanPoison(false, true).empty());
+    REQUIRE(PlanPoison(true, false).empty());
+}
+
+TEST_CASE("a soul is written, the weapon refreshed, and only then the gem spent", "[blows]")
+{
+    using namespace ft;
+    REQUIRE(PlanRecharge(true, true, true, false) == std::vector<ItemStep>{ItemStep::WriteCharge,
+                                                                           ItemStep::RefreshAbility, ItemStep::SpendGem,
+                                                                           ItemStep::PlaySound});
+    // A reusable gem is emptied where an ordinary one is taken; the order
+    // is otherwise the same.
+    REQUIRE(PlanRecharge(true, true, true, true) == std::vector<ItemStep>{ItemStep::WriteCharge,
+                                                                          ItemStep::RefreshAbility, ItemStep::EmptyGem,
+                                                                          ItemStep::PlaySound});
+    // Nothing in need of a charge, no gem, or no worn copy to write to:
+    // nothing is done, and no gem is spent.
+    REQUIRE(PlanRecharge(false, true, true, false).empty());
+    REQUIRE(PlanRecharge(true, false, true, false).empty());
+    REQUIRE(PlanRecharge(true, true, false, false).empty());
+}
