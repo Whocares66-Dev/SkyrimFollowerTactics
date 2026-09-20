@@ -160,6 +160,33 @@ float TextWidth(const std::string &text)
     return Im::CalcTextSize(text.c_str(), nullptr, false, -1.0f).x;
 }
 
+// The text as much of it as fits, with "..." where it does not. Plain
+// ASCII dots rather than the ellipsis character: what is in the font atlas
+// is whatever the panel loaded, and a glyph that is not there draws as a
+// box, which is worse than the thing it replaces.
+//
+// Whole code points only. The strings here carry an effect's name as the
+// game shows it, which for a translated or a mod's effect need not be
+// ASCII, and a byte taken from the middle of one draws as a replacement
+// glyph.
+std::string Elide(const std::string &text, float width)
+{
+    if (width <= 0.0f || TextWidth(text) <= width)
+        return text;
+    std::string tail = "..."; // not const: it is returned, and would not move
+    const float tailWidth = TextWidth(tail);
+    std::size_t end = text.size();
+    while (end > 0)
+    {
+        --end;
+        while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80)
+            --end;
+        if (TextWidth(text.substr(0, end)) + tailWidth <= width)
+            return text.substr(0, end) + tail;
+    }
+    return tail;
+}
+
 // A tooltip, and nothing at all when there is nothing to say. Several of
 // the strings that reach a tooltip are optional -- an action whose name
 // says it all has no note (`ft::Describe` gives ""), an item nobody set
@@ -599,11 +626,26 @@ Im::ImVec2 CellButtonOpensPopup(const char *id, const std::string &label)
     // reading as a list.
     Im::PushStyleVar(Im::ImGuiStyleVar_ButtonTextAlign, Im::ImVec2(0.0f, 0.5f));
 
-    const bool clicked = Im::Button((label + "##" + id).c_str(), Im::ImVec2(width, 0.0f));
+    // Cut to fit, with the whole of it on hover. Neither of the two wide
+    // columns can hold its longest phrase at any split of the width
+    // (reported in play, 2026-09-19: at one ratio the action was cut, at
+    // the next the condition), so nothing is lost rather than the loss
+    // being moved from one column to the other. A cell that fits is not
+    // given a tooltip at all -- there is nothing a hover could add, and a
+    // box that says back exactly what is on screen is noise.
+    const auto *style = Im::GetStyle();
+    const std::string shown = Elide(label, width - (style ? style->FramePadding.x * 2.0f : 0.0f));
+
+    const bool clicked = Im::Button((shown + "##" + id).c_str(), Im::ImVec2(width, 0.0f));
     const bool hovered = Im::IsItemHovered(0);
 
     Im::PopStyleVar(2);
     Im::PopStyleColor(3);
+
+    // Before the caller's own: an unavailable cell has something more
+    // worth saying than its own text, and says it after this.
+    if (hovered && shown != label)
+        Tooltip(label);
 
     // Taken from the button just drawn, before anything moves the cursor.
     const Im::ImVec2 below{Im::GetItemRectMin().x, Im::GetItemRectMax().y};
