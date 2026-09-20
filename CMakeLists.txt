@@ -115,6 +115,7 @@ add_library(ft_core STATIC
     src/core/Effects.cpp
     src/core/Evaluator.cpp
     src/core/EventRing.cpp
+    src/core/Files.cpp
     src/core/HitKinds.cpp
     src/core/HitTable.cpp
     src/core/Lease.cpp

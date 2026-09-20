@@ -4,7 +4,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace ft;
@@ -133,4 +136,170 @@ TEST_CASE("a tree with a loop still lists every node once", "[customskills]")
     const auto order = TreeOrder(nodes);
     REQUIRE(order.size() == 3);
     REQUIRE(order.front() == 0);
+}
+
+// A perk's ranks: a linked list of records the engine owns, walked here over
+// a handle that is only ever compared.
+namespace
+{
+
+struct Rank
+{
+    int id{0};
+    Rank *next{nullptr};
+};
+
+std::vector<int> IdsOf(const std::vector<Rank *> &chain)
+{
+    std::vector<int> ids;
+    for (const Rank *rank : chain)
+        ids.push_back(rank->id);
+    return ids;
+}
+
+Rank *NextOf(Rank *rank)
+{
+    return rank->next;
+}
+
+} // namespace
+
+TEST_CASE("a rank chain is the perk and everything it chains to", "[customskills]")
+{
+    Rank third{3, nullptr};
+    Rank second{2, &third};
+    Rank first{1, &second};
+    REQUIRE(IdsOf(RankChain(&first, NextOf)) == std::vector<int>{1, 2, 3});
+
+    // The last rank of a chain, asked for on its own, is a chain of one --
+    // which is what a single-rank perk is.
+    REQUIRE(IdsOf(RankChain(&third, NextOf)) == std::vector<int>{3});
+    REQUIRE(RankChain(static_cast<Rank *>(nullptr), NextOf).empty());
+}
+
+TEST_CASE("a rank chain longer than the bound stops at it", "[customskills]")
+{
+    // Twenty ranks, chained. Nothing in the game has this many; a record
+    // that says so is not a rank chain, and the walk says so by stopping.
+    std::vector<Rank> ranks(20);
+    for (std::size_t i = 0; i < ranks.size(); ++i)
+    {
+        ranks[i].id = static_cast<int>(i) + 1;
+        ranks[i].next = i + 1 < ranks.size() ? &ranks[i + 1] : nullptr;
+    }
+    const auto chain = RankChain(&ranks.front(), NextOf);
+    REQUIRE(chain.size() == kMaxRanks);
+    REQUIRE(chain.front()->id == 1);
+    REQUIRE(chain.back()->id == static_cast<int>(kMaxRanks));
+}
+
+TEST_CASE("a rank chain that comes round gives each rank once", "[customskills]")
+{
+    // 1 -> 2 -> 3 -> 2. The bound alone would have listed sixteen, the same
+    // three over and over, each reading as a rank of sixteen; the walk stops
+    // at the rank it has already had.
+    Rank third{3, nullptr};
+    Rank second{2, &third};
+    Rank first{1, &second};
+    third.next = &second;
+    REQUIRE(IdsOf(RankChain(&first, NextOf)) == std::vector<int>{1, 2, 3});
+
+    // A perk that names itself is a chain of one, not of sixteen.
+    Rank alone{9, nullptr};
+    alone.next = &alone;
+    REQUIRE(IdsOf(RankChain(&alone, NextOf)) == std::vector<int>{9});
+}
+
+// Loading the files: that one bad neighbour is not the end of the walk.
+namespace
+{
+
+// One file's JSON, with just the skill ids that matter here.
+std::string Skills(const std::vector<std::string> &ids)
+{
+    std::string json = R"({"skills":[)";
+    for (std::size_t i = 0; i < ids.size(); ++i)
+        json += (i ? "," : "") + std::string(R"({"id":")") + ids[i] + R"("})";
+    return json + "]}";
+}
+
+} // namespace
+
+TEST_CASE("a file that will not parse costs only itself", "[customskills]")
+{
+    namespace fs = std::filesystem;
+    const std::vector<fs::path> files{"a.json", "bad.json", "c.json"};
+    std::vector<std::pair<std::string, std::string>> complaints;
+    const auto trees = LoadSkillTrees(
+        files,
+        [](const fs::path &file) {
+            return file.filename() == "bad.json" ? std::string{"{ this is not JSON"} : Skills({"one"});
+        },
+        [](const CustomSkill &skill, const std::string &label) { return label + ":" + skill.id; },
+        [&](const std::string &label, std::string_view skill, std::string_view why) {
+            complaints.emplace_back(label + "/" + std::string(skill), std::string(why));
+        });
+
+    REQUIRE(trees == std::vector<std::string>{"a.json:one", "c.json:one"});
+    REQUIRE(complaints.size() == 1);
+    REQUIRE(complaints.front().first == "bad.json/");
+    REQUIRE(complaints.front().second == "not JSON");
+}
+
+TEST_CASE("a skill that will not build costs only itself, not its file", "[customskills]")
+{
+    namespace fs = std::filesystem;
+    const std::vector<fs::path> files{"one.json"};
+    std::vector<std::pair<std::string, std::string>> complaints;
+    const auto trees = LoadSkillTrees(
+        files, [](const fs::path &) { return Skills({"good", "unresolved", "alsogood"}); },
+        [](const CustomSkill &skill, const std::string &label) {
+            if (skill.id == "unresolved")
+                throw std::runtime_error("names no perk in the load order");
+            return label + ":" + skill.id;
+        },
+        [&](const std::string &label, std::string_view skill, std::string_view why) {
+            complaints.emplace_back(label + "/" + std::string(skill), std::string(why));
+        });
+
+    // The skill after the bad one still loads: the throw ends that skill.
+    REQUIRE(trees == std::vector<std::string>{"one.json:good", "one.json:alsogood"});
+    REQUIRE(complaints.size() == 1);
+    REQUIRE(complaints.front().first == "one.json/unresolved");
+    REQUIRE(complaints.front().second == "names no perk in the load order");
+}
+
+TEST_CASE("a file whose text will not even be read is left out quietly", "[customskills]")
+{
+    namespace fs = std::filesystem;
+    // ReadText gives nothing for a file it cannot open, and nothing does not
+    // parse: the file is reported and the next one still loads.
+    const std::vector<fs::path> files{"gone.json", "here.json"};
+    std::vector<std::string> complained;
+    const auto trees = LoadSkillTrees(
+        files, [](const fs::path &file) { return file.filename() == "gone.json" ? std::string{} : Skills({"one"}); },
+        [](const CustomSkill &skill, const std::string &label) { return label + ":" + skill.id; },
+        [&](const std::string &label, std::string_view, std::string_view) { complained.push_back(label); });
+
+    REQUIRE(trees == std::vector<std::string>{"here.json:one"});
+    REQUIRE(complained == std::vector<std::string>{"gone.json"});
+}
+
+TEST_CASE("a read that throws is caught, and the walk goes on", "[customskills]")
+{
+    namespace fs = std::filesystem;
+    const std::vector<fs::path> files{"throws.json", "here.json"};
+    std::vector<std::string> complained;
+    const auto trees = LoadSkillTrees(
+        files,
+        [](const fs::path &file) -> std::string {
+            if (file.filename() == "throws.json")
+                throw std::runtime_error("out of memory reading it");
+            return Skills({"one"});
+        },
+        [](const CustomSkill &skill, const std::string &label) { return label + ":" + skill.id; },
+        [&](const std::string &label, std::string_view, std::string_view) { complained.push_back(label); });
+
+    REQUIRE(trees == std::vector<std::string>{"here.json:one"});
+    REQUIRE(complained == std::vector<std::string>{"throws.json"});
 }

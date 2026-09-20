@@ -2144,12 +2144,10 @@ const std::vector<TreePerk> &TreePerks(RE::ActorValue skill)
         for (std::size_t place = 0; place < order.size(); ++place)
         {
             const auto *node = nodes[order[place]];
-            // A node names the first rank; the rest chain through nextPerk.
-            // Bounded, because a malformed chain that loops would hang the
-            // game thread, and a chain longer than this is not a rank chain.
-            std::vector<RE::BGSPerk *> chain;
-            for (auto *perk = node->perk; perk && chain.size() < 16; perk = perk->nextPerk)
-                chain.push_back(perk);
+            // A node names the first rank; the rest chain through nextPerk,
+            // walked and bounded by core (ft::RankChain, tested).
+            const std::vector<RE::BGSPerk *> chain =
+                ft::RankChain(node->perk, [](RE::BGSPerk *rank) { return rank->nextPerk; });
             for (std::size_t i = 0; i < chain.size(); ++i)
             {
                 RE::BSString text;

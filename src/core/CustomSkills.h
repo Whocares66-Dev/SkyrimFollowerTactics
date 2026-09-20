@@ -1,10 +1,16 @@
 #pragma once
 
+#include "Files.h"
+
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 // The skill trees Custom Skills Framework adds -- Exit-9B's SKSE plugin, not
@@ -66,5 +72,78 @@ struct TreeNodePlace
 // Sky Above at 1.68 left of Deep Breath at -1.68; 2026-09-15); then as given.
 // A node on a cycle, which no tree should have, comes after the rest.
 [[nodiscard]] std::vector<std::size_t> TreeOrder(const std::vector<TreeNodePlace> &nodes);
+
+// How far a rank chain is walked. A perk names the first rank and the rest
+// chain from it; a chain longer than this is not a rank chain, and one that
+// loops would otherwise walk forever on the game thread.
+inline constexpr std::size_t kMaxRanks = 16;
+
+// A perk's ranks, first to last: the perk itself, then whatever `next`
+// gives, stopping at the end of the chain, at the bound, or at a rank that
+// has already been seen. Handles are compared and never dereferenced, so
+// the walking is the engine's and the stopping is ours. A chain that comes
+// round on itself gives its distinct ranks once rather than the bound's
+// worth of repeats, which is what the two walks this replaces would have
+// listed -- the same perk over and over, each reading as a rank of sixteen.
+template <typename Handle, typename Next> [[nodiscard]] std::vector<Handle> RankChain(Handle first, Next next)
+{
+    std::vector<Handle> chain;
+    for (Handle rank = first; rank && chain.size() < kMaxRanks; rank = next(rank))
+    {
+        if (std::find(chain.begin(), chain.end(), rank) != chain.end())
+            break;
+        chain.push_back(rank);
+    }
+    return chain;
+}
+
+// Every tree the framework's files add, in the order the files are given.
+// The files are another mod's, so nothing in them may take the game down:
+// `read` gives a file's text, `build` makes one skill's tree, and a file
+// that will not parse, or a skill `build` throws over, costs that file or
+// that skill alone -- the rest load. `report` is told the file's name, the
+// skill's id where there is one, and what went wrong.
+//
+// The reads and the form lookups are the game's; which files and in what
+// order is JsonFilesIn's (core/Files.h). This is the part in between: that
+// one bad neighbour is not the end of the walk.
+template <typename Read, typename Build, typename Report>
+[[nodiscard]] auto LoadSkillTrees(const std::vector<std::filesystem::path> &files, Read read, Build build,
+                                  Report report)
+{
+    std::vector<std::invoke_result_t<Build, const CustomSkill &, const std::string &>> out;
+    for (const std::filesystem::path &file : files)
+    {
+        const std::string label = FileLabel(file);
+        std::vector<CustomSkill> skills;
+        try
+        {
+            std::string parseError;
+            skills = ParseCustomSkills(read(file), &parseError);
+            if (!parseError.empty())
+            {
+                report(label, std::string_view{}, std::string_view{parseError});
+                continue;
+            }
+        }
+        catch (const std::exception &e)
+        {
+            report(label, std::string_view{}, std::string_view{e.what()});
+            continue;
+        }
+        for (const CustomSkill &skill : skills)
+        {
+            try
+            {
+                out.push_back(build(skill, label));
+            }
+            catch (const std::exception &e)
+            {
+                report(label, std::string_view{skill.id}, std::string_view{e.what()});
+            }
+        }
+    }
+    return out;
+}
 
 } // namespace ft

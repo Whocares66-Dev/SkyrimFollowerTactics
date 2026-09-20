@@ -32,6 +32,7 @@ add_executable(ft_tests
     test_effects.cpp
     test_evaluator.cpp
     test_eventring.cpp
+    test_files.cpp
     test_hitkinds.cpp
     test_hits.cpp
     test_idle.cpp
