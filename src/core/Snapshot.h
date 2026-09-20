@@ -262,14 +262,32 @@ struct PotionStock
     }
 
     // The bottle a policy chooses: of that kind, with that effect, the
-    // strongest or the weakest by it -- of those that would still do
-    // something against what is in force. So Weakest is the weakest bottle
-    // that is a GAIN: the cheap one kept back is cheaper only when it
-    // works, and a 25 drunk under a 30 already running is a bottle spent
-    // for nothing. 0 for none.
+    // strongest or the weakest by it. 0 for none, and 0 when what is in
+    // force already beats the one chosen.
+    //
+    // STRENGTH ALONE CHOOSES THE BOTTLE. What is in force only says whether
+    // to take it now. A Weakest that finds its bottle already covered does
+    // nothing this tick -- it does not reach past it for the next one up.
+    // That is the whole point of asking for the weakest: the strong ones
+    // are being kept back, and a rule that climbs to them when the cheap
+    // one is in force spends exactly what the player meant to save. Found
+    // in play on a Fortify Health Regeneration food (2026-09-19): with the
+    // weak one running, "eat the weakest food" ate the strongest in the
+    // bag.
+    //
+    // The bottle passed over is not wasted either way: for a lingering boon
+    // a second of a name does not stack, and for a restore a second dose
+    // under one still running is a bottle poured after the wound closed.
+    // Either way the answer is to wait, not to spend more.
+    //
+    // A POISON is the exception and is STEERED instead: its dose lands on
+    // the target, not the follower, so one the target already exceeds is
+    // thrown away and the next that would bite is taken. ChosenForm then
+    // falls back to the plain choice, so a poison is never withheld.
     [[nodiscard]] std::uint32_t Choose(ConsumableKind kind, std::string_view effect, bool strongest,
                                        const std::vector<RunningEffect> &inForce) const
     {
+        const bool steer = kind == ConsumableKind::Poison;
         const Carried *best = nullptr;
         const Effect *bestEffect = nullptr;
         for (const auto &c : carried)
@@ -278,7 +296,7 @@ struct PotionStock
                 continue;
             for (const auto &e : c.effects)
             {
-                if (e.name != effect || !ChoosableBy(kind, e) || Outdone(inForce, e))
+                if (e.name != effect || !ChoosableBy(kind, e) || (steer && Outdone(inForce, e)))
                     continue;
                 if (!bestEffect || (strongest ? e.StrongerThan(*bestEffect) : bestEffect->StrongerThan(e)))
                 {
@@ -287,7 +305,9 @@ struct PotionStock
                 }
             }
         }
-        return best ? best->form : 0;
+        // Steered candidates were passed over above, so this bites only on
+        // what the follower takes themselves.
+        return best && !Outdone(inForce, *bestEffect) ? best->form : 0;
     }
 
     // Which effects a rule may choose an item of this kind BY: a poison's
@@ -350,11 +370,16 @@ struct PotionStock
     // compare -- 3 points of Damage Health against 10 of Damage Stamina is
     // not a question with an answer -- so "the strongest poison" has to mean
     // "the strongest of one effect". Distinct names only: two bottles of
-    // Damage Health do not make it twice as likely. Only an effect some
-    // bottle would still gain: the name Choose then finds a bottle for.
-    // Empty for none.
+    // Damage Health do not make it twice as likely. Empty for none.
+    //
+    // The roll only ever lands on an effect the policy will actually take
+    // something for, which is why it asks Choose rather than testing the
+    // bottles itself: the two must agree, or "any" rolls a name and then
+    // declines it. For a Weakest they part company -- an effect can have a
+    // stronger bottle that would gain while its WEAKEST is already covered,
+    // and that effect is no use to a rule that will only take the weakest.
     [[nodiscard]] std::string AnyEffect(ConsumableKind kind, std::uint32_t roll,
-                                        const std::vector<RunningEffect> &inForce) const
+                                        const std::vector<RunningEffect> &inForce, bool strongest) const
     {
         std::vector<std::string_view> names;
         for (const auto &c : carried)
@@ -363,7 +388,8 @@ struct PotionStock
                 continue;
             for (const auto &e : c.effects)
                 if (WantedByAny(kind, e) && !Outdone(inForce, e) &&
-                    std::find(names.begin(), names.end(), e.name) == names.end())
+                    std::find(names.begin(), names.end(), e.name) == names.end() &&
+                    Choose(kind, e.name, strongest, inForce) != 0)
                     names.emplace_back(e.name);
         }
         return names.empty() ? std::string{} : std::string(names[roll % names.size()]);

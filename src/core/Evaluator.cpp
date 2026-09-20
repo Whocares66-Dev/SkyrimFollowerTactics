@@ -473,8 +473,10 @@ std::uint32_t ChooseAgainst(const Action &a, const Snapshot &snap, const std::ve
     if (!IsPolicy(a.kind))
         return a.form;
     const ConsumableKind kind = ConsumableOf(a.kind);
-    const std::string effect = a.effect.empty() ? snap.potions.AnyEffect(kind, snap.roll, inForce) : a.effect;
-    return snap.potions.Choose(kind, effect, IsStrongest(a.kind), inForce);
+    const bool strongest = IsStrongest(a.kind);
+    const std::string effect =
+        a.effect.empty() ? snap.potions.AnyEffect(kind, snap.roll, inForce, strongest) : a.effect;
+    return snap.potions.Choose(kind, effect, strongest, inForce);
 }
 
 } // namespace

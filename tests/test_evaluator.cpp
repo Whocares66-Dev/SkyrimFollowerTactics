@@ -3801,13 +3801,39 @@ TEST_CASE("a stronger dose over a weaker one in force is a gain; an equal or wea
         REQUIRE(d.actionForm() == 0x312);
     }
 
-    SECTION("Weakest takes the weakest bottle that is still a gain, not one that does nothing")
+    SECTION("Weakest with its bottle covered waits; it does not reach for the stronger one")
     {
+        // Weakest names the 20. The 30 up already beats it, so there is
+        // nothing to do this tick -- and the 40 is NOT taken instead. The
+        // strong one is what the player asked to keep back, and spending it
+        // because the cheap one is in force is what asking for the weakest
+        // was meant to prevent.
         rs.rules[0].FirstAction() = Drink("Resist Fire", false);
         s.potions.running = {{"Resist Fire", 30.0f}};
+        Verdict why{};
+        REQUIRE_FALSE(fire(&why).Fired());
+        REQUIRE(why == Verdict::EffectActive);
+    }
+
+    SECTION("Weakest climbed to the strongest as weaker doses came up -- it must not")
+    {
+        // Reported in play on a Fortify Health Regeneration food
+        // (2026-09-19): with the weak one running the rule ate the next up,
+        // and with that one running the strongest in the bag. Each step
+        // reads as "the weakest that is still a gain" and together they
+        // empty the bag from the cheap end to the dear one.
+        s.potions.Add(0x313, 1, ConsumableKind::Potion, {"Resist Fire", 60.0f, 60.0f});
+        rs.rules[0].FirstAction() = Drink("Resist Fire", false);
+        for (const float running : {20.0f, 40.0f})
+        {
+            s.potions.running = {{"Resist Fire", running}};
+            REQUIRE_FALSE(fire().Fired());
+        }
+        // With nothing up it still takes the cheapest, as it always did.
+        s.potions.running.clear();
         const auto d = fire();
         REQUIRE(d.Fired());
-        REQUIRE(d.actionForm() == 0x312); // the 20 would do nothing under a 30
+        REQUIRE(d.actionForm() == 0x311);
     }
 
     SECTION("an equal dose up: nothing gains, and it says so rather than 'none carried'")
