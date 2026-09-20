@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(FollowerTactics VERSION 0.1.0 LANGUAGES CXX)
+project(FollowerTactics VERSION 0.2.0 LANGUAGES CXX)
 
 option(FT_BUILD_PLUGIN "Build the SKSE plugin (needs CommonLibSSE-NG, Windows only)" ${WIN32})
 option(FT_BUILD_TESTS  "Build the core unit tests (no game required)"                ON)
