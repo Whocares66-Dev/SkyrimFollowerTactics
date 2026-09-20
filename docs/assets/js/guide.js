@@ -1,4 +1,20 @@
 (() => {
+  const picker = document.querySelector('.docs-versions');
+  if (!picker) return;
+
+  document.addEventListener('click', event => {
+    if (picker.open && !picker.contains(event.target)) picker.open = false;
+  }, true);
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !picker.open) return;
+    picker.open = false;
+    if (picker.contains(document.activeElement)) picker.querySelector('summary').focus();
+    event.preventDefault();
+  });
+})();
+
+(() => {
   const root = document.documentElement;
   const toggle = document.getElementById('guide-toggle');
   const navigation = document.getElementById('guide-navigation');
@@ -22,6 +38,22 @@
     sections.forEach((section, index) => { section.open = !closed.includes(index); });
     navigation.scrollTop = Number(sessionStorage.getItem('ft-toc-scroll') || 0);
   } catch (_) {}
+  const sectionsToggle = document.getElementById('guide-sections-toggle');
+  if (sectionsToggle) {
+    function updateSectionsToggle() {
+      const allOpen = sections.every(section => section.open);
+      sectionsToggle.setAttribute('aria-expanded', String(allOpen));
+      sectionsToggle.setAttribute('aria-label', `${allOpen ? 'Collapse' : 'Expand'} all sections`);
+      sectionsToggle.title = sectionsToggle.getAttribute('aria-label');
+    }
+    sectionsToggle.addEventListener('click', () => {
+      const open = !sections.every(section => section.open);
+      sections.forEach(section => { section.open = open; });
+      updateSectionsToggle();
+    });
+    sections.forEach(section => section.addEventListener('toggle', updateSectionsToggle));
+    updateSectionsToggle();
+  }
   window.addEventListener('pagehide', () => {
     try {
       sessionStorage.setItem('ft-toc-scroll', navigation.scrollTop);

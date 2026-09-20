@@ -4,8 +4,8 @@
     <button type="button" id="guide-toggle" aria-controls="guide-navigation" aria-expanded="true" aria-label="Collapse table of contents" title="Collapse table of contents"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="m14 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
   <nav id="guide-navigation" aria-label="Table of contents">
-    <div class="toc-label">Table of contents</div>
-    <ul class="guide-toc">
+    <button type="button" class="toc-label" id="guide-sections-toggle" aria-controls="guide-toc" aria-expanded="true" aria-label="Collapse all sections" title="Collapse all sections">Table of contents</button>
+    <ul class="guide-toc" id="guide-toc">
       {% for section in site.data.guide %}
       <li class="guide-section{% if page.url == section.url %} current{% endif %}">
         {% if section.headings.size > 0 %}

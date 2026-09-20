@@ -1,11 +1,10 @@
-# Only for previewing the site locally:
+# Used for local previews and the versioned GitHub Actions build:
 #
 #   bundle install
 #   bundle exec jekyll serve
 #
-# GitHub Pages does not read this file — it builds the branch with its own
-# pinned Jekyll. The gem below is that same set, so a local preview matches
-# what gets published.
+# The github-pages gem keeps the same dependency set as the original
+# branch-based Pages build.
 source "https://rubygems.org"
 gem "github-pages", group: :jekyll_plugins
 gem "webrick"

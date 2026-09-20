@@ -10,12 +10,25 @@ body { font-family: "Source Sans 3", "Segoe UI", sans-serif; font-size: 17px; }
 }
 .site-header { min-height: 96px; height: auto; padding: 20px 18px; width: 100%; border-bottom: 1px solid #4c514c; gap: 8px; }
 .site-title { font-family: "Cinzel", Georgia, serif; color: #d4c39b; font-size: 22px !important; letter-spacing: .04em; padding: 0; }
+.docs-version, .docs-versions { flex: 0 0 auto; align-self: center; color: #ddd; font-size: 14px; line-height: 20px; margin: 0 12px 0 0; white-space: nowrap; }
+.docs-versions { position: relative; }
+.docs-versions summary, .docs-version { padding: 5px 10px; border: 1px solid #59616d; border-radius: 8px; background: #25272b; box-shadow: 0 1px 3px #0003; }
+.docs-versions summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.docs-versions summary::-webkit-details-marker { display: none; }
+.docs-versions summary::marker { content: ''; }
+.docs-versions summary svg { flex: none; color: #aeb7c4; }
+.docs-versions summary:hover, .docs-versions[open] summary { border-color: #8995a5; background: #2d3035; }
+.docs-versions[open] summary svg { transform: rotate(180deg); }
+.docs-versions ul { position: absolute; top: 100%; right: 0; min-width: 100%; margin: 6px 0 0; padding: 4px; list-style: none; background: #25272b; border: 1px solid #59616d; border-radius: 8px; box-shadow: 0 6px 18px #0005; z-index: 40; }
+.docs-versions a { display: block; padding: 6px 10px; border-radius: 4px; color: #ddd; text-decoration: none; }
+.docs-versions a:hover, .docs-versions a[aria-current] { color: #fff; background: #3a3a3a; }
 #guide-toggle { flex: 0 0 32px; width: 32px; height: 40px; padding: 0; color: #e0d1ae; background: #252e32; border: 1px solid #60665e; border-radius: 3px; font-size: 28px; cursor: pointer; }
 #guide-toggle:hover { background: #39454b; }
 #guide-navigation { display: block; flex: 1; overflow-y: auto; padding: 22px 16px 32px; scrollbar-width: thin; scrollbar-color: #556166 #101416; }
 #guide-navigation[hidden], .toc-collapsed #guide-navigation, .toc-collapsed .site-title { display: none; }
 .toc-collapsed .site-header { padding: 20px 9px; }
-.toc-label { color: #a8aa9f; font-size: 11px; text-transform: uppercase; letter-spacing: .18em; margin: 0 0 18px 8px; }
+.toc-label { display: block; padding: 0; border: 0; background: transparent; font-family: inherit; text-align: left; cursor: pointer; color: #a8aa9f; font-size: 11px; text-transform: uppercase; letter-spacing: .18em; margin: 0 0 18px 8px; }
+.toc-label:hover { color: #fff; }
 .guide-toc, .guide-toc ul { list-style: none; padding: 0; margin: 0; }
 .guide-section { margin: 3px 0; }
 .guide-section summary { position: relative; display: block; cursor: pointer; color: #8f9d9f; margin: 0; padding: 6px 8px 6px 24px; list-style: none; }
