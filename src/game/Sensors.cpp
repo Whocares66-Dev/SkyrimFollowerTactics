@@ -299,29 +299,39 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
     return ft::Stat{owner->GetActorValue(av), owner->GetPermanentActorValue(av) + temporary};
 }
 
+namespace
+{
+
+// Hands each spell of the engine's walk to `fn` once: the same spell can be
+// in the record's list and among the added spells, and every caller wants
+// it once.
+class OnceEach final : public RE::Actor::ForEachSpellVisitor
+{
+  public:
+    explicit OnceEach(const std::function<void(RE::SpellItem *)> &fn) : fn_(fn)
+    {
+    }
+
+    RE::BSContainer::ForEachResult Visit(RE::SpellItem *spell) override
+    {
+        if (spell && seen_.insert(spell).second)
+            fn_(spell);
+        return RE::BSContainer::ForEachResult::kContinue;
+    }
+
+  private:
+    const std::function<void(RE::SpellItem *)> &fn_;
+    std::unordered_set<const RE::SpellItem *> seen_;
+};
+
+} // namespace
+
 void ForEachSpell(RE::Actor *actor, const std::function<void(RE::SpellItem *)> &fn)
 {
     if (!actor)
         return;
-    // The same spell can be in the record's list and among the added
-    // spells; once is enough, and every caller wants it so.
-    std::unordered_set<const RE::SpellItem *> seen;
-    const auto once = [&](RE::SpellItem *spell) {
-        if (spell && seen.insert(spell).second)
-            fn(spell);
-    };
-    const auto walk = [&once](const RE::TESSpellList::SpellData *list) {
-        if (!list)
-            return;
-        for (std::uint32_t i = 0; i < list->numSpells; ++i)
-            once(list->spells[i]);
-    };
-    if (auto *npc = actor->GetActorBase())
-        walk(npc->GetSpellList());
-    if (auto *race = actor->GetRace())
-        walk(race->actorEffects);
-    for (auto *spell : actor->GetActorRuntimeData().addedSpells)
-        once(spell);
+    OnceEach once(fn);
+    actor->VisitSpells(once);
 }
 
 bool IsCastable(const RE::SpellItem *spell)

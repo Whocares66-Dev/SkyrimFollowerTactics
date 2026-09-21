@@ -329,17 +329,22 @@ struct ConsumableOption
 [[nodiscard]] bool IsCastable(const RE::SpellItem *spell);
 [[nodiscard]] bool IsPower(const RE::SpellItem *spell);
 
-// Walk every spell an actor has, from the three places the game keeps them.
-// Missing any loses spells that are plainly there:
+// Walk every spell an actor has, through the engine's own walk
+// (Actor::VisitSpells, what HasSpell and the combat AI's inventory use), so a
+// spell is here exactly when the game says the actor knows it. It reads four
+// places, and missing any loses spells that are plainly there:
+//   addedSpells             everything granted at runtime, which is what the
+//                           console's addspell writes to.
 //   TESNPC::GetSpellList()  what the character was authored with -- Marcurio's
 //                           destruction spells come from here.
 //   TESRace::actorEffects   the race's: the passive resistances, and the
 //                           racial power (Voice of the Emperor on an
 //                           Imperial), which is why the Powers chip is not
 //                           empty for a vanilla follower.
-//   addedSpells             everything granted at runtime, which is what the
-//                           console's addspell writes to.
-// The same spell can appear in more than one; callers dedupe by form.
+//   the record's leveled spell lists, as the actor's process resolved them.
+// Follower Progression answers the walk for its companions: a spell taught
+// from a tome is known without being added, and one of their own set aside
+// is not known (its dev/ENGINE_SPELLS.md). Each spell is handed over once.
 void ForEachSpell(RE::Actor *actor, const std::function<void(RE::SpellItem *)> &fn);
 
 // One line of the character sheet, already worded. Worded HERE, not in the
