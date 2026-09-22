@@ -96,7 +96,7 @@ project:
 
 ```powershell
 .\tools\build.ps1 -Preset core -Test        # 1. tests
-cmake --build --preset core --target format # 2. formatters, rewrite in place: C++, Python, PowerShell
+cmake --build --preset core --target format # 2. formatters, rewrite in place: C++, Python, PowerShell, CMake
 cmake --build --preset core --target tidy   # 3. linters: src/core and tests, Python, PowerShell (seconds; only what changed)
 .\tools\build.ps1 -Preset debug             # 4. the plugin builds
 ```
@@ -121,7 +121,7 @@ cmake --build --preset debug --target tidy  # the linter over src/game and src/p
 
 The second is the slower one -- every `src/game` translation unit parses the whole of CommonLibSSE, which no filter avoids and which the `/Y-` above means clang cannot precompile once and reuse. Spread across cores it is about a minute and a half against `src/core`'s twenty seconds, which is why it sits here rather than in the fast loop.
 
-(2) and (3) cover every language of ours: clang-format and clang-tidy for C++, ruff (`ruff.toml` says which rules and why) for Python, and PSScriptAnalyzer on its default rules for PowerShell, through `tools\check-powershell.ps1`. ruff and the PowerShell script find their own files, whatever git tracks or would track, so a script in a new folder is not missed. A tool that is not installed is said when CMake configures, and its language skipped: `pip install --user ruff`, and `Install-Module PSScriptAnalyzer -Scope CurrentUser` under pwsh 7.
+(2) and (3) cover every language of ours: clang-format and clang-tidy for C++, ruff (`ruff.toml` says which rules and why) for Python, PSScriptAnalyzer on its default rules for PowerShell, through `tools\check-powershell.ps1`, and gersemi (`.gersemirc`) for CMake, which is formatted but not linted (`cmake/Quality.cmake` says why). All but the C++ pair find their files through git, what it tracks or would track, so a script in a new folder is not missed; C++ is everything under `src` and `tests`. A tool that is not installed is said when CMake configures, and its language skipped: `pip install --user ruff gersemi`, and `Install-Module PSScriptAnalyzer -Scope CurrentUser` under pwsh 7.
 
 PSScriptAnalyzer's rule against `Write-Host` allows it inside a function whose verb is `Show`, so every script prints through the `Show-*` helpers in `tools\console.ps1`, dot-sourced at the top of each; a state-changing function declares `SupportsShouldProcess` and asks `$PSCmdlet.ShouldProcess` before it writes, which is what makes `-WhatIf` on the downgrade script honest.
 

@@ -1,0 +1,13 @@
+# gersemi: the CMake formatter, run by the build's format and format-check
+# targets (cmake/Quality.cmake). Its stock style, for the reason .clang-format
+# is a stock preset.
+#
+# The definitions teach it the commands we call that CMake does not define,
+# so it lays out their arguments by keyword. Catch2's catch_discover_tests
+# lives in a fetched or vcpkg tree whose path depends on the preset, so the
+# warning about an unknown command is off: such a command is still
+# formatted, only without knowing its keywords.
+definitions:
+  - CMakeLists.txt
+  - extern/commonlibsse-ng/cmake/CommonLibSSE.cmake
+warn_about_unknown_commands: false

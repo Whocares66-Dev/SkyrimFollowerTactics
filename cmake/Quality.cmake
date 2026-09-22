@@ -7,14 +7,21 @@
 #   C++         clang-format, clang-tidy
 #   Python      ruff format, ruff check
 #   PowerShell  PSScriptAnalyzer's Invoke-Formatter and Invoke-ScriptAnalyzer
+#   CMake       gersemi, a formatter only
+#
+# CMake has no linter here. cmake-lint (cmakelang) was tried on 2026-09-22:
+# every one of its 745 findings was layout or naming, and it has had no
+# release since 2021. The check that finds CMake bugs is CMake's own
+# --warn-uninitialized, clean over our files in both presets that day; it
+# fires in vcpkg's and CommonLibSSE's files too, so it is not on by default.
 #
 # Each formatter runs its stock style, and each linter the checks that find
-# bugs and costs, nothing stylistic: .clang-format, .clang-tidy and ruff.toml
-# say which; PSScriptAnalyzer runs its defaults.
+# bugs and costs, nothing stylistic: .clang-format, .clang-tidy, ruff.toml and
+# .gersemirc say which; PSScriptAnalyzer runs its defaults.
 #
 # clang-format and clang-tidy ship inside Visual Studio (VC\Tools\Llvm\x64\bin)
 # as the "C++ Clang tools for Windows" component, so they are not an extra
-# dependency on an MSVC box. ruff is `pip install --user ruff`, and
+# dependency on an MSVC box. ruff and gersemi are `pip install --user`, and
 # PSScriptAnalyzer `Install-Module PSScriptAnalyzer -Scope CurrentUser`. A tool
 # that is missing is said at configure time, and its language skipped.
 
@@ -48,6 +55,38 @@ endif()
 if(NOT FT_RUFF)
     message(STATUS "ruff: NOT FOUND -- Python is not formatted or linted; pip install --user ruff")
 endif()
+
+# gersemi the same way. It walks into build/ and extern/ if given a folder, so
+# it is given git's list instead. Read here, at configure time, and not stale:
+# a new CMake file does nothing until a CMakeLists.txt includes it, and that
+# edit reconfigures.
+set(FT_GERSEMI "")
+if(Python3_Interpreter_FOUND)
+    execute_process(COMMAND "${Python3_EXECUTABLE}" -m gersemi --version
+                    RESULT_VARIABLE _gersemi_result OUTPUT_VARIABLE _gersemi_version
+                    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(_gersemi_result EQUAL 0)
+        set(FT_GERSEMI "${Python3_EXECUTABLE}" -m gersemi)
+        message(STATUS "gersemi: ${_gersemi_version}")
+    endif()
+endif()
+if(FT_GERSEMI)
+    execute_process(COMMAND git ls-files --cached --others --exclude-standard -- "*.cmake" "*CMakeLists.txt"
+                    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                    RESULT_VARIABLE _git_result OUTPUT_VARIABLE FT_CMAKE_FILES
+                    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _git_result EQUAL 0 OR NOT FT_CMAKE_FILES)
+        message(STATUS "gersemi: no CMake files from git -- CMake is not formatted")
+        set(FT_GERSEMI "")
+    else()
+        string(REPLACE "\n" ";" FT_CMAKE_FILES "${FT_CMAKE_FILES}")
+    endif()
+else()
+    message(STATUS "gersemi: NOT FOUND -- CMake is not formatted; pip install --user gersemi")
+endif()
+unset(_gersemi_result)
+unset(_gersemi_version)
+unset(_git_result)
 
 set(FT_PSCHECK "")
 find_program(FT_PWSH NAMES pwsh)
@@ -95,6 +134,10 @@ if(FT_RUFF)
     list(APPEND FT_FORMAT_COMMANDS COMMAND ${FT_RUFF} format --quiet)
     list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND ${FT_RUFF} format --check)
 endif()
+if(FT_GERSEMI)
+    list(APPEND FT_FORMAT_COMMANDS COMMAND ${FT_GERSEMI} --in-place --quiet ${FT_CMAKE_FILES})
+    list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND ${FT_GERSEMI} --check ${FT_CMAKE_FILES})
+endif()
 if(FT_PSCHECK)
     list(APPEND FT_FORMAT_COMMANDS COMMAND ${FT_PSCHECK} -Mode Format)
     list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND ${FT_PSCHECK} -Mode FormatCheck)
@@ -102,11 +145,11 @@ endif()
 if(FT_FORMAT_COMMANDS)
     add_custom_target(format ${FT_FORMAT_COMMANDS}
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        COMMENT "Formatting C++, Python and PowerShell"
+        COMMENT "Formatting C++, Python, PowerShell and CMake"
         VERBATIM)
     add_custom_target(format-check ${FT_FORMAT_CHECK_COMMANDS}
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        COMMENT "Checking the formatting of C++, Python and PowerShell"
+        COMMENT "Checking the formatting of C++, Python, PowerShell and CMake"
         VERBATIM)
 endif()
 
