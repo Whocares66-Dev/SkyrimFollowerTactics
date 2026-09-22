@@ -5,6 +5,7 @@
 #include <functional>
 #include <limits>
 #include <numbers>
+#include <optional>
 
 namespace ft
 {
@@ -103,6 +104,80 @@ bool Crosses(TreePoint a, TreePoint b, const Box &box)
     return meet(a, b, tl, tr) || meet(a, b, tr, br) || meet(a, b, br, bl) || meet(a, b, bl, tl);
 }
 
+// A point on a link's curve, `t` of the way along it.
+TreePoint Along(const TreeLink &link, float t)
+{
+    const float u = 1.0f - t;
+    return {u * u * link.a.x + 2.0f * u * t * link.control.x + t * t * link.b.x,
+            u * u * link.a.y + 2.0f * u * t * link.control.y + t * t * link.b.y};
+}
+
+// The link between two nodes, drawn clear of every other circle between
+// them. The curve stands 2(1-t)t of its control's offset off the straight
+// line at `t`, so a node standing `t` of the way along, `across` from the
+// line, is cleared by pushing the control `(want +- across) / 2(1-t)t` the
+// other way. The side asking the smaller push wins. The push is capped: a
+// node nearly on one end stands where the curve has barely left the line,
+// and would otherwise throw the control across the page. Nothing is drawn
+// between two circles that touch.
+std::optional<TreeLink> LinkBetween(const std::vector<TreePoint> &centres, std::size_t from, std::size_t to, float ring,
+                                    float clear)
+{
+    const TreePoint a = centres[from];
+    const TreePoint b = centres[to];
+    const float dx = b.x - a.x;
+    const float dy = b.y - a.y;
+    const float length = std::sqrt(dx * dx + dy * dy);
+    if (length <= 2.0f * ring)
+        return std::nullopt;
+    const float alongX = dx / length;
+    const float alongY = dy / length;
+    const float asideX = -alongY;
+    const float asideY = alongX;
+    const float want = ring + clear;
+    float push[2]{0.0f, 0.0f}; // the way `aside` points, and the other way
+    for (std::size_t j = 0; j < centres.size(); ++j)
+    {
+        if (j == from || j == to)
+            continue;
+        const float toX = centres[j].x - a.x;
+        const float toY = centres[j].y - a.y;
+        const float along = (toX * alongX + toY * alongY) / length;
+        if (along <= 0.0f || along >= 1.0f)
+            continue; // past an end: the ends' own circles are where the link starts
+        const float across = toX * asideX + toY * asideY;
+        if (std::abs(across) >= want)
+            continue; // the link already passes wide of it
+        const float share = 2.0f * (1.0f - along) * along;
+        push[0] = (std::max)(push[0], (want + across) / share);
+        push[1] = (std::max)(push[1], (want - across) / share);
+    }
+    TreeLink link;
+    link.from = from;
+    link.to = to;
+    link.control = {(a.x + b.x) / 2.0f, (a.y + b.y) / 2.0f};
+    if (push[0] > 0.0f || push[1] > 0.0f)
+    {
+        constexpr float kMostBow = 4.0f; // of what a circle asks
+        const bool aside = push[0] <= push[1];
+        const float bow = (std::min)(aside ? push[0] : push[1], kMostBow * want);
+        const float side = aside ? bow : -bow;
+        link.control = {link.control.x + asideX * side, link.control.y + asideY * side};
+        link.bowed = true;
+    }
+    // From one circle's edge to the other's, each along the way the curve
+    // leaves it -- toward the control, which is the middle when straight.
+    const auto edge = [&](TreePoint p) {
+        const float toX = link.control.x - p.x;
+        const float toY = link.control.y - p.y;
+        const float reach = std::sqrt(toX * toX + toY * toY);
+        return reach > 0.0f ? TreePoint{p.x + toX / reach * ring, p.y + toY / reach * ring} : p;
+    };
+    link.a = edge(a);
+    link.b = edge(b);
+    return link;
+}
+
 // The places a label is tried in, from its outer side round.
 constexpr LabelPlace kFromLeft[] = {LabelPlace::Left, LabelPlace::UpLeft, LabelPlace::DownLeft, LabelPlace::Up,
                                     LabelPlace::Down, LabelPlace::Right,  LabelPlace::UpRight,  LabelPlace::DownRight};
@@ -194,6 +269,15 @@ TreeDrawing LayOutTree(const std::vector<PerkTreeNode> &nodes, const std::vector
         out.centres.push_back({static_cast<float>(offset + scale * across[i]), bottom - level * (bottom - top)});
     }
 
+    // The links, each bowed past any node standing between its ends, so a
+    // link that passes a node is not read as one that meets it. A node is
+    // cleared by `gap`, the same air a label is given.
+    for (std::size_t i = 0; i < n; ++i)
+        for (const std::size_t child : nodes[i].children)
+            if (child < n && child != i)
+                if (const auto link = LinkBetween(out.centres, i, child, ring, gap))
+                    out.links.push_back(*link);
+
     // The labels: each at the place about its circle that runs into the
     // least, given where the others are; three passes, in the nodes' order,
     // so the drawing is the same every time.
@@ -229,18 +313,21 @@ TreeDrawing LayOutTree(const std::vector<PerkTreeNode> &nodes, const std::vector
     out.places.resize(n);
     for (std::size_t i = 0; i < n; ++i)
         out.places[i] = outerLeft[i] ? LabelPlace::Left : LabelPlace::Right;
-    // A link as drawn: from one circle's edge to the other's.
-    const auto crosses = [&](std::size_t from, std::size_t to, const Box &box) {
-        const TreePoint a = out.centres[from];
-        const TreePoint b = out.centres[to];
-        const float dx = b.x - a.x;
-        const float dy = b.y - a.y;
-        const float length = std::sqrt(dx * dx + dy * dy);
-        if (length <= 2.0f * ring)
-            return false;
-        const float ux = dx / length * ring;
-        const float uy = dy / length * ring;
-        return Crosses({a.x + ux, a.y + uy}, {b.x - ux, b.y - uy}, box);
+    // A link as drawn: the straight ones as they are, a bowed one in pieces
+    // of its curve, which is near enough the curve for a label's sake.
+    const auto crosses = [&](const TreeLink &link, const Box &box) {
+        if (!link.bowed)
+            return Crosses(link.a, link.b, box);
+        constexpr int kPieces = 8;
+        TreePoint previous = link.a;
+        for (int k = 1; k <= kPieces; ++k)
+        {
+            const TreePoint at = Along(link, static_cast<float>(k) / static_cast<float>(kPieces));
+            if (Crosses(previous, at, box))
+                return true;
+            previous = at;
+        }
+        return false;
     };
     const auto cost = [&](std::size_t i, LabelPlace place, int preference) {
         if (labelOf(i) <= 0.0f)
@@ -256,12 +343,11 @@ TreeDrawing LayOutTree(const std::vector<PerkTreeNode> &nodes, const std::vector
                 total += mine.Meets(circleOf(j)) ? 100 : 0;
                 total += labelOf(j) > 0.0f && mine.Meets(labelBox(j, out.places[j])) ? 100 : 0;
             }
-            // Every link, this node's own among them: a label over the line
-            // into it hides the line as much as any other.
-            for (const std::size_t child : nodes[j].children)
-                if (child < n)
-                    total += crosses(j, child, mine) ? 30 : 0;
         }
+        // Every link, this node's own among them: a label over the line
+        // into it hides the line as much as any other.
+        for (const TreeLink &link : out.links)
+            total += crosses(link, mine) ? 30 : 0;
         return total;
     };
     for (int pass = 0; pass < 3; ++pass)

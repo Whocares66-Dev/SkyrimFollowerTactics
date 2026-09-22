@@ -175,6 +175,68 @@ TEST_CASE("a label keeps off its own node's link when another place is clear", "
     CHECK(d.centres[2].y == Approx(unlinked.centres[2].y));
 }
 
+TEST_CASE("a link runs from one circle's edge to the other's, and none is drawn between circles that touch",
+          "[perktree]")
+{
+    std::vector<ft::PerkTreeNode> nodes{At(0.0, 0.0f), At(0.0, 100.0f)};
+    nodes[0].children = {1};
+    const auto d = Draw(nodes, {}, 400.0f, 216.0f);
+    REQUIRE(d.links.size() == 1);
+    const ft::TreeLink &link = d.links.front();
+    CHECK(link.from == 0);
+    CHECK(link.to == 1);
+    CHECK_FALSE(link.bowed); // nothing stands in its way
+    // Straight up the column, a ring's reach in from each centre.
+    CHECK(link.a.x == Approx(d.centres[0].x));
+    CHECK(link.a.y == Approx(d.centres[0].y - kRing));
+    CHECK(link.b.y == Approx(d.centres[1].y + kRing));
+
+    // In a box so short that the two circles touch, there is nowhere to
+    // draw it.
+    const auto squeezed = Draw(nodes, {}, 400.0f, 2.0f * kRing + 4.0f);
+    CHECK(squeezed.links.empty());
+}
+
+TEST_CASE("a link bows clear of a node standing between its ends", "[perktree]")
+{
+    // Three in one column: the lowest links to the highest, and the middle
+    // one is on the line between them, as Adamant's Alteration tree has it.
+    std::vector<ft::PerkTreeNode> nodes{At(0.0, 0.0f), At(0.0, 50.0f), At(0.0, 100.0f)};
+    nodes[0].children = {2};
+    const auto d = Draw(nodes, {}, 400.0f, 216.0f);
+    REQUIRE(d.links.size() == 1);
+    const ft::TreeLink &link = d.links.front();
+    CHECK(link.bowed);
+    // Every point of the curve keeps clear of the circle it passes.
+    const auto along = [&](float t) {
+        const float u = 1.0f - t;
+        return ft::TreePoint{u * u * link.a.x + 2.0f * u * t * link.control.x + t * t * link.b.x,
+                             u * u * link.a.y + 2.0f * u * t * link.control.y + t * t * link.b.y};
+    };
+    float nearest = 1e9f;
+    for (int step = 0; step <= 100; ++step)
+    {
+        const ft::TreePoint at = along(static_cast<float>(step) / 100.0f);
+        nearest = (std::min)(nearest, std::hypot(at.x - d.centres[1].x, at.y - d.centres[1].y));
+    }
+    CHECK(nearest >= kRing);
+    // It still starts and ends on its own circles.
+    CHECK(std::hypot(link.a.x - d.centres[0].x, link.a.y - d.centres[0].y) == Approx(kRing));
+    CHECK(std::hypot(link.b.x - d.centres[2].x, link.b.y - d.centres[2].y) == Approx(kRing));
+    // And the middle one's own links, to nobody, are not drawn.
+    CHECK(d.links.size() == 1);
+}
+
+TEST_CASE("a node beside the line between two others leaves their link straight", "[perktree]")
+{
+    // The same three, the middle one a column over: nothing to bow around.
+    std::vector<ft::PerkTreeNode> nodes{At(0.0, 0.0f), At(1.0, 50.0f), At(0.0, 100.0f)};
+    nodes[0].children = {2};
+    const auto d = Draw(nodes, {}, 400.0f, 216.0f);
+    REQUIRE(d.links.size() == 1);
+    CHECK_FALSE(d.links.front().bowed);
+}
+
 TEST_CASE("a tree one node wide, or of one node, sits in the middle", "[perktree]")
 {
     const auto column = Draw({At(1.5, 0.0f), At(1.5, 100.0f)}, {}, 100.0f, 200.0f);

@@ -81,14 +81,31 @@ enum class LabelPlace : std::uint8_t
     Down,
 };
 
+// A link from one node to another as the page draws it: from one circle's
+// edge to the other's, as a quadratic curve through `control`. A link with
+// nothing in its way is straight, and its control is the middle, where the
+// curve is the line; one that would otherwise run through a third node's
+// circle bows past it, so a link that passes a node is seen to pass it
+// rather than to meet it.
+struct TreeLink
+{
+    std::size_t from{0}; // indices into the tree's nodes
+    std::size_t to{0};
+    TreePoint a;
+    TreePoint b;
+    TreePoint control;
+    bool bowed{false};
+};
+
 // A tree as the page draws it, in a box `width` by `height` from its
-// top-left corner: each node's centre, and where its label goes -- the
-// place, and the label's own top-left corner.
+// top-left corner: each node's centre, where its label goes -- the place,
+// and the label's own top-left corner -- and the links between the nodes.
 struct TreeDrawing
 {
     std::vector<TreePoint> centres;
     std::vector<LabelPlace> places;
     std::vector<TreePoint> labels;
+    std::vector<TreeLink> links;
 };
 
 // Across, the tree's columns as the menu orders them (mirrored), evenly
@@ -102,7 +119,9 @@ struct TreeDrawing
 // runs into the least: off the page worst, then another node's circle or
 // label, then a link drawn through it; the outer side (LabelsLeft) first
 // among equals. When no stretch keeps the labels in, the circles alone are
-// fitted and the labels spill.
+// fitted and the labels spill. The links come with the places they run
+// through, bowed clear of any node between their ends; a link whose circles
+// touch is left out, having nowhere to be drawn.
 [[nodiscard]] TreeDrawing LayOutTree(const std::vector<PerkTreeNode> &nodes, const std::vector<float> &labelWidth,
                                      float ring, float gap, float lineHeight, float width, float height);
 

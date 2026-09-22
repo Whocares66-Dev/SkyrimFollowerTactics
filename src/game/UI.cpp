@@ -5908,25 +5908,22 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
     const auto theirsGiven = Im::GetColorU32(Im::ImVec4(kTheirOwn.x, kTheirOwn.y, kTheirOwn.z, 0.45f));
     const auto centre = [&](std::size_t i) { return Im::ImVec2(origin.x + at[i].x, origin.y + at[i].y); };
 
-    // The links first, each from one circle's edge to the other's.
-    for (std::size_t i = 0; i < tree.nodes.size(); ++i)
-        for (const std::size_t child : tree.nodes[i].children)
-        {
-            if (child >= tree.nodes.size())
-                continue;
-            const Im::ImVec2 a = centre(i);
-            const Im::ImVec2 b = centre(child);
-            const float dx = b.x - a.x;
-            const float dy = b.y - a.y;
-            const float length = std::sqrt(dx * dx + dy * dy);
-            if (length <= 2.0f * radius)
-                continue;
-            const float ux = dx / length * radius;
-            const float uy = dy / length * radius;
-            const bool taken = tree.nodes[i].held > 0 && tree.nodes[child].held > 0;
-            Im::ImDrawListManager::AddLine(draw, Im::ImVec2(a.x + ux, a.y + uy), Im::ImVec2(b.x - ux, b.y - uy),
-                                           taken ? ink : dim, taken ? 2.0f : 1.0f);
-        }
+    // The links first, each from one circle's edge to the other's, and bowed
+    // past any node between them (core/PerkTree.h) so a link that passes a
+    // node is not read as one that meets it.
+    for (const ft::TreeLink &link : drawing.links)
+    {
+        const Im::ImVec2 a(origin.x + link.a.x, origin.y + link.a.y);
+        const Im::ImVec2 b(origin.x + link.b.x, origin.y + link.b.y);
+        const bool taken = tree.nodes[link.from].held > 0 && tree.nodes[link.to].held > 0;
+        const auto colour = taken ? ink : dim;
+        const float thickness = taken ? 2.0f : 1.0f;
+        if (link.bowed)
+            Im::ImDrawListManager::AddBezierQuadratic(
+                draw, a, Im::ImVec2(origin.x + link.control.x, origin.y + link.control.y), b, colour, thickness, 0);
+        else
+            Im::ImDrawListManager::AddLine(draw, a, b, colour, thickness);
+    }
 
     std::size_t hovered = tree.nodes.size();
     for (std::size_t i = 0; i < tree.nodes.size(); ++i)
