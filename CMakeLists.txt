@@ -2,12 +2,20 @@ cmake_minimum_required(VERSION 3.21)
 
 project(FollowerTactics VERSION 0.3.0 LANGUAGES CXX)
 
-option(FT_BUILD_PLUGIN "Build the SKSE plugin (needs CommonLibSSE-NG, Windows only)" ${WIN32})
-option(FT_BUILD_TESTS  "Build the core unit tests (no game required)"                ON)
+option(
+    FT_BUILD_PLUGIN
+    "Build the SKSE plugin (needs CommonLibSSE-NG, Windows only)"
+    ${WIN32}
+)
+option(FT_BUILD_TESTS "Build the core unit tests (no game required)" ON)
 
-option(FT_SANITIZE     "Build with AddressSanitizer + UBSan where available"      OFF)
-option(FT_ANALYZE      "MSVC static analysis (/analyze) on our own targets"          OFF)
-option(FT_COVERAGE     "Instrument for test coverage (clang-cl only; core-cov preset)" OFF)
+option(FT_SANITIZE "Build with AddressSanitizer + UBSan where available" OFF)
+option(FT_ANALYZE "MSVC static analysis (/analyze) on our own targets" OFF)
+option(
+    FT_COVERAGE
+    "Instrument for test coverage (clang-cl only; core-cov preset)"
+    OFF
+)
 
 # ---------------------------------------------------------------------------
 # Shared compile hygiene. The core engine is the only part of this project that
@@ -28,12 +36,18 @@ function(ft_apply_warnings target)
             # STL, CommonLibSSE, the menu framework (whose vendored header
             # has W4 findings of its own). Their warnings are not ours to
             # fix, so they are not shown; /analyze below skips them too.
-            target_compile_options(${target} PRIVATE /external:anglebrackets /external:W0)
+            target_compile_options(
+                ${target}
+                PRIVATE /external:anglebrackets /external:W0
+            )
         else()
             # clang's /W4 includes -Wextra, which warns when an aggregate
             # init leaves trailing members out. Those are value-initialised,
             # by the standard; the tests do it on purpose, everywhere.
-            target_compile_options(${target} PRIVATE -Wno-missing-field-initializers)
+            target_compile_options(
+                ${target}
+                PRIVATE -Wno-missing-field-initializers
+            )
         endif()
         # Microsoft's static analyser, a different engine from clang-tidy's:
         # null dereferences, uninitialised members, buffer bounds through
@@ -43,10 +57,16 @@ function(ft_apply_warnings target)
         # analysed only for what our code passes into them. clang-cl
         # accepts MSVC's flags but not this one.
         if(FT_ANALYZE AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-            target_compile_options(${target} PRIVATE /analyze /analyze:external-)
+            target_compile_options(
+                ${target}
+                PRIVATE /analyze /analyze:external-
+            )
         endif()
     else()
-        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wconversion)
+        target_compile_options(
+            ${target}
+            PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wconversion
+        )
     endif()
 endfunction()
 
@@ -62,12 +82,23 @@ if(FT_SANITIZE)
         add_compile_options(/fsanitize=address /Oy-)
         add_link_options(/INCREMENTAL:NO)
         # ASan is incompatible with /RTC1, which CMake puts in the Debug flags.
-        string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+        string(
+            REPLACE "/RTC1"
+            ""
+            CMAKE_CXX_FLAGS_DEBUG
+            "${CMAKE_CXX_FLAGS_DEBUG}"
+        )
     else()
-        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+        add_compile_options(
+            -fsanitize=address,undefined
+            -fno-omit-frame-pointer
+        )
         add_link_options(-fsanitize=address,undefined)
     endif()
-    message(STATUS "FT_SANITIZE: AddressSanitizer enabled for the whole build tree")
+    message(
+        STATUS
+        "FT_SANITIZE: AddressSanitizer enabled for the whole build tree"
+    )
 endif()
 
 # Test coverage, clang's source-based kind: every region of ft_core and
@@ -80,14 +111,23 @@ endif()
 # is put on the library path here.
 if(FT_COVERAGE)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        message(FATAL_ERROR "FT_COVERAGE needs clang-cl (use the core-cov preset); "
-                            "compiler is ${CMAKE_CXX_COMPILER_ID}")
+        message(
+            FATAL_ERROR
+            "FT_COVERAGE needs clang-cl (use the core-cov preset); "
+            "compiler is ${CMAKE_CXX_COMPILER_ID}"
+        )
     endif()
-    execute_process(COMMAND "${CMAKE_CXX_COMPILER}" /clang:-print-resource-dir
-                    OUTPUT_VARIABLE _clang_resource_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(
+        COMMAND "${CMAKE_CXX_COMPILER}" /clang:-print-resource-dir
+        OUTPUT_VARIABLE _clang_resource_dir
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
     link_directories("${_clang_resource_dir}/lib/windows")
     add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
-    message(STATUS "FT_COVERAGE: instrumenting; profile runtime from ${_clang_resource_dir}/lib/windows")
+    message(
+        STATUS
+        "FT_COVERAGE: instrumenting; profile runtime from ${_clang_resource_dir}/lib/windows"
+    )
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -102,7 +142,9 @@ include(Quality)
 # the game. If you ever find yourself wanting to #include "RE/Skyrim.h" here,
 # the code you are writing belongs in src/game/ instead.
 # ---------------------------------------------------------------------------
-add_library(ft_core STATIC
+add_library(
+    ft_core
+    STATIC
     src/core/Archive.cpp
     src/core/BagView.cpp
     src/core/Bash.cpp
@@ -154,10 +196,14 @@ find_package(nlohmann_json 3 CONFIG QUIET)
 if(NOT nlohmann_json_FOUND)
     message(STATUS "nlohmann_json not found via find_package; fetching it.")
     include(FetchContent)
-    FetchContent_Declare(nlohmann_json
-        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-        URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_Declare(
+        nlohmann_json
+        URL
+            https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+        URL_HASH
+            SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
 target_link_libraries(ft_core PRIVATE nlohmann_json::nlohmann_json)
@@ -168,7 +214,9 @@ target_link_libraries(ft_core PRIVATE nlohmann_json::nlohmann_json)
 # companions. The same rule as ft_core: no RE:: type, no CommonLibSSE; the
 # plugin links it and tests/progression tests it. dev/PROGRESSION.md.
 # ---------------------------------------------------------------------------
-add_library(fp_core STATIC
+add_library(
+    fp_core
+    STATIC
     src/progression/core/Companion.cpp
     src/progression/core/Ids.cpp
     src/progression/core/Levelling.cpp
@@ -207,9 +255,24 @@ if(FT_BUILD_PLUGIN)
     # (SE, AE) pair in src/game/Addresses.h, each half read on its own
     # build (dev/VERSIONS.md), so the one DLL runs on both lines. VR is a
     # third library again, one nobody here can read or run, so it stays off.
-    set(ENABLE_SKYRIM_SE ON CACHE BOOL "Skyrim SE support in CommonLibSSE" FORCE)
-    set(ENABLE_SKYRIM_VR OFF CACHE BOOL "Skyrim VR support in CommonLibSSE" FORCE)
-    set(ENABLE_SKYRIM_AE ON CACHE BOOL "Skyrim AE support in CommonLibSSE" FORCE)
+    set(ENABLE_SKYRIM_SE
+        ON
+        CACHE BOOL
+        "Skyrim SE support in CommonLibSSE"
+        FORCE
+    )
+    set(ENABLE_SKYRIM_VR
+        OFF
+        CACHE BOOL
+        "Skyrim VR support in CommonLibSSE"
+        FORCE
+    )
+    set(ENABLE_SKYRIM_AE
+        ON
+        CACHE BOOL
+        "Skyrim AE support in CommonLibSSE"
+        FORCE
+    )
     add_subdirectory(extern/commonlibsse-ng EXCLUDE_FROM_ALL)
     # add_commonlibsse_plugin: the library's CMakeLists includes it only on
     # its prebuilt path (7.5.1), so the source build includes it here.
@@ -217,40 +280,43 @@ if(FT_BUILD_PLUGIN)
 
     # src/game/ -- every RE:: call lives here. Thin, imperative, verified by
     # playing. Nothing in here may be #included from src/core/.
-    add_commonlibsse_plugin(${PROJECT_NAME} SOURCES
-        src/plugin.cpp
-        src/game/Log.cpp
-        src/game/Sensors.cpp
-        src/game/Sheet.cpp
-        src/game/Inventory.cpp
-        src/game/Magic.cpp
-        src/game/Pins.cpp
-        src/game/Hits.cpp
-        src/game/I18n.cpp
-        src/game/Actions.cpp
-        src/game/Blows.cpp
-        src/game/PlayerCast.cpp
-        src/game/Tactics.cpp
-        src/game/Util.cpp
-        src/game/UI.cpp
-        src/game/Packages.cpp
-        src/game/Forms.cpp
-        src/game/Profiles.cpp
-        src/game/Settings.cpp
-        src/game/CustomSkillsFramework.cpp
-        # Progression (dev/PROGRESSION.md)
-        src/progression/game/Actors.cpp
-        src/progression/game/Events.cpp
-        src/progression/game/Forms.cpp
-        src/progression/game/Learning.cpp
-        src/progression/game/Persistence.cpp
-        src/progression/game/PerkTrees.cpp
-        src/progression/game/PerkView.cpp
-        src/progression/game/Rules.cpp
-        src/progression/game/Service.cpp
-        src/progression/game/SpellView.cpp
-        src/progression/game/Tomes.cpp
-        src/progression/game/ValueView.cpp)
+    add_commonlibsse_plugin(
+        ${PROJECT_NAME}
+        SOURCES
+            src/plugin.cpp
+            src/game/Log.cpp
+            src/game/Sensors.cpp
+            src/game/Sheet.cpp
+            src/game/Inventory.cpp
+            src/game/Magic.cpp
+            src/game/Pins.cpp
+            src/game/Hits.cpp
+            src/game/I18n.cpp
+            src/game/Actions.cpp
+            src/game/Blows.cpp
+            src/game/PlayerCast.cpp
+            src/game/Tactics.cpp
+            src/game/Util.cpp
+            src/game/UI.cpp
+            src/game/Packages.cpp
+            src/game/Forms.cpp
+            src/game/Profiles.cpp
+            src/game/Settings.cpp
+            src/game/CustomSkillsFramework.cpp
+            # Progression (dev/PROGRESSION.md)
+            src/progression/game/Actors.cpp
+            src/progression/game/Events.cpp
+            src/progression/game/Forms.cpp
+            src/progression/game/Learning.cpp
+            src/progression/game/Persistence.cpp
+            src/progression/game/PerkTrees.cpp
+            src/progression/game/PerkView.cpp
+            src/progression/game/Rules.cpp
+            src/progression/game/Service.cpp
+            src/progression/game/SpellView.cpp
+            src/progression/game/Tomes.cpp
+            src/progression/game/ValueView.cpp
+    )
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
     # These are Skyrim/Windows-API concerns and belong to THIS target only.
@@ -259,12 +325,18 @@ if(FT_BUILD_PLUGIN)
     # flipped Catch2's entry point from main() to wmain(), and the test
     # executable then failed to link with an unresolved external 'main'
     # that pointed nowhere near the actual cause.
-    target_compile_definitions(${PROJECT_NAME} PRIVATE
-        WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
-        # Every structured log line carries the build that wrote it
-        # (dev/LOGGING.md's envelope), so a .jsonl attached to a bug report
-        # says which version produced it without anyone having to ask.
-        FT_VERSION="${PROJECT_VERSION}")
+    target_compile_definitions(
+        ${PROJECT_NAME}
+        PRIVATE
+            WIN32_LEAN_AND_MEAN
+            NOMINMAX
+            UNICODE
+            _UNICODE
+            # Every structured log line carries the build that wrote it
+            # (dev/LOGGING.md's envelope), so a .jsonl attached to a bug report
+            # says which version produced it without anyone having to ask.
+            FT_VERSION="${PROJECT_VERSION}"
+    )
     ft_apply_warnings(${PROJECT_NAME})
     # A release build keeps its .pdb -- in build\release, not in the package
     # (27 MB against a 1 MB DLL) -- so a crash log's "FollowerTactics.dll
@@ -272,7 +344,10 @@ if(FT_BUILD_PLUGIN)
     # Souls crash of 2026-09-08 took one). The linker folds and strips as
     # usual.
     target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/Zi>)
-    target_link_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/DEBUG:FULL /OPT:REF /OPT:ICF>)
+    target_link_options(
+        ${PROJECT_NAME}
+        PRIVATE $<$<CONFIG:Release>:/DEBUG:FULL /OPT:REF /OPT:ICF>
+    )
     # The SKSE Menu Framework SDK is a single vendored header. It declares the
     # whole ImGui API under namespace ImGuiMCP and forwards every call into
     # SKSEMenuFramework.dll via GetProcAddress, so there is nothing to link --
@@ -280,18 +355,26 @@ if(FT_BUILD_PLUGIN)
     # this mod" reads as if imgui were a build dependency; it is not.
     # Not committed -- see extern/SKSEMenuFramework/README.md. Fail here with
     # something actionable rather than 200 lines of "ImGuiMCP is undeclared".
-    if(NOT EXISTS "${CMAKE_SOURCE_DIR}/extern/SKSEMenuFramework/SKSEMenuFramework.h")
-        message(FATAL_ERROR
+    if(
+        NOT EXISTS
+            "${CMAKE_SOURCE_DIR}/extern/SKSEMenuFramework/SKSEMenuFramework.h"
+    )
+        message(
+            FATAL_ERROR
             "Missing extern/SKSEMenuFramework/SKSEMenuFramework.h.\n"
             "Download \"SKSEMenuFramework Header\" from the Files tab of\n"
             "  https://www.nexusmods.com/skyrimspecialedition/mods/120352\n"
-            "and extract it there. See extern/SKSEMenuFramework/README.md.")
+            "and extract it there. See extern/SKSEMenuFramework/README.md."
+        )
     endif()
 
     target_include_directories(${PROJECT_NAME} PRIVATE extern/SKSEMenuFramework)
 
     target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ft_core fp_core nlohmann_json::nlohmann_json)
+    target_link_libraries(
+        ${PROJECT_NAME}
+        PRIVATE ft_core fp_core nlohmann_json::nlohmann_json
+    )
 
     # Microsoft Detours, for the one function-ENTRY hook (Pins.cpp, on
     # ActorEquipManager::EquipObject). CommonLibSSE's trampoline
@@ -303,7 +386,6 @@ if(FT_BUILD_PLUGIN)
     find_library(DETOURS_LIBRARY detours REQUIRED)
     target_include_directories(${PROJECT_NAME} PRIVATE ${DETOURS_INCLUDE_DIRS})
     target_link_libraries(${PROJECT_NAME} PRIVATE ${DETOURS_LIBRARY})
-
 endif()
 
 # ---------------------------------------------------------------------------

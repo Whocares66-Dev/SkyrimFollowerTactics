@@ -31,29 +31,37 @@ set(_llvm_hints
     "$ENV{ProgramFiles}/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin"
     "$ENV{ProgramFiles}/Microsoft Visual Studio/2022/Professional/VC/Tools/Llvm/x64/bin"
     "$ENV{ProgramFiles}/Microsoft Visual Studio/2022/Enterprise/VC/Tools/Llvm/x64/bin"
-    "$ENV{ProgramFiles}/LLVM/bin")
+    "$ENV{ProgramFiles}/LLVM/bin"
+)
 
-find_program(FT_CLANG_FORMAT  NAMES clang-format  HINTS ${_llvm_hints})
-find_program(FT_CLANG_TIDY    NAMES clang-tidy    HINTS ${_llvm_hints})
+find_program(FT_CLANG_FORMAT NAMES clang-format HINTS ${_llvm_hints})
+find_program(FT_CLANG_TIDY NAMES clang-tidy HINTS ${_llvm_hints})
 # For the `coverage` target (tests/CMakeLists.txt); same LLVM, same place.
 find_program(FT_LLVM_PROFDATA NAMES llvm-profdata HINTS ${_llvm_hints})
-find_program(FT_LLVM_COV      NAMES llvm-cov      HINTS ${_llvm_hints})
+find_program(FT_LLVM_COV NAMES llvm-cov HINTS ${_llvm_hints})
 
 # ruff by `python -m`: pip's --user install puts ruff.exe in a Scripts folder
 # that is not on PATH, so find_program would miss it.
 set(FT_RUFF "")
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
-    execute_process(COMMAND "${Python3_EXECUTABLE}" -m ruff --version
-                    RESULT_VARIABLE _ruff_result OUTPUT_VARIABLE _ruff_version
-                    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -m ruff --version
+        RESULT_VARIABLE _ruff_result
+        OUTPUT_VARIABLE _ruff_version
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
     if(_ruff_result EQUAL 0)
         set(FT_RUFF "${Python3_EXECUTABLE}" -m ruff)
         message(STATUS "ruff: ${_ruff_version} (${Python3_EXECUTABLE})")
     endif()
 endif()
 if(NOT FT_RUFF)
-    message(STATUS "ruff: NOT FOUND -- Python is not formatted or linted; pip install --user ruff")
+    message(
+        STATUS
+        "ruff: NOT FOUND -- Python is not formatted or linted; pip install --user ruff"
+    )
 endif()
 
 # gersemi the same way. It walks into build/ and extern/ if given a folder, so
@@ -62,27 +70,43 @@ endif()
 # edit reconfigures.
 set(FT_GERSEMI "")
 if(Python3_Interpreter_FOUND)
-    execute_process(COMMAND "${Python3_EXECUTABLE}" -m gersemi --version
-                    RESULT_VARIABLE _gersemi_result OUTPUT_VARIABLE _gersemi_version
-                    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -m gersemi --version
+        RESULT_VARIABLE _gersemi_result
+        OUTPUT_VARIABLE _gersemi_version
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
     if(_gersemi_result EQUAL 0)
         set(FT_GERSEMI "${Python3_EXECUTABLE}" -m gersemi)
         message(STATUS "gersemi: ${_gersemi_version}")
     endif()
 endif()
 if(FT_GERSEMI)
-    execute_process(COMMAND git ls-files --cached --others --exclude-standard -- "*.cmake" "*CMakeLists.txt"
-                    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-                    RESULT_VARIABLE _git_result OUTPUT_VARIABLE FT_CMAKE_FILES
-                    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(
+        COMMAND
+            git ls-files --cached --others --exclude-standard -- "*.cmake"
+            "*CMakeLists.txt"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        RESULT_VARIABLE _git_result
+        OUTPUT_VARIABLE FT_CMAKE_FILES
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
     if(NOT _git_result EQUAL 0 OR NOT FT_CMAKE_FILES)
-        message(STATUS "gersemi: no CMake files from git -- CMake is not formatted")
+        message(
+            STATUS
+            "gersemi: no CMake files from git -- CMake is not formatted"
+        )
         set(FT_GERSEMI "")
     else()
         string(REPLACE "\n" ";" FT_CMAKE_FILES "${FT_CMAKE_FILES}")
     endif()
 else()
-    message(STATUS "gersemi: NOT FOUND -- CMake is not formatted; pip install --user gersemi")
+    message(
+        STATUS
+        "gersemi: NOT FOUND -- CMake is not formatted; pip install --user gersemi"
+    )
 endif()
 unset(_gersemi_result)
 unset(_gersemi_version)
@@ -91,18 +115,31 @@ unset(_git_result)
 set(FT_PSCHECK "")
 find_program(FT_PWSH NAMES pwsh)
 if(FT_PWSH)
-    execute_process(COMMAND "${FT_PWSH}" -NoProfile -NonInteractive -Command
-                            "if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { exit 1 }"
-                    RESULT_VARIABLE _pssa_result OUTPUT_QUIET ERROR_QUIET)
+    execute_process(
+        COMMAND
+            "${FT_PWSH}" -NoProfile -NonInteractive -Command
+            "if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { exit 1 }"
+        RESULT_VARIABLE _pssa_result
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
     if(_pssa_result EQUAL 0)
-        set(FT_PSCHECK "${FT_PWSH}" -NoProfile -NonInteractive -File
-                       "${CMAKE_SOURCE_DIR}/tools/check-powershell.ps1")
+        set(FT_PSCHECK
+            "${FT_PWSH}"
+            -NoProfile
+            -NonInteractive
+            -File
+            "${CMAKE_SOURCE_DIR}/tools/check-powershell.ps1"
+        )
         message(STATUS "PSScriptAnalyzer: found (${FT_PWSH})")
     endif()
 endif()
 if(NOT FT_PSCHECK)
-    message(STATUS "PSScriptAnalyzer: NOT FOUND -- PowerShell is not formatted or linted; "
-                   "Install-Module PSScriptAnalyzer -Scope CurrentUser, under pwsh 7")
+    message(
+        STATUS
+        "PSScriptAnalyzer: NOT FOUND -- PowerShell is not formatted or linted; "
+        "Install-Module PSScriptAnalyzer -Scope CurrentUser, under pwsh 7"
+    )
 endif()
 unset(_ruff_result)
 unset(_ruff_version)
@@ -111,20 +148,38 @@ unset(_pssa_result)
 # Our own sources only. Never glob the build tree: it holds fetched third-party
 # code (Catch2) and vcpkg headers, and reformatting those would be both wrong
 # and enormous.
-file(GLOB_RECURSE FT_SOURCES CONFIGURE_DEPENDS
+file(
+    GLOB_RECURSE FT_SOURCES
+    CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/*.h"
     "${CMAKE_SOURCE_DIR}/tests/*.cpp"
-    "${CMAKE_SOURCE_DIR}/tests/*.h")
+    "${CMAKE_SOURCE_DIR}/tests/*.h"
+)
 
 set(FT_FORMAT_COMMANDS "")
 set(FT_FORMAT_CHECK_COMMANDS "")
 if(FT_CLANG_FORMAT)
     message(STATUS "clang-format: ${FT_CLANG_FORMAT}")
-    list(APPEND FT_FORMAT_COMMANDS COMMAND "${FT_CLANG_FORMAT}" -i --style=file ${FT_SOURCES})
+    list(
+        APPEND FT_FORMAT_COMMANDS
+        COMMAND
+        "${FT_CLANG_FORMAT}"
+        -i
+        --style=file
+        ${FT_SOURCES}
+    )
     # -Werror turns "would reformat" into a non-zero exit, which is what makes
     # this usable as a gate rather than a report.
-    list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND "${FT_CLANG_FORMAT}" --dry-run -Werror --style=file ${FT_SOURCES})
+    list(
+        APPEND FT_FORMAT_CHECK_COMMANDS
+        COMMAND
+        "${FT_CLANG_FORMAT}"
+        --dry-run
+        -Werror
+        --style=file
+        ${FT_SOURCES}
+    )
 else()
     message(STATUS "clang-format: NOT FOUND -- C++ is not formatted")
 endif()
@@ -135,22 +190,47 @@ if(FT_RUFF)
     list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND ${FT_RUFF} format --check)
 endif()
 if(FT_GERSEMI)
-    list(APPEND FT_FORMAT_COMMANDS COMMAND ${FT_GERSEMI} --in-place --quiet ${FT_CMAKE_FILES})
-    list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND ${FT_GERSEMI} --check ${FT_CMAKE_FILES})
+    list(
+        APPEND FT_FORMAT_COMMANDS
+        COMMAND
+        ${FT_GERSEMI}
+        --in-place
+        --quiet
+        ${FT_CMAKE_FILES}
+    )
+    list(
+        APPEND FT_FORMAT_CHECK_COMMANDS
+        COMMAND
+        ${FT_GERSEMI}
+        --check
+        ${FT_CMAKE_FILES}
+    )
 endif()
 if(FT_PSCHECK)
     list(APPEND FT_FORMAT_COMMANDS COMMAND ${FT_PSCHECK} -Mode Format)
-    list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND ${FT_PSCHECK} -Mode FormatCheck)
+    list(
+        APPEND FT_FORMAT_CHECK_COMMANDS
+        COMMAND
+        ${FT_PSCHECK}
+        -Mode
+        FormatCheck
+    )
 endif()
 if(FT_FORMAT_COMMANDS)
-    add_custom_target(format ${FT_FORMAT_COMMANDS}
+    add_custom_target(
+        format
+        ${FT_FORMAT_COMMANDS}
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         COMMENT "Formatting C++, Python, PowerShell and CMake"
-        VERBATIM)
-    add_custom_target(format-check ${FT_FORMAT_CHECK_COMMANDS}
+        VERBATIM
+    )
+    add_custom_target(
+        format-check
+        ${FT_FORMAT_CHECK_COMMANDS}
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         COMMENT "Checking the formatting of C++, Python, PowerShell and CMake"
-        VERBATIM)
+        VERBATIM
+    )
 endif()
 
 if(FT_CLANG_TIDY)
@@ -175,19 +255,32 @@ if(FT_CLANG_TIDY)
     # Each preset lints what its OWN database covers -- src/game and the top of
     # src are in the plugin's alone. Pointing -p at another preset's is what
     # went stale; CLAUDE.md, "The linter's blind spot", has that story.
-    file(GLOB FT_TIDY_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/core/*.cpp"
-         "${CMAKE_SOURCE_DIR}/src/progression/core/*.cpp")
+    file(
+        GLOB FT_TIDY_SOURCES
+        CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/src/core/*.cpp"
+        "${CMAKE_SOURCE_DIR}/src/progression/core/*.cpp"
+    )
     set(FT_TIDY_SCOPE "src/core and src/progression/core")
     if(FT_BUILD_PLUGIN)
-        file(GLOB FT_TIDY_GAME CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/game/*.cpp"
-             "${CMAKE_SOURCE_DIR}/src/progression/game/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.cpp")
+        file(
+            GLOB FT_TIDY_GAME
+            CONFIGURE_DEPENDS
+            "${CMAKE_SOURCE_DIR}/src/game/*.cpp"
+            "${CMAKE_SOURCE_DIR}/src/progression/game/*.cpp"
+            "${CMAKE_SOURCE_DIR}/src/*.cpp"
+        )
         list(APPEND FT_TIDY_SOURCES ${FT_TIDY_GAME})
         set(FT_TIDY_SCOPE "src/core, src/game, src/progression and src/*.cpp")
     endif()
     # The tests are in every preset's database that builds them. tests/.clang-tidy
     # says what is relaxed there, and why.
     if(FT_BUILD_TESTS)
-        file(GLOB_RECURSE FT_TIDY_TESTS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/tests/*.cpp")
+        file(
+            GLOB_RECURSE FT_TIDY_TESTS
+            CONFIGURE_DEPENDS
+            "${CMAKE_SOURCE_DIR}/tests/*.cpp"
+        )
         list(APPEND FT_TIDY_SOURCES ${FT_TIDY_TESTS})
         string(APPEND FT_TIDY_SCOPE ", tests")
     endif()
@@ -196,9 +289,12 @@ if(FT_CLANG_TIDY)
     # that includes it, and clang-tidy emits no depfile to tell us which. Coarse
     # on purpose -- touching PCH.h re-checks everything, which is right, and it
     # happens about never.
-    file(GLOB_RECURSE FT_TIDY_HEADERS CONFIGURE_DEPENDS
+    file(
+        GLOB_RECURSE FT_TIDY_HEADERS
+        CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/src/*.h"
-        "${CMAKE_SOURCE_DIR}/tests/*.h")
+        "${CMAKE_SOURCE_DIR}/tests/*.h"
+    )
 
     # One custom command per file, not one command over all of them.
     #
@@ -236,8 +332,27 @@ if(FT_CLANG_TIDY)
     # and a bare "src" would also match a vendored library's src/. clang-tidy
     # prints mixed separators (src\core/I18n.h), hence either slash.
     set(FT_TIDY_HEADER_FILTER "${CMAKE_SOURCE_DIR}")
-    foreach(_c . + * ? ^ $ "(" ")" "|" "{" "}" "[")
-        string(REPLACE "${_c}" "\\${_c}" FT_TIDY_HEADER_FILTER "${FT_TIDY_HEADER_FILTER}")
+    foreach(
+        _c
+        .
+        +
+        *
+        ?
+        ^
+        $
+        "("
+        ")"
+        "|"
+        "{"
+        "}"
+        "["
+    )
+        string(
+            REPLACE "${_c}"
+            "\\${_c}"
+            FT_TIDY_HEADER_FILTER
+            "${FT_TIDY_HEADER_FILTER}"
+        )
     endforeach()
     string(APPEND FT_TIDY_HEADER_FILTER "/(src|tests)/")
     string(REPLACE "/" "[/\\]" FT_TIDY_HEADER_FILTER "${FT_TIDY_HEADER_FILTER}")
@@ -259,18 +374,21 @@ if(FT_CLANG_TIDY)
         endif()
         add_custom_command(
             OUTPUT "${_stamp}"
-            COMMAND "${FT_CLANG_TIDY}"
-                    -p "${CMAKE_BINARY_DIR}"
-                    "--header-filter=${FT_TIDY_HEADER_FILTER}"
-                    --extra-arg-before=/Y-
-                    --extra-arg=-Wno-unused-command-line-argument
-                    ${_extra}
-                    "${_src}"
+            COMMAND
+                "${FT_CLANG_TIDY}" -p "${CMAKE_BINARY_DIR}"
+                "--header-filter=${FT_TIDY_HEADER_FILTER}"
+                --extra-arg-before=/Y-
+                --extra-arg=-Wno-unused-command-line-argument ${_extra}
+                "${_src}"
             COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
-            DEPENDS "${_src}" ${FT_TIDY_HEADERS} "${CMAKE_SOURCE_DIR}/.clang-tidy"
-                    "${CMAKE_SOURCE_DIR}/tests/.clang-tidy"
+            DEPENDS
+                "${_src}"
+                ${FT_TIDY_HEADERS}
+                "${CMAKE_SOURCE_DIR}/.clang-tidy"
+                "${CMAKE_SOURCE_DIR}/tests/.clang-tidy"
             COMMENT "clang-tidy ${_rel}"
-            VERBATIM)
+            VERBATIM
+        )
         list(APPEND FT_TIDY_STAMPS "${_stamp}")
     endforeach()
     unset(_src)
@@ -296,14 +414,25 @@ if(FT_RUFF)
     list(APPEND FT_LINT_COMMANDS COMMAND ${FT_RUFF} check --quiet)
 endif()
 if(FT_PSCHECK)
-    list(APPEND FT_LINT_COMMANDS COMMAND ${FT_PSCHECK} -Mode Lint -Stamp "${CMAKE_BINARY_DIR}/tidy/powershell.stamp")
+    list(
+        APPEND FT_LINT_COMMANDS
+        COMMAND
+        ${FT_PSCHECK}
+        -Mode
+        Lint
+        -Stamp
+        "${CMAKE_BINARY_DIR}/tidy/powershell.stamp"
+    )
 endif()
 if(FT_TIDY_STAMPS OR FT_LINT_COMMANDS)
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/tidy")
-    add_custom_target(tidy ${FT_LINT_COMMANDS}
+    add_custom_target(
+        tidy
+        ${FT_LINT_COMMANDS}
         DEPENDS ${FT_TIDY_STAMPS}
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        VERBATIM)
+        VERBATIM
+    )
 endif()
 
 unset(_llvm_hints)
