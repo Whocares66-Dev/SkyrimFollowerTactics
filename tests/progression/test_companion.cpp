@@ -178,7 +178,7 @@ TEST_CASE("a level a bought perk needs stays, until the perks are reset", "[comp
     CHECK(lower.block == fp::AssignBlock::PerkNeedsIt);
     CHECK(lower.perk == "Blade");
 
-    fp::ResetPerks(c, Skill::OneHanded, graph);
+    fp::ResetPerks(c, Skill::OneHanded, graph, fp::HoldingsOf(c, {}));
     CHECK(fp::CheckSkill(c, Skill::OneHanded, -1, Base(20), 15, graph, fp::HoldingsOf(c, {}), r).block ==
           fp::AssignBlock::None);
 }
@@ -223,7 +223,7 @@ TEST_CASE("<< and >> move a skill as far as - and + would, a level at a time", "
     CHECK(d.learning.skills[fp::Index(Skill::OneHanded)] == 5);
 }
 
-TEST_CASE("resetting a tree's perks returns every rank bought, and only that tree's", "[companion]")
+TEST_CASE("resetting a tree's perks gives back every rank held, theirs and bought, and only that tree's", "[companion]")
 {
     fp::PerkGraph graph = BladeTree();
     fp::PerkNode ranked;
@@ -238,16 +238,22 @@ TEST_CASE("resetting a tree's perks returns every rank bought, and only that tre
     graph.Add(other);
 
     Companion c = Lydia();
-    fp::Learn(c, graph.Node(1), 0);
-    fp::Learn(c, graph.Node(1), 1);
+    fp::Learn(c, graph.Node(1), 1); // Armsman's second rank, bought
     fp::Learn(c, graph.Node(2), 0);
-    const auto unlearned = fp::ResetPerks(c, Skill::OneHanded, graph);
-    CHECK(unlearned == std::vector<std::string>{"Armsman", "Armsman (2)"});
+    // Blade and Armsman's first rank on their own record.
+    const std::unordered_set<FormKey, fp::FormKeyHash> onRecord{{"Test.esp", 1}, {"Test.esp", 2}};
+    const auto held = fp::HoldingsOf(c, onRecord);
+    REQUIRE(fp::HeldInTree(Skill::OneHanded, graph, held));
+    const auto gone = fp::ResetPerks(c, Skill::OneHanded, graph, held);
+    // In the tree's order: Armsman needs nothing, Blade One-Handed 25.
+    CHECK(gone == std::vector<std::string>{"Armsman", "Armsman (2)", "Blade"});
     REQUIRE(c.perks.size() == 1);
     CHECK(c.perks[0].name == "Overdraw");
-    CHECK(fp::BoughtInTree(c, Skill::Archery, graph));
-    CHECK_FALSE(fp::BoughtInTree(c, Skill::OneHanded, graph));
-    CHECK(fp::ResetPerks(c, Skill::OneHanded, graph).empty());
+    CHECK(c.setAside == std::vector<FormKey>{{"Test.esp", 2}, {"Test.esp", 1}});
+    const auto after = fp::HoldingsOf(c, onRecord);
+    CHECK_FALSE(fp::HeldInTree(Skill::OneHanded, graph, after));
+    CHECK(fp::HeldInTree(Skill::Archery, graph, after));
+    CHECK(fp::ResetPerks(c, Skill::OneHanded, graph, after).empty());
 }
 
 TEST_CASE("a skill reads with what they learned on top, within the cap", "[companion]")
@@ -374,7 +380,7 @@ TEST_CASE("a perk on their own record is never counted as bought here", "[compan
     CHECK_FALSE(holdings.learned.contains({"Skyrim.esm", 0x0BABE4}));
 }
 
-TEST_CASE("one of their own perks can be set aside and taken up again, for nothing", "[companion]")
+TEST_CASE("one of their own perks given back returns its point, and costs one to take up again", "[companion]")
 {
     Companion c = Lydia();
     fp::PerkGraph graph;
@@ -386,19 +392,19 @@ TEST_CASE("one of their own perks can be set aside and taken up again, for nothi
     // As Marcurio's record has it: the second rank without the first.
     const std::unordered_set<FormKey, fp::FormKeyHash> onRecord{{"Skyrim.esm", 0x0581F5}};
     CHECK(fp::HeldRanks(graph, fp::HoldingsOf(c, onRecord)) == 1);
+    CHECK(fp::PerkPoints(5, fp::HeldRanks(graph, fp::HoldingsOf(c, onRecord))) == 3);
 
-    fp::SetAside(c, recovery, onRecord);
-    CHECK(c.setAside == std::vector<FormKey>{{"Skyrim.esm", 0x0581F5}});
-    CHECK(fp::IsSetAside(c, recovery));
-    CHECK(fp::HeldRanks(graph, fp::HoldingsOf(c, onRecord)) == 0); // its point is free again
+    CHECK(fp::SetAsideRank(c, {"Skyrim.esm", 0x0581F5}));
+    CHECK_FALSE(fp::SetAsideRank(c, {"Skyrim.esm", 0x0581F5})); // twice is once
+    const auto given = fp::HoldingsOf(c, onRecord);
+    CHECK(given.setAside.contains({"Skyrim.esm", 0x0581F5}));
+    CHECK_FALSE(given.innate.contains({"Skyrim.esm", 0x0581F5}));
+    CHECK(fp::HeldRanks(graph, given) == 0);
+    CHECK(fp::PerkPoints(5, fp::HeldRanks(graph, given)) == 4); // its point is free again
 
-    fp::SetAside(c, recovery, onRecord); // twice is once
-    CHECK(c.setAside.size() == 1);
-
-    CHECK(fp::Restore(c, recovery));
-    CHECK_FALSE(fp::IsSetAside(c, recovery));
+    CHECK(fp::RestoreRank(c, {"Skyrim.esm", 0x0581F5}));
     CHECK(fp::HoldingsOf(c, onRecord).innate.contains({"Skyrim.esm", 0x0581F5}));
-    CHECK_FALSE(fp::Restore(c, recovery));
+    CHECK_FALSE(fp::RestoreRank(c, {"Skyrim.esm", 0x0581F5}));
 }
 
 TEST_CASE("spells taught here can be forgotten; others are not ours", "[companion]")
@@ -491,10 +497,10 @@ TEST_CASE("resetting a tree's perks returns them and leaves the skill", "[compan
     const fp::PerkGraph graph = BladeTree();
     c.learning.skills[fp::Index(Skill::OneHanded)] = 12;
     fp::Learn(c, graph.Node(0), 0);
-    REQUIRE(fp::BoughtInTree(c, Skill::OneHanded, graph));
-    const auto unlearned = fp::ResetPerks(c, Skill::OneHanded, graph);
+    REQUIRE(fp::HeldInTree(Skill::OneHanded, graph, fp::HoldingsOf(c, {})));
+    const auto unlearned = fp::ResetPerks(c, Skill::OneHanded, graph, fp::HoldingsOf(c, {}));
     CHECK(unlearned == std::vector<std::string>{"Blade"});
     CHECK(c.perks.empty());
-    CHECK_FALSE(fp::BoughtInTree(c, Skill::OneHanded, graph));
+    CHECK_FALSE(fp::HeldInTree(Skill::OneHanded, graph, fp::HoldingsOf(c, {})));
     CHECK(c.learning.skills[fp::Index(Skill::OneHanded)] == 12);
 }

@@ -160,7 +160,7 @@ TEST_CASE("a perk is learned to reach what needs it, whatever it does itself", "
     CHECK(fp::Status({t.graph, h, skills, 1}, t.shot).block == PerkBlock::None);
 }
 
-TEST_CASE("perks they came with count, and are never ours to unlearn", "[perks]")
+TEST_CASE("perks they came with count, and can be given back like any other", "[perks]")
 {
     Tree t;
     fp::Holdings h;
@@ -170,8 +170,50 @@ TEST_CASE("perks they came with count, and are never ours to unlearn", "[perks]"
     CHECK(status.held == 1);
     CHECK(status.innate == 1);
     CHECK(status.learned == 0);
-    CHECK_FALSE(status.canUnlearn);
+    // Chosen for them in advance, and theirs to give back: nothing needs it.
+    CHECK(status.canUnlearn);
     CHECK(fp::Status({t.graph, h, skills, 1}, t.stance).block == PerkBlock::None);
+}
+
+TEST_CASE("a perk they came with that another of theirs needs is kept", "[perks]")
+{
+    Tree t;
+    fp::Holdings h;
+    h.innate = {F(0x10), F(0x20)}; // Armsman, and Stance on it
+    const auto skills = OneHanded(30);
+    const auto armsman = fp::Status({t.graph, h, skills, 1}, t.armsman);
+    CHECK_FALSE(armsman.canUnlearn);
+    CHECK(armsman.dependants == std::vector<int>{t.stance});
+    CHECK(fp::Status({t.graph, h, skills, 1}, t.stance).canUnlearn);
+}
+
+TEST_CASE("a perk of theirs that never met what it asks holds nothing back", "[perks]")
+{
+    // Savage on their record without Stance, as Marcurio's Magic Resistance
+    // is without Apprentice Alteration: already failing its conditions, so
+    // giving Armsman back breaks nothing of it.
+    Tree t;
+    fp::Holdings h;
+    h.innate = {F(0x10), F(0x30)};
+    const auto skills = OneHanded(30);
+    CHECK(fp::Status({t.graph, h, skills, 1}, t.armsman).canUnlearn);
+}
+
+TEST_CASE("one of their own given back is theirs again for a point, whatever it asks", "[perks]")
+{
+    // Zoom needs Armsman and One-Handed 30; they have neither now.
+    Tree t;
+    fp::Holdings h;
+    h.setAside.insert(F(0x60));
+    const auto skills = OneHanded(15);
+    const auto one = fp::Status({t.graph, h, skills, 1}, t.zoom);
+    CHECK(one.restores);
+    CHECK(one.block == PerkBlock::None);
+    const auto none = fp::Status({t.graph, h, skills, 0}, t.zoom);
+    CHECK(none.restores);
+    CHECK(none.block == PerkBlock::NoPoints);
+    // Not held while given back: nothing reads it as theirs.
+    CHECK_FALSE(fp::Held({t.graph, h, skills, 1}, F(0x60)));
 }
 
 TEST_CASE("a higher rank held implies the ranks below it", "[perks]")
@@ -201,7 +243,7 @@ TEST_CASE("a perk something else of ours needs cannot be unlearned", "[perks]")
     CHECK(fp::Status({t.graph, h, skills, 0}, t.stance).canUnlearn);
 }
 
-TEST_CASE("unlearning takes the top rank, and only when it is ours", "[perks]")
+TEST_CASE("giving back takes the top rank held", "[perks]")
 {
     Tree t;
     fp::Holdings h;
@@ -240,7 +282,7 @@ TEST_CASE("perks that fail only once another goes are found too", "[perks]")
     CHECK(fp::Invalidated(graph, h, OneHanded(30)) == std::vector<FormKey>{F(0x80), F(0x90)});
 }
 
-TEST_CASE("setting aside a perk something bought here needs is what WouldBreak finds", "[perks]")
+TEST_CASE("giving back a perk something held needs is what WouldBreak finds", "[perks]")
 {
     Tree t;
     fp::Holdings h;

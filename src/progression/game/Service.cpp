@@ -511,7 +511,11 @@ void LearnNode(const FormKey &key, int nodeId)
         RefuseQuietly(fmt::format("{} is not in this load order.", node.name));
         return;
     }
-    fp::Learn(*c, node, rank);
+    // One of their own they gave back is theirs again; any other is bought.
+    if (status.restores)
+        RestoreRank(*c, form);
+    else
+        fp::Learn(*c, node, rank);
     PublishViews();
     perkview::Reconcile(actor);
     // Through the engine's own HasPerk, which is our ForEachPerk.
@@ -601,8 +605,10 @@ void UnlearnNode(const FormKey &key, int nodeId)
         RefuseQuietly(fmt::format("{} cannot unlearn {}: something else needs it.", c->name, node.name));
         return;
     }
+    // Bought here: unlearned. Their own: given back, the record keeping it.
     const FormKey &form = node.ranks[static_cast<std::size_t>(status.held - 1)].form;
-    fp::Unlearn(*c, form);
+    if (!fp::Unlearn(*c, form))
+        SetAsideRank(*c, form);
     PublishViews();
     perkview::Reconcile(actor);
     log::perks.info("{} unlearned {} (rank {})", c->name, node.name, status.held);
@@ -642,59 +648,6 @@ std::optional<PerkControls> PerkControlsFor(RE::FormID actor, std::uint32_t perk
         return out;
     }
     return std::nullopt;
-}
-
-void SetAsidePerk(const FormKey &key, int nodeId)
-{
-    Act([key = key, nodeId] {
-        auto [c, actor] = Present(key, "set a perk aside");
-        if (!c)
-            return;
-        const PerkGraph &graph = Graph();
-        if (nodeId < 0 || static_cast<std::size_t>(nodeId) >= graph.Size())
-            return;
-        const PerkNode &node = graph.Node(nodeId);
-        const auto onRecord = OnRecord(*c, actor);
-        std::vector<FormKey> forms;
-        for (const PerkRank &rank : node.ranks)
-            if (onRecord.contains(rank.form))
-                forms.push_back(rank.form);
-        if (forms.empty())
-            return;
-        const Holdings holdings = HoldingsOf(*c, onRecord);
-        const PerSkill<int> skills = Effective(*c, BaseSkills(actor));
-        const PerkRules rules{graph, holdings, skills, PerkPointsOf(*c, actor, LevelOf(*c, actor, ReadRules()).level)};
-        if (const auto broken = WouldBreak(rules, forms); !broken.empty())
-        {
-            Refuse(fmt::format("{} cannot set {} aside: {} needs it.", c->name, node.name,
-                               graph.Node(broken.front()).name));
-            return;
-        }
-        fp::SetAside(*c, node, onRecord);
-        PublishViews();
-        perkview::Reconcile(actor);
-        log::perks.info("{} set {} aside", c->name, node.name);
-        Hud(fmt::format("{} set {} aside.", c->name, node.name));
-    });
-}
-
-void RestorePerk(const FormKey &key, int nodeId)
-{
-    Act([key = key, nodeId] {
-        auto [c, actor] = Present(key, "take a perk up again");
-        if (!c)
-            return;
-        const PerkGraph &graph = Graph();
-        if (nodeId < 0 || static_cast<std::size_t>(nodeId) >= graph.Size())
-            return;
-        const PerkNode &node = graph.Node(nodeId);
-        if (!fp::Restore(*c, node))
-            return;
-        PublishViews();
-        perkview::Reconcile(actor);
-        log::perks.info("{} took {} up again", c->name, node.name);
-        Hud(fmt::format("{} took {} up again.", c->name, node.name));
-    });
 }
 
 void LearnFromTome(std::uint32_t actorId, std::uint32_t bookId)
@@ -883,7 +836,7 @@ void ResetPerks(const FormKey &key, Skill skill)
         auto [c, actor] = Present(key, "reset their perks");
         if (!c)
             return;
-        const auto unlearned = fp::ResetPerks(*c, skill, Graph());
+        const auto unlearned = fp::ResetPerks(*c, skill, Graph(), HoldingsOf(*c, OnRecord(*c, actor)));
         if (unlearned.empty())
             return;
         PublishViews();

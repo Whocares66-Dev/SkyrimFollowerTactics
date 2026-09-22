@@ -32,7 +32,7 @@ A companion levels as you do. Using a skill raises it: a spell cast, a blow land
 |---|---|---|
 | Points come from the follower's level, or the player's with *Sync Level* on | A budget that fills by itself is an editor, not progression | The engine's level stands; what a companion learns by doing adds levels on top, up to 5 past yours ([Levels](#levels)) |
 | Five skill points a level, one attribute point, one perk point, each placed with `- +` and taken back freely | Direct assignment works: it is the player's own level-up | Kept for attributes and perks. Skills rise by use instead, as yours do, and can be moved or reset ([Points and reassigning](#points-and-reassigning)) |
-| *Harmonize* rewrites base stats to profile values; *Reset all perks (incl. native)* removes perks the follower came with | Players lose what made a follower themselves, with one click and no preview | Their own skills stay unless you move them; innate perks and spells are protected and labelled, and can only be set aside ([Reconsidering](#reconsidering)) |
+| *Harmonize* rewrites base stats to profile values; *Reset all perks (incl. native)* removes perks the follower came with | Players lose what made a follower themselves, with one click and no preview | Their own skills, attributes and perks stay unless you move them, one at a time, and every move can be undone ([Reconsidering](#reconsidering)) |
 | A perk button is greyed with no reason given; the requirement is the largest number in its conditions | "Why can't I take this?" is the question a tree most needs to answer | Every locked perk says what it needs and what the companion has ([Perks](#perks)) |
 | Every perk in every tree is offered, crafting and lockpicking included | A perk that does nothing for them is a wasted point | Kept: every skill and every tree is offered alike, since a mod may have followers smith or pick locks ([Every perk alike](#every-perk-alike)) |
 | The Overview shows everyone at once, and a reset per tree | A party view is the right starting place | Per-perk unlearning, refused while a perk bought on it needs it, and a reset per tree; the party is Tactics' list of followers |
@@ -96,7 +96,7 @@ The Perks tab says which of these is missing, in words: each row's *Needs* lists
 
 **Learning asks once.** Clicking *Learn* turns the row into *Learn Armsman (rank 3)? Confirm · Cancel*. There is no global "apply" step to forget.
 
-**Innate perks** — those on the follower's own record, like Marcurio's six — show as *Their own*: they count as learned for prerequisites and cost nothing. They can't be unlearned for a point, but they can be **set aside**: the companion stops using it, the record keeps it, and *Restore* takes it up again for nothing. A perk that something bought here depends on can't be set aside. This is possible because the engine is told what a companion holds rather than having their record edited ([ENGINE_PERKS.md](ENGINE_PERKS.md)).
+**Innate perks** — those on the follower's own record, like Marcurio's six — are chosen for them in advance: held, counted against their perk points as the player's own choices are, and theirs to give back like any perk bought here. A right click on the top rank gives it back and returns its point, unless a perk they hold needs it; the record keeps it, and a click takes it up again for a point, whatever it asks, since it was theirs. *Reset perks* gives back the tree's own perks with the bought. So a follower can be rebuilt whole, perk by perk. This is possible because the engine is told what a companion holds rather than having their record edited ([ENGINE_PERKS.md](ENGINE_PERKS.md)). *(Until 2026-09-22 an innate perk could only be set aside, for nothing, and restored for nothing.)*
 
 **Ranks stack, as the player's do.** Each rank of a perk is its own record, and a companion holds every rank they have learned: Armsman's first rank switches itself off once the second is present (its entry's condition is `HasPerk Armsman20 == 0`, read from Skyrim.esm). So learning adds the next rank's record and unlearning removes the top one; nothing is replaced.
 
@@ -126,9 +126,9 @@ Everything here can be taken back, for nothing:
 |---|---|
 | **Take a skill's level back** (`-`) | Into the pool, to buy another skill's with. Refused while a perk bought here needs the level |
 | **Reset a skill** | To where a new character starts it; every level into the pool, the perks bought in its tree returned |
-| **Take back an attribute point** | The point returns |
-| **Unlearn a perk** | Removes one purchased rank with no learned dependants; the point comes back |
-| **Set aside** one of their own perks or spells | They stop using it; the record keeps it, and *Restore* takes it up again |
+| **Take back an attribute point** | The point returns; with none assigned, a point of their own value, down to their race's starting value |
+| **Give back a perk** | The top rank held, bought here or their own, while nothing held needs it; the point comes back, and one of their own costs a point to take up again |
+| **Forget a spell** | One taught here is taken back; one of their own set aside, and a tome of it brings it back |
 
 Their level and character XP are never touched: moving levels between skills can't make more of them, as a Legendary skill doesn't lower yours.
 

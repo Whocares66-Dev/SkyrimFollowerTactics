@@ -121,10 +121,6 @@ struct PerkControls
     bool canUnlearn{false};
 };
 [[nodiscard]] std::optional<PerkControls> PerkControlsFor(RE::FormID actor, std::uint32_t perk);
-// One of their own perks: set aside (the engine is told it is not held; the
-// record keeps it) and taken up again, both free.
-void SetAsidePerk(const FormKey &actor, int node);
-void RestorePerk(const FormKey &actor, int node);
 // A spell tome in the companion's pack read, as the player reads one: its
 // spell learned where they do not know it -- taught, or one of theirs set
 // aside taken up again (progression/core/Companion.h, ReadTome) -- and the

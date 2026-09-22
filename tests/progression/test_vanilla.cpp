@@ -151,7 +151,8 @@ TEST_CASE("Marcurio's own perks read as his record has them", "[vanilla]")
     CHECK(recovery.held == 2);
     CHECK(recovery.innate == 2);
     CHECK(recovery.block == PerkBlock::Maxed);
-    CHECK_FALSE(recovery.canUnlearn);
+    // Theirs to give back: nothing else they hold needs it.
+    CHECK(recovery.canUnlearn);
 
     const auto resistance = fp::Status({Vanilla(), h, skills, 3}, NodeOf(kMagicResistance));
     CHECK(resistance.held == 1);

@@ -256,26 +256,28 @@ AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, in
     return out;
 }
 
-std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph)
+std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph, const Holdings &holdings)
 {
-    std::vector<std::string> unlearned;
+    std::vector<std::string> gone;
     for (const int id : graph.Tree(skill))
-        for (const PerkRank &rank : graph.Node(id).ranks)
-            if (const auto it = std::find_if(c.perks.begin(), c.perks.end(),
-                                             [&](const LearnedPerk &p) { return p.form == rank.form; });
-                it != c.perks.end())
-            {
-                unlearned.push_back(it->rank > 1 ? it->name + " (" + std::to_string(it->rank) + ")" : it->name);
-                c.perks.erase(it);
-            }
-    return unlearned;
+    {
+        const PerkNode &node = graph.Node(id);
+        for (std::size_t r = 0; r < node.ranks.size(); ++r)
+        {
+            const FormKey &form = node.ranks[r].form;
+            const std::string name = r > 0 ? node.name + " (" + std::to_string(r + 1) + ")" : node.name;
+            if (Unlearn(c, form) || (holdings.innate.contains(form) && SetAsideRank(c, form)))
+                gone.push_back(name);
+        }
+    }
+    return gone;
 }
 
-bool BoughtInTree(const Companion &c, Skill skill, const PerkGraph &graph)
+bool HeldInTree(Skill skill, const PerkGraph &graph, const Holdings &holdings)
 {
     for (const int id : graph.Tree(skill))
         for (const PerkRank &rank : graph.Node(id).ranks)
-            if (Bought(c, rank.form))
+            if (holdings.innate.contains(rank.form) || holdings.learned.contains(rank.form))
                 return true;
     return false;
 }
@@ -296,7 +298,7 @@ SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &ba
         raise.block == AssignBlock::AtCap ? std::string("Already at maximum skill") : std::string("Not enough XP");
     out.raise = out.canRaise ? std::string("Click to increase skill") : cannotRaise;
     out.highest = out.canRaise ? std::string("Click to increase to maximum skill") : cannotRaise;
-    out.canResetPerks = BoughtInTree(c, skill, graph);
+    out.canResetPerks = HeldInTree(skill, graph, holdings);
     out.resetPerks = out.canResetPerks ? std::string("Click to reset perks") : std::string("No perks to reset");
     return out;
 }
@@ -318,7 +320,8 @@ Holdings HoldingsOf(const Companion &c, std::unordered_set<FormKey, FormKeyHash>
     Holdings h;
     h.innate = std::move(onRecord);
     for (const FormKey &form : c.setAside)
-        h.innate.erase(form);
+        if (h.innate.erase(form) != 0)
+            h.setAside.insert(form);
     for (const LearnedPerk &p : c.perks)
     {
         // A perk on their own record is theirs, whatever the ledger says: an
@@ -353,28 +356,17 @@ bool Unlearn(Companion &c, const FormKey &form)
     return true;
 }
 
-void SetAside(Companion &c, const PerkNode &node, const std::unordered_set<FormKey, FormKeyHash> &onRecord)
+bool SetAsideRank(Companion &c, const FormKey &form)
 {
-    for (const PerkRank &rank : node.ranks)
-        if (onRecord.contains(rank.form) &&
-            std::find(c.setAside.begin(), c.setAside.end(), rank.form) == c.setAside.end())
-            c.setAside.push_back(rank.form);
+    if (std::find(c.setAside.begin(), c.setAside.end(), form) != c.setAside.end())
+        return false;
+    c.setAside.push_back(form);
+    return true;
 }
 
-bool Restore(Companion &c, const PerkNode &node)
+bool RestoreRank(Companion &c, const FormKey &form)
 {
-    const auto before = c.setAside.size();
-    std::erase_if(c.setAside, [&](const FormKey &form) {
-        return std::any_of(node.ranks.begin(), node.ranks.end(), [&](const PerkRank &r) { return r.form == form; });
-    });
-    return c.setAside.size() != before;
-}
-
-bool IsSetAside(const Companion &c, const PerkNode &node) noexcept
-{
-    return std::any_of(node.ranks.begin(), node.ranks.end(), [&](const PerkRank &r) {
-        return std::find(c.setAside.begin(), c.setAside.end(), r.form) != c.setAside.end();
-    });
+    return std::erase(c.setAside, form) != 0;
 }
 
 bool Taught(const Companion &c, const FormKey &spell) noexcept

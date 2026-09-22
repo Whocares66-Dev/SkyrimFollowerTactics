@@ -75,9 +75,10 @@ struct Companion
     Learning learning;
     int level{0}; // the last level noted: a rise is a level-up
     std::vector<LearnedPerk> perks;
-    // Perks on their own record that the player has set aside: every rank of
-    // the node they hold. The record keeps them; the engine is told they are
-    // not held (progression/game/PerkView.h), and restoring them costs nothing.
+    // Ranks on their own record given back: chosen for them in advance, and
+    // theirs to give back as a bought one is. The record keeps them; the
+    // engine is told they are not held (progression/game/PerkView.h). Each
+    // returns its point, and takes one to be theirs again.
     std::vector<FormKey> setAside;
     // Spells taught here: the engine is told they know them (progression/game/SpellView.h).
     std::vector<TaughtSpell> spells;
@@ -207,11 +208,11 @@ struct AttributeButtons
 [[nodiscard]] AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, int available, int base,
                                                    int floor, int step);
 
-// The perks bought in a skill's tree unlearned, their points free again; the
-// skill left where it is. Their names, a rank after the first as
-// "Armsman (2)".
-std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph);
-[[nodiscard]] bool BoughtInTree(const Companion &c, Skill skill, const PerkGraph &graph);
+// Every perk held in a skill's tree given back -- the bought unlearned, their
+// own set aside -- their points free again; the skill left where it is.
+// Their names, a rank after the first as "Armsman (2)".
+std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph, const Holdings &holdings);
+[[nodiscard]] bool HeldInTree(Skill skill, const PerkGraph &graph, const Holdings &holdings);
 
 // A skill's buttons as a page offers them: whether each can act, and what
 // a click does or why it cannot, in the panel's words. - and + move a
@@ -242,8 +243,8 @@ struct SkillButtons
 
 // --- perks ---------------------------------------------------------------------------
 
-// `onRecord` is the perks on their own record: set-aside ones are dropped
-// from it, and anything also bought here reads as theirs.
+// `onRecord` is the perks on their own record: set-aside ones are held no
+// more, and anything also bought here reads as theirs.
 [[nodiscard]] Holdings HoldingsOf(const Companion &c, std::unordered_set<FormKey, FormKeyHash> onRecord);
 [[nodiscard]] bool Bought(const Companion &c, const FormKey &form) noexcept;
 
@@ -253,14 +254,10 @@ void Learn(Companion &c, const PerkNode &node, int rankIndex);
 // bought here.
 bool Unlearn(Companion &c, const FormKey &form);
 
-// Setting aside one of their own perks: every rank of `node` found in
-// `onRecord`. Nothing is refunded -- it was never bought -- and restoring it
-// is free. The caller has checked that nothing bought here needs it
-// (progression/core/Perks.h, WouldBreak).
-void SetAside(Companion &c, const PerkNode &node, const std::unordered_set<FormKey, FormKeyHash> &onRecord);
-// False when none of the node's ranks were set aside.
-bool Restore(Companion &c, const PerkNode &node);
-[[nodiscard]] bool IsSetAside(const Companion &c, const PerkNode &node) noexcept;
+// One of their own ranks given back, and taken up again (Status says when:
+// canUnlearn, restores). False when nothing changed.
+bool SetAsideRank(Companion &c, const FormKey &form);
+bool RestoreRank(Companion &c, const FormKey &form);
 
 // --- spells ----------------------------------------------------------------------------------
 

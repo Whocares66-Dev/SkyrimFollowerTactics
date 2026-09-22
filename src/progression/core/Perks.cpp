@@ -228,29 +228,14 @@ PerkStatus Status(const PerkRules &rules, int nodeId)
     }
     status.held = top + 1;
 
-    // Unlearning: the top rank held must be ours, and nothing else of ours
-    // may need it.
+    // Giving back: the top rank held, bought here or their own, while
+    // nothing held needs it.
     if (status.held > 0)
     {
         const FormKey &highest = node.ranks[static_cast<std::size_t>(status.held - 1)].form;
-        if (rules.holdings.learned.contains(highest))
-        {
-            Holdings without = rules.holdings;
-            without.learned.erase(highest);
-            const PerkRules after{rules.graph, without, rules.skills, rules.points};
-            Evaluator check(after);
-            for (const FormKey &other : without.learned)
-            {
-                const auto found = rules.graph.Find(other);
-                if (!found)
-                    continue;
-                const PerkRank &rank = rules.graph.Node(found->first).ranks[static_cast<std::size_t>(found->second)];
-                if (!check.Met(rank) && std::find(status.dependants.begin(), status.dependants.end(), found->first) ==
-                                            status.dependants.end())
-                    status.dependants.push_back(found->first);
-            }
-            status.canUnlearn = status.dependants.empty();
-        }
+        const std::array<FormKey, 1> removing{highest};
+        status.dependants = WouldBreak(rules, removing);
+        status.canUnlearn = status.dependants.empty();
     }
 
     if (status.held >= static_cast<int>(node.ranks.size()))
@@ -259,9 +244,17 @@ PerkStatus Status(const PerkRules &rules, int nodeId)
         return status;
     }
 
+    // One of their own they gave back: theirs again for a point.
+    const PerkRank &next = node.ranks[static_cast<std::size_t>(status.held)];
+    if (rules.holdings.setAside.contains(next.form))
+    {
+        status.restores = true;
+        status.block = rules.points > 0 ? PerkBlock::None : PerkBlock::NoPoints;
+        return status;
+    }
+
     // The next rank's conditions, each said in words. A HasPerk on this
     // node's own lower rank is the rank chain, which "2/5" says already.
-    const PerkRank &next = node.ranks[static_cast<std::size_t>(status.held)];
     bool skillFails = false;
     bool perkFails = false;
     bool groupMet = false;
@@ -351,17 +344,24 @@ std::vector<int> WouldBreak(const PerkRules &rules, std::span<const FormKey> rem
         without.learned.erase(form);
     }
     const PerkRules after{rules.graph, without, rules.skills, rules.points};
+    Evaluator before(rules);
     Evaluator check(after);
     std::vector<int> broken;
-    for (const FormKey &form : without.learned)
-    {
+    const auto consider = [&](const FormKey &form) {
         const auto found = rules.graph.Find(form);
         if (!found)
-            continue;
+            return;
         const PerkRank &rank = rules.graph.Node(found->first).ranks[static_cast<std::size_t>(found->second)];
-        if (!check.Met(rank) && std::find(broken.begin(), broken.end(), found->first) == broken.end())
+        // Held now whatever it asks -- their own may never have met it --
+        // and broken only by what goes.
+        if (before.Met(rank) && !check.Met(rank) &&
+            std::find(broken.begin(), broken.end(), found->first) == broken.end())
             broken.push_back(found->first);
-    }
+    };
+    for (const FormKey &form : without.learned)
+        consider(form);
+    for (const FormKey &form : without.innate)
+        consider(form);
     std::sort(broken.begin(), broken.end());
     return broken;
 }

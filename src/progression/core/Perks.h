@@ -11,7 +11,8 @@
 // file does not know is reported, not guessed.
 //
 // What a companion holds is handed in: the perks on their own record
-// (innate, not ours) and the ones bought here (the record's). No Skyrim.
+// (innate: chosen for them in advance, and theirs to give back), the ones
+// they gave back, and the ones bought here. No Skyrim.
 
 #include "progression/core/Ids.h"
 #include "progression/core/Settings.h"
@@ -120,8 +121,9 @@ class PerkGraph
 
 struct Holdings
 {
-    std::unordered_set<FormKey, FormKeyHash> innate;  // on their own record
-    std::unordered_set<FormKey, FormKeyHash> learned; // bought here
+    std::unordered_set<FormKey, FormKeyHash> innate;   // on their own record, held
+    std::unordered_set<FormKey, FormKeyHash> setAside; // on their own record, given back here
+    std::unordered_set<FormKey, FormKeyHash> learned;  // bought here
 };
 
 enum class PerkBlock : std::uint8_t
@@ -159,10 +161,14 @@ struct PerkStatus
     // The next rank's conditions, each with whether it is met. Empty when
     // every rank is held.
     std::vector<Requirement> requirements;
-    // Unlearning: the top rank must be one bought here, and nothing bought
-    // here may depend on it.
+    // Giving back the top rank held, bought here or their own, while nothing
+    // held needs it: a bought one is unlearned, one of their own set aside;
+    // either way its point returns.
     bool canUnlearn{false};
-    std::vector<int> dependants; // nodes whose learned ranks would fail without it
+    std::vector<int> dependants; // nodes whose held ranks would fail without it
+    // The next rank is one of their own they gave back: taken up again for a
+    // point, whatever its conditions ask -- it was theirs.
+    bool restores{false};
 };
 
 struct PerkRules
@@ -182,9 +188,9 @@ struct PerkRules
 // Whether a rank's conditions all pass.
 [[nodiscard]] bool ConditionsMet(const PerkRules &rules, const PerkRank &rank);
 
-// The nodes of perks bought here whose conditions would fail if `removing`
-// were no longer held -- the direct dependants, which is enough to refuse:
-// what blocks setting a perk aside, or unlearning it.
+// The nodes of perks held -- bought here, or their own -- whose conditions
+// pass now and would fail if `removing` were no longer held: the direct
+// dependants, which is enough to refuse giving it back.
 [[nodiscard]] std::vector<int> WouldBreak(const PerkRules &rules, std::span<const FormKey> removing);
 
 // The perks bought here that no longer meet their conditions once `skills`

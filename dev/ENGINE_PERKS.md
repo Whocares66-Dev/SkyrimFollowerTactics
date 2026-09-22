@@ -40,7 +40,7 @@ For each managed companion, by the reference's runtime id: **the record's perks,
 - **The record is never written, and the view is not saved.** Before a load the views are dropped; after it they are published again from the save's ledger. What *is* saved is an ability perk's spell (above): a bought Recovery stays in the actor's added spells. Turning progression off (Tactics' Settings) is for that: it publishes empty views, queues each companion back to their record, drops bought perks' abilities directly as well, and withdraws the training, companion by companion as each is near. The ledger is kept, and turning levelling on puts it back. A set-aside ability perk of their own needs nothing: the engine's `ApplyPerksFromBase` adds it back.
 - **Not on VR.** Its vtable slots differ and weren't read; `Install` does nothing there and perks stay as the records have them.
 
-What this buys over editing the record: no cross-save leak, nothing left behind on uninstall, perks a follower came with can be set aside and restored for free, and two copies of one NPC can differ. The unique-only rule remains in `IsUniqueNpc` for enrolment for now; the view no longer needs it.
+What this buys over editing the record: no cross-save leak, nothing left behind on uninstall, perks a follower came with can be given back for their point and taken up again for one, and two copies of one NPC can differ. The unique-only rule remains in `IsUniqueNpc` for enrolment for now; the view no longer needs it.
 
 ## Not verified
 
