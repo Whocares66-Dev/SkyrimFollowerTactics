@@ -4073,6 +4073,11 @@ std::vector<ft::PerkTreeView> BuildPerkTrees(RE::Actor *actor)
         tree.level = actor->IsPlayerRef() ? owner->GetBaseActorValue(value) : owner->GetPermanentActorValue(value);
         tree.current = owner->GetActorValue(value);
         tree.value = Fmt("%.0f", tree.level);
+        // Their own record's perks, held or not: what was chosen for them.
+        std::unordered_set<const RE::BGSPerk *> record;
+        if (const auto *npc = actor->GetActorBase(); npc && npc->perks)
+            for (std::uint32_t k = 0; k < npc->perkCount; ++k)
+                record.insert(npc->perks[k].perk);
         for (const TreeShape::Node &node : shape.nodes)
         {
             ft::PerkTreeNode n;
@@ -4085,11 +4090,14 @@ std::vector<ft::PerkTreeView> BuildPerkTrees(RE::Actor *actor)
             if (!node.requirements.empty())
                 n.firstRequirement = node.requirements.front();
             for (RE::BGSPerk *rank : node.ranks)
+            {
                 if (actor->HasPerk(rank))
                 {
                     ++n.held;
                     n.form = rank->GetFormID(); // the top rank held, as the perk rows name it
                 }
+                n.theirs = n.theirs || record.contains(rank);
+            }
             const std::size_t shown = static_cast<std::size_t>((std::min)(n.held, n.ranks - 1));
             n.requirement = node.requirements[shown];
             n.description = node.descriptions[shown];

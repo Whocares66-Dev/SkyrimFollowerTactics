@@ -24,6 +24,9 @@ struct PerkTreeNode
     double y{0.0};
     int ranks{1};
     int held{0}; // of `ranks`, as the engine answers for the actor
+    // A rank of it is on the actor's own record: chosen for them in advance,
+    // held or given back (Progression, "Innate perks").
+    bool theirs{false};
     // The skill level its first rank asks, 0 for none: how far up the page
     // it sits, which the ranks taken never change.
     float firstRequirement{0.0f};

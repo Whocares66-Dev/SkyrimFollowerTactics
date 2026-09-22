@@ -138,6 +138,10 @@ constexpr Im::ImVec4 kFighting{0.95f, 0.65f, 0.35f, 1.0f};
 constexpr Im::ImVec4 kEnchanted{0.70f, 0.75f, 1.00f, 1.0f};
 // A spell tome's name: magic, as an enchanted piece's is.
 constexpr Im::ImVec4 kSpellTome = kEnchanted;
+// A perk on the follower's own record, chosen for them in advance: its ring
+// in amber, of a piece with the gold beside their level; faded while they
+// have given it back.
+constexpr Im::ImVec4 kTheirOwn{0.82f, 0.62f, 0.30f, 1.0f};
 // A Daedric artifact: light gold, over the enchanted blue; every artifact
 // is enchanted, and the colour says which kind of enchanted it is. Red was
 // tried on 2026-09-12 and read as a warning.
@@ -5900,6 +5904,8 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
     const auto ink = Im::GetColorU32(Im::ImGuiCol_Text, 1.0f);
     const auto dim = Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f);
     const auto lit = Im::GetColorU32(Im::ImGuiCol_ButtonHovered, 1.0f);
+    const auto theirs = Im::GetColorU32(kTheirOwn);
+    const auto theirsGiven = Im::GetColorU32(Im::ImVec4(kTheirOwn.x, kTheirOwn.y, kTheirOwn.z, 0.45f));
     const auto centre = [&](std::size_t i) { return Im::ImVec2(origin.x + at[i].x, origin.y + at[i].y); };
 
     // The links first, each from one circle's edge to the other's.
@@ -5948,9 +5954,14 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
         if (nameClicked && on.name)
             on.name(node);
         if (overName)
+        {
             Im::ImDrawListManager::AddRectFilled(draw, Im::ImVec2(labelAt.x - 3.0f, labelAt.y),
                                                  Im::ImVec2(labelAt.x + labelSize.x + 3.0f, labelAt.y + labelSize.y),
                                                  lit, 3.0f, 0);
+            // One of their own, the amber ring's: not bought here.
+            if (node.theirs)
+                Tooltip("Acquired outside of this framework");
+        }
         const bool reachable = node.held > 0 || tree.level >= node.requirement;
         const auto colour = reachable ? ink : dim;
         // Every rank held: the whole circle, in one piece. A share of them:
@@ -5969,7 +5980,9 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
                 Im::ImDrawListManager::PathFillConvex(draw, colour);
             }
         }
-        Im::ImDrawListManager::AddCircle(draw, c, radius, over ? lit : colour, 0, over ? 2.5f : 1.5f);
+        // The ring: amber for one of their own, faded while given back.
+        const auto rim = over ? lit : !node.theirs ? colour : node.held > 0 ? theirs : theirsGiven;
+        Im::ImDrawListManager::AddCircle(draw, c, radius, rim, 0, over || node.theirs ? 2.5f : 1.5f);
 
         Im::ImDrawListManager::AddText(draw, Im::ImVec2(origin.x + drawing.labels[i].x, origin.y + drawing.labels[i].y),
                                        colour, labels[i].c_str());
