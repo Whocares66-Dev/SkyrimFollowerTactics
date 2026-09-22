@@ -9,7 +9,6 @@
 #include <fstream>
 #include <sstream>
 
-using fp::FormKey;
 using fp::PerkBlock;
 using fp::Skill;
 

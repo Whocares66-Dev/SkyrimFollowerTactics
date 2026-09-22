@@ -1,0 +1,14 @@
+# The root's checks, with two relaxed for the tests.
+#
+#   clang-diagnostic-missing-field-initializers   a test builds a fixture with
+#                                          designated initializers and names
+#                                          only the fields the case is about;
+#                                          the rest are their defaults on
+#                                          purpose. 36 hits, all of that kind
+#   performance-inefficient-vector-operation   a push_back loop over a
+#                                          handful of rows reads plainer than
+#                                          the same with a reserve first
+InheritParentConfig: true
+Checks: >
+  -clang-diagnostic-missing-field-initializers,
+  -performance-inefficient-vector-operation

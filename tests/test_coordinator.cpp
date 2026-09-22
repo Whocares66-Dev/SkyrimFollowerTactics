@@ -102,8 +102,9 @@ TEST_CASE("a requested cast stays in flight, and its cooldown runs from the end"
     // Mid-cast: every action is held, so nothing fires however long the
     // cast runs -- past the decision's own cooldown too.
     const double minimum = MinimumCooldown(ActionKind::CastSpell);
-    for (double at = 100.5; at <= 100.0 + minimum + 1.0; at += 0.5)
+    for (int step = 1; 100.0 + 0.5 * step <= 100.0 + minimum + 1.0; ++step)
     {
+        const double at = 100.0 + 0.5 * step;
         turn = lydia.Tick(rules, Facts(true, true), at);
         REQUIRE_FALSE(turn.Fired());
         REQUIRE(lydia.run.inFlight);

@@ -56,8 +56,8 @@ endif()
 if(FT_CLANG_TIDY)
     message(STATUS "clang-tidy: ${FT_CLANG_TIDY}")
 
-    # Scope: everything WE wrote -- src/core, plus src/game and the files at the
-    # top of src (plugin.cpp, the entry point) where they are built.
+    # Scope: everything WE wrote -- src/core and the tests, plus src/game and the
+    # files at the top of src (plugin.cpp, the entry point) where they are built.
     #
     # This used to be src/core only, on the grounds that src/game pulls in
     # RE/Skyrim.h and would bury real findings under third-party noise. That was
@@ -84,17 +84,21 @@ if(FT_CLANG_TIDY)
         list(APPEND FT_TIDY_SOURCES ${FT_TIDY_GAME})
         set(FT_TIDY_SCOPE "src/core, src/game, src/progression and src/*.cpp")
     endif()
+    # The tests are in every preset's database that builds them. tests/.clang-tidy
+    # says what is relaxed there, and why.
+    if(FT_BUILD_TESTS)
+        file(GLOB_RECURSE FT_TIDY_TESTS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/tests/*.cpp")
+        list(APPEND FT_TIDY_SOURCES ${FT_TIDY_TESTS})
+        string(APPEND FT_TIDY_SCOPE ", tests")
+    endif()
 
     # Our own headers: any of them changing can change a finding in any file
     # that includes it, and clang-tidy emits no depfile to tell us which. Coarse
     # on purpose -- touching PCH.h re-checks everything, which is right, and it
     # happens about never.
-    file(GLOB FT_TIDY_HEADERS CONFIGURE_DEPENDS
+    file(GLOB_RECURSE FT_TIDY_HEADERS CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/src/*.h"
-        "${CMAKE_SOURCE_DIR}/src/core/*.h"
-        "${CMAKE_SOURCE_DIR}/src/game/*.h"
-        "${CMAKE_SOURCE_DIR}/src/progression/core/*.h"
-        "${CMAKE_SOURCE_DIR}/src/progression/game/*.h")
+        "${CMAKE_SOURCE_DIR}/tests/*.h")
 
     # One custom command per file, not one command over all of them.
     #
@@ -126,14 +130,16 @@ if(FT_CLANG_TIDY)
     # The stamps deliberately do NOT depend on the compile database: it is
     # rewritten on every configure, and depending on it would mean a full
     # re-check after every build. Delete build/<preset>/tidy to force one.
-    # Reports from any header under this tree's src/, by its absolute path: a
-    # list of folder names left src/progression out until 2026-09-22, and a
-    # bare "src" would also match a vendored library's src/. clang-tidy prints
-    # mixed separators (src\core/I18n.h), hence either slash.
-    set(FT_TIDY_HEADER_FILTER "${CMAKE_SOURCE_DIR}/src/")
+
+    # Reports from any header under this tree's src/ or tests/, by its absolute
+    # path: a list of folder names left src/progression out until 2026-09-22,
+    # and a bare "src" would also match a vendored library's src/. clang-tidy
+    # prints mixed separators (src\core/I18n.h), hence either slash.
+    set(FT_TIDY_HEADER_FILTER "${CMAKE_SOURCE_DIR}")
     foreach(_c . + * ? ^ $ "(" ")" "|" "{" "}" "[")
         string(REPLACE "${_c}" "\\${_c}" FT_TIDY_HEADER_FILTER "${FT_TIDY_HEADER_FILTER}")
     endforeach()
+    string(APPEND FT_TIDY_HEADER_FILTER "/(src|tests)/")
     string(REPLACE "/" "[/\\]" FT_TIDY_HEADER_FILTER "${FT_TIDY_HEADER_FILTER}")
     unset(_c)
 
@@ -143,6 +149,14 @@ if(FT_CLANG_TIDY)
         file(RELATIVE_PATH _rel "${CMAKE_SOURCE_DIR}" "${_src}")
         string(REPLACE "/" "_" _stampname "${_rel}")
         set(_stamp "${CMAKE_BINARY_DIR}/tidy/${_stampname}.stamp")
+        # clang-tidy 18's analyzer dies with an access violation inside MSVC's
+        # <format> wherever TrFormat (core/I18n.h) is instantiated with
+        # arguments to follow, which the i18n tests do. The other checks
+        # still run on the file.
+        set(_extra "")
+        if(_rel STREQUAL "tests/test_i18n.cpp")
+            set(_extra "--checks=-clang-analyzer-*")
+        endif()
         add_custom_command(
             OUTPUT "${_stamp}"
             COMMAND "${FT_CLANG_TIDY}"
@@ -150,9 +164,11 @@ if(FT_CLANG_TIDY)
                     "--header-filter=${FT_TIDY_HEADER_FILTER}"
                     --extra-arg-before=/Y-
                     --extra-arg=-Wno-unused-command-line-argument
+                    ${_extra}
                     "${_src}"
             COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
             DEPENDS "${_src}" ${FT_TIDY_HEADERS} "${CMAKE_SOURCE_DIR}/.clang-tidy"
+                    "${CMAKE_SOURCE_DIR}/tests/.clang-tidy"
             COMMENT "clang-tidy ${_rel}"
             VERBATIM)
         list(APPEND FT_TIDY_STAMPS "${_stamp}")
@@ -161,6 +177,7 @@ if(FT_CLANG_TIDY)
     unset(_rel)
     unset(_stampname)
     unset(_stamp)
+    unset(_extra)
 
     # The scope is named once, at configure time, because the target itself now
     # prints a line per file: "clang-tidy over src/core" with nothing following

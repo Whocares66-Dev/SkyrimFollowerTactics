@@ -145,7 +145,11 @@ struct EnchantEffect
 // variant -- the combat AI's own list of options holds forms, and a rule
 // may name a form without picking a row. A spell or a shout has no
 // variants.
-struct ItemVariant
+//
+// (The NOLINT: as Action's in Rule.h. Copying a std::optional<ItemVariant>,
+// the analyzer takes _Has_value as true without following what filled the
+// value, and calls 'tempering' garbage; it has a default initialiser.)
+struct ItemVariant // NOLINT(clang-analyzer-core.uninitialized.Assign)
 {
     std::vector<EnchantEffect> enchantment; // the enchantment put on it, as its effects; empty for none
     float tempering{0.0f};                  // the grindstone's multiplier; 0 for none

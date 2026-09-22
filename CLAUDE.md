@@ -140,7 +140,7 @@ there IS a real check, so use it.
 
 ### The linter's blind spot, and how it hid
 
-**Each preset's `tidy` lints what its own compile database covers, and no more**: the core presets lint `src/core`, and `src/game` and `src/plugin.cpp` -- which appear only in the *plugin's* database -- are covered by `cmake --build --preset debug --target tidy`. Getting `src/game` covered needs two
+**Each preset's `tidy` lints what its own compile database covers, and no more**: the core presets lint `src/core`, `src/progression/core` and `tests` (with the two checks `tests/.clang-tidy` relaxes), and `src/game` and `src/plugin.cpp` -- which appear only in the *plugin's* database -- are covered by `cmake --build --preset debug --target tidy`. Getting `src/game` covered needs two
 flags that are easy to get wrong:
 
 - `--header-filter`, this checkout's `src/` as an absolute path, keeps CommonLibSSE's thousands of header lines quiet while still checking ours. Until 2026-09-22 it named folders (`src.(core|game)`), and every finding in a `src/progression` header was dropped unseen.

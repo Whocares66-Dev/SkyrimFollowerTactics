@@ -123,13 +123,13 @@ TEST_CASE("a stream: the fire is its start, the deadline its end plus grace, the
 
     // Never stopped: the deadline, still running.
     LeaseState running = ArmLease(100.0, kArmWindowSeconds, true, 4.0f, false);
-    AdvanceCast(running, fired, LeaseKind::Spell, 101.0);
+    (void)AdvanceCast(running, fired, LeaseKind::Spell, 101.0);
     REQUIRE(Finish(AdvanceCast(running, fired, LeaseKind::Spell, 106.0)) == "deadline, stream still running");
 
     // A short stream ends sooner than the pick-up window would have: the
     // extension is what was asked for, not a floor.
     LeaseState brief = ArmLease(100.0, kArmWindowSeconds, true, 0.5f, false);
-    AdvanceCast(brief, fired, LeaseKind::Spell, 100.2);
+    (void)AdvanceCast(brief, fired, LeaseKind::Spell, 100.2);
     REQUIRE(brief.until == Approx(101.7));
 
     // The target dead ends a stream, and only a stream.
@@ -144,7 +144,7 @@ TEST_CASE("a stream: the fire is its start, the deadline its end plus grace, the
 TEST_CASE("the AI moving on ends it; the holder vanishing ends it whatever else is seen", "[lease]")
 {
     LeaseState state = ArmLease(100.0, kArmWindowSeconds, false, 0.0f, false);
-    AdvanceCast(state, Running(), LeaseKind::Spell, 100.5);
+    (void)AdvanceCast(state, Running(), LeaseKind::Spell, 100.5);
     REQUIRE(Finish(AdvanceCast(state, {}, LeaseKind::Spell, 101.0)) == "package ended");
 
     // Not running yet is not "ended".
@@ -163,13 +163,13 @@ TEST_CASE("the AI moving on ends it; the holder vanishing ends it whatever else 
 TEST_CASE("when several hold at once: the fire, then the exit, then the clock", "[lease]")
 {
     LeaseState state = ArmLease(100.0, kArmWindowSeconds, false, 0.0f, false);
-    AdvanceCast(state, Running(), LeaseKind::Spell, 100.5);
+    (void)AdvanceCast(state, Running(), LeaseKind::Spell, 100.5);
     LeaseSeen all;
     all.fired = true;
     all.running = false;
     REQUIRE(Finish(AdvanceCast(state, all, LeaseKind::Spell, 110.0)) == "spell fired");
     LeaseState other = ArmLease(100.0, kArmWindowSeconds, false, 0.0f, false);
-    AdvanceCast(other, Running(), LeaseKind::Spell, 100.5);
+    (void)AdvanceCast(other, Running(), LeaseKind::Spell, 100.5);
     REQUIRE(Finish(AdvanceCast(other, {}, LeaseKind::Spell, 110.0)) == "package ended");
 }
 
@@ -215,27 +215,27 @@ TEST_CASE("a power attack that never comes, or is cut off", "[lease]")
     REQUIRE(Finish(AdvanceWeapon(state, {}, 103.0)) == "deadline, AI never picked it up");
 
     LeaseState picked = ArmLease(100.0, kWeaponArmWindowSeconds, false, 0.0f, true);
-    AdvanceWeapon(picked, Running(), 100.5);
+    (void)AdvanceWeapon(picked, Running(), 100.5);
     REQUIRE_FALSE(AdvanceWeapon(picked, Running(), 102.99).finish);
     REQUIRE(Finish(AdvanceWeapon(picked, Running(), 103.0)) == "deadline, no power attack");
 
     LeaseState ended = ArmLease(100.0, kWeaponArmWindowSeconds, false, 0.0f, true);
-    AdvanceWeapon(ended, Running(), 100.5);
+    (void)AdvanceWeapon(ended, Running(), 100.5);
     REQUIRE(Finish(AdvanceWeapon(ended, {}, 101.0)) == "package ended");
 
     LeaseSeen ours = Running();
     ours.attacking = true;
     ours.ourPowerSwing = true;
     LeaseState mid = ArmLease(100.0, kWeaponArmWindowSeconds, false, 0.0f, true);
-    AdvanceWeapon(mid, Running(), 100.5);
-    AdvanceWeapon(mid, ours, 101.0);
+    (void)AdvanceWeapon(mid, Running(), 100.5);
+    (void)AdvanceWeapon(mid, ours, 101.0);
     LeaseSeen exited;
     exited.attacking = true;
     REQUIRE(Finish(AdvanceWeapon(mid, exited, 101.5)) == "package ended mid-swing");
 
     LeaseState stuck = ArmLease(100.0, kWeaponArmWindowSeconds, false, 0.0f, true);
-    AdvanceWeapon(stuck, Running(), 100.5);
-    AdvanceWeapon(stuck, ours, 101.0);
+    (void)AdvanceWeapon(stuck, Running(), 100.5);
+    (void)AdvanceWeapon(stuck, ours, 101.0);
     REQUIRE(Finish(AdvanceWeapon(stuck, ours, 104.0)) == "deadline, still swinging");
 
     // In an override list combat owns the facing.

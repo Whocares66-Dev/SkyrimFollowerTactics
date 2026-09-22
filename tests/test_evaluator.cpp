@@ -3657,7 +3657,7 @@ TEST_CASE("a poison is chosen by its bane, never by a boon it happens to carry",
 TEST_CASE("an effect is outdone by one of its name in force at least as strongly", "[evaluator][any]")
 {
     const PotionStock::Effect fire{"Resist Fire", 30.0f, 60.0f, true};
-    const auto outdone = [&](std::vector<RunningEffect> inForce) { return PotionStock::Outdone(inForce, fire); };
+    const auto outdone = [&](const std::vector<RunningEffect> &inForce) { return PotionStock::Outdone(inForce, fire); };
 
     REQUIRE_FALSE(outdone({}));
     REQUIRE(outdone({{"Resist Fire", 30.0f}}));        // equal: nothing gained
@@ -4120,7 +4120,6 @@ TEST_CASE("the probe says every action's availability and decides nothing", "[pa
     // actions, not the conditions.
     s.inCombat = false;
     EvalContext ctx;
-    const EvalContext before = ctx;
 
     const ActionTrace probe = ProbeAvailability(rs, s, ctx);
     REQUIRE(probe.size() == 3);
@@ -4129,7 +4128,7 @@ TEST_CASE("the probe says every action's availability and decides nothing", "[pa
     REQUIRE(probe[2].at(0) == Verdict::PowerUsed);
     REQUIRE(probe[2].at(1) == Verdict::Fired);
     // Nothing decided, nothing on cooldown.
-    REQUIRE(ctx.blocked.size() == before.blocked.size());
+    REQUIRE(ctx.blocked.empty());
     REQUIRE_FALSE(ctx.InProgress());
 }
 

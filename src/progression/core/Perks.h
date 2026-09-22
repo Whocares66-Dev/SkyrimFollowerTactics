@@ -81,7 +81,9 @@ struct PerkNode
     float y{0.0f};
 };
 
-class PerkGraph
+// (The NOLINT: as Holdings, below; the unordered_map makes the implicit move
+// constructor able to throw on MSVC.)
+class PerkGraph // NOLINT(bugprone-exception-escape)
 {
   public:
     // Adds a node and returns its id. Its ranks' forms are indexed.
