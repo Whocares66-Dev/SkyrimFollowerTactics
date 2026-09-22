@@ -3,6 +3,7 @@ tools/skyrimexe.py has the modes. The IDs come from the database for
 `--version <build>` (or SKYRIM_VERSION; 1.6.1170 otherwise), which has to
 be the build that is running.
 """
+
 import os
 import sys
 

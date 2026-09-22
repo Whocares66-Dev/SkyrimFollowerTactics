@@ -86,7 +86,10 @@ def main():
     # any plugin-format issue, is why the CK has to come down with the game.
     # SKSE: the runtime DLL's filename is the authoritative version signal.
     import glob as _glob
-    skse = sorted(os.path.basename(x) for x in _glob.glob(os.path.join(root, "skse64_*.dll")))
+
+    skse = sorted(
+        os.path.basename(x) for x in _glob.glob(os.path.join(root, "skse64_*.dll"))
+    )
     loader = os.path.exists(os.path.join(root, "skse64_loader.exe"))
     if skse and loader:
         want = "skse64_1_6_1170.dll"
@@ -95,16 +98,20 @@ def main():
         else:
             print(f"  SKSE DLL is {skse} but the runtime is 1.6.1170 - MISMATCH.")
     elif skse or loader:
-        print("  SKSE is partially installed (loader and DLL must both be in the game root).")
+        print(
+            "  SKSE is partially installed (loader and DLL must both be in the game root)."
+        )
     else:
         print("  SKSE not installed.")
 
     # Address Library: CommonLibSSE-NG resolves offsets from the versionlib .bin
     # matching the running exe. Without it, every NG plugin fails to load.
     vl = os.path.join(root, "Data", "SKSE", "Plugins", "versionlib-1-6-1170-0.bin")
-    print("  OK - Address Library present for 1.6.1170."
-          if os.path.exists(vl) else
-          "  Address Library MISSING (Data/SKSE/Plugins/versionlib-1-6-1170-0.bin).")
+    print(
+        "  OK - Address Library present for 1.6.1170."
+        if os.path.exists(vl)
+        else "  Address Library MISSING (Data/SKSE/Plugins/versionlib-1-6-1170-0.bin)."
+    )
 
     if ck_version and ck_version.startswith("1.6.1378"):
         print("  OK - CK matches the game and is a CKPE-supported version.")

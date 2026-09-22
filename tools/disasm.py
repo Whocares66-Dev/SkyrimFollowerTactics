@@ -6,6 +6,7 @@ and reads as noise; SKYRIM_EXE overrides), and that version's database
 under AddressLibrary/SKSE/Plugins/. IDs are the line's own: Special Edition
 numbers for a 1.5 build, Anniversary numbers for 1.6 and 1.7.
 """
+
 import os
 import sys
 

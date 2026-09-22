@@ -19,8 +19,12 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 BUILD = ROOT / "build"
 OUTPUT = BUILD / "docs-site"
-CHROME = ("_includes/components/sidebar.html", "_includes/header_custom.html",
-          "_sass/custom/custom.scss", "assets/js/guide.js")
+CHROME = (
+    "_includes/components/sidebar.html",
+    "_includes/header_custom.html",
+    "_sass/custom/custom.scss",
+    "assets/js/guide.js",
+)
 
 
 def git(*args):
@@ -38,7 +42,11 @@ def pages(source):
     # Guide pages have explicit permalinks, shared by sidebar and search.
     result = []
     for path in source.rglob("*.md"):
-        match = re.search(r'^permalink:\s*[\"\']?(/[^\"\'\s]*)', path.read_text(encoding="utf-8"), re.M)
+        match = re.search(
+            r"^permalink:\s*[\"\']?(/[^\"\'\s]*)",
+            path.read_text(encoding="utf-8"),
+            re.M,
+        )
         if match:
             result.append(match[1])
     return sorted(set(result))
@@ -57,7 +65,9 @@ def main():
     BUILD.mkdir(exist_ok=True)
     # Fixed generated output, checked before recursive cleanup.
     if OUTPUT.is_symlink() or OUTPUT.resolve().parent != BUILD.resolve():
-        raise ValueError("Output must stay directly inside the repository build directory")
+        raise ValueError(
+            "Output must stay directly inside the repository build directory"
+        )
     if OUTPUT.exists():
         shutil.rmtree(OUTPUT)
     destination = OUTPUT / baseurl.lstrip("/")
@@ -88,20 +98,43 @@ def main():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(DOCS / relative, target)
             sources.append((tag[1:], source, f"{baseurl}/{tag[1:]}"))
-        versions = [dict(label=label, baseurl=url, pages=pages(source)) for label, source, url in sources]
+        versions = [
+            dict(label=label, baseurl=url, pages=pages(source))
+            for label, source, url in sources
+        ]
         for index, (label, source, url) in enumerate(sources):
             # JSON is valid YAML; Jekyll merges this after the tag's own config.
             config = staging / f"config-{index}.yml"
-            config.write_text(json.dumps(dict(baseurl=url, docs_version=label, docs_versions=versions)), encoding="utf-8")
+            config.write_text(
+                json.dumps(
+                    dict(baseurl=url, docs_version=label, docs_versions=versions)
+                ),
+                encoding="utf-8",
+            )
             target = destination if index == 0 else destination / label
             subprocess.run(
-                [bundle, "exec", "jekyll", "build", "--source", str(source),
-                 "--destination", str(target), "--config", f"{source / '_config.yml'},{config}"],
-                cwd=DOCS, env=env, check=True,
+                [
+                    bundle,
+                    "exec",
+                    "jekyll",
+                    "build",
+                    "--source",
+                    str(source),
+                    "--destination",
+                    str(target),
+                    "--config",
+                    f"{source / '_config.yml'},{config}",
+                ],
+                cwd=DOCS,
+                env=env,
+                check=True,
             )
     (destination / ".nojekyll").touch()
     print(f"Pages artifact: {destination}", flush=True)
-    print(f"Preview: python -m http.server 4000 --bind 127.0.0.1 --directory {OUTPUT}", flush=True)
+    print(
+        f"Preview: python -m http.server 4000 --bind 127.0.0.1 --directory {OUTPUT}",
+        flush=True,
+    )
     print(f"Open http://127.0.0.1:4000{baseurl}/", flush=True)
 
 

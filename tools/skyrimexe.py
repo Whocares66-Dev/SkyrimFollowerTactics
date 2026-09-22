@@ -23,6 +23,7 @@ A body stops at the first ret/int3 followed by padding, or at max_bytes; a
 shape also stops at a jmp followed by padding, so a tail jump ends one.
 Needs `pip install capstone pefile`.
 """
+
 import bisect
 import re
 import struct
@@ -48,7 +49,9 @@ class Image:
         # second, tiny `.text` after the real one; the first of a name wins.
         self.sections = {}
         for s in pefile.PE(data=self.read(0, 0x1000), fast_load=True).sections:
-            self.sections.setdefault(s.Name.rstrip(b"\0").decode(), (s.VirtualAddress, s.Misc_VirtualSize))
+            self.sections.setdefault(
+                s.Name.rstrip(b"\0").decode(), (s.VirtualAddress, s.Misc_VirtualSize)
+            )
 
     def read(self, rva, n):
         raise NotImplementedError
@@ -75,7 +78,9 @@ class Image:
         for ins in self.md.disasm(code, rva):
             out.append(ins)
             if stop and ins.mnemonic in ends:
-                nxt = code[ins.address - rva + ins.size : ins.address - rva + ins.size + 1]
+                nxt = code[
+                    ins.address - rva + ins.size : ins.address - rva + ins.size + 1
+                ]
                 if nxt == b"\xcc" or ins.mnemonic == "int3":
                     break
         return out
@@ -94,7 +99,11 @@ class Image:
         its displacement, so it is resolved from the instruction's end)."""
         out = set()
         for sign, disp in re.findall(r"rip ([+-]) (0x[0-9a-f]+)", ins.op_str):
-            out.add(ins.address + ins.size + (int(disp, 16) if sign == "+" else -int(disp, 16)))
+            out.add(
+                ins.address
+                + ins.size
+                + (int(disp, 16) if sign == "+" else -int(disp, 16))
+            )
         if "rip" not in ins.op_str:
             out.update(int(t, 16) for t in re.findall(r"0x[0-9a-f]+", ins.op_str))
         return out
@@ -116,7 +125,9 @@ class Image:
             view = memoryview(data[k : len(data) - ((len(data) - k) % 4)]).cast("i")
             for trailing in (0, 1, 4):
                 c = target - start - k - 4 - trailing
-                hits.update(start + k + 4 * j for j, v in enumerate(view) if v + 4 * j == c)
+                hits.update(
+                    start + k + 4 * j for j, v in enumerate(view) if v + 4 * j == c
+                )
         out = []
         for disp in sorted(hits):
             oid, ooff = self.owner(disp)
@@ -162,7 +173,15 @@ class Image:
             if got == want:
                 exact.append((1.0, i, o))
             elif got[:3] == want[:3] and 0.8 <= len(got) / len(want) <= 1.25:
-                near.append((difflib.SequenceMatcher(None, want, got, autojunk=False).ratio(), i, o))
+                near.append(
+                    (
+                        difflib.SequenceMatcher(
+                            None, want, got, autojunk=False
+                        ).ratio(),
+                        i,
+                        o,
+                    )
+                )
         return exact or sorted(near, reverse=True)[:5]
 
 
@@ -182,7 +201,10 @@ class LiveImage(Image):
         import ctypes.wintypes as w
         import subprocess
 
-        out = subprocess.check_output(["tasklist", "/FI", f"IMAGENAME eq {process}", "/FO", "CSV", "/NH"], text=True)
+        out = subprocess.check_output(
+            ["tasklist", "/FI", f"IMAGENAME eq {process}", "/FO", "CSV", "/NH"],
+            text=True,
+        )
         pid = None
         for line in out.splitlines():
             parts = [p.strip('"') for p in line.split('","')]
@@ -191,17 +213,33 @@ class LiveImage(Image):
         if pid is None:
             raise SystemExit(f"{process} is not running")
         k32, psapi = ctypes.windll.kernel32, ctypes.windll.psapi
-        self.handle = k32.OpenProcess(0x0400 | 0x0010, False, pid)  # query information, read memory
+        self.handle = k32.OpenProcess(
+            0x0400 | 0x0010, False, pid
+        )  # query information, read memory
         if not self.handle:
             raise SystemExit(f"OpenProcess failed: {ctypes.GetLastError()}")
         mods = (w.HMODULE * 1)()
         needed = w.DWORD()
-        psapi.EnumProcessModulesEx.argtypes = [w.HANDLE, ctypes.POINTER(w.HMODULE), w.DWORD, ctypes.POINTER(w.DWORD), w.DWORD]
-        if not psapi.EnumProcessModulesEx(self.handle, mods, ctypes.sizeof(mods), ctypes.byref(needed), 0x03):
+        psapi.EnumProcessModulesEx.argtypes = [
+            w.HANDLE,
+            ctypes.POINTER(w.HMODULE),
+            w.DWORD,
+            ctypes.POINTER(w.DWORD),
+            w.DWORD,
+        ]
+        if not psapi.EnumProcessModulesEx(
+            self.handle, mods, ctypes.sizeof(mods), ctypes.byref(needed), 0x03
+        ):
             raise SystemExit(f"EnumProcessModules failed: {ctypes.GetLastError()}")
         self.base = ctypes.cast(mods[0], ctypes.c_void_p).value
         self.pid = pid
-        k32.ReadProcessMemory.argtypes = [w.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+        k32.ReadProcessMemory.argtypes = [
+            w.HANDLE,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
         self._k32, self._ctypes = k32, ctypes
         super().__init__(version, lib)
 
@@ -209,15 +247,21 @@ class LiveImage(Image):
         ctypes = self._ctypes
         buf = ctypes.create_string_buffer(n)
         got = ctypes.c_size_t()
-        if not self._k32.ReadProcessMemory(self.handle, ctypes.c_void_p(self.base + rva), buf, n, ctypes.byref(got)):
-            raise SystemExit(f"ReadProcessMemory at {rva:#x} failed: {ctypes.GetLastError()}")
+        if not self._k32.ReadProcessMemory(
+            self.handle, ctypes.c_void_p(self.base + rva), buf, n, ctypes.byref(got)
+        ):
+            raise SystemExit(
+                f"ReadProcessMemory at {rva:#x} failed: {ctypes.GetLastError()}"
+            )
         return buf.raw[: got.value]
 
 
 def print_references(img, target):
     found = img.references(target)
     for ins, oid, ooff in found:
-        print(f"{ins.address:#x}: {ins.mnemonic} {ins.op_str}  in ID {oid} ({ooff:#x} +{ins.address - ooff:#x})")
+        print(
+            f"{ins.address:#x}: {ins.mnemonic} {ins.op_str}  in ID {oid} ({ooff:#x} +{ins.address - ooff:#x})"
+        )
     print(f"{len(found)} reference(s)")
 
 
@@ -248,8 +292,12 @@ def run(img, args):
         print(f"{args[1]} ID {args[2]}: {len(want)} instructions, {want_bytes} bytes")
         found = img.matches(want, want_bytes)
         for ratio, i, o in found:
-            print(f"ID {i} at {o:#x}" + ("" if ratio == 1.0 else f"  ({ratio:.0%} alike)"))
-        print(f"{sum(1 for r, _, _ in found if r == 1.0)} exact match(es) in {img.version}")
+            print(
+                f"ID {i} at {o:#x}" + ("" if ratio == 1.0 else f"  ({ratio:.0%} alike)")
+            )
+        print(
+            f"{sum(1 for r, _, _ in found if r == 1.0)} exact match(es) in {img.version}"
+        )
     elif args[0] == "--bytes":
         print(img.read(int(args[1], 16), int(args[2])).hex(" "))
     else:

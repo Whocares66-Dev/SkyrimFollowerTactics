@@ -51,15 +51,19 @@ def unescape(text: str, where: str) -> str:
     return "".join(out)
 
 
-CODE = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|//[^\n]*|/\*.*?\*/', re.S)
+CODE = re.compile(
+    r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|//[^\n]*|/\*.*?\*/', re.S
+)
 
 
 def without_comments(text: str) -> str:
     """The code alone: a comment's example, Tr("Rules"), is no line. Its
     newlines are kept, so a line number still points at the source."""
+
     def blank(m):
         s = m.group(0)
         return s if s[0] in "\"'" else re.sub(r"[^\n]", " ", s)
+
     return CODE.sub(blank, text)
 
 
@@ -76,13 +80,17 @@ def marked() -> dict:
                 if not lit:
                     break
                 line_no = text.count("\n", 0, pos) + 1
-                parts.append(unescape(lit.group(1), f"{path.relative_to(ROOT)}:{line_no}"))
+                parts.append(
+                    unescape(lit.group(1), f"{path.relative_to(ROOT)}:{line_no}")
+                )
                 pos = BETWEEN.match(text, lit.end()).end()
             if not parts:
                 continue  # Tr(variable): translated where it is drawn
             key = "".join(parts)
             if key not in lines:
-                lines[key] = f"{path.relative_to(ROOT).as_posix()}:{text.count(chr(10), 0, m.start()) + 1}"
+                lines[key] = (
+                    f"{path.relative_to(ROOT).as_posix()}:{text.count(chr(10), 0, m.start()) + 1}"
+                )
     return lines
 
 
@@ -90,7 +98,9 @@ def fields(text: str) -> int:
     # How many arguments a line takes: {} is the next, {1} the second
     # (a translation reorders by number); the escape {{ is none.
     found = FIELD.findall(text.replace("{{", "").replace("}}", ""))
-    numbered = [int(f[1:-1].split(":")[0]) for f in found if f[1:-1].split(":")[0].isdigit()]
+    numbered = [
+        int(f[1:-1].split(":")[0]) for f in found if f[1:-1].split(":")[0].isdigit()
+    ]
     return max(numbered) + 1 if numbered else len(found)
 
 
@@ -124,7 +134,9 @@ def main() -> int:
                 # Only TrFormat's lines are formatted; a plain line's braces
                 # are text. The source is where that is known.
                 mismatched.append(key)
-        print(f"{locale}: {done}/{len(lines)} translated, {len(missing)} new, {len(stale)} gone")
+        print(
+            f"{locale}: {done}/{len(lines)} translated, {len(missing)} new, {len(stale)} gone"
+        )
         for key in mismatched:
             print(f"  fields differ ({lines[key]}): {key!r} -> {new[key]!r}")
 

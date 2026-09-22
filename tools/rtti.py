@@ -6,6 +6,7 @@ entries and tasks the disassembly passes around.
     python tools/rtti.py [--version 1.6.1170] <vtable id | 0xrva> ...
     python tools/rtti.py [--version 1.6.1170] --find <text>   vtables whose class name contains text
 """
+
 import os
 import struct
 import sys

@@ -12,6 +12,7 @@ and a dense uint32 array indexed by ID, a zero meaning the ID is not in the
 build. The ID space is per line: an SE ID and an AE ID with the same number
 name different things, and the 1.7 files carry on the AE numbering.
 """
+
 import glob
 import os
 import struct
@@ -37,7 +38,9 @@ def resolve(args):
     if args[:1] == ["--version"]:
         version = args[1]
         del args[:2]
-    exe = os.environ.get("SKYRIM_EXE") or os.path.join(VERSIONS, version, "SkyrimSE.exe")
+    exe = os.environ.get("SKYRIM_EXE") or os.path.join(
+        VERSIONS, version, "SkyrimSE.exe"
+    )
     # By file name, not by the version in the header: versionlib-1-6-1170-0-1.bin
     # also says 1.6.1170.0 inside and is a different table.
     dashed = "-".join(str(v) for v in parse_version(version))
@@ -151,11 +154,16 @@ def main(argv):
         return
     if argv[0] == "--all":
         wanted = [int(x) for x in argv[1:]]
-        print(f"{'file':<30}{'fmt':<5}{'entries':<9}" + "".join(f"{i:>12}" for i in wanted))
+        print(
+            f"{'file':<30}{'fmt':<5}{'entries':<9}"
+            + "".join(f"{i:>12}" for i in wanted)
+        )
         for path in all_databases():
             fmt, ver, ids = load(path)
             name = os.path.basename(path)[: -len(".bin")]
-            cells = "".join(f"{ids[i]:>#12x}" if i in ids else f"{'-':>12}" for i in wanted)
+            cells = "".join(
+                f"{ids[i]:>#12x}" if i in ids else f"{'-':>12}" for i in wanted
+            )
             print(f"{name:<30}{fmt:<5}{len(ids):<9}{cells}")
         return
     if argv[0] == "--rlookup":
