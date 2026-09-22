@@ -1,16 +1,22 @@
-# clang-format / clang-tidy targets.
-#
-# These ship inside Visual Studio (VC\Tools\Llvm\x64\bin) as the "C++ Clang tools
-# for Windows" component, so they are not an extra dependency on an MSVC box --
-# VS uses clang-format for "Format Document" and clang-tidy for Code Analysis.
+# The format and lint targets, over every language of ours in the repository:
 #
 #   cmake --build --preset core --target format         rewrite files in place
 #   cmake --build --preset core --target format-check    fail if anything is unformatted
 #   cmake --build --preset core --target tidy            static analysis
 #
-# clang-format runs on stock configuration: .clang-format is a single
-# BasedOnStyle line. clang-tidy reads .clang-tidy at the repo root, which adds
-# the correctness and performance check groups and nothing stylistic.
+#   C++         clang-format, clang-tidy
+#   Python      ruff format, ruff check
+#   PowerShell  PSScriptAnalyzer's Invoke-Formatter and Invoke-ScriptAnalyzer
+#
+# Each formatter runs its stock style, and each linter the checks that find
+# bugs and costs, nothing stylistic: .clang-format, .clang-tidy and ruff.toml
+# say which; PSScriptAnalyzer runs its defaults.
+#
+# clang-format and clang-tidy ship inside Visual Studio (VC\Tools\Llvm\x64\bin)
+# as the "C++ Clang tools for Windows" component, so they are not an extra
+# dependency on an MSVC box. ruff is `pip install --user ruff`, and
+# PSScriptAnalyzer `Install-Module PSScriptAnalyzer -Scope CurrentUser`. A tool
+# that is missing is said at configure time, and its language skipped.
 
 set(_llvm_hints
     "$ENV{VCINSTALLDIR}/Tools/Llvm/x64/bin"
@@ -26,6 +32,43 @@ find_program(FT_CLANG_TIDY    NAMES clang-tidy    HINTS ${_llvm_hints})
 find_program(FT_LLVM_PROFDATA NAMES llvm-profdata HINTS ${_llvm_hints})
 find_program(FT_LLVM_COV      NAMES llvm-cov      HINTS ${_llvm_hints})
 
+# ruff by `python -m`: pip's --user install puts ruff.exe in a Scripts folder
+# that is not on PATH, so find_program would miss it.
+set(FT_RUFF "")
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    execute_process(COMMAND "${Python3_EXECUTABLE}" -m ruff --version
+                    RESULT_VARIABLE _ruff_result OUTPUT_VARIABLE _ruff_version
+                    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(_ruff_result EQUAL 0)
+        set(FT_RUFF "${Python3_EXECUTABLE}" -m ruff)
+        message(STATUS "ruff: ${_ruff_version} (${Python3_EXECUTABLE})")
+    endif()
+endif()
+if(NOT FT_RUFF)
+    message(STATUS "ruff: NOT FOUND -- Python is not formatted or linted; pip install --user ruff")
+endif()
+
+set(FT_PSCHECK "")
+find_program(FT_PWSH NAMES pwsh)
+if(FT_PWSH)
+    execute_process(COMMAND "${FT_PWSH}" -NoProfile -NonInteractive -Command
+                            "if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { exit 1 }"
+                    RESULT_VARIABLE _pssa_result OUTPUT_QUIET ERROR_QUIET)
+    if(_pssa_result EQUAL 0)
+        set(FT_PSCHECK "${FT_PWSH}" -NoProfile -NonInteractive -File
+                       "${CMAKE_SOURCE_DIR}/tools/check-powershell.ps1")
+        message(STATUS "PSScriptAnalyzer: found (${FT_PWSH})")
+    endif()
+endif()
+if(NOT FT_PSCHECK)
+    message(STATUS "PSScriptAnalyzer: NOT FOUND -- PowerShell is not formatted or linted; "
+                   "Install-Module PSScriptAnalyzer -Scope CurrentUser, under pwsh 7")
+endif()
+unset(_ruff_result)
+unset(_ruff_version)
+unset(_pssa_result)
+
 # Our own sources only. Never glob the build tree: it holds fetched third-party
 # code (Catch2) and vcpkg headers, and reformatting those would be both wrong
 # and enormous.
@@ -35,22 +78,36 @@ file(GLOB_RECURSE FT_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/tests/*.cpp"
     "${CMAKE_SOURCE_DIR}/tests/*.h")
 
+set(FT_FORMAT_COMMANDS "")
+set(FT_FORMAT_CHECK_COMMANDS "")
 if(FT_CLANG_FORMAT)
     message(STATUS "clang-format: ${FT_CLANG_FORMAT}")
-
-    add_custom_target(format
-        COMMAND "${FT_CLANG_FORMAT}" -i --style=file ${FT_SOURCES}
-        COMMENT "Formatting sources with clang-format"
-        VERBATIM)
-
+    list(APPEND FT_FORMAT_COMMANDS COMMAND "${FT_CLANG_FORMAT}" -i --style=file ${FT_SOURCES})
     # -Werror turns "would reformat" into a non-zero exit, which is what makes
     # this usable as a gate rather than a report.
-    add_custom_target(format-check
-        COMMAND "${FT_CLANG_FORMAT}" --dry-run -Werror --style=file ${FT_SOURCES}
-        COMMENT "Checking formatting with clang-format"
-        VERBATIM)
+    list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND "${FT_CLANG_FORMAT}" --dry-run -Werror --style=file ${FT_SOURCES})
 else()
-    message(STATUS "clang-format: NOT FOUND -- 'format' targets unavailable")
+    message(STATUS "clang-format: NOT FOUND -- C++ is not formatted")
+endif()
+# ruff and the PowerShell script find their own files: what git would track,
+# so a script in a new folder is not missed.
+if(FT_RUFF)
+    list(APPEND FT_FORMAT_COMMANDS COMMAND ${FT_RUFF} format --quiet)
+    list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND ${FT_RUFF} format --check)
+endif()
+if(FT_PSCHECK)
+    list(APPEND FT_FORMAT_COMMANDS COMMAND ${FT_PSCHECK} -Mode Format)
+    list(APPEND FT_FORMAT_CHECK_COMMANDS COMMAND ${FT_PSCHECK} -Mode FormatCheck)
+endif()
+if(FT_FORMAT_COMMANDS)
+    add_custom_target(format ${FT_FORMAT_COMMANDS}
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "Formatting C++, Python and PowerShell"
+        VERBATIM)
+    add_custom_target(format-check ${FT_FORMAT_CHECK_COMMANDS}
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "Checking the formatting of C++, Python and PowerShell"
+        VERBATIM)
 endif()
 
 if(FT_CLANG_TIDY)
@@ -183,9 +240,27 @@ if(FT_CLANG_TIDY)
     # prints a line per file: "clang-tidy over src/core" with nothing following
     # it means the glob found nothing, not that the code is clean.
     message(STATUS "clang-tidy scope: ${FT_TIDY_SCOPE}")
-    add_custom_target(tidy DEPENDS ${FT_TIDY_STAMPS})
 else()
-    message(STATUS "clang-tidy: NOT FOUND -- 'tidy' target unavailable")
+    set(FT_TIDY_STAMPS "")
+    message(STATUS "clang-tidy: NOT FOUND -- C++ is not linted")
+endif()
+
+# ruff check runs every time: it takes well under a second. PSScriptAnalyzer
+# takes seconds to load, so its script keeps a stamp and returns at once while
+# no script has changed.
+set(FT_LINT_COMMANDS "")
+if(FT_RUFF)
+    list(APPEND FT_LINT_COMMANDS COMMAND ${FT_RUFF} check --quiet)
+endif()
+if(FT_PSCHECK)
+    list(APPEND FT_LINT_COMMANDS COMMAND ${FT_PSCHECK} -Mode Lint -Stamp "${CMAKE_BINARY_DIR}/tidy/powershell.stamp")
+endif()
+if(FT_TIDY_STAMPS OR FT_LINT_COMMANDS)
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/tidy")
+    add_custom_target(tidy ${FT_LINT_COMMANDS}
+        DEPENDS ${FT_TIDY_STAMPS}
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        VERBATIM)
 endif()
 
 unset(_llvm_hints)

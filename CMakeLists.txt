@@ -91,7 +91,7 @@ if(FT_COVERAGE)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-include(ClangTools)
+include(Quality)
 
 # ---------------------------------------------------------------------------
 # ft_core -- the rule engine.

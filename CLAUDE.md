@@ -96,8 +96,8 @@ project:
 
 ```powershell
 .\tools\build.ps1 -Preset core -Test        # 1. tests
-cmake --build --preset core --target format # 2. formatter, rewrites in place
-cmake --build --preset core --target tidy   # 3. linter, src/core (seconds; only what changed)
+cmake --build --preset core --target format # 2. formatters, rewrite in place: C++, Python, PowerShell
+cmake --build --preset core --target tidy   # 3. linters: src/core and tests, Python, PowerShell (seconds; only what changed)
 .\tools\build.ps1 -Preset debug             # 4. the plugin builds
 ```
 
@@ -108,7 +108,7 @@ concurrency and misc groups, nothing stylistic; the file says what is excluded a
 why, and names the one known false positive. It runs one clang-tidy per file, so
 Ninja spreads them across cores and skips the files that have not changed: a full
 pass is ~99 s, one touched file ~6.6 s, nothing changed ~3.6 s. Delete
-`build\<preset>\tidy` to force a full pass. `cmake/ClangTools.cmake` has the
+`build\<preset>\tidy` to force a full pass. `cmake/Quality.cmake` has the
 measurements behind that: the per-file cost is the checks walking CommonLibSSE's
 inlined header bodies, and no filter avoids it.
 
@@ -121,19 +121,9 @@ cmake --build --preset debug --target tidy  # the linter over src/game and src/p
 
 The second is the slower one -- every `src/game` translation unit parses the whole of CommonLibSSE, which no filter avoids and which the `/Y-` above means clang cannot precompile once and reuse. Spread across cores it is about a minute and a half against `src/core`'s twenty seconds, which is why it sits here rather than in the fast loop.
 
-A change under `tools\` gets the PowerShell linter too, on its default rules and nothing custom:
+(2) and (3) cover every language of ours: clang-format and clang-tidy for C++, ruff (`ruff.toml` says which rules and why) for Python, and PSScriptAnalyzer on its default rules for PowerShell, through `tools\check-powershell.ps1`. ruff and the PowerShell script find their own files, whatever git tracks or would track, so a script in a new folder is not missed. A tool that is not installed is said when CMake configures, and its language skipped: `pip install --user ruff`, and `Install-Module PSScriptAnalyzer -Scope CurrentUser` under pwsh 7.
 
-```powershell
-Invoke-ScriptAnalyzer -Path tools -Recurse   # PSScriptAnalyzer; Install-Module PSScriptAnalyzer -Scope CurrentUser once
-```
-
-It is clean as of 2026-09-18. Its rule against `Write-Host` allows it inside a function whose verb is `Show`, so every script prints through the `Show-*` helpers in `tools\console.ps1`, dot-sourced at the top of each; a state-changing function declares `SupportsShouldProcess` and asks `$PSCmdlet.ShouldProcess` before it writes, which is what makes `-WhatIf` on the downgrade script honest.
-
-A change to a Python script (`tools\`, `dev\research\`) gets ruff, the formatter and the linter in one; `ruff.toml` at the root says which rules and why:
-
-```powershell
-python -m ruff format; python -m ruff check   # pip install --user ruff once
-```
+PSScriptAnalyzer's rule against `Write-Host` allows it inside a function whose verb is `Show`, so every script prints through the `Show-*` helpers in `tools\console.ps1`, dot-sourced at the top of each; a state-changing function declares `SupportsShouldProcess` and asks `$PSCmdlet.ShouldProcess` before it writes, which is what makes `-WhatIf` on the downgrade script honest.
 
 **A green build is not a passing check.** Every one of these has caught a defect
 that compiled perfectly: the tests caught a cooldown interaction that changed

@@ -6,7 +6,7 @@
 # style. The bar for a check being here is that a finding is a plausible bug
 # or a real cost, not a matter of taste.
 #
-# Run:  cmake --build --preset core --target tidy   (see cmake/ClangTools.cmake)
+# Run:  cmake --build --preset core --target tidy   (see cmake/Quality.cmake)
 #
 # Known false positive, left in place: clang-analyzer-cplusplus.NewDelete
 # reports "use of memory after it is freed" or "attempt to free released
