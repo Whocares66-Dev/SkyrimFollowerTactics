@@ -54,6 +54,23 @@ struct CompanionView
 // once. progression/core/Companion.h says what is allowed.
 void AssignSkillPoint(const FormKey &actor, Skill skill, int delta);
 void AssignAttributePoint(const FormKey &actor, Attribute attribute, int delta);
+// An attribute moved as far as it goes one way (-1 down, +1 up): each point
+// as - and + would move it, while they can (progression/core/Companion.h).
+void AssignAttributeAll(const FormKey &actor, Attribute attribute, int direction);
+
+// A companion's attribute points as the character sheet offers them: the
+// points to assign and each attribute's - + << >>, greyed with why where
+// they cannot act (AttributeButtonsFor), progression off and their being
+// away folded in. None for an actor who is no companion of ours. From the
+// render thread, under the lock.
+struct AttributeControls
+{
+    FormKey companion;
+    int available{0};
+    bool active{false};
+    PerAttribute<AttributeButtons> buttons;
+};
+[[nodiscard]] std::optional<AttributeControls> AttributeControlsFor(RE::FormID actor);
 // A skill moved as far as it goes one way (-1 down, +1 up): each level as -
 // and + would move it, while they can (progression/core/Companion.h).
 void AssignSkillAll(const FormKey &actor, Skill skill, int direction);
@@ -67,7 +84,7 @@ void LearnPerkByForm(std::uint32_t actor, std::uint32_t perk);
 
 // A companion's skill as Tactics' skill page heads it: their level with
 // what they have learned, and its -, + and Reset (core ButtonsFor), with
-// leveling off and their being away folded in. `active` is whether a
+// progression off and their being away folded in. `active` is whether a
 // click on the tree can learn. None for an actor who is no companion of
 // ours, or a skill Progression does not know. From the render thread,
 // under the lock.
@@ -129,10 +146,11 @@ struct SpellControls
     std::string why;
 };
 [[nodiscard]] std::optional<SpellControls> SpellControlsFor(RE::FormID actor);
-// Levelling off: everything of ours off every companion -- assigned points
-// withdrawn, perks and spells as their records have them -- as they are
-// near, the ledger kept. On: all of it back. Taught spells go too, being
-// only the view's. Tactics' Settings page is the switch.
+// Progression off (Settings, "Manage follower progression"): every companion
+// as their record has them -- skills, attributes, perks and spells, the
+// views emptied at once, what the engine keeps on an actor put back as each
+// is near -- the ledger kept, nothing learned or changed meanwhile. On: all
+// of it back.
 void SetLevelling(bool on);
 
 struct LevellingState

@@ -30,14 +30,12 @@ namespace fp::game
 // Every loaded follower near the player: the high process list.
 [[nodiscard]] std::vector<RE::Actor *> LoadedFollowers();
 
-// Skills as the engine has them without any modifier: what vanilla
-// levelling gives, and what our training is added to.
+// Skills as the engine gives them, without any modifier and without what
+// they learned (the value view's engine base): what vanilla levelling
+// gives, and what learning is added to.
 [[nodiscard]] PerSkill<int> BaseSkills(RE::Actor *actor);
-// Health, magicka and stamina: base value, no modifiers.
+// Health, magicka and stamina: the same, without the points assigned.
 [[nodiscard]] PerAttribute<int> BaseAttributes(RE::Actor *actor);
-
-// Writes `delta` into the actor's permanent modifiers: the console's modav.
-void ApplyPoints(RE::Actor *actor, const Delta &delta);
 
 // The perks on the actor's base record, as keys. Never written: what a
 // companion holds beyond it is progression/game/PerkView.h's.

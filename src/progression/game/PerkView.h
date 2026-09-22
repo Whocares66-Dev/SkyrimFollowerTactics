@@ -16,7 +16,7 @@
 // rank change, the call ApplyPerksFromBase itself makes. The record is never
 // written and the view is not saved: it is rebuilt from the ledger. What an
 // ability perk registers may be (dev/ENGINE_PERKS.md), which is what
-// turning levelling off takes back.
+// turning progression off takes back.
 
 #include <cstdint>
 #include <string>

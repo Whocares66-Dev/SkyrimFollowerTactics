@@ -247,7 +247,8 @@ if(FT_BUILD_PLUGIN)
         src/progression/game/Rules.cpp
         src/progression/game/Service.cpp
         src/progression/game/SpellView.cpp
-        src/progression/game/Tomes.cpp)
+        src/progression/game/Tomes.cpp
+        src/progression/game/ValueView.cpp)
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
     # These are Skyrim/Windows-API concerns and belong to THIS target only.

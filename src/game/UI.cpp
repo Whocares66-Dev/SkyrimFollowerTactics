@@ -285,11 +285,41 @@ struct RowGeometry
 
 void BreakdownTooltip(const ft::Breakdown &b); // below, with the sheets
 
+// Controls a stat row can carry: its label a click target that opens them,
+// lit under the cursor as a link is, and what they draw after the bar.
+struct RowControls
+{
+    bool *open{nullptr};
+    const char *toOpen{""};
+    const char *toClose{""};
+    std::function<void()> draw;
+};
+
 void DrawStatRow(const RowGeometry &g, const char *barLabel, const ft::Stat &stat, Im::ImVec4 barColour,
-                 const char *statLabel, const std::function<void()> &drawValue, const ft::Breakdown &breakdown = {})
+                 const char *statLabel, const std::function<void()> &drawValue, const ft::Breakdown &breakdown = {},
+                 const RowControls *controls = nullptr)
 {
     Im::SetCursorPosX((std::max)(0.0f, g.barLabelRight - Im::CalcTextSize(barLabel).x));
     Im::AlignTextToFramePadding();
+    if (controls && controls->open)
+    {
+        const Im::ImVec2 at = Im::GetCursorScreenPos();
+        const Im::ImVec2 size(Im::CalcTextSize(barLabel).x, Im::GetFrameHeight());
+        Im::PushID(barLabel);
+        if (Im::InvisibleButton("label", size, 0))
+            *controls->open = !*controls->open;
+        Im::PopID();
+        if (Im::IsItemHovered(0))
+        {
+            if (auto *draw = Im::GetWindowDrawList())
+                Im::ImDrawListManager::AddRectFilled(draw, Im::ImVec2(at.x - 3.0f, at.y),
+                                                     Im::ImVec2(at.x + size.x + 3.0f, at.y + size.y),
+                                                     Im::GetColorU32(Im::ImGuiCol_ButtonHovered, 1.0f), 3.0f, 0);
+            Tooltip(*controls->open ? controls->toClose : controls->toOpen);
+        }
+        Im::SetCursorScreenPos(at);
+        Im::AlignTextToFramePadding();
+    }
     Im::Text("%s", barLabel);
 
     Im::SameLine(g.barLeft, -1.0f);
@@ -312,6 +342,11 @@ void DrawStatRow(const RowGeometry &g, const char *barLabel, const ft::Stat &sta
         Im::ImDrawListManager::AddText(draw,
                                        {lo.x + (hi.x - lo.x - size.x) * 0.5f, lo.y + (hi.y - lo.y - size.y) * 0.5f},
                                        Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), overlay.c_str());
+    }
+    if (controls && controls->open && *controls->open && controls->draw)
+    {
+        Im::SameLine(0.0f, kCellPadX);
+        controls->draw();
     }
 
     // A row with nothing to say on the right leaves it empty.
@@ -3717,6 +3752,9 @@ struct PanelState
     SkillsTabState skills;
     // The Summons tab's chip: the summon chosen, by its reference.
     int summon{0};
+    // The character sheet's attribute controls, opened by an attribute's
+    // label and closed by it again, or by the panel closing.
+    bool attributeControls{false};
     // The tab to show on the next frame, asked for by a link on a sheet or
     // by a detail page's back arrow. The page's own and not any one tab's --
     // four of them write it -- though it lived in the Inventory tab's state
@@ -3779,6 +3817,7 @@ void CloseDetails()
         CloseDetail(panel, panel.shouts, Tab::Shouts, read && g_shownTab == Tab::Shouts);
         panel.effects = {};
         panel.skills = {};
+        panel.attributeControls = false;
     }
 }
 
@@ -5604,6 +5643,61 @@ void DrawCharacter(const CharacterView &view)
     geo.valueLeft = contentRight - valueWidth;
     geo.statLabelRight = geo.valueLeft - 12.0f;
 
+    // A follower Progression levels: each attribute's label opens its points'
+    // controls after the bars, << - + >> as a skill's are, a point 10 of the
+    // value (iAVDhmsLevelUp), and closes them again; the points to assign
+    // are in the right column while they are open.
+    const auto attributes = view.player ? std::nullopt : fp::game::AttributeControlsFor(view.id);
+    PanelState &panel = Panel(view.id);
+    const auto attributeRow = [&](fp::Attribute attribute) {
+        RowControls row;
+        if (!attributes)
+            return row;
+        row.open = &panel.attributeControls;
+        row.toOpen = "Click to assign attribute points";
+        row.toClose = "Click to hide attribute controls";
+        row.draw = [&attributes, attribute] {
+            const fp::AttributeButtons &b = attributes->buttons[fp::Index(attribute)];
+            const float size = Im::GetFrameHeight();
+            const auto button = [size](const char *id, Glyph glyph, bool can, const std::string &why) {
+                Im::BeginDisabled(!can);
+                Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+                const bool clicked = GlyphButton(id, size, glyph);
+                Im::PopStyleVar(1);
+                Im::EndDisabled();
+                if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+                    Tooltip(why);
+                return clicked;
+            };
+            const auto move = [&attributes, attribute](int direction, bool allTheWay) {
+                if (allTheWay)
+                    fp::game::AssignAttributeAll(attributes->companion, attribute, direction);
+                else
+                    fp::game::AssignAttributePoint(attributes->companion, attribute, direction);
+                RefreshAfterAction();
+            };
+            Im::PushID(static_cast<int>(attribute));
+            if (button("lowest", Glyph::AllTheWayLeft, b.canLower, b.lowest))
+                move(-1, true);
+            Im::SameLine(0.0f, kCellPadX);
+            if (button("lower", Glyph::Minus, b.canLower, b.lower))
+                move(-1, false);
+            Im::SameLine(0.0f, kCellPadX);
+            if (button("raise", Glyph::Plus, b.canRaise, b.raise))
+                move(+1, false);
+            Im::SameLine(0.0f, kCellPadX);
+            if (button("highest", Glyph::AllTheWayRight, b.canRaise, b.highest))
+                move(+1, true);
+            Im::PopID();
+        };
+        return row;
+    };
+    const RowControls healthRow = attributeRow(fp::Attribute::Health);
+    const RowControls staminaRow = attributeRow(fp::Attribute::Stamina);
+    const RowControls magickaRow = attributeRow(fp::Attribute::Magicka);
+    const std::string pointsText =
+        attributes && panel.attributeControls ? std::to_string(attributes->available) : std::string();
+
     DrawStatRow(
         geo, "Health", view.health, kHealth, "Status",
         [&] {
@@ -5612,7 +5706,7 @@ void DrawCharacter(const CharacterView &view)
             else
                 Im::TextDisabled("%s", statusText.c_str());
         },
-        view.healthBreakdown);
+        view.healthBreakdown, &healthRow);
 
     DrawStatRow(
         geo, "Stamina", view.stamina, kStamina, "Carrying",
@@ -5628,9 +5722,11 @@ void DrawCharacter(const CharacterView &view)
             if (!view.carryBreakdown.empty() && Im::IsItemHovered(0))
                 BreakdownTooltip(view.carryBreakdown);
         },
-        view.staminaBreakdown);
+        view.staminaBreakdown, &staminaRow);
 
-    DrawStatRow(geo, "Magicka", view.magicka, kMagicka, nullptr, {}, view.magickaBreakdown);
+    DrawStatRow(
+        geo, "Magicka", view.magicka, kMagicka, pointsText.empty() ? nullptr : "Attribute points",
+        [&] { Im::Text("%s", pointsText.c_str()); }, view.magickaBreakdown, &magickaRow);
 
     // The level beside its experience, in a muted gold; a follower with no
     // experience of ours has the level alone.
@@ -6678,25 +6774,6 @@ void DrawSettings()
                "Click to turn off tactics for the party"))
         SetEnabled(!enabled);
 
-    // Progression's switch, kept with the save as the one above is. Off
-    // takes what it put on the followers off as each is near and keeps the
-    // record of it; on puts it back (progression/game/Service.h). Nothing
-    // it does is written to a record, so it can be flipped at any time.
-    const fp::game::LevellingState levelling = fp::game::Levelling();
-    if (levelling.inGame)
-    {
-        if (toggle("levelling", levelling.on, "Enable leveling for followers",
-                   "Click to turn on leveling for followers", "Click to turn off leveling for followers"))
-            fp::game::SetLevelling(!levelling.on);
-        if (!levelling.on && !levelling.stillHeld.empty())
-        {
-            std::string names;
-            for (const std::string &name : levelling.stillHeld)
-                names += (names.empty() ? "" : ", ") + name;
-            Im::TextDisabled("%s", fmt::format("Still leveled until next near: {}", names).c_str());
-        }
-    }
-
     Im::Spacing();
     // What a follower must have before a thing is offered at all
     // (game/Settings.h). Each is saved with the game.
@@ -6723,6 +6800,30 @@ void DrawSettings()
         settings.requireDualCastPerks != was.requireDualCastPerks ||
         settings.requirePowerBashPerk != was.requirePowerBashPerk)
         SetSettings(settings);
+
+    // Progression's switch, kept with the save. Off, every follower is as
+    // their record has them at once -- skills, attributes, perks and
+    // spells are views in front of the engine, never written -- and their
+    // pages show what they learned without changing it; what the engine
+    // keeps on an actor (a bought perk's ability) goes as each is near. On
+    // puts it all back (progression/game/Service.h).
+    const fp::game::LevellingState progression = fp::game::Levelling();
+    if (progression.inGame)
+    {
+        Im::Spacing();
+        CentredHeading("Progression");
+        if (toggle("progression", progression.on, "Manage follower progression",
+                   "Click to enable follower leveling, skills, perks, and spell learning",
+                   "Click to disable follower leveling, skills, perks, and spell learning"))
+            fp::game::SetLevelling(!progression.on);
+        if (!progression.on && !progression.stillHeld.empty())
+        {
+            std::string names;
+            for (const std::string &name : progression.stillHeld)
+                names += (names.empty() ? "" : ", ") + name;
+            Im::TextDisabled("%s", fmt::format("Back to their records when next near: {}", names).c_str());
+        }
+    }
 }
 
 void __stdcall RenderSettings()

@@ -9,6 +9,7 @@
 #include "progression/game/Rules.h"
 #include "progression/game/SpellView.h"
 #include "progression/game/Tomes.h"
+#include "progression/game/ValueView.h"
 
 #include <algorithm>
 #include <functional>
@@ -117,10 +118,13 @@ void PublishViews()
     static std::unordered_set<FormKey, FormKeyHash> missing;
     std::unordered_map<RE::FormID, perkview::Diff> diffs;
     std::unordered_map<RE::FormID, spellview::Diff> spellDiffs;
+    std::unordered_map<RE::FormID, valueview::Bonus> bonuses;
+    const int skillCap = ReadRules().skillCap;
     if (g_state.settings.released)
     {
         perkview::Publish({}); // everyone as their record has them
         spellview::Publish({});
+        valueview::Publish({}, skillCap);
         learning::Publish({});
         g_published.clear();
         return;
@@ -154,10 +158,12 @@ void PublishViews()
             spells.removed.push_back(Lookup<RE::SpellItem>(s.spell));
         spells.added = TaughtSpells(c);
         spellDiffs.emplace(actor->GetFormID(), std::move(spells));
+        bonuses.emplace(actor->GetFormID(), valueview::Bonus{c.learning.skills, c.learning.attributes});
         learners.push_back(actor->GetFormID());
     }
     perkview::Publish(std::move(diffs));
     spellview::Publish(std::move(spellDiffs));
+    valueview::Publish(std::move(bonuses), skillCap);
     learning::Publish(learners);
     g_published = {learners.begin(), learners.end()};
 }
@@ -205,21 +211,24 @@ void NoteLevel(Companion &c, RE::Actor *actor, const Rules &r)
     }
 }
 
-// Everything of ours off a companion, levelling off: assigned points
-// withdrawn, perks back to their record's through the engine's rank change,
-// and the abilities of bought perks dropped directly as well, in case the
-// save kept one (dev/ENGINE_PERKS.md). The ledger is untouched, so turning
-// levelling on puts it all back. The views are already empty (PublishViews).
+// Everything of ours off a companion, progression off, as far as the engine
+// keeps it on the actor: perks back to their record's through the engine's
+// rank change, the abilities of bought perks dropped directly as well, in
+// case the save kept one (dev/ENGINE_PERKS.md), and health kept above
+// nothing where the points assigned to it held their wounds. Their skills
+// and attributes need nothing: the views are already empty (PublishViews),
+// and the values were never written. The ledger is untouched, so turning
+// progression on puts it all back.
 void Release(Companion &c, RE::Actor *actor)
 {
     if (g_releasedDone.contains(c.key))
         return;
-    const Delta back = Withdrawal(c);
-    if (!back.Empty())
-    {
-        ApplyPoints(actor, back);
-        MarkApplied(c, back);
-    }
+    if (auto *owner = actor->AsActorValueOwner())
+        if (const float health = owner->GetActorValue(RE::ActorValue::kHealth); health < 1.0f)
+        {
+            owner->RestoreActorValue(RE::ActorValue::kHealth, 1.0f - health);
+            log::party.info("{}: health left at {:.0f} without the points assigned to it, raised to 1", c.name, health);
+        }
     const auto record = BasePerks(actor);
     for (const LearnedPerk &p : c.perks)
         if (!record.contains(p.form))
@@ -233,12 +242,14 @@ void Release(Companion &c, RE::Actor *actor)
         for (RE::SpellItem *spell : TaughtSpells(c))
             spellview::Withdraw(actor, spell);
     g_releasedDone.insert(c.key);
-    log::party.info("{}: released; points withdrawn, perks and spells as their record has them", c.name);
+    log::party.info("{}: released; skills, attributes, perks and spells as their record has them", c.name);
 }
 
-// The assigned points, perks and spells onto the actor: whatever the ledger
-// says minus whatever is there already. Repeating it does nothing. With
-// levelling off, the reverse.
+// The perks and spells onto the actor, where the engine keeps them there:
+// rank changes queued for what the perk view changed, spells out of hand
+// that the spell view hides. Repeating it does nothing. With progression
+// off, the release. Skills and attributes need nothing: the value view is
+// what the engine reads.
 void Reconcile(Companion &c, RE::Actor *actor)
 {
     if (!actor)
@@ -250,13 +261,6 @@ void Reconcile(Companion &c, RE::Actor *actor)
         // fight that may still list them is over.
         spellview::Reconcile(actor);
         return;
-    }
-    const Delta pending = Pending(c, BaseSkills(actor), ReadRules().skillCap);
-    if (!pending.Empty())
-    {
-        ApplyPoints(actor, pending);
-        MarkApplied(c, pending);
-        log::growth.debug("{}: assigned points applied to the actor", c.name);
     }
     perkview::Reconcile(actor);
     spellview::Reconcile(actor);
@@ -338,7 +342,7 @@ void Act(std::function<void()> work)
 std::optional<std::string> CannotChange(const Companion &c, const CompanionView &v)
 {
     if (g_state.settings.released)
-        return "Leveling is off: turn it on in Follower Tactics' Settings.";
+        return "Follower progression is off: turn it on in Settings.";
     if (!v.loaded)
         return c.name + " must be with you for this.";
     return std::nullopt;
@@ -352,7 +356,7 @@ std::pair<Companion *, RE::Actor *> Present(const FormKey &key, std::string_view
         return {nullptr, nullptr};
     if (g_state.settings.released)
     {
-        Refuse("Leveling is off: turn it on in Follower Tactics' Settings first.");
+        Refuse("Follower progression is off: turn it on in Settings first.");
         return {nullptr, nullptr};
     }
     RE::Actor *actor = ActorOf(key);
@@ -402,8 +406,52 @@ void AssignAttributePoint(const FormKey &key, Attribute attribute, int delta)
         if (CheckAttribute(*c, attribute, delta, available) != AssignBlock::None)
             return;
         fp::AssignAttribute(*c, attribute, delta, r.attributePerLevel);
-        Reconcile(*c, actor);
     });
+}
+
+void AssignAttributeAll(const FormKey &key, Attribute attribute, int direction)
+{
+    Act([key = key, attribute, direction] {
+        auto [c, actor] = Present(key, "train");
+        if (!c)
+            return;
+        const Rules r = ReadRules();
+        const int available = AttributePointsOf(*c, actor, LevelOf(*c, actor, r).level, r);
+        const int moved = fp::AssignAttributeAll(*c, attribute, direction, available, r.attributePerLevel);
+        if (moved != 0)
+            log::growth.info("{}: {} {} by {} point(s)", c->name, Name(attribute), direction < 0 ? "lowered" : "raised",
+                             moved);
+    });
+}
+
+std::optional<AttributeControls> AttributeControlsFor(RE::FormID actor)
+{
+    if (actor == 0)
+        return std::nullopt;
+    std::scoped_lock lock(g_mutex);
+    for (const CompanionView &v : g_state.views)
+    {
+        const Companion *c = v.actor == actor && v.read ? Find(v.key) : nullptr;
+        if (!c)
+            continue;
+        AttributeControls out;
+        out.companion = c->key;
+        out.available = v.attributePoints;
+        const auto why = CannotChange(*c, v);
+        out.active = !why;
+        for (std::size_t i = 0; i < kAttributeCount; ++i)
+        {
+            AttributeButtons &b = out.buttons[i];
+            b = AttributeButtonsFor(*c, static_cast<Attribute>(i), v.attributePoints);
+            if (why)
+            {
+                b.canLower = b.canRaise = false;
+                b.lower = b.lowest = b.raise = b.highest = *why;
+            }
+        }
+        return out;
+    }
+    return std::nullopt;
 }
 
 namespace
@@ -746,9 +794,7 @@ void TurnOff()
             ++here;
         }
     const std::size_t away = g_state.companions.size() - here;
-    log::party.info("leveling off: {} companion(s) released, {} not near", here, away);
-    Hud(away == 0 ? std::string("Leveling is off: your companions are as their records have them.")
-                  : fmt::format("Leveling is off: {} companion(s) released; {} more when they are near.", here, away));
+    log::party.info("progression off: {} companion(s) released, {} not near", here, away);
 }
 
 void TurnOn()
@@ -761,8 +807,7 @@ void TurnOn()
     for (Companion &c : g_state.companions)
         if (RE::Actor *actor = ActorOf(c.key); actor && actor->Is3DLoaded())
             Reconcile(c, actor);
-    log::party.info("leveling on: learned skills, points, perks and spells back on the companions here");
-    Hud("Leveling is on: your companions' skills, perks and spells are back.");
+    log::party.info("progression on: what they learned, perks and spells back on the companions here");
 }
 
 } // namespace
@@ -883,6 +928,8 @@ void OnSkillUse(RE::FormID id, Skill skill, float points)
     const Practice practice = Practise(*c, skill, points, BaseSkills(actor)[Index(skill)], *usage, r);
     if (practice.skillUps == 0)
         return;
+    // What the engine reads of the skill moves with it (the value view).
+    PublishViews();
     log::growth.info("{}'s {} increased to {}", c->name, Name(skill), practice.reached);
     if (g_state.settings.notifySkills)
         Hud(fmt::format("{}'s {} increased to {}.", c->name, Name(skill), practice.reached));
@@ -928,6 +975,7 @@ void BeforeLoad()
     // save's ledger is read and published again.
     perkview::Forget();
     spellview::Forget();
+    valueview::Forget();
     learning::Forget();
 }
 

@@ -2,9 +2,11 @@
 // One companion's record: everything Progression knows and owns about them,
 // and every operation on it (dev/PROGRESSION.md). The record is the ledger
 // DESIGN.md asks for -- what they have learned by doing and where it sits,
-// the points assigned, perks bought, spells taught -- and what
-// of it the engine has been given (Applied), so that applying is always
-// "what should be minus what is", and doing it twice changes nothing.
+// the points assigned, perks bought, spells taught. None of it is written to
+// the actor: the engine is shown it as it reads their values, perks and
+// spells (progression/game/ValueView.h, PerkView.h, SpellView.h), so the
+// save holds nothing of it and the game without Progression has the
+// follower as they were.
 //
 // The operations decide; the game side carries out what they decide on the
 // actor and reports back (progression/game/Service.cpp). No Skyrim.
@@ -66,16 +68,6 @@ struct Learning
     bool operator==(const Learning &) const = default;
 };
 
-// What the engine has been given, in the actor's permanent modifiers, in
-// the engine's units. Kept in the save with the rest, because the
-// modifiers are.
-struct Applied
-{
-    PerSkill<int> skills{};
-    PerAttribute<int> attributes{};
-    bool operator==(const Applied &) const = default;
-};
-
 struct Companion
 {
     FormKey key; // the placed reference
@@ -90,7 +82,6 @@ struct Companion
     // Spells taught here: the engine is told they know them (progression/game/SpellView.h).
     std::vector<TaughtSpell> spells;
     std::vector<SpellAside> spellsSetAside;
-    Applied applied;
 };
 
 [[nodiscard]] Companion Enroll(FormKey key, std::string name);
@@ -184,6 +175,23 @@ int AssignSkillAll(Companion &c, Skill skill, int direction, const PerSkill<int>
 // A point on adds `step` (iAVDhmsLevelUp now); a point off takes back
 // what one point added.
 void AssignAttribute(Companion &c, Attribute attribute, int delta, int step) noexcept;
+// An attribute moved as far as it goes one way (`direction` -1 down, +1
+// up): a point at a time, while CheckAttribute allows the next, `available`
+// the points to assign before the first. How many it moved.
+int AssignAttributeAll(Companion &c, Attribute attribute, int direction, int available, int step) noexcept;
+
+// An attribute's buttons as the character sheet offers them, as a skill's
+// are (ButtonsFor): - and + a point, << and >> as far as it goes.
+struct AttributeButtons
+{
+    bool canLower{false};
+    bool canRaise{false};
+    std::string lower;   // -
+    std::string lowest;  // <<
+    std::string raise;   // +
+    std::string highest; // >>
+};
+[[nodiscard]] AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, int available);
 
 // The perks bought in a skill's tree unlearned, their points free again; the
 // skill left where it is. Their names, a rank after the first as
@@ -210,24 +218,13 @@ struct SkillButtons
 [[nodiscard]] SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &base, int floor,
                                       const PerkGraph &graph, const Holdings &holdings, const Rules &r);
 
-// --- the engine's side of it ----------------------------------------------------------
+// --- as the engine reads them (progression/game/ValueView.h) --------------------------
 
-struct Delta
-{
-    PerSkill<int> skills{};
-    PerAttribute<int> attributes{};
-    [[nodiscard]] bool Empty() const noexcept;
-};
-
-// What they have minus what the engine has been given, in the engine's
-// units: what to add to the actor's permanent modifiers now (negative after a
-// level taken back). A skill is never taken past `cap`: when the engine has
-// raised `base` since, the learned levels above it wait, unapplied.
-[[nodiscard]] Delta Pending(const Companion &c, const PerSkill<int> &base, int cap) noexcept;
-// Record that `d` has been written to the actor.
-void MarkApplied(Companion &c, const Delta &d) noexcept;
-// The whole of what has been applied, negated: taking it all back off.
-[[nodiscard]] Delta Withdrawal(const Companion &c) noexcept;
+// A skill's base as the engine is to read it: `base`, what the engine gives
+// them, with `learned` on top. Never past `cap` -- the learned levels above
+// it wait while the engine's own base is that high -- and never below 0. A
+// base already past the cap is left as it is.
+[[nodiscard]] float WithLearned(float base, int learned, int cap) noexcept;
 
 // --- perks ---------------------------------------------------------------------------
 

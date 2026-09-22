@@ -14,7 +14,7 @@ struct Settings
     bool notifyLevels{true};
     bool notifySkills{false};
 
-    // Levelling off: Tactics' Settings page, "Enable leveling for followers".
+    // Progression off: Tactics' Settings page, "Manage follower progression".
     // Kept with the save, so loading it does not put everything back. While
     // set, nothing of ours is on any companion; the ledger is kept for when
     // it is turned on again.

@@ -107,7 +107,6 @@ std::string WriteCompanion(const Companion &c)
                      {"attributes", AttributeMap(c.learning.attributes)},
                      {"xp", c.learning.xp},
                      {"pool", c.learning.pool}};
-    j["applied"] = {{"skills", SkillMap(c.applied.skills)}, {"attributes", AttributeMap(c.applied.attributes)}};
 
     json perks = json::array();
     for (const LearnedPerk &p : c.perks)
@@ -160,11 +159,6 @@ std::optional<Companion> ReadCompanion(std::string_view text, std::string *why)
         c.learning.attributes = ReadAttributeMap(it->value("attributes", json::object()));
         c.learning.xp = Get<double>(*it, "xp", 0.0);
         c.learning.pool = Get<double>(*it, "pool", 0.0);
-    }
-    if (const auto it = j.find("applied"); it != j.end() && it->is_object())
-    {
-        c.applied.skills = ReadSkillMap(it->value("skills", json::object()));
-        c.applied.attributes = ReadAttributeMap(it->value("attributes", json::object()));
     }
 
     if (const auto it = j.find("perks"); it != j.end() && it->is_array())

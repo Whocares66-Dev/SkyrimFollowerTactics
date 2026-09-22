@@ -3,10 +3,10 @@
 ;  follower. Click them in the console, then:  bat fpcheck
 ;
 ;  getavinfo prints base, permanent modifier, temporary modifier
-;  and damage: our training is the PERMANENT modifier, so it is
-;  the number to compare with the Training column. Run this
-;  before and after a rank, after a save and load, and after a
-;  full restart (dev/POC.md, the checklist).
+;  and damage. What they learned is read, never written: it shows
+;  in the base (the value view), and the permanent modifier stays
+;  0. Run this before and after a skill-up or a point, after a save
+;  and load, and after a full restart (dev/POC.md, the checklist).
 ; ============================================================
 
 getavinfo onehanded

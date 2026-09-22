@@ -14,6 +14,7 @@
 
 #include "RE/Skyrim.h"
 #include "REL/Relocation.h"
+#include "SKSE/Version.h"
 
 #include <cstddef>
 
@@ -110,6 +111,21 @@ inline constexpr REL::RelocationID kBashSkillUse{25857, 26423};
 // The shield an actor has equipped: (actor) -> TESObjectARMO*, or none.
 // Exact SE match.
 inline constexpr REL::RelocationID kEquippedShield{37624, 38577};
+
+// Character's ActorValueOwner part: its table is the sixth of Character's
+// (index 5 of VTABLE_Character; SE 261402, AE 207896), and its slot 3 is
+// GetBaseActorValue (37519 on SE, 38464 on AE). The permanent value (37535 on
+// SE, 38484 on AE) and the current one (38462 on AE) call the base through
+// that slot, so the value view is one slot (progression/game/ValueView.h).
+// The part sits 0xB0 into the actor before 1.6.629 and 0xB8 from it, as
+// CommonLib's Actor::AsActorValueOwner has it and the executables' RTTI
+// says (1.5.97, 1.6.1170, 1.7.104).
+inline constexpr std::size_t kCharacterValueOwnerTable = 5;
+inline constexpr std::size_t kGetBaseActorValueSlot = 3;
+[[nodiscard]] inline std::ptrdiff_t ActorValueOwnerOffset() noexcept
+{
+    return REL::Module::get().version() < SKSE::RUNTIME_SSE_1_6_629 ? 0xB0 : 0xB8;
+}
 
 // The melee and projectile hit handler, and inside it the call that hands
 // the finished HitData to the victim's processing (38586 on AE, 37633 on

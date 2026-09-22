@@ -21,9 +21,6 @@ Companion Seasoned()
     fp::AssignAttribute(c, fp::Attribute::Magicka, +1, 10);
     fp::AssignAttribute(c, fp::Attribute::Magicka, +1, 10);
     c.level = 12;
-    fp::PerSkill<int> base{};
-    base.fill(20);
-    fp::MarkApplied(c, fp::Pending(c, base, 100));
     c.perks.push_back({{"Skyrim.esm", 0x0BABE4}, "Armsman", 1});
     c.setAside.push_back({"Skyrim.esm", 0x053128});
     fp::Teach(c, {{"Skyrim.esm", 0x012FCD}, "Flames"});
@@ -42,7 +39,6 @@ TEST_CASE("a companion reads back exactly as written", "[serialize]")
     CHECK(back->name == c.name);
     CHECK(back->level == c.level);
     CHECK(back->learning == c.learning);
-    CHECK(back->applied == c.applied);
     CHECK(back->perks == c.perks);
     CHECK(back->setAside == c.setAside);
     CHECK(back->spells == c.spells);

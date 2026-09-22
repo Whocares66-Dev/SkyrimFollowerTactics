@@ -83,15 +83,33 @@ The engine's level only moves when the player's does, so the player's level-up e
 ## Points and reassigning
 
 - **At level N** a companion has what a player at N would have had: N−1 perk points and N−1 attribute points, less what they already hold. Held perks are the skill-tree perk ranks they hold, their own or bought. Held attributes are what their own health, magicka and stamina already carry above their race's starting values, divided by `iAVDhmsLevelUp`.
-- **Skills rise only by use,** and never past 100 on the actor: when the engine raises their own value later, the learned levels above 100 wait, unapplied.
+- **Skills rise only by use,** and never read past 100: when the engine raises their own value later, the learned levels above 100 wait, unread (`WithLearned`).
 - **Reassigning:**
   - `−` returns a level to a pool at what it's worth (level × `fXPPerSkillRank`, as a skill-up pays);
   - `+` buys a level from the pool at the same rate;
   - Reset takes a skill to its floor (`iAVDSkillStart` plus the race's bonus to it) and returns the perks bought in its tree, as Legendary does, for free;
   - a level a bought perk needs can't be taken back with `−`.
 
+## Read, not written (2026-09-22)
+
+What a companion has learned and the attribute points assigned are never written to the actor. Character's `GetBaseActorValue` is replaced (`src/progression/game/ValueView.cpp`): for a managed companion's skill it answers the engine's base with the learned levels on top, held to the skill cap (`WithLearned`, core, tested); for health, magicka and stamina, the base with the points' worth on top. Every other actor, and every other value, is the engine's answer untouched.
+
+| What | AE 1.6.1170 | SE 1.5.97 | How it reads the base |
+|---|---|---|---|
+| Character's ActorValueOwner part | vtable 207896, 0xB8 into the actor | vtable 261402, 0xB0 | Index 5 of CommonLib's `VTABLE_Character`; the offset is `Actor::AsActorValueOwner`'s (0xB0 before 1.6.629, 0xB8 from it), and the executables' RTTI agrees |
+| `GetBaseActorValue`, slot 3 | 38464 | 37519 | The actor's own base storage (`+0x150`), else the record's value through the NPC's own value interface |
+| `GetPermanentActorValue`, slot 2 | 38463 → 38484 | 37518 → 37535 | 38484 and 37535 call slot 3 through the vtable (`call [rax+0x18]` on the `+0xB8` part), then add the permanent modifier |
+| `GetActorValue`, slot 1 | 38462 | | Calls slot 3 through the vtable, then adds the modifiers |
+
+So one slot changes all three reads, and every reader that asks through the actor's value interface -- a perk's `GetBaseActorValue` condition, the damage and cost formulas, the menus, Tactics' own sheet -- sees what they learned. Progression's own reckoning asks the original for the engine's base (`EngineBase`) and adds the ledger itself.
+
+What this buys: nothing of it is in the save, so loading without Progression, or turning progression off, has the follower as their record makes them at once, with no withdrawing and no uninstall step; and the engine raising their own values as they level with the player moves only the base under what they learned. The ledger no longer records what was applied.
+
+One guard: points assigned to health hold the wounds they cover. Turning progression off takes them away at once, so a follower whose health would be at or below nothing without them is left at 1 as they are released.
+
 ## Not verified
 
+- **Readers that bypass the interface.** A reader that goes to the actor's value storage directly, rather than through the ActorValueOwner vtable, would see the engine's value without what they learned. None was found in the three getters; the engine's own recalculation of an NPC's values on levelling is not yet read. If it reads a skill through the interface and writes it back as the base, the learned levels would be written into the actor, which the first session should check (`getavinfo` before and after the player levels, with a companion who levels with the player).
 - **That the hooks run.** Settings shows the uses heard: from magic, from blows landed, from hits taken. After a fight with a companion who swings a sword and casts, all three should have moved.
 - **The rates.** Followers fight all the time and take a lot of hits. By the player's own rules their armour and Block skills may climb faster than a player's, until the curve slows them.
 - **Concentration spells** report every frame, and each report is a task queued to the game thread. It's cheap per task, but not measured.
@@ -106,4 +124,6 @@ python tools/disasm.py --version 1.6.1170 --vtable 207886 248       # Character 
 python tools/disasm.py --version 1.6.1170 38627 0x800               # the hit handler; the player blocks at +0x206..+0x466
 python tools/disasm.py --version 1.5.97 37673 0x800                 # SE's, the victim call at +0x3C0
 python tools/disasm.py --version 1.6.1170 27244                     # a skill's usage values
+python tools/disasm.py --version 1.6.1170 38484                     # the permanent value: the base through slot 3
+python tools/disasm.py --version 1.5.97 37535                       # SE's
 ```

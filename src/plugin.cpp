@@ -21,6 +21,7 @@
 #include "progression/game/PerkView.h"
 #include "progression/game/Service.h"
 #include "progression/game/SpellView.h"
+#include "progression/game/ValueView.h"
 
 namespace
 {
@@ -42,15 +43,16 @@ void OnDataLoaded()
     ft::log::plugin.info("FollowerTactics loaded");
 
     // Progression (dev/PROGRESSION.md): the perk trees, the views in front
-    // of the engine's perks and spells, the hooks that hear a companion's
-    // skill use, and the paced tick. Its pages are the followers': the
-    // Skills tab's skill page and the Settings page's switch.
-    // The hooks stay in for the session; levelling off (the Settings page)
-    // empties the views and the learners, which is what makes the switch
-    // free to use at any time.
+    // of the engine's perks, spells, skills and attributes, the hooks that
+    // hear a companion's skill use, and the paced tick. Its pages are the
+    // followers': the skill page, the character sheet's attribute controls
+    // and the Settings page's switch. The hooks stay in for the session;
+    // progression off empties the views and the learners, which is what
+    // makes the switch free to use at any time.
     fp::game::BuildPerkGraph();
     fp::game::perkview::Install();
     fp::game::spellview::Install();
+    fp::game::valueview::Install();
     fp::game::learning::Install();
     fp::game::InstallEvents();
     fp::log::plugin.info("Progression loaded");

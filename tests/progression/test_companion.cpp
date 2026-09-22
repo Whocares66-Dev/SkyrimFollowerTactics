@@ -118,7 +118,7 @@ TEST_CASE("points are what a player at the level would have had, less what they 
     CHECK(fp::AttributePoints(c, 10, 5) == 2);
     CHECK(fp::CheckAttribute(c, fp::Attribute::Magicka, +1, 0) == fp::AssignBlock::NoPoints);
     CHECK(fp::CheckAttribute(c, fp::Attribute::Magicka, -1, 2) == fp::AssignBlock::NoneAssigned);
-    CHECK(fp::Pending(c, Base(20), 100).attributes[fp::Index(fp::Attribute::Health)] == 20);
+    CHECK(c.learning.attributes[fp::Index(fp::Attribute::Health)] == 20);
 
     // A point keeps what it added when assigned, as the player's level-ups
     // do: a setting changed later moves only the points after it.
@@ -248,28 +248,57 @@ TEST_CASE("resetting a tree's perks returns every rank bought, and only that tre
     CHECK(fp::ResetPerks(c, Skill::OneHanded, graph).empty());
 }
 
-TEST_CASE("what they have reaches the engine as a delta, once, and comes back off", "[companion]")
+TEST_CASE("a skill reads with what they learned on top, within the cap", "[companion]")
 {
-    const fp::Rules r = Plain();
+    // The engine's 30 and five learned: 35.
+    CHECK(fp::WithLearned(30.0f, 5, 100) == 35.0f);
+    // Levels taken back below their own: 25, and never below 0.
+    CHECK(fp::WithLearned(30.0f, -5, 100) == 25.0f);
+    CHECK(fp::WithLearned(3.0f, -5, 100) == 0.0f);
+    // The engine raised their own to 99 since: one of the two learned fits
+    // under 100, and the other waits.
+    CHECK(fp::WithLearned(99.0f, 2, 100) == 100.0f);
+    // Already past the cap, by another mod: left as it is.
+    CHECK(fp::WithLearned(110.0f, 2, 100) == 110.0f);
+    CHECK(fp::WithLearned(30.0f, 0, 100) == 30.0f);
+}
+
+TEST_CASE("attribute points move one at a time or as far as they go, and say why they cannot", "[companion]")
+{
     Companion c = Lydia();
-    c.learning.skills[fp::Index(Skill::OneHanded)] = 3;
-    fp::AssignAttribute(c, fp::Attribute::Stamina, +1, 10);
-    const auto pending = fp::Pending(c, Base(20), 100);
-    CHECK(pending.skills[fp::Index(Skill::OneHanded)] == 3);
-    CHECK(pending.attributes[fp::Index(fp::Attribute::Stamina)] == 10);
-    fp::MarkApplied(c, pending);
-    CHECK(fp::Pending(c, Base(20), 100).Empty());
 
-    fp::AssignSkill(c, Skill::OneHanded, -1, 20, r);
-    CHECK(fp::Pending(c, Base(20), 100).skills[fp::Index(Skill::OneHanded)] == -1);
-    fp::MarkApplied(c, fp::Pending(c, Base(20), 100));
-    CHECK(fp::Withdrawal(c).skills[fp::Index(Skill::OneHanded)] == -2);
+    // No points to assign, none assigned: nothing can move.
+    auto b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 0);
+    CHECK_FALSE(b.canLower);
+    CHECK(b.lower == "Already at minimum Health");
+    CHECK(b.lowest == "Already at minimum Health");
+    CHECK_FALSE(b.canRaise);
+    CHECK(b.raise == "No attribute points available");
+    CHECK(b.highest == "No attribute points available");
 
-    // The engine raised their own One-Handed to 99 since: only one of the two
-    // learned levels fits under 100, and the other waits.
-    fp::PerSkill<int> raised = Base(20);
-    raised[fp::Index(Skill::OneHanded)] = 99;
-    CHECK(fp::Pending(c, raised, 100).skills[fp::Index(Skill::OneHanded)] == -1);
+    // Three to assign: >> takes all three, 10 each.
+    b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 3);
+    CHECK(b.canRaise);
+    CHECK(b.raise == "Click to increase Health");
+    CHECK(b.highest == "Click to increase Health to maximum");
+    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, +1, 3, 10) == 3);
+    CHECK(c.learning.attributePoints[fp::Index(fp::Attribute::Health)] == 3);
+    CHECK(c.learning.attributes[fp::Index(fp::Attribute::Health)] == 30);
+
+    // None left: + cannot; - and << can.
+    b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 0);
+    CHECK_FALSE(b.canRaise);
+    CHECK(b.canLower);
+    CHECK(b.lower == "Click to reduce Health");
+    CHECK(b.lowest == "Click to reduce Health to minimum");
+
+    // << gives every point back; Magicka's are untouched.
+    fp::AssignAttribute(c, fp::Attribute::Magicka, +1, 10);
+    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, -1, 0, 10) == 3);
+    CHECK(c.learning.attributePoints[fp::Index(fp::Attribute::Health)] == 0);
+    CHECK(c.learning.attributes[fp::Index(fp::Attribute::Health)] == 0);
+    CHECK(c.learning.attributes[fp::Index(fp::Attribute::Magicka)] == 10);
+    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, -1, 0, 10) == 0);
 }
 
 TEST_CASE("a perk held counts against the level's points, and unlearning gives it back", "[companion]")

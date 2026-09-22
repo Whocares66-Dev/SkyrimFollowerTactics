@@ -224,6 +224,32 @@ void AssignAttribute(Companion &c, Attribute attribute, int delta, int step) noe
     }
 }
 
+int AssignAttributeAll(Companion &c, Attribute attribute, int direction, int available, int step) noexcept
+{
+    const int delta = direction < 0 ? -1 : +1;
+    int moved = 0;
+    while (CheckAttribute(c, attribute, delta, available) == AssignBlock::None)
+    {
+        AssignAttribute(c, attribute, delta, step);
+        available -= delta;
+        ++moved;
+    }
+    return moved;
+}
+
+AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, int available)
+{
+    const std::string name(Name(attribute));
+    AttributeButtons out;
+    out.canLower = CheckAttribute(c, attribute, -1, available) == AssignBlock::None;
+    out.lower = out.canLower ? "Click to reduce " + name : "Already at minimum " + name;
+    out.lowest = out.canLower ? "Click to reduce " + name + " to minimum" : out.lower;
+    out.canRaise = CheckAttribute(c, attribute, +1, available) == AssignBlock::None;
+    out.raise = out.canRaise ? "Click to increase " + name : std::string("No attribute points available");
+    out.highest = out.canRaise ? "Click to increase " + name + " to maximum" : out.raise;
+    return out;
+}
+
 std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph)
 {
     std::vector<std::string> unlearned;
@@ -271,38 +297,12 @@ SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &ba
 
 // --- the engine's side of it ----------------------------------------------------------
 
-bool Delta::Empty() const noexcept
+float WithLearned(float base, int learned, int cap) noexcept
 {
-    return std::all_of(skills.begin(), skills.end(), [](int v) { return v == 0; }) &&
-           std::all_of(attributes.begin(), attributes.end(), [](int v) { return v == 0; });
-}
-
-Delta Pending(const Companion &c, const PerSkill<int> &base, int cap) noexcept
-{
-    Delta d;
-    for (std::size_t i = 0; i < kSkillCount; ++i)
-        d.skills[i] = std::min(c.learning.skills[i], cap - base[i]) - c.applied.skills[i];
-    for (std::size_t i = 0; i < kAttributeCount; ++i)
-        d.attributes[i] = c.learning.attributes[i] - c.applied.attributes[i];
-    return d;
-}
-
-void MarkApplied(Companion &c, const Delta &d) noexcept
-{
-    for (std::size_t i = 0; i < kSkillCount; ++i)
-        c.applied.skills[i] += d.skills[i];
-    for (std::size_t i = 0; i < kAttributeCount; ++i)
-        c.applied.attributes[i] += d.attributes[i];
-}
-
-Delta Withdrawal(const Companion &c) noexcept
-{
-    Delta d;
-    for (std::size_t i = 0; i < kSkillCount; ++i)
-        d.skills[i] = -c.applied.skills[i];
-    for (std::size_t i = 0; i < kAttributeCount; ++i)
-        d.attributes[i] = -c.applied.attributes[i];
-    return d;
+    const auto top = static_cast<float>(cap);
+    if (learned > 0)
+        return base >= top ? base : std::min(base + static_cast<float>(learned), top);
+    return std::max(base + static_cast<float>(learned), 0.0f);
 }
 
 // --- perks ---------------------------------------------------------------------------

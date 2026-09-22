@@ -2,6 +2,7 @@
 
 #include "progression/game/Forms.h"
 #include "progression/game/Log.h"
+#include "progression/game/ValueView.h"
 
 #include <algorithm>
 #include <limits>
@@ -77,37 +78,17 @@ std::vector<RE::Actor *> LoadedFollowers()
 PerSkill<int> BaseSkills(RE::Actor *actor)
 {
     PerSkill<int> out{};
-    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
-    if (!owner)
-        return out;
     for (const Skill s : AllSkills())
-        out[Index(s)] = static_cast<int>(owner->GetBaseActorValue(AV(s)));
+        out[Index(s)] = static_cast<int>(valueview::EngineBase(actor, AV(s)));
     return out;
 }
 
 PerAttribute<int> BaseAttributes(RE::Actor *actor)
 {
     PerAttribute<int> out{};
-    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
-    if (!owner)
-        return out;
     for (std::size_t i = 0; i < kAttributeCount; ++i)
-        out[i] = static_cast<int>(owner->GetBaseActorValue(AV(static_cast<Attribute>(i))));
+        out[i] = static_cast<int>(valueview::EngineBase(actor, AV(static_cast<Attribute>(i))));
     return out;
-}
-
-void ApplyPoints(RE::Actor *actor, const Delta &delta)
-{
-    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
-    if (!owner)
-        return;
-    for (const Skill s : AllSkills())
-        if (const int d = delta.skills[Index(s)]; d != 0)
-            owner->ModActorValue(RE::ACTOR_VALUE_MODIFIER::kPermanent, AV(s), static_cast<float>(d));
-    for (std::size_t i = 0; i < kAttributeCount; ++i)
-        if (const int d = delta.attributes[i]; d != 0)
-            owner->ModActorValue(RE::ACTOR_VALUE_MODIFIER::kPermanent, AV(static_cast<Attribute>(i)),
-                                 static_cast<float>(d));
 }
 
 std::unordered_set<FormKey, FormKeyHash> BasePerks(RE::Actor *actor)

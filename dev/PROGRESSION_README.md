@@ -4,7 +4,7 @@
 
 Tactics decides *when* a follower does something; Progression decides *what they are able to do*.
 
-**Folded into Follower Tactics on 2026-09-21** (branch `wip-progression`): the code is `src/progression/` (`core/` tested by `tests/progression/`, `game/` in the plugin), its pages are under *Follower Tactics / Progression* in the panel, its records are in Tactics' co-save block, and Tactics' Settings page has the switch, *Enable leveling for followers*. The stand-alone repository (`C:\project\SkyrimFollowerProgression`) keeps the history before that.
+**Folded into Follower Tactics on 2026-09-21** (branch `wip-progression`): the code is `src/progression/` (`core/` tested by `tests/progression/`, `game/` in the plugin), its records are in Tactics' co-save block, its pages are a follower's own, and its switch is in the Progression section of Tactics' Settings page, *Manage follower progression*. The stand-alone repository (`C:\project\SkyrimFollowerProgression`) keeps the history before that.
 
 **Status: proof of concept.** The rules are built and tested; the SKSE plugin builds and has not yet been run in the game. See [dev/POC.md](POC.md).
 
@@ -23,7 +23,7 @@ Tactics' build (CLAUDE.md): `fp_core` and `fp_tests` are built and run with Tact
 
 As Tactics': SKSE64, Address Library for SKSE Plugins, and SKSE Menu Framework for the panel (F1). Skyrim SE and AE; on VR the perk, spell and learning hooks are not installed.
 
-Levelling can be turned off at any time: Tactics' Settings → *Enable leveling for followers*. Off takes everything of Progression's off each companion as they come near and keeps the record of it; on puts it back. To remove the mod from a playthrough, turn it off, wait until the page no longer lists anyone as still levelled, and save.
+Progression can be turned off at any time: Tactics' Settings, Progression → *Manage follower progression*. Off, every companion is as their record makes them at once, the record of what they learned kept; on puts it back. Skills, attributes, perks and spells are views in front of the engine, never written, so the mod can be removed without a step first -- except a bought perk that adds an ability (Recovery, Magic Resistance), which the save keeps: to leave nothing behind, turn progression off, let each companion come near, and save.
 
 ## License
 
