@@ -48,14 +48,15 @@ $script:BackupDirOverride = $BackupDir
 # where StrictMode would throw on referencing it.
 $script:OnWindows = if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
     $IsWindows
-} else {
+}
+else {
     $true  # 5.1 only ever runs on Windows
 }
 
 # --------------------------------------------------------------------------
 # Facts. Sources are in dev/DOWNGRADE.md.
 # --------------------------------------------------------------------------
-$APP_ID    = 489830
+$APP_ID = 489830
 $CK_APP_ID = 1946180
 
 # An array, not an ordered hashtable: indexing an OrderedDictionary with an
@@ -68,13 +69,13 @@ $DEPOTS = @(
     # is not what this script measures.
     [pscustomobject]@{ Id = 489831; Manifest = '8442952117333549665'; Files = 19; MB = 7146; Desc = 'Skyrim Special Edition disk' }
     [pscustomobject]@{ Id = 489832; Manifest = '8042843504692938467'; Files = 26; MB = 8170; Desc = 'Skyrim Special Edition core' }
-    [pscustomobject]@{ Id = 489833; Manifest = '1914580699073641964'; Files = 1;  MB = 36;   Desc = 'Skyrim Special Edition exe'  }
+    [pscustomobject]@{ Id = 489833; Manifest = '1914580699073641964'; Files = 1; MB = 36; Desc = 'Skyrim Special Edition exe' }
 )
 
 $TARGET_VERSION = '1.6.1170'
 
 # The one objective check that the Data files actually reverted, not just the exe.
-$INTERFACE_BSA          = 'Data/Skyrim - Interface.bsa'
+$INTERFACE_BSA = 'Data/Skyrim - Interface.bsa'
 $INTERFACE_SIZE_1_6_1170 = 105799354L
 
 # Copied before any overwrite. ~2 GB.
@@ -150,13 +151,14 @@ function Get-ExeVersion($path) {
     # pwsh on non-Windows leaves VersionInfo empty, so read the PE resource.
     try {
         $bytes = [System.IO.File]::ReadAllBytes($path)
-        $text  = [System.Text.Encoding]::Unicode.GetString($bytes)
+        $text = [System.Text.Encoding]::Unicode.GetString($bytes)
         $i = $text.IndexOf('FileVersion')
         if ($i -lt 0) { return $null }
         $tail = $text.Substring($i + 11, [Math]::Min(40, $text.Length - $i - 11)).Replace("`0", ' ').Trim()
         $m = [regex]::Match($tail, '^[\d.]+')
         if ($m.Success) { return $m.Value }
-    } catch {
+    }
+    catch {
         Write-Verbose "could not read the version resource of ${path}: $_"
     }
     return $null
@@ -191,7 +193,7 @@ function Invoke-Check($root) {
     Show-Info $root
 
     $exe = Get-ExeVersion (Join-Path $root 'SkyrimSE.exe')
-    $ck  = Get-ExeVersion (Join-Path $root 'CreationKit.exe')
+    $ck = Get-ExeVersion (Join-Path $root 'CreationKit.exe')
 
     Show-Info "SkyrimSE.exe     $exe"
     Show-Info "CreationKit.exe  $(if ($ck) { $ck } else { 'not installed' })"
@@ -207,10 +209,12 @@ function Invoke-Check($root) {
         Show-Info "Skyrim - Interface.bsa  $size"
         if ($size -eq $INTERFACE_SIZE_1_6_1170) {
             Show-Ok "Matches 1.6.1170 exactly. The Data files reverted, not just the exe."
-        } elseif ($downgraded) {
+        }
+        elseif ($downgraded) {
             Show-Bad "Exe says $TARGET_VERSION but this BSA does not match 1.6.1170 ($INTERFACE_SIZE_1_6_1170)."
             Show-Info "Only depot 489833 (the exe) landed. Re-copy depots 489831 and 489832."
-        } else {
+        }
+        else {
             Show-Info "Expected $INTERFACE_SIZE_1_6_1170 after a correct downgrade."
         }
     }
@@ -279,7 +283,8 @@ function Invoke-Backup {
 
         if ((Test-Path $target) -and (Get-Item $target).Length -eq $item.Size) {
             Show-Info "already backed up: $($item.Rel)"
-        } else {
+        }
+        else {
             Show-Info "copying $($item.Rel)  ($(Format-Size $item.Size))"
             Copy-Item -LiteralPath $item.Src -Destination $target -Force
         }
@@ -287,11 +292,11 @@ function Invoke-Backup {
     }
 
     $meta = @{
-        capturedUtc  = (Get-Date).ToUniversalTime().ToString('o')
-        gameRoot     = $root
-        exeVersion   = Get-ExeVersion (Join-Path $root 'SkyrimSE.exe')
-        ckVersion    = Get-ExeVersion (Join-Path $root 'CreationKit.exe')
-        files        = $manifest
+        capturedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        gameRoot    = $root
+        exeVersion  = Get-ExeVersion (Join-Path $root 'SkyrimSE.exe')
+        ckVersion   = Get-ExeVersion (Join-Path $root 'CreationKit.exe')
+        files       = $manifest
     }
     $meta | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $dest 'backup-manifest.json')
     Show-Ok "Backed up. Manifest: $(Join-Path $dest 'backup-manifest.json')"
@@ -314,8 +319,8 @@ function Invoke-Install {
     foreach ($d in $DEPOTS) {
         $dir = Join-Path $content "depot_$($d.Id)"
         if (-not (Test-Path $dir)) { Show-Bad "depot_$($d.Id) missing ($($d.Desc))"; continue }
-        $items  = @(Get-ChildItem $dir -Recurse -File)
-        $count  = $items.Count
+        $items = @(Get-ChildItem $dir -Recurse -File)
+        $count = $items.Count
         $sizeMB = [math]::Round((($items | Measure-Object -Property Length -Sum).Sum) / 1MB)
 
         # Steam prints "Depot download complete" when it is done; that is the real
@@ -346,7 +351,7 @@ function Invoke-Install {
     $overwritten = @()
     foreach ($dir in $found) {
         foreach ($src in Get-ChildItem $dir -Recurse -File) {
-            $rel    = $src.FullName.Substring($dir.Length).TrimStart('\', '/')
+            $rel = $src.FullName.Substring($dir.Length).TrimStart('\', '/')
             $target = Join-Path $root $rel
 
             if ((Test-Path $target) -and (Get-Item $target).Length -eq $src.Length) {
@@ -364,7 +369,7 @@ function Invoke-Install {
         }
     }
     if ($WhatIfPreference) { Show-Ok "$n file(s) WOULD be installed. Nothing was changed." }
-    else                    { Show-Ok "$n file(s) installed." }
+    else { Show-Ok "$n file(s) installed." }
 
     $uncovered = @($overwritten | Where-Object { $_ -notin $CRITICAL_FILES })
     if ($uncovered.Count -gt 0) {
@@ -448,16 +453,17 @@ function Invoke-Restore {
 try {
     $root = Resolve-GameRoot
     switch ($Step) {
-        'check'   { Invoke-Check   $root }
-        'backup'  { Invoke-Backup  $root }
-        'depots'  { Show-DepotDownload $root }
+        'check' { Invoke-Check   $root }
+        'backup' { Invoke-Backup  $root }
+        'depots' { Show-DepotDownload $root }
         'install' { Invoke-Install $root }
-        'lock'    { Set-ManifestLock $true }
-        'unlock'  { Set-ManifestLock $false }
+        'lock' { Set-ManifestLock $true }
+        'unlock' { Set-ManifestLock $false }
         'restore' { Invoke-Restore $root }
     }
     Show-Line
-} catch {
+}
+catch {
     Show-Line
     Show-Bad $_.Exception.Message
     exit 1

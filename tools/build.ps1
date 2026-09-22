@@ -188,6 +188,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "coverage failed ($LASTEXITCODE)" }
     }
     Show-Line "`nOK" -Colour Green
-} finally {
+}
+finally {
     Pop-Location
 }

@@ -52,7 +52,7 @@ New-Item -ItemType Directory -Force $dist | Out-Null
 
 $written = @()
 foreach ($flavour in @(
-        @{ Suffix = '';      Level = 'info';  Notes = $null },
+        @{ Suffix = ''; Level = 'info'; Notes = $null },
         @{ Suffix = '-test'; Level = 'debug'; Notes = $testNote })) {
 
     $stage = Join-Path $root "build\release\package$($flavour.Suffix)"

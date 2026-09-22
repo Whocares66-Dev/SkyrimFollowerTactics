@@ -167,13 +167,13 @@ if ($Draft) { Show-Line "  draft: published by hand" }
 if ($DryRun) {
     Show-Line "`n-DryRun, so this is where it stops. It would:" -Colour Yellow
     $steps = @("set $name VERSION to $version in CMakeLists.txt",
-               "run the core tests",
-               "run tools\package.ps1 -- both zips into dist\",
-               "publish the player's zip only; the test zip stays here",
-               "use CHANGELOG.md's $version section as the GitHub release notes")
+        "run the core tests",
+        "run tools\package.ps1 -- both zips into dist\",
+        "publish the player's zip only; the test zip stays here",
+        "use CHANGELOG.md's $version section as the GitHub release notes")
     if ($Bump -ne 'none') { $steps += "commit CMakeLists.txt as `"$name $version`"" }
     $steps += @("tag $tag, push master and the tag",
-                "gh release create $tag on $repo with the player's zip attached")
+        "gh release create $tag on $repo with the player's zip attached")
     $steps | ForEach-Object { Show-Line "  - $_" }
     return
 }
@@ -220,7 +220,7 @@ git -C $root push --quiet origin $tag
 if ($LASTEXITCODE -ne 0) { Fail "Master was pushed, but tag $tag was not; push the tag before creating the release." }
 
 $arguments = @('release', 'create', $tag, '--repo', $repo, '--title', "$name $version",
-               '--notes-file', $notesFile, '--verify-tag')
+    '--notes-file', $notesFile, '--verify-tag')
 if ($prerelease) { $arguments += '--prerelease' }
 if ($Draft) { $arguments += '--draft' }
 $arguments += $zip
