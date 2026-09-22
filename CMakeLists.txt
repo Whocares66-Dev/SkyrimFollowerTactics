@@ -119,6 +119,7 @@ add_library(ft_core STATIC
     src/core/Files.cpp
     src/core/HitKinds.cpp
     src/core/HitTable.cpp
+    src/core/I18n.cpp
     src/core/Lease.cpp
     src/core/Loadout.cpp
     src/core/LogEvent.cpp
@@ -179,7 +180,7 @@ add_library(fp_core STATIC
 target_include_directories(fp_core PUBLIC src)
 target_compile_features(fp_core PUBLIC cxx_std_23)
 ft_apply_warnings(fp_core)
-target_link_libraries(fp_core PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(fp_core PRIVATE ft_core nlohmann_json::nlohmann_json)
 
 # ---------------------------------------------------------------------------
 # The SKSE plugin.
@@ -225,6 +226,7 @@ if(FT_BUILD_PLUGIN)
         src/game/Magic.cpp
         src/game/Pins.cpp
         src/game/Hits.cpp
+        src/game/I18n.cpp
         src/game/Actions.cpp
         src/game/Blows.cpp
         src/game/PlayerCast.cpp

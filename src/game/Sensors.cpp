@@ -5,6 +5,7 @@
 #include "core/Blows.h"
 #include "core/CustomSkills.h"
 #include "core/Effects.h"
+#include "core/I18n.h"
 #include "core/Party.h"
 #include "core/Reach.h"
 #include "core/Spells.h"
@@ -32,6 +33,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+
+using ft::i18n::Tr;
+using ft::i18n::TrFormat;
 
 namespace ft::game
 {
@@ -390,14 +394,11 @@ std::string RemainingText(float seconds)
     const int hours = total / 3600;
     const int minutes = (total % 3600) / 60;
     const int secs = total % 60;
-    char buf[32];
     if (hours > 0)
-        std::snprintf(buf, sizeof(buf), "%d h %d min", hours, minutes);
-    else if (minutes > 0)
-        std::snprintf(buf, sizeof(buf), "%d min %d s", minutes, secs);
-    else
-        std::snprintf(buf, sizeof(buf), "%d s", secs);
-    return buf;
+        return TrFormat("{} h {} min", hours, minutes);
+    if (minutes > 0)
+        return TrFormat("{} min {} s", minutes, secs);
+    return TrFormat("{} s", secs);
 }
 
 // The worn item carrying this enchantment, by the name the game shows for
@@ -643,7 +644,7 @@ ft::Breakdown ArmorBreakdown(RE::Actor *actor)
     for (Contribution &c : Contributions(actor, RE::ActorValue::kDamageResist))
     {
         if (!c.effect.empty() && c.effect != c.source)
-            c.source += " (" + c.effect + ")";
+            c.source = TrFormat("{} ({})", c.source, c.effect);
         parts.push_back(std::move(c));
     }
     // And the engine's hidden bonus per piece worn (fArmorBaseFactor, 0.03
@@ -655,7 +656,7 @@ ft::Breakdown ArmorBreakdown(RE::Actor *actor)
     if (hidden > 0.0f && perPiece > 0.0f)
     {
         const int pieces = static_cast<int>(std::lround(actor->GetArmorBaseFactorSum() / perPiece));
-        parts.push_back({"Hidden bonus (x" + std::to_string(pieces) + ")", {}, hidden});
+        parts.push_back({TrFormat("Hidden bonus (x{})", pieces), {}, hidden});
     }
     // Whatever the engine's figure has that the pieces, the effects and
     // the bonus do not (a formula mod, a rounding) is the Other line, so
@@ -709,9 +710,9 @@ void AddValueLines(ft::Breakdown &b, const ValueParts &parts, float scale)
     if (parts.base != 0.0f)
     {
         if (b.lines.empty())
-            ft::Start(b, "Base", parts.base * scale);
+            ft::Start(b, Tr("Base"), parts.base * scale);
         else
-            ft::Add(b, "Base", parts.base * scale);
+            ft::Add(b, Tr("Base"), parts.base * scale);
     }
     for (const Contribution &c : parts.sources)
         ft::Add(b, c.source, c.amount * scale);
@@ -855,7 +856,7 @@ SheetRow EffectEntryRow(const RE::Effect &effect, float magnitude, const Conditi
         // with Recover set, as "+100 Magicka/s" (2026-09-13).
         const bool recovers = base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kRecover);
         if (duration > 0 && !recovers)
-            amount += "/s";
+            amount += Tr("/s");
     }
     else
     {
@@ -872,7 +873,7 @@ SheetRow EffectEntryRow(const RE::Effect &effect, float magnitude, const Conditi
     // The duration in its own column; blank for an effect with none,
     // which holds for as long as it runs.
     if (duration > 0)
-        row.extra = std::to_string(duration) + " s";
+        row.extra = TrFormat("{} s", duration);
     // The author's text with the numbers put in, the magnitude unsigned as
     // the text expects it ("Deals <mag> points"); empty where the record
     // has none, and then the table has no column for it.
@@ -903,14 +904,14 @@ SheetRow EffectEntryRow(const RE::Effect &effect, float magnitude, const Conditi
         if (asked && conditions->head)
             holds = holds && conditions->IsTrue(parties.subject, parties.target);
     if (!holds)
-        row.aside = "Conditions not met";
+        row.aside = Tr("Conditions not met");
     return row;
 }
 
 SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
                        const std::function<float(const RE::Effect *)> &magnitude)
 {
-    SheetSection section{"Effects", {}, {}};
+    SheetSection section{Tr("Effects"), {}, {}};
     if (!magic)
         return section;
     // Whom the conditions are asked of, as when the item lands: the one it
@@ -1013,14 +1014,14 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         // active effect's magnitude is the engine's, signed already; its
         // duration reads as what is left of what there was.
         {
-            SheetSection page{"Effect", {}, {}};
+            SheetSection page{Tr("Effect"), {}, {}};
             // Its conditions as the engine asks them of a running effect:
             // of the one it is on, and of whoever cast it -- the player,
             // for a Bastion Dragonhide on a follower. For reference: the
             // row's grey is the flag.
             const auto caster = ae->caster.get();
             SheetRow line = EffectEntryRow(*ae->effect, ae->magnitude, {actor, caster.get()});
-            line.aside = row.active ? "" : "Inactive";
+            line.aside = row.active ? "" : Tr("Inactive");
             if (ae->duration > 0.0f)
             {
                 line.extra = RemainingText(ae->duration);
@@ -1030,7 +1031,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             // Whoever cast it, when it was not the follower: the player's
             // Courage, an enemy's Fury.
             if (caster && caster.get() != actor && caster->GetName() && *caster->GetName())
-                line.link += std::string(" (") + caster->GetName() + ")";
+                line.link = TrFormat("{} ({})", line.link, caster->GetName());
             line.form = row.linkForm;
             page.rows.push_back(std::move(line));
             row.detail.push_back(std::move(page));
@@ -1919,7 +1920,7 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
             std::string name = NameOr(object, "?");
             const auto *gem = object->As<RE::TESSoulGem>();
             if (!gem || level < gem->GetMaximumCapacity())
-                name += std::string(" (") + SoulName(level) + ")";
+                name = TrFormat("{} ({})", name, SoulName(level));
             out.push_back({object->GetFormID(), name, static_cast<int>(count), ft::ConsumableKind::SoulGem, {}});
             continue;
         }
@@ -2246,7 +2247,7 @@ const char *PerkAside(RE::Actor *actor, RE::BGSPerk *perk)
 {
     if (PerkActive(actor, perk))
         return nullptr;
-    return perk && perk->perkEntries.empty() ? "Does nothing" : "Inactive";
+    return perk && perk->perkEntries.empty() ? Tr("Does nothing") : Tr("Inactive");
 }
 
 // The perks this follower holds in one skill's tree, one row per perk at
@@ -2427,7 +2428,7 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
 
     if (auto *weapon = held->As<RE::TESObjectWEAP>())
     {
-        rows.push_back(Row("Weapon", NameOr(weapon, "?")));
+        rows.push_back(Row(Tr("Weapon"), NameOr(weapon, "?")));
         rows.back().form = weapon->GetFormID();
         // In their hands: the carried item, for its tempering. Each figure
         // as it applies now, written out on hover.
@@ -2435,7 +2436,7 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
         {
             SheetRow row;
             const float damage = WeaponDamage(actor, weapon, carried.entry.get(), &row.breakdown);
-            row.label = "Damage";
+            row.label = Tr("Damage");
             row.value = Fmt("%.0f", damage);
             rows.push_back(std::move(row));
         }
@@ -2448,8 +2449,8 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
             const float percent = CritChance(actor, weapon, &chance.breakdown);
             if (const auto critDamage = weapon->GetCritDamage(); critDamage > 0 && percent >= 0.5f)
             {
-                rows.push_back(Row("Critical Damage", std::to_string(critDamage)));
-                chance.label = "Critical Chance";
+                rows.push_back(Row(Tr("Critical Damage"), std::to_string(critDamage)));
+                chance.label = Tr("Critical Chance");
                 chance.value = Fmt("%.0f%%", percent);
                 rows.push_back(std::move(chance));
             }
@@ -2476,7 +2477,7 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
                 row.breakdown.total = live;
                 ft::Close(row.breakdown);
             }
-            row.label = "Speed";
+            row.label = Tr("Speed");
             row.value = Fmt("%.2f", speed);
             rows.push_back(std::move(row));
         }
@@ -2484,13 +2485,13 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
         {
             if (auto *ammo = actor->GetCurrentAmmo())
             {
-                rows.push_back(Row("Ammo", NameOr(ammo, "?")));
+                rows.push_back(Row(Tr("Ammo"), NameOr(ammo, "?")));
                 rows.back().form = ammo->GetFormID();
-                rows.push_back(Row("Ammo Damage", Fmt("%.0f", ammo->GetRuntimeData().data.damage)));
+                rows.push_back(Row(Tr("Ammo Damage"), Fmt("%.0f", ammo->GetRuntimeData().data.damage)));
             }
             else
             {
-                rows.push_back(Row("Ammo", "none"));
+                rows.push_back(Row(Tr("Ammo"), Tr("none")));
             }
         }
         return;
@@ -2498,10 +2499,10 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
 
     if (auto *spell = held->As<RE::SpellItem>())
     {
-        rows.push_back(Row("Spell", NameOr(spell, "?")));
+        rows.push_back(Row(Tr("Spell"), NameOr(spell, "?")));
         rows.back().form = spell->GetFormID();
         {
-            SheetRow row = Row("Cost", Fmt("%.0f", spell->CalculateMagickaCost(actor)));
+            SheetRow row = Row(Tr("Cost"), Fmt("%.0f", spell->CalculateMagickaCost(actor)));
             row.breakdown = SpellCostBreakdown(actor, spell);
             rows.push_back(std::move(row));
         }
@@ -2513,8 +2514,8 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
             std::string what = NameOr(effect->baseEffect, "?");
             what += " " + Fmt("%.0f", ActualMagnitude(actor, spell, effect));
             if (const float duration = ActualDuration(actor, spell, effect); duration > 0.0f)
-                what += " for " + Fmt("%.0f", duration) + " s";
-            rows.push_back(Row("Effect", what));
+                what = TrFormat("{} for {} s", what, Fmt("%.0f", duration));
+            rows.push_back(Row(Tr("Effect"), what));
         }
         return;
     }
@@ -2522,12 +2523,12 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
     if (auto *armor = held->As<RE::TESObjectARMO>())
     {
         const bool shield = armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield);
-        rows.push_back(Row(shield ? "Shield" : "Held", NameOr(armor, "?")));
+        rows.push_back(Row(shield ? Tr("Shield") : Tr("Held"), NameOr(armor, "?")));
         rows.back().form = armor->GetFormID();
         const Carried carried = CarriedOf(actor, armor);
         SheetRow row;
         const float rating = ArmorRating(actor, armor, carried.entry.get(), &row.breakdown);
-        row.label = "Armor";
+        row.label = Tr("Armor");
         row.value = Fmt("%.0f", rating);
         rows.push_back(std::move(row));
         return;
@@ -2535,12 +2536,12 @@ void HandRows(RE::Actor *actor, bool left, std::vector<SheetRow> &rows)
 
     if (held->Is(RE::FormType::Light))
     {
-        rows.push_back(Row("Held", NameOr(held, "torch")));
+        rows.push_back(Row(Tr("Held"), NameOr(held, Tr("torch"))));
         rows.back().form = held->GetFormID();
         return;
     }
 
-    rows.push_back(Row("Held", NameOr(held, "?")));
+    rows.push_back(Row(Tr("Held"), NameOr(held, "?")));
 }
 
 } // namespace
@@ -2723,14 +2724,14 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
             // Named for the value: a bare "Base" beside the weapon's own
             // read as the same thing.
             if (std::abs(parts.base) > 0.05f)
-                shares.emplace_back("Base " + ValueName(av), parts.base);
+                shares.emplace_back(TrFormat("Base {}", ValueName(av)), parts.base);
             for (const Contribution &c : parts.sources)
             {
                 explained += c.amount;
                 shares.emplace_back(c.source, c.amount);
             }
             if (const float rest = value - explained; std::abs(rest) > 0.05f)
-                shares.emplace_back("Other", rest);
+                shares.emplace_back(Tr("Other"), rest);
             const auto push = [&](std::string label, double amount) {
                 ft::BreakdownLine each;
                 each.op = multiply ? ft::Op::Multiply : ft::Op::Add;
@@ -2756,7 +2757,7 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
             // The factor's terms, in the factor's own units.
             ft::Breakdown terms;
             if (onePlus)
-                ft::Start(terms, "Base", 1.0);
+                ft::Start(terms, Tr("Base"), 1.0);
             for (auto &[label, amount] : shares)
                 ft::Add(terms, std::move(label), static_cast<double>(amount) * mult);
             for (ft::BreakdownLine &term : terms.lines)
@@ -2767,7 +2768,7 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
         {
         case Fn::kSetValue:
             line.op = ft::Op::Start;
-            line.label += " (set)";
+            line.label = TrFormat("{} (set)", line.label);
             line.amount = one;
             break;
         case Fn::kAddValue:
@@ -2784,7 +2785,7 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
             line.op = ft::Op::Add;
             line.amount = two ? two[0] : 0.0f;
             if (two)
-                line.label += " (" + Fmt("%g", two[0]) + " to " + Fmt("%g", two[1]) + ")";
+                line.label = TrFormat("{} ({} to {})", line.label, Fmt("%g", two[0]), Fmt("%g", two[1]));
             break;
         case Fn::kAddActorValueMult:
             line.op = ft::Op::Add;
@@ -2831,11 +2832,11 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     ft::Breakdown &b = out ? *out : local;
     b = {};
     float damage = weapon->GetAttackDamage();
-    ft::Start(b, "Base", damage);
+    ft::Start(b, Tr("Base"), damage);
     if (const float tempering = Tempering(entry); tempering != 1.0f)
     {
         damage *= tempering;
-        ft::Multiply(b, "Tempering", tempering);
+        ft::Multiply(b, Tr("Tempering"), tempering);
     }
 
     // The skill curve: UESP gives it as (1 + skill / 200), which is what the
@@ -2912,12 +2913,12 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
         if (const float mult = owner->GetActorValue(AV::kAttackDamageMult); mult > 0.0f && mult != 1.0f)
         {
             damage *= mult;
-            ft::Multiply(b, "Attack Damage Mult", mult).detail = ValueLines(actor, AV::kAttackDamageMult, mult);
+            ft::Multiply(b, Tr("Attack Damage Mult"), mult).detail = ValueLines(actor, AV::kAttackDamageMult, mult);
         }
         if (const float flat = owner->GetActorValue(AV::kMeleeDamage); flat != 0.0f)
         {
             damage += flat;
-            ft::Add(b, "Melee Damage", flat).detail = ValueLines(actor, AV::kMeleeDamage, flat);
+            ft::Add(b, Tr("Melee Damage"), flat).detail = ValueLines(actor, AV::kMeleeDamage, flat);
         }
     }
 
@@ -2963,13 +2964,13 @@ float WeaponSpeed(RE::Actor *actor, RE::TESObjectWEAP *weapon, bool left, ft::Br
     // multiplier, where zero or less is none. A plugin that rewrites the
     // multiplier's read (Comprehensive Attack Rate Patch) is Other beneath it.
     float speed = weapon->GetSpeed();
-    ft::Start(b, "Base", speed);
+    ft::Start(b, Tr("Base"), speed);
     if (weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe())
     {
         if (const float twoHanded = GameSetting("fWeaponTwoHandedAnimationSpeedMult", 1.0f); twoHanded != 1.0f)
         {
             speed *= twoHanded;
-            ft::Multiply(b, "Two-handed", twoHanded);
+            ft::Multiply(b, Tr("Two-handed"), twoHanded);
         }
     }
     const auto value = left ? RE::ActorValue::kLeftWeaponSpeedMultiply : RE::ActorValue::kWeaponSpeedMult;
@@ -2989,14 +2990,14 @@ float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out)
     ft::Breakdown local;
     ft::Breakdown &b = out ? *out : local;
     b = {};
-    b.unit = " s";
-    ft::Start(b, "Base", recovery);
+    b.unit = Tr(" s");
+    ft::Start(b, Tr("Base"), recovery);
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     if (const float mult = owner ? owner->GetActorValue(RE::ActorValue::kShoutRecoveryMult) : 1.0f;
         mult > 0.0f && mult != 1.0f)
     {
         recovery *= mult;
-        ft::Multiply(b, "Shout Recovery Mult", mult).detail =
+        ft::Multiply(b, Tr("Shout Recovery Mult"), mult).detail =
             ValueLines(actor, RE::ActorValue::kShoutRecoveryMult, mult);
     }
     b.total = recovery;
@@ -3019,7 +3020,7 @@ ft::Breakdown SpellCostBreakdown(RE::Actor *actor, const RE::SpellItem *spell)
     const bool power = type == RE::MagicSystem::SpellType::kPower || type == RE::MagicSystem::SpellType::kLesserPower;
     const RE::Effect *costliest = spell->GetCostliestEffectItem();
     if (spell->data.flags.any(RE::SpellItem::SpellFlag::kCostOverride))
-        ft::Start(b, "Base", static_cast<float>(spell->data.costOverride));
+        ft::Start(b, Tr("Base"), static_cast<float>(spell->data.costOverride));
     else
     {
         for (const auto *effect : ResolvedEffects(*spell))
@@ -3076,7 +3077,7 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
     if (armorClass == Class::kClothing)
         return 0.0f;
     float rating = armor->GetArmorRating();
-    ft::Start(b, "Base", rating);
+    ft::Start(b, Tr("Base"), rating);
 
     // Tempering is flat points: one plus the item health's place between
     // the first and last health steps, times the armour smithing maximum
@@ -3108,7 +3109,7 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
         if (bonus > 0.0f)
         {
             rating += bonus;
-            ft::Add(b, body ? "Tempering (body, doubled)" : "Tempering", bonus);
+            ft::Add(b, body ? Tr("Tempering (body, doubled)") : Tr("Tempering"), bonus);
         }
     }
 
@@ -3152,7 +3153,7 @@ float ArmorRating(RE::Actor *actor, RE::TESObjectARMO *armor, RE::InventoryEntry
         // Its own line, with its decimals: hidden below one printed digit,
         // it came back as Other wherever a perk multiplied it afterwards.
         if (ft::Visible(b, up))
-            ft::Add(b, "Rounding", up);
+            ft::Add(b, Tr("Rounding"), up);
     }
 
     // Perks: Juggernaut, Agile Defender and their kin, through the engine's
@@ -3179,36 +3180,36 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     const auto av = [owner](RE::ActorValue value) { return owner->GetActorValue(value); };
 
     {
-        SheetSection s{"General", {}, {}};
+        SheetSection s{Tr("General"), {}, {}};
         // The reference and the base record, as the console names them --
         // what "prid" takes, and what the log calls the follower.
         {
             char id[16];
             std::snprintf(id, sizeof(id), "%08X", actor->GetFormID());
-            s.rows.push_back(Row("Ref ID", id));
+            s.rows.push_back(Row(Tr("Ref ID"), id));
             const auto *base = actor->GetActorBase();
             std::snprintf(id, sizeof(id), "%08X", base ? base->GetFormID() : 0u);
-            s.rows.push_back(Row("Base ID", id));
+            s.rows.push_back(Row(Tr("Base ID"), id));
         }
-        s.rows.push_back(Row("Name", NameOr(actor, "?")));
+        s.rows.push_back(Row(Tr("Name"), NameOr(actor, "?")));
         auto *race = actor->GetRace();
-        s.rows.push_back(Row("Race", NameOr(race, "?")));
+        s.rows.push_back(Row(Tr("Race"), NameOr(race, "?")));
         if (const auto *base = actor->GetActorBase())
         {
             const auto sex = base->GetSex();
             if (sex == RE::SEX::kMale || sex == RE::SEX::kFemale)
-                s.rows.push_back(Row("Gender", sex == RE::SEX::kMale ? "Male" : "Female"));
+                s.rows.push_back(Row(Tr("Gender"), sex == RE::SEX::kMale ? Tr("Male") : Tr("Female")));
         }
         // Speed is the multiplier every buff lands on -- 100 for plain, and
         // a Fortify Speed or a Slow moves it -- so it reads the same
         // standing and sprinting. What moves it and by whom is the hover
         // text, as for the regen rates.
         {
-            SheetRow row = Row("Speed", Fmt("%.0f%%", av(RE::ActorValue::kSpeedMult)));
+            SheetRow row = Row(Tr("Speed"), Fmt("%.0f%%", av(RE::ActorValue::kSpeedMult)));
             row.breakdown = ValueBreakdown(actor, RE::ActorValue::kSpeedMult, "%");
             s.rows.push_back(std::move(row));
         }
-        s.rows.push_back(Row("Noise", Fmt("%.0f%%", av(RE::ActorValue::kMovementNoiseMult) * 100.0)));
+        s.rows.push_back(Row(Tr("Noise"), Fmt("%.0f%%", av(RE::ActorValue::kMovementNoiseMult) * 100.0)));
         out.push_back(std::move(s));
     }
 
@@ -3223,17 +3224,17 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         auto *weapon = held ? held->As<RE::TESObjectWEAP>() : nullptr;
         auto *spell = held ? held->As<RE::SpellItem>() : nullptr;
         const bool both = TwoHanded(weapon) || (spell && spell->IsTwoHanded());
-        SheetSection right{both ? "Both Hands" : "Right Hand", {}, "Attack"};
+        SheetSection right{both ? Tr("Both Hands") : Tr("Right Hand"), {}, Tr("Attack")};
         HandRows(actor, false, right.rows);
-        SheetSection left{"Left Hand", {}, "Attack"};
+        SheetSection left{Tr("Left Hand"), {}, Tr("Attack")};
         if (!both)
             HandRows(actor, true, left.rows);
 
         if (right.rows.empty() && left.rows.empty())
         {
-            SheetSection s{"Attack", {}, {}};
-            s.rows.push_back(Row("Held", "unarmed"));
-            s.rows.push_back(Row("Base Damage", Fmt("%.0f", av(RE::ActorValue::kUnarmedDamage))));
+            SheetSection s{Tr("Attack"), {}, {}};
+            s.rows.push_back(Row(Tr("Held"), Tr("unarmed")));
+            s.rows.push_back(Row(Tr("Base Damage"), Fmt("%.0f", av(RE::ActorValue::kUnarmedDamage))));
             out.push_back(std::move(s));
         }
         else
@@ -3246,7 +3247,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
     }
 
     {
-        SheetSection s{"Defense", {}, {}};
+        SheetSection s{Tr("Defense"), {}, {}};
         // The armour rating the game shows is not the one it applies: each
         // piece worn adds a hidden bonus before the scaling factor, which is
         // why a displayed 609 lands at 85% and not 73%. One row: the rating
@@ -3259,7 +3260,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // The share of a blow turned away, clamped at the cap: one
         // percent, the one that applies -- "582 (75%)" in a list that caps
         // at 75.
-        SheetRow armorRow = Row("Armor", Fmt("%.0f", EffectiveArmor(actor)) + " (" +
+        SheetRow armorRow = Row(Tr("Armor"), Fmt("%.0f", EffectiveArmor(actor)) + " (" +
                                              Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")");
         armorRow.breakdown = ArmorBreakdown(actor);
         s.rows.push_back(std::move(armorRow));
@@ -3272,17 +3273,17 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         };
         // The chance to reflect a blow back, after the rating it did not
         // turn away.
-        resist("Reflect", RE::ActorValue::kReflectDamage, false);
+        resist(Tr("Reflect"), RE::ActorValue::kReflectDamage, false);
         // Magic first, with the chance to absorb a spell outright beside
         // it, then the elements, then poison; disease last, the one that
         // matters to the player alone.
-        resist("Magic", RE::ActorValue::kResistMagic, true);
-        resist("Spell Absorb", RE::ActorValue::kAbsorbChance, false);
-        resist("Fire", RE::ActorValue::kResistFire, true);
-        resist("Frost", RE::ActorValue::kResistFrost, true);
-        resist("Shock", RE::ActorValue::kResistShock, true);
-        resist("Poison", RE::ActorValue::kPoisonResist, true);
-        resist("Disease", RE::ActorValue::kResistDisease, false);
+        resist(Tr("Magic"), RE::ActorValue::kResistMagic, true);
+        resist(Tr("Spell Absorb"), RE::ActorValue::kAbsorbChance, false);
+        resist(Tr("Fire"), RE::ActorValue::kResistFire, true);
+        resist(Tr("Frost"), RE::ActorValue::kResistFrost, true);
+        resist(Tr("Shock"), RE::ActorValue::kResistShock, true);
+        resist(Tr("Poison"), RE::ActorValue::kPoisonResist, true);
+        resist(Tr("Disease"), RE::ActorValue::kResistDisease, false);
         out.push_back(std::move(s));
     }
 
@@ -3296,7 +3297,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // read as the rate it added, and a stone that doubled the rate
         // doubled them unseen (2026-09-15). Rate times multiplier is UESP's
         // account, not read off the executable.
-        SheetSection s{"Regen", {}, {}};
+        SheetSection s{Tr("Regen"), {}, {}};
         const auto regen = [&](const char *label, RE::ActorValue rate, RE::ActorValue mult) {
             const float current = av(rate);
             const float factor = av(mult) / 100.0f;
@@ -3312,9 +3313,9 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
             ft::Close(b);
             s.rows.push_back(std::move(row));
         };
-        regen("Health Rate", RE::ActorValue::kHealRate, RE::ActorValue::kHealRateMult);
-        regen("Stamina Rate", RE::ActorValue::kStaminaRate, RE::ActorValue::kStaminaRateMult);
-        regen("Magicka Rate", RE::ActorValue::kMagickaRate, RE::ActorValue::kMagickaRateMult);
+        regen(Tr("Health Rate"), RE::ActorValue::kHealRate, RE::ActorValue::kHealRateMult);
+        regen(Tr("Stamina Rate"), RE::ActorValue::kStaminaRate, RE::ActorValue::kStaminaRateMult);
+        regen(Tr("Magicka Rate"), RE::ActorValue::kMagickaRate, RE::ActorValue::kMagickaRateMult);
         out.push_back(std::move(s));
     }
 
@@ -3371,27 +3372,27 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
     using Flag = RE::TESCombatStyle::FLAG;
     const bool flanking = live->flags.all(Flag::kFlankingStyle);
     {
-        SheetSection s{"Style", {}, {}};
+        SheetSection s{Tr("Style"), {}, {}};
         // A runtime copy has a 0xFF FormID; a record's is its plugin's.
         const bool ours = (live->GetFormID() & 0xFF000000U) == 0xFF000000U;
         char id[16];
         std::snprintf(id, sizeof(id), "%08X", live->GetFormID());
-        s.rows.push_back(Row("Base ID", ours ? std::string(id) + "  (our copy)" : id));
+        s.rows.push_back(Row(Tr("Base ID"), ours ? TrFormat("{}  (our copy)", std::string(id)) : std::string(id)));
         if (controller && controller->combatStyle && record && controller->combatStyle != record)
         {
             char recordId[16];
             std::snprintf(recordId, sizeof(recordId), "%08X", record->GetFormID());
-            s.rows.push_back(Row("On Record", recordId));
+            s.rows.push_back(Row(Tr("On Record"), recordId));
         }
-        s.rows.push_back(note(Row("Close Range", flanking ? "Flanking" : "Dueling"),
-                              "- Dueling: circles, falls back\n"
-                              "- Flanking: keeps a distance, stalks"));
+        s.rows.push_back(note(Row(Tr("Close Range"), flanking ? Tr("Flanking") : Tr("Dueling")),
+                              Tr("- Dueling: circles, falls back\n"
+                                 "- Flanking: keeps a distance, stalks")));
         // A tick when allowed, as the equipped state is shown; no row at all
         // when not.
         if (live->flags.all(Flag::kAllowDualWielding))
         {
-            SheetRow row = note(Row("Dual Wield", ""), "- Can hold a weapon in each hand\n"
-                                                       "- Staves do not count");
+            SheetRow row = note(Row(Tr("Dual Wield"), ""), Tr("- Can hold a weapon in each hand\n"
+                                                           "- Staves do not count"));
             row.icon = kGlyphTick;
             s.rows.push_back(std::move(row));
         }
@@ -3399,69 +3400,72 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
     }
     {
         const auto &g = live->generalData;
-        SheetSection s{"General", {}, {}};
-        s.rows.push_back(note(Row("Offensive", chance(g.offensiveMult)), "- Higher: attacks more often\n"
-                                                                         "- More power attacks"));
-        s.rows.push_back(note(Row("Defensive", chance(g.defensiveMult)), "- Higher: blocks more, holds it longer\n"
-                                                                         "- Bashes more, given a shield or a weapon"));
-        s.rows.push_back(note(Row("Group Offensive", chance(g.groupOffensiveMult)),
-                              "- Replaces Offensive when several attack one target\n"
-                              "- Higher: stays offensive in a crowd"));
+        SheetSection s{Tr("General"), {}, {}};
+        s.rows.push_back(note(Row(Tr("Offensive"), chance(g.offensiveMult)), Tr("- Higher: attacks more often\n"
+                                                                             "- More power attacks")));
+        s.rows.push_back(note(Row(Tr("Defensive"), chance(g.defensiveMult)),
+                              Tr("- Higher: blocks more, holds it longer\n"
+                                 "- Bashes more, given a shield or a weapon")));
+        s.rows.push_back(note(Row(Tr("Group Offensive"), chance(g.groupOffensiveMult)),
+                              Tr("- Replaces Offensive when several attack one target\n"
+                                 "- Higher: stays offensive in a crowd")));
         out.push_back(std::move(s));
     }
     {
         // The six that decide what they prefer to hold.
         const auto &g = live->generalData;
-        SheetSection s{"Equipment Scores", {}, {}};
-        constexpr const char *kScore = "- Multiplies the damage of attacks of this kind\n"
-                                       "- The highest score is what gets used\n"
-                                       "- A weak weapon needs a high score to beat a strong spell";
-        s.rows.push_back(note(Row("Melee", score(g.meleeScoreMult)), kScore));
-        s.rows.push_back(note(Row("Magic", score(g.magicScoreMult)), kScore));
-        s.rows.push_back(note(Row("Ranged", score(g.rangedScoreMult)), kScore));
-        s.rows.push_back(note(Row("Staff", score(g.staffScoreMult)), kScore));
-        s.rows.push_back(note(Row("Shout", score(g.shoutScoreMult)), kScore));
-        s.rows.push_back(note(Row("Unarmed", score(g.unarmedScoreMult)), kScore));
+        SheetSection s{Tr("Equipment Scores"), {}, {}};
+        const char *kScore = Tr("- Multiplies the damage of attacks of this kind\n"
+                                "- The highest score is what gets used\n"
+                                "- A weak weapon needs a high score to beat a strong spell");
+        s.rows.push_back(note(Row(Tr("Melee"), score(g.meleeScoreMult)), kScore));
+        s.rows.push_back(note(Row(Tr("Magic"), score(g.magicScoreMult)), kScore));
+        s.rows.push_back(note(Row(Tr("Ranged"), score(g.rangedScoreMult)), kScore));
+        s.rows.push_back(note(Row(Tr("Staff"), score(g.staffScoreMult)), kScore));
+        s.rows.push_back(note(Row(Tr("Shout"), score(g.shoutScoreMult)), kScore));
+        s.rows.push_back(note(Row(Tr("Unarmed"), score(g.unarmedScoreMult)), kScore));
         out.push_back(std::move(s));
     }
     {
         const auto &m = live->meleeData;
-        SheetSection s{"Melee", {}, {}};
-        s.rows.push_back(note(Row("Attack, Staggered", score(m.attackIncapacitatedMult)),
-                              "- Higher: attacks a staggered target more"));
-        s.rows.push_back(note(Row("Power Attack, Staggered", score(m.powerAttackIncapacitatedMult)),
-                              "- Higher: power-attacks a staggered target more"));
-        s.rows.push_back(note(Row("Power Attack, Blocking", score(m.powerAttackBlockingMult)),
-                              "- Higher: power-attacks a blocking target more\n"
-                              "- Breaks the block"));
-        s.rows.push_back(note(Row("Bash", score(m.bashMult)), "- Higher: bashes more, with a shield or a bash attack\n"
-                                                              "- A bash can stagger"));
-        s.rows.push_back(note(Row("Bash, Recoiled", score(m.bashRecoilMult)),
-                              "- Higher: bashes a target recoiling from its blocked attack"));
-        s.rows.push_back(note(Row("Bash, Attacking", score(m.bashAttackMult)), "- Higher: bashes a target mid-attack"));
-        s.rows.push_back(note(Row("Bash, Power Attacking", score(m.bashPowerAttackMult)),
-                              "- Higher: bashes a target mid-power-attack"));
+        SheetSection s{Tr("Melee"), {}, {}};
+        s.rows.push_back(note(Row(Tr("Attack, Staggered"), score(m.attackIncapacitatedMult)),
+                              Tr("- Higher: attacks a staggered target more")));
+        s.rows.push_back(note(Row(Tr("Power Attack, Staggered"), score(m.powerAttackIncapacitatedMult)),
+                              Tr("- Higher: power-attacks a staggered target more")));
+        s.rows.push_back(note(Row(Tr("Power Attack, Blocking"), score(m.powerAttackBlockingMult)),
+                              Tr("- Higher: power-attacks a blocking target more\n"
+                                 "- Breaks the block")));
+        s.rows.push_back(note(Row(Tr("Bash"), score(m.bashMult)),
+                              Tr("- Higher: bashes more, with a shield or a bash attack\n"
+                                 "- A bash can stagger")));
+        s.rows.push_back(note(Row(Tr("Bash, Recoiled"), score(m.bashRecoilMult)),
+                              Tr("- Higher: bashes a target recoiling from its blocked attack")));
+        s.rows.push_back(
+            note(Row(Tr("Bash, Attacking"), score(m.bashAttackMult)), Tr("- Higher: bashes a target mid-attack")));
+        s.rows.push_back(note(Row(Tr("Bash, Power Attacking"), score(m.bashPowerAttackMult)),
+                              Tr("- Higher: bashes a target mid-power-attack")));
         out.push_back(std::move(s));
     }
     {
         // Only the active pair: dueling circles and falls back, flanking
         // keeps a distance and stalks. The other pair is dead data.
         const auto &c = live->closeRangeData;
-        SheetSection s{"Range", {}, {}};
+        SheetSection s{Tr("Range"), {}, {}};
         if (flanking)
         {
             s.rows.push_back(
-                note(Row("Flank Distance", chance(c.flankDistanceMult)), "- Distance kept while flanking"));
+                note(Row(Tr("Flank Distance"), chance(c.flankDistanceMult)), Tr("- Distance kept while flanking")));
             s.rows.push_back(
-                note(Row("Stalk Time", chance(c.stalkTimeMult)), "- Time spent flanking before attacking"));
+                note(Row(Tr("Stalk Time"), chance(c.stalkTimeMult)), Tr("- Time spent flanking before attacking")));
         }
         else
         {
-            s.rows.push_back(note(Row("Circle", chance(c.circleMult)), "- Higher: circles the target more"));
-            s.rows.push_back(note(Row("Fallback", chance(c.fallbackMult)), "- Chance to back off"));
+            s.rows.push_back(note(Row(Tr("Circle"), chance(c.circleMult)), Tr("- Higher: circles the target more")));
+            s.rows.push_back(note(Row(Tr("Fallback"), chance(c.fallbackMult)), Tr("- Chance to back off")));
         }
-        s.rows.push_back(note(Row("Strafe", chance(live->longRangeData.strafeMult)),
-                              "- Higher: strafes more to dodge projectiles at range"));
+        s.rows.push_back(note(Row(Tr("Strafe"), chance(live->longRangeData.strafeMult)),
+                              Tr("- Higher: strafes more to dodge projectiles at range")));
         out.push_back(std::move(s));
     }
     return out;
@@ -3573,7 +3577,7 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data, const std::string
 {
     const auto id = static_cast<std::size_t>(data.functionData.function.get());
     const char *name = id < kConditionNames.size() && *kConditionNames[id] ? kConditionNames[id] : nullptr;
-    std::string call = name ? name : "Function " + std::to_string(id);
+    std::string call = name ? name : TrFormat("Function {}", id);
 
     const RE::SCRIPT_FUNCTION *command = ConditionCommand(id, name);
     std::vector<std::string> args;
@@ -3595,7 +3599,7 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data, const std::string
             const char *formName = form->GetName();
             const char *editorID = form->GetFormEditorID();
             const bool byEditorID = form->Is(RE::FormType::Perk) || !formName || !*formName;
-            args.push_back(form->IsPlayerRef()                   ? "Player"
+            args.push_back(form->IsPlayerRef()                   ? Tr("Player")
                            : byEditorID && editorID && *editorID ? editorID
                            : formName && *formName               ? formName
                                                                  : HexId(form->GetFormID()));
@@ -3625,13 +3629,13 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data, const std::string
     {
     case Object::kSelf:
         if (!subject.empty())
-            call += " on " + subject;
+            call = TrFormat("{} on {}", call, subject);
         break;
     case Object::kTarget:
-        call += " on " + target;
+        call = TrFormat("{} on {}", call, target);
         break;
     case Object::kCombatTarget:
-        call += " on Combat Target";
+        call = TrFormat("{} on {}", call, Tr("Combat Target"));
         break;
     case Object::kRef: {
         // A particular reference, named in the condition: the player, as a
@@ -3639,27 +3643,27 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data, const std::string
         // the player's.
         const auto ref = data.runOnRef.get();
         if (ref && ref->IsPlayerRef())
-            call += " on Player";
+            call = TrFormat("{} on {}", call, Tr("Player"));
         else if (ref && ref->GetDisplayFullName() && *ref->GetDisplayFullName())
-            call += std::string(" on ") + ref->GetDisplayFullName();
+            call = TrFormat("{} on {}", call, ref->GetDisplayFullName());
         else
-            call += ref ? " on " + HexId(ref->GetFormID()) : " on Reference";
+            call = TrFormat("{} on {}", call, ref ? HexId(ref->GetFormID()) : std::string(Tr("Reference")));
         break;
     }
     case Object::kLinkedRef:
-        call += " on Linked Reference";
+        call = TrFormat("{} on {}", call, Tr("Linked Reference"));
         break;
     case Object::kQuestAlias:
-        call += " on Quest Alias";
+        call = TrFormat("{} on {}", call, Tr("Quest Alias"));
         break;
     case Object::kPackData:
-        call += " on Package Data";
+        call = TrFormat("{} on {}", call, Tr("Package Data"));
         break;
     case Object::kEventData:
-        call += " on Event Data";
+        call = TrFormat("{} on {}", call, Tr("Event Data"));
         break;
     case Object::kCommandTarget:
-        call += " on Command Target";
+        call = TrFormat("{} on {}", call, Tr("Command Target"));
         break;
     }
     return call;
@@ -3670,7 +3674,7 @@ std::string ConditionCall(const RE::CONDITION_ITEM_DATA &data, const std::string
 std::string PartyName(RE::TESObjectREFR *ref)
 {
     if (ref->IsPlayerRef())
-        return "Player";
+        return Tr("Player");
     const char *name = ref->GetDisplayFullName();
     return name && *name ? name : HexId(ref->GetFormID());
 }
@@ -3716,11 +3720,12 @@ std::vector<SheetRow> ConditionRows(const RE::TESCondition &condition, const Con
         // the Creation Kit's word where there is nobody to name. A perk's
         // later tab keeps the words: its Subject is the entry's argument,
         // listed and not asked.
-        std::string subject = on ? "" : parties.subject ? PartyName(parties.subject) : "Subject";
-        std::string target = on ? "Target" : parties.target ? PartyName(parties.target) : "Target";
+        std::string subject = on ? "" : parties.subject ? PartyName(parties.subject) : Tr("Subject");
+        std::string target = on ? Tr("Target") : parties.target ? PartyName(parties.target) : Tr("Target");
         if (swapped && !on)
             std::swap(subject, target);
-        SheetRow row = Row(ConditionCall(data, subject, target) + (on ? std::string(" on ") + on : ""),
+        const std::string call = ConditionCall(data, subject, target);
+        SheetRow row = Row(on ? TrFormat("{} on {}", call, on) : call,
                            std::string(op) + " " + value + (data.flags.isOR ? "  OR" : ""));
         // Met only where the condition is on the actor: one on another
         // argument -- the spell, the weapon, the target -- has nothing to
@@ -3736,7 +3741,7 @@ std::vector<SheetRow> ConditionRows(const RE::TESCondition &condition, const Con
             // a dual-cast effect is being added (handler 21719), and is 0
             // afterwards whatever the cast was.
             if (needsParty && !runsOn)
-                row.extra = "N/A";
+                row.extra = Tr("N/A");
             else if (data.functionData.function.get() == RE::FUNCTION_DATA::FunctionID::kEffectWasDualCast)
                 row.extra = "?";
             else
@@ -3856,12 +3861,12 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
     {
     case Type::kAbility: {
         const auto *ability = static_cast<const RE::BGSAbilityPerkEntry *>(entry);
-        return Row("Ability", NameOr(ability->ability, "?"));
+        return Row(Tr("Ability"), NameOr(ability->ability, "?"));
     }
     case Type::kQuest:
         // The quest entry's record is not modelled in this CommonLibSSE
         // fork; the kind is all that can be said.
-        return Row("Quest", "a stage set");
+        return Row(Tr("Quest"), Tr("a stage set"));
     case Type::kEntryPoint: {
         const auto *point = static_cast<const RE::BGSEntryPointPerkEntry *>(entry);
         const auto index = static_cast<std::size_t>(point->entryData.entryPoint.get());
@@ -3881,7 +3886,7 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
             dataType == DataType::kTwoValue ? reinterpret_cast<const TwoValueData *>(data)->data : nullptr;
         const std::string share =
             two ? Fmt("%g", two[1]) + " x " + ValueName(static_cast<RE::ActorValue>(static_cast<int>(two[0])))
-                : std::string("a share of an actor value");
+                : std::string(Tr("a share of an actor value"));
         std::string value;
         switch (point->entryData.function.get())
         {
@@ -3895,16 +3900,16 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
             value = "x " + Fmt("%g", one);
             break;
         case Function::kAddRangeToValue:
-            value = two ? "+ " + Fmt("%g", two[0]) + " to " + Fmt("%g", two[1]) : "+ a range";
+            value = two ? TrFormat("+ {} to {}", Fmt("%g", two[0]), Fmt("%g", two[1])) : std::string(Tr("+ a range"));
             break;
         case Function::kAddActorValueMult:
             value = "+ " + share;
             break;
         case Function::kAddLeveledList:
-            value = "a leveled list";
+            value = Tr("a leveled list");
             break;
         case Function::kAddActivateChoice:
-            value = "an activate choice";
+            value = Tr("an activate choice");
             break;
         case Function::kSetToActorValueMult:
             value = "= " + share;
@@ -3916,7 +3921,7 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
             value = "x (1 + " + share + ")";
             break;
         case Function::kSetText:
-            value = "a text";
+            value = Tr("a text");
             break;
         default:
             break;
@@ -3924,12 +3929,12 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
         if (dataType == DataType::kSpellItem)
         {
             const auto *spell = static_cast<const RE::BGSEntryPointFunctionDataSpellItem *>(data)->spell;
-            value = NameOr(spell, "a spell");
+            value = NameOr(spell, Tr("a spell"));
         }
         return Row(name, value);
     }
     default:
-        return Row("Entry", "?");
+        return Row(Tr("Entry"), "?");
     }
 }
 
@@ -4129,20 +4134,20 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         perk->GetDescription(text, perk);
         p.description = text.c_str() ? text.c_str() : "";
 
-        SheetSection info{"Perk Details", {}, {}};
+        SheetSection info{Tr("Perk Details"), {}, {}};
         char id[16];
         std::snprintf(id, sizeof(id), "%08X", perk->GetFormID());
-        info.rows.push_back(Row("Base ID", id));
+        info.rows.push_back(Row(Tr("Base ID"), id));
         if (ranks > 1)
-            info.rows.push_back(Row("Rank", std::to_string(rank) + " / " + std::to_string(ranks)));
+            info.rows.push_back(Row(Tr("Rank"), std::to_string(rank) + " / " + std::to_string(ranks)));
         if (!skill.empty())
-            info.rows.push_back(Row("Skill", skill));
+            info.rows.push_back(Row(Tr("Skill"), skill));
         if (perk->data.hidden)
-            info.rows.push_back(Row("Hidden", "yes"));
+            info.rows.push_back(Row(Tr("Hidden"), Tr("yes")));
         // A tick while the perk does something for them; no row while not.
         if (PerkActive(actor, perk))
         {
-            SheetRow active = Row("Active", "");
+            SheetRow active = Row(Tr("Active"), "");
             active.icon = kGlyphTick;
             info.rows.push_back(std::move(active));
         }
@@ -4153,10 +4158,10 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         {
             std::string who;
             for (std::size_t i = 0; i < readers.size() && i < 4; ++i)
-                who += (who.empty() ? "" : ", ") + readers[i];
+                who += (who.empty() ? "" : Tr(", ")) + readers[i];
             if (readers.size() > 4)
-                who += ", +" + std::to_string(readers.size() - 4);
-            info.rows.push_back(Row("Read by", who));
+                who += TrFormat(", +{}", readers.size() - 4);
+            info.rows.push_back(Row(Tr("Read by"), who));
         }
         p.sections.push_back(std::move(info));
 
@@ -4166,7 +4171,7 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         // not met, as an effect's row is. Not the record's own conditions,
         // which are what the skill tree asks before the player may take
         // it, and nothing to an NPC.
-        SheetSection effects{"Effects", {}, {}};
+        SheetSection effects{Tr("Effects"), {}, {}};
         for (const auto *entry : perk->perkEntries)
         {
             if (!entry)
@@ -4190,13 +4195,13 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
                 {
                     if (!point->conditions[tab])
                         continue;
-                    const std::string on = "argument " + std::to_string(tab + 1);
+                    const std::string on = TrFormat("argument {}", tab + 1);
                     for (SheetRow &r : ConditionRows(point->conditions[tab], {actor, actor}, on.c_str()))
                         row.detail.push_back(std::move(r));
                 }
             }
             if (!active)
-                row.aside = "Conditions not met";
+                row.aside = Tr("Conditions not met");
             effects.rows.push_back(std::move(row));
         }
         // By name, the record's order being the author's; two of one name
@@ -4210,9 +4215,9 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         // names the plugin that last changed the record.
         if (effects.rows.empty())
         {
-            SheetRow row = Row("Effect", "N/A");
+            SheetRow row = Row(Tr("Effect"), Tr("N/A"));
             if (const auto *file = perk->GetFile(); file && !file->GetFilename().empty())
-                row.note = "Record last changed by " + std::string(file->GetFilename());
+                row.note = TrFormat("Record last changed by {}", file->GetFilename());
             effects.rows.push_back(std::move(row));
         }
         p.sections.push_back(std::move(effects));
@@ -4326,7 +4331,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             }
             piece.breakdown.total = total;
             ft::Close(piece.breakdown);
-            row.modifiers += (row.modifiers.empty() ? "" : ", ") + text;
+            row.modifiers += (row.modifiers.empty() ? "" : Tr(", ")) + text;
             row.modifierParts.push_back(std::move(piece));
         };
         if (k.mod.effect && k.power.effect && std::string_view(k.mod.effect) == k.power.effect)
@@ -4337,15 +4342,15 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             if (m != 0.0f || p != 0.0f)
             {
                 const double change = ((1.0 + k.mod.sign * m / 100.0) * (1.0 + k.power.sign * p / 100.0) - 1.0) * 100.0;
-                part(Fmt("%+.0f%% ", change) + k.mod.effect, {{&k.power, p}, {&k.mod, m}}, change);
+                part(TrFormat("{}% {}", Fmt("%+.0f", change), Tr(k.mod.effect)), {{&k.power, p}, {&k.mod, m}}, change);
             }
         }
         else
         {
             if (p != 0.0f)
-                part(Fmt("%+.0f%% ", k.power.sign * p) + k.power.effect, {{&k.power, p}}, k.power.sign * p);
+                part(TrFormat("{}% {}", Fmt("%+.0f", k.power.sign * p), Tr(k.power.effect)), {{&k.power, p}}, k.power.sign * p);
             if (m != 0.0f)
-                part(Fmt("%+.0f%% ", k.mod.sign * m) + k.mod.effect, {{&k.mod, m}}, k.mod.sign * m);
+                part(TrFormat("{}% {}", Fmt("%+.0f", k.mod.sign * m), Tr(k.mod.effect)), {{&k.mod, m}}, k.mod.sign * m);
         }
 
         // The Armor Perks value, which the engine adds to either armour
@@ -4356,10 +4361,10 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             if (const float perks = av(AV::kArmorPerks); perks != 0.0f)
             {
                 SheetRow::ModifierPart piece;
-                piece.text = Fmt("%+.2f", perks) + " skill multiplier";
+                piece.text = TrFormat("{} skill multiplier", Fmt("%+.2f", perks));
                 piece.breakdown = ValueBreakdown(actor, AV::kArmorPerks, "");
                 piece.breakdown.decimals = 2;
-                row.modifiers += (row.modifiers.empty() ? "" : ", ") + piece.text;
+                row.modifiers += (row.modifiers.empty() ? "" : Tr(", ")) + piece.text;
                 row.modifierParts.push_back(std::move(piece));
             }
         }
@@ -4383,27 +4388,27 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         Modifier power;
     };
     static const std::unordered_map<AV, Pair> kPairs{
-        {AV::kOneHanded, {{AV::kOneHandedModifier, "damage", +1}, {AV::kOneHandedPowerModifier, "damage", +1}}},
-        {AV::kTwoHanded, {{AV::kTwoHandedModifier, "damage", +1}, {AV::kTwoHandedPowerModifier, "damage", +1}}},
-        {AV::kBlock, {{AV::kBlockModifier, "blocked", +1}, {AV::kBlockPowerModifier, "blocked", +1}}},
-        {AV::kSmithing, {{AV::kSmithingModifier, "tempering", +1}, {AV::kSmithingPowerModifier, "tempering", +1}}},
-        {AV::kHeavyArmor, {{AV::kHeavyArmorModifier, "damage", -1}, {AV::kHeavyArmorPowerModifier, "damage", -1}}},
-        {AV::kLightArmor, {{AV::kLightArmorModifier, "damage", -1}, {AV::kLightArmorPowerModifier, "damage", -1}}},
-        {AV::kArchery, {{AV::kMarksmanModifier, "damage", +1}, {AV::kMarksmanPowerModifier, "damage", +1}}},
-        {AV::kPickpocket, {{AV::kPickpocketModifier, "chance", +1}, {AV::kPickpocketPowerModifier, "chance", +1}}},
+        {AV::kOneHanded, {{AV::kOneHandedModifier, N_("damage"), +1}, {AV::kOneHandedPowerModifier, N_("damage"), +1}}},
+        {AV::kTwoHanded, {{AV::kTwoHandedModifier, N_("damage"), +1}, {AV::kTwoHandedPowerModifier, N_("damage"), +1}}},
+        {AV::kBlock, {{AV::kBlockModifier, N_("blocked"), +1}, {AV::kBlockPowerModifier, N_("blocked"), +1}}},
+        {AV::kSmithing, {{AV::kSmithingModifier, N_("tempering"), +1}, {AV::kSmithingPowerModifier, N_("tempering"), +1}}},
+        {AV::kHeavyArmor, {{AV::kHeavyArmorModifier, N_("damage"), -1}, {AV::kHeavyArmorPowerModifier, N_("damage"), -1}}},
+        {AV::kLightArmor, {{AV::kLightArmorModifier, N_("damage"), -1}, {AV::kLightArmorPowerModifier, N_("damage"), -1}}},
+        {AV::kArchery, {{AV::kMarksmanModifier, N_("damage"), +1}, {AV::kMarksmanPowerModifier, N_("damage"), +1}}},
+        {AV::kPickpocket, {{AV::kPickpocketModifier, N_("chance"), +1}, {AV::kPickpocketPowerModifier, N_("chance"), +1}}},
         {AV::kLockpicking,
-         {{AV::kLockpickingModifier, "sweet spot", +1}, {AV::kLockpickingPowerModifier, "sweet spot", +1}}},
-        {AV::kSneak, {{AV::kSneakingModifier, "stealth", +1}, {AV::kSneakingPowerModifier, "stealth", +1}}},
+         {{AV::kLockpickingModifier, N_("sweet spot"), +1}, {AV::kLockpickingPowerModifier, N_("sweet spot"), +1}}},
+        {AV::kSneak, {{AV::kSneakingModifier, N_("stealth"), +1}, {AV::kSneakingPowerModifier, N_("stealth"), +1}}},
         {AV::kAlchemy,
-         {{AV::kAlchemyModifier, "potion strength", +1}, {AV::kAlchemyPowerModifier, "potion strength", +1}}},
+         {{AV::kAlchemyModifier, N_("potion strength"), +1}, {AV::kAlchemyPowerModifier, N_("potion strength"), +1}}},
         // Sell prices up and buy prices down by the same factor: "better prices".
         {AV::kSpeech,
-         {{AV::kSpeechcraftModifier, "better prices", +1}, {AV::kSpeechcraftPowerModifier, "better prices", +1}}},
-        {AV::kAlteration, {{AV::kAlterationModifier, "cost", -1}, {AV::kAlterationPowerModifier, "duration", +1}}},
-        {AV::kConjuration, {{AV::kConjurationModifier, "cost", -1}, {AV::kConjurationPowerModifier, "duration", +1}}},
-        {AV::kDestruction, {{AV::kDestructionModifier, "cost", -1}, {AV::kDestructionPowerModifier, "damage", +1}}},
-        {AV::kIllusion, {{AV::kIllusionModifier, "cost", -1}, {AV::kIllusionPowerModifier, "magnitude", +1}}},
-        {AV::kRestoration, {{AV::kRestorationModifier, "cost", -1}, {AV::kRestorationPowerModifier, "healing", +1}}},
+         {{AV::kSpeechcraftModifier, N_("better prices"), +1}, {AV::kSpeechcraftPowerModifier, N_("better prices"), +1}}},
+        {AV::kAlteration, {{AV::kAlterationModifier, N_("cost"), -1}, {AV::kAlterationPowerModifier, N_("duration"), +1}}},
+        {AV::kConjuration, {{AV::kConjurationModifier, N_("cost"), -1}, {AV::kConjurationPowerModifier, N_("duration"), +1}}},
+        {AV::kDestruction, {{AV::kDestructionModifier, N_("cost"), -1}, {AV::kDestructionPowerModifier, N_("damage"), +1}}},
+        {AV::kIllusion, {{AV::kIllusionModifier, N_("cost"), -1}, {AV::kIllusionPowerModifier, N_("magnitude"), +1}}},
+        {AV::kRestoration, {{AV::kRestorationModifier, N_("cost"), -1}, {AV::kRestorationPowerModifier, N_("healing"), +1}}},
         {AV::kEnchanting, {none, none}},
     };
 
@@ -4445,10 +4450,11 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         std::uint32_t code;
         const char *title;
     };
-    constexpr Category kCategories[] = {{1, "Warrior"}, {3, "Thief"}, {2, "Magic"}, {0, "Other Skills"}};
+    constexpr Category kCategories[] = {
+        {1, N_("Warrior")}, {3, N_("Thief")}, {2, N_("Magic")}, {0, N_("Other Skills")}};
     for (const Category &category : kCategories)
     {
-        SheetSection s{category.title, {}, {}};
+        SheetSection s{Tr(category.title), {}, {}};
         for (const Found &f : found)
         {
             const bool here = category.code == 0 ? (f.category != 1 && f.category != 2 && f.category != 3)
@@ -4491,7 +4497,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         for (const CustomSkillTree &tree : CustomSkillTrees())
             for (const CustomSkillPerk &entry : tree.perks)
                 inTrees.insert(entry.perk);
-        SheetSection s{"Other Perks", {}, {}};
+        SheetSection s{Tr("Other Perks"), {}, {}};
         for (const HeldPerk &held : PerksOutsideTrees(actor))
         {
             if (inTrees.contains(held.perk))
@@ -4529,9 +4535,9 @@ ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
     ft::Breakdown b;
     if (!effect.effect || effect.duration <= 0.0f)
         return b;
-    b.unit = " s";
-    b.totalLabel = "Remaining";
-    ft::Start(b, "Base", static_cast<float>(effect.effect->effectItem.duration));
+    b.unit = Tr(" s");
+    b.totalLabel = Tr("Remaining");
+    ft::Start(b, Tr("Base"), static_cast<float>(effect.effect->effectItem.duration));
     const auto caster = effect.GetCasterActor();
     // A dual cast's effectiveness as id 26518 makes it: the base setting
     // plus the mult setting times the spell's cost for the caster, 2.5 and
@@ -4550,7 +4556,7 @@ ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
         const float effectiveness = fixed + perCost * cost;
         if (effectiveness >= 0.0f && effectiveness != 1.0f)
         {
-            ft::BreakdownLine &line = ft::Multiply(b, "Dual cast", effectiveness);
+            ft::BreakdownLine &line = ft::Multiply(b, Tr("Dual cast"), effectiveness);
             if (perCost != 0.0f)
                 line.amountText = "x (" + Fmt("%g", fixed) + " + " + Fmt("%g", perCost) + " x " + Fmt("%g", cost) + ")";
         }
@@ -4565,7 +4571,7 @@ ft::Breakdown RemainingBreakdown(const RE::ActiveEffect &effect)
         AddEntryPointLines(b, caster.get(), RE::BGSEntryPoint::ENTRY_POINT::kModSpellDuration, {effect.spell, target});
     if (target)
         AddEntryPointLines(b, target, RE::BGSEntryPoint::ENTRY_POINT::kModIncomingSpellDuration, {effect.spell});
-    ft::Add(b, "Elapsed", -effect.elapsedSeconds);
+    ft::Add(b, Tr("Elapsed"), -effect.elapsedSeconds);
     b.total = (std::max)(0.0f, effect.duration - effect.elapsedSeconds);
     ft::Close(b);
     return b;

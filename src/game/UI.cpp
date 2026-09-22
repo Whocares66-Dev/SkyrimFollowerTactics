@@ -14,6 +14,7 @@
 
 #include "core/Breakdown.h"
 #include "core/Effects.h"
+#include "core/I18n.h"
 #include "core/MenuSlots.h"
 #include "core/OpenRows.h"
 #include "core/Rows.h"
@@ -56,6 +57,8 @@ namespace
 {
 
 namespace Im = ImGuiMCP;
+using ft::i18n::Tr;
+using ft::i18n::TrFormat;
 
 // --- set aside -------------------------------------------------------------
 
@@ -65,8 +68,8 @@ void SlashCell();
 // A rule set aside for what it names keeps its text, its place and its
 // switch state, greyed, and its cells still open so the player can name
 // something else. The reasons, on the switch and on the cell concerned.
-constexpr const char *kNotAvailable = "Item or ability not available";
-constexpr const char *kFollowerAway = "Follower not available";
+constexpr const char *kNotAvailable = N_("Item or ability not available");
+constexpr const char *kFollowerAway = N_("Follower not available");
 bool ConditionAvailable(const ft::Rule &rule, const FollowerView &view);
 bool TargetAvailable(const ft::Rule &rule, const FollowerView &view);
 
@@ -251,15 +254,17 @@ void Tooltip(std::string_view text)
 //     Has: Archery (25)
 void NeedsAndHas(const std::string &skill, int need, int has)
 {
-    const float labelWidth = (std::max)(TextWidth("Needs:"), TextWidth("Has:"));
+    const char *needsLabel = Tr("Needs:");
+    const char *hasLabel = Tr("Has:");
+    const float labelWidth = (std::max)(TextWidth(needsLabel), TextWidth(hasLabel));
     const auto line = [&](const char *label, int value) {
         Im::SetCursorPosX(Im::GetCursorPos().x + labelWidth - TextWidth(label));
         Im::Text("%s", label);
         Im::SameLine(0.0f, -1.0f);
         Im::Text("%s (%d)", skill.c_str(), value);
     };
-    line("Needs:", need);
-    line("Has:", has);
+    line(needsLabel, need);
+    line(hasLabel, has);
 }
 
 // Place text so its RIGHT edge lands on rightX. Right-aligning the labels is
@@ -426,7 +431,7 @@ std::string SubjectText(const ft::Rule &r, const FollowerView &view)
         for (const auto &peer : view.peers)
             if (peer.id == r.subjectForm)
                 return peer.name;
-        return "Follower (away)";
+        return Tr("Follower (away)");
     }
     return std::string(ft::DisplayName(r.subject));
 }
@@ -435,62 +440,55 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view)
 {
     // Who, a colon, then what: "Self: Attacked by Fire". The colon keeps
     // the two halves from having to agree grammatically.
-    std::string text = SubjectText(r, view);
-    text += ": ";
+    const std::string subject = SubjectText(r, view);
     // A status reads as the status: "Self Poisoned", not "Self Status";
     // a kind of being as the kind: "Enemy: Undead", "Enemy: Nord".
     if (r.predicate == ft::PredicateKind::Status)
-    {
-        text += ft::DisplayName(r.statusKind);
-        return text;
-    }
+        return TrFormat("{}: {}", subject, ft::DisplayName(r.statusKind));
     if (r.predicate == ft::PredicateKind::Type)
-    {
-        text += ft::DisplayName(r.typeKind);
-        return text;
-    }
+        return TrFormat("{}: {}", subject, ft::DisplayName(r.typeKind));
     // A resistance reads as "Resistance Fire", then lowest, highest or the
-    // number; an attack as "Attacked by Fire".
+    // number; an attack as "Attacked by Fire". Each a line of its own, so
+    // a language may put the kind first.
+    std::string what;
+    const std::string_view damage = ft::DisplayName(r.damageKind);
     if (ft::IsResistance(r.predicate))
     {
-        text += "Resistance ";
-        text += ft::DisplayName(r.damageKind);
         if (r.predicate == ft::PredicateKind::ResistanceLowest)
-            return text + " lowest";
+            return TrFormat("{}: {}", subject, TrFormat("Resistance {} lowest", damage));
         if (r.predicate == ft::PredicateKind::ResistanceHighest)
-            return text + " highest";
+            return TrFormat("{}: {}", subject, TrFormat("Resistance {} highest", damage));
+        what = TrFormat("Resistance {}", damage);
+    }
+    else if (r.predicate == ft::PredicateKind::HitBy)
+        what = TrFormat("Hit by {}", damage);
+    else if (r.predicate == ft::PredicateKind::HitType)
+        what = TrFormat("Attacks with {}", damage);
+    // The party member: "Enemy: Attacking Self", "Enemy: Attacked by
+    // Player", "... Attacking Lydia".
+    else if (r.predicate == ft::PredicateKind::Attacking || r.predicate == ft::PredicateKind::AttackedBy)
+    {
+        std::string name;
+        if (r.subjectForm == 0)
+            name = ft::DisplayName(ft::SubjectKind::Player);
+        else if (r.subjectForm == view.id)
+            name = ft::DisplayName(ft::SubjectKind::Self);
+        else
+        {
+            name = Tr("a follower (away)");
+            for (const auto &peer : view.peers)
+                if (peer.id == r.subjectForm)
+                    name = peer.name;
+        }
+        what = r.predicate == ft::PredicateKind::Attacking ? TrFormat("Attacking {}", name)
+                                                           : TrFormat("Attacked by {}", name);
     }
     else
-    {
-        text += ft::DisplayName(r.predicate);
-        if (r.predicate == ft::PredicateKind::HitBy || r.predicate == ft::PredicateKind::HitType)
-        {
-            text += ' ';
-            text += ft::DisplayName(r.damageKind);
-        }
-        // The party member: "Enemy: Attacking Self", "Enemy: Attacked by
-        // Player", "... Attacking Lydia".
-        if (r.predicate == ft::PredicateKind::Attacking || r.predicate == ft::PredicateKind::AttackedBy)
-        {
-            text += ' ';
-            if (r.subjectForm == 0)
-                text += ft::DisplayName(ft::SubjectKind::Player);
-            else if (r.subjectForm == view.id)
-                text += "Self";
-            else
-            {
-                std::string name = "a follower (away)";
-                for (const auto &peer : view.peers)
-                    if (peer.id == r.subjectForm)
-                        name = peer.name;
-                text += name;
-            }
-        }
-    }
+        what = ft::DisplayName(r.predicate);
 
     if (const std::string arg = ArgumentText(r.predicate, r.conditionArg); !arg.empty())
-        text += ' ' + arg;
-    return text;
+        what += ' ' + arg;
+    return TrFormat("{}: {}", subject, what);
 }
 
 // The Dragon Age cascade: subject, then condition, then value.
@@ -916,7 +914,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     // itself. Why the ROW is set aside belongs on the action cell, which
     // is where the thing that is missing is named.
     if (!available && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Tooltip(kFollowerAway);
+        Tooltip(Tr(kFollowerAway));
 
     PushPopupChrome();
     Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
@@ -1019,8 +1017,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             if (const auto extremes = ft::ExtremesOf(predicate);
                 extremes.lowest != predicate && ft::IsPredicateValidFor(subject, extremes.lowest))
             {
-                pick("Lowest", extremes.lowest, x);
-                pick("Highest", extremes.highest, x);
+                pick(Tr("Lowest"), extremes.lowest, x);
+                pick(Tr("Highest"), extremes.highest, x);
                 Im::Separator();
             }
             for (const float preset : PresetsFor(predicate))
@@ -1065,28 +1063,29 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             // under a heading of their own.
             if (predicate == ft::PredicateKind::CombatBegins)
             {
-                submenu("Combat", {{ft::PredicateKind::CombatBegins, "Start"}, {ft::PredicateKind::CombatEnds, "End"}});
+                submenu(Tr("Combat"),
+                        {{ft::PredicateKind::CombatBegins, Tr("Start")}, {ft::PredicateKind::CombatEnds, Tr("End")}});
                 continue;
             }
             if (predicate == ft::PredicateKind::SummonNone)
             {
-                submenu("Summon",
-                        {{ft::PredicateKind::SummonNone, "None"}, {ft::PredicateKind::SummonActive, "Active"}});
+                submenu(Tr("Summon"),
+                        {{ft::PredicateKind::SummonNone, Tr("None")}, {ft::PredicateKind::SummonActive, Tr("Active")}});
                 continue;
             }
             if (predicate == ft::PredicateKind::LevelHighest)
             {
-                submenu("Level",
-                        {{ft::PredicateKind::LevelHighest, "Highest"}, {ft::PredicateKind::LevelLowest, "Lowest"}});
+                submenu(Tr("Level"), {{ft::PredicateKind::LevelHighest, Tr("Highest")},
+                                      {ft::PredicateKind::LevelLowest, Tr("Lowest")}});
                 continue;
             }
             if (predicate == ft::PredicateKind::WeaponChargeNeeded)
             {
-                if (!BeginCascade("Weapon"))
+                if (!BeginCascade(Tr("Weapon")))
                     continue;
-                pick("Charge needed", ft::PredicateKind::WeaponChargeNeeded);
-                submenu("Poison", {{ft::PredicateKind::WeaponPoisonNone, "None"},
-                                   {ft::PredicateKind::WeaponPoisonActive, "Active"}});
+                pick(Tr("Charge needed"), ft::PredicateKind::WeaponChargeNeeded);
+                submenu(Tr("Poison"), {{ft::PredicateKind::WeaponPoisonNone, Tr("None")},
+                                       {ft::PredicateKind::WeaponPoisonActive, Tr("Active")}});
                 Im::EndMenu();
                 continue;
             }
@@ -1161,7 +1160,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     x.member = id;
                     pick(label.c_str(), predicate, x);
                 };
-                member(view.id, "Self");
+                member(view.id, std::string(ft::DisplayName(ft::SubjectKind::Self)));
                 if (!view.player)
                 {
                     Im::Separator();
@@ -1198,7 +1197,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                         continue;
                     Extras any;
                     any.type = head;
-                    pick("Any", predicate, any);
+                    pick(Tr("Any"), predicate, any);
                     Im::Separator();
                     std::vector<ft::TypeKind> members;
                     for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::TypeKind::COUNT); ++ki)
@@ -1396,7 +1395,7 @@ std::string TargetText(const ft::Rule &rule, const FollowerView &view)
         for (const auto &peer : view.peers)
             if (peer.id == rule.actionTargetForm)
                 return peer.name;
-        return "Follower (away)";
+        return Tr("Follower (away)");
     default:
         return std::string(ft::DisplayName(rule.actionTarget));
     }
@@ -1456,22 +1455,22 @@ std::string UnavailableText(ft::Verdict verdict, ft::ActionKind kind)
     switch (verdict)
     {
     case ft::Verdict::CannotAfford:
-        return "Not enough magicka";
+        return Tr("Not enough magicka");
     case ft::Verdict::NoStamina:
-        return "Not enough stamina";
+        return Tr("Not enough stamina");
     case ft::Verdict::PowerUsed:
-        return "Greater power can only be used once per day";
+        return Tr("Greater power can only be used once per day");
     case ft::Verdict::Recovering:
-        return kind == ft::ActionKind::Shout ? "Still recovering from the last shout"
-                                             : "Voice still recovering from the last shout";
+        return kind == ft::ActionKind::Shout ? Tr("Still recovering from the last shout")
+                                             : Tr("Voice still recovering from the last shout");
     case ft::Verdict::ActionCooldown:
-        return "Used too recently";
+        return Tr("Used too recently");
     case ft::Verdict::Casting:
-        return "Already casting a spell";
+        return Tr("Already casting a spell");
     case ft::Verdict::Busy:
-        return "A cast from another rule is still in progress";
+        return Tr("A cast from another rule is still in progress");
     case ft::Verdict::CannotDualCast:
-        return "Cannot dual cast that spell";
+        return Tr("Cannot dual cast that spell");
     case ft::Verdict::AboveSkill:
     case ft::Verdict::NoMeleeWeapon:
     case ft::Verdict::NoPerk:
@@ -1479,7 +1478,7 @@ std::string UnavailableText(ft::Verdict verdict, ft::ActionKind kind)
     case ft::Verdict::NothingToCharge:
     case ft::Verdict::NoResource:
     case ft::Verdict::Unsupported: {
-        std::string text(ft::Explain(verdict, kind));
+        std::string text(Tr(ft::Explain(verdict, kind)));
         if (!text.empty())
             text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
         return text;
@@ -1507,9 +1506,9 @@ std::string SetAsideReason(const ft::Rule &rule, const FollowerView &view, std::
     switch (ft::RuleSetAside(rule, view.holdings))
     {
     case ft::Aside::FollowerAway:
-        return kFollowerAway;
+        return Tr(kFollowerAway);
     case ft::Aside::NotHad:
-        return kNotAvailable;
+        return Tr(kNotAvailable);
     case ft::Aside::None:
         break;
     }
@@ -1524,7 +1523,7 @@ std::string SetAsideReason(const ft::Rule &rule, const FollowerView &view, std::
         if (first.empty())
             first = why;
     }
-    return rule.actions.size() == 1 ? first : std::string("No action can be done right now");
+    return rule.actions.size() == 1 ? first : std::string(Tr("No action can be done right now"));
 }
 
 std::string ActionText(const ft::Action &act, const FollowerView &view)
@@ -1536,44 +1535,66 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     if (ft::IsPolicy(act.kind))
     {
         const auto kind = ft::ConsumableOf(act.kind);
-        const char *noun = kind == ft::ConsumableKind::Poison       ? " poison"
-                           : kind == ft::ConsumableKind::Food       ? " food"
-                           : kind == ft::ConsumableKind::Ingredient ? " ingredient"
-                                                                    : " potion";
-        const std::string lead = ft::IsStrongest(act.kind) ? "Strongest " : "Weakest ";
+        const bool strongest = ft::IsStrongest(act.kind);
         // No effect named is "any": the strongest of whichever effect the
         // roll lands on. "Buff" stands where the effect would, because that
         // is what narrows the roll for anything drunk or eaten; a poison
         // rolls among the lot and needs no word for it.
         if (act.effect.empty())
-            return kind == ft::ConsumableKind::Poison ? lead + "poison" : lead + "buff" + noun;
-        return lead + std::string(ft::EffectLabel(act.effect)) + noun;
+        {
+            switch (kind)
+            {
+            case ft::ConsumableKind::Poison:
+                return strongest ? Tr("Strongest poison") : Tr("Weakest poison");
+            case ft::ConsumableKind::Food:
+                return strongest ? Tr("Strongest buff food") : Tr("Weakest buff food");
+            case ft::ConsumableKind::Ingredient:
+                return strongest ? Tr("Strongest buff ingredient") : Tr("Weakest buff ingredient");
+            default:
+                return strongest ? Tr("Strongest buff potion") : Tr("Weakest buff potion");
+            }
+        }
+        const std::string_view effect = ft::EffectLabel(act.effect);
+        switch (kind)
+        {
+        case ft::ConsumableKind::Poison:
+            return strongest ? TrFormat("Strongest {} poison", effect) : TrFormat("Weakest {} poison", effect);
+        case ft::ConsumableKind::Food:
+            return strongest ? TrFormat("Strongest {} food", effect) : TrFormat("Weakest {} food", effect);
+        case ft::ConsumableKind::Ingredient:
+            return strongest ? TrFormat("Strongest {} ingredient", effect)
+                             : TrFormat("Weakest {} ingredient", effect);
+        default:
+            return strongest ? TrFormat("Strongest {} potion", effect) : TrFormat("Weakest {} potion", effect);
+        }
     }
 
     if (ft::NamesConsumable(act.kind))
     {
         if (act.form == 0)
             return base + "...";
-        const char *verb = act.kind == ft::ActionKind::DrinkPotion     ? "Drink "
-                           : act.kind == ft::ActionKind::ApplyPoison   ? "Apply "
-                           : act.kind == ft::ActionKind::ChargeSoulGem ? "Charge with "
-                                                                       : "Eat ";
+        const auto verb = [&](const std::string &name) {
+            return act.kind == ft::ActionKind::DrinkPotion     ? TrFormat("Drink {}", name)
+                   : act.kind == ft::ActionKind::ApplyPoison   ? TrFormat("Apply {}", name)
+                   : act.kind == ft::ActionKind::ChargeSoulGem ? TrFormat("Charge with {}", name)
+                                                               : TrFormat("Eat {}", name);
+        };
         for (const auto &option : view.consumables)
             if (option.form == act.form && option.kind == ft::ConsumableOf(act.kind))
-                return verb + option.name;
+                return verb(option.name);
         // Not carried: the name it was last seen with, the row set aside.
         const std::string name = LastName(act);
-        return name.empty() ? base : verb + name;
+        return name.empty() ? base : verb(name);
     }
 
     if (ft::IsArrowsPolicy(act.kind))
-        return "Equip " + std::string(ft::Noun(act.kind));
+        return TrFormat("Equip {}", ft::Noun(act.kind));
     if (ft::IsEquip(act.kind))
     {
         if (act.form == 0)
-            return "Unequip " + std::string(ft::Noun(act.kind)) +
-                   (ft::TakesHand(act.kind) && act.hand != Hand::None ? " (" + Lower(ft::DisplayName(act.hand)) + ")"
-                                                                      : "");
+            return ft::TakesHand(act.kind) && act.hand != Hand::None
+                       ? TrFormat("Unequip {} ({})", ft::Noun(act.kind), Lower(ft::DisplayName(act.hand)))
+                       : TrFormat("Unequip {}", ft::Noun(act.kind));
         // Carried or known, else the name it was last seen with: the row
         // set aside.
         std::string name = EquipTargetName(act, view);
@@ -1581,7 +1602,8 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
             name = FormName(act.form);
         if (name.empty())
             return base;
-        return "Equip " + name + (ft::TakesHand(act.kind) ? " (" + Lower(ft::DisplayName(act.hand)) + ")" : "");
+        return ft::TakesHand(act.kind) ? TrFormat("Equip {} ({})", name, Lower(ft::DisplayName(act.hand)))
+                                       : TrFormat("Equip {}", name);
     }
 
     if (!TakesSpell(act.kind))
@@ -1590,35 +1612,24 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     if (act.form == 0)
         return base + "...";
 
+    const auto verb = [&](const std::string &name) {
+        return act.kind == ft::ActionKind::UsePower    ? TrFormat("Use {}", name)
+               : act.kind == ft::ActionKind::Shout     ? TrFormat("Shout {}", name)
+               : act.kind == ft::ActionKind::UseScroll ? TrFormat("Read {}", name)
+               : act.dual                              ? TrFormat("Dual cast {}", name)
+                                                       : TrFormat("Cast {}", name);
+    };
     const auto kind = SpellKindOf(act.kind);
     for (const auto &option : view.spells)
-    {
-        if (option.form != act.form || option.kind != kind)
-            continue;
-        switch (kind)
-        {
-        case SpellOption::Kind::Power:
-            return "Use " + option.name;
-        case SpellOption::Kind::Shout:
-            return "Shout " + option.name;
-        case SpellOption::Kind::Scroll:
-            return "Read " + option.name;
-        default:
-            return (act.dual ? "Dual cast " : "Cast ") + option.name;
-        }
-    }
+        if (option.form == act.form && option.kind == kind)
+            return verb(option.name);
 
     // Named a spell this follower does not know, or a scroll not carried:
     // the name it was last seen with, the row set aside.
     const std::string name = LastName(act);
     if (name.empty())
         return base;
-    return (act.kind == ft::ActionKind::UsePower    ? "Use "
-            : act.kind == ft::ActionKind::Shout     ? "Shout "
-            : act.kind == ft::ActionKind::UseScroll ? "Read "
-            : act.dual                              ? "Dual cast "
-                                                    : "Cast ") +
-           name;
+    return verb(name);
 }
 
 // A follower who has read every tome has a spell menu nobody can find
@@ -1741,7 +1752,7 @@ bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const
     if (row && Badged(*row))
         DrawNameBadges(Im::GetWindowDrawList(), *row, {pos.x + TextWidth(text) + kBadgeGap, pos.y}, banned);
     if (banned && Im::IsItemHovered(0))
-        Im::SetTooltip("%s", "Banned");
+        Im::SetTooltip("%s", Tr("Banned"));
     if (!clicked)
         return false;
     act.kind = action;
@@ -1771,7 +1782,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
     // for arrows and armour it heads the menu.
     const auto none = [&](Hand hand) {
         const bool selected = act.kind == action && act.form == 0 && act.hand == hand;
-        if (CascadeItem("Unequip", selected))
+        if (CascadeItem(Tr("Unequip"), selected))
         {
             act.kind = action;
             act.form = 0;
@@ -1800,8 +1811,8 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         if (action == ft::ActionKind::EquipArrows && !rows.empty())
         {
             Im::Separator();
-            for (const auto [label, kind] : {std::pair{"Strongest", ft::ActionKind::EquipStrongestArrows},
-                                             std::pair{"Weakest", ft::ActionKind::EquipWeakestArrows}})
+            for (const auto [label, kind] : {std::pair{Tr("Strongest"), ft::ActionKind::EquipStrongestArrows},
+                                             std::pair{Tr("Weakest"), ft::ActionKind::EquipWeakestArrows}})
             {
                 if (CascadeItem(label, act.kind == kind))
                 {
@@ -1996,7 +2007,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                            [&](const ConsumableOption &o) { return o.kind == ckind && o.any; });
     };
     const auto anyLabel = [](ft::ConsumableKind ckind) {
-        return ckind == ft::ConsumableKind::Poison ? "Any" : "Any buff";
+        return ckind == ft::ConsumableKind::Poison ? Tr("Any") : Tr("Any buff");
     };
     // Listed whether or not anything carried would answer it, so the rule
     // can be written before the bottles are in the bag; with none, dimmed as
@@ -2013,11 +2024,11 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         if (!Im::IsItemHovered(0))
             return;
         if (!had)
-            Im::SetTooltip("%s", "No applicable buffs available");
+            Im::SetTooltip("%s", Tr("No applicable buffs available"));
         else if (kind == ft::ActionKind::DrinkStrongest)
-            Im::SetTooltip("%s", "Drink the strongest potion that applies a buff");
+            Im::SetTooltip("%s", Tr("Drink the strongest potion that applies a buff"));
         else if (kind == ft::ActionKind::DrinkWeakest)
-            Im::SetTooltip("%s", "Drink the weakest potion that applies a buff");
+            Im::SetTooltip("%s", Tr("Drink the weakest potion that applies a buff"));
         else
             Tooltip(ft::Describe(kind));
     };
@@ -2032,7 +2043,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         // "Poison: Any" puts SOMETHING on the blade.
         if (anyKind != ft::ActionKind::None)
             anyItem(ckind, anyKind, here && act.kind == anyKind);
-        for (const auto [label, kind] : {std::pair{"Strongest", strongestKind}, std::pair{"Weakest", weakestKind}})
+        for (const auto [label, kind] :
+             {std::pair{Tr("Strongest"), strongestKind}, std::pair{Tr("Weakest"), weakestKind}})
         {
             if (arranged.empty() || !BeginCascade(label))
                 continue;
@@ -2075,7 +2087,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         {
             if (!enter(1))
                 return true;
-            if (BeginCascade("Potion"))
+            if (BeginCascade(Tr("Potion")))
             {
                 byEffect(ft::ConsumableKind::Potion, ft::ActionKind::DrinkStrongest, ft::ActionKind::DrinkWeakest,
                          ft::ActionKind::DrinkPotion, ft::ActionKind::DrinkAny);
@@ -2086,7 +2098,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         {
             if (!enter(1))
                 return true;
-            if (BeginCascade("Food"))
+            if (BeginCascade(Tr("Food")))
             {
                 byEffect(ft::ConsumableKind::Food, ft::ActionKind::EatStrongestFood, ft::ActionKind::EatWeakestFood,
                          ft::ActionKind::EatFood, ft::ActionKind::EatAnyFood);
@@ -2097,7 +2109,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         {
             if (!enter(1))
                 return true;
-            if (BeginCascade("Ingredient"))
+            if (BeginCascade(Tr("Ingredient")))
             {
                 byEffect(ft::ConsumableKind::Ingredient, ft::ActionKind::EatStrongestIngredient,
                          ft::ActionKind::EatWeakestIngredient, ft::ActionKind::EatIngredient);
@@ -2119,9 +2131,10 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         bool dual;
     };
     for (const CastMenu menu :
-         {CastMenu{"Cast", ft::ActionKind::CastSpell, false}, CastMenu{"Dual Cast", ft::ActionKind::CastSpell, true},
-          CastMenu{"Scroll", ft::ActionKind::UseScroll, false}, CastMenu{"Shout", ft::ActionKind::Shout, false},
-          CastMenu{"Power", ft::ActionKind::UsePower, false}})
+         {CastMenu{Tr("Cast"), ft::ActionKind::CastSpell, false},
+          CastMenu{Tr("Dual Cast"), ft::ActionKind::CastSpell, true},
+          CastMenu{Tr("Scroll"), ft::ActionKind::UseScroll, false}, CastMenu{Tr("Shout"), ft::ActionKind::Shout, false},
+          CastMenu{Tr("Power"), ft::ActionKind::UsePower, false}})
     {
         const auto action = menu.action;
         if (!valid(action))
@@ -2162,7 +2175,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                 choose();
             }
             if (banned && Im::IsItemHovered(0))
-                Im::SetTooltip("%s", "Banned");
+                Im::SetTooltip("%s", Tr("Banned"));
         };
         if (SchoolGrouped(kind))
             DrawBySchool(suited, [](const SpellOption *option) { return option->school; }, leaf);
@@ -2184,7 +2197,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         {
             if (!enter(4))
                 return true;
-            if (BeginCascade("Charge"))
+            if (BeginCascade(Tr("Charge")))
             {
                 policy(ft::ActionKind::ChargeStrongestSoulGem);
                 policy(ft::ActionKind::ChargeWeakestSoulGem);
@@ -2197,7 +2210,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         {
             if (!enter(4))
                 return true;
-            if (BeginCascade("Poison"))
+            if (BeginCascade(Tr("Poison")))
             {
                 byEffect(ft::ConsumableKind::Poison, ft::ActionKind::ApplyStrongest, ft::ActionKind::ApplyWeakest,
                          ft::ActionKind::ApplyPoison, ft::ActionKind::ApplyAny);
@@ -2281,7 +2294,7 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::M
     // are listed, ordered and added to.
     if (addAnother)
     {
-        if (CascadeItem("Add action...", false))
+        if (CascadeItem(Tr("Add action..."), false))
         {
             *addAnother = true;
             changed = true;
@@ -2464,8 +2477,8 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
     constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
     if (Im::BeginTable(("actions##" + id).c_str(), 2, flags, Im::ImVec2(width, 0.0f), 0.0f))
     {
-        Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-        Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
+        Im::TableSetupColumn(Tr("Action"), Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+        Im::TableSetupColumn(Tr("Order"), Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
 
         for (std::size_t a = 0; a < rule.actions.size(); ++a)
         {
@@ -2503,7 +2516,7 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
     }
     Im::PopStyleVar(1);
     if (Im::IsItemHovered(0))
-        Im::SetTooltip("Click to add action");
+        Im::SetTooltip("%s", Tr("Click to add action"));
 
     if (moveFrom >= 0 && moveTo >= 0 && moveTo < static_cast<int>(rule.actions.size()))
     {
@@ -2547,7 +2560,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     const float gutter = kCellPadX * 2.0f;
     // The heading or the visible tick, whichever is wider: the cell is the
     // click target now, so it needs no room for a button around the glyph.
-    const float onWidth = (std::max)(TextWidth("On"), row * 0.4f) + gutter;
+    const float onWidth = (std::max)(TextWidth(Tr("On")), row * 0.4f) + gutter;
     const float numWidth = Im::CalcTextSize("99", nullptr, false, -1.0f).x + gutter;
     // Wide enough for the header and the tick and no wider: ImGui adds
     // its own cell padding on both sides of what is asked for here, so
@@ -2555,7 +2568,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     // off ScreenShot107: with two it came out 54 px against a 46 px
     // row, which reads as a wide gap after the word rather than as a
     // square switch.
-    const float notWidth = (std::max)(TextWidth("NOT"), row * 0.4f) + kCellPadX;
+    const float notWidth = (std::max)(TextWidth(Tr("NOT")), row * 0.4f) + kCellPadX;
     const float orderWidth = row * 3.0f + kOrderGap * 2.0f + gutter;
 
     const auto border = Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f);
@@ -2589,12 +2602,12 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         const std::string id = "rules##" + std::to_string(piece++);
         if (!Im::BeginTable(id.c_str(), 6, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
             return false;
-        Im::TableSetupColumn("On", Im::ImGuiTableColumnFlags_WidthFixed, onWidth, 0);
+        Im::TableSetupColumn(Tr("On"), Im::ImGuiTableColumnFlags_WidthFixed, onWidth, 0);
         Im::TableSetupColumn("#", Im::ImGuiTableColumnFlags_WidthFixed, numWidth, 0);
         // Not comes before the condition, because that is the order it is
         // read in: "not enemy: undead".
-        Im::TableSetupColumn("NOT", Im::ImGuiTableColumnFlags_WidthFixed, notWidth, 0);
-        Im::TableSetupColumn("Condition", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+        Im::TableSetupColumn(Tr("NOT"), Im::ImGuiTableColumnFlags_WidthFixed, notWidth, 0);
+        Im::TableSetupColumn(Tr("Condition"), Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
         // Seven parts to the condition's four. An action reads as a phrase
         // and the long ones are long -- "Self: Strongest Fortify Health
         // Regeneration food" -- where a condition is mostly short words and
@@ -2603,8 +2616,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // empty beside it, and at 2.0 "Self: Weapon charge: needed" was cut
         // off instead. Neither column has room for its longest at once, so
         // this is where the cut falls on the rarer one.
-        Im::TableSetupColumn("Action", Im::ImGuiTableColumnFlags_WidthStretch, 1.75f, 0);
-        Im::TableSetupColumn("Order", Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
+        Im::TableSetupColumn(Tr("Action"), Im::ImGuiTableColumnFlags_WidthStretch, 1.75f, 0);
+        Im::TableSetupColumn(Tr("Order"), Im::ImGuiTableColumnFlags_WidthFixed, orderWidth, 0);
         if (piece == 1)
         {
             // Plain headings (PlainHeaderRow says why), but On is a switch
@@ -2624,11 +2637,11 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                     changed = true;
             }
             if (Im::IsItemHovered(0))
-                Im::SetTooltip(anyOn ? "Click to disable all" : "Click to enable all");
+                Im::SetTooltip("%s", anyOn ? Tr("Click to disable all") : Tr("Click to enable all"));
             Im::SetCursorScreenPos(pos);
-            Im::Text("On");
+            Im::Text("%s", Tr("On"));
             int column = 1;
-            for (const char *label : {"#", "NOT", "Condition", "Action", "Order"})
+            for (const char *label : {"#", Tr("NOT"), Tr("Condition"), Tr("Action"), Tr("Order")})
             {
                 Im::TableSetColumnIndex(column++);
                 Im::Text("%s", label);
@@ -2704,7 +2717,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 changed = true;
             }
             if (available && Im::IsItemHovered(0))
-                Im::SetTooltip(rule.enabled ? "Click to disable" : "Click to enable");
+                Im::SetTooltip("%s", rule.enabled ? Tr("Click to disable") : Tr("Click to enable"));
 
             if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.enabled && available)
             {
@@ -2746,7 +2759,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             {
                 Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
                 if (HoveringLastRect())
-                    Tooltip(can ? setAside : std::string("Condition cannot be negated"));
+                    Tooltip(can ? setAside : std::string(Tr("Condition cannot be negated")));
             }
             else if (CellClicked(("##not" + rowId).c_str(), Im::GetFrameHeight()))
             {
@@ -2754,7 +2767,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
                 changed = true;
             }
             if (can && available && Im::IsItemHovered(0))
-                Im::SetTooltip(rule.negated ? "Click to remove the NOT" : "Click to negate condition");
+                Im::SetTooltip("%s", rule.negated ? Tr("Click to remove the NOT") : Tr("Click to negate condition"));
 
             if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.negated && can)
             {
@@ -2860,9 +2873,10 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // rest of the row does.
             const DimText grey(!available);
             if (const std::size_t unavailable = ft::ActionsNotHad(rule, view.holdings); unavailable > 0)
-                Im::Text("%zu actions (%zu unavailable)", rule.actions.size(), unavailable);
+                Im::TextUnformatted(
+                    TrFormat("{} actions ({} unavailable)", rule.actions.size(), unavailable).c_str());
             else
-                Im::Text("%zu actions", rule.actions.size());
+                Im::TextUnformatted(TrFormat("{} actions", rule.actions.size()).c_str());
         }
 
         EndDimmed();
@@ -2934,7 +2948,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     const bool addClicked = GlyphButton("addrule", Im::GetFrameHeight(), Glyph::Plus);
     Im::PopStyleVar(1);
     if (Im::IsItemHovered(0))
-        Im::SetTooltip("Click to add tactic");
+        Im::SetTooltip("%s", Tr("Click to add tactic"));
 
     if (addClicked)
     {
@@ -3007,8 +3021,11 @@ void DrawDisclosure(Im::ImVec2 pos, bool open)
 void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, float width,
                    const std::function<void(std::uint32_t)> &onLink)
 {
-    float nameWidth = TextWidth("Perk");
-    float rankWidth = TextWidth("Rank");
+    const char *perkLabel = Tr("Perk");
+    const char *rankLabel = Tr("Rank");
+    const char *descriptionLabel = Tr("Description");
+    float nameWidth = TextWidth(perkLabel);
+    float rankWidth = TextWidth(rankLabel);
     for (const auto &sub : perks)
     {
         nameWidth = (std::max)(nameWidth, TextWidth(sub.label));
@@ -3019,10 +3036,10 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
     const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
     if (!Im::BeginTable(id.c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
         return;
-    Im::TableSetupColumn("Perk", Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
-    Im::TableSetupColumn("Rank", Im::ImGuiTableColumnFlags_WidthFixed, rankWidth + pad, 0);
-    Im::TableSetupColumn("Description", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-    PlainHeaderRow({"Perk", "Rank", "Description"});
+    Im::TableSetupColumn(perkLabel, Im::ImGuiTableColumnFlags_WidthFixed, nameWidth + pad, 0);
+    Im::TableSetupColumn(rankLabel, Im::ImGuiTableColumnFlags_WidthFixed, rankWidth + pad, 0);
+    Im::TableSetupColumn(descriptionLabel, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+    PlainHeaderRow({perkLabel, rankLabel, descriptionLabel});
     for (const auto &sub : perks)
     {
         Im::TableNextRow(0, 0.0f);
@@ -3056,8 +3073,11 @@ void DrawPerkTable(const std::string &id, const std::vector<SheetRow> &perks, fl
 // A table of conditions: the call, the comparison, a tick where met.
 void DrawConditionTable(const std::string &id, const std::vector<SheetRow> &rows, float width)
 {
-    float callWidth = TextWidth("Condition");
-    float valueWidth = TextWidth("Value");
+    const char *conditionLabel = Tr("Condition");
+    const char *valueLabel = Tr("Value");
+    const char *metLabel = Tr("Met");
+    float callWidth = TextWidth(conditionLabel);
+    float valueWidth = TextWidth(valueLabel);
     for (const auto &row : rows)
     {
         callWidth = (std::max)(callWidth, TextWidth(row.label));
@@ -3067,10 +3087,10 @@ void DrawConditionTable(const std::string &id, const std::vector<SheetRow> &rows
     const auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_RowBg;
     if (!Im::BeginTable(id.c_str(), 3, flags, Im::ImVec2(width, 0.0f), 0.0f))
         return;
-    Im::TableSetupColumn("Condition", Im::ImGuiTableColumnFlags_WidthFixed, callWidth + pad, 0);
-    Im::TableSetupColumn("Value", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
-    Im::TableSetupColumn("Met", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
-    PlainHeaderRow({"Condition", "Value", "Met"});
+    Im::TableSetupColumn(conditionLabel, Im::ImGuiTableColumnFlags_WidthFixed, callWidth + pad, 0);
+    Im::TableSetupColumn(valueLabel, Im::ImGuiTableColumnFlags_WidthFixed, valueWidth + pad, 0);
+    Im::TableSetupColumn(metLabel, Im::ImGuiTableColumnFlags_WidthStretch, 1.0f, 0);
+    PlainHeaderRow({conditionLabel, valueLabel, metLabel});
     for (const auto &row : rows)
     {
         Im::TableNextRow(0, 0.0f);
@@ -3170,12 +3190,12 @@ struct ExtraColumn
 // only where some row has it. An item's or a spell's page ends with the
 // effects' descriptions, wrapped; the effect's own page ends with Source.
 const std::vector<ExtraColumn> kEffectColumns{
-    {"Remaining", [](const SheetRow &r) { return r.remaining; }},
-    {"Duration", [](const SheetRow &r) { return r.extra; }},
-    {"Hidden", [](const SheetRow &r) { return std::string(r.mark != 0 ? "x" : ""); }, true},
+    {N_("Remaining"), [](const SheetRow &r) { return r.remaining; }},
+    {N_("Duration"), [](const SheetRow &r) { return r.extra; }},
+    {N_("Hidden"), [](const SheetRow &r) { return std::string(r.mark != 0 ? "x" : ""); }, true},
 };
-const ExtraColumn kDescriptionColumn{"Description", [](const SheetRow &r) { return r.description; }, false, false,
-                                     true};
+const ExtraColumn kDescriptionColumn{N_("Description"), [](const SheetRow &r) { return r.description; }, false,
+                                     false, true};
 std::vector<ExtraColumn> WithDescription()
 {
     std::vector<ExtraColumn> columns = kEffectColumns;
@@ -3188,12 +3208,17 @@ std::vector<ExtraColumn> WithDescription()
 // `first` and `second` head the name and value columns then, where the
 // table has a header row at all; and `wanted` are the columns after it,
 // of which those with anything in them are drawn, the last column taking
-// the rest of the table.
+// the rest of the table. Every heading comes in English and is translated
+// here.
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
-                  const std::function<void(std::uint32_t)> &onLink = {}, const char *third = "Modifiers",
+                  const std::function<void(std::uint32_t)> &onLink = {}, const char *third = N_("Modifiers"),
                   const RowDrawer &drawer = {}, const char *first = "", const char *second = "",
                   const std::vector<ExtraColumn> &wanted = {}, const std::function<void(const SheetRow &)> &onTree = {})
 {
+    first = Tr(first);
+    second = Tr(second);
+    if (third)
+        third = Tr(third);
     std::vector<ExtraColumn> extras;
     for (const auto &column : wanted)
     {
@@ -3202,7 +3227,10 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                                [&](const SheetRow &row) { return !column.text(row).empty(); });
         });
         if (any)
+        {
             extras.push_back(column);
+            extras.back().heading = Tr(column.heading);
+        }
     }
     const bool hasThird = modifiers && third != nullptr;
     // The Skills tab (`onTree`): the caret that opens a row's drawer sits
@@ -3951,7 +3979,7 @@ bool FilterBox(const char *id, char *buffer, std::size_t size)
     if (g_focusFilter)
         Im::SetKeyboardFocusHere();
     g_focusFilter = false;
-    bool changed = Im::InputTextWithHint(id, "Filter", buffer, size);
+    bool changed = Im::InputTextWithHint(id, Tr("Filter"), buffer, size);
     // One box a frame, so this frame's answer is the whole answer.
     g_filterDrawn.store(true, std::memory_order_relaxed);
     g_filterActive.store(Im::IsItemActive(), std::memory_order_relaxed);
@@ -3994,13 +4022,14 @@ bool FilterBox(const char *id, char *buffer, std::size_t size)
     Im::PopStyleVar(1);
     Im::PopStyleColor(3);
     if (Im::IsItemHovered(0))
-        Im::SetTooltip("Clear the filter");
+        Im::SetTooltip("%s", Tr("Clear the filter"));
     Im::SetCursorScreenPos(keep);
     return changed;
 }
 
 // A list's filter box, and on its line against the right edge how many of
-// the list's rows the filter leaves: "12 items", "3 of 12 items". Above the
+// the list's rows the filter leaves: "12 items", "3 of 12 items" -- `noun`
+// translated by the caller. Above the
 // table, not under it, where a long list pushed the count out of sight;
 // counted after the box, so the number answers this frame's text.
 void FilterRow(const char *id, char *buffer, std::size_t size, const std::function<std::size_t()> &shown,
@@ -4010,7 +4039,7 @@ void FilterRow(const char *id, char *buffer, std::size_t size, const std::functi
     FilterBox(id, buffer, size);
     const std::size_t count = shown();
     const std::string text =
-        (count == total ? std::to_string(total) : std::to_string(count) + " of " + std::to_string(total)) + " " + noun;
+        count == total ? TrFormat("{} {}", total, noun) : TrFormat("{} of {} {}", count, total, noun);
     Im::SameLine((std::max)(0.0f, right - TextWidth(text)), -1.0f);
     Im::AlignTextToFramePadding();
     Im::TextDisabled("%s", text.c_str());
@@ -4261,7 +4290,7 @@ void DrawChips(const std::vector<Chip> &chips, int &selected)
 template <std::size_t N, typename Name, typename Icon>
 int DrawCategoryChips(const std::array<int, N> &counts, unsigned allIcon, ListView &shared, Name name, Icon icon)
 {
-    std::vector<Chip> chips{{"All", allIcon, -1}};
+    std::vector<Chip> chips{{Tr("All"), allIcon, -1}};
     for (std::size_t i = 0; i < counts.size(); ++i)
     {
         if (counts[i] == 0)
@@ -4357,11 +4386,11 @@ void OnCell(const char *id, const CharacterView &view, std::uint32_t form, const
         if (CellClicked(id))
             RequestWear(view.id, form, next, hand, variant, row);
         if (Im::IsItemHovered(0))
-            Im::SetTooltip("%s", cell.banned              ? "Banned. Click to unban."
-                                 : cell.pinned            ? "Pinned. Click to ban."
-                                 : cell.on && view.player ? "Equipped. Click to unequip."
-                                 : cell.on                ? "Equipped. Click to pin."
-                                                          : "Unequipped. Click to equip.");
+            Im::SetTooltip("%s", cell.banned              ? Tr("Banned. Click to unban.")
+                                 : cell.pinned            ? Tr("Pinned. Click to ban.")
+                                 : cell.on && view.player ? Tr("Equipped. Click to unequip.")
+                                 : cell.on                ? Tr("Equipped. Click to pin.")
+                                                          : Tr("Unequipped. Click to equip."));
     }
     DrawTickAt(pos, Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), cell.on, cell.pinned, cell.banned);
 }
@@ -4430,7 +4459,7 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
                 std::count_if(view.inventory.begin(), view.inventory.end(),
                               [&](const InventoryItem &item) { return ItemShown(item, state); }));
         },
-        inCategory, "items");
+        inCategory, Tr("items"));
     Im::Spacing();
 
     // Which columns this list has. A stat column only where the stat means
@@ -4463,7 +4492,7 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
     const auto typeText = [consumables](const InventoryItem &item) -> const std::string & {
         return consumables ? item.effect : item.type;
     };
-    float typeWidth = TextWidth(consumables ? "Effect" : "Type");
+    float typeWidth = TextWidth(consumables ? Tr("Effect") : Tr("Type"));
     for (const auto &item : view.inventory)
         typeWidth = (std::max)(typeWidth, TextWidth(typeText(item)));
     // A sortable heading keeps room beside its label for the sort arrow, and
@@ -4473,21 +4502,21 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
     // and the Name column gets everything that is left.
     const auto *tableStyle = Im::GetStyle();
     const float arrow = std::floor(Im::GetFontSize() * 0.65f + (tableStyle ? tableStyle->FramePadding.x : 4.0f));
-    const float damageWidth = (std::max)(TextWidth("Dmg") + arrow, TextWidth("999")) + gutter;
-    const float armorWidth = (std::max)(TextWidth("Armor") + arrow, TextWidth("999")) + gutter;
-    const float weightWidth = (std::max)(TextWidth("Wgt") + arrow, TextWidth("999.9")) + gutter;
-    const float valueWidth = (std::max)(TextWidth("Val") + arrow, TextWidth("99999")) + gutter;
+    const float damageWidth = (std::max)(TextWidth(Tr("Dmg")) + arrow, TextWidth("999")) + gutter;
+    const float armorWidth = (std::max)(TextWidth(Tr("Armor")) + arrow, TextWidth("999")) + gutter;
+    const float weightWidth = (std::max)(TextWidth(Tr("Wgt")) + arrow, TextWidth("999.9")) + gutter;
+    const float valueWidth = (std::max)(TextWidth(Tr("Val")) + arrow, TextWidth("99999")) + gutter;
     // Content is the tick and, pinned, the pin beside it: two glyph boxes.
-    const float wornWidth = (std::max)(TextWidth("Equipped") + arrow, Im::GetFontSize() * 2.0f) + gutter;
+    const float wornWidth = (std::max)(TextWidth(Tr("Equipped")) + arrow, Im::GetFontSize() * 2.0f) + gutter;
 
-    const float handWidth = (std::max)(TextWidth("Right") + arrow, Im::GetFontSize() * 2.0f) + gutter;
+    const float handWidth = (std::max)(TextWidth(Tr("Right")) + arrow, Im::GetFontSize() * 2.0f) + gutter;
     // A scroll's list: Cast and Mag after the effect, as a spell's list.
-    float castWidth = TextWidth("Cast") + arrow;
+    float castWidth = TextWidth(Tr("Cast")) + arrow;
     if (scrolls)
         for (const auto &item : view.inventory)
             castWidth = (std::max)(castWidth, TextWidth(item.cast));
     castWidth += gutter;
-    const float magWidth = (std::max)(TextWidth("Mag") + arrow, TextWidth("999")) + gutter;
+    const float magWidth = (std::max)(TextWidth(Tr("Mag")) + arrow, TextWidth("999")) + gutter;
     const int columnCount =
         4 + ((weapons || armour) ? 1 : 0) + (scrolls ? 2 : 0) + (anyHand ? 2 : 0) + (anyWorn ? 1 : 0);
 
@@ -4497,45 +4526,45 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
         Im::PopStyleVar(1);
         return;
     }
-    Im::TableSetupColumn("Name", Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
+    Im::TableSetupColumn(Tr("Name"), Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
                          static_cast<Im::ImGuiID>(Column::Name));
-    Im::TableSetupColumn(consumables ? "Effect" : "Type", Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
+    Im::TableSetupColumn(consumables ? Tr("Effect") : Tr("Type"), Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
                          static_cast<Im::ImGuiID>(Column::Type));
     // The stat, highest first on the first click: for a weapon or a piece
     // of armour it is the number, and the rest wait on the item's page.
     if (weapons)
-        Im::TableSetupColumn("Dmg",
+        Im::TableSetupColumn(Tr("Dmg"),
                              Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                              damageWidth, static_cast<Im::ImGuiID>(Column::Damage));
     else if (armour)
-        Im::TableSetupColumn("Armor",
+        Im::TableSetupColumn(Tr("Armor"),
                              Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                              armorWidth, static_cast<Im::ImGuiID>(Column::Armor));
     if (scrolls)
     {
-        Im::TableSetupColumn("Cast", Im::ImGuiTableColumnFlags_WidthFixed, castWidth,
+        Im::TableSetupColumn(Tr("Cast"), Im::ImGuiTableColumnFlags_WidthFixed, castWidth,
                              static_cast<Im::ImGuiID>(Column::Cast));
-        Im::TableSetupColumn("Mag",
+        Im::TableSetupColumn(Tr("Mag"),
                              Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                              magWidth, static_cast<Im::ImGuiID>(Column::Magnitude));
     }
-    Im::TableSetupColumn("Wgt", Im::ImGuiTableColumnFlags_WidthFixed, weightWidth,
+    Im::TableSetupColumn(Tr("Wgt"), Im::ImGuiTableColumnFlags_WidthFixed, weightWidth,
                          static_cast<Im::ImGuiID>(Column::Weight));
-    Im::TableSetupColumn("Val", Im::ImGuiTableColumnFlags_WidthFixed, valueWidth,
+    Im::TableSetupColumn(Tr("Val"), Im::ImGuiTableColumnFlags_WidthFixed, valueWidth,
                          static_cast<Im::ImGuiID>(Column::Value));
     // Ascending first, like the rest: pinned, equipped, unequipped, then the
     // slashed cells. "Equipped", not "Worn": it is the word the item's page
     // uses, and the one that fits a weapon.
     if (anyHand)
     {
-        Im::TableSetupColumn("Left", Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
+        Im::TableSetupColumn(Tr("Left"), Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
                              static_cast<Im::ImGuiID>(Column::Left));
-        Im::TableSetupColumn("Right", Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
+        Im::TableSetupColumn(Tr("Right"), Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
                              static_cast<Im::ImGuiID>(Column::Right));
     }
     if (anyWorn)
     {
-        Im::TableSetupColumn("Equipped", Im::ImGuiTableColumnFlags_WidthFixed, wornWidth,
+        Im::TableSetupColumn(Tr("Equipped"), Im::ImGuiTableColumnFlags_WidthFixed, wornWidth,
                              static_cast<Im::ImGuiID>(Column::Equipped));
     }
     Im::TableHeadersRow();
@@ -4571,7 +4600,7 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
         // reason and nothing else; what a pin means belongs in a help
         // section, not on every row.
         if (dim && Im::IsItemHovered(0))
-            Tooltip(item->banned ? "Banned" : item->asideBy);
+            Tooltip(item->banned ? std::string(Tr("Banned")) : item->asideBy);
         Im::SetCursorScreenPos(pos);
         std::string name = item->name;
         if (item->count > 1)
@@ -4647,8 +4676,8 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
     // What it weighs, under the list: the reason to look in a follower's bag
     // is usually to decide whether they can carry more.
     Im::Spacing();
-    char carried[64];
-    std::snprintf(carried, sizeof(carried), "Carrying %.0f / %.0f", view.carriedWeight, view.carryCapacity);
+    const std::string carriedText = TrFormat("Carrying {:.0f} / {:.0f}", view.carriedWeight, view.carryCapacity);
+    const char *carried = carriedText.c_str();
     const auto *style = Im::GetStyle();
     const float inset = style->ItemSpacing.x;
     const float rightEdge = Im::GetCursorPosX() + Im::GetContentRegionAvail().x - inset;
@@ -4698,7 +4727,7 @@ void PlayGameSound(const char *id)
 float AskedActionWidth(const char *label, bool asking)
 {
     const float pad = 2.0f * Im::GetStyle()->FramePadding.x;
-    return asking ? TextWidth("Confirm") + pad + kCellPadX + TextWidth("Cancel") + pad : TextWidth(label) + pad;
+    return asking ? TextWidth(Tr("Confirm")) + pad + kCellPadX + TextWidth(Tr("Cancel")) + pad : TextWidth(label) + pad;
 }
 
 bool AskedAction(const char *label, bool can, const std::string &hover, bool &asking)
@@ -4715,7 +4744,7 @@ bool AskedAction(const char *label, bool can, const std::string &hover, bool &as
         return false;
     }
     bool confirmed = false;
-    if (Im::Button("Confirm", Im::ImVec2(0.0f, 0.0f)))
+    if (Im::Button(Tr("Confirm"), Im::ImVec2(0.0f, 0.0f)))
     {
         confirmed = true;
         asking = false;
@@ -4723,7 +4752,7 @@ bool AskedAction(const char *label, bool can, const std::string &hover, bool &as
     if (Im::IsItemHovered(0))
         Tooltip(hover);
     Im::SameLine(0.0f, kCellPadX);
-    if (Im::Button("Cancel", Im::ImVec2(0.0f, 0.0f)))
+    if (Im::Button(Tr("Cancel"), Im::ImVec2(0.0f, 0.0f)))
         asking = false;
     return confirmed;
 }
@@ -4793,7 +4822,7 @@ void DrawItemDetail(const CharacterView &view, const InventoryItem &item, PanelS
         const fp::SpellButton learn = controls->active ? fp::LearnButton(item.teachesName, item.knowsTaught)
                                                        : fp::SpellButton{false, controls->why};
         bool asking = panel.inventory.confirming == item.Key();
-        if (AskedActionAtRight("Learn", learn.can, learn.hover, asking, lineRight))
+        if (AskedActionAtRight(Tr("Learn"), learn.can, learn.hover, asking, lineRight))
         {
             fp::game::LearnFromTome(view.id, item.form);
             PlayGameSound(kSpellLearnedSound);
@@ -4812,7 +4841,7 @@ void DrawItemDetail(const CharacterView &view, const InventoryItem &item, PanelS
     // perk page's shape with the author's text wrapped in its last column,
     // each row opening on its conditions, greyed where they do not hold.
     if (!item.enchantment.rows.empty())
-        DrawSections({item.enchantment}, true, {}, nullptr, {}, "Name", "Charge");
+        DrawSections({item.enchantment}, true, {}, nullptr, {}, N_("Name"), N_("Charge"));
     if (!item.effectsTable.rows.empty())
     {
         DrawSections(
@@ -4820,12 +4849,12 @@ void DrawItemDetail(const CharacterView &view, const InventoryItem &item, PanelS
             [](const SheetRow &entry, const std::string &key, float left, float right) {
                 DrawConditionDrawer(entry, key, left, right);
             },
-            "Name", "Effect", WithDescription());
+            N_("Name"), N_("Effect"), WithDescription());
     }
     // The poison as the enchantment is drawn, so an enchanted and poisoned
     // blade reads as two things, which it is.
     if (!item.poison.rows.empty())
-        DrawSections({item.poison}, true, {}, nullptr, {}, "Name", "Hits Left");
+        DrawSections({item.poison}, true, {}, nullptr, {}, N_("Name"), N_("Hits Left"));
     if (!item.poisonEffects.rows.empty())
     {
         DrawSections(
@@ -4833,11 +4862,11 @@ void DrawItemDetail(const CharacterView &view, const InventoryItem &item, PanelS
             [](const SheetRow &entry, const std::string &key, float left, float right) {
                 DrawConditionDrawer(entry, key, left, right);
             },
-            "Name", "Effect", WithDescription());
+            N_("Name"), N_("Effect"), WithDescription());
     }
     if (!item.description.empty())
     {
-        CentredHeading("Description");
+        CentredHeading(Tr("Description"));
         Im::TextWrapped("%s", item.description.c_str());
         Im::Spacing();
     }
@@ -4869,7 +4898,7 @@ void DrawInventory(const CharacterView &view)
     if (view.inventory.empty())
     {
         Im::Spacing();
-        Im::TextDisabled("Nothing carried.");
+        Im::TextDisabled("%s", Tr("Nothing carried."));
         return;
     }
     DrawInventoryList(view, state);
@@ -4957,10 +4986,10 @@ constexpr unsigned kIconRaised = 0xF54C;   // skull
 const char *MagicNoun(int category, bool voice)
 {
     if (category == static_cast<int>(MagicCategory::Shouts))
-        return "shouts";
+        return Tr("shouts");
     if (category == static_cast<int>(MagicCategory::Powers))
-        return "powers";
-    return voice ? "shouts and powers" : "spells";
+        return Tr("powers");
+    return voice ? Tr("shouts and powers") : Tr("spells");
 }
 
 // Is the entry on this tab's list: on the tab at all, in its category, and
@@ -5031,11 +5060,11 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
     const float gutter = kCellPadX * 2.0f;
     const auto *tableStyle = Im::GetStyle();
     const float arrow = std::floor(Im::GetFontSize() * 0.65f + (tableStyle ? tableStyle->FramePadding.x : 4.0f));
-    float schoolWidth = TextWidth("School") + arrow;
-    float typeWidth = TextWidth("Type") + arrow;
-    float levelWidth = TextWidth("Level") + arrow;
-    float castWidth = TextWidth("Cast") + arrow;
-    float costWidth = TextWidth("Cost") + arrow;
+    float schoolWidth = TextWidth(Tr("School")) + arrow;
+    float typeWidth = TextWidth(Tr("Type")) + arrow;
+    float levelWidth = TextWidth(Tr("Level")) + arrow;
+    float castWidth = TextWidth(Tr("Cast")) + arrow;
+    float costWidth = TextWidth(Tr("Cost")) + arrow;
     for (const auto &entry : view.magic)
     {
         schoolWidth = (std::max)(schoolWidth, TextWidth(entry.school));
@@ -5044,9 +5073,9 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
         castWidth = (std::max)(castWidth, TextWidth(entry.cast));
         costWidth = (std::max)(costWidth, TextWidth(entry.cost));
     }
-    const float magnitudeWidth = (std::max)(TextWidth("Mag") + arrow, TextWidth("999")) + gutter;
-    const float handWidth = (std::max)(TextWidth("Right") + arrow, Im::GetFontSize() * 2.0f) + gutter;
-    const float wornWidth = (std::max)(TextWidth("Equipped") + arrow, Im::GetFontSize()) + gutter;
+    const float magnitudeWidth = (std::max)(TextWidth(Tr("Mag")) + arrow, TextWidth("999")) + gutter;
+    const float handWidth = (std::max)(TextWidth(Tr("Right")) + arrow, Im::GetFontSize() * 2.0f) + gutter;
+    const float wornWidth = (std::max)(TextWidth(Tr("Equipped")) + arrow, Im::GetFontSize()) + gutter;
 
     // No equip columns on the Magic tab's All, as the Inventory tab has it:
     // equipping is done from the school lists. The Shouts tab's All is
@@ -5064,24 +5093,24 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
         Im::PopStyleVar(1);
         return;
     }
-    Im::TableSetupColumn("Name", Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
+    Im::TableSetupColumn(Tr("Name"), Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
                          static_cast<Im::ImGuiID>(Column::Name));
     if (allList)
-        Im::TableSetupColumn("School", Im::ImGuiTableColumnFlags_WidthFixed, schoolWidth + gutter,
+        Im::TableSetupColumn(Tr("School"), Im::ImGuiTableColumnFlags_WidthFixed, schoolWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::School));
-    Im::TableSetupColumn("Type", Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
+    Im::TableSetupColumn(Tr("Type"), Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
                          static_cast<Im::ImGuiID>(Column::Type));
     if (!voice)
-        Im::TableSetupColumn("Level", Im::ImGuiTableColumnFlags_WidthFixed, levelWidth + gutter,
+        Im::TableSetupColumn(Tr("Level"), Im::ImGuiTableColumnFlags_WidthFixed, levelWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::Level));
-    Im::TableSetupColumn("Mag", Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+    Im::TableSetupColumn(Tr("Mag"), Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                          magnitudeWidth, static_cast<Im::ImGuiID>(Column::Magnitude));
     if (!voice)
-        Im::TableSetupColumn("Cost", Im::ImGuiTableColumnFlags_WidthFixed, costWidth + gutter,
+        Im::TableSetupColumn(Tr("Cost"), Im::ImGuiTableColumnFlags_WidthFixed, costWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::Cost));
     // Cast: what it does when cast -- Self, Touch, Spray, Projectile, Target,
     // Location -- delivery and casting type in one word.
-    Im::TableSetupColumn("Cast", Im::ImGuiTableColumnFlags_WidthFixed, castWidth + gutter,
+    Im::TableSetupColumn(Tr("Cast"), Im::ImGuiTableColumnFlags_WidthFixed, castWidth + gutter,
                          static_cast<Im::ImGuiID>(Column::Cast));
     if (allList)
     {
@@ -5089,14 +5118,14 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
     }
     else if (voice)
     {
-        Im::TableSetupColumn("Equipped", Im::ImGuiTableColumnFlags_WidthFixed, wornWidth,
+        Im::TableSetupColumn(Tr("Equipped"), Im::ImGuiTableColumnFlags_WidthFixed, wornWidth,
                              static_cast<Im::ImGuiID>(Column::Equipped));
     }
     else
     {
-        Im::TableSetupColumn("Left", Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
+        Im::TableSetupColumn(Tr("Left"), Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
                              static_cast<Im::ImGuiID>(Column::Left));
-        Im::TableSetupColumn("Right", Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
+        Im::TableSetupColumn(Tr("Right"), Im::ImGuiTableColumnFlags_WidthFixed, handWidth,
                              static_cast<Im::ImGuiID>(Column::Right));
     }
     Im::TableHeadersRow();
@@ -5133,9 +5162,9 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
             Im::EndTooltip();
         }
         else if (dim && entry->locked && Im::IsItemHovered(0))
-            Im::SetTooltip("%s", "No word unlocked");
+            Im::SetTooltip("%s", Tr("No word unlocked"));
         else if (dim && entry->banned && Im::IsItemHovered(0))
-            Im::SetTooltip("%s", "Banned");
+            Im::SetTooltip("%s", Tr("Banned"));
         else if (dim && entry->setAside && Im::IsItemHovered(0))
             Tooltip(entry->asideBy);
         Im::SetCursorScreenPos(pos);
@@ -5214,7 +5243,7 @@ void DrawMagicDetail(const CharacterView &view, const MagicEntry &entry, PanelSt
         const fp::SpellButton forget =
             controls->active ? fp::ForgetButton(entry.name) : fp::SpellButton{false, controls->why};
         bool asking = state.confirming == entry.form;
-        if (AskedActionAtRight("Forget", forget.can, forget.hover, asking, lineRight))
+        if (AskedActionAtRight(Tr("Forget"), forget.can, forget.hover, asking, lineRight))
         {
             fp::game::ForgetSpellByForm(view.id, entry.form);
             PlayGameSound(kSpellForgottenSound);
@@ -5237,11 +5266,11 @@ void DrawMagicDetail(const CharacterView &view, const MagicEntry &entry, PanelSt
             [](const SheetRow &line, const std::string &key, float left, float right) {
                 DrawConditionDrawer(line, key, left, right);
             },
-            "Name", "Effect", WithDescription());
+            N_("Name"), N_("Effect"), WithDescription());
     }
     if (!entry.description.empty())
     {
-        CentredHeading("Description");
+        CentredHeading(Tr("Description"));
         Im::TextWrapped("%s", entry.description.c_str());
         Im::Spacing();
     }
@@ -5346,17 +5375,17 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Charac
             if (SourcePage(view, line.form) == Tab::None)
                 line.form = 0;
     std::vector<ExtraColumn> columns = kEffectColumns;
-    columns.push_back({"Source", [](const SheetRow &r) { return r.link; }, false, true});
+    columns.push_back({N_("Source"), [](const SheetRow &r) { return r.link; }, false, true});
     DrawSections(
         sections, true, [&view](std::uint32_t form) { OpenSourcePage(view, form); }, nullptr,
         [](const SheetRow &entry, const std::string &key, float left, float right) {
             DrawConditionDrawer(entry, key, left, right);
         },
-        "Name", "Effect", columns);
+        N_("Name"), N_("Effect"), columns);
 
     if (!row.description.empty())
     {
-        CentredHeading("Description");
+        CentredHeading(Tr("Description"));
         Im::TextWrapped("%s", row.description.c_str());
         Im::Spacing();
     }
@@ -5384,21 +5413,21 @@ void DrawEffects(const CharacterView &view)
     FilterRow(
         "##effectsfilter", g_effectsFilter, sizeof(g_effectsFilter),
         [&] { return static_cast<std::size_t>(std::count_if(view.effects.begin(), view.effects.end(), EffectShown)); },
-        view.effects.size(), "effects");
+        view.effects.size(), Tr("effects"));
     Im::Spacing();
 
     if (view.effects.empty())
     {
         Im::SetCursorPosX(Im::GetCursorPosX() + kCellPadX);
-        Im::TextDisabled("No active effects.");
+        Im::TextDisabled("%s", Tr("No active effects."));
         return;
     }
 
     const float gutter = kCellPadX * 2.0f;
     const auto *tableStyle = Im::GetStyle();
     const float arrow = std::floor(Im::GetFontSize() * 0.65f + (tableStyle ? tableStyle->FramePadding.x : 4.0f));
-    float magnitudeWidth = TextWidth("Magnitude") + arrow;
-    float remainingWidth = TextWidth("Remaining") + arrow;
+    float magnitudeWidth = TextWidth(Tr("Magnitude")) + arrow;
+    float remainingWidth = TextWidth(Tr("Remaining")) + arrow;
     for (const auto &row : view.effects)
     {
         char num[32];
@@ -5414,14 +5443,14 @@ void DrawEffects(const CharacterView &view)
         Im::PopStyleVar(1);
         return;
     }
-    Im::TableSetupColumn("Effect", Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
+    Im::TableSetupColumn(Tr("Effect"), Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
                          static_cast<Im::ImGuiID>(Column::Name));
-    Im::TableSetupColumn("Magnitude",
+    Im::TableSetupColumn(Tr("Magnitude"),
                          Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                          magnitudeWidth + gutter, static_cast<Im::ImGuiID>(Column::Magnitude));
-    Im::TableSetupColumn("Remaining", Im::ImGuiTableColumnFlags_WidthFixed, remainingWidth + gutter,
+    Im::TableSetupColumn(Tr("Remaining"), Im::ImGuiTableColumnFlags_WidthFixed, remainingWidth + gutter,
                          static_cast<Im::ImGuiID>(Column::Remaining));
-    Im::TableSetupColumn("Source", Im::ImGuiTableColumnFlags_WidthStretch, 1.0f,
+    Im::TableSetupColumn(Tr("Source"), Im::ImGuiTableColumnFlags_WidthStretch, 1.0f,
                          static_cast<Im::ImGuiID>(Column::Source));
     Im::TableHeadersRow();
 
@@ -5446,9 +5475,9 @@ void DrawEffects(const CharacterView &view)
             state.detailLink = row->linkForm;
         }
         if (!row->applied && Im::IsItemHovered(0))
-            Im::SetTooltip("Not applied");
+            Im::SetTooltip("%s", Tr("Not applied"));
         else if (!row->active && Im::IsItemHovered(0))
-            Im::SetTooltip("Inactive");
+            Im::SetTooltip("%s", Tr("Inactive"));
         Im::SetCursorScreenPos(pos);
         Im::Text("%s", row->name.c_str());
 
@@ -5504,7 +5533,7 @@ void DrawMagicPage(const CharacterView &view, const MagicList &list)
     if (!any)
     {
         Im::Spacing();
-        Im::TextDisabled(voice ? "Knows no shouts or powers." : "Knows no spells.");
+        Im::TextDisabled("%s", voice ? Tr("Knows no shouts or powers.") : Tr("Knows no spells."));
         return;
     }
     DrawMagicList(view, list);
@@ -5528,20 +5557,15 @@ void DrawSummon(const SummonView &summon)
     Im::Spacing();
 
     const std::string levelText = std::to_string(static_cast<unsigned>(summon.level));
-    const std::string kindText = summon.raised ? "raised" : "summoned";
-    char remainingBuf[32];
-    if (summon.remaining > 0.0f)
-        std::snprintf(remainingBuf, sizeof(remainingBuf), "%.0f s", summon.remaining);
-    else
-        std::snprintf(remainingBuf, sizeof(remainingBuf), "-");
-    const std::string remainingText = remainingBuf;
+    const std::string kindText = summon.raised ? Tr("raised") : Tr("summoned");
+    const std::string remainingText = summon.remaining > 0.0f ? TrFormat("{:.0f} s", summon.remaining) : "-";
 
     const float originX = Im::GetCursorPosX();
     const auto *style = Im::GetStyle();
     const float inset = style->ItemSpacing.x;
 
     RowGeometry geo;
-    geo.barLabelRight = originX + inset + WidestLabel({"Health", "Stamina", "Magicka"});
+    geo.barLabelRight = originX + inset + WidestLabel({Tr("Health"), Tr("Stamina"), Tr("Magicka")});
     geo.barLeft = geo.barLabelRight + 12.0f;
     const float contentRight = originX + Im::GetContentRegionAvail().x - inset;
     const float valueWidth = (std::max)({TextWidth(levelText), TextWidth(kindText), TextWidth(remainingText)});
@@ -5549,13 +5573,13 @@ void DrawSummon(const SummonView &summon)
     geo.statLabelRight = geo.valueLeft - 12.0f;
 
     DrawStatRow(
-        geo, "Health", summon.health, kHealth, "Level", [&] { Im::Text("%s", levelText.c_str()); },
+        geo, Tr("Health"), summon.health, kHealth, Tr("Level"), [&] { Im::Text("%s", levelText.c_str()); },
         summon.healthBreakdown);
     DrawStatRow(
-        geo, "Stamina", summon.stamina, kStamina, "Kind", [&] { Im::TextDisabled("%s", kindText.c_str()); },
+        geo, Tr("Stamina"), summon.stamina, kStamina, Tr("Kind"), [&] { Im::TextDisabled("%s", kindText.c_str()); },
         summon.staminaBreakdown);
     DrawStatRow(
-        geo, "Magicka", summon.magicka, kMagicka, "Remaining",
+        geo, Tr("Magicka"), summon.magicka, kMagicka, Tr("Remaining"),
         [&] {
             Im::Text("%s", remainingText.c_str());
             // Where the time comes from, the summoner's perks on the spell
@@ -5579,7 +5603,7 @@ void DrawSummons(const CharacterView &view)
     if (view.summons.empty())
     {
         Im::Spacing();
-        Im::TextDisabled("Nothing summoned or raised.");
+        Im::TextDisabled("%s", Tr("Nothing summoned or raised."));
         return;
     }
     // The summon chosen, by its reference: two of one creature share a
@@ -5616,11 +5640,11 @@ void DrawCharacter(const CharacterView &view)
     // its own (LevelFor); another follower has a level and no experience.
     const auto progress = view.player ? std::nullopt : fp::game::LevelFor(view.id);
     const int level = progress ? progress->level : static_cast<int>(view.level);
-    const std::string levelLabel = "Level " + std::to_string(level);
+    const std::string levelLabel = TrFormat("Level {}", level);
     const bool hasExperience = view.hasExperience || progress.has_value();
     const ft::Stat experience =
         progress ? ft::Stat{static_cast<float>(progress->into), static_cast<float>(progress->toNext)} : view.experience;
-    const std::string statusText = view.inCombat ? "combat" : "idle";
+    const std::string statusText = view.inCombat ? Tr("combat") : Tr("idle");
     char carriedBuf[64];
     std::snprintf(carriedBuf, sizeof(carriedBuf), "%.0f / %.0f", view.carriedWeight, view.carryCapacity);
     const std::string carriedText = carriedBuf;
@@ -5635,7 +5659,7 @@ void DrawCharacter(const CharacterView &view)
 
     RowGeometry geo;
     geo.barLabelRight =
-        originX + inset + (std::max)(WidestLabel({"Health", "Stamina", "Magicka"}), TextWidth(levelLabel));
+        originX + inset + (std::max)(WidestLabel({Tr("Health"), Tr("Stamina"), Tr("Magicka")}), TextWidth(levelLabel));
     geo.barLeft = geo.barLabelRight + 12.0f;
 
     // The stat column is pinned to the RIGHT edge of the panel rather than left
@@ -5658,8 +5682,8 @@ void DrawCharacter(const CharacterView &view)
         if (!attributes)
             return row;
         row.open = &panel.attributeControls;
-        row.toOpen = "Click to assign attribute points";
-        row.toClose = "Click to hide attribute controls";
+        row.toOpen = Tr("Click to assign attribute points");
+        row.toClose = Tr("Click to hide attribute controls");
         row.draw = [&attributes, attribute] {
             const fp::AttributeButtons &b = attributes->buttons[fp::Index(attribute)];
             const float size = Im::GetFrameHeight();
@@ -5703,7 +5727,7 @@ void DrawCharacter(const CharacterView &view)
         attributes && panel.attributeControls ? std::to_string(attributes->available) : std::string();
 
     DrawStatRow(
-        geo, "Health", view.health, kHealth, "Status",
+        geo, Tr("Health"), view.health, kHealth, Tr("Status"),
         [&] {
             if (view.inCombat)
                 Im::TextColored(kFighting, "%s", statusText.c_str());
@@ -5713,7 +5737,7 @@ void DrawCharacter(const CharacterView &view)
         view.healthBreakdown, &healthRow);
 
     DrawStatRow(
-        geo, "Stamina", view.stamina, kStamina, "Carrying",
+        geo, Tr("Stamina"), view.stamina, kStamina, Tr("Carrying"),
         [&] {
             // Over capacity is worth seeing: an overencumbered follower
             // cannot fight properly, and otherwise you would only notice
@@ -5729,7 +5753,7 @@ void DrawCharacter(const CharacterView &view)
         view.staminaBreakdown, &staminaRow);
 
     DrawStatRow(
-        geo, "Magicka", view.magicka, kMagicka, pointsText.empty() ? nullptr : "Attribute points",
+        geo, Tr("Magicka"), view.magicka, kMagicka, pointsText.empty() ? nullptr : Tr("Attribute points"),
         [&] { Im::Text("%s", pointsText.c_str()); }, view.magickaBreakdown, &magickaRow);
 
     // The level beside its experience, in a muted gold; a follower with no
@@ -5738,8 +5762,8 @@ void DrawCharacter(const CharacterView &view)
     {
         DrawStatRow(geo, levelLabel.c_str(), experience, kExperience, nullptr, {});
         if (progress && progress->engine != progress->level && Im::IsItemHovered(0))
-            Tooltip(fmt::format("Level {} from the game, {} with what they have learned", progress->engine,
-                                progress->level));
+            Tooltip(TrFormat("Level {} from the game, {} with what they have learned", progress->engine,
+                             progress->level));
     }
     else
     {
@@ -5807,14 +5831,15 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // the hover has something to say.
     const bool idle = rules.moment == ft::Moment::Idle;
     if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Im::SetTooltip("%s", !all              ? "Tactics are turned off for the party in Settings"
-                             : followerEnabled ? (idle ? "Click to turn off idle tactics" : "Click to turn off tactics")
-                                               : (idle ? "Click to turn on idle tactics" : "Click to turn on tactics"));
+        Im::SetTooltip("%s", !all ? Tr("Tactics are turned off for the party in Settings")
+                             : followerEnabled
+                                 ? (idle ? Tr("Click to turn off idle tactics") : Tr("Click to turn off tactics"))
+                                 : (idle ? Tr("Click to turn on idle tactics") : Tr("Click to turn on tactics")));
     if (toggled && all)
         SetFollowerEnabled(view.id, rules.moment, !followerEnabled);
     Im::SameLine(0.0f, kCellPadX);
     Im::AlignTextToFramePadding();
-    Im::Text("Enabled");
+    Im::Text("%s", Tr("Enabled"));
     EndDimmed();
 
     // Space, but no rule: the table's own border already reads as the boundary,
@@ -5957,7 +5982,7 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
                                                  lit, 3.0f, 0);
             // One of their own, the amber ring's: not bought here.
             if (node.theirs)
-                Tooltip("Acquired outside of this framework");
+                Tooltip(Tr("Acquired outside of this framework"));
         }
         const bool reachable = node.held > 0 || tree.level >= node.requirement;
         const auto colour = reachable ? ink : dim;
@@ -6007,12 +6032,14 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
         const std::string hasValue = fmt::format("{} ({})", tree.name, has);
         const float spacing = Im::GetStyle()->ItemSpacing.x;
         const float wide = font * 2.0f;
-        const float tagWidth = (std::max)(TextWidth("Needs:"), TextWidth("Has:"));
+        const char *needsLabel = Tr("Needs:");
+        const char *hasLabel = Tr("Has:");
+        const float tagWidth = (std::max)(TextWidth(needsLabel), TextWidth(hasLabel));
         const float block =
             needs ? tagWidth + spacing + (std::max)(TextWidth(needValue), short_ ? TextWidth(hasValue) : 0.0f) : 0.0f;
         const TreeHandlers::Actions can = on.actions ? on.actions(node) : TreeHandlers::Actions{};
-        constexpr const char *kAcquire = "Click to acquire perk";
-        constexpr const char *kRemove = "Right click to remove perk";
+        const char *kAcquire = Tr("Click to acquire perk");
+        const char *kRemove = Tr("Right click to remove perk");
         const float actions = (can.acquire ? TextWidth(kAcquire) : 0.0f) + (can.remove ? TextWidth(kRemove) : 0.0f) +
                               (can.acquire && can.remove ? wide : 0.0f);
         const float lineWidth = (std::max)({TextWidth(title) + (needs ? wide + block : 0.0f), actions,
@@ -6032,9 +6059,9 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
                 Im::Text("%s", value.c_str());
             };
             Im::SameLine(0.0f, 0.0f);
-            line("Needs:", needValue);
+            line(needsLabel, needValue);
             if (short_)
-                line("Has:", hasValue);
+                line(hasLabel, hasValue);
         }
         if (!node.description.empty())
         {
@@ -6092,10 +6119,10 @@ void DrawSkills(const CharacterView &view)
                 [](const SheetRow &row, const std::string &key, float left, float right) {
                     DrawConditionDrawer(row, key, left, right);
                 },
-                "Name", "Value");
+                N_("Name"), N_("Value"));
             if (!page->description.empty())
             {
-                CentredHeading("Description");
+                CentredHeading(Tr("Description"));
                 Im::TextWrapped("%s", page->description.c_str());
                 Im::Spacing();
             }
@@ -6168,9 +6195,9 @@ void DrawSkills(const CharacterView &view)
             if (Im::IsItemHovered(0))
             {
                 if (controls && controls->learned != 0)
-                    Tooltip(fmt::format("{} their own, {:+} learned", controls->base, controls->learned));
+                    Tooltip(TrFormat("{} their own, {:+} learned", controls->base, controls->learned));
                 else if (!controls && tree->current != tree->level)
-                    Tooltip(fmt::format("{:.0f} with the effects on it", tree->current));
+                    Tooltip(TrFormat("{:.0f} with the effects on it", tree->current));
             }
             if (controls)
             {
@@ -6187,9 +6214,9 @@ void DrawSkills(const CharacterView &view)
                 // but not one click away.
                 const std::string available = controls->perkPoints <= 0 ? std::string()
                                               : controls->perkPoints == 1
-                                                  ? std::string("1 perk available")
-                                                  : std::to_string(controls->perkPoints) + " perks available";
-                const float buttons = AskedActionWidth("Reset perks", state.confirmReset && b.canResetPerks);
+                                                  ? std::string(Tr("1 perk available"))
+                                                  : TrFormat("{} perks available", controls->perkPoints);
+                const float buttons = AskedActionWidth(Tr("Reset perks"), state.confirmReset && b.canResetPerks);
                 Im::SameLine(0.0f, 0.0f);
                 const float lead = available.empty() ? 0.0f : TextWidth(available) + kCellPadX;
                 Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineX + lineWidth - buttons - lead));
@@ -6199,7 +6226,7 @@ void DrawSkills(const CharacterView &view)
                     Im::Text("%s", available.c_str());
                     Im::SameLine(0.0f, kCellPadX);
                 }
-                if (AskedAction("Reset perks", b.canResetPerks, b.resetPerks, state.confirmReset))
+                if (AskedAction(Tr("Reset perks"), b.canResetPerks, b.resetPerks, state.confirmReset))
                 {
                     fp::game::ResetPerks(controls->companion, controls->skill);
                     PlayGameSound(kPerkReturnedSound);
@@ -6264,20 +6291,20 @@ void DrawSkills(const CharacterView &view)
     const SheetSection *other = nullptr;
     for (const auto &section : view.skills)
     {
-        if (section.title == "Other Perks")
+        if (section.title == Tr("Other Perks"))
             other = &section;
         else
             skills.push_back(section);
     }
-    DrawSections(skills, true, open, "Modifiers", {}, "Skill", "Level", {}, openTree);
+    DrawSections(skills, true, open, N_("Modifiers"), {}, N_("Skill"), N_("Level"), {}, openTree);
     if (other)
     {
-        CentredHeading("Other Perks");
+        CentredHeading(Tr("Other Perks"));
         // The perks outside the trees run long in a large load order.
         FilterRow(
             "##perksfilter", g_perksFilter, sizeof(g_perksFilter),
             [&] { return static_cast<std::size_t>(std::count_if(other->rows.begin(), other->rows.end(), PerkShown)); },
-            other->rows.size(), "perks");
+            other->rows.size(), Tr("perks"));
         Im::Spacing();
         std::vector<SheetRow> rows;
         for (const SheetRow &row : other->rows)
@@ -6592,39 +6619,39 @@ bool BeginSheetTab(const char *label, Tab tab, Tab select)
 void DrawSheetTabs(const CharacterView &view, Tab select)
 {
     PanelState &panel = Panel(view.id);
-    if (BeginSheetTab("Character", Tab::Character, select))
+    if (BeginSheetTab(Tr("Character"), Tab::Character, select))
     {
         TabBody(Tab::Character, view.id, [&] { DrawCharacter(view); });
         Im::EndTabItem();
     }
-    if (BeginSheetTab("Inventory", Tab::Inventory, select))
+    if (BeginSheetTab(Tr("Inventory"), Tab::Inventory, select))
     {
         TabBody(Tab::Inventory, view.id, [&] { DrawInventory(view); }, {panel.inventory.detail});
         Im::EndTabItem();
     }
-    if (BeginSheetTab("Magic", Tab::Magic, select))
+    if (BeginSheetTab(Tr("Magic"), Tab::Magic, select))
     {
         TabBody(Tab::Magic, view.id, [&] { DrawMagic(view); }, {panel.magic.detail});
         Im::EndTabItem();
     }
-    if (BeginSheetTab("Shouts", Tab::Shouts, select))
+    if (BeginSheetTab(Tr("Shouts"), Tab::Shouts, select))
     {
         TabBody(Tab::Shouts, view.id, [&] { DrawShouts(view); }, {panel.shouts.detail});
         Im::EndTabItem();
     }
-    if (BeginSheetTab("Summons", Tab::Summons, select))
+    if (BeginSheetTab(Tr("Summons"), Tab::Summons, select))
     {
         TabBody(Tab::Summons, view.id, [&] { DrawSummons(view); });
         Im::EndTabItem();
     }
-    if (BeginSheetTab("Effects", Tab::Effects, select))
+    if (BeginSheetTab(Tr("Effects"), Tab::Effects, select))
     {
         const EffectsTabState &effects = panel.effects;
         TabBody(Tab::Effects, view.id, [&] { DrawEffects(view); },
                 {effects.detailForm, effects.detailSource, effects.detailLink});
         Im::EndTabItem();
     }
-    if (BeginSheetTab("Skills", Tab::Skills, select))
+    if (BeginSheetTab(Tr("Skills"), Tab::Skills, select))
     {
         TabBody(Tab::Skills, view.id,
                 [&] {
@@ -6642,12 +6669,12 @@ void DrawSheetTabs(const CharacterView &view, Tab select)
 // change, and an edit must show on the next frame.
 void DrawTacticsTabs(const FollowerView &view, Tab select)
 {
-    if (BeginSheetTab("Tactics", Tab::Tactics, select))
+    if (BeginSheetTab(Tr("Tactics"), Tab::Tactics, select))
     {
         TabBody(Tab::Tactics, view.id, [&] { DrawTactics(GetRules(view.id, ft::Moment::Combat), view); });
         Im::EndTabItem();
     }
-    if (BeginSheetTab("Idle Tactics", Tab::IdleTactics, select))
+    if (BeginSheetTab(Tr("Idle Tactics"), Tab::IdleTactics, select))
     {
         TabBody(Tab::IdleTactics, view.id, [&] { DrawTactics(GetRules(view.id, ft::Moment::Idle), view); });
         Im::EndTabItem();
@@ -6668,7 +6695,7 @@ void DrawFollower(const FollowerView &view)
     // no tabs behind it (reported in play, 2026-09-19).
     if (!view.nearby)
     {
-        Im::TextDisabled("Follower is not nearby.");
+        Im::TextDisabled("%s", Tr("Follower is not nearby."));
         return;
     }
 
@@ -6679,7 +6706,7 @@ void DrawFollower(const FollowerView &view)
     DrawSheetTabs(view, select);
     // What the combat AI is tuned by, before what it is told: a rule works
     // with, or against, these numbers.
-    if (BeginSheetTab("Combat Style", Tab::CombatStyle, select))
+    if (BeginSheetTab(Tr("Combat Style"), Tab::CombatStyle, select))
     {
         TabBody(Tab::CombatStyle, view.id, [&] {
             Im::Spacing();
@@ -6730,7 +6757,7 @@ void DrawSlot(std::size_t slot)
     const ft::ActorId id = SlotOwner(slot);
     if (id == 0)
     {
-        Im::TextDisabled("Nobody is assigned to this entry.");
+        Im::TextDisabled("%s", Tr("Nobody is assigned to this entry."));
         return;
     }
 
@@ -6740,8 +6767,8 @@ void DrawSlot(std::size_t slot)
         return;
     }
 
-    Im::TextDisabled("Dismissed. This entry cannot be removed until the menu framework's next "
-                     "release; it is reused if they come back.");
+    Im::TextDisabled("%s", Tr("Dismissed. This entry cannot be removed until the menu framework's next "
+                              "release; it is reused if they come back."));
 }
 
 void DrawSettings()
@@ -6755,7 +6782,7 @@ void DrawSettings()
     const float baseSize = Im::GetFontSize();
     const float windowScale = baseSize > 0.0f ? fontSize / baseSize : 1.0f;
     Im::SetWindowFontScale(windowScale * 1.5f);
-    Im::Text("Follower Tactics (%s)", FT_VERSION);
+    Im::TextUnformatted(TrFormat("Follower Tactics ({})", FT_VERSION).c_str());
     Im::SetWindowFontScale(windowScale);
 
     Im::Separator();
@@ -6780,31 +6807,31 @@ void DrawSettings()
     // live the same way. No heading over it: the page's title is above it
     // and it is the only switch there.
     const bool enabled = IsEnabled();
-    if (toggle("enabledAll", enabled, "Enable tactics for party", "Click to turn on tactics for the party",
-               "Click to turn off tactics for the party"))
+    if (toggle("enabledAll", enabled, Tr("Enable tactics for party"), Tr("Click to turn on tactics for the party"),
+               Tr("Click to turn off tactics for the party")))
         SetEnabled(!enabled);
 
     Im::Spacing();
     // What a follower must have before a thing is offered at all
     // (game/Settings.h). Each is saved with the game.
-    CentredHeading("Combat");
+    CentredHeading(Tr("Combat"));
     ft::Settings settings = CurrentSettings();
     const ft::Settings was = settings;
     // All three are followers' alone, and each says so: a combat style is a
     // thing only an NPC has, which not every player knows; the player's own
     // dual cast is paired by the engine behind its perk check
     // (game/PlayerCast.h); and the player has no blow to require a perk of.
-    if (toggle("requireDualWieldStyle", settings.requireDualWieldStyle, "Require dual wield combat style",
-               "Click to require dual wield combat style for dual wielding (follower only)",
-               "Click to not require dual wield combat style for dual wielding (follower only)"))
+    if (toggle("requireDualWieldStyle", settings.requireDualWieldStyle, Tr("Require dual wield combat style"),
+               Tr("Click to require dual wield combat style for dual wielding (follower only)"),
+               Tr("Click to not require dual wield combat style for dual wielding (follower only)")))
         settings.requireDualWieldStyle = !settings.requireDualWieldStyle;
-    if (toggle("requireDualCastPerks", settings.requireDualCastPerks, "Require Dual Casting perks",
-               "Click to require the school's Dual Casting perk for dual casting (follower only)",
-               "Click to not require the school's Dual Casting perk for dual casting (follower only)"))
+    if (toggle("requireDualCastPerks", settings.requireDualCastPerks, Tr("Require Dual Casting perks"),
+               Tr("Click to require the school's Dual Casting perk for dual casting (follower only)"),
+               Tr("Click to not require the school's Dual Casting perk for dual casting (follower only)")))
         settings.requireDualCastPerks = !settings.requireDualCastPerks;
-    if (toggle("requirePowerBashPerk", settings.requirePowerBashPerk, "Require Power Bash perk",
-               "Click to require the Power Bash perk for power bashing (follower only)",
-               "Click to not require the Power Bash perk for power bashing (follower only)"))
+    if (toggle("requirePowerBashPerk", settings.requirePowerBashPerk, Tr("Require Power Bash perk"),
+               Tr("Click to require the Power Bash perk for power bashing (follower only)"),
+               Tr("Click to not require the Power Bash perk for power bashing (follower only)")))
         settings.requirePowerBashPerk = !settings.requirePowerBashPerk;
     if (settings.requireDualWieldStyle != was.requireDualWieldStyle ||
         settings.requireDualCastPerks != was.requireDualCastPerks ||
@@ -6821,17 +6848,17 @@ void DrawSettings()
     if (progression.inGame)
     {
         Im::Spacing();
-        CentredHeading("Progression");
-        if (toggle("progression", progression.on, "Manage follower progression",
-                   "Click to enable follower leveling, skills, perks, and spell learning",
-                   "Click to disable follower leveling, skills, perks, and spell learning"))
+        CentredHeading(Tr("Progression"));
+        if (toggle("progression", progression.on, Tr("Manage follower progression"),
+                   Tr("Click to enable follower leveling, skills, perks, and spell learning"),
+                   Tr("Click to disable follower leveling, skills, perks, and spell learning")))
             fp::game::SetLevelling(!progression.on);
         if (!progression.on && !progression.stillHeld.empty())
         {
             std::string names;
             for (const std::string &name : progression.stillHeld)
-                names += (names.empty() ? "" : ", ") + name;
-            Im::TextDisabled("%s", fmt::format("Back to their records when next near: {}", names).c_str());
+                names += (names.empty() ? "" : Tr(", ")) + name;
+            Im::TextDisabled("%s", TrFormat("Back to their records when next near: {}", names).c_str());
         }
     }
 }
@@ -6874,6 +6901,14 @@ void __stdcall RenderPlayer()
 template <std::size_t N> void __stdcall RenderSlot()
 {
     DrawSlot(N);
+}
+
+// Where a follower's entry goes. The mod's name is its name in any
+// language; the subsection's is translated, before the first entry is
+// added (game/I18n.h).
+std::string FollowersPath()
+{
+    return std::string("Follower Tactics/") + Tr("Followers") + "/";
 }
 
 template <std::size_t... N>
@@ -6953,7 +6988,7 @@ void SyncFollowers()
         for (const std::size_t slot : g_slots.Gone(ids))
         {
             const std::string name = g_slots.NameOf(slot);
-            if (SKSEMenuFramework::DeleteSection("Follower Tactics/Followers/" + name))
+            if (SKSEMenuFramework::DeleteSection(FollowersPath() + name))
             {
                 log::ui.debug("menu entry removed for {}", name);
                 g_slots.Free(slot);
@@ -6974,7 +7009,7 @@ void SyncFollowers()
         }
         // Under a Followers subsection, apart from Settings: the path's
         // components are the tree.
-        SKSEMenuFramework::FullPathAddSectionItem("Follower Tactics/Followers/" + who.name, renderers[index]);
+        SKSEMenuFramework::FullPathAddSectionItem(FollowersPath() + who.name, renderers[index]);
         log::ui.debug("menu entry added for {} (slot {})", who.name, index);
     }
 }
@@ -6997,10 +7032,10 @@ void Install()
     KeepEscapeFromClosingTheMenu();
 
     SKSEMenuFramework::SetSection("Follower Tactics");
-    SKSEMenuFramework::AddSectionItem("Settings", RenderSettings);
+    SKSEMenuFramework::AddSectionItem(Tr("Settings"), RenderSettings);
     // Before the Followers subsection the tick fills as followers are
     // recruited: an entry cannot be moved once added.
-    SKSEMenuFramework::AddSectionItem("Player", RenderPlayer);
+    SKSEMenuFramework::AddSectionItem(Tr("Player"), RenderPlayer);
 
     log::ui.info("registered with SKSE Menu Framework (F1). Follower entries appear as followers do.");
 }

@@ -1,5 +1,7 @@
 #include "game/Inventory.h"
 
+#include "core/I18n.h"
+
 #include "game/Sheet.h"
 
 #include "game/Magic.h"
@@ -20,6 +22,9 @@
 
 namespace ft::game
 {
+using ft::i18n::Tr;
+using ft::i18n::TrFormat;
+
 namespace
 {
 
@@ -55,26 +60,26 @@ const char *WeaponTypeName(const RE::TESObjectWEAP *weapon)
     switch (weapon->GetWeaponType())
     {
     case Type::kOneHandSword:
-        return "Sword";
+        return Tr("Sword");
     case Type::kOneHandDagger:
-        return "Dagger";
+        return Tr("Dagger");
     case Type::kOneHandAxe:
-        return "War Axe";
+        return Tr("War Axe");
     case Type::kOneHandMace:
-        return "Mace";
+        return Tr("Mace");
     case Type::kTwoHandSword:
-        return "Greatsword";
+        return Tr("Greatsword");
     case Type::kTwoHandAxe:
         // The record does not distinguish them; the keyword does.
-        return weapon->HasKeywordString("WeapTypeWarhammer") ? "Warhammer" : "Battleaxe";
+        return weapon->HasKeywordString("WeapTypeWarhammer") ? Tr("Warhammer") : Tr("Battleaxe");
     case Type::kBow:
-        return "Bow";
+        return Tr("Bow");
     case Type::kStaff:
-        return "Staff";
+        return Tr("Staff");
     case Type::kCrossbow:
-        return "Crossbow";
+        return Tr("Crossbow");
     default:
-        return "Weapon";
+        return Tr("Weapon");
     }
 }
 
@@ -148,31 +153,31 @@ std::string ArmorTypeName(const RE::TESObjectARMO *armor)
     using Class = RE::BGSBipedObjectForm::ArmorType;
 
     if (armor->HasPartOf(Slot::kShield))
-        return "Shield";
+        return Tr("Shield");
     if (armor->HasPartOf(Slot::kRing))
-        return "Ring";
+        return Tr("Ring");
     if (armor->HasPartOf(Slot::kAmulet))
-        return "Amulet";
+        return Tr("Amulet");
     if (armor->HasPartOf(Slot::kCirclet))
-        return "Circlet";
+        return Tr("Circlet");
 
     const Class armorClass = armor->GetArmorType();
     const bool clothing = armorClass == Class::kClothing;
-    const char *piece = "Armor";
+    const char *piece = Tr("Armor");
     if (armor->HasPartOf(Slot::kBody))
-        piece = clothing ? "Clothes" : "Armor";
+        piece = clothing ? Tr("Clothes") : Tr("Armor");
     else if (armor->HasPartOf(Slot::kHead) || armor->HasPartOf(Slot::kHair))
-        piece = clothing ? "Hat" : "Helmet";
+        piece = clothing ? Tr("Hat") : Tr("Helmet");
     else if (armor->HasPartOf(Slot::kHands))
-        piece = clothing ? "Gloves" : "Gauntlets";
+        piece = clothing ? Tr("Gloves") : Tr("Gauntlets");
     else if (armor->HasPartOf(Slot::kFeet))
-        piece = clothing ? "Shoes" : "Boots";
+        piece = clothing ? Tr("Shoes") : Tr("Boots");
     else if (clothing)
-        piece = "Clothing";
+        piece = Tr("Clothing");
 
     if (clothing)
         return piece;
-    return std::string(armorClass == Class::kHeavyArmor ? "Heavy " : "Light ") + piece;
+    return armorClass == Class::kHeavyArmor ? TrFormat("Heavy {}", piece) : TrFormat("Light {}", piece);
 }
 
 std::string SkillName(RE::ActorValue skill)
@@ -202,7 +207,7 @@ bool IsListed(RE::TESBoundObject *object)
 void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryData *entry, InventoryItem &item,
               SheetSection &stats)
 {
-    item.type = "Item";
+    item.type = Tr("Item");
     item.category = ItemCategory::Misc;
 
     if (auto *weapon = object->As<RE::TESObjectWEAP>())
@@ -217,15 +222,15 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         {
             SheetRow row;
             item.damage = WeaponDamage(actor, weapon, entry, &row.breakdown);
-            row.label = "Damage";
+            row.label = Tr("Damage");
             row.value = Fmt("%.0f", item.damage);
             stats.rows.push_back(std::move(row));
         }
-        stats.rows.push_back(Row("Critical Damage", std::to_string(weapon->GetCritDamage())));
+        stats.rows.push_back(Row(Tr("Critical Damage"), std::to_string(weapon->GetCritDamage())));
         {
             SheetRow row;
             const float chance = CritChance(actor, weapon, &row.breakdown);
-            row.label = "Critical Chance";
+            row.label = Tr("Critical Chance");
             row.value = Fmt("%.0f%%", chance);
             stats.rows.push_back(std::move(row));
         }
@@ -245,12 +250,12 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
             }
             SheetRow row;
             const float speed = WeaponSpeed(actor, weapon, wornLeft && !wornRight, &row.breakdown);
-            row.label = "Speed";
+            row.label = Tr("Speed");
             row.value = Fmt("%.2f", speed);
             stats.rows.push_back(std::move(row));
         }
-        stats.rows.push_back(Row("Reach", Fmt("%.2f", weapon->GetReach())));
-        stats.rows.push_back(Row("Stagger", Fmt("%.2f", weapon->GetStagger())));
+        stats.rows.push_back(Row(Tr("Reach"), Fmt("%.2f", weapon->GetReach())));
+        stats.rows.push_back(Row(Tr("Stagger"), Fmt("%.2f", weapon->GetStagger())));
         item.description = DescriptionOf(weapon);
         return;
     }
@@ -275,7 +280,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         {
             SheetRow row;
             item.armor = ArmorRating(actor, armor, entry, &row.breakdown);
-            row.label = "Armor";
+            row.label = Tr("Armor");
             row.value = Fmt("%.0f", item.armor);
             stats.rows.push_back(std::move(row));
         }
@@ -284,11 +289,11 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     }
     if (auto *ammo = object->As<RE::TESAmmo>())
     {
-        item.type = ammo->IsBolt() ? "Bolt" : "Arrow";
+        item.type = ammo->IsBolt() ? Tr("Bolt") : Tr("Arrow");
         item.category = ItemCategory::Arrows;
         item.equipable = true;
         item.damage = ammo->GetRuntimeData().data.damage;
-        stats.rows.push_back(Row("Damage", Fmt("%.0f", item.damage)));
+        stats.rows.push_back(Row(Tr("Damage"), Fmt("%.0f", item.damage)));
         return;
     }
     // The first effect's name, for the list: what the thing is for. The
@@ -308,17 +313,17 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.effect = effectName(alch);
         if (alch->IsPoison())
         {
-            item.type = "Poison";
+            item.type = Tr("Poison");
             item.category = ItemCategory::Poisons;
         }
         else if (alch->IsFood())
         {
-            item.type = "Food";
+            item.type = Tr("Food");
             item.category = ItemCategory::Food;
         }
         else
         {
-            item.type = "Potion";
+            item.type = Tr("Potion");
             item.category = ItemCategory::Potions;
         }
         item.effectsTable = EffectsOf(actor, alch, [](const RE::Effect *e) { return e->effectItem.magnitude; });
@@ -326,7 +331,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     }
     if (auto *ingredient = object->As<RE::IngredientItem>())
     {
-        item.type = "Ingredient";
+        item.type = Tr("Ingredient");
         item.category = ItemCategory::Ingredients;
         item.effect = effectName(ingredient);
         item.effectsTable = EffectsOf(actor, ingredient, [](const RE::Effect *e) { return e->effectItem.magnitude; });
@@ -338,7 +343,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         // list carry what a spell's do -- school, type, magnitude,
         // duration, charge time, cast -- less the level and the cost, which
         // a scroll has not.
-        item.type = "Scroll";
+        item.type = Tr("Scroll");
         item.category = ItemCategory::Scrolls;
         item.effect = effectName(scroll);
         item.effectsTable = EffectsOf(actor, scroll, [](const RE::Effect *e) { return e->effectItem.magnitude; });
@@ -349,17 +354,17 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         {
             const auto school = SchoolOf(effect->GetMagickSkill());
             if (school != MagicCategory::COUNT)
-                stats.rows.push_back(Row("School", DisplayName(school)));
+                stats.rows.push_back(Row(Tr("School"), DisplayName(school)));
             if (const std::string kind = TypeWord(effect); !kind.empty())
-                stats.rows.push_back(Row("Kind", kind)); // the spell page's Type; Type here says Scroll
+                stats.rows.push_back(Row(Tr("Kind"), kind)); // the spell page's Type; Type here says Scroll
             item.magnitude = ActualMagnitude(actor, scroll, costliest);
-            stats.rows.push_back(Row("Magnitude", Fmt("%.0f", item.magnitude)));
+            stats.rows.push_back(Row(Tr("Magnitude"), Fmt("%.0f", item.magnitude)));
             if (const float duration = ActualDuration(actor, scroll, costliest); duration > 0.0f)
-                stats.rows.push_back(Row("Duration", Fmt("%.0f", duration) + " s"));
+                stats.rows.push_back(Row(Tr("Duration"), TrFormat("{} s", Fmt("%.0f", duration))));
         }
         if (const float charge = scroll->GetChargeTime(); charge > 0.0f)
-            stats.rows.push_back(Row("Charge Time", Fmt("%.1f s", charge)));
-        stats.rows.push_back(Row("Cast", item.cast));
+            stats.rows.push_back(Row(Tr("Charge Time"), TrFormat("{} s", Fmt("%.1f", charge))));
+        stats.rows.push_back(Row(Tr("Cast"), item.cast));
         return;
     }
     if (auto *book = object->As<RE::TESObjectBOOK>())
@@ -367,10 +372,10 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         item.category = ItemCategory::Books;
         if (book->TeachesSpell())
         {
-            item.type = "Spell Tome";
+            item.type = Tr("Spell Tome");
             item.spellTome = true;
             RE::SpellItem *spell = book->GetSpell();
-            stats.rows.push_back(Row("Teaches", NameOf(spell)));
+            stats.rows.push_back(Row(Tr("Teaches"), NameOf(spell)));
             if (IsCastable(spell))
             {
                 item.teaches = spell->GetFormID();
@@ -380,9 +385,9 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         }
         else
         {
-            item.type = "Book";
+            item.type = Tr("Book");
             if (book->TeachesSkill())
-                stats.rows.push_back(Row("Teaches", SkillName(book->GetSkill())));
+                stats.rows.push_back(Row(Tr("Teaches"), SkillName(book->GetSkill())));
         }
         // The card text, not the book's own -- that runs to pages.
         RE::BSString text;
@@ -392,23 +397,23 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
     }
     if (auto *gem = object->As<RE::TESSoulGem>())
     {
-        item.type = "Soul Gem";
-        stats.rows.push_back(Row("Capacity", SoulName(gem->GetMaximumCapacity())));
+        item.type = Tr("Soul Gem");
+        stats.rows.push_back(Row(Tr("Capacity"), SoulName(gem->GetMaximumCapacity())));
         // The soul in this particular gem lives on the entry, not the record:
         // a filled Grand gem is the same base object as an empty one.
-        stats.rows.push_back(Row("Contains", SoulName(entry ? entry->GetSoulLevel() : gem->GetContainedSoul())));
+        stats.rows.push_back(Row(Tr("Contains"), SoulName(entry ? entry->GetSoulLevel() : gem->GetContainedSoul())));
         return;
     }
     if (object->Is(RE::FormType::KeyMaster))
     {
-        item.type = "Key";
+        item.type = Tr("Key");
         item.category = ItemCategory::Keys;
         return;
     }
     if (object->Is(RE::FormType::Light))
     {
         // With the weapons for the same reason as a shield: it takes a hand.
-        item.type = "Torch";
+        item.type = Tr("Torch");
         item.category = ItemCategory::Weapons;
         item.equipable = true;
         item.handItem = true;
@@ -417,7 +422,7 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         return;
     }
     if (object->Is(RE::FormType::Misc))
-        item.type = "Misc";
+        item.type = Tr("Misc");
 }
 
 } // namespace
@@ -466,28 +471,28 @@ const char *DisplayName(ItemCategory category)
     switch (category)
     {
     case ItemCategory::Weapons:
-        return "Weapons";
+        return Tr("Weapons");
     case ItemCategory::Arrows:
-        return "Arrows";
+        return Tr("Arrows");
     case ItemCategory::Armor:
-        return "Armor";
+        return Tr("Armor");
     case ItemCategory::Potions:
-        return "Potions";
+        return Tr("Potions");
     case ItemCategory::Poisons:
-        return "Poisons";
+        return Tr("Poisons");
     case ItemCategory::Food:
-        return "Food";
+        return Tr("Food");
     case ItemCategory::Ingredients:
-        return "Ingredients";
+        return Tr("Ingredients");
     case ItemCategory::Scrolls:
-        return "Scrolls";
+        return Tr("Scrolls");
     case ItemCategory::Books:
-        return "Books";
+        return Tr("Books");
     case ItemCategory::Keys:
-        return "Keys";
+        return Tr("Keys");
     case ItemCategory::Misc:
     default:
-        return "Misc";
+        return Tr("Misc");
     }
 }
 
@@ -534,17 +539,17 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
         static auto *vendor = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000917E8);
         item.artifact = (artifact && keyworded->HasKeyword(artifact)) || (vendor && keyworded->HasKeyword(vendor));
     }
-    SheetSection stats{"Stats", {}, {}};
+    SheetSection stats{Tr("Stats"), {}, {}};
     {
         // The FormID first, as the spell page has it: what the console
         // and the log call the thing.
         char id[16];
         std::snprintf(id, sizeof(id), "%08X", object->GetFormID());
-        stats.rows.push_back(Row("Base ID", id));
+        stats.rows.push_back(Row(Tr("Base ID"), id));
     }
     // The Type row's index: after the id.
     const std::size_t typeRow = stats.rows.size();
-    stats.rows.push_back(Row("Type", ""));
+    stats.rows.push_back(Row(Tr("Type"), ""));
     Classify(actor, object, entry, item, stats);
     // In hand, by this row's own lists: with the plain dagger in one hand
     // and the tempered one in the other, the form is in both hands and
@@ -567,16 +572,15 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
     stats.rows[typeRow].value = item.type;
     if (item.count > 1)
     {
-        stats.rows.push_back(Row("Count", std::to_string(item.count)));
-        stats.rows.push_back(Row("Weight", Fmt("%.1f", item.weight) + " each, " +
-                                               Fmt("%.1f", item.weight * static_cast<float>(item.count)) + " in all"));
-        stats.rows.push_back(
-            Row("Value", std::to_string(item.value) + " each, " + std::to_string(item.value * item.count) + " in all"));
+        stats.rows.push_back(Row(Tr("Count"), std::to_string(item.count)));
+        stats.rows.push_back(Row(Tr("Weight"), TrFormat("{} each, {} in all", Fmt("%.1f", item.weight),
+                                                        Fmt("%.1f", item.weight * static_cast<float>(item.count)))));
+        stats.rows.push_back(Row(Tr("Value"), TrFormat("{} each, {} in all", item.value, item.value * item.count)));
     }
     else
     {
-        stats.rows.push_back(Row("Weight", Fmt("%.1f", item.weight)));
-        stats.rows.push_back(Row("Value", std::to_string(item.value)));
+        stats.rows.push_back(Row(Tr("Weight"), Fmt("%.1f", item.weight)));
+        stats.rows.push_back(Row(Tr("Value"), std::to_string(item.value)));
     }
     // An outfit piece: added by the actor's Outfit record when they
     // loaded and marked on its entry, which is what the trade menu hides
@@ -589,7 +593,7 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
         if (outfit)
         {
             SheetRow row;
-            row.label = "Outfit";
+            row.label = Tr("Outfit");
             row.icon = kGlyphTick;
             stats.rows.push_back(std::move(row));
         }
@@ -599,7 +603,7 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
         // The pin glyph beside the tick is added by MarkPins, which runs
         // after this scan and is the one that knows the pins.
         SheetRow equipped;
-        equipped.label = "Equipped";
+        equipped.label = Tr("Equipped");
         equipped.icon = kGlyphTick;
         stats.rows.push_back(std::move(equipped));
     }
@@ -616,10 +620,10 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
             auto *dose = list ? list->GetByType<RE::ExtraPoison>() : nullptr;
             if (!dose || !dose->poison)
                 continue;
-            item.poison = SheetSection{"Poison", {Row(NameOf(dose->poison), std::to_string(dose->count))}, {}};
+            item.poison = SheetSection{Tr("Poison"), {Row(NameOf(dose->poison), std::to_string(dose->count))}, {}};
             item.poisonEffects =
                 EffectsOf(actor, dose->poison, [](const RE::Effect *e) { return e->effectItem.magnitude; });
-            item.poisonEffects.title = "Poison Effects";
+            item.poisonEffects.title = Tr("Poison Effects");
             break;
         }
     }
@@ -647,12 +651,12 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
         }
         else if (const auto left = entry->GetEnchantmentCharge())
             charge = Fmt("%.0f%%", *left);
-        item.enchantment = SheetSection{"Enchantment", {Row(name.empty() ? "(unnamed)" : name, charge)}, {}};
+        item.enchantment = SheetSection{Tr("Enchantment"), {Row(name.empty() ? Tr("(unnamed)") : name, charge)}, {}};
         item.effectsTable = EffectsOf(actor, ench, [](const RE::Effect *e) { return e->effectItem.magnitude; });
         // Named for the enchantment, as a poison's are for the poison:
         // a bare "Effects" under an "Enchantment" heading read as a
         // second thing.
-        item.effectsTable.title = "Enchantment Effects";
+        item.effectsTable.title = Tr("Enchantment Effects");
     }
 
     out.push_back(std::move(item));

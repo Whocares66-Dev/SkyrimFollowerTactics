@@ -4,6 +4,7 @@
 
 #include "game/Pins.h"
 
+#include "core/I18n.h"
 #include "core/Marks.h"
 #include "core/Watchdog.h"
 #include "game/Addresses.h"
@@ -1241,8 +1242,8 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
         for (const Pin &pin : shadowing)
         {
             const auto *holder = RE::TESForm::LookupByID(pin.thing.form);
-            const std::string name = NameOr(holder, "Something");
-            lines += (lines.empty() ? "" : "\n") + std::string(name) + " is pinned";
+            const std::string name = NameOr(holder, ft::i18n::Tr("Something"));
+            lines += (lines.empty() ? "" : "\n") + ft::i18n::TrFormat("{} is pinned", name);
         }
         return lines;
     };
@@ -1281,7 +1282,7 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
         const ft::RowAside set = ft::RowAsideOf(asPlanned, DescribeHoldable(actor, thing, row.variant), dualWield);
         aside = set.aside;
         if (set.cannotDualWield)
-            asideBy = "Cannot dual wield";
+            asideBy = ft::i18n::Tr("Cannot dual wield");
         else if (set.aside)
             asideBy = why(set.shadowing);
     };

@@ -1,5 +1,7 @@
 #include "Evaluator.h"
 
+#include "core/I18n.h"
+
 #include <algorithm>
 #include <optional>
 
@@ -1046,66 +1048,66 @@ const char *Explain(Verdict v, ActionKind action) noexcept
         // potions and no Fortify carries plenty and still has nothing this
         // rule can drink, so it says which.
         if (IsConsume(action))
-            return IsAny(action) ? "carries nothing that buffs" : "none in inventory";
+            return IsAny(action) ? N_("carries nothing that buffs") : N_("none in inventory");
         switch (action)
         {
         case ActionKind::ApplyAny:
-            return "carries no poison";
+            return N_("carries no poison");
         case ActionKind::CastSpell:
         case ActionKind::EquipSpell:
-            return "does not know that spell";
+            return N_("does not know that spell");
         case ActionKind::UsePower:
-            return "does not know that power";
+            return N_("does not know that power");
         case ActionKind::Shout:
-            return "does not know that shout";
+            return N_("does not know that shout");
         case ActionKind::UseScroll:
-            return "does not carry that scroll";
+            return N_("does not carry that scroll");
         case ActionKind::EquipWeapon:
-            return "does not carry that weapon";
+            return N_("does not carry that weapon");
         case ActionKind::EquipArrows:
-            return "does not carry those arrows";
+            return N_("does not carry those arrows");
         case ActionKind::EquipStrongestArrows:
         case ActionKind::EquipWeakestArrows:
-            return "carries no arrows";
+            return N_("carries no arrows");
         case ActionKind::EquipArmor:
-            return "does not carry that armour";
+            return N_("does not carry that armour");
         default:
             return ToString(v);
         }
 
     case Verdict::NoTarget:
         if (action == ActionKind::Attack || IsBlow(action))
-            return "no enemy to point at";
+            return N_("no enemy to point at");
         return ToString(v);
 
     case Verdict::NoMeleeWeapon:
-        return action == ActionKind::PowerAttack ? "nothing to power attack with" : "nothing to bash with";
+        return action == ActionKind::PowerAttack ? N_("nothing to power attack with") : N_("nothing to bash with");
 
     case Verdict::NothingToPoison:
-        return "no weapon in hand can be poisoned";
+        return N_("no weapon in hand can be poisoned");
 
     case Verdict::NothingToCharge:
-        return "no enchanted weapon in hand";
+        return N_("no enchanted weapon in hand");
 
     case Verdict::EffectActive:
         if (IsEquip(action))
-            return "already pinned, or nothing of that kind pinned to let go";
+            return N_("already pinned, or nothing of that kind pinned to let go");
         if (action == ActionKind::Attack)
-            return "already fighting them";
+            return N_("already fighting them");
         if (action == ActionKind::UsePower)
-            return "that power is still running";
+            return N_("that power is still running");
         if (action == ActionKind::Shout)
-            return "that shout is still running";
+            return N_("that shout is still running");
         if (IsApply(action))
-            return "every weapon in hand is already poisoned";
+            return N_("every weapon in hand is already poisoned");
         if (IsCharge(action))
-            return "no weapon in hand needs a charge";
+            return N_("no weapon in hand needs a charge");
         // Only Drink reaches here; Apply is answered above. The roll only
         // lands on a buff that would gain something, so reaching this means
         // none carried would.
         if (IsAny(action))
-            return "every buff carried is already up";
-        return action == ActionKind::CastSpell ? "that spell is still running" : "previous dose still active";
+            return N_("every buff carried is already up");
+        return action == ActionKind::CastSpell ? N_("that spell is still running") : N_("previous dose still active");
 
     default:
         return ToString(v);
@@ -1117,57 +1119,57 @@ const char *ToString(Verdict v) noexcept
     switch (v)
     {
     case Verdict::Fired:
-        return "fired";
+        return N_("fired");
     case Verdict::Disabled:
-        return "disabled";
+        return N_("disabled");
     case Verdict::ConditionFalse:
-        return "does not meet condition";
+        return N_("does not meet condition");
     case Verdict::ActionCooldown:
-        return "action used too recently";
+        return N_("action used too recently");
     case Verdict::NoTarget:
-        return "no target";
+        return N_("no target");
     case Verdict::NoResource:
-        return "none in inventory";
+        return N_("none in inventory");
     case Verdict::NotInCombat:
-        return "not in a fight";
+        return N_("not in a fight");
     case Verdict::NothingToPoison:
-        return "no weapon to poison";
+        return N_("no weapon to poison");
     case Verdict::NothingToCharge:
-        return "no enchanted weapon";
+        return N_("no enchanted weapon");
     case Verdict::CannotAfford:
-        return "not enough magicka";
+        return N_("not enough magicka");
     case Verdict::CannotDualCast:
-        return "cannot dual cast that spell";
+        return N_("cannot dual cast that spell");
     case Verdict::NoMeleeWeapon:
-        return "nothing in hand for that blow";
+        return N_("nothing in hand for that blow");
     case Verdict::NoPerk:
-        return "lacks the perk Settings requires for it";
+        return N_("lacks the perk Settings requires for it");
     case Verdict::NoStamina:
-        return "not enough stamina";
+        return N_("not enough stamina");
     case Verdict::OutOfReach:
-        return "out of reach";
+        return N_("out of reach");
     case Verdict::EffectActive:
-        return "previous dose still active";
+        return N_("previous dose still active");
     case Verdict::AboveSkill:
-        return "above the follower's skill";
+        return N_("above the follower's skill");
     case Verdict::Outranked:
-        return "a rule above holds that hand or slot";
+        return N_("a rule above holds that hand or slot");
     case Verdict::Unsupported:
-        return "unsupported";
+        return N_("unsupported");
     case Verdict::Busy:
-        return "busy, skipped this evaluation";
+        return N_("busy, skipped this evaluation");
     case Verdict::Casting:
-        return "mid-cast on their own spell, waiting";
+        return N_("mid-cast on their own spell, waiting");
     case Verdict::Recovering:
-        return "shout on cooldown, waiting";
+        return N_("shout on cooldown, waiting");
     case Verdict::PowerUsed:
-        return "power already used today";
+        return N_("power already used today");
     case Verdict::InvalidCondition:
-        return "invalid condition";
+        return N_("invalid condition");
     case Verdict::Queued:
-        return "waiting its turn behind the rule above on the same edge";
+        return N_("waiting its turn behind the rule above on the same edge");
     case Verdict::NotReached:
-        return "not reached";
+        return N_("not reached");
     }
     return "?";
 }

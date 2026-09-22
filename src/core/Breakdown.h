@@ -18,6 +18,8 @@
 // the game. The panel draws it (game/UI.cpp); the sensors fill it.
 #pragma once
 
+#include "core/I18n.h"
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -57,7 +59,7 @@ struct Breakdown
     double total{0.0};
     int decimals{0};  // the fewest decimals an amount or the total prints with; more where it has them, two at most
     std::string unit; // "%", " s"; appended to every amount but a factor
-    std::string totalLabel{"Total"};
+    std::string totalLabel{i18n::Tr("Total")};
 
     [[nodiscard]] bool empty() const noexcept
     {

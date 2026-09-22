@@ -1,10 +1,14 @@
 #include "Vocabulary.h"
 
+#include "core/I18n.h"
+
 #include <array>
 #include <utility>
 
 namespace ft
 {
+using i18n::Tr;
+
 namespace
 {
 
@@ -37,7 +41,7 @@ template <typename Enum, std::size_t N>
     for (const auto &e : table)
     {
         if (e.value == value)
-            return e.display;
+            return Tr(e.display);
     }
     return "Unknown";
 }
@@ -56,62 +60,62 @@ template <typename Enum, std::size_t N>
 }
 
 constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
-    {SubjectKind::Self, "self", "Self"},
-    {SubjectKind::Player, "player", "Player"},
-    {SubjectKind::Ally, "ally", "Ally"},
-    {SubjectKind::Enemy, "enemy", "Enemy"},
-    {SubjectKind::Follower, "follower", "Follower"},
-    {SubjectKind::Corpse, "corpse", "Corpse"},
+    {SubjectKind::Self, "self", N_("Self")},
+    {SubjectKind::Player, "player", N_("Player")},
+    {SubjectKind::Ally, "ally", N_("Ally")},
+    {SubjectKind::Enemy, "enemy", N_("Enemy")},
+    {SubjectKind::Follower, "follower", N_("Follower")},
+    {SubjectKind::Corpse, "corpse", N_("Corpse")},
 }};
 
 constexpr std::array<Entry<PredicateKind>, 37> kPredicates{{
-    {PredicateKind::Any, "any", "Any"}, // Dragon Age's word: "Enemy: Any", "Self: Any"
-    {PredicateKind::CombatBegins, "combat-begins", "Combat start"},
-    {PredicateKind::CombatEnds, "combat-ends", "Combat end"},
-    {PredicateKind::HealthPctBelow, "health-pct-below", "Health"},
-    {PredicateKind::StaminaPctBelow, "stamina-pct-below", "Stamina"},
-    {PredicateKind::MagickaPctBelow, "magicka-pct-below", "Magicka"},
-    {PredicateKind::Type, "type", "Type"},
-    {PredicateKind::Status, "status", "Status"},
-    {PredicateKind::ArmorPctBelow, "armor-pct-below", "Armor"},
-    {PredicateKind::ResistancePctBelow, "resistance-pct-below", "Resistance"},
-    {PredicateKind::Attacking, "attacking", "Attacking"},
-    {PredicateKind::AttackedBy, "attacked-by", "Attacked by"},
-    {PredicateKind::HitType, "hit-type", "Attacks with"},
-    {PredicateKind::HitBy, "hit-by", "Hit by"},
-    {PredicateKind::HealthLowest, "health-lowest", "Health lowest"},
-    {PredicateKind::HealthHighest, "health-highest", "Health highest"},
-    {PredicateKind::StaminaLowest, "stamina-lowest", "Stamina lowest"},
-    {PredicateKind::StaminaHighest, "stamina-highest", "Stamina highest"},
-    {PredicateKind::MagickaLowest, "magicka-lowest", "Magicka lowest"},
-    {PredicateKind::MagickaHighest, "magicka-highest", "Magicka highest"},
-    {PredicateKind::ArmorLowest, "armor-lowest", "Armor lowest"},
-    {PredicateKind::ArmorHighest, "armor-highest", "Armor highest"},
-    {PredicateKind::ResistanceLowest, "resistance-lowest", "Resistance lowest"},
-    {PredicateKind::ResistanceHighest, "resistance-highest", "Resistance highest"},
-    {PredicateKind::HealthPctAbove, "health-pct-above", "Health"},
-    {PredicateKind::StaminaPctAbove, "stamina-pct-above", "Stamina"},
-    {PredicateKind::MagickaPctAbove, "magicka-pct-above", "Magicka"},
-    {PredicateKind::ArmorPctAbove, "armor-pct-above", "Armor"},
-    {PredicateKind::ResistancePctAbove, "resistance-pct-above", "Resistance"},
-    {PredicateKind::SummonNone, "summon-none", "Summon: none"},
-    {PredicateKind::SummonActive, "summon-active", "Summon: active"},
-    {PredicateKind::CorpseNone, "corpse-none", "None"},
-    {PredicateKind::LevelHighest, "level-highest", "Highest level"},
-    {PredicateKind::LevelLowest, "level-lowest", "Lowest level"},
-    {PredicateKind::WeaponChargeNeeded, "weapon-charge-needed", "Weapon charge: needed"},
-    {PredicateKind::WeaponPoisonNone, "weapon-poison-none", "Weapon poison: none"},
-    {PredicateKind::WeaponPoisonActive, "weapon-poison-active", "Weapon poison: active"},
+    {PredicateKind::Any, "any", N_("Any")}, // Dragon Age's word: "Enemy: Any", "Self: Any"
+    {PredicateKind::CombatBegins, "combat-begins", N_("Combat start")},
+    {PredicateKind::CombatEnds, "combat-ends", N_("Combat end")},
+    {PredicateKind::HealthPctBelow, "health-pct-below", N_("Health")},
+    {PredicateKind::StaminaPctBelow, "stamina-pct-below", N_("Stamina")},
+    {PredicateKind::MagickaPctBelow, "magicka-pct-below", N_("Magicka")},
+    {PredicateKind::Type, "type", N_("Type")},
+    {PredicateKind::Status, "status", N_("Status")},
+    {PredicateKind::ArmorPctBelow, "armor-pct-below", N_("Armor")},
+    {PredicateKind::ResistancePctBelow, "resistance-pct-below", N_("Resistance")},
+    {PredicateKind::Attacking, "attacking", N_("Attacking")},
+    {PredicateKind::AttackedBy, "attacked-by", N_("Attacked by")},
+    {PredicateKind::HitType, "hit-type", N_("Attacks with")},
+    {PredicateKind::HitBy, "hit-by", N_("Hit by")},
+    {PredicateKind::HealthLowest, "health-lowest", N_("Health lowest")},
+    {PredicateKind::HealthHighest, "health-highest", N_("Health highest")},
+    {PredicateKind::StaminaLowest, "stamina-lowest", N_("Stamina lowest")},
+    {PredicateKind::StaminaHighest, "stamina-highest", N_("Stamina highest")},
+    {PredicateKind::MagickaLowest, "magicka-lowest", N_("Magicka lowest")},
+    {PredicateKind::MagickaHighest, "magicka-highest", N_("Magicka highest")},
+    {PredicateKind::ArmorLowest, "armor-lowest", N_("Armor lowest")},
+    {PredicateKind::ArmorHighest, "armor-highest", N_("Armor highest")},
+    {PredicateKind::ResistanceLowest, "resistance-lowest", N_("Resistance lowest")},
+    {PredicateKind::ResistanceHighest, "resistance-highest", N_("Resistance highest")},
+    {PredicateKind::HealthPctAbove, "health-pct-above", N_("Health")},
+    {PredicateKind::StaminaPctAbove, "stamina-pct-above", N_("Stamina")},
+    {PredicateKind::MagickaPctAbove, "magicka-pct-above", N_("Magicka")},
+    {PredicateKind::ArmorPctAbove, "armor-pct-above", N_("Armor")},
+    {PredicateKind::ResistancePctAbove, "resistance-pct-above", N_("Resistance")},
+    {PredicateKind::SummonNone, "summon-none", N_("Summon: none")},
+    {PredicateKind::SummonActive, "summon-active", N_("Summon: active")},
+    {PredicateKind::CorpseNone, "corpse-none", N_("None")},
+    {PredicateKind::LevelHighest, "level-highest", N_("Highest level")},
+    {PredicateKind::LevelLowest, "level-lowest", N_("Lowest level")},
+    {PredicateKind::WeaponChargeNeeded, "weapon-charge-needed", N_("Weapon charge: needed")},
+    {PredicateKind::WeaponPoisonNone, "weapon-poison-none", N_("Weapon poison: none")},
+    {PredicateKind::WeaponPoisonActive, "weapon-poison-active", N_("Weapon poison: active")},
 }};
 
 constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
-    {ActionTargetKind::Self, "self", "Self"},
-    {ActionTargetKind::Player, "player", "Player"},
-    {ActionTargetKind::Ally, "ally", "Ally"},
-    {ActionTargetKind::Enemy, "enemy", "Enemy"},
-    {ActionTargetKind::Attacker, "attacker", "Attacker"},
-    {ActionTargetKind::Follower, "follower", "Follower"},
-    {ActionTargetKind::Corpse, "corpse", "Corpse"},
+    {ActionTargetKind::Self, "self", N_("Self")},
+    {ActionTargetKind::Player, "player", N_("Player")},
+    {ActionTargetKind::Ally, "ally", N_("Ally")},
+    {ActionTargetKind::Enemy, "enemy", N_("Enemy")},
+    {ActionTargetKind::Attacker, "attacker", N_("Attacker")},
+    {ActionTargetKind::Follower, "follower", N_("Follower")},
+    {ActionTargetKind::Corpse, "corpse", N_("Corpse")},
 }};
 
 constexpr std::array<Entry<ActionKind>, 33> kActions{{
@@ -119,108 +123,108 @@ constexpr std::array<Entry<ActionKind>, 33> kActions{{
     // type, because that is part of the behaviour a profile is asking for:
     // "drink-weakest" -- don't burn a strong potion on a scratch -- beside
     // "drink-strongest", the effect named on the action.
-    {ActionKind::None, "none", "None"},
-    {ActionKind::Attack, "attack", "Focus on target"},
-    {ActionKind::PowerAttack, "power-attack", "Power Attack"},
-    {ActionKind::Bash, "bash", "Bash"},
-    {ActionKind::PowerBash, "power-bash", "Power Bash"},
-    {ActionKind::EquipWeapon, "equip-weapon", "Equip weapon"},
-    {ActionKind::EquipArrows, "equip-arrows", "Equip arrows"},
-    {ActionKind::EquipStrongestArrows, "equip-strongest-arrows", "Equip strongest arrows"},
-    {ActionKind::EquipWeakestArrows, "equip-weakest-arrows", "Equip weakest arrows"},
-    {ActionKind::EquipSpell, "equip-spell", "Equip spell"},
-    {ActionKind::EquipArmor, "equip-armor", "Equip armor"},
-    {ActionKind::ChargeStrongestSoulGem, "charge-strongest-soul-gem", "Charge with strongest soul gem"},
-    {ActionKind::ChargeWeakestSoulGem, "charge-weakest-soul-gem", "Charge with weakest soul gem"},
-    {ActionKind::ChargeSoulGem, "charge-soul-gem", "Charge with soul gem"},
-    {ActionKind::ApplyStrongest, "apply-strongest", "Apply strongest poison"},
-    {ActionKind::ApplyWeakest, "apply-weakest", "Apply weakest poison"},
-    {ActionKind::ApplyAny, "apply-any", "Apply any poison"},
-    {ActionKind::ApplyPoison, "apply-poison", "Apply poison"},
-    {ActionKind::DrinkStrongest, "drink-strongest", "Drink strongest potion"},
-    {ActionKind::DrinkWeakest, "drink-weakest", "Drink weakest potion"},
-    {ActionKind::DrinkAny, "drink-any", "Drink any buff potion"},
-    {ActionKind::DrinkPotion, "drink-potion", "Drink potion"},
-    {ActionKind::EatStrongestFood, "eat-strongest-food", "Eat strongest food"},
-    {ActionKind::EatWeakestFood, "eat-weakest-food", "Eat weakest food"},
-    {ActionKind::EatAnyFood, "eat-any-food", "Eat any buff food"},
-    {ActionKind::EatStrongestIngredient, "eat-strongest-ingredient", "Eat strongest ingredient"},
-    {ActionKind::EatWeakestIngredient, "eat-weakest-ingredient", "Eat weakest ingredient"},
-    {ActionKind::EatFood, "eat-food", "Eat food"},
-    {ActionKind::EatIngredient, "eat-ingredient", "Eat ingredient"},
-    {ActionKind::CastSpell, "cast-spell", "Cast spell"},
-    {ActionKind::UsePower, "use-power", "Use power"},
-    {ActionKind::Shout, "shout", "Shout"},
-    {ActionKind::UseScroll, "use-scroll", "Scroll"},
+    {ActionKind::None, "none", N_("None")},
+    {ActionKind::Attack, "attack", N_("Focus on target")},
+    {ActionKind::PowerAttack, "power-attack", N_("Power Attack")},
+    {ActionKind::Bash, "bash", N_("Bash")},
+    {ActionKind::PowerBash, "power-bash", N_("Power Bash")},
+    {ActionKind::EquipWeapon, "equip-weapon", N_("Equip weapon")},
+    {ActionKind::EquipArrows, "equip-arrows", N_("Equip arrows")},
+    {ActionKind::EquipStrongestArrows, "equip-strongest-arrows", N_("Equip strongest arrows")},
+    {ActionKind::EquipWeakestArrows, "equip-weakest-arrows", N_("Equip weakest arrows")},
+    {ActionKind::EquipSpell, "equip-spell", N_("Equip spell")},
+    {ActionKind::EquipArmor, "equip-armor", N_("Equip armor")},
+    {ActionKind::ChargeStrongestSoulGem, "charge-strongest-soul-gem", N_("Charge with strongest soul gem")},
+    {ActionKind::ChargeWeakestSoulGem, "charge-weakest-soul-gem", N_("Charge with weakest soul gem")},
+    {ActionKind::ChargeSoulGem, "charge-soul-gem", N_("Charge with soul gem")},
+    {ActionKind::ApplyStrongest, "apply-strongest", N_("Apply strongest poison")},
+    {ActionKind::ApplyWeakest, "apply-weakest", N_("Apply weakest poison")},
+    {ActionKind::ApplyAny, "apply-any", N_("Apply any poison")},
+    {ActionKind::ApplyPoison, "apply-poison", N_("Apply poison")},
+    {ActionKind::DrinkStrongest, "drink-strongest", N_("Drink strongest potion")},
+    {ActionKind::DrinkWeakest, "drink-weakest", N_("Drink weakest potion")},
+    {ActionKind::DrinkAny, "drink-any", N_("Drink any buff potion")},
+    {ActionKind::DrinkPotion, "drink-potion", N_("Drink potion")},
+    {ActionKind::EatStrongestFood, "eat-strongest-food", N_("Eat strongest food")},
+    {ActionKind::EatWeakestFood, "eat-weakest-food", N_("Eat weakest food")},
+    {ActionKind::EatAnyFood, "eat-any-food", N_("Eat any buff food")},
+    {ActionKind::EatStrongestIngredient, "eat-strongest-ingredient", N_("Eat strongest ingredient")},
+    {ActionKind::EatWeakestIngredient, "eat-weakest-ingredient", N_("Eat weakest ingredient")},
+    {ActionKind::EatFood, "eat-food", N_("Eat food")},
+    {ActionKind::EatIngredient, "eat-ingredient", N_("Eat ingredient")},
+    {ActionKind::CastSpell, "cast-spell", N_("Cast spell")},
+    {ActionKind::UsePower, "use-power", N_("Use power")},
+    {ActionKind::Shout, "shout", N_("Shout")},
+    {ActionKind::UseScroll, "use-scroll", N_("Scroll")},
 }};
 
 // The hand an equip rule names. Both is one value, not two flags, on the
 // wire: a profile says "both", not a bit set.
 constexpr std::array<Entry<Hand>, 4> kHands{{
-    {Hand::None, "none", "None"},
-    {Hand::Left, "left", "Left"},
-    {Hand::Right, "right", "Right"},
-    {Hand::Both, "both", "Both"},
+    {Hand::None, "none", N_("None")},
+    {Hand::Left, "left", N_("Left")},
+    {Hand::Right, "right", N_("Right")},
+    {Hand::Both, "both", N_("Both")},
 }};
 
 // A status, as the rule names it and as the menu shows it.
 constexpr std::array<Entry<StatusKind>, 14> kStatuses{{
-    {StatusKind::Poisoned, "poisoned", "Poisoned"},
-    {StatusKind::Burning, "burning", "Burning"},
-    {StatusKind::Frostbitten, "frostbitten", "Frostbitten"},
-    {StatusKind::Shocked, "shocked", "Shocked"},
-    {StatusKind::Paralysed, "paralyzed", "Paralyzed"},
-    {StatusKind::Staggered, "staggered", "Staggered"},
-    {StatusKind::Fleeing, "fleeing", "Fleeing"},
-    {StatusKind::BleedingOut, "bleeding-out", "Bleeding out"},
-    {StatusKind::Invisible, "invisible", "Invisible"},
-    {StatusKind::Ethereal, "ethereal", "Ethereal"},
-    {StatusKind::Blocking, "blocking", "Blocking"},
-    {StatusKind::Casting, "casting", "Casting"},
-    {StatusKind::Sneaking, "sneaking", "Sneaking"},
-    {StatusKind::Diseased, "diseased", "Diseased"},
+    {StatusKind::Poisoned, "poisoned", N_("Poisoned")},
+    {StatusKind::Burning, "burning", N_("Burning")},
+    {StatusKind::Frostbitten, "frostbitten", N_("Frostbitten")},
+    {StatusKind::Shocked, "shocked", N_("Shocked")},
+    {StatusKind::Paralysed, "paralyzed", N_("Paralyzed")},
+    {StatusKind::Staggered, "staggered", N_("Staggered")},
+    {StatusKind::Fleeing, "fleeing", N_("Fleeing")},
+    {StatusKind::BleedingOut, "bleeding-out", N_("Bleeding out")},
+    {StatusKind::Invisible, "invisible", N_("Invisible")},
+    {StatusKind::Ethereal, "ethereal", N_("Ethereal")},
+    {StatusKind::Blocking, "blocking", N_("Blocking")},
+    {StatusKind::Casting, "casting", N_("Casting")},
+    {StatusKind::Sneaking, "sneaking", N_("Sneaking")},
+    {StatusKind::Diseased, "diseased", N_("Diseased")},
 }};
 
 // A kind of being, as the rule names it and as the menu shows it. A group's
 // head reads as the group: "Enemy: Man".
 constexpr std::array<Entry<TypeKind>, 26> kTypes{{
-    {TypeKind::Man, "man", "Man"},
-    {TypeKind::Breton, "breton", "Breton"},
-    {TypeKind::Imperial, "imperial", "Imperial"},
-    {TypeKind::Nord, "nord", "Nord"},
-    {TypeKind::Redguard, "redguard", "Redguard"},
-    {TypeKind::Elf, "elf", "Elf"},
-    {TypeKind::DarkElf, "dark-elf", "Dark Elf"},
-    {TypeKind::Falmer, "falmer", "Falmer"},
-    {TypeKind::HighElf, "high-elf", "High Elf"},
-    {TypeKind::SnowElf, "snow-elf", "Snow Elf"},
-    {TypeKind::WoodElf, "wood-elf", "Wood Elf"},
-    {TypeKind::Beast, "beast", "Beast"},
-    {TypeKind::Argonian, "argonian", "Argonian"},
-    {TypeKind::Khajiit, "khajiit", "Khajiit"},
-    {TypeKind::Orc, "orc", "Orc"},
-    {TypeKind::Creature, "creature", "Creature"},
-    {TypeKind::Animal, "animal", "Animal"},
-    {TypeKind::Automaton, "automaton", "Automaton"},
-    {TypeKind::Daedra, "daedra", "Daedra"},
-    {TypeKind::Dragon, "dragon", "Dragon"},
-    {TypeKind::Giant, "giant", "Giant"},
-    {TypeKind::Spriggan, "spriggan", "Spriggan"},
-    {TypeKind::Troll, "troll", "Troll"},
-    {TypeKind::Undead, "undead", "Undead"},
-    {TypeKind::Vampire, "vampire", "Vampire"},
-    {TypeKind::Werewolf, "werewolf", "Werewolf"},
+    {TypeKind::Man, "man", N_("Man")},
+    {TypeKind::Breton, "breton", N_("Breton")},
+    {TypeKind::Imperial, "imperial", N_("Imperial")},
+    {TypeKind::Nord, "nord", N_("Nord")},
+    {TypeKind::Redguard, "redguard", N_("Redguard")},
+    {TypeKind::Elf, "elf", N_("Elf")},
+    {TypeKind::DarkElf, "dark-elf", N_("Dark Elf")},
+    {TypeKind::Falmer, "falmer", N_("Falmer")},
+    {TypeKind::HighElf, "high-elf", N_("High Elf")},
+    {TypeKind::SnowElf, "snow-elf", N_("Snow Elf")},
+    {TypeKind::WoodElf, "wood-elf", N_("Wood Elf")},
+    {TypeKind::Beast, "beast", N_("Beast")},
+    {TypeKind::Argonian, "argonian", N_("Argonian")},
+    {TypeKind::Khajiit, "khajiit", N_("Khajiit")},
+    {TypeKind::Orc, "orc", N_("Orc")},
+    {TypeKind::Creature, "creature", N_("Creature")},
+    {TypeKind::Animal, "animal", N_("Animal")},
+    {TypeKind::Automaton, "automaton", N_("Automaton")},
+    {TypeKind::Daedra, "daedra", N_("Daedra")},
+    {TypeKind::Dragon, "dragon", N_("Dragon")},
+    {TypeKind::Giant, "giant", N_("Giant")},
+    {TypeKind::Spriggan, "spriggan", N_("Spriggan")},
+    {TypeKind::Troll, "troll", N_("Troll")},
+    {TypeKind::Undead, "undead", N_("Undead")},
+    {TypeKind::Vampire, "vampire", N_("Vampire")},
+    {TypeKind::Werewolf, "werewolf", N_("Werewolf")},
 }};
 
 constexpr std::array<Entry<DamageKind>, 8> kDamageKinds{{
-    {DamageKind::Melee, "melee", "Melee"},
-    {DamageKind::Ranged, "ranged", "Ranged"},
-    {DamageKind::Magic, "magic", "Magic"},
-    {DamageKind::Fire, "fire", "Fire"},
-    {DamageKind::Frost, "frost", "Frost"},
-    {DamageKind::Shock, "shock", "Shock"},
-    {DamageKind::Poison, "poison", "Poison"},
-    {DamageKind::Any, "any", "Any"},
+    {DamageKind::Melee, "melee", N_("Melee")},
+    {DamageKind::Ranged, "ranged", N_("Ranged")},
+    {DamageKind::Magic, "magic", N_("Magic")},
+    {DamageKind::Fire, "fire", N_("Fire")},
+    {DamageKind::Frost, "frost", N_("Frost")},
+    {DamageKind::Shock, "shock", N_("Shock")},
+    {DamageKind::Poison, "poison", N_("Poison")},
+    {DamageKind::Any, "any", N_("Any")},
 }};
 
 // Every enumerator must appear in its table, or a rule would serialise as
@@ -383,28 +387,28 @@ std::string_view Describe(PredicateKind v) noexcept
     case PredicateKind::Any:
         return ""; // says it all in its name; no tooltip
     case PredicateKind::HealthPctBelow:
-        return "Health under this share of its maximum.";
+        return Tr("Health under this share of its maximum.");
     // Only where the name does not say it all: a tooltip that repeats the
     // label, or common sense, is noise (2026-09-18).
     case PredicateKind::CombatBegins:
-        return "Runs immediately after combat starts";
+        return Tr("Runs immediately after combat starts");
     case PredicateKind::CombatEnds:
-        return "Runs immediately after combat ends";
+        return Tr("Runs immediately after combat ends");
     case PredicateKind::HitBy:
-        return "In the last few seconds.";
+        return Tr("In the last few seconds.");
     case PredicateKind::Attacking:
-        return "This enemy's target is that party member.";
+        return Tr("This enemy's target is that party member.");
     case PredicateKind::AttackedBy:
-        return "That party member's target is this enemy.";
+        return Tr("That party member's target is this enemy.");
     case PredicateKind::SummonNone:
     case PredicateKind::SummonActive:
-        return "A summon or a raised corpse.";
+        return Tr("A summon or a raised corpse.");
     case PredicateKind::WeaponChargeNeeded:
-        return "An enchanted weapon in hand cannot pay for one more hit.";
+        return Tr("An enchanted weapon in hand cannot pay for one more hit.");
     case PredicateKind::CorpseNone:
     case PredicateKind::LevelHighest:
     case PredicateKind::LevelLowest:
-        return "Counts only corpses the rule's Reanimate spell can raise.";
+        return Tr("Counts only corpses the rule's Reanimate spell can raise.");
     default:
         return "";
     }
@@ -415,23 +419,23 @@ std::string_view Noun(ActionKind v) noexcept
     switch (v)
     {
     case ActionKind::EquipWeapon:
-        return "weapon";
+        return Tr("weapon");
     case ActionKind::EquipArrows:
-        return "arrows";
+        return Tr("arrows");
     case ActionKind::EquipStrongestArrows:
-        return "strongest arrows";
+        return Tr("strongest arrows");
     case ActionKind::EquipWeakestArrows:
-        return "weakest arrows";
+        return Tr("weakest arrows");
     case ActionKind::EquipSpell:
-        return "spell";
+        return Tr("spell");
     case ActionKind::EquipArmor:
-        return "armor";
+        return Tr("armor");
     case ActionKind::ChargeStrongestSoulGem:
-        return "strongest soul gem";
+        return Tr("strongest soul gem");
     case ActionKind::ChargeWeakestSoulGem:
-        return "weakest soul gem";
+        return Tr("weakest soul gem");
     case ActionKind::ChargeSoulGem:
-        return "soul gem";
+        return Tr("soul gem");
     default:
         return "";
     }
@@ -445,20 +449,20 @@ std::string_view Describe(ActionKind v) noexcept
     switch (v)
     {
     case ActionKind::ChargeStrongestSoulGem:
-        return "The largest soul gem that would not overfill the weapon.";
+        return Tr("The largest soul gem that would not overfill the weapon.");
     case ActionKind::ChargeWeakestSoulGem:
-        return "The smallest soul gem carried.";
+        return Tr("The smallest soul gem carried.");
     case ActionKind::ApplyAny:
-        return "Any poison carried.";
+        return Tr("Any poison carried.");
     case ActionKind::DrinkAny:
-        return "Any potion carried that applies a buff.";
+        return Tr("Any potion carried that applies a buff.");
     case ActionKind::EatAnyFood:
-        return "Any food carried that applies a buff.";
+        return Tr("Any food carried that applies a buff.");
     case ActionKind::EquipWeapon:
     case ActionKind::EquipSpell:
     case ActionKind::EquipArrows:
     case ActionKind::EquipArmor:
-        return "Equip until replaced by player or another rule";
+        return Tr("Equip until replaced by player or another rule");
     default:
         return "";
     }

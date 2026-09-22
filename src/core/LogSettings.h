@@ -22,6 +22,9 @@ struct IniSettings
 {
     Level level{Level::Info};
     bool events{true};
+    // `[Interface] language`: the panel's catalog, "zh-CN"; empty, or
+    // "auto", follows the game's own language (core/I18n.h).
+    std::string language;
 };
 
 // The file's text, as read. A `[Log]` section with `level` (error, warn,

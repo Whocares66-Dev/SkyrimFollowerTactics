@@ -99,3 +99,13 @@ TEST_CASE("a later assignment replaces an earlier one", "[ini]")
     REQUIRE(s.level == Level::Warn);
     REQUIRE(s.events);
 }
+
+TEST_CASE("the panel's language, or auto for the game's", "[ini]")
+{
+    std::vector<std::string> notes;
+    REQUIRE(Parse("", notes).language.empty());
+    REQUIRE(Parse("[Interface]\nlanguage = auto\n", notes).language.empty());
+    REQUIRE(Parse("[Interface]\nlanguage = zh-CN\n", notes).language == "zh-CN");
+    // Only under its own section.
+    REQUIRE(Parse("[Log]\nlanguage = zh-CN\n", notes).language.empty());
+}

@@ -1,5 +1,7 @@
 #include "game/Sheet.h"
 
+#include "core/I18n.h"
+
 #include <cstdio>
 
 namespace ft::game
@@ -34,7 +36,7 @@ std::string NameOr(RE::TESObjectREFR *ref, const char *fallback)
 SheetRow EquippedRow(bool pinned)
 {
     SheetRow row;
-    row.label = "Equipped";
+    row.label = ft::i18n::Tr("Equipped");
     row.icon = kGlyphTick;
     if (pinned)
         row.icon2 = kGlyphPin;
@@ -47,17 +49,17 @@ const char *SoulName(RE::SOUL_LEVEL level)
     switch (level)
     {
     case RE::SOUL_LEVEL::kPetty:
-        return "Petty";
+        return ft::i18n::Tr("Petty");
     case RE::SOUL_LEVEL::kLesser:
-        return "Lesser";
+        return ft::i18n::Tr("Lesser");
     case RE::SOUL_LEVEL::kCommon:
-        return "Common";
+        return ft::i18n::Tr("Common");
     case RE::SOUL_LEVEL::kGreater:
-        return "Greater";
+        return ft::i18n::Tr("Greater");
     case RE::SOUL_LEVEL::kGrand:
-        return "Grand";
+        return ft::i18n::Tr("Grand");
     default:
-        return "Empty";
+        return ft::i18n::Tr("Empty");
     }
 }
 

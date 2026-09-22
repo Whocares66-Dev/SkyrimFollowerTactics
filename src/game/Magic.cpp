@@ -1,5 +1,6 @@
 #include "game/Magic.h"
 
+#include "core/I18n.h"
 #include "core/Spells.h"
 
 #include "core/Vocabulary.h"
@@ -20,6 +21,9 @@
 
 namespace ft::game
 {
+using ft::i18n::Tr;
+using ft::i18n::TrFormat;
+
 namespace
 {
 
@@ -47,17 +51,17 @@ float RemainingOn(RE::Actor *who, const std::vector<const RE::MagicItem *> &sour
 // number; no section when neither does.
 void AddTimeSection(RE::Actor *actor, const std::vector<const RE::MagicItem *> &sources, MagicEntry &entry)
 {
-    SheetSection time{"Time", {}, {}};
+    SheetSection time{Tr("Time"), {}, {}};
     if (!actor)
         return;
     if (const float recovery = VoiceRecoveryOf(actor); recovery > 0.0f)
-        time.rows.push_back(Row("Cooldown", Fmt("%.0f", recovery) + " s"));
+        time.rows.push_back(Row(Tr("Cooldown"), TrFormat("{} s", Fmt("%.0f", recovery))));
 
     float remaining = RemainingOn(actor, sources);
     if (auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get())
         remaining = (std::max)(remaining, RemainingOn(enemy.get(), sources));
     if (remaining > 0.0f)
-        time.rows.push_back(Row("Remaining", Fmt("%.0f", remaining) + " s"));
+        time.rows.push_back(Row(Tr("Remaining"), TrFormat("{} s", Fmt("%.0f", remaining))));
 
     if (!time.rows.empty())
         entry.detail.push_back(std::move(time));
@@ -88,14 +92,14 @@ std::string DragonLatin(const std::string &name)
 const char *LevelWord(int minimumSkill)
 {
     if (minimumSkill >= 100)
-        return "Master";
+        return Tr("Master");
     if (minimumSkill >= 75)
-        return "Expert";
+        return Tr("Expert");
     if (minimumSkill >= 50)
-        return "Adept";
+        return Tr("Adept");
     if (minimumSkill >= 25)
-        return "Apprentice";
-    return "Novice";
+        return Tr("Apprentice");
+    return Tr("Novice");
 }
 
 } // namespace
@@ -139,89 +143,89 @@ std::string TypeWord(const RE::EffectSetting *base)
         const AV av = base->data.primaryAV;
         const bool harmful = base->IsDetrimental();
         if (av == AV::kHealth)
-            return harmful ? "Damage" : "Heal";
+            return harmful ? Tr("Damage") : Tr("Heal");
         if (av == AV::kMagicka || av == AV::kStamina)
-            return harmful ? "Drain" : "Restore";
+            return harmful ? Tr("Drain") : Tr("Restore");
         if (av == AV::kDamageResist)
-            return "Armor";
+            return Tr("Armor");
         if (av == AV::kWardPower)
-            return "Ward";
+            return Tr("Ward");
         if (av == AV::kSpeedMult)
-            return harmful ? "Slow" : "Speed";
-        return harmful ? "Weaken" : "Fortify";
+            return harmful ? Tr("Slow") : Tr("Speed");
+        return harmful ? Tr("Weaken") : Tr("Fortify");
     }
     case Archetype::kAbsorb:
-        return "Absorb";
+        return Tr("Absorb");
     case Archetype::kSummonCreature:
-        return "Summon";
+        return Tr("Summon");
     case Archetype::kReanimate:
-        return "Reanimate";
+        return Tr("Reanimate");
     case Archetype::kBoundWeapon:
-        return "Bound Weapon";
+        return Tr("Bound Weapon");
     case Archetype::kCommandSummoned:
-        return "Command";
+        return Tr("Command");
     case Archetype::kBanish:
-        return "Banish";
+        return Tr("Banish");
     case Archetype::kSoulTrap:
-        return "Soul Trap";
+        return Tr("Soul Trap");
     case Archetype::kCalm:
-        return "Calm";
+        return Tr("Calm");
     case Archetype::kDemoralize:
-        return "Fear";
+        return Tr("Fear");
     case Archetype::kFrenzy:
-        return "Frenzy";
+        return Tr("Frenzy");
     case Archetype::kRally:
-        return "Courage";
+        return Tr("Courage");
     case Archetype::kInvisibility:
-        return "Invisibility";
+        return Tr("Invisibility");
     case Archetype::kLight:
-        return "Light";
+        return Tr("Light");
     case Archetype::kDarkness:
-        return "Darkness";
+        return Tr("Darkness");
     case Archetype::kNightEye:
-        return "Night Eye";
+        return Tr("Night Eye");
     case Archetype::kDetectLife:
-        return "Detect";
+        return Tr("Detect");
     case Archetype::kParalysis:
-        return "Paralysis";
+        return Tr("Paralysis");
     case Archetype::kTelekinesis:
-        return "Telekinesis";
+        return Tr("Telekinesis");
     case Archetype::kTurnUndead:
-        return "Turn Undead";
+        return Tr("Turn Undead");
     case Archetype::kDispel:
-        return "Dispel";
+        return Tr("Dispel");
     case Archetype::kCureDisease:
     case Archetype::kCurePoison:
     case Archetype::kCureParalysis:
     case Archetype::kCureAddiction:
-        return "Cure";
+        return Tr("Cure");
     case Archetype::kDisarm:
-        return "Disarm";
+        return Tr("Disarm");
     case Archetype::kStagger:
     case Archetype::kConcussion:
-        return "Stagger";
+        return Tr("Stagger");
     case Archetype::kCloak:
-        return "Cloak";
+        return Tr("Cloak");
     case Archetype::kSlowTime:
-        return "Slow Time";
+        return Tr("Slow Time");
     case Archetype::kEtherealize:
-        return "Ethereal";
+        return Tr("Ethereal");
     case Archetype::kEnhanceWeapon:
-        return "Enhance Weapon";
+        return Tr("Enhance Weapon");
     case Archetype::kSpawnHazard:
-        return "Hazard";
+        return Tr("Hazard");
     case Archetype::kLock:
     case Archetype::kOpen:
-        return "Lock";
+        return Tr("Lock");
     case Archetype::kGuide:
-        return "Guide";
+        return Tr("Guide");
     case Archetype::kWerewolf:
     case Archetype::kVampireLord:
-        return "Transform";
+        return Tr("Transform");
     case Archetype::kScript:
-        return "Scripted";
+        return Tr("Scripted");
     default:
-        return "Magic";
+        return Tr("Magic");
     }
 }
 
@@ -231,15 +235,15 @@ const char *CastWord(RE::MagicSystem::Delivery delivery, RE::MagicSystem::Castin
     switch (delivery)
     {
     case RE::MagicSystem::Delivery::kSelf:
-        return "Self";
+        return Tr("Self");
     case RE::MagicSystem::Delivery::kTouch:
-        return "Touch";
+        return Tr("Touch");
     case RE::MagicSystem::Delivery::kAimed:
-        return casting == RE::MagicSystem::CastingType::kConcentration ? "Spray" : "Projectile";
+        return casting == RE::MagicSystem::CastingType::kConcentration ? Tr("Spray") : Tr("Projectile");
     case RE::MagicSystem::Delivery::kTargetActor:
-        return "Target";
+        return Tr("Target");
     case RE::MagicSystem::Delivery::kTargetLocation:
-        return "Location";
+        return Tr("Location");
     default:
         return "?";
     }
@@ -268,12 +272,12 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
     const auto *costliest = spell->GetCostliestEffectItem();
     const auto *effect = costliest ? costliest->baseEffect : nullptr;
 
-    SheetSection stats{"Spell", {}, {}};
+    SheetSection stats{Tr("Spell"), {}, {}};
     if (power)
     {
         entry.category = MagicCategory::Powers;
-        entry.school = type == Type::kPower ? "Power" : "Lesser Power";
-        stats.title = "Power";
+        entry.school = type == Type::kPower ? Tr("Power") : Tr("Lesser Power");
+        stats.title = Tr("Power");
     }
     else
     {
@@ -302,10 +306,10 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         }
         entry.costValue = spell->CalculateMagickaCost(actor);
         const bool stream = spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
-        entry.cost = Fmt("%.0f", entry.costValue) + (stream ? "/s" : "");
+        entry.cost = stream ? TrFormat("{}/s", Fmt("%.0f", entry.costValue)) : Fmt("%.0f", entry.costValue);
         entry.costBreakdown = SpellCostBreakdown(actor, spell);
         if (stream)
-            entry.costBreakdown.unit = "/s";
+            entry.costBreakdown.unit = Tr("/s");
     }
     entry.type = TypeWord(effect);
     entry.cast = CastWord(spell->GetDelivery(), spell->GetCastingType());
@@ -317,11 +321,11 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         const ft::Grip grip = SpellGrip(spell);
         entry.leftAllowed = grip != ft::Grip::RightOnly;
         entry.rightAllowed = grip != ft::Grip::LeftOnly;
-        entry.hand = power                         ? "Voice"
-                     : grip == ft::Grip::Both      ? "Both"
-                     : grip == ft::Grip::RightOnly ? "Right"
-                     : grip == ft::Grip::LeftOnly  ? "Left"
-                                                   : "Either";
+        entry.hand = power                         ? Tr("Voice")
+                     : grip == ft::Grip::Both      ? Tr("Both")
+                     : grip == ft::Grip::RightOnly ? Tr("Right")
+                     : grip == ft::Grip::LeftOnly  ? Tr("Left")
+                                                   : Tr("Either");
         entry.grip = DescribeHoldable(actor, spell).grip;
     }
     {
@@ -336,38 +340,39 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         // and whether a base-record spell can be removed is a thing to try.
         char id[16];
         std::snprintf(id, sizeof(id), "%08X", spell->GetFormID());
-        stats.rows.push_back(Row("Base ID", id));
+        stats.rows.push_back(Row(Tr("Base ID"), id));
     }
     if (!power && !entry.school.empty())
-        stats.rows.push_back(Row("School", entry.school));
+        stats.rows.push_back(Row(Tr("School"), entry.school));
     if (!entry.type.empty())
-        stats.rows.push_back(Row("Type", entry.type));
+        stats.rows.push_back(Row(Tr("Type"), entry.type));
     if (!entry.level.empty())
     {
-        stats.rows.push_back(Row("Level", entry.level));
+        stats.rows.push_back(Row(Tr("Level"), entry.level));
         // The skill the spell asks for, and in brackets what the follower
         // has when it is short: "75 (has 51)". That the AI will not choose
         // it then goes without saying.
-        stats.rows.push_back(Row("Skill", std::to_string(entry.levelValue) +
-                                              (entry.aboveSkill ? " (has " + std::to_string(entry.skill) + ")" : "")));
+        stats.rows.push_back(Row(Tr("Skill"), entry.aboveSkill
+                                                  ? TrFormat("{} (has {})", entry.levelValue, entry.skill)
+                                                  : std::to_string(entry.levelValue)));
     }
     if (costliest)
     {
-        stats.rows.push_back(Row("Magnitude", Fmt("%.0f", entry.magnitude)));
+        stats.rows.push_back(Row(Tr("Magnitude"), Fmt("%.0f", entry.magnitude)));
         if (const float duration = ActualDuration(actor, spell, costliest); duration > 0.0f)
-            stats.rows.push_back(Row("Duration", Fmt("%.0f", duration) + " s"));
+            stats.rows.push_back(Row(Tr("Duration"), TrFormat("{} s", Fmt("%.0f", duration))));
     }
     if (!entry.cost.empty())
     {
-        SheetRow row = Row("Cost", entry.cost);
+        SheetRow row = Row(Tr("Cost"), entry.cost);
         row.breakdown = entry.costBreakdown;
         stats.rows.push_back(std::move(row));
     }
     // The list's word, so the page and the list agree.
-    stats.rows.push_back(Row("Cast", entry.cast));
+    stats.rows.push_back(Row(Tr("Cast"), entry.cast));
     if (const float charge = spell->GetChargeTime(); charge > 0.0f)
-        stats.rows.push_back(Row("Charge Time", Fmt("%.1f s", charge)));
-    stats.rows.push_back(Row("Hand", entry.hand));
+        stats.rows.push_back(Row(Tr("Charge Time"), TrFormat("{} s", Fmt("%.1f", charge))));
+    stats.rows.push_back(Row(Tr("Hand"), entry.hand));
     if (entry.equipped)
         stats.rows.push_back(EquippedRow(false)); // the pin glyph is added by MarkPins, which knows
     entry.detail.push_back(std::move(stats));
@@ -388,24 +393,24 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
     if (entry.name.empty())
         return false;
     entry.category = MagicCategory::Shouts;
-    entry.school = "Shout";
+    entry.school = Tr("Shout");
     // How it is cast, from the first word's spell, as a spell's is from its
     // record: Unrelenting Force is a Projectile, Dragon Aspect is Self.
     const auto *first = shout->variations[0].spell;
-    entry.cast = first ? CastWord(first->GetDelivery(), first->GetCastingType()) : "Shout";
+    entry.cast = first ? CastWord(first->GetDelivery(), first->GetCastingType()) : Tr("Shout");
     entry.castValue = first ? static_cast<int>(first->GetDelivery()) : 99;
     // Its type from the same spell's costliest effect: Fire Breath is Fire,
     // Unrelenting Force a Stagger.
     if (const auto *costliest = first ? first->GetCostliestEffectItem() : nullptr)
         entry.type = TypeWord(costliest->baseEffect);
-    entry.hand = "Voice";
+    entry.hand = Tr("Voice");
     entry.equipped = actor->GetActorRuntimeData().selectedPower == shout;
 
     // No word unlocked -- or no word at all, which the engine answers the
     // same way -- and there is nothing here for anyone to shout.
     entry.locked = HighestUnlockedWord(shout) < 0;
 
-    SheetSection stats{"Shout", {}, {}};
+    SheetSection stats{Tr("Shout"), {}, {}};
     for (std::uint32_t i = 0; i < RE::TESShout::VariationIDs::kTotal; ++i)
     {
         const auto &variation = shout->variations[i];
@@ -418,12 +423,12 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
         // multiplier in, written out on hover.
         SheetRow row;
         const float recovery = WordRecovery(actor, variation.recoveryTime, &row.breakdown);
-        row.label = "Word " + std::to_string(i + 1);
-        row.value = word + "  (" + Fmt("%.0f", recovery) + " s)";
+        row.label = TrFormat("Word {}", i + 1);
+        row.value = TrFormat("{}  ({} s)", word, Fmt("%.0f", recovery));
         // A word still locked is greyed with the reason on it: the shout
         // stops at the last word unlocked, whatever the record holds.
         if (!WordUnlocked(variation.word))
-            row.aside = "Not unlocked";
+            row.aside = Tr("Not unlocked");
         stats.rows.push_back(std::move(row));
     }
     if (entry.equipped)
@@ -449,9 +454,9 @@ bool DescribeShout(RE::Actor *actor, RE::TESShout *shout, MagicEntry &entry)
         if (table.rows.empty())
             continue;
         table.group = table.title;
-        table.title = "Word " + std::to_string(i + 1);
+        table.title = TrFormat("Word {}", i + 1);
         if (!WordUnlocked(shout->variations[i].word))
-            table.aside = "Not unlocked";
+            table.aside = Tr("Not unlocked");
         entry.effectTables.push_back(std::move(table));
     }
     // A shout's description is its own record's; its numbers, when it has
@@ -494,22 +499,22 @@ const char *DisplayName(MagicCategory category)
     switch (category)
     {
     case MagicCategory::Alteration:
-        return "Alteration";
+        return Tr("Alteration");
     case MagicCategory::Conjuration:
-        return "Conjuration";
+        return Tr("Conjuration");
     case MagicCategory::Destruction:
-        return "Destruction";
+        return Tr("Destruction");
     case MagicCategory::Illusion:
-        return "Illusion";
+        return Tr("Illusion");
     case MagicCategory::Restoration:
-        return "Restoration";
+        return Tr("Restoration");
     case MagicCategory::Other:
-        return "Other";
+        return Tr("Other");
     case MagicCategory::Shouts:
-        return "Shouts";
+        return Tr("Shouts");
     case MagicCategory::Powers:
     default:
-        return "Powers";
+        return Tr("Powers");
     }
 }
 

@@ -1,5 +1,7 @@
 #include "progression/core/Perks.h"
 
+#include "core/I18n.h"
+
 #include <algorithm>
 #include <array>
 #include <stdexcept>
@@ -281,7 +283,7 @@ PerkStatus Status(const PerkRules &rules, int nodeId)
             else
             {
                 req.kind = Requirement::Kind::Other;
-                req.name = "actor value " + std::to_string(c.actorValue);
+                req.name = ft::i18n::TrFormat("actor value {}", c.actorValue);
             }
             break;
         case ConditionFunction::HasPerk:

@@ -1,5 +1,7 @@
 #include "progression/core/Skills.h"
 
+#include "core/I18n.h"
+
 namespace fp
 {
 namespace
@@ -12,27 +14,28 @@ struct SkillText
 };
 
 constexpr std::array<SkillText, kSkillCount> kSkillText{{
-    {"One-Handed", "OneHanded"},
-    {"Two-Handed", "TwoHanded"},
-    {"Archery", "Archery"},
-    {"Block", "Block"},
-    {"Smithing", "Smithing"},
-    {"Heavy Armor", "HeavyArmor"},
-    {"Light Armor", "LightArmor"},
-    {"Pickpocket", "Pickpocket"},
-    {"Lockpicking", "Lockpicking"},
-    {"Sneak", "Sneak"},
-    {"Alchemy", "Alchemy"},
-    {"Speech", "Speech"},
-    {"Alteration", "Alteration"},
-    {"Conjuration", "Conjuration"},
-    {"Destruction", "Destruction"},
-    {"Illusion", "Illusion"},
-    {"Restoration", "Restoration"},
-    {"Enchanting", "Enchanting"},
+    {N_("One-Handed"), "OneHanded"},
+    {N_("Two-Handed"), "TwoHanded"},
+    {N_("Archery"), "Archery"},
+    {N_("Block"), "Block"},
+    {N_("Smithing"), "Smithing"},
+    {N_("Heavy Armor"), "HeavyArmor"},
+    {N_("Light Armor"), "LightArmor"},
+    {N_("Pickpocket"), "Pickpocket"},
+    {N_("Lockpicking"), "Lockpicking"},
+    {N_("Sneak"), "Sneak"},
+    {N_("Alchemy"), "Alchemy"},
+    {N_("Speech"), "Speech"},
+    {N_("Alteration"), "Alteration"},
+    {N_("Conjuration"), "Conjuration"},
+    {N_("Destruction"), "Destruction"},
+    {N_("Illusion"), "Illusion"},
+    {N_("Restoration"), "Restoration"},
+    {N_("Enchanting"), "Enchanting"},
 }};
 
-constexpr std::array<std::string_view, kAttributeCount> kAttributeName{"Health", "Magicka", "Stamina"};
+constexpr std::array<std::string_view, kAttributeCount> kAttributeName{N_("Health"), N_("Magicka"),
+                                                                         N_("Stamina")};
 
 } // namespace
 

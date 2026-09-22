@@ -55,6 +55,11 @@ IniSettings ParseIniSettings(std::string_view text, std::vector<std::string> &no
         const std::string_view key = Trim(line.substr(0, equals));
         const std::string_view value = Trim(line.substr(equals + 1));
 
+        if (section == "Interface" && key == "language")
+        {
+            settings.language = value == "auto" ? std::string{} : std::string(value);
+            continue;
+        }
         if (section != "Log")
             continue;
 

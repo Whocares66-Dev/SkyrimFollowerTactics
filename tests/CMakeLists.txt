@@ -35,6 +35,7 @@ add_executable(ft_tests
     test_files.cpp
     test_hitkinds.cpp
     test_hits.cpp
+    test_i18n.cpp
     test_idle.cpp
     test_lease.cpp
     test_loadout.cpp

@@ -3,6 +3,8 @@
 #include "progression/game/Forms.h"
 #include "progression/game/Log.h"
 
+#include "core/I18n.h"
+
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -66,12 +68,12 @@ Condition Convert(const RE::TESConditionItem &item)
         else
         {
             c.function = ConditionFunction::Other;
-            c.otherName = "HasPerk (a perk with no plugin)";
+            c.otherName = ft::i18n::Tr("HasPerk (a perk with no plugin)");
         }
         break;
     default:
         c.function = ConditionFunction::Other;
-        c.otherName = fmt::format("condition function {}", static_cast<int>(function));
+        c.otherName = ft::i18n::TrFormat("condition function {}", static_cast<int>(function));
         break;
     }
     c.comparison = ComparisonOf(data.flags.opCode).value_or(Comparison::Equal);

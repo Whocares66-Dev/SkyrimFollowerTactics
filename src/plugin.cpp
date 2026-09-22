@@ -7,6 +7,7 @@
 
 #include "game/Blows.h"
 #include "game/Hits.h"
+#include "game/I18n.h"
 #include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
@@ -35,6 +36,8 @@ void OnDataLoaded()
     ft::game::InitPackages();
 
     ft::game::Install();
+    // Before the panel's entries are added: their names are translated.
+    ft::game::LoadLanguage();
     ft::game::ui::Install();
     ft::game::WatchCombatScores();
     ft::game::RefuseEquipsAgainstPins();

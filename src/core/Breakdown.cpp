@@ -1,5 +1,7 @@
 #include "core/Breakdown.h"
 
+#include "core/I18n.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -87,7 +89,7 @@ bool Visible(const Breakdown &b, double amount)
 void Close(Breakdown &b)
 {
     if (const double gap = b.total - Evaluate(b); Visible(b, gap))
-        Add(b, "Other", gap);
+        Add(b, i18n::Tr("Other"), gap);
 }
 
 std::string AmountText(const Breakdown &b, const BreakdownLine &line)

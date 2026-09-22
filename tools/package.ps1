@@ -62,6 +62,10 @@ foreach ($flavour in @(
     Copy-Item $dll $plugins
     Set-Content -Path (Join-Path $plugins 'FollowerTactics.ini') -Encoding UTF8 `
         -Value ($ini -replace '(?m)^level\s*=\s*info\s*$', "level = $($flavour.Level)")
+    # The panel's catalogs (dev/I18N.md); en-US is a translator's template.
+    $translations = Join-Path $plugins 'FollowerTactics\Translations'
+    New-Item -ItemType Directory -Force $translations | Out-Null
+    Copy-Item (Join-Path $root 'assets\Translations\*.json') $translations
     Copy-Item $readme, (Join-Path $root 'LICENSE') $stage
     if ($flavour.Notes) { Set-Content -Path (Join-Path $stage 'TEST-BUILD.txt') -Value $flavour.Notes -Encoding UTF8 }
 

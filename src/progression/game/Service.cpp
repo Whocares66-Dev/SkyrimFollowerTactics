@@ -11,6 +11,8 @@
 #include "progression/game/Tomes.h"
 #include "progression/game/ValueView.h"
 
+#include "core/I18n.h"
+
 #include <algorithm>
 #include <functional>
 #include <mutex>
@@ -76,10 +78,13 @@ void Hud(const std::string &text)
     RE::SendHUDMessage::ShowHUDMessage(text.c_str());
 }
 
-void Refuse(const std::string &why)
+// The English in the log, which stays English for a bug report; the line
+// in the player's language on screen. A template and its arguments rather
+// than a sentence: the catalog knows the template, not the sentence.
+template <typename... Args> void Refuse(std::format_string<Args...> english, const Args &...args)
 {
-    log::ui.info("refused: {}", why);
-    Hud(why);
+    log::ui.info("refused: {}", std::vformat(english.get(), std::make_format_args(args...)));
+    Hud(ft::i18n::TrFormat(english, args...));
 }
 
 // The same, not shown: for the skill page's clicks, which ask first and say
@@ -206,8 +211,8 @@ void NoteLevel(Companion &c, RE::Actor *actor, const Rules &r)
     {
         const std::string what =
             ToAssign(PerkPointsOf(c, actor, level), AttributePointsOf(c, actor, level, r), c.learning.pool);
-        Hud(what.empty() ? fmt::format("{} reached level {}.", c.name, level)
-                         : fmt::format("{} reached level {}: {} to assign.", c.name, level, what));
+        Hud(what.empty() ? ft::i18n::TrFormat("{} reached level {}.", c.name, level)
+                         : ft::i18n::TrFormat("{} reached level {}: {} to assign.", c.name, level, what));
     }
 }
 
@@ -353,30 +358,39 @@ void Act(std::function<void()> work)
 std::optional<std::string> CannotChange(const Companion &c, const CompanionView &v)
 {
     if (g_state.settings.released)
-        return "Follower progression is off: turn it on in Settings.";
+        return std::string(ft::i18n::Tr("Follower progression is off: turn it on in Settings."));
     if (!v.loaded)
-        return c.name + " must be with you for this.";
+        return ft::i18n::TrFormat("{} must be with you for this.", c.name);
     return std::nullopt;
 }
 
+// What is said when they are not here to be changed: a sentence of its
+// own for each thing asked of them, so a translation words each whole.
+using Absent = void (*)(const std::string &name);
+
 // The companion and their actor, when they are here to be changed.
-std::pair<Companion *, RE::Actor *> Present(const FormKey &key, std::string_view doing)
+std::pair<Companion *, RE::Actor *> Present(const FormKey &key, Absent absent)
 {
     Companion *c = Find(key);
     if (!c)
         return {nullptr, nullptr};
     if (g_state.settings.released)
     {
-        Refuse("Follower progression is off: turn it on in Settings first.");
+        Refuse(N_("Follower progression is off: turn it on in Settings first."));
         return {nullptr, nullptr};
     }
     RE::Actor *actor = ActorOf(key);
     if (!IsHere(actor))
     {
-        Refuse(fmt::format("{} must be with you to {}.", c->name, doing));
+        absent(c->name);
         return {nullptr, nullptr};
     }
     return {c, actor};
+}
+
+void AbsentToTrain(const std::string &name)
+{
+    Refuse(N_("{} must be with you to train."), name);
 }
 
 } // namespace
@@ -386,7 +400,7 @@ std::pair<Companion *, RE::Actor *> Present(const FormKey &key, std::string_view
 void AssignSkillPoint(const FormKey &key, Skill skill, int delta)
 {
     Act([key = key, skill, delta] {
-        auto [c, actor] = Present(key, "train");
+        auto [c, actor] = Present(key, AbsentToTrain);
         if (!c)
             return;
         const Rules r = ReadRules();
@@ -395,8 +409,12 @@ void AssignSkillPoint(const FormKey &key, Skill skill, int delta)
                                              HoldingsOf(*c, OnRecord(*c, actor)), r);
         if (check.block == AssignBlock::PerkNeedsIt)
         {
-            Refuse(
-                fmt::format("{} needs that much {}: unlearn it first, or reset the skill.", check.perk, Name(skill)));
+            // Said apart, as Refuse would: the skill's name is translated on
+            // screen and English in the log.
+            log::ui.info("refused: {} needs that much {}: unlearn it first, or reset the skill.", check.perk,
+                         Name(skill));
+            Hud(ft::i18n::TrFormat("{} needs that much {}: unlearn it first, or reset the skill.", check.perk,
+                                   ft::i18n::Tr(Name(skill))));
             return;
         }
         if (check.block != AssignBlock::None)
@@ -409,7 +427,7 @@ void AssignSkillPoint(const FormKey &key, Skill skill, int delta)
 void AssignAttributePoint(const FormKey &key, Attribute attribute, int delta)
 {
     Act([key = key, attribute, delta] {
-        auto [c, actor] = Present(key, "train");
+        auto [c, actor] = Present(key, AbsentToTrain);
         if (!c)
             return;
         const Rules r = ReadRules();
@@ -430,7 +448,7 @@ void AssignAttributePoint(const FormKey &key, Attribute attribute, int delta)
 void AssignAttributeAll(const FormKey &key, Attribute attribute, int direction)
 {
     Act([key = key, attribute, direction] {
-        auto [c, actor] = Present(key, "train");
+        auto [c, actor] = Present(key, AbsentToTrain);
         if (!c)
             return;
         const Rules r = ReadRules();
@@ -487,7 +505,9 @@ namespace
 // The skill page's, which says it with a sound: nothing is shown.
 void LearnNode(const FormKey &key, int nodeId)
 {
-    auto [c, actor] = Present(key, "learn a perk");
+    auto [c, actor] = Present(key, [](const std::string &name) {
+        Refuse(N_("{} must be with you to learn a perk."), name);
+    });
     if (!c)
         return;
     const PerkGraph &graph = Graph();
@@ -589,7 +609,9 @@ namespace
 // under the lock. The skill page's, as LearnNode.
 void UnlearnNode(const FormKey &key, int nodeId)
 {
-    auto [c, actor] = Present(key, "unlearn a perk");
+    auto [c, actor] = Present(key, [](const std::string &name) {
+        Refuse(N_("{} must be with you to unlearn a perk."), name);
+    });
     if (!c)
         return;
     const PerkGraph &graph = Graph();
@@ -658,7 +680,9 @@ void LearnFromTome(std::uint32_t actorId, std::uint32_t bookId)
         RE::SpellItem *spell = TomeSpell(book);
         if (!key || !spell)
             return;
-        auto [c, actor] = Present(*key, "learn a spell");
+        auto [c, actor] = Present(*key, [](const std::string &name) {
+            Refuse(N_("{} must be with you to learn a spell."), name);
+        });
         if (!c)
             return;
         if (!spellview::Installed())
@@ -707,7 +731,9 @@ void ForgetSpellByForm(std::uint32_t actorId, std::uint32_t spellId)
         auto *spell = RE::TESForm::LookupByID<RE::SpellItem>(spellId);
         if (!key || !spell || spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell)
             return;
-        auto [c, actor] = Present(*key, "forget a spell");
+        auto [c, actor] = Present(*key, [](const std::string &name) {
+            Refuse(N_("{} must be with you to forget a spell."), name);
+        });
         if (!c)
             return;
         if (!spellview::Installed())
@@ -747,7 +773,7 @@ std::optional<SpellControls> SpellControlsFor(RE::FormID actor)
         if (const auto why = CannotChange(*c, v))
             out.why = *why;
         else if (!spellview::Installed())
-            out.why = "The spell hooks are not installed: see the log.";
+            out.why = ft::i18n::Tr("The spell hooks are not installed: see the log.");
         else
             out.active = true;
         return out;
@@ -817,7 +843,9 @@ void SetLevelling(bool on)
 void AssignSkillAll(const FormKey &key, Skill skill, int direction)
 {
     Act([key = key, skill, direction] {
-        auto [c, actor] = Present(key, "change their skills");
+        auto [c, actor] = Present(key, [](const std::string &name) {
+            Refuse(N_("{} must be with you to change their skills."), name);
+        });
         if (!c)
             return;
         const Rules r = ReadRules();
@@ -833,7 +861,9 @@ void AssignSkillAll(const FormKey &key, Skill skill, int direction)
 void ResetPerks(const FormKey &key, Skill skill)
 {
     Act([key = key, skill] {
-        auto [c, actor] = Present(key, "reset their perks");
+        auto [c, actor] = Present(key, [](const std::string &name) {
+            Refuse(N_("{} must be with you to reset their perks."), name);
+        });
         if (!c)
             return;
         const auto unlearned = fp::ResetPerks(*c, skill, Graph(), HoldingsOf(*c, OnRecord(*c, actor)));
@@ -911,7 +941,7 @@ void OnSkillUse(RE::FormID id, Skill skill, float points)
     PublishViews();
     log::growth.info("{}'s {} increased to {}", c->name, Name(skill), practice.reached);
     if (g_state.settings.notifySkills)
-        Hud(fmt::format("{}'s {} increased to {}.", c->name, Name(skill), practice.reached));
+        Hud(ft::i18n::TrFormat("{}'s {} increased to {}.", c->name, ft::i18n::Tr(Name(skill)), practice.reached));
     NoteLevel(*c, actor, r);
     Reconcile(*c, actor);
 }
