@@ -1,0 +1,26 @@
+; ============================================================
+;  FollowerProgression - what the engine holds of the SELECTED
+;  follower. Click them in the console, then:  bat fpcheck
+;
+;  getavinfo prints base, permanent modifier, temporary modifier
+;  and damage: our training is the PERMANENT modifier, so it is
+;  the number to compare with the Training column. Run this
+;  before and after a rank, after a save and load, and after a
+;  full restart (dev/POC.md, the checklist).
+; ============================================================
+
+getavinfo onehanded
+getavinfo block
+getavinfo heavyarmor
+getavinfo destruction
+getavinfo restoration
+getavinfo health
+getavinfo magicka
+getavinfo stamina
+; Armsman ranks 1 and 2, Shield Wall 1, Novice Destruction
+hasperk 000BABE4
+hasperk 00079343
+hasperk 000BCCAE
+hasperk 000F2CA8
+; Flames, as a taught spell
+hasspell 00012FCD

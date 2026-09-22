@@ -160,6 +160,27 @@ endif()
 target_link_libraries(ft_core PRIVATE nlohmann_json::nlohmann_json)
 
 # ---------------------------------------------------------------------------
+# fp_core -- Progression's rules (src/progression/core): the player's
+# levelling, perks, spells, the ledger and its co-save records, for
+# companions. The same rule as ft_core: no RE:: type, no CommonLibSSE; the
+# plugin links it and tests/progression tests it. dev/PROGRESSION.md.
+# ---------------------------------------------------------------------------
+add_library(fp_core STATIC
+    src/progression/core/Companion.cpp
+    src/progression/core/Ids.cpp
+    src/progression/core/Levelling.cpp
+    src/progression/core/PerkData.cpp
+    src/progression/core/Perks.cpp
+    src/progression/core/Serialize.cpp
+    src/progression/core/Skills.cpp
+    src/progression/core/Spells.cpp
+)
+target_include_directories(fp_core PUBLIC src)
+target_compile_features(fp_core PUBLIC cxx_std_23)
+ft_apply_warnings(fp_core)
+target_link_libraries(fp_core PRIVATE nlohmann_json::nlohmann_json)
+
+# ---------------------------------------------------------------------------
 # The SKSE plugin.
 # ---------------------------------------------------------------------------
 if(FT_BUILD_PLUGIN)
@@ -213,7 +234,20 @@ if(FT_BUILD_PLUGIN)
         src/game/Forms.cpp
         src/game/Profiles.cpp
         src/game/Settings.cpp
-        src/game/CustomSkillsFramework.cpp)
+        src/game/CustomSkillsFramework.cpp
+        # Progression (dev/PROGRESSION.md)
+        src/progression/game/Actors.cpp
+        src/progression/game/Events.cpp
+        src/progression/game/Forms.cpp
+        src/progression/game/Learning.cpp
+        src/progression/game/Persistence.cpp
+        src/progression/game/PerkTrees.cpp
+        src/progression/game/PerkView.cpp
+        src/progression/game/Rules.cpp
+        src/progression/game/Service.cpp
+        src/progression/game/SpellView.cpp
+        src/progression/game/Tomes.cpp
+        src/progression/game/UI.cpp)
     target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
     # These are Skyrim/Windows-API concerns and belong to THIS target only.
@@ -254,7 +288,7 @@ if(FT_BUILD_PLUGIN)
     target_include_directories(${PROJECT_NAME} PRIVATE extern/SKSEMenuFramework)
 
     target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ft_core)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ft_core fp_core nlohmann_json::nlohmann_json)
 
     # Microsoft Detours, for the one function-ENTRY hook (Pins.cpp, on
     # ActorEquipManager::EquipObject). CommonLibSSE's trampoline

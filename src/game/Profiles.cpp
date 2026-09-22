@@ -5,6 +5,8 @@
 #include "game/Settings.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
+#include "progression/core/Serialize.h"
+#include "progression/game/Persistence.h"
 
 #include <string>
 #include <unordered_map>
@@ -68,6 +70,9 @@ void OnSave(SKSE::SerializationInterface *intfc)
     }
     log::profiles.info("saved {} follower record(s), {} carried from the loaded save", theirs,
                        written > theirs ? written - theirs : 0);
+
+    // Progression's records, in the same block (progression/game/Persistence.h).
+    fp::game::WriteRecords(intfc);
 }
 
 // Each record's bytes in full, as SKSE describes them, then core's
@@ -77,6 +82,8 @@ void OnLoad(SKSE::SerializationInterface *intfc)
 {
     g_saved.Forget();
     std::vector<ft::CoSaveRecord> records;
+    // Progression's, told apart by type: none of its types is one of ours.
+    std::vector<fp::CoSaveRecord> progression;
     std::uint32_t type = 0;
     std::uint32_t version = 0;
     std::uint32_t length = 0;
@@ -93,8 +100,12 @@ void OnLoad(SKSE::SerializationInterface *intfc)
             log::profiles.error("co-save record {:08X} is cut short -- skipped", type);
             continue;
         }
-        records.push_back({type, version, std::move(payload)});
+        if (fp::IsProgressionRecord(type))
+            progression.push_back({type, version, std::move(payload)});
+        else
+            records.push_back({type, version, std::move(payload)});
     }
+    fp::game::ReadRecords(progression);
 
     ft::CoSaveContents contents = ft::UnpackCoSave(records);
     for (const auto &[level, note] : contents.notes)
@@ -130,6 +141,7 @@ void OnRevert(SKSE::SerializationInterface *)
     SetSettings(defaults);
     SetEnabled(defaults.tacticsEnabled);
     ForgetSession();
+    fp::game::RevertRecords();
 }
 
 } // namespace

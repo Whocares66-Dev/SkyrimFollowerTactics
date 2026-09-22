@@ -75,12 +75,14 @@ if(FT_CLANG_TIDY)
     # Each preset lints what its OWN database covers -- src/game and the top of
     # src are in the plugin's alone. Pointing -p at another preset's is what
     # went stale; CLAUDE.md, "The linter's blind spot", has that story.
-    file(GLOB FT_TIDY_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/core/*.cpp")
-    set(FT_TIDY_SCOPE "src/core")
+    file(GLOB FT_TIDY_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/core/*.cpp"
+         "${CMAKE_SOURCE_DIR}/src/progression/core/*.cpp")
+    set(FT_TIDY_SCOPE "src/core and src/progression/core")
     if(FT_BUILD_PLUGIN)
-        file(GLOB FT_TIDY_GAME CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/game/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.cpp")
+        file(GLOB FT_TIDY_GAME CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/game/*.cpp"
+             "${CMAKE_SOURCE_DIR}/src/progression/game/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.cpp")
         list(APPEND FT_TIDY_SOURCES ${FT_TIDY_GAME})
-        set(FT_TIDY_SCOPE "src/core, src/game and src/*.cpp")
+        set(FT_TIDY_SCOPE "src/core, src/game, src/progression and src/*.cpp")
     endif()
 
     # Our own headers: any of them changing can change a finding in any file
@@ -90,7 +92,9 @@ if(FT_CLANG_TIDY)
     file(GLOB FT_TIDY_HEADERS CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/src/*.h"
         "${CMAKE_SOURCE_DIR}/src/core/*.h"
-        "${CMAKE_SOURCE_DIR}/src/game/*.h")
+        "${CMAKE_SOURCE_DIR}/src/game/*.h"
+        "${CMAKE_SOURCE_DIR}/src/progression/core/*.h"
+        "${CMAKE_SOURCE_DIR}/src/progression/game/*.h")
 
     # One custom command per file, not one command over all of them.
     #

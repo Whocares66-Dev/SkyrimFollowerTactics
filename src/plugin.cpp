@@ -1,7 +1,9 @@
 // SKSE entry point: logging, the co-save, the messages, and at data load
-// the packages, the tick, the panel and the hooks (src/game/). The rule
-// engine is tested under Catch2 (tests/), and the plugin links the same
-// library the tests do, so nothing is re-proved here.
+// the packages, the tick, the panel and the hooks (src/game/), then
+// Progression's perk trees, views, learning hooks, tick and pages
+// (src/progression/game/). The rules of both are tested under Catch2
+// (tests/), and the plugin links the same libraries the tests do, so
+// nothing is re-proved here.
 
 #include "game/Blows.h"
 #include "game/Hits.h"
@@ -12,6 +14,14 @@
 #include "game/Profiles.h"
 #include "game/Tactics.h"
 #include "game/UI.h"
+#include "progression/game/Events.h"
+#include "progression/game/Learning.h"
+#include "progression/game/Log.h"
+#include "progression/game/PerkTrees.h"
+#include "progression/game/PerkView.h"
+#include "progression/game/Service.h"
+#include "progression/game/SpellView.h"
+#include "progression/game/UI.h"
 
 namespace
 {
@@ -31,6 +41,21 @@ void OnDataLoaded()
     ft::game::WatchHits();
 
     ft::log::plugin.info("FollowerTactics loaded");
+
+    // Progression (dev/PROGRESSION.md): the perk trees, the views in front
+    // of the engine's perks and spells, the hooks that hear a companion's
+    // skill use, the paced tick, and its pages under Tactics' section --
+    // after Tactics' own entries, since an entry cannot be moved once added.
+    // The hooks stay in for the session; levelling off (the Settings page)
+    // empties the views and the learners, which is what makes the switch
+    // free to use at any time.
+    fp::game::BuildPerkGraph();
+    fp::game::perkview::Install();
+    fp::game::spellview::Install();
+    fp::game::learning::Install();
+    fp::game::InstallEvents();
+    fp::game::ui::Install();
+    fp::log::plugin.info("Progression loaded");
 }
 
 } // namespace
@@ -44,10 +69,12 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
     // the ini says -- and writes a version banner. Every line then went
     // through its logger, the ini's level never applied to a release build,
     // and the lines our Init wrote were truncated away (2026-09-11).
-    // The trampoline is for the one call-site rewrite the panel makes, the
-    // input queue's hand-off (ui::Install): fourteen bytes, a five-byte
-    // call's worth. The function-entry hooks go through Detours instead.
-    SKSE::Init(skse, {.log = false, .trampoline = true, .trampolineSize = 14});
+    // The trampoline is for the two call-site rewrites: the panel's, the
+    // input queue's hand-off (ui::Install), and Progression's, the hit
+    // handler's call to the victim's side (progression/game/Learning.cpp):
+    // fourteen bytes each, a five-byte call's worth. The function-entry
+    // hooks go through Detours instead.
+    SKSE::Init(skse, {.log = false, .trampoline = true, .trampolineSize = 28});
 
     ft::log::plugin.info("FollowerTactics starting up");
 
@@ -59,6 +86,12 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
         SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message *message) {
             if (message->type == SKSE::MessagingInterface::kDataLoaded)
                 OnDataLoaded();
+
+            // Progression's views go before the save's actors are built, so
+            // an actor built during the load is built as its record has it
+            // until the save's ledger is published (progression/game/Service.h).
+            if (message->type == SKSE::MessagingInterface::kPreLoadGame)
+                fp::game::BeforeLoad();
 
             // A load or a new game invalidates every handle a lease holds.
             // Drop the leases. (The rules, switches and pins are reset by
@@ -75,6 +108,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
                 ft::game::ResetPackages();
                 ft::game::ResetBashes();
                 ft::game::ResetPlayerCasts();
+                fp::game::OnGameStarted();
             }
 
             // Sent before the engine writes the save (SKSE's SaveGame hook

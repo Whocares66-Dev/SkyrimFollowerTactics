@@ -1,0 +1,7459 @@
+{
+ "source": "Skyrim.esm, read through houseCARL; see dev/research/extract_perk_trees.py",
+ "nodes": [
+  {
+   "skill": "OneHanded",
+   "name": "Fighting Stance",
+   "x": 0.18666667,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|052D50",
+     "description": "Power attacks with one-handed weapons cost 25% less stamina.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE4"
+      },
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     27
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "OneHanded",
+   "name": "Savage Strike",
+   "x": -0.11333334,
+   "y": 0.44,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|03AF81",
+     "description": "Standing power attacks do 25% bonus damage with a chance to decapitate your enemies.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|052D50"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     28
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "OneHanded",
+   "name": "Hack and Slash",
+   "x": -0.41333333,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|03FFFA",
+     "description": "Attacks with war axes cause extra bleeding damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE4"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C3678",
+     "description": "Attacks with war axes cause more bleeding damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|03FFFA"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C3679",
+     "description": "Attacks with war axes cause even more bleeding damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C3678"
+      },
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     51
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "OneHanded",
+   "name": "Bladesman",
+   "x": -0.15333334,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|05F56F",
+     "description": "Attacks with swords have a 10% chance of doing critical damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE4"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C1E90",
+     "description": "Attacks with swords have a 15% chance of doing more critical damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|05F56F"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C1E91",
+     "description": "Attacks with a swords have a 20% chance of doing even more critical damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C1E90"
+      },
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     1,
+     2
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "OneHanded",
+   "name": "Bone Breaker",
+   "x": -0.45333335,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|05F592",
+     "description": "Attacks with maces ignore 25% of armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE4"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C1E92",
+     "description": "Attacks with maces ignore 50% of armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|05F592"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C1E93",
+     "description": "Attacks with maces ignore 75% of armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C1E92"
+      },
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     37
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "OneHanded",
+   "name": "Dual Flurry",
+   "x": -0.17333333,
+   "y": 0.6,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|106256",
+     "description": "Dual wielding attacks are 20% faster.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE4"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|106257",
+     "description": "Dual wielding attacks are 35% faster.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|106256"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "OneHanded",
+   "name": "Armsman",
+   "x": 0.18666667,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BABE4",
+     "description": "One-Handed weapons do 20% more damage.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|079343",
+     "description": "One-Handed weapons do 40% more damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE4"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079342",
+     "description": "One-Handed weapons do 60% more damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079343"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079344",
+     "description": "One-Handed weapons do 80% more damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079342"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079345",
+     "description": "One-Handed weapons do twice as much damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079344"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     35
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "OneHanded",
+   "name": "Paralyzing Strike",
+   "x": -0.54,
+   "y": 2.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|03AFA6",
+     "description": "Backwards power attack has a 25% chance to paralyze the target.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB406"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|03AF81"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     51
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "OneHanded",
+   "name": "Dual Savagery",
+   "x": -0.06666667,
+   "y": 1.72,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|106258",
+     "description": "Dual wielding power attacks do 50% bonus damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|106256"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     35
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "OneHanded",
+   "name": "Critical Charge",
+   "x": -0.24,
+   "y": 0.44,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB406",
+     "description": "Can do a one-handed power attack while sprinting that does double critical damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|052D50"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 6
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     1,
+     2
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "TwoHanded",
+   "name": "Champion's Stance",
+   "x": -0.13333334,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|052D51",
+     "description": "Power attacks with two-handed weapons cost 25% less stamina.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE8"
+      },
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     27
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "TwoHanded",
+   "name": "Devastating Blow",
+   "x": -0.56,
+   "y": 0.44,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|052D52",
+     "description": "Standing power attacks do 25% bonus damage with a chance to decapitate your enemies.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|052D51"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     28
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "TwoHanded",
+   "name": "Sweep",
+   "x": -0.13333334,
+   "y": 1.64,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|03AF9E",
+     "description": "Sideways power attacks with two-handed weapons hit all targets in front of you.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB407"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|052D52"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     50
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "TwoHanded",
+   "name": "Limbsplitter",
+   "x": 0.20666666,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C5C05",
+     "description": "Attacks with battle axes cause extra bleeding damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE8"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C5C06",
+     "description": "Attacks with battle axes cause more bleeding damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C5C05"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C5C07",
+     "description": "Attacks with battle axes cause even more bleeding damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C5C06"
+      },
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     51
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "TwoHanded",
+   "name": "Deep Wounds",
+   "x": -0.36666667,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|03AF83",
+     "description": "Attacks with greatswords have a 10% chance of doing critical damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE8"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C1E94",
+     "description": "Attacks with greatswords have a 15% chance of doing more critical damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|03AF83"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C1E95",
+     "description": "Attacks with greatswords have a 20% chance of doing even more critical damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C1E94"
+      },
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     1,
+     2
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "TwoHanded",
+   "name": "Skullcrusher",
+   "x": -0.28,
+   "y": 1.56,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|03AF84",
+     "description": "Attacks with warhammers ignore 25% of armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE8"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C1E96",
+     "description": "Attacks with warhammers ignore 50% of armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|03AF84"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C1E97",
+     "description": "Attacks with warhammers ignore 75% of armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C1E96"
+      },
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     37
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "TwoHanded",
+   "name": "Barbarian",
+   "x": -0.12,
+   "y": -0.1,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BABE8",
+     "description": "Two-Handed weapons do 20% more damage.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|079346",
+     "description": "Two-Handed weapons do 40% more damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABE8"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079347",
+     "description": "Two-Handed weapons do 60% more damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079346"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079348",
+     "description": "Two-Handed weapons do 80% more damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079347"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079349",
+     "description": "Two-Handed weapons do twice as much damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079348"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     35
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "TwoHanded",
+   "name": "Great Critical Charge",
+   "x": -0.54,
+   "y": 0.44,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB407",
+     "description": "Can do a two-handed power attack while sprinting that does double critical damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|052D51"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     1,
+     2
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "TwoHanded",
+   "name": "Warmaster",
+   "x": -0.13333334,
+   "y": 3.16,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|03AFA7",
+     "description": "Backwards power attack has a 25% chance to paralyze the target.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|03AF9E"
+      },
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 7
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     51
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Archery",
+   "name": "Overdraw",
+   "x": 0.0,
+   "y": 0.0,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BABED",
+     "description": "Bows do 20% more damage.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|07934A",
+     "description": "Bows do 40% more damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABED"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|07934B",
+     "description": "Bows do 60% more damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|07934A"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|07934D",
+     "description": "Bows do 80% more damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|07934B"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079354",
+     "description": "Bows do twice as much damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|07934D"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     35
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Archery",
+   "name": "Ranger",
+   "x": -0.046666667,
+   "y": 1.08,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F63",
+     "description": "Able to move faster with a drawn bow.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|051B12"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     54
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Archery",
+   "name": "Hunter's Discipline",
+   "x": -0.26,
+   "y": 1.48,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|051B12",
+     "description": "Recover twice as many arrows from dead bodies.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F1C"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     21
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Archery",
+   "name": "Eagle Eye",
+   "x": -0.13333334,
+   "y": 0.92,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F61",
+     "description": "Pressing Block while aiming will zoom in your view.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABED"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     20,
+     27
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Archery",
+   "name": "Power Shot",
+   "x": -0.54,
+   "y": 0.84,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F62",
+     "description": "Arrows stagger all but the largest opponents 50% of the time.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F61"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Archery",
+   "name": "Quick Shot",
+   "x": -0.43333334,
+   "y": 1.4,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F19",
+     "description": "Can draw a bow 30% faster.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F62"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     54
+    ],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Archery",
+   "name": "Bullseye",
+   "x": -0.34666666,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F64",
+     "description": "15% chance of paralyzing the target for a few seconds.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F63"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F19"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     51
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Archery",
+   "name": "Steady Hand",
+   "x": 0.16666667,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|103ADA",
+     "description": "Zooming in with a bow slows time by 25%.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F61"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|103ADB",
+     "description": "Zooming in with a bow slows time by 50%.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|103ADA"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Archery",
+   "name": "Critical Shot",
+   "x": 0.14666666,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F1C",
+     "description": "10% chance of a critical hit that does extra damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BABED"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|105F1E",
+     "description": "15% chance of a critical hit that does 25% more critical damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F1C"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|105F1F",
+     "description": "20% chance of a critical hit that does 50% more critical damage.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 8
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F1E"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     1,
+     2
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Block",
+   "name": "Deadly Bash",
+   "x": -0.58,
+   "y": 1.16,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|05F594",
+     "description": "Bashing does five times more damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F67"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     26
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Block",
+   "name": "Quick Reflexes",
+   "x": -0.30666667,
+   "y": 1.24,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0D8C33",
+     "description": "Time slows down if you are blocking during an enemy's power attack.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BCCAE"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     67,
+     70
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Block",
+   "name": "Block Runner",
+   "x": -0.39333335,
+   "y": 0.36,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|106253",
+     "description": "Able to move faster with a shield raised.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F69"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     54
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Block",
+   "name": "Elemental Protection",
+   "x": -0.48,
+   "y": 0.76,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F69",
+     "description": "Blocking with a shield reduces incoming fire, frost, and shock damage by 50%.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F68"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     41
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Block",
+   "name": "Disarming Bash",
+   "x": -0.26,
+   "y": 1.4,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F66",
+     "description": "Chance to disarm when power bashing.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|05F594"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     52
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Block",
+   "name": "Shield Wall",
+   "x": 0.0,
+   "y": 0.0,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BCCAE",
+     "description": "Blocking is 20% more effective.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|079355",
+     "description": "Blocking is 25% more effective.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BCCAE"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079356",
+     "description": "Blocking is 30% more effective.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079355"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079357",
+     "description": "Blocking is 35% more effective.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079356"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079358",
+     "description": "Blocking is 40% more effective.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079357"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     39
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Block",
+   "name": "Power Bash",
+   "x": -0.36666667,
+   "y": 0.92,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F67",
+     "description": "Able to do a power bash.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BCCAE"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Block",
+   "name": "Deflect Arrows",
+   "x": -0.16,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F68",
+     "description": "Arrows that hit the shield do no damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BCCAE"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     40
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Block",
+   "name": "Shield Charge",
+   "x": 0.0,
+   "y": 0.0,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F6A",
+     "description": "Sprinting with a shield raised knocks down most targets.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 9
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F66"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|106253"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Dwarven Smithing",
+   "x": -0.28666666,
+   "y": 1.56,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB40E",
+     "description": "Can create Dwarven armor and weapons at forges, and improve them twice as much.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB40D"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 10
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     76
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Orcish Smithing",
+   "x": -0.13333334,
+   "y": 1.48,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB410",
+     "description": "Can create Orcish armor and weapons at forges, and improve them twice as much.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB40E"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 10
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     76
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Elven Smithing",
+   "x": -0.06,
+   "y": 1.16,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB40F",
+     "description": "Can create Elven armor and weapons at forges, and improve them twice as much.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB40D"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 10
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     76
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Steel Smithing",
+   "x": -0.033333335,
+   "y": 0.28,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB40D",
+     "description": "Can create Steel armor and weapons at forges, and improve them twice as much.",
+     "conditions": []
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     76
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Daedric Smithing",
+   "x": 0.20666666,
+   "y": 1.4,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB413",
+     "description": "Can create Daedric armor and weapons at forges, and improve them twice as much.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 10
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB412"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     76
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Advanced Armors",
+   "x": -0.06,
+   "y": 0.76,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB414",
+     "description": "Can create Scaled and Plate armor at forges, and improve them twice as much.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB40F"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 10
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     76
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Glass Smithing",
+   "x": -0.52666664,
+   "y": 1.72,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB411",
+     "description": "Can create Glass armor and weapons at forges, and improve them twice as much.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB414"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 10
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     76
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Ebony Smithing",
+   "x": -0.28,
+   "y": 0.44,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB412",
+     "description": "Can create Ebony armor and weapons at forges, and improve them twice as much.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB410"
+      },
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 10
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     76
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Dragon Armor",
+   "x": -0.37333333,
+   "y": 1.72,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|052190",
+     "description": "Can create Dragon armor and Dragonbone weapons at forges, and improve them twice as much.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 10
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB413"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB411"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     76
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Smithing",
+   "name": "Arcane Blacksmith",
+   "x": 0.07333333,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|05218E",
+     "description": "You can improve magical weapons and armor.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 10
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB40D"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "HeavyArmor",
+   "name": "Juggernaut",
+   "x": -0.006666667,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BCD2A",
+     "description": "Increases armor rating for Heavy Armor by 20%.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|07935E",
+     "description": "Increases armor rating for Heavy Armor by 40%.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BCD2A"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079361",
+     "description": "Increases armor rating for Heavy Armor by 60%.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|07935E"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079362",
+     "description": "Increases armor rating for Heavy Armor by 80%.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079361"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079374",
+     "description": "Increases armor rating for Heavy Armor by 100%.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079362"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     85
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "HeavyArmor",
+   "name": "Reflect Blows",
+   "x": -0.17333333,
+   "y": 1.24,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F33",
+     "description": "10% chance to reflect melee damage back to the enemy while wearing all Heavy Armor: head, chest, hands, feet.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|107832"
+      },
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "HeavyArmor",
+   "name": "Tower of Strength",
+   "x": -0.26,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F6C",
+     "description": "50% less stagger when wearing only Heavy Armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F6F"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     33
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "HeavyArmor",
+   "name": "Conditioning",
+   "x": 0.16,
+   "y": 1.0,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F6D",
+     "description": "Heavy Armor weighs nothing and doesn't slow you down when worn.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BCD2B"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     32
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "HeavyArmor",
+   "name": "Well Fitted",
+   "x": -0.45333335,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F6F",
+     "description": "25% Armor bonus if wearing all Heavy Armor: head, chest, hands, feet.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BCD2A"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     85
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "HeavyArmor",
+   "name": "Matching Set",
+   "x": 0.04,
+   "y": 0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|107832",
+     "description": "Additional 25% Armor bonus if wearing a matched set of Heavy Armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F6C"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     85
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "HeavyArmor",
+   "name": "Cushioned",
+   "x": -0.26666668,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BCD2B",
+     "description": "Half damage from falling if wearing all Heavy Armor: head, chest, hands, feet.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F6E"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     58
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "HeavyArmor",
+   "name": "Fists of Steel",
+   "x": -0.5,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F6E",
+     "description": "Unarmed attacks with Heavy Armor gauntlets do their armor rating in extra damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BCD2A"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 11
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "LightArmor",
+   "name": "Agile Defender",
+   "x": -0.36666667,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BE123",
+     "description": "Increase armor rating for Light armor by 20%.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|079376",
+     "description": "Increase armor rating for Light armor by 40%.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 12
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE123"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079389",
+     "description": "Increase armor rating for Light armor by 60%.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 12
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079376"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079391",
+     "description": "Increase armor rating for Light armor by 80%.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 12
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079389"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|079392",
+     "description": "Increase armor rating for Light armor by 100%.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 12
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|079391"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     85
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "LightArmor",
+   "name": "Custom Fit",
+   "x": 0.0,
+   "y": 0.0,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|051B1B",
+     "description": "25% Armor bonus if wearing all Light Armor: head, chest, hands, feet.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 12
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE123"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     85
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "LightArmor",
+   "name": "Matching Set",
+   "x": 0.14666666,
+   "y": 0.36,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|051B17",
+     "description": "Additional 25% Armor bonus if wearing a matched set of Light Armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|051B1B"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 12
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     85
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "LightArmor",
+   "name": "Wind Walker",
+   "x": -0.026666667,
+   "y": 0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F22",
+     "description": "Stamina regenerates 50% faster in all Light Armor: head, chest, hands, feet.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 12
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|051B1C"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "LightArmor",
+   "name": "Deft Movement",
+   "x": 0.0,
+   "y": 0.0,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|107831",
+     "description": "10% chance of avoiding all damage from a melee attack while wearing all Light Armor: head, chest, hands, feet.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 12
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F22"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|051B17"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     36
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "LightArmor",
+   "name": "Unhindered",
+   "x": 0.08,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|051B1C",
+     "description": "Light Armor weighs nothing and doesn't slow you down when worn.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|051B1B"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 12
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     32
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Pickpocket",
+   "name": "Extra Pockets",
+   "x": -0.06666667,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|096590",
+     "description": "Carrying capacity is increased by 100 (50 if Survival Mode is enabled).",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058202"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Pickpocket",
+   "name": "Keymaster",
+   "x": -0.34666666,
+   "y": 0.76,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0D79A0",
+     "description": "Pickpocketing keys almost always works.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058204"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     56
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Pickpocket",
+   "name": "Cutpurse",
+   "x": -0.15333334,
+   "y": 1.16,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058204",
+     "description": "Pickpocketing gold is 50% easier.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058202"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     56
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Pickpocket",
+   "name": "Night Thief",
+   "x": -0.56,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058202",
+     "description": "+25% chance to pickpocket if the target is asleep.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE124"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     56
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Pickpocket",
+   "name": "Poisoned",
+   "x": -0.13333334,
+   "y": 1.16,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F28",
+     "description": "Silently harm enemies by placing poisons in their pockets.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058202"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     84
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Pickpocket",
+   "name": "Misdirection",
+   "x": -0.58,
+   "y": 1.72,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058201",
+     "description": "Can pickpocket equipped weapons.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058204"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     61
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Pickpocket",
+   "name": "Perfect Touch",
+   "x": -0.28,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058205",
+     "description": "Can pickpocket equipped items.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058201"
+      },
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     61
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Pickpocket",
+   "name": "Light Fingers",
+   "x": -0.013333334,
+   "y": 0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BE124",
+     "description": "Pickpocketing bonus of 20%. Item weight and value reduce pickpocketing odds.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|018E6A",
+     "description": "Pickpocketing bonus of 40%. Item weight and value reduce pickpocketing odds.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE124"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|018E6B",
+     "description": "Pickpocketing bonus of 60%. Item weight and value reduce pickpocketing odds.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|018E6A"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|018E6C",
+     "description": "Pickpocketing bonus of 80%. Item weight and value reduce pickpocketing odds.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|018E6B"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|018E6D",
+     "description": "Pickpocketing bonus of 100%. Item weight and value reduce pickpocketing odds.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 13
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|018E6C"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     56
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Apprentice Locks",
+   "x": -0.34666666,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BE125",
+     "description": "Apprentice locks are much easier to pick.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F392A"
+      },
+      {
+       "op": ">=",
+       "value": 25.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     59
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Adept Locks",
+   "x": -0.15333334,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C3680",
+     "description": "Adept locks are much easier to pick.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE125"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     59
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Treasure Hunter",
+   "x": 0.20666666,
+   "y": 1.08,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F26",
+     "description": "50% greater chance of finding special treasure.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|05820A"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": true
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Quick Hands",
+   "x": -0.22,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|106259",
+     "description": "Able to pick locks without being noticed.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE125"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     86
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Locksmith",
+   "x": -0.13333334,
+   "y": 0.68,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058208",
+     "description": "Pick starts close to the lock opening position.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C3681"
+      },
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     63
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Unbreakable",
+   "x": -0.22,
+   "y": 0.28,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058209",
+     "description": "Lockpicks never break.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058208"
+      },
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     65
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Golden Touch",
+   "x": 0.18666667,
+   "y": 0.44,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|05820A",
+     "description": "Find more gold in chests.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C3680"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": true
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Expert Locks",
+   "x": -0.47333333,
+   "y": 0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C3681",
+     "description": "Expert locks are much easier to pick.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 75.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C3680"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     59
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Master Locks",
+   "x": -0.06666667,
+   "y": 0.92,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C3682",
+     "description": "Master locks are much easier to pick.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C3681"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     59
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Novice Locks",
+   "x": -0.54,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0F392A",
+     "description": "Novice locks are much easier to pick.",
+     "conditions": []
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     59
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Lockpicking",
+   "name": "Wax Key",
+   "x": 0.0,
+   "y": 0.0,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|107830",
+     "description": "Automatically gives you a copy of a picked lock's key if it has one.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|106259"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 14
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     90
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Sneak",
+   "name": "Shadow Warrior",
+   "x": 0.14666666,
+   "y": 0.28,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058214",
+     "description": "Crouching stops combat for a moment and forces distant opponents to search for a target.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F24"
+      },
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     69
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Sneak",
+   "name": "Deadly Aim",
+   "x": 0.16666667,
+   "y": 1.16,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|1036F0",
+     "description": "Sneak attacks with bows now do three times damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058210"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     18
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Sneak",
+   "name": "Stealth",
+   "x": -0.43333334,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BE126",
+     "description": "You are 20% harder to detect when sneaking.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|0C07C6",
+     "description": "You are 25% harder to detect when sneaking.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE126"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C07C7",
+     "description": "You are 30% harder to detect when sneaking.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C07C6"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C07C8",
+     "description": "You are 35% harder to detect when sneaking.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C07C7"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C07C9",
+     "description": "You are 40% harder to detect when sneaking.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C07C8"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     57
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Sneak",
+   "name": "Silent Roll",
+   "x": 0.1,
+   "y": 0.76,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F23",
+     "description": "Sprinting while sneaking executes a silent forward roll.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|05820C"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Sneak",
+   "name": "Silence",
+   "x": 0.08,
+   "y": 0.68,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F24",
+     "description": "Walking and running does not affect detection.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F23"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Sneak",
+   "name": "Light Foot",
+   "x": -0.2,
+   "y": 1.16,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|05820C",
+     "description": "You won't trigger pressure plates.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058213"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Sneak",
+   "name": "Muffled Movement",
+   "x": 0.12,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058213",
+     "description": "Noise from armor is reduced 50%.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE126"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Sneak",
+   "name": "Assassin's Blade",
+   "x": -0.13333334,
+   "y": 0.44,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058211",
+     "description": "Sneak attacks with daggers now do a total of fifteen times normal damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|1036F0"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     18
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Sneak",
+   "name": "Backstab",
+   "x": -0.56,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058210",
+     "description": "Sneak attacks with one-handed weapons now do six times damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE126"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 15
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     18
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alchemy",
+   "name": "Snakeblood",
+   "x": -0.046666667,
+   "y": 1.32,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F2C",
+     "description": "50% resistance to all poisons.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058218"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F2F"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alchemy",
+   "name": "Alchemist",
+   "x": -0.11333334,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BE127",
+     "description": "Potions and poisons you make are 20% stronger.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|0C07CA",
+     "description": "Potions and poisons you make are 40% stronger.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE127"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C07CB",
+     "description": "Potions and poisons you make are 60% stronger.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C07CA"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C07CC",
+     "description": "Potions and poisons you make are 80% stronger.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C07CB"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C07CD",
+     "description": "Potions and poisons you make are twice as strong.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C07CC"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     66
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alchemy",
+   "name": "Physician",
+   "x": 0.14666666,
+   "y": 0.28,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058215",
+     "description": "Potions you mix that restore Health, Magicka or Stamina are 25% more powerful.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE127"
+      },
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     66
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alchemy",
+   "name": "Benefactor",
+   "x": -0.36666667,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058216",
+     "description": "Potions you mix with beneficial effects have an additional 25% greater magnitude.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058215"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     66
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alchemy",
+   "name": "Poisoner",
+   "x": -0.43333334,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058217",
+     "description": "Poisons you mix are 25% more effective.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058215"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     66
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alchemy",
+   "name": "Experimenter",
+   "x": -0.15333334,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058218",
+     "description": "Eating an ingredient reveals first two effects.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058216"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|105F2A",
+     "description": "Eating an ingredient reveals first three effects.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058218"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|105F2B",
+     "description": "Eating an ingredient reveals all it's effects.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058218"
+      },
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     72
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alchemy",
+   "name": "Green Thumb",
+   "x": -0.54,
+   "y": 1.72,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F2E",
+     "description": "Two ingredients are gathered from plants.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F2F"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     87
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alchemy",
+   "name": "Concentrated Poison",
+   "x": -0.43333334,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F2F",
+     "description": "Poisons applied to weapons last for twice as many hits.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058217"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     83
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alchemy",
+   "name": "Purity",
+   "x": -0.56,
+   "y": 2.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|05821D",
+     "description": "All negative effects are removed from created potions, and all positive effects are removed from created poisons.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F2C"
+      },
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 16
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     73
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Speech",
+   "name": "Haggling",
+   "x": -0.093333334,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BE128",
+     "description": "Buying and selling prices are 10% better.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|0C07CE",
+     "description": "Buying and selling prices are 15% better.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE128"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C07CF",
+     "description": "Buying and selling prices are 20% better.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C07CE"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C07D0",
+     "description": "Buying and selling prices are 25% better.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C07CF"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C07D1",
+     "description": "Buying and selling prices are 30% better.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C07D0"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     8,
+     60
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Speech",
+   "name": "Intimidation",
+   "x": 0.16666667,
+   "y": 0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F29",
+     "description": "Intimidation is twice as successful.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|1090A2"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     43
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Speech",
+   "name": "Persuasion",
+   "x": -0.34666666,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|1090A2",
+     "description": "Persuasion attempts are 30% easier.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F72"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": true
+   }
+  },
+  {
+   "skill": "Speech",
+   "name": "Allure",
+   "x": -0.30666667,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F75",
+     "description": "10% better prices with the opposite sex.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE128"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     8,
+     60
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Speech",
+   "name": "Master Trader",
+   "x": -0.43333334,
+   "y": 0.28,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|1090A5",
+     "description": "Every merchant in the world gains 1000 gold for bartering.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F79"
+      },
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": true
+   }
+  },
+  {
+   "skill": "Speech",
+   "name": "Bribery",
+   "x": -0.54,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F72",
+     "description": "Can bribe guards to ignore crimes.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BE128"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Speech",
+   "name": "Fence",
+   "x": 0.24666667,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F79",
+     "description": "Can barter stolen goods with any merchant you have invested in.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F7B"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Speech",
+   "name": "Investor",
+   "x": -0.28666666,
+   "y": 0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F7B",
+     "description": "Can invest 500 gold with a shopkeeper to increase his available gold permanently.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F7A"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": true
+   }
+  },
+  {
+   "skill": "Speech",
+   "name": "Merchant",
+   "x": 0.22666667,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F7A",
+     "description": "Can sell any type of item to any kind of merchant.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F75"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 17
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": "Atronach",
+   "x": -0.39333335,
+   "y": 1.24,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581F7",
+     "description": "Absorb 30% of the magicka of any spells that hit you.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44B9"
+      },
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": "Mage Armor",
+   "x": -0.30666667,
+   "y": 1.48,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0D7999",
+     "description": "Protection spells like Stoneflesh are twice as strong if not wearing armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44B7"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0D799A",
+     "description": "Protection spells like Stoneflesh are 2.5 times as strong if not wearing armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0D7999"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0D799B",
+     "description": "Protection spells like Stoneflesh are three times as strong if not wearing armor.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0D799A"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": " Magic Resistance",
+   "x": 0.06,
+   "y": 1.48,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|053128",
+     "description": "Blocks 10% of a spell's effects.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44B7"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|053129",
+     "description": "Blocks 20% of a spell's effects.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|053128"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|05312A",
+     "description": "Blocks 30% of a spell's effects.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|053129"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": "Apprentice Alteration",
+   "x": -0.54,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44B7",
+     "description": "Cast Apprentice level Alteration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 25.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA6"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": "Stability",
+   "x": -0.52,
+   "y": 1.72,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581FC",
+     "description": "Alteration spells have greater duration.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44B8"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     30
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": "Adept Alteration",
+   "x": -0.54,
+   "y": 1.8,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44B8",
+     "description": "Cast Adept level Alteration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44B7"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": "Expert Alteration",
+   "x": -0.34666666,
+   "y": 0.68,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44B9",
+     "description": "Cast Expert level Alteration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 75.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44B8"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": "Master Alteration",
+   "x": -0.28,
+   "y": 1.24,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44BA",
+     "description": "Cast Master level Alteration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44B9"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": "Alteration Dual Casting",
+   "x": -0.41333333,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0153CD",
+     "description": "Dual casting an Alteration spell overcharges the effects into an even more powerful version.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 18
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA6"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     75
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Alteration",
+   "name": "Novice Alteration",
+   "x": -0.32,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0F2CA6",
+     "description": "Cast Novice level Alteration spells for half magicka.",
+     "conditions": []
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Mystic Binding",
+   "x": -0.13333334,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0640B3",
+     "description": "Bound weapons do more damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA7"
+      },
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Twin Souls",
+   "x": -0.41333333,
+   "y": 0.28,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0D5F1C",
+     "description": "You can have two atronachs or reanimated zombies.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581DE"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB41A"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     68
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Summoner",
+   "x": 0.22666667,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F30",
+     "description": "Can summon atronachs or raise undead twice as far away.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA7"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|105F31",
+     "description": "Can summon atronachs or raise undead three times as far away.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F30"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     88
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Apprentice Conjuration",
+   "x": -0.15333334,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44BB",
+     "description": "Cast Apprentice level Conjuration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 25.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA7"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Elemental Potency",
+   "x": -0.07333333,
+   "y": 1.72,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB41A",
+     "description": "Conjured Atronachs are 50% more powerful.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0CB419"
+      },
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Atromancy",
+   "x": -0.18,
+   "y": 1.8,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0CB419",
+     "description": "Double duration for conjured Atronachs.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|105F30"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     30
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Necromancy",
+   "x": -0.41333333,
+   "y": 1.8,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581DD",
+     "description": "Greater duration for reanimated undead.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA7"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     30
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Dark Souls",
+   "x": -0.30666667,
+   "y": 1.72,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581DE",
+     "description": "Reanimated undead have 100 points more health.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581DD"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     53
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Adept Conjuration",
+   "x": -0.58,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44BC",
+     "description": "Cast Adept level Conjuration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44BB"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Soul Stealer",
+   "x": -0.45333335,
+   "y": 1.48,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0D799E",
+     "description": "Bound weapons cast Soul Trap on targets.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0640B3"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Expert Conjuration",
+   "x": -0.58,
+   "y": 0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44BD",
+     "description": "Cast Expert level Conjuration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 75.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44BC"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Master Conjuration",
+   "x": 0.16666667,
+   "y": 0.28,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44BE",
+     "description": "Cast Master level Conjuration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44BD"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Oblivion Binding",
+   "x": -0.45333335,
+   "y": 1.08,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0D799C",
+     "description": "Bound weapons will banish summoned creatures and turn raised ones.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0D799E"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Conjuration Dual Casting",
+   "x": -0.006666667,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0153CE",
+     "description": "Dual casting a Conjuration spell overcharges the spell, allowing it to last longer.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 19
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA7"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     75
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Conjuration",
+   "name": "Novice Conjuration",
+   "x": 0.18666667,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0F2CA7",
+     "description": "Cast Novice level Conjuration spells for half magicka.",
+     "conditions": []
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Intense Flames",
+   "x": -0.5,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0F392E",
+     "description": "Fire damage causes targets to flee if their health is low.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581E7"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Destruction Dual Casting",
+   "x": 0.16666667,
+   "y": 0.28,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0153CF",
+     "description": "Dual casting a Destruction spell overcharges the effects into an even more powerful version.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA8"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     75
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Apprentice Destruction",
+   "x": -0.34666666,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44BF",
+     "description": "Cast Apprentice level Destruction spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 25.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA8"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Impact",
+   "x": -0.36666667,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0153D2",
+     "description": "Most destruction spells will stagger an opponent when dual cast.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0153CF"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Adept Destruction",
+   "x": -0.34666666,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C0",
+     "description": "Cast Adept level Destruction spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44BF"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Expert Destruction",
+   "x": 0.06,
+   "y": 0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C1",
+     "description": "Cast Expert level Destruction spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 75.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44C0"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Augmented Flames",
+   "x": 0.12,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581E7",
+     "description": "Fire spells do 25% more damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA8"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|10FCF8",
+     "description": "Fire spells do 50% more damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581E7"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Augmented Frost",
+   "x": 0.20666666,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581EA",
+     "description": "Frost spells do 25% more damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA8"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|10FCF9",
+     "description": "Frost spells do 50% more damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581EA"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Deep Freeze",
+   "x": -0.52,
+   "y": 0.76,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0F3933",
+     "description": "Frost damage paralyzes targets if their health is low.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581EA"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Disintegrate",
+   "x": -0.54,
+   "y": 1.08,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0F3F0E",
+     "description": "Shock damage disintegrates targets if their health is low.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058200"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Rune Master",
+   "x": -0.15333334,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|105F32",
+     "description": "Can place runes five times farther away.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44BF"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     88
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Master Destruction",
+   "x": -0.15333334,
+   "y": 1.64,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C2",
+     "description": "Cast Master level Destruction spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44C1"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Novice Destruction",
+   "x": -0.22,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0F2CA8",
+     "description": "Cast Novice level Destruction spells for half magicka.",
+     "conditions": []
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Destruction",
+   "name": "Augmented Shock",
+   "x": -0.54,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058200",
+     "description": "Shock spells do 25% more damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA8"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|10FCFA",
+     "description": "Shock spells do 50% more damage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058200"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 20
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Avoid Death",
+   "x": -0.28,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0A3F64",
+     "description": "Once a day, heals 250 points automatically if you fall below 10% health.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581F4"
+      },
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Restoration Dual Casting",
+   "x": -0.45333335,
+   "y": 0.6,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0153D1",
+     "description": "Dual casting a Restoration spell overcharges the effects into an even more powerful version.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CAA"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     75
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Apprentice Restoration",
+   "x": -0.22,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C7",
+     "description": "Cast Apprentice level Restoration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 25.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CAA"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Adept Restoration",
+   "x": 0.20666666,
+   "y": 1.16,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C8",
+     "description": "Cast Adept level Restoration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44C7"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Expert Restoration",
+   "x": -0.006666667,
+   "y": 1.72,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C9",
+     "description": "Cast Expert level Restoration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 75.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44C8"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Respite",
+   "x": -0.56666666,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581F9",
+     "description": "Healing spells also restore Stamina.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CAA"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Regeneration",
+   "x": -0.5,
+   "y": 0.92,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581F8",
+     "description": "Healing spells cure 50% more.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CAA"
+      },
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Master Restoration",
+   "x": 0.013333334,
+   "y": 1.32,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44CA",
+     "description": "Cast Master level Restoration spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44C9"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Ward Absorb",
+   "x": -0.5,
+   "y": 1.48,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|068BCC",
+     "description": "Wards recharge your magicka when hit with spells.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CAA"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     71
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Necromage",
+   "x": -0.56666666,
+   "y": 1.48,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581E4",
+     "description": "All spells are more effective against undead.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581F8"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29,
+     30
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Novice Restoration",
+   "x": 0.1,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0F2CAA",
+     "description": "Cast Novice level Restoration spells for half magicka.",
+     "conditions": []
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Restoration",
+   "name": "Recovery",
+   "x": -0.26,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581F4",
+     "description": "Magicka regenerates 25% faster.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CAA"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0581F5",
+     "description": "Magicka regenerates 50% faster.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581F4"
+      },
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 22
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": true,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Quiet Casting",
+   "x": 0.06,
+   "y": 1.48,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581FD",
+     "description": "All spells you cast from any school of magic are silent to others.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581E2"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     55
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Illusion Dual Casting",
+   "x": -0.013333334,
+   "y": 0.0,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0153D0",
+     "description": "Dual casting an Illusion spell overcharges the effects into an even more powerful version.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA9"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     75
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Rage",
+   "x": 0.18666667,
+   "y": 0.44,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44B5",
+     "description": "Frenzy spells work on higher level opponents. Cumulative with Kindred Mage and Animage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|059B78"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Apprentice Illusion",
+   "x": -0.52,
+   "y": -0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C3",
+     "description": "Cast Apprentice level Illusion spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 25.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA9"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Adept Illusion",
+   "x": -0.41333333,
+   "y": 0.84,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C4",
+     "description": "Cast Adept level Illusion spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44C3"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Expert Illusion",
+   "x": -0.2,
+   "y": 0.44,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C5",
+     "description": "Cast Expert level Illusion spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 75.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44C4"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Animage",
+   "x": 0.14666666,
+   "y": 0.6,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581E1",
+     "description": "Illusion spells now work on higher level animals.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA9"
+      },
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Kindred Mage",
+   "x": 0.06,
+   "y": 0.52,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0581E2",
+     "description": "All Illusion spells work on higher level people.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581E1"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Master of the Mind",
+   "x": -0.45333335,
+   "y": 1.4,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|059B76",
+     "description": "Illusion spells work on undead, daedra and automatons.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 90.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0581FD"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44B5"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [],
+    "ability": false,
+    "quest": true
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Hypnotic Gaze",
+   "x": 0.08,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|059B77",
+     "description": "Calm spells now work on higher level opponents. Cumulative with Kindred Mage and Animage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0F2CA9"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Aspect of Terror",
+   "x": -0.32,
+   "y": 1.16,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|059B78",
+     "description": "Fear spells work on higher level opponents. Cumulative with Kindred Mage and Animage.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|059B77"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     29
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Master Illusion",
+   "x": -0.006666667,
+   "y": 1.4,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0C44C6",
+     "description": "Cast Master level Illusion spells for half magicka.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 21
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C44C5"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Illusion",
+   "name": "Novice Illusion",
+   "x": -0.13333334,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0F2CA9",
+     "description": "Cast Novice level Illusion spells for half magicka.",
+     "conditions": []
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     38
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Enchanting",
+   "name": "Storm Enchanter",
+   "x": 0.18666667,
+   "y": 0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F82",
+     "description": "Shock enchantments on weapons and armor are 25% stronger.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F81"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     77
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Enchanting",
+   "name": "Soul Siphon",
+   "x": -0.06666667,
+   "y": 1.08,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|108A44",
+     "description": "Death blows to creatures, but not people, trap 5% of the victim's soul, recharging the weapon.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F7C"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     78
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Enchanting",
+   "name": "Enchanter",
+   "x": 0.0,
+   "y": 0.0,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|0BEE97",
+     "description": "New enchantments are 20% stronger.",
+     "conditions": []
+    },
+    {
+     "form": "Skyrim.esm|0C367C",
+     "description": "New enchantments are 40% stronger.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BEE97"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C367D",
+     "description": "New enchantments are 60% stronger.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C367C"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C367E",
+     "description": "New enchantments are 80% stronger.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 60.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C367D"
+      }
+     ]
+    },
+    {
+     "form": "Skyrim.esm|0C367F",
+     "description": "New enchantments are 100% stronger.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 80.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0C367E"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     77
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Enchanting",
+   "name": "Soul Squeezer",
+   "x": -0.06666667,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F7C",
+     "description": "Soul gems provide extra magicka for recharging.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BEE97"
+      },
+      {
+       "op": ">=",
+       "value": 20.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     49
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Enchanting",
+   "name": "Fire Enchanter",
+   "x": -0.22,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F80",
+     "description": "Fire enchantments on weapons and armor are 25% stronger.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BEE97"
+      },
+      {
+       "op": ">=",
+       "value": 30.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     77
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Enchanting",
+   "name": "Frost Enchanter",
+   "x": -0.22,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F81",
+     "description": "Frost enchantments on weapons and armor are 25% stronger.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F80"
+      },
+      {
+       "op": ">=",
+       "value": 40.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     77
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Enchanting",
+   "name": "Corpus Enchanter",
+   "x": -0.26,
+   "y": 0.12,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F7D",
+     "description": "Health, magicka, and stamina enchantments on armor are 25% stronger.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F7E"
+      },
+      {
+       "op": ">=",
+       "value": 70.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     77
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Enchanting",
+   "name": "Insightful Enchanter",
+   "x": -0.56,
+   "y": 0.2,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F7E",
+     "description": "Skill enchantments on armor are 25% stronger.",
+     "conditions": [
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": false,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|0BEE97"
+      },
+      {
+       "op": ">=",
+       "value": 50.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     77
+    ],
+    "ability": false,
+    "quest": false
+   }
+  },
+  {
+   "skill": "Enchanting",
+   "name": "Extra Effect",
+   "x": -0.15333334,
+   "y": -0.04,
+   "ranks": [
+    {
+     "form": "Skyrim.esm|058F7F",
+     "description": "Can put two enchantments on the same item.",
+     "conditions": [
+      {
+       "op": ">=",
+       "value": 100.0,
+       "or": false,
+       "fn": "GetBaseActorValue",
+       "av": 23
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F7D"
+      },
+      {
+       "op": "==",
+       "value": 1.0,
+       "or": true,
+       "fn": "HasPerk",
+       "perk": "Skyrim.esm|058F82"
+      }
+     ]
+    }
+   ],
+   "effects": {
+    "entryPoints": [
+     80
+    ],
+    "ability": false,
+    "quest": false
+   }
+  }
+ ]
+}

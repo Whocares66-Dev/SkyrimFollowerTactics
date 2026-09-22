@@ -1,0 +1,21 @@
+; ============================================================
+;  FollowerProgression - set up the PLAYER for a test session
+;  Run once:  bat fpsetup
+;
+;  Gold for unlearning and retraining, and spell tomes of each
+;  level, so the Spells tab has one of every row: teachable,
+;  too advanced, and already known. IDs read from Skyrim.esm
+;  through houseCARL (dev/POC.md).
+; ============================================================
+
+player.additem f 5000
+player.additem 0009CD51 2
+player.additem 000A271E 1
+player.additem 000A2706 1
+player.additem 0009E2A8 1
+player.additem 000A26EC 1
+player.additem 000A271D 1
+; Flames x2 (Novice Destruction), Healing Hands (Apprentice
+; Restoration), Fireball (Adept Destruction), Oakflesh (Novice
+; Alteration), Conjure Flame Atronach (Apprentice Conjuration),
+; Fast Healing (Apprentice Restoration).

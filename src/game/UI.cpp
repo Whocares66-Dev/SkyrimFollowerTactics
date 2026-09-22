@@ -27,6 +27,7 @@
 #include "game/Sheet.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
+#include "progression/game/Service.h"
 
 #include <SKSEMenuFramework.h>
 
@@ -6078,6 +6079,25 @@ void DrawSettings()
     if (toggle("enabledAll", enabled, "Enable tactics for party", "Click to turn on tactics for the party",
                "Click to turn off tactics for the party"))
         SetEnabled(!enabled);
+
+    // Progression's switch, kept with the save as the one above is. Off
+    // takes what it put on the followers off as each is near and keeps the
+    // record of it; on puts it back (progression/game/Service.h). Nothing
+    // it does is written to a record, so it can be flipped at any time.
+    const fp::game::LevellingState levelling = fp::game::Levelling();
+    if (levelling.inGame)
+    {
+        if (toggle("levelling", levelling.on, "Enable leveling for followers",
+                   "Click to turn on leveling for followers", "Click to turn off leveling for followers"))
+            fp::game::SetLevelling(!levelling.on);
+        if (!levelling.on && !levelling.stillHeld.empty())
+        {
+            std::string names;
+            for (const std::string &name : levelling.stillHeld)
+                names += (names.empty() ? "" : ", ") + name;
+            Im::TextDisabled("%s", fmt::format("Still leveled until next near: {}", names).c_str());
+        }
+    }
 
     Im::Spacing();
     // What a follower must have before a thing is offered at all

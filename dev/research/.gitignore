@@ -1,0 +1,6 @@
+# What the scripts here read and write: records from Skyrim.esm and other
+# mods' plugins. It stays in the stand-alone repository's history
+# (C:\project\SkyrimFollowerProgression); the perk trees the tests read are
+# tests/progression/data/vanilla-perks.json.
+*.json
+*.txt

@@ -1,0 +1,26 @@
+#pragma once
+// The perk trees as the running game has them: every skill's tree, read off
+// the engine at data load into the core's graph (progression/core/Perks.h), with each
+// rank's conditions and a verdict on each node from what its effects hook
+// into. Built once on the game thread and never changed after, so the panel
+// may read it from the render thread.
+
+#include "progression/core/Perks.h"
+
+#include <filesystem>
+
+namespace fp::game
+{
+
+void BuildPerkGraph();
+
+[[nodiscard]] const PerkGraph &Graph();
+
+[[nodiscard]] RE::BGSPerk *PerkOf(const FormKey &form);
+
+// The graph as progression/core/PerkData.h writes it, into the SKSE log folder: to set
+// beside tests/progression/data/vanilla-perks.json and see what the load order changed.
+// Returns the file written, empty on failure.
+std::filesystem::path DumpGraph();
+
+} // namespace fp::game

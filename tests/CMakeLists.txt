@@ -63,6 +63,9 @@ ft_apply_warnings(ft_tests)
 include(Catch)
 catch_discover_tests(ft_tests)
 
+# Progression's rules, in an executable of their own (tests/progression).
+add_subdirectory(progression)
+
 # Not a Catch2 test: a grep over the sources, so a gendered pronoun for a
 # follower fails the run rather than waiting for a review to find it.
 add_test(NAME pronouns COMMAND "${CMAKE_COMMAND}" -DROOT=${CMAKE_SOURCE_DIR} -P "${CMAKE_SOURCE_DIR}/tests/pronouns.cmake")

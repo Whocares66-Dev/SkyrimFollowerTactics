@@ -20,6 +20,8 @@ entry points over actor values; research and thoughts, with the open questions);
 `dev/TESTING.md` is what of `src/game` is tested without Skyrim and how, what is still to extract, and the console harness for play;
 `dev/TODO.md` is what is still to do.
 
+**Progression** (folded in from its own repository 2026-09-21, branch `wip-progression`): followers level as the player does -- skills rise by use under the player's own rules read live from the game, levels bring perk and attribute points the player assigns, skills can be moved or reset for free, spell tomes can be taught -- and nothing is written to a record: perks and spells are views in front of the engine. The code is `src/progression/core` (`fp_core`, RE-free, tested by `tests/progression`, `fp_tests`) and `src/progression/game`, in namespace `fp`; its pages are under *Follower Tactics / Progression* and its switch is *Enable leveling for followers* on the Settings page, free to flip because everything it does is reversible. `dev/PROGRESSION.md` is the design, `dev/POC.md` what is built and verified, `dev/ENGINE_PERKS.md`, `dev/ENGINE_SPELLS.md` and `dev/ENGINE_SKILLS.md` the engine behind the views and the learning hooks, `dev/PROGRESSION_README.md` the overview, and `dev/BRAINSTORM.md`, `dev/DESIGN.md`, `dev/PRIOR_ART.md` and `dev/research/` the research before it. It is pre-release: its co-save records carry no compatibility with earlier builds.
+
 ## The one architectural rule
 
 **No `RE::` type may cross into `src/core/`.** There is no headless test harness for
