@@ -59,17 +59,18 @@ void Use(Catalog catalog);
 template <typename... Args> [[nodiscard]] std::string TrFormat(std::format_string<Args...> english, const Args &...args)
 {
     const std::string_view translated = Tr(english.get());
-    if (translated.data() != english.get().data())
+    if (translated.data() == english.get().data())
     {
-        try
-        {
-            return std::vformat(translated, std::make_format_args(args...));
-        }
-        catch (const std::format_error &)
-        {
-        }
+        return std::vformat(english.get(), std::make_format_args(args...));
     }
-    return std::vformat(english.get(), std::make_format_args(args...));
+    try
+    {
+        return std::vformat(translated, std::make_format_args(args...));
+    }
+    catch (const std::format_error &)
+    {
+        return std::vformat(english.get(), std::make_format_args(args...));
+    }
 }
 
 // The catalog's name for the game's language (the ini's sLanguage:

@@ -27,7 +27,10 @@ namespace fp::game
 // What the pages show of a companion that the ledger does not hold: read
 // off the actor on the game thread, rebuilt after every action and whenever
 // a page comes up (RefreshViews).
-struct CompanionView
+//
+// (The NOLINT: as Holdings, in progression/core/Perks.h; an unordered_set
+// member makes the implicit move constructor able to throw on MSVC.)
+struct CompanionView // NOLINT(bugprone-exception-escape)
 {
     FormKey key;
     RE::FormID actor{0};   // the reference's runtime id, when it resolved

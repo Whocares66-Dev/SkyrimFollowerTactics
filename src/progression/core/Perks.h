@@ -119,7 +119,10 @@ class PerkGraph
 
 // --- a companion's holdings, and the rules -------------------------------------
 
-struct Holdings
+// (The NOLINT: MSVC's unordered_set allocates a fresh sentinel when moved,
+// so the implicit move constructor may throw bad_alloc. That is the STL's,
+// and out of memory ends the game anyway.)
+struct Holdings // NOLINT(bugprone-exception-escape)
 {
     std::unordered_set<FormKey, FormKeyHash> innate;   // on their own record, held
     std::unordered_set<FormKey, FormKeyHash> setAside; // on their own record, given back here
