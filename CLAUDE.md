@@ -129,6 +129,12 @@ Invoke-ScriptAnalyzer -Path tools -Recurse   # PSScriptAnalyzer; Install-Module 
 
 It is clean as of 2026-09-18. Its rule against `Write-Host` allows it inside a function whose verb is `Show`, so every script prints through the `Show-*` helpers in `tools\console.ps1`, dot-sourced at the top of each; a state-changing function declares `SupportsShouldProcess` and asks `$PSCmdlet.ShouldProcess` before it writes, which is what makes `-WhatIf` on the downgrade script honest.
 
+A change to a Python script (`tools\`, `dev\research\`) gets ruff, the formatter and the linter in one; `ruff.toml` at the root says which rules and why:
+
+```powershell
+python -m ruff format; python -m ruff check   # pip install --user ruff once
+```
+
 **A green build is not a passing check.** Every one of these has caught a defect
 that compiled perfectly: the tests caught a cooldown interaction that changed
 behaviour silently, the formatter has caught hand-written code on nearly every

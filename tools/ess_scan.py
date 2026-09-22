@@ -238,7 +238,7 @@ def npc(save, target):
 
 def scan(save):
     found = 0
-    for ref, flags, typ, ver, l2, data in save.forms:
+    for ref, flags, typ, _ver, l2, data in save.forms:
         try:
             d = zlib.decompress(data) if l2 else data
         except zlib.error:
