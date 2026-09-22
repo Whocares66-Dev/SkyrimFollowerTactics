@@ -331,7 +331,7 @@ TEST_CASE("one of their own perks can be set aside and taken up again, for nothi
 TEST_CASE("spells taught here can be forgotten; others are not ours", "[companion]")
 {
     Companion c = Lydia();
-    const fp::SpellFacts flames{{"Skyrim.esm", 0x012FCD}, "Flames", Skill::Destruction, 0, 14, true};
+    const fp::SpellFacts flames{{"Skyrim.esm", 0x012FCD}, "Flames"};
     fp::Teach(c, flames);
     fp::Teach(c, flames);
     CHECK(c.spells.size() == 1);
@@ -344,8 +344,8 @@ TEST_CASE("spells taught here can be forgotten; others are not ours", "[companio
 TEST_CASE("one of their own spells can be set aside and taken up again, for nothing", "[companion]")
 {
     Companion c = Lydia();
-    const fp::SpellFacts sparks{{"Skyrim.esm", 0x02B96B}, "Sparks", Skill::Destruction, 0, 13, true};
-    const fp::SpellFacts flames{{"Skyrim.esm", 0x012FCD}, "Flames", Skill::Destruction, 0, 14, true};
+    const fp::SpellFacts sparks{{"Skyrim.esm", 0x02B96B}, "Sparks"};
+    const fp::SpellFacts flames{{"Skyrim.esm", 0x012FCD}, "Flames"};
 
     CHECK(fp::SetAsideSpell(c, sparks));
     CHECK(fp::IsSpellSetAside(c, sparks.spell));

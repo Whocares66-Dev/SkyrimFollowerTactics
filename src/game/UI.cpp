@@ -119,8 +119,33 @@ class DimText
     bool dim_;
 };
 
-// The colour of what needs seeing to: a bag past its capacity.
+// --- the palette -----------------------------------------------------------
+// Every colour the panel names, in one place: the bars', the names' tints,
+// the marks'. The theme's own -- text, disabled text, frames -- are read
+// from the style where they are drawn.
+
+// What needs seeing to: a bag past its capacity.
 constexpr Im::ImVec4 kAlarm{0.95f, 0.45f, 0.40f, 1.0f};
+// The character sheet's bars, and the experience beside the level in a
+// muted gold rather than a yellow.
+constexpr Im::ImVec4 kHealth{0.75f, 0.25f, 0.25f, 1.0f};
+constexpr Im::ImVec4 kStamina{0.30f, 0.65f, 0.35f, 1.0f};
+constexpr Im::ImVec4 kMagicka{0.25f, 0.40f, 0.80f, 1.0f};
+constexpr Im::ImVec4 kExperience{0.76f, 0.60f, 0.28f, 1.0f};
+// The sheet's status while they fight.
+constexpr Im::ImVec4 kFighting{0.95f, 0.65f, 0.35f, 1.0f};
+// An enchanted piece's name, and its bolt.
+constexpr Im::ImVec4 kEnchanted{0.70f, 0.75f, 1.00f, 1.0f};
+// A spell tome's name: magic, as an enchanted piece's is.
+constexpr Im::ImVec4 kSpellTome = kEnchanted;
+// A Daedric artifact: light gold, over the enchanted blue; every artifact
+// is enchanted, and the colour says which kind of enchanted it is. Red was
+// tried on 2026-09-12 and read as a warning.
+constexpr Im::ImVec4 kArtifact{0.95f, 0.85f, 0.55f, 1.0f};
+// A poison on a weapon: green, as the bottle is.
+constexpr Im::ImVec4 kPoison{0.55f, 0.85f, 0.45f, 1.0f};
+// A stolen copy: red.
+constexpr Im::ImVec4 kStolen{0.90f, 0.35f, 0.30f, 1.0f};
 
 // --- rule text -------------------------------------------------------------
 
@@ -3644,6 +3669,7 @@ struct InventoryTabState
     // nothing in it.
     int category{-1};
     Tab openedFrom{Tab::Inventory}; // where the detail page returns to
+    std::uint64_t confirming{0};    // the tome whose Learn asked once, awaiting Confirm
 };
 
 // The Magic tab's and the Shouts tab's, one each: two halves of one list
@@ -3656,6 +3682,7 @@ struct MagicTabState
     // was opened from. Written wherever `detail` is, so the value here is
     // never read before one of those has set it.
     Tab openedFrom{Tab::Magic};
+    std::uint32_t confirming{0}; // the spell whose Forget asked once, awaiting Confirm
 };
 
 struct EffectsTabState
@@ -3724,6 +3751,7 @@ template <typename State> void CloseDetail(PanelState &panel, State &state, Tab 
         panel.select = state.openedFrom;
     state.detail = 0;
     state.openedFrom = home;
+    state.confirming = 0;
 }
 
 // Every detail page, closed. A detail page -- an item, a spell, an effect,
@@ -3796,19 +3824,9 @@ unsigned IconFor(ItemCategory category)
     }
 }
 
-constexpr Im::ImVec4 kEnchanted{0.70f, 0.75f, 1.00f, 1.0f};
-// A Daedric artifact: light gold, over the enchanted blue; every artifact
-// is enchanted, and the colour says which kind of enchanted it is. Red was
-// tried on 2026-09-12 and read as a warning.
-constexpr Im::ImVec4 kArtifact{0.95f, 0.85f, 0.55f, 1.0f};
-// A poison on a weapon: green, as the bottle is.
-constexpr Im::ImVec4 kPoison{0.55f, 0.85f, 0.45f, 1.0f};
-// A stolen copy: red.
-constexpr Im::ImVec4 kStolen{0.90f, 0.35f, 0.30f, 1.0f};
-
 const Im::ImVec4 *NameTint(const InventoryItem &item)
 {
-    return item.artifact ? &kArtifact : item.enchanted ? &kEnchanted : nullptr;
+    return item.artifact ? &kArtifact : item.enchanted ? &kEnchanted : item.spellTome ? &kSpellTome : nullptr;
 }
 
 // The marks after an item's name, wherever the name is drawn: a crown for a
@@ -4598,6 +4616,84 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
         Im::Text("%s", carried);
 }
 
+// After an action on the follower whose page is shown -- a perk learned, a
+// level moved, a spell learned or forgotten -- the page is rebuilt once it
+// is done: queued behind it on the game thread, where tasks run in order.
+// The page is not rebuilt on a beat (Tactics.h, RefreshShownPage), so
+// without this the change showed only after the panel was closed and
+// opened.
+void RefreshAfterAction()
+{
+    if (auto *task = SKSE::GetTaskInterface())
+        task->AddTask([] { RefreshShownPage(); });
+}
+
+// The game's own sounds, by their descriptors' editor ids (Skyrim.esm):
+// the perk menu's for a perk taken (the engine plays it from 52521), the
+// skills menu's step back for one given back, the one the game plays for
+// a spell learned (0ECF93), the enchanting table's for an item
+// disenchanted (0C8C76) -- magic taken apart -- for a spell forgotten, and
+// the one a failed activation makes for a click that cannot be answered.
+constexpr const char *kPerkTakenSound = "UISkillsPerkSelect2D";
+constexpr const char *kPerkReturnedSound = "UISkillsBackwardSD";
+constexpr const char *kSpellLearnedSound = "UISpellLearned";
+constexpr const char *kSpellForgottenSound = "UIEnchantingItemDestroy";
+constexpr const char *kRefusedSound = "UIActivateFail";
+
+// Played on the game thread, where the descriptor is looked up.
+void PlayGameSound(const char *id)
+{
+    if (auto *task = SKSE::GetTaskInterface())
+        task->AddTask([id] { RE::PlaySound(id); });
+}
+
+// An action at the right of a page's head that asks once -- Reset perks,
+// Learn, Forget -- as a button, then Confirm and Cancel in its place. It is
+// greyed where it cannot act, and its hover, on the button and on Confirm
+// alike, says what a click does or why it cannot. `asking` is the page's
+// own. True the frame Confirm is clicked.
+float AskedActionWidth(const char *label, bool asking)
+{
+    const float pad = 2.0f * Im::GetStyle()->FramePadding.x;
+    return asking ? TextWidth("Confirm") + pad + kCellPadX + TextWidth("Cancel") + pad : TextWidth(label) + pad;
+}
+
+bool AskedAction(const char *label, bool can, const std::string &hover, bool &asking)
+{
+    asking = asking && can;
+    if (!asking)
+    {
+        Im::BeginDisabled(!can);
+        if (Im::Button(label, Im::ImVec2(0.0f, 0.0f)))
+            asking = true;
+        Im::EndDisabled();
+        if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+            Tooltip(hover);
+        return false;
+    }
+    bool confirmed = false;
+    if (Im::Button("Confirm", Im::ImVec2(0.0f, 0.0f)))
+    {
+        confirmed = true;
+        asking = false;
+    }
+    if (Im::IsItemHovered(0))
+        Tooltip(hover);
+    Im::SameLine(0.0f, kCellPadX);
+    if (Im::Button("Cancel", Im::ImVec2(0.0f, 0.0f)))
+        asking = false;
+    return confirmed;
+}
+
+// The same, on the line just drawn, at its right edge: `lineRight` is where
+// the line ends, taken at its start.
+bool AskedActionAtRight(const char *label, bool can, const std::string &hover, bool &asking, float lineRight)
+{
+    Im::SameLine(0.0f, 0.0f);
+    Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineRight - AskedActionWidth(label, asking && can)));
+    return AskedAction(label, can, hover, asking);
+}
+
 // The head of a detail page, which every tab that has one draws the same
 // way: a back arrow, borderless as the panel's other glyph buttons, the
 // name beside it, and a word after the name where the page has one.
@@ -4635,14 +4731,36 @@ void DetailSubtitle(const std::string &text)
 
 // One item: a back arrow, the name, then the numbers as sheet sections and
 // the prose beneath, each under its own heading only when there is any.
-void DrawItemDetail(const InventoryItem &item, PanelState &panel)
+//
+// A spell tome a follower Progression levels carries has Learn at the
+// right (SpellControlsFor), asked once: as the player reads one, nothing is
+// asked but that they do not know the spell. The tome is used, and the
+// page goes back to the books.
+void DrawItemDetail(const CharacterView &view, const InventoryItem &item, PanelState &panel)
 {
     Im::Spacing();
+    const float lineRight = Im::GetCursorPosX() + Im::GetContentRegionAvail().x;
     if (BackButton())
         CloseDetail(panel, panel.inventory, Tab::Inventory);
     DetailName(item.name, NameTint(item));
     NameBadges(item, false, true);
     DetailSubtitle(item.type);
+    if (const auto controls = item.teaches != 0 && !view.player ? fp::game::SpellControlsFor(view.id) : std::nullopt)
+    {
+        const fp::SpellButton learn = controls->active ? fp::LearnButton(item.teachesName, item.knowsTaught)
+                                                       : fp::SpellButton{false, controls->why};
+        bool asking = panel.inventory.confirming == item.Key();
+        if (AskedActionAtRight("Learn", learn.can, learn.hover, asking, lineRight))
+        {
+            fp::game::LearnFromTome(view.id, item.form);
+            PlayGameSound(kSpellLearnedSound);
+            CloseDetail(panel, panel.inventory, Tab::Inventory, false);
+            g_inventoryList.category = static_cast<int>(ItemCategory::Books);
+            RefreshAfterAction();
+            return;
+        }
+        panel.inventory.confirming = asking ? item.Key() : 0;
+    }
 
     Im::Spacing();
     DrawSections(item.detail, false);
@@ -4697,7 +4815,7 @@ void DrawInventory(const CharacterView &view)
         {
             if (item.Key() == state.detail)
             {
-                DrawItemDetail(item, panel);
+                DrawItemDetail(view, item, panel);
                 return;
             }
         }
@@ -5034,13 +5152,35 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
     Im::PopStyleVar(1);
 }
 
-void DrawMagicDetail(const MagicEntry &entry, PanelState &panel, MagicTabState &state, Tab home)
+// A spell a follower Progression levels knows has Forget at the right
+// (SpellControlsFor), asked once: the engine is told they do not know it,
+// so it leaves this list, the rules that name it, and their hands; a tome
+// of it brings it back. Spells only: the Shouts tab's powers and shouts
+// are not taught, so not forgotten.
+void DrawMagicDetail(const CharacterView &view, const MagicEntry &entry, PanelState &panel, MagicTabState &state,
+                     Tab home)
 {
     Im::Spacing();
+    const float lineRight = Im::GetCursorPosX() + Im::GetContentRegionAvail().x;
     if (BackButton())
         CloseDetail(panel, state, home);
     DetailName(entry.name);
     DetailSubtitle(entry.school);
+    if (const auto controls = home == Tab::Magic && !view.player ? fp::game::SpellControlsFor(view.id) : std::nullopt)
+    {
+        const fp::SpellButton forget =
+            controls->active ? fp::ForgetButton(entry.name) : fp::SpellButton{false, controls->why};
+        bool asking = state.confirming == entry.form;
+        if (AskedActionAtRight("Forget", forget.can, forget.hover, asking, lineRight))
+        {
+            fp::game::ForgetSpellByForm(view.id, entry.form);
+            PlayGameSound(kSpellForgottenSound);
+            CloseDetail(panel, state, home, false);
+            RefreshAfterAction();
+            return;
+        }
+        state.confirming = asking ? entry.form : 0;
+    }
 
     Im::Spacing();
     DrawSections(entry.detail, false);
@@ -5309,7 +5449,7 @@ void DrawMagicPage(const CharacterView &view, const MagicList &list)
         {
             if (entry.form == state.detail)
             {
-                DrawMagicDetail(entry, Panel(view.id), state, list.home);
+                DrawMagicDetail(view, entry, Panel(view.id), state, list.home);
                 return;
             }
         }
@@ -5366,13 +5506,13 @@ void DrawSummon(const SummonView &summon)
     geo.statLabelRight = geo.valueLeft - 12.0f;
 
     DrawStatRow(
-        geo, "Health", summon.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
-        [&] { Im::Text("%s", levelText.c_str()); }, summon.healthBreakdown);
+        geo, "Health", summon.health, kHealth, "Level", [&] { Im::Text("%s", levelText.c_str()); },
+        summon.healthBreakdown);
     DrawStatRow(
-        geo, "Stamina", summon.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Kind",
-        [&] { Im::TextDisabled("%s", kindText.c_str()); }, summon.staminaBreakdown);
+        geo, "Stamina", summon.stamina, kStamina, "Kind", [&] { Im::TextDisabled("%s", kindText.c_str()); },
+        summon.staminaBreakdown);
     DrawStatRow(
-        geo, "Magicka", summon.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Remaining",
+        geo, "Magicka", summon.magicka, kMagicka, "Remaining",
         [&] {
             Im::Text("%s", remainingText.c_str());
             // Where the time comes from, the summoner's perks on the spell
@@ -5465,17 +5605,17 @@ void DrawCharacter(const CharacterView &view)
     geo.statLabelRight = geo.valueLeft - 12.0f;
 
     DrawStatRow(
-        geo, "Health", view.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Status",
+        geo, "Health", view.health, kHealth, "Status",
         [&] {
             if (view.inCombat)
-                Im::TextColored(Im::ImVec4(0.95f, 0.65f, 0.35f, 1.0f), "%s", statusText.c_str());
+                Im::TextColored(kFighting, "%s", statusText.c_str());
             else
                 Im::TextDisabled("%s", statusText.c_str());
         },
         view.healthBreakdown);
 
     DrawStatRow(
-        geo, "Stamina", view.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Carrying",
+        geo, "Stamina", view.stamina, kStamina, "Carrying",
         [&] {
             // Over capacity is worth seeing: an overencumbered follower
             // cannot fight properly, and otherwise you would only notice
@@ -5490,14 +5630,13 @@ void DrawCharacter(const CharacterView &view)
         },
         view.staminaBreakdown);
 
-    DrawStatRow(geo, "Magicka", view.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), nullptr, {},
-                view.magickaBreakdown);
+    DrawStatRow(geo, "Magicka", view.magicka, kMagicka, nullptr, {}, view.magickaBreakdown);
 
     // The level beside its experience, in a muted gold; a follower with no
     // experience of ours has the level alone.
     if (hasExperience)
     {
-        DrawStatRow(geo, levelLabel.c_str(), experience, Im::ImVec4(0.76f, 0.60f, 0.28f, 1.0f), nullptr, {});
+        DrawStatRow(geo, levelLabel.c_str(), experience, kExperience, nullptr, {});
         if (progress && progress->engine != progress->level && Im::IsItemHovered(0))
             Tooltip(fmt::format("Level {} from the game, {} with what they have learned", progress->engine,
                                 progress->level));
@@ -5815,32 +5954,6 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
     }
 }
 
-// After an action on the follower whose page is shown -- a perk learned, a
-// level moved, a skill reset -- the page is rebuilt once it is done: queued
-// behind it on the game thread, where tasks run in order. The page is not
-// rebuilt on a beat (Tactics.h, RefreshShownPage), so without this the
-// change showed only after the panel was closed and opened.
-void RefreshAfterAction()
-{
-    if (auto *task = SKSE::GetTaskInterface())
-        task->AddTask([] { RefreshShownPage(); });
-}
-
-// The game's own sounds, by their descriptors' editor ids (Skyrim.esm):
-// the perk menu's for a perk taken (the engine plays it from 52521), the
-// skills menu's step back for one given back, and the one a failed
-// activation makes for a click that cannot be answered.
-constexpr const char *kPerkTakenSound = "UISkillsPerkSelect2D";
-constexpr const char *kPerkReturnedSound = "UISkillsBackwardSD";
-constexpr const char *kRefusedSound = "UIActivateFail";
-
-// Played on the game thread, where the descriptor is looked up.
-void PlayGameSound(const char *id)
-{
-    if (auto *task = SKSE::GetTaskInterface())
-        task->AddTask([id] { RE::PlaySound(id); });
-}
-
 void DrawSkills(const CharacterView &view)
 {
     SkillsTabState &state = Panel(view.id).skills;
@@ -5905,8 +6018,6 @@ void DrawSkills(const CharacterView &view)
             const float lineX = Im::GetCursorPosX();
             const float lineWidth = Im::GetContentRegionAvail().x;
             const float button = Im::GetFrameHeight();
-            const float framePad = Im::GetStyle()->FramePadding.x;
-            const auto textButtonWidth = [&](const char *label) { return TextWidth(label) + 2.0f * framePad; };
             const auto pointButton = [&](const char *id, Glyph glyph, bool can, const std::string &why) {
                 Im::BeginDisabled(!can);
                 Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
@@ -5972,9 +6083,7 @@ void DrawSkills(const CharacterView &view)
                                               : controls->perkPoints == 1
                                                   ? std::string("1 perk available")
                                                   : std::to_string(controls->perkPoints) + " perks available";
-                const bool confirming = state.confirmReset && b.canResetPerks;
-                const float buttons = confirming ? textButtonWidth("Confirm") + kCellPadX + textButtonWidth("Cancel")
-                                                 : textButtonWidth("Reset perks");
+                const float buttons = AskedActionWidth("Reset perks", state.confirmReset && b.canResetPerks);
                 Im::SameLine(0.0f, 0.0f);
                 const float lead = available.empty() ? 0.0f : TextWidth(available) + kCellPadX;
                 Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineX + lineWidth - buttons - lead));
@@ -5984,30 +6093,11 @@ void DrawSkills(const CharacterView &view)
                     Im::Text("%s", available.c_str());
                     Im::SameLine(0.0f, kCellPadX);
                 }
-                if (confirming)
+                if (AskedAction("Reset perks", b.canResetPerks, b.resetPerks, state.confirmReset))
                 {
-                    if (Im::Button("Confirm", Im::ImVec2(0.0f, 0.0f)))
-                    {
-                        fp::game::ResetPerks(controls->companion, controls->skill);
-                        PlayGameSound(kPerkReturnedSound);
-                        RefreshAfterAction();
-                        state.confirmReset = false;
-                    }
-                    if (Im::IsItemHovered(0))
-                        Tooltip(b.resetPerks);
-                    Im::SameLine(0.0f, kCellPadX);
-                    if (Im::Button("Cancel", Im::ImVec2(0.0f, 0.0f)))
-                        state.confirmReset = false;
-                }
-                else
-                {
-                    state.confirmReset = false;
-                    Im::BeginDisabled(!b.canResetPerks);
-                    if (Im::Button("Reset perks", Im::ImVec2(0.0f, 0.0f)))
-                        state.confirmReset = true;
-                    Im::EndDisabled();
-                    if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-                        Tooltip(b.resetPerks);
+                    fp::game::ResetPerks(controls->companion, controls->skill);
+                    PlayGameSound(kPerkReturnedSound);
+                    RefreshAfterAction();
                 }
             }
             Im::Spacing();

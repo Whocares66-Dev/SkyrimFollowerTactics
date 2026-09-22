@@ -3,31 +3,16 @@
 namespace fp
 {
 
-std::string_view LevelName(int minimumSkill) noexcept
+SpellButton LearnButton(std::string_view spell, bool known)
 {
-    if (minimumSkill >= 100)
-        return "Master";
-    if (minimumSkill >= 75)
-        return "Expert";
-    if (minimumSkill >= 50)
-        return "Adept";
-    if (minimumSkill >= 25)
-        return "Apprentice";
-    return "Novice";
+    if (known)
+        return {false, "Already knows " + std::string(spell)};
+    return {true, "Click to learn " + std::string(spell)};
 }
 
-TeachStatus CanTeach(const SpellFacts &spell, bool known, const PerSkill<int> &skills, int maxMagicka)
+SpellButton ForgetButton(std::string_view spell)
 {
-    if (!spell.ordinary || !spell.school || !IsSchool(*spell.school))
-        return {TeachBlock::NotTeachable, 0, 0};
-    if (known)
-        return {TeachBlock::Known, 0, 0};
-    const int have = skills[Index(*spell.school)];
-    if (have < spell.minimumSkill)
-        return {TeachBlock::Skill, spell.minimumSkill, have};
-    if (spell.cost > maxMagicka)
-        return {TeachBlock::Magicka, spell.cost, maxMagicka};
-    return {TeachBlock::None, 0, 0};
+    return {true, "Click to forget " + std::string(spell)};
 }
 
 } // namespace fp

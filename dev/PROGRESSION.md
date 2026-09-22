@@ -8,7 +8,7 @@ The rules are the player's own, read from the game while it runs ([ENGINE_SKILLS
 
 ## In one paragraph
 
-A companion levels as you do. Using a skill raises it: a spell cast, a blow landed, a hit taken on their armour or their shield. Skill-ups make levels, by your own levelling's rules, read from the game so that a mod that changes them for you changes them for companions. Each level brings what your own level-up brings, an **attribute point** (+10 health, magicka or stamina) and a **perk point**, and you decide where they go. A skill can be taken back into a pool and spent on others, or reset to where a new character starts it. There is no class and no plan, as there is none for the player. Spell tomes you carry can be **taught** to them. Nothing a follower was recruited with is taken away, and every change is one you can see, trace to its cause, and undo. Follower Tactics decides *when* a companion does something; Progression decides *what they are able to do*.
+A companion levels as you do. Using a skill raises it: a spell cast, a blow landed, a hit taken on their armour or their shield. Skill-ups make levels, by your own levelling's rules, read from the game so that a mod that changes them for you changes them for companions. Each level brings what your own level-up brings, an **attribute point** (+10 health, magicka or stamina) and a **perk point**, and you decide where they go. A skill can be taken back into a pool and spent on others, or reset to where a new character starts it. There is no class and no plan, as there is none for the player. A spell tome they carry can be **learned**, and any spell forgotten. Nothing a follower was recruited with is taken away, and every change is one you can see, trace to its cause, and undo. Follower Tactics decides *when* a companion does something; Progression decides *what they are able to do*.
 
 ```
   a skill used ──► skill XP ──► skill-up ──► character XP ──► level ──┬─► 1 attribute point ─► +10 health / magicka / stamina
@@ -119,20 +119,11 @@ Verdicts are the catalog's word, from reading the records, not from play. Until 
 
 ## Spells
 
-**Teaching.** The Spells tab lists every spell tome in the player's inventory, one row per spell, and whether this companion can learn it:
+**Learning from a tome** is the player's reading of one, done by the companion: give them the tome, open it on their Inventory tab, and *Learn* at the top right asks once and teaches it. The tome is used, and the page goes back to their books. Nothing is asked but that they do not know the spell already (*Already knows Flames*): the player can read any tome, so a companion can too, whatever their skill or magicka; whether and when they cast it is Follower Tactics' question. Tomes are named in the enchanted items' blue on the list. Only books that teach a castable spell, through the book's own *teaches* link, have *Learn*, so modded tomes work without a list. *(Changed 2026-09-21: the first design taught from the player's pack and asked for the school's skill at the spell's level and the magicka to cast it.)*
 
-| Row | Means |
-|---|---|
-| *Teach* | Can learn it now; one tome is used |
-| *Needs Destruction 50 (has 34)* | Below the spell's level: Novice 0, Apprentice 25, Adept 50, Expert 75, Master 100 — the spell's costliest effect's own minimum skill |
-| *Needs 120 magicka (has 80)* | Could never cast it; teaching it would waste the tome |
-| *Already knows* | Innate, or taught before |
+**Forgetting.** A spell's page on their Magic tab has *Forget* at the top right, asked once, for any spell they know. One taught here is taken back; any other -- their record's, their race's, a quest's -- is set aside, the record keeping it. Either way the engine is told they do not know it, so it leaves every list that asks the engine: their Magic tab, the combat AI's choice, their hands, Tactics' rules (which read it as not known) and its pins and bans on it (dropped, as for an item no longer carried). The tome is not returned -- forgetting is not a way to copy books -- and a tome of the spell brings it back: taught again, or theirs taken up again. Both work because the engine is told what a companion knows, rather than having their record edited or the spell added to them ([ENGINE_SPELLS.md](ENGINE_SPELLS.md)), so a save without the mod has them as their record has them. Only castable spells; powers, shouts and abilities stay as they are.
 
-The tome comes out of the player's inventory, not the companion's. You do not need to know the spell yourself: the book is the teacher. Only ordinary spells taught by a book are offered, read through the book's own *teaches* link, so modded tomes work without a list.
-
-**Forgetting.** A spell taught here can be forgotten from its row. The tome is not returned — forgetting is not a way to copy books. Spells a companion came with are *Their own*. Those can be **set aside**: the companion stops knowing the spell, the record keeps it, and *Restore* takes it up again for nothing. A set-aside spell is restored, not taught again from a tome. Both work because the engine is told what a companion knows, rather than having their record edited or the spell added to them ([ENGINE_SPELLS.md](ENGINE_SPELLS.md)). Only castable spells are offered; abilities stay as they are.
-
-Follower Tactics' *ban* is not this. A banned spell is still known — to conditions, scripts, other mods and Tactics' own rules; the combat AI just never picks it. Setting a spell aside means they no longer know it at all.
+Follower Tactics' *ban* is not this. A banned spell is still known — to conditions, scripts, other mods and Tactics' own rules; the combat AI just never picks it. Forgetting means they no longer know it at all.
 
 **Using it** is Tactics' business. A vanilla companion's AI may or may not choose a new spell by itself; with Follower Tactics installed, the Spells tab says so under its tables: *Follower Tactics decides when a spell is cast: give it a rule on Marcurio's Tactics tab.*
 
@@ -233,7 +224,7 @@ Rows keep their places: sorting them by total would move a row out from under th
 
 Met requirements are dimmed and unmet ones are in full ink, with what the companion has; the two parents of an OR group read *Critical Charge or Savage Strike*. Trees with anything held first, then the rest, each collapsible, each headed by the skill's total and a count: *One-Handed 54 · 2 of 10 held, 7 ready* — where a point can go without opening every tree *(from the prototype)*. A filter shows only what can be learned now. Hovering a perk gives the game's description, then a line for companions: *Works in combat — expected; not yet measured on an NPC*. A learned perk bought here has an *Unlearn* button, always visible rather than on hover, so a gamepad can reach it *(from the prototype)*; one they came with says *their own*. When there are no points to spend it is said once above the trees, not on every row.
 
-**Spells.** Two tables: *Teach from a tome* (above) and *Known spells*, each spell with its school, level, cost, and where it came from (*Their own*, *Taught from a tome*), with *Forget* on the taught ones and *Set aside* or *Restore* on their own castable ones. *Teach* asks once — *Teach Flames? One tome is used (2 carried). Confirm · Cancel* — because it spends an item.
+**Spells.** On Tactics' own tabs since 2026-09-21 ([Spells](#spells)): *Learn* on a tome's page in their Inventory, *Forget* on a spell's page in their Magic tab.
 
 ### The Overview
 
@@ -266,12 +257,12 @@ A window beside the conversation keeps the social framing and avoids the problem
 |---|---|---|
 | Answers | *What will they do, and when?* | *What are they able to do?* |
 | Owns | Rules, spell choice, equipment pins, combat style | What they've learned and where it sits, points assigned, perks bought here, spells taught here |
-| Reads | The follower's skills, perks, spells | The party, their skill use, the player's tomes |
+| Reads | The follower's skills, perks, spells | The party, their skill use, the tomes they carry |
 | Changes | Nothing permanent about the follower | Skills, attributes, perks and spells, recorded |
 
 Where they meet:
 
-1. **A taught spell** is known through the spell view, not the actor's own lists, so Tactics' Magic tab shows it only when Tactics reads spells through the engine's `VisitSpells`, which its `ForEachSpell` does since 2026-09-21 (seen working in play: Jenassa's taught Sparks). Progression's confirmation says the spell can now be given a rule.
+1. **A taught or forgotten spell** is known, or not, through the spell view, not the actor's own lists, so Tactics reads spells through the engine's `VisitSpells` (its `ForEachSpell`, since 2026-09-21; seen working in play: Jenassa's taught Sparks), and asks the engine's `HasSpell` whether a pin or ban on a spell still holds (`StillCarried`). A spell learned can be given a rule at once; one forgotten reads as not known to every rule naming it.
 2. **Dual Casting and Power Bash perks** are what Tactics' *Require …* settings check. Progression shows that on the perk rows.
 3. **What they've learned, in Tactics' breakdowns.** Tactics' Skills and Character hovers attribute every modifier they can and call the rest *Other*; learned levels and assigned points land in the permanent modifier, so today they would read as *Other*. A two-function interface — "how much of this actor value is Progression's?" — through SKSE's messaging lets Tactics name it *Progression +14*.
 4. **One look.** The same panel conventions, the same one-entry-per-follower layout, the same words (a follower is *they*).
@@ -324,7 +315,7 @@ That is all it needs: one notification, one question, and Tactics reading spells
 |---|---|---|---|
 | Learned skills and assigned attributes | `ModActorValue(kPermanent, av, Δ)` on the actor — the console's `modav` — reconciled against the amount the ledger says it applied | The permanent modifier sits on the reference, not the shared base record; vanilla levelling rewrites base values, not modifiers ([MODIFIERS.md](MODIFIERS.md): on an NPC, effects write the temporary modifier, so the permanent one is otherwise quiet) | That it persists through save, load and restart for an NPC; that a level-up recalculation leaves it alone |
 | Perks | A view in front of the engine: Character's `ForEachPerk` and `ApplyPerksFromBase` virtuals are replaced, so for a managed companion the engine's `HasPerk` and its effect registration see the record's perks less the set-aside plus the bought ([ENGINE_PERKS.md](ENGINE_PERKS.md)) | The record, shared by every copy of the NPC, is never edited: nothing leaks between saves, and a follower's own perks can be set aside and restored. An ability perk's spell is saved on the actor; turning levelling off takes it off with everything else | That the hooks run, their timing at load, that releasing leaves a save clean, and the measured effect |
-| Spells | A view in front of the engine: `Actor::VisitSpells` detoured and Character's `CheckCast` replaced, so for a managed companion `HasSpell`, the combat AI's inventory and the UseMagic procedure see what they know less the set-aside plus the taught ([ENGINE_SPELLS.md](ENGINE_SPELLS.md)); one tome removed from the player | Nothing written to the record or the actor, so a follower's own spells can be set aside, and taught ones go with the mod. On VR, `AddSpell` / `RemoveSpell` as NFF, AFT and Lucien do | That the hooks run, and that a spell known only through the view is cast |
+| Spells | A view in front of the engine: `Actor::VisitSpells` detoured and Character's `CheckCast` replaced, so for a managed companion `HasSpell`, the combat AI's inventory and the UseMagic procedure see what they know less the set-aside plus the taught ([ENGINE_SPELLS.md](ENGINE_SPELLS.md)); one tome removed from the companion | Nothing written to the record or the actor, so a follower's own spells can be set aside, and taught ones go with the mod | That the hooks run, and that a spell known only through the view is cast |
 | Skill use | Character's `UseSkill` slot replaced (magic), and the hit handler's call to the victim's processing hooked, the player-only weapon, Block and armour uses worked out the same way for companions ([ENGINE_SKILLS.md](ENGINE_SKILLS.md)) | The engine already works out a caster's use and throws it away; the combat uses it works out only for the player, so they are mirrored with the game's own settings | That both hooks are heard in play, and the rate |
 | Level | The engine's own is untouched; their level for points is the greater of it and what they've learned on top, at most 5 past the player's | Owning engine level is the unsolved P0; supplementing it is robust and honest | — |
 
@@ -340,4 +331,4 @@ Sneak and the crafting skills by use, skill books and trainers for companions, *
 2. ~~Bridges for no-effect perks~~: decided 2026-09-21, bought like any other perk (above).
 3. **How far past the player** learning may take a companion: 5 levels now.
 4. **Attribute points from their own values.** An NPC's health, magicka and stamina come from their class, not from choices; counting what they carry above their race's start as points already spent may leave some followers with none to assign. Count it, count half, or not at all?
-5. **Spells outside a companion's calling.** Any companion with the magicka can learn a Novice spell: Lydia, 50 magicka, can learn Flames. That follows from "the book is the teacher", and whether a warrior's AI ever casts it is exactly what Follower Tactics answers. Keep it, or ask for some skill in the school first?
+5. ~~Spells outside a companion's calling~~: decided 2026-09-21, a tome teaches anyone who does not know the spell, as it does the player (above).

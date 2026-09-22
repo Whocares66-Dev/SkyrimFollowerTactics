@@ -368,7 +368,15 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         if (book->TeachesSpell())
         {
             item.type = "Spell Tome";
-            stats.rows.push_back(Row("Teaches", NameOf(book->GetSpell())));
+            item.spellTome = true;
+            RE::SpellItem *spell = book->GetSpell();
+            stats.rows.push_back(Row("Teaches", NameOf(spell)));
+            if (IsCastable(spell))
+            {
+                item.teaches = spell->GetFormID();
+                item.teachesName = NameOf(spell);
+                item.knowsTaught = actor->HasSpell(spell);
+            }
         }
         else
         {

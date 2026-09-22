@@ -260,11 +260,34 @@ void Teach(Companion &c, const SpellFacts &spell);
 // False when the spell was not taught here: those are not ours to take.
 bool Forget(Companion &c, const FormKey &spell);
 
-// One of their own spells set aside, and taken up again; both free. A spell
-// taught here is forgotten instead, so neither applies to one. False when
-// nothing changed.
+// A spell they know that was not taught here -- their record's, their
+// race's, one a quest gave them -- set aside, and taken up again; both free.
+// A spell taught here is forgotten instead, so neither applies to one. False
+// when nothing changed.
 bool SetAsideSpell(Companion &c, const SpellFacts &spell);
 bool RestoreSpell(Companion &c, const FormKey &spell);
 [[nodiscard]] bool IsSpellSetAside(const Companion &c, const FormKey &spell) noexcept;
+
+// A tome read, as the player reads one: a spell set aside is taken up
+// again, any other is taught; nothing when they know it. `known` is the
+// engine's answer through the view, so one set aside is not known.
+enum class TomeRead : std::uint8_t
+{
+    Known,
+    Taught,
+    Restored,
+};
+TomeRead ReadTome(Companion &c, const SpellFacts &spell, bool known);
+
+// A spell they know, forgotten: one taught here is taken back, any other
+// set aside, so the engine is told they do not know it either way, and a
+// tome of it brings it back (ReadTome). Nothing when they do not know it.
+enum class SpellForgotten : std::uint8_t
+{
+    NotKnown,
+    Forgotten,
+    SetAside,
+};
+SpellForgotten ForgetSpell(Companion &c, const SpellFacts &spell, bool known);
 
 } // namespace fp

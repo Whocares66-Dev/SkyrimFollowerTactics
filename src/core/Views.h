@@ -210,6 +210,14 @@ struct InventoryItem
     // follower would cast it.
     std::string cast;
     float magnitude{0.0f};
+    // A spell tome: named in the enchanted tint. `teaches` is the castable
+    // spell it teaches, 0 for none, with its name, and `knowsTaught` whether
+    // they know it already, as the engine's HasSpell answers -- through
+    // Progression's spell view, so one they have forgotten is not known.
+    bool spellTome{false};
+    std::uint32_t teaches{0};
+    std::string teachesName;
+    bool knowsTaught{false};
 };
 
 enum class MagicCategory : std::uint8_t

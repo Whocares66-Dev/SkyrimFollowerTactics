@@ -250,6 +250,10 @@ void Publish(std::unordered_map<RE::FormID, Diff> diffs)
         // Set aside and taught at once is a ledger the core refuses to make;
         // from a damaged co-save, set aside wins.
         std::erase_if(diff.added, [&](RE::SpellItem *s) { return In(diff.removed, s); });
+        // Taught again after it was withdrawn mid-fight: known again, and
+        // CheckCast no longer refuses it.
+        if (const auto withdrawn = g_withdrawn.find(id); withdrawn != g_withdrawn.end())
+            std::erase_if(withdrawn->second, [&](RE::SpellItem *s) { return In(diff.added, s); });
         if (diff.added.size() > kMaxAdded)
         {
             log::spells.warn("{:08X}: {} spells taught; the first {} are known", id, diff.added.size(), kMaxAdded);

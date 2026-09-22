@@ -24,23 +24,6 @@
 namespace fp::game
 {
 
-struct KnownSpellRow
-{
-    SpellFacts facts;
-    bool onRecord{false}; // on their own record
-    bool taught{false};   // taught here
-    bool setAside{false}; // their own, set aside here
-};
-
-struct TomeRow
-{
-    FormKey book;
-    std::string bookName;
-    SpellFacts facts;
-    int count{0};
-    TeachStatus status;
-};
-
 // What the pages show of a companion that the ledger does not hold: read
 // off the actor on the game thread, rebuilt after every action and whenever
 // a page comes up (RefreshViews).
@@ -60,11 +43,8 @@ struct CompanionView
     PerSkill<double> nextLevel{}; // skill XP from each trainable skill's level to the next
     PerSkill<int> base{};
     PerAttribute<int> attributes{};
-    int maxMagicka{0};
     std::unordered_set<FormKey, FormKeyHash>
         onRecord; // perks on their own record not bought here, set-aside ones included
-    std::vector<KnownSpellRow> spells;
-    std::vector<TomeRow> tomes;
 };
 
 // --- the panel's actions: from any thread, carried out on the game thread ---
@@ -127,17 +107,32 @@ struct PerkControls
 // record keeps it) and taken up again, both free.
 void SetAsidePerk(const FormKey &actor, int node);
 void RestorePerk(const FormKey &actor, int node);
-void Teach(const FormKey &actor, const FormKey &spell);
-void Forget(const FormKey &actor, const FormKey &spell);
-// One of their own spells: set aside (the engine is told they do not know
-// it; the record keeps it) and taken up again, both free.
-void SetAsideOwnSpell(const FormKey &actor, const FormKey &spell);
-void RestoreOwnSpell(const FormKey &actor, const FormKey &spell);
+// A spell tome in the companion's pack read, as the player reads one: its
+// spell learned where they do not know it -- taught, or one of theirs set
+// aside taken up again (progression/core/Companion.h, ReadTome) -- and the
+// tome used. By runtime ids, the actor's and the book's, as Tactics'
+// Inventory tab has them. Nothing for an actor who is no companion of ours.
+void LearnFromTome(std::uint32_t actor, std::uint32_t book);
+// A spell they know forgotten, as Tactics' Magic tab names it: one taught
+// here taken back, any other set aside (ForgetSpell); a tome of it brings it
+// back. The engine is told they do not know it, so every reader through it
+// -- the combat AI, HasSpell, Tactics' own lists and rules -- finds it gone.
+void ForgetSpellByForm(std::uint32_t actor, std::uint32_t spell);
+
+// Whether a companion's spells can be changed now -- a tome learned, a
+// spell forgotten -- and if not, why, in the panel's words. None for an
+// actor who is no companion of ours. From the render thread, under the
+// lock.
+struct SpellControls
+{
+    bool active{false};
+    std::string why;
+};
+[[nodiscard]] std::optional<SpellControls> SpellControlsFor(RE::FormID actor);
 // Levelling off: everything of ours off every companion -- assigned points
 // withdrawn, perks and spells as their records have them -- as they are
 // near, the ledger kept. On: all of it back. Taught spells go too, being
-// only the view's; on VR, where they were added to the actor, they stay.
-// Tactics' Settings page is the switch.
+// only the view's. Tactics' Settings page is the switch.
 void SetLevelling(bool on);
 
 struct LevellingState

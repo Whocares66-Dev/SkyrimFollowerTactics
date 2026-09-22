@@ -273,9 +273,6 @@ Companion &EnrollActor(RE::Actor *actor, const FormKey &key)
 
 void RebuildViews()
 {
-    auto *player = RE::PlayerCharacter::GetSingleton();
-    // The player's tomes once, priced per companion below; the rules once.
-    const std::vector<Tome> tomes = TomesCarried(player);
     const Rules r = ReadRules();
     g_state.rules = r;
     std::vector<CompanionView> views;
@@ -304,36 +301,7 @@ void RebuildViews()
                     v.nextLevel[i] = SkillThreshold(r, *usage, v.base[i] + c.learning.skills[i]);
             }
             v.attributes = BaseAttributes(actor);
-            v.maxMagicka = MaxMagicka(actor);
             v.onRecord = OnRecord(c, actor);
-            const auto taught = TaughtSpells(c);
-            for (const KnownSpell &k : KnownSpells(actor, taught))
-                v.spells.push_back({k.facts, k.onRecord, Taught(c, k.facts.spell), IsSpellSetAside(c, k.facts.spell)});
-            // Set aside, and no longer on their record (a mod updated): still
-            // listed, so it can be restored and stop hiding the spell.
-            for (const SpellAside &s : c.spellsSetAside)
-                if (std::none_of(v.spells.begin(), v.spells.end(),
-                                 [&](const KnownSpellRow &r) { return r.facts.spell == s.spell; }))
-                {
-                    auto *spell = Lookup<RE::SpellItem>(s.spell);
-                    SpellFacts facts = spell ? FactsOf(spell, actor) : SpellFacts{};
-                    facts.spell = s.spell;
-                    if (facts.name.empty())
-                        facts.name = s.name;
-                    v.spells.push_back({std::move(facts), false, false, true});
-                }
-            const PerSkill<int> effective = Effective(c, v.base);
-            for (const Tome &t : tomes)
-            {
-                auto *spell = Lookup<RE::SpellItem>(t.facts.spell);
-                SpellFacts facts = t.facts;
-                if (spell)
-                    facts.cost = static_cast<int>(spell->CalculateMagickaCost(actor));
-                // One of theirs set aside counts as known: it is restored, not taught.
-                const bool known = spell && (actor->HasSpell(spell) || IsSpellSetAside(c, t.facts.spell));
-                const TeachStatus status = CanTeach(facts, known, effective, v.maxMagicka);
-                v.tomes.push_back({t.book, t.bookName, std::move(facts), t.count, status});
-            }
         }
         else if (previous != g_state.views.end())
         {
@@ -363,6 +331,17 @@ void Act(std::function<void()> work)
         PublishViews();
         RebuildViews();
     });
+}
+
+// Why a page's buttons cannot change a companion now, in the panel's
+// words; none when they can.
+std::optional<std::string> CannotChange(const Companion &c, const CompanionView &v)
+{
+    if (g_state.settings.released)
+        return "Leveling is off: turn it on in Follower Tactics' Settings.";
+    if (!v.loaded)
+        return c.name + " must be with you for this.";
+    return std::nullopt;
 }
 
 // The companion and their actor, when they are here to be changed.
@@ -513,16 +492,13 @@ std::optional<SkillControls> ControlsFor(RE::FormID actor, int actorValue)
         out.level = out.base + out.learned;
         out.perkPoints = v.perkPoints;
         out.buttons = ButtonsFor(c, *skill, v.base, v.floors[k], Graph(), HoldingsOf(c, v.onRecord), g_state.rules);
-        const auto none = [&](const std::string &why) {
+        if (const auto why = CannotChange(c, v))
+        {
             out.buttons.canLower = out.buttons.canRaise = out.buttons.canResetPerks = false;
             out.buttons.lower = out.buttons.lowest = out.buttons.raise = out.buttons.highest = out.buttons.resetPerks =
-                why;
-        };
-        if (g_state.settings.released)
-            none("Leveling is off: turn it on in Follower Tactics' Settings.");
-        else if (!v.loaded)
-            none(c.name + " must be with you for this.");
-        out.active = !g_state.settings.released && v.loaded;
+                *why;
+        }
+        out.active = !CannotChange(c, v);
         return out;
     }
     return std::nullopt;
@@ -647,116 +623,109 @@ void RestorePerk(const FormKey &key, int nodeId)
     });
 }
 
-void Teach(const FormKey &key, const FormKey &spellKey)
+void LearnFromTome(std::uint32_t actorId, std::uint32_t bookId)
 {
-    Act([key = key, spellKey = spellKey] {
-        auto [c, actor] = Present(key, "learn a spell");
+    Act([actorId, bookId] {
+        const auto key = KeyOf(RE::TESForm::LookupByID<RE::Actor>(actorId));
+        auto *book = RE::TESForm::LookupByID<RE::TESObjectBOOK>(bookId);
+        RE::SpellItem *spell = TomeSpell(book);
+        if (!key || !spell)
+            return;
+        auto [c, actor] = Present(*key, "learn a spell");
         if (!c)
-            return;
-        const auto tomes = TomesCarried(actor);
-        const auto tome =
-            std::find_if(tomes.begin(), tomes.end(), [&](const Tome &t) { return t.facts.spell == spellKey; });
-        auto *spell = Lookup<RE::SpellItem>(spellKey);
-        if (tome == tomes.end() || !spell)
-        {
-            Refuse("You no longer carry that tome.");
-            return;
-        }
-        if (Taught(*c, spellKey))
-        {
-            Refuse(fmt::format("{} was taught {} already.", c->name, tome->facts.name));
-            return;
-        }
-        if (IsSpellSetAside(*c, spellKey))
-        {
-            Refuse(fmt::format("{} knows {} already: it is set aside. Restore it, for nothing.", c->name,
-                               tome->facts.name));
-            return;
-        }
-        const TeachStatus status =
-            CanTeach(tome->facts, actor->HasSpell(spell), Effective(*c, BaseSkills(actor)), MaxMagicka(actor));
-        if (status.block != TeachBlock::None)
-        {
-            Refuse(fmt::format("{} cannot learn {} yet.", c->name, tome->facts.name));
-            return;
-        }
-        auto *book = Lookup<RE::TESObjectBOOK>(tome->book);
-        // Known through the view (progression/game/SpellView.h), not added to the actor;
-        // without the hooks, added as the engine keeps it. Checked through
-        // the engine's own HasSpell before the tome goes; on failure the
-        // ledger is put back exactly as it was.
-        const auto spellsBefore = c->spells;
-        fp::Teach(*c, tome->facts);
-        PublishViews();
-        const bool hooked = spellview::Installed();
-        const bool known = hooked ? actor->HasSpell(spell) : AddToActor(actor, spell);
-        const bool took = known && TakeTome(book);
-        if (!took)
-        {
-            log::spells.warn("{}: {} {}; the tome is kept", c->name, tome->facts.name,
-                             known ? "was known, but the tome could not be taken" : "did not take (HasSpell says no)");
-            if (known && !hooked)
-                actor->RemoveSpell(spell);
-            c->spells = spellsBefore;
-            Refuse(fmt::format("{} could not learn {}; the tome is kept.", c->name, tome->facts.name));
-            return;
-        }
-        log::spells.info("{} learned {} from {}", c->name, tome->facts.name, tome->bookName);
-        Hud(fmt::format("{} learned {}.", c->name, tome->facts.name));
-    });
-}
-
-void Forget(const FormKey &key, const FormKey &spellKey)
-{
-    Act([key = key, spellKey = spellKey] {
-        auto [c, actor] = Present(key, "forget a spell");
-        if (!c || !Taught(*c, spellKey))
-            return;
-        auto *spell = Lookup<RE::SpellItem>(spellKey);
-        const std::string name = NameOf(spell);
-        fp::Forget(*c, spellKey);
-        PublishViews();
-        if (spell)
-            ForgetSpell(actor, spell);
-        spellview::Withdraw(actor, spell);
-        log::spells.info("{} forgot {}", c->name, name);
-        Hud(fmt::format("{} forgot {}.", c->name, name));
-    });
-}
-
-void SetAsideOwnSpell(const FormKey &key, const FormKey &spellKey)
-{
-    Act([key = key, spellKey = spellKey] {
-        auto [c, actor] = Present(key, "set a spell aside");
-        if (!c)
-            return;
-        auto *spell = Lookup<RE::SpellItem>(spellKey);
-        if (!spell || !SpellOnRecord(actor, spell) || spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell)
             return;
         if (!spellview::Installed())
         {
-            Refuse("Setting a spell aside needs the spell hooks, which are not installed (Skyrim VR).");
+            RefuseQuietly("the spell hooks are not installed: nothing can be taught");
             return;
         }
-        if (!fp::SetAsideSpell(*c, FactsOf(spell, actor)))
+        if (CarriedCount(actor, book) <= 0)
+        {
+            RefuseQuietly(fmt::format("{} no longer carries {}", c->name, NameOf(book)));
             return;
+        }
+        // Known through the view (progression/game/SpellView.h), never added
+        // to the actor. HasSpell is the engine's own walk through it, so
+        // this asks what the engine will answer; checked again before the
+        // tome goes, and on failure the ledger is put back as it was.
+        const SpellFacts facts = FactsOf(spell);
+        const auto taughtBefore = c->spells;
+        const auto asideBefore = c->spellsSetAside;
+        const TomeRead read = ReadTome(*c, facts, actor->HasSpell(spell));
+        if (read == TomeRead::Known)
+        {
+            RefuseQuietly(fmt::format("{} already knows {}", c->name, facts.name));
+            return;
+        }
         PublishViews();
-        spellview::Reconcile(actor);
-        log::spells.info("{} set {} aside", c->name, NameOf(spell));
-        Hud(fmt::format("{} set {} aside.", c->name, NameOf(spell)));
+        if (!actor->HasSpell(spell))
+        {
+            log::spells.warn("{}: {} did not take (the engine's HasSpell says no); the tome is kept", c->name,
+                             facts.name);
+            c->spells = taughtBefore;
+            c->spellsSetAside = asideBefore;
+            PublishViews();
+            return;
+        }
+        actor->RemoveItem(book, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+        log::spells.info("{} {} {} from {}", c->name, read == TomeRead::Restored ? "took up again" : "learned",
+                         facts.name, NameOf(book));
     });
 }
 
-void RestoreOwnSpell(const FormKey &key, const FormKey &spellKey)
+void ForgetSpellByForm(std::uint32_t actorId, std::uint32_t spellId)
 {
-    Act([key = key, spellKey = spellKey] {
-        auto [c, actor] = Present(key, "take a spell up again");
-        if (!c || !fp::RestoreSpell(*c, spellKey))
+    Act([actorId, spellId] {
+        const auto key = KeyOf(RE::TESForm::LookupByID<RE::Actor>(actorId));
+        auto *spell = RE::TESForm::LookupByID<RE::SpellItem>(spellId);
+        if (!key || !spell || spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell)
             return;
-        const std::string name = NameOf(Lookup<RE::SpellItem>(spellKey));
-        log::spells.info("{} took {} up again", c->name, name);
-        Hud(fmt::format("{} took {} up again.", c->name, name));
+        auto [c, actor] = Present(*key, "forget a spell");
+        if (!c)
+            return;
+        if (!spellview::Installed())
+        {
+            RefuseQuietly("the spell hooks are not installed: nothing can be forgotten");
+            return;
+        }
+        const SpellFacts facts = FactsOf(spell);
+        const SpellForgotten forgotten = ForgetSpell(*c, facts, actor->HasSpell(spell));
+        if (forgotten == SpellForgotten::NotKnown)
+            return;
+        PublishViews();
+        // Out of their hands and their voice now; a fight's inventory,
+        // gathered before, still lists a taught one, so CheckCast refuses
+        // it until the fight is over (spellview::Withdraw).
+        if (forgotten == SpellForgotten::Forgotten)
+            spellview::Withdraw(actor, spell);
+        spellview::Reconcile(actor);
+        if (actor->HasSpell(spell))
+            log::spells.warn("{}: forgot {}, but the engine's HasSpell still says yes", c->name, facts.name);
+        log::spells.info("{} forgot {} ({})", c->name, facts.name,
+                         forgotten == SpellForgotten::Forgotten ? "taught here" : "theirs, set aside");
     });
+}
+
+std::optional<SpellControls> SpellControlsFor(RE::FormID actor)
+{
+    if (actor == 0)
+        return std::nullopt;
+    std::scoped_lock lock(g_mutex);
+    for (const CompanionView &v : g_state.views)
+    {
+        const Companion *c = v.actor == actor && v.read ? Find(v.key) : nullptr;
+        if (!c)
+            continue;
+        SpellControls out;
+        if (const auto why = CannotChange(*c, v))
+            out.why = *why;
+        else if (!spellview::Installed())
+            out.why = "The spell hooks are not installed: see the log.";
+        else
+            out.active = true;
+        return out;
+    }
+    return std::nullopt;
 }
 
 namespace

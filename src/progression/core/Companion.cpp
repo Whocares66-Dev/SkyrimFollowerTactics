@@ -417,4 +417,23 @@ bool IsSpellSetAside(const Companion &c, const FormKey &spell) noexcept
                        [&](const SpellAside &s) { return s.spell == spell; });
 }
 
+TomeRead ReadTome(Companion &c, const SpellFacts &spell, bool known)
+{
+    if (known || spell.spell.Empty())
+        return TomeRead::Known;
+    if (RestoreSpell(c, spell.spell))
+        return TomeRead::Restored;
+    Teach(c, spell);
+    return TomeRead::Taught;
+}
+
+SpellForgotten ForgetSpell(Companion &c, const SpellFacts &spell, bool known)
+{
+    if (!known || spell.spell.Empty())
+        return SpellForgotten::NotKnown;
+    if (Forget(c, spell.spell))
+        return SpellForgotten::Forgotten;
+    return SetAsideSpell(c, spell) ? SpellForgotten::SetAside : SpellForgotten::NotKnown;
+}
+
 } // namespace fp

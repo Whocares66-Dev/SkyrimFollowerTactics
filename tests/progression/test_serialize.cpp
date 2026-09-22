@@ -26,8 +26,8 @@ Companion Seasoned()
     fp::MarkApplied(c, fp::Pending(c, base, 100));
     c.perks.push_back({{"Skyrim.esm", 0x0BABE4}, "Armsman", 1});
     c.setAside.push_back({"Skyrim.esm", 0x053128});
-    fp::Teach(c, {{"Skyrim.esm", 0x012FCD}, "Flames", fp::Skill::Destruction, 0, 14, true});
-    fp::SetAsideSpell(c, {{"Skyrim.esm", 0x02B96B}, "Sparks", fp::Skill::Destruction, 0, 13, true});
+    fp::Teach(c, {{"Skyrim.esm", 0x012FCD}, "Flames"});
+    fp::SetAsideSpell(c, {{"Skyrim.esm", 0x02B96B}, "Sparks"});
     return c;
 }
 

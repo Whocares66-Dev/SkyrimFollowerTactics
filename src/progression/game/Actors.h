@@ -35,8 +35,6 @@ namespace fp::game
 [[nodiscard]] PerSkill<int> BaseSkills(RE::Actor *actor);
 // Health, magicka and stamina: base value, no modifiers.
 [[nodiscard]] PerAttribute<int> BaseAttributes(RE::Actor *actor);
-// The full pool: base, permanent and temporary modifiers.
-[[nodiscard]] int MaxMagicka(RE::Actor *actor);
 
 // Writes `delta` into the actor's permanent modifiers: the console's modav.
 void ApplyPoints(RE::Actor *actor, const Delta &delta);

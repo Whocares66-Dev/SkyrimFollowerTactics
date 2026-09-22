@@ -96,19 +96,6 @@ PerAttribute<int> BaseAttributes(RE::Actor *actor)
     return out;
 }
 
-int MaxMagicka(RE::Actor *actor)
-{
-    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
-    if (!owner)
-        return 0;
-    // The pool's maximum: the permanent value (base plus permanent modifier)
-    // plus the temporary modifier, which is where an NPC's fortify effects
-    // land (Follower Tactics' Sensors.cpp, the pools).
-    const float temporary =
-        actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, RE::ActorValue::kMagicka);
-    return static_cast<int>(owner->GetPermanentActorValue(RE::ActorValue::kMagicka) + temporary);
-}
-
 void ApplyPoints(RE::Actor *actor, const Delta &delta)
 {
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
