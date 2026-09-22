@@ -54,17 +54,4 @@ void Forget();
 // set-aside ones, plus the added ones.
 [[nodiscard]] std::vector<RE::BGSPerk *> Effective(RE::Actor *actor);
 
-struct Counters
-{
-    std::uint64_t forEachPerkManaged{0}; // walks answered from a view
-    std::uint64_t applyFromBase{0};
-    std::uint64_t applyFromBaseManaged{0};
-    std::uint64_t queued{0}; // rank changes we queued
-};
-[[nodiscard]] Counters Count() noexcept;
-
-// Game thread: asks the engine's own HasPerk about every perk the view
-// concerns and says where it disagrees. The first thing to run in play.
-[[nodiscard]] std::string SelfCheck(RE::Actor *actor);
-
 } // namespace fp::game::perkview

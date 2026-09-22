@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <numbers>
 #include <vector>
 
@@ -141,6 +142,37 @@ TEST_CASE("labels in a crowded row find places clear of each other and of the ci
     // The outer ones keep their outer sides.
     CHECK(d.places.front() == ft::LabelPlace::Left);
     CHECK(d.places.back() == ft::LabelPlace::Right);
+}
+
+TEST_CASE("a label keeps off its own node's link when another place is clear", "[perktree]")
+{
+    // Four columns; the third from the right (x 2) is in the left half, so
+    // its label would go left -- along the link to its child (x 3), in the
+    // column beside it and barely higher.
+    std::vector<ft::PerkTreeNode> nodes{At(0.0), At(1.0), At(2.0), At(3.0, 5.0f)};
+    const std::vector<float> labels{60.0f, 60.0f, 60.0f, 60.0f};
+    const auto unlinked = Draw(nodes, labels, 1000.0f, 300.0f);
+    REQUIRE(unlinked.places[2] == ft::LabelPlace::Left);
+
+    nodes[2].children = {3};
+    const auto d = Draw(nodes, labels, 1000.0f, 300.0f);
+    CHECK(d.places[2] != ft::LabelPlace::Left);
+    // Nothing of the link, from ring to ring, runs through the label.
+    const ft::TreePoint a = d.centres[2];
+    const ft::TreePoint b = d.centres[3];
+    const float length = std::hypot(b.x - a.x, b.y - a.y);
+    for (int step = 0; step <= 100; ++step)
+    {
+        const float along = kRing + (length - 2.0f * kRing) * static_cast<float>(step) / 100.0f;
+        const float x = a.x + (b.x - a.x) * along / length;
+        const float y = a.y + (b.y - a.y) * along / length;
+        const bool inside =
+            x > d.labels[2].x && x < d.labels[2].x + labels[2] && y > d.labels[2].y && y < d.labels[2].y + kLine;
+        CHECK_FALSE(inside);
+    }
+    // The node itself stays where it was.
+    CHECK(d.centres[2].x == Approx(unlinked.centres[2].x));
+    CHECK(d.centres[2].y == Approx(unlinked.centres[2].y));
 }
 
 TEST_CASE("a tree one node wide, or of one node, sits in the middle", "[perktree]")

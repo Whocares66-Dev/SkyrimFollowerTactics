@@ -11,7 +11,6 @@
 #include "progression/game/Tomes.h"
 
 #include <algorithm>
-#include <atomic>
 #include <functional>
 #include <mutex>
 #include <unordered_map>
@@ -24,7 +23,7 @@ namespace
 // 60 m, in the engine's units: an archer on a ledge, a mage at the back.
 constexpr float kNearby = 4200.0f;
 
-// Guards g_state against the panel's copies. The game thread holds it for
+// Guards g_state against the pages' reads. The game thread holds it for
 // the whole of anything that changes state; a frame of the panel waits.
 std::mutex g_mutex;
 
@@ -32,22 +31,11 @@ struct State
 {
     std::vector<Companion> companions;
     std::vector<CompanionView> views;
-    std::vector<Candidate> candidates;
     Settings settings;
     int playerLevel{1};
     bool inGame{false};
-    std::string refused;
-    Rules rules; // as the views last read them, for the panel
+    Rules rules; // as the views last read them, for the pages
 } g_state;
-
-std::atomic<std::uint64_t> g_version{1};
-std::atomic<bool> g_panelShown{false};
-
-// Set by the panel whenever it draws one of our pages; the tick rebuilds
-// the views only when something has been looking at them.
-std::atomic<bool> g_drawn{false};
-// Who was following at the last tick: the test button's "everyone".
-std::unordered_set<FormKey, FormKeyHash> g_following;
 
 // The companions the views and the learning hooks were last published for,
 // by runtime id: one loaded but missing (a reference that did not resolve
@@ -58,11 +46,6 @@ std::unordered_set<RE::FormID> g_published;
 // while it is off, everyone not in here still carries something of ours.
 // Under g_mutex.
 std::unordered_set<FormKey, FormKeyHash> g_releasedDone;
-
-void Changed() noexcept
-{
-    g_version.fetch_add(1, std::memory_order_relaxed);
-}
 
 void OnGameThread(std::function<void()> work)
 {
@@ -92,19 +75,17 @@ void Hud(const std::string &text)
     RE::SendHUDMessage::ShowHUDMessage(text.c_str());
 }
 
-void Refuse(std::string why)
+void Refuse(const std::string &why)
 {
     log::ui.info("refused: {}", why);
     Hud(why);
-    g_state.refused = std::move(why);
 }
 
 // The same, not shown: for the skill page's clicks, which ask first and say
 // no with a sound of their own.
-void RefuseQuietly(std::string why)
+void RefuseQuietly(const std::string &why)
 {
     log::ui.info("refused: {}", why);
-    g_state.refused = std::move(why);
 }
 
 // Perks on their record that were not bought here: theirs, or another mod's.
@@ -370,19 +351,17 @@ void RebuildViews()
     g_state.views = std::move(views);
 }
 
-// Every action from the panel: on the game thread, under the lock, with
-// the views rebuilt after so the panel shows the result on its next frame.
+// Every action from a page: on the game thread, under the lock, with the
+// views rebuilt after so the page shows the result on its next frame.
 void Act(std::function<void()> work)
 {
     OnGameThread([work = std::move(work)] {
         std::scoped_lock lock(g_mutex);
-        g_state.refused.clear();
         if (!g_state.inGame)
             return;
         work();
         PublishViews();
         RebuildViews();
-        Changed();
     });
 }
 
@@ -408,60 +387,7 @@ std::pair<Companion *, RE::Actor *> Present(const FormKey &key, std::string_view
 
 } // namespace
 
-std::uint64_t Version() noexcept
-{
-    return g_version.load(std::memory_order_relaxed);
-}
-
-Snapshot Read()
-{
-    std::scoped_lock lock(g_mutex);
-    Snapshot s;
-    s.companions = g_state.companions;
-    s.views = g_state.views;
-    s.candidates = g_state.candidates;
-    s.settings = g_state.settings;
-    s.rules = g_state.rules;
-    s.playerLevel = g_state.playerLevel;
-    s.inGame = g_state.inGame;
-    s.refused = g_state.refused;
-    if (g_state.settings.released)
-        for (const Companion &c : g_state.companions)
-            if (!g_releasedDone.contains(c.key))
-                s.stillHeld.push_back(c.name);
-    s.version = Version();
-    return s;
-}
-
 // --- actions ---------------------------------------------------------------------
-
-void Enroll(const FormKey &key)
-{
-    Act([key = key] {
-        RE::Actor *actor = ActorOf(key);
-        if (!actor || Find(key))
-            return;
-        if (!IsUniqueNpc(actor))
-        {
-            Refuse(fmt::format("{} is not unique: this build trains unique followers only.", NameOf(actor)));
-            return;
-        }
-        Companion &c = EnrollActor(actor, key);
-        PublishViews();
-        Reconcile(c, actor);
-    });
-}
-
-void SetPaused(const FormKey &key, bool paused)
-{
-    Act([key = key, paused] {
-        if (Companion *c = Find(key))
-        {
-            c->paused = paused;
-            log::party.info("{}: earning {}", c->name, paused ? "paused" : "resumed");
-        }
-    });
-}
 
 void AssignSkillPoint(const FormKey &key, Skill skill, int delta)
 {
@@ -486,23 +412,6 @@ void AssignSkillPoint(const FormKey &key, Skill skill, int delta)
     });
 }
 
-void ResetSkill(const FormKey &key, Skill skill)
-{
-    Act([key = key, skill] {
-        auto [c, actor] = Present(key, "reset a skill");
-        if (!c)
-            return;
-        const Rules r = ReadRules();
-        const ResetResult reset =
-            fp::ResetSkill(*c, skill, BaseSkills(actor)[Index(skill)], FloorOf(actor, skill, r), Graph(), r);
-        PublishViews();
-        Reconcile(*c, actor);
-        log::growth.info("{} reset {}: {:.0f} XP to reassign, {} perk(s) returned", c->name, Name(skill),
-                         reset.returned, reset.unlearned.size());
-        Hud(fmt::format("{}'s {} is reset: {:.0f} XP to reassign.", c->name, Name(skill), reset.returned));
-    });
-}
-
 void AssignAttributePoint(const FormKey &key, Attribute attribute, int delta)
 {
     Act([key = key, attribute, delta] {
@@ -522,14 +431,9 @@ namespace
 {
 
 // A rank bought, the next of `nodeId`'s: on the game thread, under the lock.
-void LearnNode(const FormKey &key, int nodeId, bool quiet)
+// The skill page's, which says it with a sound: nothing is shown.
+void LearnNode(const FormKey &key, int nodeId)
 {
-    const auto refuse = [quiet](std::string why) {
-        if (quiet)
-            RefuseQuietly(std::move(why));
-        else
-            Refuse(std::move(why));
-    };
     auto [c, actor] = Present(key, "learn a perk");
     if (!c)
         return;
@@ -543,7 +447,7 @@ void LearnNode(const FormKey &key, int nodeId, bool quiet)
     const PerkStatus status = Status({graph, holdings, skills, points}, nodeId);
     if (status.block != PerkBlock::None)
     {
-        refuse(fmt::format("{} cannot learn {} now.", c->name, node.name));
+        RefuseQuietly(fmt::format("{} cannot learn {} now.", c->name, node.name));
         return;
     }
     const int rank = status.held;
@@ -551,7 +455,7 @@ void LearnNode(const FormKey &key, int nodeId, bool quiet)
     RE::BGSPerk *perk = PerkOf(form);
     if (!perk)
     {
-        refuse(fmt::format("{} is not in this load order.", node.name));
+        RefuseQuietly(fmt::format("{} is not in this load order.", node.name));
         return;
     }
     fp::Learn(*c, node, rank);
@@ -561,16 +465,9 @@ void LearnNode(const FormKey &key, int nodeId, bool quiet)
     if (!actor->HasPerk(perk))
         log::perks.warn("{}: learned {}, but the engine's HasPerk says no", c->name, node.name);
     log::perks.info("{} learned {} ({}/{}), {}", c->name, node.name, rank + 1, node.ranks.size(), ToString(form));
-    if (!quiet)
-        Hud(fmt::format("{} learned {}.", c->name, node.name));
 }
 
 } // namespace
-
-void LearnPerk(const FormKey &key, int nodeId)
-{
-    Act([key = key, nodeId] { LearnNode(key, nodeId, false); });
-}
 
 void LearnPerkByForm(std::uint32_t actorId, std::uint32_t perkForm)
 {
@@ -580,7 +477,7 @@ void LearnPerkByForm(std::uint32_t actorId, std::uint32_t perkForm)
         if (!actorKey || !perkKey)
             return;
         if (const auto node = Graph().Find(*perkKey))
-            LearnNode(*actorKey, node->first, true);
+            LearnNode(*actorKey, node->first);
     });
 }
 
@@ -617,8 +514,9 @@ std::optional<SkillControls> ControlsFor(RE::FormID actor, int actorValue)
         out.perkPoints = v.perkPoints;
         out.buttons = ButtonsFor(c, *skill, v.base, v.floors[k], Graph(), HoldingsOf(c, v.onRecord), g_state.rules);
         const auto none = [&](const std::string &why) {
-            out.buttons.canLower = out.buttons.canRaise = out.buttons.canReset = false;
-            out.buttons.lower = out.buttons.raise = out.buttons.reset = why;
+            out.buttons.canLower = out.buttons.canRaise = out.buttons.canResetPerks = false;
+            out.buttons.lower = out.buttons.lowest = out.buttons.raise = out.buttons.highest = out.buttons.resetPerks =
+                why;
         };
         if (g_state.settings.released)
             none("Leveling is off: turn it on in Follower Tactics' Settings.");
@@ -634,8 +532,8 @@ namespace
 {
 
 // The top rank of `nodeId` bought here, given back: on the game thread,
-// under the lock.
-void UnlearnNode(const FormKey &key, int nodeId, bool quiet)
+// under the lock. The skill page's, as LearnNode.
+void UnlearnNode(const FormKey &key, int nodeId)
 {
     auto [c, actor] = Present(key, "unlearn a perk");
     if (!c)
@@ -650,11 +548,7 @@ void UnlearnNode(const FormKey &key, int nodeId, bool quiet)
     const PerkStatus status = Status({graph, holdings, skills, points}, nodeId);
     if (!status.canUnlearn)
     {
-        std::string why = fmt::format("{} cannot unlearn {}: something else needs it.", c->name, node.name);
-        if (quiet)
-            RefuseQuietly(std::move(why));
-        else
-            Refuse(std::move(why));
+        RefuseQuietly(fmt::format("{} cannot unlearn {}: something else needs it.", c->name, node.name));
         return;
     }
     const FormKey &form = node.ranks[static_cast<std::size_t>(status.held - 1)].form;
@@ -662,16 +556,9 @@ void UnlearnNode(const FormKey &key, int nodeId, bool quiet)
     PublishViews();
     perkview::Reconcile(actor);
     log::perks.info("{} unlearned {} (rank {})", c->name, node.name, status.held);
-    if (!quiet)
-        Hud(fmt::format("{} unlearned {}.", c->name, node.name));
 }
 
 } // namespace
-
-void UnlearnPerk(const FormKey &key, int nodeId)
-{
-    Act([key = key, nodeId] { UnlearnNode(key, nodeId, false); });
-}
 
 void UnlearnPerkByForm(std::uint32_t actorId, std::uint32_t perkForm)
 {
@@ -679,7 +566,7 @@ void UnlearnPerkByForm(std::uint32_t actorId, std::uint32_t perkForm)
         const auto actorKey = KeyOf(RE::TESForm::LookupByID<RE::Actor>(actorId));
         const auto node = NodeOfPerk(perkForm);
         if (actorKey && node)
-            UnlearnNode(*actorKey, *node, true);
+            UnlearnNode(*actorKey, *node);
     });
 }
 
@@ -757,44 +644,6 @@ void RestorePerk(const FormKey &key, int nodeId)
         perkview::Reconcile(actor);
         log::perks.info("{} took {} up again", c->name, node.name);
         Hud(fmt::format("{} took {} up again.", c->name, node.name));
-    });
-}
-
-void CheckViews()
-{
-    Act([] {
-        const perkview::Counters n = perkview::Count();
-        const spellview::Counters sn = spellview::Count();
-        log::spells.info("hooks so far: {} VisitSpells walks answered from a view ({} of them the combat AI "
-                         "gathering), {} casts refused{}",
-                         sn.visitsManaged, sn.gathersManaged, sn.castsRefused,
-                         spellview::Installed() ? "" : "; the hooks are not installed");
-        log::perks.info("hooks so far: {} ForEachPerk walks answered from a view, ApplyPerksFromBase {} ({} for "
-                        "companions), {} rank change(s) queued{}",
-                        n.forEachPerkManaged, n.applyFromBase, n.applyFromBaseManaged, n.queued,
-                        perkview::Installed() ? "" : "; the hooks are not installed");
-        std::size_t checked = 0;
-        std::size_t clean = 0;
-        for (const Companion &c : g_state.companions)
-        {
-            RE::Actor *actor = ActorOf(c.key);
-            if (!IsHere(actor))
-                continue;
-            const std::string perks = perkview::SelfCheck(actor);
-            const std::string spells = spellview::SelfCheck(actor);
-            log::perks.info("check: {}", perks);
-            log::spells.info("check: {}", spells);
-            ++checked;
-            const auto fine = [](const std::string &r) {
-                return r.find(" expected, engine says ") == std::string::npos &&
-                       r.find("CheckCast allows") == std::string::npos;
-            };
-            clean += fine(perks) && fine(spells) ? 1 : 0;
-        }
-        Hud(checked == 0 ? std::string("No companion is here to check.")
-                         : fmt::format("Perks and spells checked for {} companion(s): {} as expected. Details in "
-                                       "the log.",
-                                       checked, clean));
     });
 }
 
@@ -910,16 +759,6 @@ void RestoreOwnSpell(const FormKey &key, const FormKey &spellKey)
     });
 }
 
-void ChangeSettings(const Settings &settings)
-{
-    Act([settings] {
-        // Released is the actions' below, not the checkboxes'.
-        const bool released = g_state.settings.released;
-        g_state.settings = settings;
-        g_state.settings.released = released;
-    });
-}
-
 namespace
 {
 
@@ -989,24 +828,12 @@ void AssignSkillAll(const FormKey &key, Skill skill, int direction)
         if (!c)
             return;
         const Rules r = ReadRules();
-        const PerSkill<int> base = BaseSkills(actor);
-        const int floor = FloorOf(actor, skill, r);
-        const int step = direction < 0 ? -1 : +1;
-        int moved = 0;
-        // As far as - or + would each go; bounded, since each step moves a
-        // level and the skill has at most the cap's worth.
-        for (int guard = 0; guard <= r.skillCap; ++guard)
-        {
-            const Holdings holdings = HoldingsOf(*c, OnRecord(*c, actor));
-            if (CheckSkill(*c, skill, step, base, floor, Graph(), holdings, r).block != AssignBlock::None)
-                break;
-            fp::AssignSkill(*c, skill, step, base[Index(skill)], r);
-            ++moved;
-        }
+        const int moved = fp::AssignSkillAll(*c, skill, direction, BaseSkills(actor), FloorOf(actor, skill, r), Graph(),
+                                             HoldingsOf(*c, OnRecord(*c, actor)), r);
         if (moved == 0)
             return;
         Reconcile(*c, actor);
-        log::growth.info("{}: {} {} by {}", c->name, Name(skill), step < 0 ? "lowered" : "raised", moved);
+        log::growth.info("{}: {} {} by {}", c->name, Name(skill), direction < 0 ? "lowered" : "raised", moved);
     });
 }
 
@@ -1028,54 +855,6 @@ void ResetPerks(const FormKey &key, Skill skill)
     });
 }
 
-void Gift(const FormKey &key, double xp)
-{
-    Act([key = key, xp] {
-        for (Companion &c : g_state.companions)
-        {
-            if (!key.Empty() && c.key != key)
-                continue;
-            if (key.Empty() && !g_following.contains(c.key))
-                continue;
-            RE::Actor *actor = ActorOf(c.key);
-            fp::Gift(c, xp);
-            if (IsHere(actor))
-            {
-                NoteLevel(c, actor, ReadRules());
-                Reconcile(c, actor);
-            }
-        }
-    });
-}
-
-void DumpPerks()
-{
-    Act([] {
-        const auto path = DumpGraph();
-        if (path.empty())
-            Refuse("The perk graph could not be written.");
-        else
-        {
-            log::perks.info("perk graph written to {}", path.string());
-            Hud("Perk graph written to the SKSE log folder.");
-        }
-    });
-}
-
-void PanelShown(bool shown)
-{
-    g_panelShown.store(shown, std::memory_order_relaxed);
-    g_drawn.store(shown, std::memory_order_relaxed);
-    if (shown)
-        OnGameThread([] {
-            std::scoped_lock lock(g_mutex);
-            if (!g_state.inGame)
-                return;
-            RebuildViews();
-            Changed();
-        });
-}
-
 // --- the game thread -------------------------------------------------------------------
 
 void Tick()
@@ -1086,33 +865,16 @@ void Tick()
         return;
     g_state.playerLevel = player->GetLevel();
 
-    // Who is here: enrol the new, note who is following, list the rest.
-    const std::vector<RE::Actor *> followers = LoadedFollowers();
-    std::vector<Candidate> candidates;
-    std::unordered_set<FormKey, FormKeyHash> following;
-    for (RE::Actor *actor : followers)
+    // Who is here: the new enrolled.
+    for (RE::Actor *actor : LoadedFollowers())
     {
         const auto key = KeyOf(actor);
-        if (!key)
-            continue;
-        if (!Find(*key))
+        if (key && !Find(*key) && g_state.settings.autoEnroll && !g_state.settings.released && IsUniqueNpc(actor))
         {
-            if (g_state.settings.autoEnroll && !g_state.settings.released && IsUniqueNpc(actor))
-            {
-                EnrollActor(actor, *key);
-                PublishViews();
-            }
-            else
-            {
-                candidates.push_back({*key, NameOf(actor), IsUniqueNpc(actor)});
-                continue;
-            }
+            EnrollActor(actor, *key);
+            PublishViews();
         }
-        if (!IsWaiting(actor))
-            following.insert(*key);
     }
-    g_following = std::move(following);
-    g_state.candidates = std::move(candidates);
 
     // What they have onto every enrolled companion who is loaded, follower
     // or not: after a load, a dismissed companion's are put back as soon as
@@ -1126,10 +888,13 @@ void Tick()
         }
     if (unpublished && !g_state.settings.released)
         PublishViews();
+}
 
-    if (g_panelShown.load(std::memory_order_relaxed) && g_drawn.exchange(false, std::memory_order_relaxed))
+void RefreshViews()
+{
+    std::scoped_lock lock(g_mutex);
+    if (g_state.inGame)
         RebuildViews();
-    Changed();
 }
 
 void OnSkillUse(RE::FormID id, Skill skill, float points)
@@ -1154,7 +919,6 @@ void OnSkillUse(RE::FormID id, Skill skill, float points)
         Hud(fmt::format("{}'s {} increased to {}.", c->name, Name(skill), practice.reached));
     NoteLevel(*c, actor, r);
     Reconcile(*c, actor);
-    Changed();
 }
 
 void OnPlayerLevelUp(int level)
@@ -1171,7 +935,6 @@ void OnPlayerLevelUp(int level)
     for (Companion &c : g_state.companions)
         if (RE::Actor *actor = ActorOf(c.key); actor && actor->Is3DLoaded())
             NoteLevel(c, actor, r);
-    Changed();
 }
 
 void OnGameStarted()
@@ -1180,16 +943,13 @@ void OnGameStarted()
     std::scoped_lock lock(g_mutex);
     g_state.inGame = true;
     g_state.playerLevel = player ? player->GetLevel() : 1;
-    g_following.clear();
     PublishViews();
-    Changed();
 }
 
 void OnGameLeft()
 {
     std::scoped_lock lock(g_mutex);
     g_state.inGame = false;
-    Changed();
 }
 
 void BeforeLoad()
@@ -1200,11 +960,6 @@ void BeforeLoad()
     perkview::Forget();
     spellview::Forget();
     learning::Forget();
-}
-
-void NoteDrawn() noexcept
-{
-    g_drawn.store(true, std::memory_order_relaxed);
 }
 
 // --- the co-save ------------------------------------------------------------------------------
@@ -1229,7 +984,6 @@ void LoadRecords(const std::vector<CoSaveRecord> &records)
     // whose process is built after this has its view from the start.
     PublishViews();
     log::save.info("the save holds {} companion(s)", g_state.companions.size());
-    Changed();
 }
 
 void Revert()
@@ -1239,10 +993,8 @@ void Revert()
     spellview::Forget();
     learning::Forget();
     g_published.clear();
-    g_following.clear();
     g_releasedDone.clear();
     g_state = State{};
-    Changed();
 }
 
 } // namespace fp::game

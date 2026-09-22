@@ -44,7 +44,7 @@ What this buys over editing the record: no cross-save leak, nothing left behind 
 
 ## Not verified
 
-- **That it runs at all.** The slots, IDs and calling conventions are read, not exercised. The first session in play is Settings → *Check perks against the engine*. It asks the engine's own `HasPerk` about every perk of each companion present and compares the answers with the view; the hook counters under it show whether the slots are being called.
+- **That it runs at all.** The slots, IDs and calling conventions are read, not exercised. The skill page's circles are filled by what the engine's own `HasPerk` answers, which is `ForEachPerk` with a finder: a perk acquired there and drawn filled is the view answering, and the console's `hasperk` asks the same. The check against the view that Progression's own Settings page had went with those pages (2026-09-21).
 - **Timing at load.** Whether the co-save is read, and the view published, before a companion's process is built during a load. If not, the tick's reconcile registers the difference a second later; the check above would show a brief disagreement.
 - **Ability perks and turning levelling off.** That the ability is in the save is read from code (23796 → `AddSpell`); that releasing takes it back off, and that a save made after releasing loads clean without the plugin, is to be seen.
 - **Threads.** `ApplyPerksFromBase` may run off the main thread. The hook only queues, as the original does, and takes a mutex only around its bookkeeping.

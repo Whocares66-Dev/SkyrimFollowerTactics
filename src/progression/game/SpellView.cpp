@@ -50,17 +50,6 @@ using CheckCastFn = bool (*)(RE::Actor *, RE::MagicItem *, bool, RE::MagicSystem
 VisitSpellsFn g_visitSpells = nullptr;
 CheckCastFn g_checkCast = nullptr;
 bool g_installed = false;
-// The combat AI's gathering visitor (GatherSpellsFunctor), told apart from
-// our own HasSpell calls by its vtable, so the counter shows the AI.
-std::uintptr_t g_gatherVtable = 0;
-
-std::atomic<std::uint64_t> g_visitsManaged{0};
-std::atomic<std::uint64_t> g_gathersManaged{0};
-std::atomic<std::uint64_t> g_castsRefused{0};
-// Set while SelfCheck asks CheckCast itself, so its questions are not
-// counted as the engine's.
-thread_local bool t_checking = false;
-
 const View *Find(const Views *views, RE::FormID id)
 {
     if (!views)
@@ -138,9 +127,6 @@ void VisitSpellsHook(RE::Actor *self, RE::Actor::ForEachSpellVisitor *visitor)
         g_visitSpells(self, visitor);
         return;
     }
-    g_visitsManaged.fetch_add(1, std::memory_order_relaxed);
-    if (*reinterpret_cast<const std::uintptr_t *>(visitor) == g_gatherVtable)
-        g_gathersManaged.fetch_add(1, std::memory_order_relaxed);
     Filter filter(*visitor, *view);
     g_visitSpells(self, &filter);
     if (filter.Stopped())
@@ -161,11 +147,7 @@ bool CheckCastHook(RE::Actor *self, RE::MagicItem *item, bool dual, RE::MagicSys
         const auto views = g_views.load(std::memory_order_acquire);
         if (const View *view = Find(views.get(), self->GetFormID());
             view && (Removed(*view, item) || In(view->withdrawn, item)))
-        {
-            if (!t_checking)
-                g_castsRefused.fetch_add(1, std::memory_order_relaxed);
             return false;
-        }
     }
     return g_checkCast(self, item, dual, reason);
 }
@@ -225,7 +207,6 @@ void Install()
         return;
     }
     g_views.store(std::make_shared<const Views>());
-    g_gatherVtable = REL::Relocation<std::uintptr_t>{RE::VTABLE_GatherSpellsFunctor[0]}.address();
 
     // VisitSpells first: without it there is nothing for CheckCast to agree
     // with, so a failure leaves both alone. Installed at data load, before
@@ -318,58 +299,6 @@ void Forget()
     g_withdrawn.clear();
     g_fast.Clear();
     g_views.store(std::make_shared<const Views>(), std::memory_order_release);
-}
-
-Counters Count() noexcept
-{
-    return {g_visitsManaged.load(std::memory_order_relaxed), g_gathersManaged.load(std::memory_order_relaxed),
-            g_castsRefused.load(std::memory_order_relaxed)};
-}
-
-std::string SelfCheck(RE::Actor *actor)
-{
-    if (!actor)
-        return "no actor";
-    if (!g_installed)
-        return fmt::format("{}: the spell hooks are not installed", NameOf(actor));
-    const auto views = g_views.load(std::memory_order_acquire);
-    const View *view = Find(views.get(), actor->GetFormID());
-    std::vector<RE::SpellItem *> asked;
-    if (auto *npc = actor->GetActorBase())
-        if (auto *list = npc->GetSpellList(); list && list->spells)
-            for (std::uint32_t i = 0; i < list->numSpells; ++i)
-                if (RE::SpellItem *spell = list->spells[i];
-                    spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell)
-                    asked.push_back(spell);
-    if (view)
-        for (RE::SpellItem *spell : view->added)
-            if (std::find(asked.begin(), asked.end(), spell) == asked.end())
-                asked.push_back(spell);
-    std::size_t agree = 0;
-    std::string wrong;
-    for (RE::SpellItem *spell : asked)
-    {
-        const bool expected = !(view && Removed(*view, spell));
-        const bool engine = actor->HasSpell(spell);
-        if (expected == engine)
-            ++agree;
-        else
-            wrong += fmt::format("{}{} ({} expected, engine says {})", wrong.empty() ? "" : "; ", NameOf(spell),
-                                 expected ? "known" : "not known", engine ? "known" : "not known");
-        if (!expected)
-        {
-            RE::MagicSystem::CannotCastReason reason{};
-            t_checking = true;
-            const bool allowed = actor->CheckCast(spell, false, &reason);
-            t_checking = false;
-            if (allowed)
-                wrong +=
-                    fmt::format("{}{} set aside, but CheckCast allows it", wrong.empty() ? "" : "; ", NameOf(spell));
-        }
-    }
-    return fmt::format("{}: {} of {} spells as the view has them{}{}", NameOf(actor), agree, asked.size(),
-                       view ? "" : " (no view: nothing set aside or taught)",
-                       wrong.empty() ? std::string() : ": " + wrong);
 }
 
 } // namespace fp::game::spellview

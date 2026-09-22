@@ -23,9 +23,4 @@ void BuildPerkGraph();
 // perk in no tree read. Built with the graph, so any thread may ask.
 [[nodiscard]] std::optional<int> NodeOfPerk(RE::FormID perk);
 
-// The graph as progression/core/PerkData.h writes it, into the SKSE log folder: to set
-// beside tests/progression/data/vanilla-perks.json and see what the load order changed.
-// Returns the file written, empty on failure.
-std::filesystem::path DumpGraph();
-
 } // namespace fp::game

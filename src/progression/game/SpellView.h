@@ -55,17 +55,4 @@ void Reconcile(RE::Actor *actor);
 // Game thread, before a load or a new game: no views.
 void Forget();
 
-struct Counters
-{
-    std::uint64_t visitsManaged{0};  // walks answered from a view, ours included
-    std::uint64_t gathersManaged{0}; // of them, the combat AI gathering what it may cast
-    std::uint64_t castsRefused{0};   // the engine's CheckCast refused (SelfCheck's own not counted)
-};
-[[nodiscard]] Counters Count() noexcept;
-
-// Game thread: asks the engine's own HasSpell about every spell the view
-// concerns, and CheckCast about the set-aside ones, and says where either
-// disagrees with the view.
-[[nodiscard]] std::string SelfCheck(RE::Actor *actor);
-
 } // namespace fp::game::spellview

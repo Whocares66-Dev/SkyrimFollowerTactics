@@ -4,7 +4,7 @@ Written 2026-09-21, for the proof of concept. [BRAINSTORM.md](BRAINSTORM.md) cho
 
 The rules are the player's own, read from the game while it runs ([ENGINE_SKILLS.md](ENGINE_SKILLS.md)). None of it has been played.
 
-**Folded into Follower Tactics on 2026-09-21** (branch `wip-progression`): the code is `src/progression/` (`core/` tested by `tests/progression/`, `game/` in the plugin), its pages are under *Follower Tactics / Progression* in the panel, its records are in Tactics' co-save block, and Tactics' Settings page has the switch, *Enable leveling for followers*. The stand-alone repository (`C:\project\SkyrimFollowerProgression`) keeps the history before that.
+**Folded into Follower Tactics on 2026-09-21** (branch `wip-progression`): the code is `src/progression/` (`core/` tested by `tests/progression/`, `game/` in the plugin), its records are in Tactics' co-save block, and a follower's own pages carry it: the skill page on their Skills tab, the experience bar on their Character tab, and the switch on Tactics' Settings page, *Enable leveling for followers*. Progression's own pages (an Overview, its Settings, a page per companion) were taken out the same day, before they were seen in play; what they held that the followers' pages do not yet -- attributes, setting their own perks and spells aside, teaching and forgetting -- comes back there as each is taken up. The stand-alone repository (`C:\project\SkyrimFollowerProgression`) keeps the history before that.
 
 ## In one paragraph
 
@@ -35,7 +35,7 @@ A companion levels as you do. Using a skill raises it: a spell cast, a blow land
 | *Harmonize* rewrites base stats to profile values; *Reset all perks (incl. native)* removes perks the follower came with | Players lose what made a follower themselves, with one click and no preview | Their own skills stay unless you move them; innate perks and spells are protected and labelled, and can only be set aside ([Reconsidering](#reconsidering)) |
 | A perk button is greyed with no reason given; the requirement is the largest number in its conditions | "Why can't I take this?" is the question a tree most needs to answer | Every locked perk says what it needs and what the companion has ([Perks](#perks)) |
 | Every perk in every tree is offered, crafting and lockpicking included | A perk that does nothing for them is a wasted point | Kept: every skill and every tree is offered alike, since a mod may have followers smith or pick locks; the catalog's verdicts are read off each perk's own effects ([Which perks work](#which-perks-work-for-a-companion)) |
-| The Overview shows everyone at once, and a reset per tree | A party view is the right starting place | Kept: the Overview page, per-perk unlearning with its dependants named, and a reset per skill |
+| The Overview shows everyone at once, and a reset per tree | A party view is the right starting place | Per-perk unlearning, refused while a perk bought on it needs it, and a reset per tree; the party is Tactics' list of followers |
 | Perk tooltips carry the game's own descriptions | Good; players know these words | Kept, with a second line saying what the perk does on a companion |
 
 ## Learning by doing
@@ -160,10 +160,10 @@ The pace is yours: a companion who fights as much as you do learns about as fast
 
 | Surface | Used for | In the proof of concept |
 |---|---|---|
-| **The panel** (SKSE Menu Framework, F1) | The companion's sheet: skills, perks, spells; the party overview; settings | Yes |
+| **The panel** (SKSE Menu Framework, F1) | The companion's sheet: skills, perks, spells; the party overview; settings | Built, then taken out on 2026-09-21 for Follower Tactics' own pages (below) |
 | **Notifications** | "Lydia reached level 31: an attribute point and a perk point to assign." | Yes |
 | **Dialogue** | "Let's talk about your training" opens the companion's sheet as a window; "I have a spell for you" opens the Spells tab | Designed below; needs an ESP |
-| **Follower Tactics' panel** | The skill page on its Skills tab, opened by a skill's name (its level, a caret before the number, opens the perks held beneath the row; the table is headed *Skill*, *Level*): the perk tree as the menu draws it (a circle a perk, filled by the ranks held, labelled at whichever of eight places about its circle keeps it clearest of the others; across in the tree's columns as the menu orders them, evenly spaced and stretched to the page's width, and up the page by the level its first rank asks, a perk a hair off the column beside it drawn straight above in it, so nothing moves as ranks are taken and the page never scrolls; the hover gives the name and, at its right, what it needs (and, short of it, what they have, both greyed, the labels aligned), the description, and on one line *Click to acquire perk* at the left and *Right click to remove perk* at the right where each can act). In the header `<<` `-` level `+` `>>` (a level, or as far as it goes), the perks to spend when there are any, and *Reset perks*, which asks once and returns the tree's bought perks, the skill left as it is. A click on a circle acquires its next rank, a right click returns the top one unless a perk bought on it needs it, with the game's own sounds (the perk menu's for a perk taken, the skills menu's step back for one returned, a failed activation's where nothing can be done, and no message either way); a click on a name opens the perk's page, held or not. The page is rebuilt behind each of these, so it shows at once. The buttons and their reasons are the same function as the Progression page's (`ButtonsFor`, core); the player's page has the tree alone. A link from a learned spell to a rule | The skill page built 2026-09-21, not yet seen in play; the spell link designed below |
+| **Follower Tactics' panel** | The skill page on its Skills tab, opened by a skill's name (its level, a caret before the number, opens the perks held beneath the row; the table is headed *Skill*, *Level*): the perk tree as the menu draws it (a circle a perk, filled by the ranks held, labelled at whichever of eight places about its circle keeps it clearest of the others; across in the tree's columns as the menu orders them, evenly spaced and stretched to the page's width, and up the page by the level its first rank asks, a perk a hair off the column beside it drawn straight above in it, so nothing moves as ranks are taken and the page never scrolls; the hover gives the name and, at its right, what it needs (and, short of it, what they have, both greyed, the labels aligned), the description, and on one line *Click to acquire perk* at the left and *Right click to remove perk* at the right where each can act). In the header `<<` `-` level `+` `>>` (a level, or as far as it goes), the perks to spend when there are any, and *Reset perks*, which asks once and returns the tree's bought perks, the skill left as it is. A click on a circle acquires its next rank, a right click returns the top one unless a perk bought on it needs it, with the game's own sounds (the perk menu's for a perk taken, the skills menu's step back for one returned, a failed activation's where nothing can be done, and no message either way); a click on a name opens the perk's page, held or not. The page is rebuilt behind each of these, so it shows at once. The buttons and their reasons are core's (`ButtonsFor`); the player's page has the tree alone. A link from a learned spell to a rule | The skill page built 2026-09-21, not yet seen in play; the spell link designed below |
 
 The panel matches Tactics' look and behaviour so the two read as one product: the same tables, headings, dimmed-with-a-reason rows, hover notes, and one entry per companion. A clickable version of the screens, drawn with only what Dear ImGui can draw, was built in the stand-alone repository (`prototype/` there); it predates learning by doing, still shows the first design's focus-driven Training tab, and was not brought into Tactics. Building it changed the design in the places marked *(from the prototype)*.
 
@@ -171,18 +171,14 @@ The panel matches Tactics' look and behaviour so the two read as one product: th
 ▼ Follower Tactics
     Settings              the tactics and levelling switches
     Player
-    ▼ Progression
-        Overview
-        Settings
-        ▼ Companions
-            Lydia
-            Marcurio
     ▼ Followers
-        Lydia
+        Lydia             Character (level and experience), Skills (a skill's page: its perk tree), Magic, ...
         Marcurio
 ```
 
 ### A companion's page
+
+The design below was Progression's own page, and was built so; since 2026-09-21 a follower's pages in Tactics carry it instead. It stays as the list of what those pages are to take up.
 
 A header that is always there, then three tabs.
 

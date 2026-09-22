@@ -100,7 +100,6 @@ std::string WriteCompanion(const Companion &c)
     j["schema"] = kSchema;
     j["key"] = ToString(c.key);
     j["name"] = c.name;
-    j["paused"] = c.paused;
     j["level"] = c.level;
     j["learning"] = {{"skills", SkillMap(c.learning.skills)},
                      {"progress", ProgressMap(c.learning.progress)},
@@ -152,7 +151,6 @@ std::optional<Companion> ReadCompanion(std::string_view text, std::string *why)
     Companion c;
     c.key = *key;
     c.name = Get<std::string>(j, "name", "");
-    c.paused = Get<bool>(j, "paused", false);
     c.level = Get<int>(j, "level", 0);
     if (const auto it = j.find("learning"); it != j.end() && it->is_object())
     {

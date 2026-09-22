@@ -17,9 +17,6 @@ namespace
 
 FastIds g_ids;
 bool g_installed = false;
-std::atomic<std::uint64_t> g_magic{0};
-std::atomic<std::uint64_t> g_blows{0};
-std::atomic<std::uint64_t> g_struck{0};
 // Which game a queued use belongs to: moved on by Forget.
 std::atomic<std::uint32_t> g_session{0};
 
@@ -53,10 +50,7 @@ void Queue(const RE::Actor *actor, RE::ActorValue av, float points)
 void UseSkillHook(RE::Actor *self, RE::ActorValue av, float points, RE::TESForm *form, std::uint32_t usage)
 {
     if (Counted(self))
-    {
-        g_magic.fetch_add(1, std::memory_order_relaxed);
         Queue(self, av, points);
-    }
     g_useSkill(self, av, points, form, usage);
 }
 
@@ -85,7 +79,6 @@ void Attacker(RE::Actor *aggressor, RE::Actor *victim, const RE::HitData &hit)
     }
     else if (hit.weapon)
         points = static_cast<float>(hit.weapon->GetAttackDamage());
-    g_blows.fetch_add(1, std::memory_order_relaxed);
     Queue(aggressor, hit.skill, points);
 }
 
@@ -98,7 +91,6 @@ void Attacker(RE::Actor *aggressor, RE::Actor *victim, const RE::HitData &hit)
 // the body (15695 and 15696 ask it; SE's 37589 the same).
 void Victim(RE::Actor *victim, const RE::HitData &hit)
 {
-    g_struck.fetch_add(1, std::memory_order_relaxed);
     if (hit.flags.any(RE::HitData::Flag::kBlocked))
     {
         const float points = (hit.physicalDamage - hit.totalDamage) * SettingFloat("fWeaponBlockSkillUseMult", 1.0f) +
@@ -183,12 +175,6 @@ void Install()
 bool Installed() noexcept
 {
     return g_installed;
-}
-
-Counters Count() noexcept
-{
-    return {g_magic.load(std::memory_order_relaxed), g_blows.load(std::memory_order_relaxed),
-            g_struck.load(std::memory_order_relaxed)};
 }
 
 void Forget()

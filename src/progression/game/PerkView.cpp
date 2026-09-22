@@ -66,11 +66,6 @@ using ApplyPerksFromBaseFn = void (*)(RE::Actor *);
 ForEachPerkFn g_forEachPerk = nullptr;
 ApplyPerksFromBaseFn g_applyPerksFromBase = nullptr;
 
-std::atomic<std::uint64_t> g_forEachManaged{0};
-std::atomic<std::uint64_t> g_apply{0};
-std::atomic<std::uint64_t> g_applyManaged{0};
-std::atomic<std::uint64_t> g_queued{0};
-
 const View *Find(const Views *views, RE::FormID id)
 {
     if (!views)
@@ -97,7 +92,6 @@ void QueueRankChange(RE::Actor *actor, RE::BGSPerk *perk, std::uint8_t from, std
     if (!tasks || !actor || !perk || from == to)
         return;
     queue(tasks, actor, perk, from, to);
-    g_queued.fetch_add(1, std::memory_order_relaxed);
 }
 
 Ranks RecordRanks(RE::Actor *actor, const View *view)
@@ -173,7 +167,6 @@ void ForEachPerkHook(RE::Actor *self, void *visitor)
         g_forEachPerk(self, visitor);
         return;
     }
-    g_forEachManaged.fetch_add(1, std::memory_order_relaxed);
     using Visit = std::uint32_t (*)(void *, RE::PerkRankData *);
     const Visit visit = (*static_cast<Visit **>(visitor))[0];
     auto *npc = self->GetActorBase();
@@ -196,7 +189,6 @@ void ForEachPerkHook(RE::Actor *self, void *visitor)
 // companion the same, over the view.
 void ApplyPerksFromBaseHook(RE::Actor *self)
 {
-    g_apply.fetch_add(1, std::memory_order_relaxed);
     const bool maybe = self && MaybeManaged(self->GetFormID());
     const auto views = maybe ? g_views.load(std::memory_order_acquire) : nullptr;
     const View *view = maybe ? Find(views.get(), self->GetFormID()) : nullptr;
@@ -211,7 +203,6 @@ void ApplyPerksFromBaseHook(RE::Actor *self)
         g_applyPerksFromBase(self);
         return;
     }
-    g_applyManaged.fetch_add(1, std::memory_order_relaxed);
     if (!HasProcess(self))
         return; // the engine's own check: nothing is registered without one
     const Ranks ranks = EffectiveRanks(self, view);
@@ -312,45 +303,6 @@ std::vector<RE::BGSPerk *> Effective(RE::Actor *actor)
     for (const auto &[perk, rank] : EffectiveRanks(actor, Find(views.get(), actor ? actor->GetFormID() : 0)))
         out.push_back(perk);
     return out;
-}
-
-Counters Count() noexcept
-{
-    return {g_forEachManaged.load(std::memory_order_relaxed), g_apply.load(std::memory_order_relaxed),
-            g_applyManaged.load(std::memory_order_relaxed), g_queued.load(std::memory_order_relaxed)};
-}
-
-std::string SelfCheck(RE::Actor *actor)
-{
-    if (!actor)
-        return "no actor";
-    if (!HasProcess(actor))
-        return fmt::format("{} has no high process: the engine answers HasPerk only for actors near the player",
-                           NameOf(actor));
-    const auto views = g_views.load(std::memory_order_acquire);
-    const View *view = Find(views.get(), actor->GetFormID());
-    std::vector<RE::BGSPerk *> asked;
-    for (const auto &[perk, rank] : RecordRanks(actor, nullptr))
-        asked.push_back(perk);
-    if (view)
-        for (const RE::PerkRankData *d : view->added)
-            asked.push_back(d->perk);
-    const auto effective = Effective(actor);
-    std::size_t agree = 0;
-    std::string wrong;
-    for (RE::BGSPerk *perk : asked)
-    {
-        const bool expected = std::find(effective.begin(), effective.end(), perk) != effective.end();
-        const bool engine = actor->HasPerk(perk);
-        if (expected == engine)
-            ++agree;
-        else
-            wrong += fmt::format("{}{} ({} expected, engine says {})", wrong.empty() ? "" : "; ", NameOf(perk),
-                                 expected ? "held" : "not held", engine ? "held" : "not held");
-    }
-    return fmt::format("{}: {} of {} perks as the view has them{}{}", NameOf(actor), agree, asked.size(),
-                       view ? "" : " (no view: nothing set aside or bought)",
-                       wrong.empty() ? std::string() : ": " + wrong);
 }
 
 } // namespace fp::game::perkview

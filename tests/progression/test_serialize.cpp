@@ -16,7 +16,7 @@ Companion Seasoned()
     const fp::SkillUsage usage{1.0, 0.0, 1.0, 0.0};
     fp::Practise(c, fp::Skill::Destruction, 5000.0, 20, usage, r);
     fp::Practise(c, fp::Skill::OneHanded, 37.5, 20, usage, r); // progress short of a level
-    fp::Gift(c, 900.0);
+    c.learning.xp += 900.0;
     fp::AssignSkill(c, fp::Skill::Destruction, -1, 20, r);
     fp::AssignAttribute(c, fp::Attribute::Magicka, +1, 10);
     fp::AssignAttribute(c, fp::Attribute::Magicka, +1, 10);

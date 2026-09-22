@@ -33,14 +33,4 @@ void Publish(const std::vector<RE::FormID> &actors);
 // game being left is dropped rather than credited to one of the same id.
 void Forget();
 
-// Uses heard so far, by where they came from: the first thing to look at in
-// play.
-struct Counters
-{
-    std::uint64_t magic{0};  // through UseSkill
-    std::uint64_t blows{0};  // a companion's blow landing
-    std::uint64_t struck{0}; // a companion hit: Block or armour
-};
-[[nodiscard]] Counters Count() noexcept;
-
 } // namespace fp::game::learning

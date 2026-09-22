@@ -15,6 +15,7 @@
 #include "game/Sheet.h"
 #include "game/UI.h"
 #include "game/Util.h"
+#include "progression/game/Service.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1124,6 +1125,9 @@ void RefreshShownPage()
         // cell has no high process for the sheets to read.
         if (!v.nearby)
             return;
+        // Progression's reading of them, which the character sheet and the
+        // skill page ask for as they draw (progression/game/Service.h).
+        fp::game::RefreshViews();
         FillVitals(actor, v, actor->IsInCombat());
         FillPage(actor, v, shown.tab);
         PublishOne(std::move(v));

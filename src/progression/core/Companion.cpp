@@ -65,7 +65,7 @@ Practice Practise(Companion &c, Skill skill, double points, int base, const Skil
     Practice out;
     out.reached = level;
     // The player's own UseSkill passes on nothing that is worth nothing (40488).
-    if (c.paused || points <= 0.0 || level >= r.skillCap)
+    if (points <= 0.0 || level >= r.skillCap)
         return out;
     double &progress = c.learning.progress[i];
     progress += SkillXp(usage, points);
@@ -81,12 +81,6 @@ Practice Practise(Companion &c, Skill skill, double points, int base, const Skil
         progress = 0.0;
     out.reached = level;
     return out;
-}
-
-void Gift(Companion &c, double xp) noexcept
-{
-    if (xp > 0.0)
-        c.learning.xp += xp;
 }
 
 PerSkill<int> Effective(const Companion &c, const PerSkill<int> &base) noexcept
@@ -189,6 +183,21 @@ void AssignSkill(Companion &c, Skill skill, int delta, int base, const Rules &r)
     c.learning.progress[i] = 0.0;
 }
 
+int AssignSkillAll(Companion &c, Skill skill, int direction, const PerSkill<int> &base, int floor,
+                   const PerkGraph &graph, const Holdings &holdings, const Rules &r)
+{
+    const int step = direction < 0 ? -1 : +1;
+    int moved = 0;
+    // Bounded: each step moves a level, and a skill has at most the cap's.
+    while (moved <= r.skillCap &&
+           CheckSkill(c, skill, step, base, floor, graph, holdings, r).block == AssignBlock::None)
+    {
+        AssignSkill(c, skill, step, base[Index(skill)], r);
+        ++moved;
+    }
+    return moved;
+}
+
 AssignBlock CheckAttribute(const Companion &c, Attribute attribute, int delta, int available) noexcept
 {
     if (delta > 0 && available < delta)
@@ -239,23 +248,10 @@ bool BoughtInTree(const Companion &c, Skill skill, const PerkGraph &graph)
     return false;
 }
 
-ResetResult ResetSkill(Companion &c, Skill skill, int base, int floor, const PerkGraph &graph, const Rules &r)
-{
-    ResetResult out;
-    out.unlearned = ResetPerks(c, skill, graph);
-    const std::size_t i = Index(skill);
-    const double before = c.learning.pool;
-    while (base + c.learning.skills[i] > floor)
-        AssignSkill(c, skill, -1, base, r);
-    out.returned = c.learning.pool - before;
-    return out;
-}
-
 SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &base, int floor, const PerkGraph &graph,
                         const Holdings &holdings, const Rules &r)
 {
     SkillButtons out;
-    const int level = base[Index(skill)] + c.learning.skills[Index(skill)];
     const AssignCheck lower = CheckSkill(c, skill, -1, base, floor, graph, holdings, r);
     const AssignCheck raise = CheckSkill(c, skill, +1, base, floor, graph, holdings, r);
     out.canLower = lower.block == AssignBlock::None;
@@ -270,9 +266,6 @@ SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &ba
     out.highest = out.canRaise ? std::string("Click to increase to maximum skill") : cannotRaise;
     out.canResetPerks = BoughtInTree(c, skill, graph);
     out.resetPerks = out.canResetPerks ? std::string("Click to reset perks") : std::string("No perks to reset");
-    out.canReset = level > floor;
-    out.reset = out.canReset ? std::string("Reset skill and perks")
-                             : "At " + std::to_string(floor) + ": where a new character of their race starts it.";
     return out;
 }
 

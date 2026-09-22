@@ -75,11 +75,9 @@ TEST_CASE("using a skill raises it as the player's own use does", "[companion]")
     CHECK(c.learning.progress[fp::Index(Skill::OneHanded)] == 2.0);
     CHECK(c.learning.xp == 21.0 + 22.0 + 23.0);
 
-    // Nothing for nothing, at the cap, or while paused.
+    // Nothing for nothing, or at the cap.
     CHECK(fp::Practise(c, Skill::OneHanded, 0.0, 20, kPlainUsage, r).skillUps == 0);
     CHECK(fp::Practise(c, Skill::Block, 500.0, 100, kPlainUsage, r).skillUps == 0);
-    c.paused = true;
-    CHECK(fp::Practise(c, Skill::OneHanded, 500.0, 20, kPlainUsage, r).skillUps == 0);
 }
 
 TEST_CASE("the level stacks on the engine's, capped above the player, never below the engine", "[companion]")
@@ -166,7 +164,7 @@ TEST_CASE("a level taken back pays for another, down to the floor and up to the 
     CHECK(fp::CheckSkill(c, Skill::Archery, +1, high, floor, none, holdings, r).block == fp::AssignBlock::AtCap);
 }
 
-TEST_CASE("a level a bought perk needs stays, until a reset returns both", "[companion]")
+TEST_CASE("a level a bought perk needs stays, until the perks are reset", "[companion]")
 {
     const fp::Rules r = Plain();
     const fp::PerkGraph graph = BladeTree();
@@ -178,14 +176,76 @@ TEST_CASE("a level a bought perk needs stays, until a reset returns both", "[com
     CHECK(lower.block == fp::AssignBlock::PerkNeedsIt);
     CHECK(lower.perk == "Blade");
 
-    // Reset, as a skill made Legendary: to the floor, the levels and the
-    // tree's bought perks returned.
-    const auto reset = fp::ResetSkill(c, Skill::OneHanded, 20, 15, graph, r);
-    CHECK(reset.returned == 16.0 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25);
-    CHECK(reset.unlearned == std::vector<std::string>{"Blade"});
-    CHECK(c.perks.empty());
+    fp::ResetPerks(c, Skill::OneHanded, graph);
+    CHECK(fp::CheckSkill(c, Skill::OneHanded, -1, Base(20), 15, graph, fp::HoldingsOf(c, {}), r).block ==
+          fp::AssignBlock::None);
+}
+
+TEST_CASE("<< and >> move a skill as far as - and + would, a level at a time", "[companion]")
+{
+    const fp::Rules r = Plain();
+    const fp::PerkGraph none;
+    Companion c = Lydia();
+    const auto all = [&](Skill skill, int direction, const fp::PerSkill<int> &base, const fp::PerkGraph &graph) {
+        return fp::AssignSkillAll(c, skill, direction, base, 15, graph, fp::HoldingsOf(c, {}), r);
+    };
+
+    // Down to the floor, every level into the pool.
+    CHECK(all(Skill::OneHanded, -1, Base(20), none) == 5);
     CHECK(c.learning.skills[fp::Index(Skill::OneHanded)] == -5);
-    CHECK(c.learning.pool == reset.returned);
+    CHECK(c.learning.pool == 16.0 + 17 + 18 + 19 + 20);
+    CHECK(all(Skill::OneHanded, -1, Base(20), none) == 0);
+
+    // Up as far as the pool pays: a level costs what it is worth, so the 90
+    // buys Archery 21 to 24 and nothing is left for 25.
+    CHECK(all(Skill::Archery, +1, Base(20), none) == 4);
+    CHECK(c.learning.skills[fp::Index(Skill::Archery)] == 4);
+    CHECK(c.learning.pool == 0.0);
+    CHECK(all(Skill::Archery, +1, Base(20), none) == 0);
+
+    // Up to the cap, and no further, with the pool to spare.
+    c.learning.pool = 1000.0;
+    fp::PerSkill<int> high = Base(20);
+    high[fp::Index(Skill::Block)] = 97;
+    CHECK(all(Skill::Block, +1, high, none) == 3);
+    CHECK(high[fp::Index(Skill::Block)] + c.learning.skills[fp::Index(Skill::Block)] == 100);
+    CHECK(all(Skill::Block, +1, high, none) == 0);
+    CHECK(c.learning.pool == 1000.0 - 98 - 99 - 100);
+
+    // Down only as far as a perk bought here allows: Blade needs 25.
+    const fp::PerkGraph graph = BladeTree();
+    Companion d = Lydia();
+    d.learning.skills[fp::Index(Skill::OneHanded)] = 10; // 30
+    fp::Learn(d, graph.Node(0), 0);
+    CHECK(fp::AssignSkillAll(d, Skill::OneHanded, -1, Base(20), 15, graph, fp::HoldingsOf(d, {}), r) == 5);
+    CHECK(d.learning.skills[fp::Index(Skill::OneHanded)] == 5);
+}
+
+TEST_CASE("resetting a tree's perks returns every rank bought, and only that tree's", "[companion]")
+{
+    fp::PerkGraph graph = BladeTree();
+    fp::PerkNode ranked;
+    ranked.name = "Armsman";
+    ranked.skill = Skill::OneHanded;
+    ranked.ranks = {{{"Test.esp", 2}, "", {}}, {{"Test.esp", 3}, "", {}}};
+    graph.Add(ranked);
+    fp::PerkNode other;
+    other.name = "Overdraw";
+    other.skill = Skill::Archery;
+    other.ranks = {{{"Test.esp", 4}, "", {}}};
+    graph.Add(other);
+
+    Companion c = Lydia();
+    fp::Learn(c, graph.Node(1), 0);
+    fp::Learn(c, graph.Node(1), 1);
+    fp::Learn(c, graph.Node(2), 0);
+    const auto unlearned = fp::ResetPerks(c, Skill::OneHanded, graph);
+    CHECK(unlearned == std::vector<std::string>{"Armsman", "Armsman (2)"});
+    REQUIRE(c.perks.size() == 1);
+    CHECK(c.perks[0].name == "Overdraw");
+    CHECK(fp::BoughtInTree(c, Skill::Archery, graph));
+    CHECK_FALSE(fp::BoughtInTree(c, Skill::OneHanded, graph));
+    CHECK(fp::ResetPerks(c, Skill::OneHanded, graph).empty());
 }
 
 TEST_CASE("what they have reaches the engine as a delta, once, and comes back off", "[companion]")
@@ -305,15 +365,6 @@ TEST_CASE("one of their own spells can be set aside and taken up again, for noth
     CHECK_FALSE(fp::RestoreSpell(c, sparks.spell));
 }
 
-TEST_CASE("the test button's experience adds up, and nothing is nothing", "[companion]")
-{
-    Companion c = Lydia();
-    for (int i = 0; i < 150; ++i)
-        fp::Gift(c, 10.0);
-    fp::Gift(c, -5.0);
-    CHECK(c.learning.xp == 1500.0);
-}
-
 TEST_CASE("a skill's buttons say what a click does, or why it cannot", "[companion]")
 {
     const fp::Rules r = Plain();
@@ -328,7 +379,6 @@ TEST_CASE("a skill's buttons say what a click does, or why it cannot", "[compani
     CHECK_FALSE(b.canRaise);
     CHECK(b.raise == "Not enough XP");
     CHECK(b.highest == "Not enough XP");
-    CHECK_FALSE(b.canReset);
     CHECK_FALSE(b.canResetPerks);
     CHECK(b.resetPerks == "No perks to reset");
 
@@ -341,8 +391,6 @@ TEST_CASE("a skill's buttons say what a click does, or why it cannot", "[compani
     CHECK(b.canRaise);
     CHECK(b.raise == "Click to increase skill");
     CHECK(b.highest == "Click to increase to maximum skill");
-    CHECK(b.canReset);
-    CHECK(b.reset == "Reset skill and perks");
 
     // At the cap.
     b = fp::ButtonsFor(c, Skill::OneHanded, Base(100), 15, graph, fp::HoldingsOf(c, {}), r);

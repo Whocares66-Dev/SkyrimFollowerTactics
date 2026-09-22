@@ -2,7 +2,6 @@
 
 #include "progression/game/Log.h"
 #include "progression/game/Service.h"
-#include "progression/game/UI.h"
 
 #include <atomic>
 #include <chrono>
@@ -66,7 +65,6 @@ void Pace()
             tasks->AddTask([] {
                 g_tickQueued.store(false);
                 Tick();
-                ui::SyncEntries();
             });
         }
     }).detach();

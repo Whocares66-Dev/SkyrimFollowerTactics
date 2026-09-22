@@ -1,10 +1,8 @@
 #include "progression/game/PerkTrees.h"
 
-#include "progression/core/PerkData.h"
 #include "progression/game/Forms.h"
 #include "progression/game/Log.h"
 
-#include <fstream>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -216,19 +214,6 @@ std::optional<int> NodeOfPerk(RE::FormID perk)
 RE::BGSPerk *PerkOf(const FormKey &form)
 {
     return Lookup<RE::BGSPerk>(form);
-}
-
-std::filesystem::path DumpGraph()
-{
-    auto directory = SKSE::log::log_directory();
-    if (!directory)
-        return {};
-    auto path = *directory / "FollowerTactics.perks.json";
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
-        return {};
-    out << WritePerkGraph(g_graph);
-    return path;
 }
 
 } // namespace fp::game

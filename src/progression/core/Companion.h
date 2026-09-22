@@ -80,7 +80,6 @@ struct Companion
 {
     FormKey key; // the placed reference
     std::string name;
-    bool paused{false}; // learning stopped by the player; everything kept
     Learning learning;
     int level{0}; // the last level noted: a rise is a level-up
     std::vector<LearnedPerk> perks;
@@ -123,12 +122,8 @@ struct Practice
 
 // One use of a skill worth `points`, as the engine reports it: skill XP,
 // skill-ups, character XP (41561). `base` is the skill as the engine has it,
-// `usage` its record's values. Nothing at the cap, for nothing worth, or
-// while paused.
+// `usage` its record's values. Nothing at the cap, or for nothing worth.
 Practice Practise(Companion &c, Skill skill, double points, int base, const SkillUsage &usage, const Rules &r) noexcept;
-
-// The test button's: character XP, straight.
-void Gift(Companion &c, double xp) noexcept;
 
 // Each skill as requirements read it: `base`, the engine's, plus theirs.
 [[nodiscard]] PerSkill<int> Effective(const Companion &c, const PerSkill<int> &base) noexcept;
@@ -180,44 +175,36 @@ struct AssignCheck
 [[nodiscard]] AssignCheck CheckSkill(const Companion &c, Skill skill, int delta, const PerSkill<int> &base, int floor,
                                      const PerkGraph &graph, const Holdings &holdings, const Rules &r);
 void AssignSkill(Companion &c, Skill skill, int delta, int base, const Rules &r) noexcept;
+// A skill moved as far as it goes one way (`direction` -1 down, +1 up): a
+// level at a time, while CheckSkill allows the next. How many it moved.
+int AssignSkillAll(Companion &c, Skill skill, int direction, const PerSkill<int> &base, int floor,
+                   const PerkGraph &graph, const Holdings &holdings, const Rules &r);
 
 [[nodiscard]] AssignBlock CheckAttribute(const Companion &c, Attribute attribute, int delta, int available) noexcept;
 // A point on adds `step` (iAVDhmsLevelUp now); a point off takes back
 // what one point added.
 void AssignAttribute(Companion &c, Attribute attribute, int delta, int step) noexcept;
 
-// A skill back to its floor, every level above it returned to the pool, and
-// the perks bought in its tree unlearned -- as making a skill Legendary does
-// for the player, and free.
-struct ResetResult
-{
-    double returned{0.0};
-    std::vector<std::string> unlearned;
-};
-ResetResult ResetSkill(Companion &c, Skill skill, int base, int floor, const PerkGraph &graph, const Rules &r);
-
 // The perks bought in a skill's tree unlearned, their points free again; the
-// skill left where it is. Their names, as ResetResult has them.
+// skill left where it is. Their names, a rank after the first as
+// "Armsman (2)".
 std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph);
 [[nodiscard]] bool BoughtInTree(const Companion &c, Skill skill, const PerkGraph &graph);
 
 // A skill's buttons as a page offers them: whether each can act, and what
 // a click does or why it cannot, in the panel's words. - and + move a
 // level, << and >> as far as it goes (as long as - and + can act); Reset
-// takes the skill and its perks back, Reset perks the perks alone. Whether
-// the companion is here, and whether leveling is on, are the caller's to
-// add.
+// perks gives back the perks bought in its tree. Whether the companion is
+// here, and whether leveling is on, are the caller's to add.
 struct SkillButtons
 {
     bool canLower{false};
     bool canRaise{false};
-    bool canReset{false};
     bool canResetPerks{false};
     std::string lower;   // -
     std::string lowest;  // <<
     std::string raise;   // +
     std::string highest; // >>
-    std::string reset;
     std::string resetPerks;
 };
 [[nodiscard]] SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &base, int floor,

@@ -1,6 +1,6 @@
 // SKSE entry point: logging, the co-save, the messages, and at data load
 // the packages, the tick, the panel and the hooks (src/game/), then
-// Progression's perk trees, views, learning hooks, tick and pages
+// Progression's perk trees, views, learning hooks and tick
 // (src/progression/game/). The rules of both are tested under Catch2
 // (tests/), and the plugin links the same libraries the tests do, so
 // nothing is re-proved here.
@@ -21,7 +21,6 @@
 #include "progression/game/PerkView.h"
 #include "progression/game/Service.h"
 #include "progression/game/SpellView.h"
-#include "progression/game/UI.h"
 
 namespace
 {
@@ -44,8 +43,8 @@ void OnDataLoaded()
 
     // Progression (dev/PROGRESSION.md): the perk trees, the views in front
     // of the engine's perks and spells, the hooks that hear a companion's
-    // skill use, the paced tick, and its pages under Tactics' section --
-    // after Tactics' own entries, since an entry cannot be moved once added.
+    // skill use, and the paced tick. Its pages are the followers': the
+    // Skills tab's skill page and the Settings page's switch.
     // The hooks stay in for the session; levelling off (the Settings page)
     // empties the views and the learners, which is what makes the switch
     // free to use at any time.
@@ -54,7 +53,6 @@ void OnDataLoaded()
     fp::game::spellview::Install();
     fp::game::learning::Install();
     fp::game::InstallEvents();
-    fp::game::ui::Install();
     fp::log::plugin.info("Progression loaded");
 }
 

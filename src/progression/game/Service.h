@@ -2,10 +2,10 @@
 // The ledger's home in the running game, and every change to it.
 //
 // All state is changed on the game thread: SKSE's event sinks, the paced
-// tick (progression/game/Events.cpp) and the panel's actions, which are queued there
-// with AddTask. The panel draws on the render thread from a Snapshot, a
-// copy taken under the lock, so it never reads an actor or the ledger while
-// the game thread writes either. dev/PROGRESSION.md is what the operations
+// tick (progression/game/Events.cpp) and the pages' actions, which are
+// queued there with AddTask. Tactics' pages ask on the render thread, under
+// the lock, from views built on the game thread, so they never read an
+// actor or the ledger while the game thread writes either. dev/PROGRESSION.md is what the operations
 // mean; progression/core/Companion.h is how they are decided.
 
 #include "progression/core/Companion.h"
@@ -41,8 +41,9 @@ struct TomeRow
     TeachStatus status;
 };
 
-// What the panel shows of a companion that the ledger does not hold: read
-// off the actor on the game thread, copied out whole.
+// What the pages show of a companion that the ledger does not hold: read
+// off the actor on the game thread, rebuilt after every action and whenever
+// a page comes up (RefreshViews).
 struct CompanionView
 {
     FormKey key;
@@ -66,57 +67,22 @@ struct CompanionView
     std::vector<TomeRow> tomes;
 };
 
-// A follower who is here and not enrolled.
-struct Candidate
-{
-    FormKey key;
-    std::string name;
-    bool unique{true};
-};
-
-struct Snapshot
-{
-    std::vector<Companion> companions;
-    std::vector<CompanionView> views; // one per companion, same order
-    std::vector<Candidate> candidates;
-    Settings settings;
-    Rules rules; // the game's, as the views last read them
-    int playerLevel{1};
-    bool inGame{false};
-    std::string refused; // the last action turned down, and why
-    // With levelling off: who still carries something of ours, not having
-    // been near since.
-    std::vector<std::string> stillHeld;
-    std::uint64_t version{0};
-};
-
-// Changes whenever anything the panel shows may have: a panel keeps its
-// Snapshot until this moves.
-[[nodiscard]] std::uint64_t Version() noexcept;
-[[nodiscard]] Snapshot Read();
-
 // --- the panel's actions: from any thread, carried out on the game thread ---
 
-void Enroll(const FormKey &actor);
-void SetPaused(const FormKey &actor, bool paused);
 // One level onto a skill from the reassigning pool (+1) or back into it
 // (-1); one attribute point on or off: the panel's buttons, carried out at
 // once. progression/core/Companion.h says what is allowed.
 void AssignSkillPoint(const FormKey &actor, Skill skill, int delta);
 void AssignAttributePoint(const FormKey &actor, Attribute attribute, int delta);
-// A skill back to where a new character starts it, its levels into the
-// pool and its tree's bought perks returned, as Legendary does; free.
-void ResetSkill(const FormKey &actor, Skill skill);
 // A skill moved as far as it goes one way (-1 down, +1 up): each level as -
-// and + would move it, while they can.
+// and + would move it, while they can (progression/core/Companion.h).
 void AssignSkillAll(const FormKey &actor, Skill skill, int direction);
 // The perks bought in a skill's tree given back; the skill left as it is.
 void ResetPerks(const FormKey &actor, Skill skill);
-void LearnPerk(const FormKey &actor, int node);
-// The same for a perk named by runtime ids, the actor's and a rank's of
-// its node, as Tactics' skill page has them: resolved on the game thread
-// and learned there in the one action. Nothing for an actor who is no
-// companion of ours.
+// The next rank of a perk, named by runtime ids -- the actor's and a rank's
+// of its node, as Tactics' skill page has them -- resolved on the game
+// thread and learned there in the one action. Nothing for an actor who is
+// no companion of ours.
 void LearnPerkByForm(std::uint32_t actor, std::uint32_t perk);
 
 // A companion's skill as Tactics' skill page heads it: their level with
@@ -142,14 +108,13 @@ struct SkillControls
 // none for an actor who is no companion of ours, or one not read yet. From
 // the render thread, under the lock.
 [[nodiscard]] std::optional<LevelProgress> LevelFor(RE::FormID actor);
-void UnlearnPerk(const FormKey &actor, int node);
-// The same for a perk named by runtime ids, as LearnPerkByForm. Both are the
-// skill page's, which asks PerkControlsFor first and answers with a sound:
-// nothing is shown, a refusal is only logged.
+// Its top rank bought here given back, named as LearnPerkByForm. Both are
+// the skill page's, which asks PerkControlsFor first and answers with a
+// sound: nothing is shown, a refusal is only logged.
 void UnlearnPerkByForm(std::uint32_t actor, std::uint32_t perk);
 
 // Whether a perk, by any rank's runtime id, can be learned or unlearned for
-// this companion now, as LearnPerk and UnlearnPerk would decide. None for an
+// this companion now, as LearnPerkByForm and UnlearnPerkByForm would decide. None for an
 // actor who is no companion of ours, or a perk in no tree. From the render
 // thread, under the lock.
 struct PerkControls
@@ -162,17 +127,12 @@ struct PerkControls
 // record keeps it) and taken up again, both free.
 void SetAsidePerk(const FormKey &actor, int node);
 void RestorePerk(const FormKey &actor, int node);
-// The engine's HasPerk and HasSpell asked about every loaded companion's
-// perks and spells, against the views; counts and disagreements to the log
-// (Settings, "Testing").
-void CheckViews();
 void Teach(const FormKey &actor, const FormKey &spell);
 void Forget(const FormKey &actor, const FormKey &spell);
 // One of their own spells: set aside (the engine is told they do not know
 // it; the record keeps it) and taken up again, both free.
 void SetAsideOwnSpell(const FormKey &actor, const FormKey &spell);
 void RestoreOwnSpell(const FormKey &actor, const FormKey &spell);
-void ChangeSettings(const Settings &settings);
 // Levelling off: everything of ours off every companion -- assigned points
 // withdrawn, perks and spells as their records have them -- as they are
 // near, the ledger kept. On: all of it back. Taught spells go too, being
@@ -188,18 +148,13 @@ struct LevellingState
 };
 // For the switch, drawn every frame: small, under the lock.
 [[nodiscard]] LevellingState Levelling();
-// The Settings page's test button: character XP for one companion, or for
-// every one following when `actor` is empty.
-void Gift(const FormKey &actor, double xp);
-// The live perk graph to the SKSE log folder (progression/game/PerkTrees.h).
-void DumpPerks();
-void PanelShown(bool shown);
-// The panel drew one of our pages this frame (render thread).
-void NoteDrawn() noexcept;
 
 // --- the game thread ---------------------------------------------------------
 
 void Tick();
+// A follower's page has come up (game/Tactics.cpp, RefreshShownPage): the
+// views rebuilt now, as the page reads them. Game thread.
+void RefreshViews();
 // A companion's use of a skill, worth `points`, as the engine works it out
 // (progression/game/Learning.h). Game thread.
 void OnSkillUse(RE::FormID actor, Skill skill, float points);
