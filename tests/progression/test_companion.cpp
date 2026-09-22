@@ -144,7 +144,7 @@ TEST_CASE("a level taken back pays for another, down to the floor and up to the 
     Companion c = Lydia();
     c.learning.skills[fp::Index(Skill::OneHanded)] = 10; // One-Handed 30
     const auto check = [&](Skill skill, int delta) {
-        return fp::CheckSkill(c, skill, delta, base, floor, none, holdings, false, r).block;
+        return fp::CheckSkill(c, skill, delta, base, floor, none, holdings, r).block;
     };
 
     CHECK(check(Skill::TwoHanded, +1) == fp::AssignBlock::NoPoints); // nothing in the pool yet
@@ -160,11 +160,10 @@ TEST_CASE("a level taken back pays for another, down to the floor and up to the 
     // Below their own value, down to where a new character starts it.
     c.learning.skills[fp::Index(Skill::OneHanded)] = -5; // 15
     CHECK(check(Skill::OneHanded, -1) == fp::AssignBlock::AtFloor);
-    CHECK(check(Skill::Smithing, +1) == fp::AssignBlock::NotTrainable);
     fp::PerSkill<int> high = base;
     high[fp::Index(Skill::Archery)] = 100;
     c.learning.pool = 1000.0;
-    CHECK(fp::CheckSkill(c, Skill::Archery, +1, high, floor, none, holdings, false, r).block == fp::AssignBlock::AtCap);
+    CHECK(fp::CheckSkill(c, Skill::Archery, +1, high, floor, none, holdings, r).block == fp::AssignBlock::AtCap);
 }
 
 TEST_CASE("a level a bought perk needs stays, until a reset returns both", "[companion]")
@@ -175,7 +174,7 @@ TEST_CASE("a level a bought perk needs stays, until a reset returns both", "[com
     c.learning.skills[fp::Index(Skill::OneHanded)] = 5; // 20 + 5 = 25
     fp::Learn(c, graph.Node(0), 0);
 
-    const auto lower = fp::CheckSkill(c, Skill::OneHanded, -1, Base(20), 15, graph, fp::HoldingsOf(c, {}), false, r);
+    const auto lower = fp::CheckSkill(c, Skill::OneHanded, -1, Base(20), 15, graph, fp::HoldingsOf(c, {}), r);
     CHECK(lower.block == fp::AssignBlock::PerkNeedsIt);
     CHECK(lower.perk == "Blade");
 
@@ -313,4 +312,69 @@ TEST_CASE("the test button's experience adds up, and nothing is nothing", "[comp
         fp::Gift(c, 10.0);
     fp::Gift(c, -5.0);
     CHECK(c.learning.xp == 1500.0);
+}
+
+TEST_CASE("a skill's buttons say what a click does, or why it cannot", "[companion]")
+{
+    const fp::Rules r = Plain();
+    Companion c = Lydia();
+    const fp::PerkGraph graph = BladeTree();
+
+    // At the floor, with nothing in the pool, nothing bought.
+    auto b = fp::ButtonsFor(c, Skill::OneHanded, Base(15), 15, graph, fp::HoldingsOf(c, {}), r);
+    CHECK_FALSE(b.canLower);
+    CHECK(b.lower == "Already at minimum skill");
+    CHECK(b.lowest == "Already at minimum skill");
+    CHECK_FALSE(b.canRaise);
+    CHECK(b.raise == "Not enough XP");
+    CHECK(b.highest == "Not enough XP");
+    CHECK_FALSE(b.canReset);
+    CHECK_FALSE(b.canResetPerks);
+    CHECK(b.resetPerks == "No perks to reset");
+
+    // Above it, with the pool: every one can act.
+    c.learning.pool = 1500.0;
+    b = fp::ButtonsFor(c, Skill::OneHanded, Base(20), 15, graph, fp::HoldingsOf(c, {}), r);
+    CHECK(b.canLower);
+    CHECK(b.lower == "Click to reduce skill");
+    CHECK(b.lowest == "Click to reduce to minimum skill");
+    CHECK(b.canRaise);
+    CHECK(b.raise == "Click to increase skill");
+    CHECK(b.highest == "Click to increase to maximum skill");
+    CHECK(b.canReset);
+    CHECK(b.reset == "Reset skill and perks");
+
+    // At the cap.
+    b = fp::ButtonsFor(c, Skill::OneHanded, Base(100), 15, graph, fp::HoldingsOf(c, {}), r);
+    CHECK_FALSE(b.canRaise);
+    CHECK(b.raise == "Already at maximum skill");
+
+    // A perk bought here that needs the level keeps - from taking it, and
+    // there are perks to reset.
+    fp::Learn(c, graph.Node(0), 0);
+    b = fp::ButtonsFor(c, Skill::OneHanded, Base(25), 15, graph, fp::HoldingsOf(c, {}), r);
+    CHECK_FALSE(b.canLower);
+    CHECK(b.lower == "Blade needs this skill level");
+    CHECK(b.canResetPerks);
+    CHECK(b.resetPerks == "Click to reset perks");
+
+    // Every skill alike: Smithing moves as One-Handed does.
+    b = fp::ButtonsFor(c, Skill::Smithing, Base(25), 15, graph, fp::HoldingsOf(c, {}), r);
+    CHECK(b.canLower);
+    CHECK(b.canRaise);
+}
+
+TEST_CASE("resetting a tree's perks returns them and leaves the skill", "[companion]")
+{
+    const fp::Rules r = Plain();
+    Companion c = Lydia();
+    const fp::PerkGraph graph = BladeTree();
+    c.learning.skills[fp::Index(Skill::OneHanded)] = 12;
+    fp::Learn(c, graph.Node(0), 0);
+    REQUIRE(fp::BoughtInTree(c, Skill::OneHanded, graph));
+    const auto unlearned = fp::ResetPerks(c, Skill::OneHanded, graph);
+    CHECK(unlearned == std::vector<std::string>{"Blade"});
+    CHECK(c.perks.empty());
+    CHECK_FALSE(fp::BoughtInTree(c, Skill::OneHanded, graph));
+    CHECK(c.learning.skills[fp::Index(Skill::OneHanded)] == 12);
 }

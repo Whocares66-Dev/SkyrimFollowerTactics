@@ -27,6 +27,7 @@
 #include "game/Sheet.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
+#include "progression/game/PerkTrees.h"
 #include "progression/game/Service.h"
 
 #include <SKSEMenuFramework.h>
@@ -211,6 +212,25 @@ void Tooltip(std::string_view text)
 {
     if (!text.empty())
         Im::SetTooltip("%s", std::string(text).c_str());
+}
+
+// A requirement as a greyed spell's hover says it, in an open tooltip: the
+// two labels right-aligned to one edge, so the skill and the numbers line
+// up beneath each other.
+//
+//   Needs: Archery (30)
+//     Has: Archery (25)
+void NeedsAndHas(const std::string &skill, int need, int has)
+{
+    const float labelWidth = (std::max)(TextWidth("Needs:"), TextWidth("Has:"));
+    const auto line = [&](const char *label, int value) {
+        Im::SetCursorPosX(Im::GetCursorPos().x + labelWidth - TextWidth(label));
+        Im::Text("%s", label);
+        Im::SameLine(0.0f, -1.0f);
+        Im::Text("%s (%d)", skill.c_str(), value);
+    };
+    line("Needs:", need);
+    line("Has:", has);
 }
 
 // Place text so its RIGHT edge lands on rightX. Right-aligning the labels is
@@ -434,6 +454,9 @@ enum class Glyph
 {
     Cross,
     Plus,
+    Minus,
+    AllTheWayLeft,
+    AllTheWayRight,
     Tick,
     Pin,
     Ban,
@@ -451,6 +474,12 @@ unsigned Codepoint(Glyph glyph)
         return 0xF00D; // xmark
     case Glyph::Plus:
         return 0xF067; // plus
+    case Glyph::Minus:
+        return 0xF068; // minus
+    case Glyph::AllTheWayLeft:
+        return 0xF100; // angles-left
+    case Glyph::AllTheWayRight:
+        return 0xF101; // angles-right
     case Glyph::Tick:
         return 0xF00C; // check
     case Glyph::Pin:
@@ -3096,7 +3125,7 @@ std::vector<ExtraColumn> WithDescription()
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                   const std::function<void(std::uint32_t)> &onLink = {}, const char *third = "Modifiers",
                   const RowDrawer &drawer = {}, const char *first = "", const char *second = "",
-                  const std::vector<ExtraColumn> &wanted = {})
+                  const std::vector<ExtraColumn> &wanted = {}, const std::function<void(const SheetRow &)> &onTree = {})
 {
     std::vector<ExtraColumn> extras;
     for (const auto &column : wanted)
@@ -3109,6 +3138,11 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             extras.push_back(column);
     }
     const bool hasThird = modifiers && third != nullptr;
+    // The Skills tab (`onTree`): the caret that opens a row's drawer sits
+    // before the level, and the level's cell opens it -- so the name is free
+    // to be the link to the skill's page. Every level starts a caret's width
+    // in, so the numbers line up whether a row has perks or not.
+    const bool levelOpens = modifiers && static_cast<bool>(onTree);
 
     float nameWidth = modifiers ? TextWidth(first) : 0.0f;
     float valueWidth = modifiers ? TextWidth(second) : 0.0f;
@@ -3124,9 +3158,9 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
     {
         for (const auto &row : section.rows)
         {
-            const float lead = row.detail.empty() ? 0.0f : marker;
+            const float lead = row.detail.empty() || levelOpens ? 0.0f : marker;
             nameWidth = (std::max)(nameWidth, lead + TextWidth(row.label));
-            valueWidth = (std::max)(valueWidth, TextWidth(row.value));
+            valueWidth = (std::max)(valueWidth, (levelOpens ? marker : 0.0f) + TextWidth(row.value));
             for (std::size_t i = 0; i < extras.size(); ++i)
                 if (!extras[i].glyph && !extras[i].wrap)
                     extraWidths[i] = (std::max)(extraWidths[i], TextWidth(extras[i].text(row)));
@@ -3269,10 +3303,25 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             // A row set aside -- an effect whose conditions do not hold --
             // is the shadowed rows' grey, with the reason on its name.
             const DimText grey(!row.aside.empty());
-            Im::TableSetColumnIndex(0);
             bool open = false;
-            if (row.detail.empty())
+            if (levelOpens)
             {
+                // The name's cell opens the skill's page, lit under the
+                // cursor as a link is; the level's, below, the drawer.
+                const std::string key = section.title + "/" + row.label + "#" + std::to_string(rowIndex);
+                Im::TableSetColumnIndex(0);
+                if (row.tree != 0)
+                {
+                    const Im::ImVec2 pos = Im::GetCursorScreenPos();
+                    if (CellClicked(("##tree" + key).c_str()))
+                        onTree(row);
+                    Im::SetCursorScreenPos(pos);
+                }
+                Im::Text("%s", row.label.c_str());
+            }
+            else if (row.detail.empty())
+            {
+                Im::TableSetColumnIndex(0);
                 if (modifiers && row.form != 0 && onLink && !linkColumn)
                 {
                     // A loose perk: its name is the link to its page, as the
@@ -3286,6 +3335,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             }
             else
             {
+                Im::TableSetColumnIndex(0);
                 // A row that opens is a selectable spanning every column, so
                 // the whole row is the click target -- but drawn INVISIBLE,
                 // and the highlight painted through the table's own row
@@ -3327,6 +3377,30 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Tooltip(row.aside);
 
             Im::TableSetColumnIndex(1);
+            if (levelOpens)
+            {
+                // The level's cell opens the perks it holds, the caret before
+                // the number saying so; a row with none has the caret's room
+                // and no caret.
+                const std::string key = section.title + "/" + row.label + "#" + std::to_string(rowIndex);
+                const Im::ImVec2 pos = Im::GetCursorScreenPos();
+                if (!row.detail.empty())
+                {
+                    open = g_openRows.IsOpen(key, false);
+                    if (CellClicked(("##open" + key).c_str()))
+                    {
+                        open = !open;
+                        if (open)
+                            g_openRows.Open(key);
+                        else
+                            g_openRows.Close(key);
+                    }
+                    if (open)
+                        Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg1, opened, -1);
+                    DrawDisclosure(pos, open);
+                }
+                Im::SetCursorScreenPos(Im::ImVec2(pos.x + marker, pos.y));
+            }
             if (row.form != 0 && onLink && !modifiers)
             {
                 // The value names an item: that cell is a link to its page,
@@ -3595,7 +3669,9 @@ struct EffectsTabState
 
 struct SkillsTabState
 {
-    std::uint32_t detail{0}; // the perk open in detail; 0 for the skills
+    std::uint32_t detail{0};  // the perk open in detail; 0 for the skills
+    std::uint32_t tree{0};    // the skill whose tree is open (PerkTreeView::key); 0 for the skills
+    bool confirmReset{false}; // the open skill's Reset asked once, awaiting Confirm
 };
 
 // Everything the panel remembers about one follower's page: a state for each
@@ -4888,18 +4964,8 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
         // pin only the reason for now.
         if (dim && entry->aboveSkill && Im::IsItemHovered(0))
         {
-            // The two labels right-aligned to one edge, so the school and
-            // the numbers line up beneath each other.
             Im::BeginTooltip();
-            const float labelWidth = (std::max)(TextWidth("Needs:"), TextWidth("Has:"));
-            const auto line = [&](const char *label, int value) {
-                Im::SetCursorPosX(Im::GetCursorPos().x + labelWidth - TextWidth(label));
-                Im::Text("%s", label);
-                Im::SameLine(0.0f, -1.0f);
-                Im::Text("%s (%d)", entry->school.c_str(), value);
-            };
-            line("Needs:", entry->levelValue);
-            line("Has:", entry->skill);
+            NeedsAndHas(entry->school, entry->levelValue, entry->skill);
             Im::EndTooltip();
         }
         else if (dim && entry->locked && Im::IsItemHovered(0))
@@ -5511,6 +5577,243 @@ bool PerkShown(const SheetRow &row)
     return AnyContains({row.label, row.value, row.modifiers}, g_perksFilter);
 }
 
+// A skill's tree as the perk menu draws it (core/PerkTree.h): a circle a
+// node, filled by the share of its ranks held, from the top clockwise; a
+// line from each node to those it leads to, drawn full where both ends are
+// held. A node whose next rank asks more than the skill's level is dimmed.
+// Hovering a circle gives the perk's name and ranks, what it needs, its
+// description, and what a click would do; a name lights up under the cursor, since
+// a click on it opens the perk's page.
+struct TreeHandlers
+{
+    // A click on a circle, left or right.
+    std::function<void(const ft::PerkTreeNode &, bool right)> node;
+    // A click on a name.
+    std::function<void(const ft::PerkTreeNode &)> name;
+    // Whether a click and a right click can act: said last in the hover.
+    struct Actions
+    {
+        bool acquire{false};
+        bool remove{false};
+    };
+    std::function<Actions(const ft::PerkTreeNode &)> actions;
+};
+
+void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
+{
+    auto *draw = Im::GetWindowDrawList();
+    if (!draw || tree.nodes.empty())
+        return;
+    const float font = Im::GetFontSize();
+    const float radius = font * 0.7f;
+    const float gap = font * 0.35f;
+    const Im::ImVec2 origin = Im::GetCursorScreenPos();
+    const Im::ImVec2 room = Im::GetContentRegionAvail();
+    // The rest of the tab and no more, so the tree never scrolls; a hair
+    // short of it, so rounding cannot put a scrollbar there either.
+    const float width = room.x;
+    const float height = (std::max)(room.y - 2.0f, radius * 4.0f);
+
+    // Where each node and its label go (core/PerkTree.h): across in the
+    // tree's columns, up by its first rank's level, each label at the place
+    // about its circle that keeps it clearest. A label is measured with every
+    // rank held, so a rank taken cannot widen it and move the tree.
+    const float ring = radius + 2.0f; // the circle with its hover ring
+    std::vector<std::string> labels;
+    std::vector<float> labelWidth;
+    labels.reserve(tree.nodes.size());
+    labelWidth.reserve(tree.nodes.size());
+    for (const ft::PerkTreeNode &node : tree.nodes)
+    {
+        const auto ranksText = [&](int held) {
+            return node.ranks > 1 ? " (" + std::to_string(held) + "/" + std::to_string(node.ranks) + ")"
+                                  : std::string();
+        };
+        labels.push_back(node.name + ranksText(node.held));
+        labelWidth.push_back(TextWidth(node.name + ranksText(node.ranks)));
+    }
+    const ft::TreeDrawing drawing =
+        ft::LayOutTree(tree.nodes, labelWidth, ring, gap, Im::GetTextLineHeight(), width, height);
+    const auto &at = drawing.centres;
+    const auto ink = Im::GetColorU32(Im::ImGuiCol_Text, 1.0f);
+    const auto dim = Im::GetColorU32(Im::ImGuiCol_TextDisabled, 1.0f);
+    const auto lit = Im::GetColorU32(Im::ImGuiCol_ButtonHovered, 1.0f);
+    const auto centre = [&](std::size_t i) { return Im::ImVec2(origin.x + at[i].x, origin.y + at[i].y); };
+
+    // The links first, each from one circle's edge to the other's.
+    for (std::size_t i = 0; i < tree.nodes.size(); ++i)
+        for (const std::size_t child : tree.nodes[i].children)
+        {
+            if (child >= tree.nodes.size())
+                continue;
+            const Im::ImVec2 a = centre(i);
+            const Im::ImVec2 b = centre(child);
+            const float dx = b.x - a.x;
+            const float dy = b.y - a.y;
+            const float length = std::sqrt(dx * dx + dy * dy);
+            if (length <= 2.0f * radius)
+                continue;
+            const float ux = dx / length * radius;
+            const float uy = dy / length * radius;
+            const bool taken = tree.nodes[i].held > 0 && tree.nodes[child].held > 0;
+            Im::ImDrawListManager::AddLine(draw, Im::ImVec2(a.x + ux, a.y + uy), Im::ImVec2(b.x - ux, b.y - uy),
+                                           taken ? ink : dim, taken ? 2.0f : 1.0f);
+        }
+
+    std::size_t hovered = tree.nodes.size();
+    for (std::size_t i = 0; i < tree.nodes.size(); ++i)
+    {
+        const ft::PerkTreeNode &node = tree.nodes[i];
+        const Im::ImVec2 c = centre(i);
+        Im::SetCursorScreenPos(Im::ImVec2(c.x - radius, c.y - radius));
+        Im::PushID(static_cast<int>(i));
+        const bool clicked = Im::InvisibleButton("node", Im::ImVec2(radius * 2.0f, radius * 2.0f), 0);
+        const bool rightClicked = Im::IsItemClicked(Im::ImGuiMouseButton_Right);
+        const bool over = Im::IsItemHovered(0);
+        if (over)
+            hovered = i;
+        if ((clicked || rightClicked) && on.node)
+            on.node(node, rightClicked);
+
+        // The name, its own click target: lit under the cursor, as a link
+        // is, and a click on it opens the perk's page.
+        const Im::ImVec2 labelAt(origin.x + drawing.labels[i].x, origin.y + drawing.labels[i].y);
+        const Im::ImVec2 labelSize(TextWidth(labels[i]), Im::GetTextLineHeight());
+        Im::SetCursorScreenPos(labelAt);
+        const bool nameClicked = Im::InvisibleButton("name", labelSize, 0);
+        const bool overName = Im::IsItemHovered(0);
+        Im::PopID();
+        if (nameClicked && on.name)
+            on.name(node);
+        if (overName)
+            Im::ImDrawListManager::AddRectFilled(draw, Im::ImVec2(labelAt.x - 3.0f, labelAt.y),
+                                                 Im::ImVec2(labelAt.x + labelSize.x + 3.0f, labelAt.y + labelSize.y),
+                                                 lit, 3.0f, 0);
+        const bool reachable = node.held > 0 || tree.level >= node.requirement;
+        const auto colour = reachable ? ink : dim;
+        // Every rank held: the whole circle, in one piece. A share of them:
+        // its slices, the second laid a hair over the first, so no seam
+        // shows between them.
+        if (node.held >= node.ranks)
+            Im::ImDrawListManager::AddCircleFilled(draw, c, radius, colour, 0);
+        else
+        {
+            const auto arcs = ft::HeldArcs(node.held, node.ranks);
+            for (std::size_t k = 0; k < arcs.size(); ++k)
+            {
+                Im::ImDrawListManager::PathClear(draw);
+                Im::ImDrawListManager::PathLineTo(draw, c);
+                Im::ImDrawListManager::PathArcTo(draw, c, radius, arcs[k].from - (k > 0 ? 0.05f : 0.0f), arcs[k].to, 0);
+                Im::ImDrawListManager::PathFillConvex(draw, colour);
+            }
+        }
+        Im::ImDrawListManager::AddCircle(draw, c, radius, over ? lit : colour, 0, over ? 2.5f : 1.5f);
+
+        Im::ImDrawListManager::AddText(draw, Im::ImVec2(origin.x + drawing.labels[i].x, origin.y + drawing.labels[i].y),
+                                       colour, labels[i].c_str());
+    }
+    // The canvas is the page's content: the cursor goes below it, and an
+    // item there is what makes the region scroll to it.
+    Im::SetCursorScreenPos(Im::ImVec2(origin.x, origin.y + height));
+    Im::Dummy(Im::ImVec2(width, 0.0f));
+
+    // The hover, laid out to one width: the name at the left and what it
+    // needs at the right on the first line -- with what they have beneath,
+    // both greyed, when they fall short; the labels right-aligned to one
+    // edge, as a greyed spell's are -- then the description, then what a
+    // click does at the left and a right click at the right.
+    if (hovered < tree.nodes.size())
+    {
+        const ft::PerkTreeNode &node = tree.nodes[hovered];
+        const std::string title =
+            node.ranks > 1 ? fmt::format("{} ({}/{})", node.name, node.held, node.ranks) : node.name;
+        const bool needs = node.requirement > 0.0f;
+        const int need = static_cast<int>(node.requirement);
+        const int has = static_cast<int>(tree.level);
+        const bool short_ = needs && has < need;
+        const std::string needValue = fmt::format("{} ({})", tree.name, need);
+        const std::string hasValue = fmt::format("{} ({})", tree.name, has);
+        const float spacing = Im::GetStyle()->ItemSpacing.x;
+        const float wide = font * 2.0f;
+        const float tagWidth = (std::max)(TextWidth("Needs:"), TextWidth("Has:"));
+        const float block =
+            needs ? tagWidth + spacing + (std::max)(TextWidth(needValue), short_ ? TextWidth(hasValue) : 0.0f) : 0.0f;
+        const TreeHandlers::Actions can = on.actions ? on.actions(node) : TreeHandlers::Actions{};
+        constexpr const char *kAcquire = "Click to acquire perk";
+        constexpr const char *kRemove = "Right click to remove perk";
+        const float actions = (can.acquire ? TextWidth(kAcquire) : 0.0f) + (can.remove ? TextWidth(kRemove) : 0.0f) +
+                              (can.acquire && can.remove ? wide : 0.0f);
+        const float lineWidth = (std::max)({TextWidth(title) + (needs ? wide + block : 0.0f), actions,
+                                            (std::min)(TextWidth(node.description), font * 28.0f)});
+
+        Im::BeginTooltip();
+        const float x0 = Im::GetCursorPosX();
+        Im::Text("%s", title.c_str());
+        if (needs)
+        {
+            const DimText grey(short_);
+            const float blockX = x0 + lineWidth - block;
+            const auto line = [&](const char *label, const std::string &value) {
+                Im::SetCursorPosX(blockX + tagWidth - TextWidth(label));
+                Im::Text("%s", label);
+                Im::SameLine(0.0f, spacing);
+                Im::Text("%s", value.c_str());
+            };
+            Im::SameLine(0.0f, 0.0f);
+            line("Needs:", needValue);
+            if (short_)
+                line("Has:", hasValue);
+        }
+        if (!node.description.empty())
+        {
+            Im::Spacing();
+            Im::PushTextWrapPos(x0 + lineWidth);
+            Im::TextWrapped("%s", node.description.c_str());
+            Im::PopTextWrapPos();
+        }
+        if (can.acquire || can.remove)
+        {
+            Im::Spacing();
+            if (can.acquire)
+                Im::Text("%s", kAcquire);
+            if (can.remove)
+            {
+                if (can.acquire)
+                    Im::SameLine(0.0f, 0.0f);
+                Im::SetCursorPosX(x0 + lineWidth - TextWidth(kRemove));
+                Im::Text("%s", kRemove);
+            }
+        }
+        Im::EndTooltip();
+    }
+}
+
+// After an action on the follower whose page is shown -- a perk learned, a
+// level moved, a skill reset -- the page is rebuilt once it is done: queued
+// behind it on the game thread, where tasks run in order. The page is not
+// rebuilt on a beat (Tactics.h, RefreshShownPage), so without this the
+// change showed only after the panel was closed and opened.
+void RefreshAfterAction()
+{
+    if (auto *task = SKSE::GetTaskInterface())
+        task->AddTask([] { RefreshShownPage(); });
+}
+
+// The game's own sounds, by their descriptors' editor ids (Skyrim.esm):
+// the perk menu's for a perk taken (the engine plays it from 52521), the
+// skills menu's step back for one given back, and the one a failed
+// activation makes for a click that cannot be answered.
+constexpr const char *kPerkTakenSound = "UISkillsPerkSelect2D";
+constexpr const char *kPerkReturnedSound = "UISkillsBackwardSD";
+constexpr const char *kRefusedSound = "UIActivateFail";
+
+// Played on the game thread, where the descriptor is looked up.
+void PlayGameSound(const char *id)
+{
+    if (auto *task = SKSE::GetTaskInterface())
+        task->AddTask([id] { RE::PlaySound(id); });
+}
+
 void DrawSkills(const CharacterView &view)
 {
     SkillsTabState &state = Panel(view.id).skills;
@@ -5553,9 +5856,187 @@ void DrawSkills(const CharacterView &view)
             return;
         }
     }
+    // A skill's page: its tree, under its name and its level, as the perk
+    // menu heads it. A perk's page opened from here comes back to it.
+    if (state.tree != 0)
+    {
+        const auto tree = std::find_if(view.trees.begin(), view.trees.end(),
+                                       [&](const ft::PerkTreeView &t) { return t.key == state.tree; });
+        if (tree == view.trees.end())
+        {
+            state.tree = 0;
+        }
+        else
+        {
+            // The name at the left; the level in the middle; the perks to
+            // spend and Reset perks at the right. A follower Progression
+            // levels has <<, -, + and >> about the level (Progression's
+            // ControlsFor), each greyed with why when it cannot act; the
+            // player, and a follower it does not level, the level alone.
+            const auto controls =
+                view.player ? std::nullopt : fp::game::ControlsFor(view.id, static_cast<int>(tree->key) - 1);
+            const float lineX = Im::GetCursorPosX();
+            const float lineWidth = Im::GetContentRegionAvail().x;
+            const float button = Im::GetFrameHeight();
+            const float framePad = Im::GetStyle()->FramePadding.x;
+            const auto textButtonWidth = [&](const char *label) { return TextWidth(label) + 2.0f * framePad; };
+            const auto pointButton = [&](const char *id, Glyph glyph, bool can, const std::string &why) {
+                Im::BeginDisabled(!can);
+                Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+                const bool clicked = GlyphButton(id, button, glyph);
+                Im::PopStyleVar(1);
+                Im::EndDisabled();
+                if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+                    Tooltip(why);
+                return clicked;
+            };
+            const auto move = [&](int direction, bool allTheWay) {
+                if (allTheWay)
+                    fp::game::AssignSkillAll(controls->companion, controls->skill, direction);
+                else
+                    fp::game::AssignSkillPoint(controls->companion, controls->skill, direction);
+                RefreshAfterAction();
+            };
+
+            if (BackButton())
+            {
+                state.tree = 0;
+                state.confirmReset = false;
+            }
+            DetailName(tree->name);
+
+            const std::string level = controls ? std::to_string(controls->level) : tree->value;
+            const float group = TextWidth(level) + (controls ? 4.0f * (button + kCellPadX) : 0.0f);
+            Im::SameLine(0.0f, 0.0f);
+            Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineX + (lineWidth - group) / 2.0f));
+            if (controls)
+            {
+                const fp::SkillButtons &b = controls->buttons;
+                if (pointButton("lowest", Glyph::AllTheWayLeft, b.canLower, b.lowest))
+                    move(-1, true);
+                Im::SameLine(0.0f, kCellPadX);
+                if (pointButton("lower", Glyph::Minus, b.canLower, b.lower))
+                    move(-1, false);
+                Im::SameLine(0.0f, kCellPadX);
+            }
+            Im::AlignTextToFramePadding();
+            Im::Text("%s", level.c_str());
+            if (Im::IsItemHovered(0))
+            {
+                if (controls && controls->learned != 0)
+                    Tooltip(fmt::format("{} their own, {:+} learned", controls->base, controls->learned));
+                else if (!controls && tree->current != tree->level)
+                    Tooltip(fmt::format("{:.0f} with the effects on it", tree->current));
+            }
+            if (controls)
+            {
+                const fp::SkillButtons &b = controls->buttons;
+                Im::SameLine(0.0f, kCellPadX);
+                if (pointButton("raise", Glyph::Plus, b.canRaise, b.raise))
+                    move(+1, false);
+                Im::SameLine(0.0f, kCellPadX);
+                if (pointButton("highest", Glyph::AllTheWayRight, b.canRaise, b.highest))
+                    move(+1, true);
+
+                // The perks to spend, then Reset perks, which asks once: it
+                // gives back every perk bought in the tree, free to buy again
+                // but not one click away.
+                const std::string available = controls->perkPoints <= 0 ? std::string()
+                                              : controls->perkPoints == 1
+                                                  ? std::string("1 perk available")
+                                                  : std::to_string(controls->perkPoints) + " perks available";
+                const bool confirming = state.confirmReset && b.canResetPerks;
+                const float buttons = confirming ? textButtonWidth("Confirm") + kCellPadX + textButtonWidth("Cancel")
+                                                 : textButtonWidth("Reset perks");
+                Im::SameLine(0.0f, 0.0f);
+                const float lead = available.empty() ? 0.0f : TextWidth(available) + kCellPadX;
+                Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineX + lineWidth - buttons - lead));
+                if (!available.empty())
+                {
+                    Im::AlignTextToFramePadding();
+                    Im::Text("%s", available.c_str());
+                    Im::SameLine(0.0f, kCellPadX);
+                }
+                if (confirming)
+                {
+                    if (Im::Button("Confirm", Im::ImVec2(0.0f, 0.0f)))
+                    {
+                        fp::game::ResetPerks(controls->companion, controls->skill);
+                        PlayGameSound(kPerkReturnedSound);
+                        RefreshAfterAction();
+                        state.confirmReset = false;
+                    }
+                    if (Im::IsItemHovered(0))
+                        Tooltip(b.resetPerks);
+                    Im::SameLine(0.0f, kCellPadX);
+                    if (Im::Button("Cancel", Im::ImVec2(0.0f, 0.0f)))
+                        state.confirmReset = false;
+                }
+                else
+                {
+                    state.confirmReset = false;
+                    Im::BeginDisabled(!b.canResetPerks);
+                    if (Im::Button("Reset perks", Im::ImVec2(0.0f, 0.0f)))
+                        state.confirmReset = true;
+                    Im::EndDisabled();
+                    if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+                        Tooltip(b.resetPerks);
+                }
+            }
+            Im::Spacing();
+
+            // The tree: a circle's click acquires its next rank, a right
+            // click gives the top one back, each where Progression says it
+            // can (PerkControlsFor) and with the game's own sound; where it
+            // cannot, the failure sound and nothing else. A name's click
+            // opens the perk's page -- the top rank held, or the first.
+            TreeHandlers on;
+            const auto can = [&view](const ft::PerkTreeNode &node) {
+                return view.player || node.firstForm == 0 ? std::nullopt
+                                                          : fp::game::PerkControlsFor(view.id, node.firstForm);
+            };
+            on.node = [&view, can](const ft::PerkTreeNode &node, bool right) {
+                const auto controlsNow = can(node);
+                if (!right && controlsNow && controlsNow->canLearn)
+                {
+                    fp::game::LearnPerkByForm(view.id, node.firstForm);
+                    PlayGameSound(kPerkTakenSound);
+                    RefreshAfterAction();
+                }
+                else if (right && controlsNow && controlsNow->canUnlearn)
+                {
+                    fp::game::UnlearnPerkByForm(view.id, node.firstForm);
+                    PlayGameSound(kPerkReturnedSound);
+                    RefreshAfterAction();
+                }
+                else
+                    PlayGameSound(kRefusedSound);
+            };
+            on.name = [&state](const ft::PerkTreeNode &node) {
+                state.detail = node.form != 0 ? node.form : node.firstForm;
+            };
+            on.actions = [can](const ft::PerkTreeNode &node) {
+                TreeHandlers::Actions out;
+                if (const auto controlsNow = can(node))
+                {
+                    out.acquire = controlsNow->canLearn;
+                    out.remove = controlsNow->canUnlearn;
+                }
+                return out;
+            };
+            DrawPerkTree(*tree, on);
+            return;
+        }
+    }
     // The skills, with their trees; then the perks in no tree, in the same
-    // table the trees open into, under a heading of their own.
+    // table the trees open into, under a heading of their own. A perk's
+    // name opens its page; a skill's name opens its tree, and its level the
+    // perks it holds.
     const auto open = [&state](std::uint32_t form) { state.detail = form; };
+    const auto openTree = [&state](const SheetRow &row) {
+        state.tree = row.tree;
+        state.confirmReset = false;
+    };
     std::vector<SheetSection> skills;
     const SheetSection *other = nullptr;
     for (const auto &section : view.skills)
@@ -5565,7 +6046,7 @@ void DrawSkills(const CharacterView &view)
         else
             skills.push_back(section);
     }
-    DrawSections(skills, true, open);
+    DrawSections(skills, true, open, "Modifiers", {}, "Skill", "Level", {}, openTree);
     if (other)
     {
         CentredHeading("Other Perks");
@@ -5927,7 +6408,7 @@ void DrawSheetTabs(const CharacterView &view, Tab select)
                     Im::Spacing();
                     DrawSkills(view);
                 },
-                {panel.skills.detail});
+                {panel.skills.tree, panel.skills.detail});
         Im::EndTabItem();
     }
 }

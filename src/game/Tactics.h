@@ -76,6 +76,9 @@ struct CharacterView
     std::vector<SheetSection> skills;
     // A page per perk held, for the Skills tab's perk page.
     std::vector<PerkPage> perks;
+    // Each skill's perk tree and what they hold of it, for the Skills tab's
+    // skill page.
+    std::vector<ft::PerkTreeView> trees;
     // What they command right now, for the Summons tab.
     std::vector<SummonView> summons;
     // The Inventory tab: everything they carry, sorted by name.

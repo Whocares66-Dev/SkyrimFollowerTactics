@@ -8,6 +8,7 @@
 #include "progression/core/Perks.h"
 
 #include <filesystem>
+#include <optional>
 
 namespace fp::game
 {
@@ -17,6 +18,10 @@ void BuildPerkGraph();
 [[nodiscard]] const PerkGraph &Graph();
 
 [[nodiscard]] RE::BGSPerk *PerkOf(const FormKey &form);
+
+// The graph's node that `perk`, a rank's runtime id, belongs to; none for a
+// perk in no tree read. Built with the graph, so any thread may ask.
+[[nodiscard]] std::optional<int> NodeOfPerk(RE::FormID perk);
 
 // The graph as progression/core/PerkData.h writes it, into the SKSE log folder: to set
 // beside tests/progression/data/vanilla-perks.json and see what the load order changed.

@@ -82,28 +82,6 @@ std::optional<Attribute> AttributeFromKey(std::string_view key) noexcept
     return std::nullopt;
 }
 
-bool IsTrainable(Skill s) noexcept
-{
-    switch (s)
-    {
-    case Skill::OneHanded:
-    case Skill::TwoHanded:
-    case Skill::Archery:
-    case Skill::Block:
-    case Skill::HeavyArmor:
-    case Skill::LightArmor:
-    case Skill::Sneak:
-    case Skill::Alteration:
-    case Skill::Conjuration:
-    case Skill::Destruction:
-    case Skill::Illusion:
-    case Skill::Restoration:
-        return true;
-    default:
-        return false;
-    }
-}
-
 bool IsSchool(Skill s) noexcept
 {
     switch (s)

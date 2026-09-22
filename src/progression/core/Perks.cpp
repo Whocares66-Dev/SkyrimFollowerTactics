@@ -180,27 +180,6 @@ constexpr std::array<Known, 40> kVanilla{{
     {0x0153D1, PerkEffect::Situational, kDualCast},                            // Restoration Dual Casting
 }};
 
-std::string_view UntrainedNote(Skill tree)
-{
-    switch (tree)
-    {
-    case Skill::Smithing:
-        return "Companions don't smith.";
-    case Skill::Alchemy:
-        return "Companions don't brew.";
-    case Skill::Enchanting:
-        return "Companions don't enchant.";
-    case Skill::Speech:
-        return "Companions don't barter or persuade.";
-    case Skill::Lockpicking:
-        return "Companions don't pick locks.";
-    case Skill::Pickpocket:
-        return "Companions don't pick pockets.";
-    default:
-        return "Companions are not trained in this skill.";
-    }
-}
-
 bool Compare(float lhs, Comparison op, float rhs) noexcept
 {
     switch (op)
@@ -222,10 +201,9 @@ bool Compare(float lhs, Comparison op, float rhs) noexcept
     }
 }
 
-// Conditions evaluated against a companion, with the bridges resolved on
-// the way: a bridge is held when its own first rank's conditions pass, which
-// may mean another bridge's. A cycle -- no vanilla tree has one -- reads as
-// not held rather than recursing forever.
+// Conditions evaluated against a companion's holdings. A perk that does
+// nothing for a companion is held only as any other is: learned, as the
+// player's would be, to reach what needs it.
 class Evaluator
 {
   public:
@@ -240,8 +218,8 @@ class Evaluator
 
     // Held directly, or implied by a higher rank of the same node held
     // directly -- Marcurio's record carries Recovery's second rank without
-    // its first -- or a bridge whose conditions are met.
-    bool Held(const FormKey &form)
+    // its first.
+    bool Held(const FormKey &form) const
     {
         if (Direct(form))
             return true;
@@ -252,26 +230,7 @@ class Evaluator
         for (std::size_t r = static_cast<std::size_t>(found->second) + 1; r < node.ranks.size(); ++r)
             if (Direct(node.ranks[r].form))
                 return true;
-        return IsBridge(found->first) && BridgeSatisfied(found->first);
-    }
-
-    bool IsBridge(int node) const
-    {
-        return rules_.graph.Node(node).effect == PerkEffect::NoEffect && !rules_.offerNoEffect;
-    }
-
-    bool BridgeSatisfied(int node)
-    {
-        auto &state = bridges_[node];
-        if (state == State::Yes)
-            return true;
-        if (state == State::No || state == State::Visiting)
-            return false;
-        state = State::Visiting;
-        const PerkNode &n = rules_.graph.Node(node);
-        const bool ok = !n.ranks.empty() && Met(n.ranks.front());
-        bridges_[node] = ok ? State::Yes : State::No;
-        return ok;
+        return false;
     }
 
     bool One(const Condition &c)
@@ -315,15 +274,7 @@ class Evaluator
     }
 
   private:
-    enum class State : std::uint8_t
-    {
-        Unknown,
-        Visiting,
-        Yes,
-        No
-    };
     const PerkRules &rules_;
-    std::unordered_map<int, State> bridges_;
 };
 
 } // namespace
@@ -431,11 +382,8 @@ int SkillRequirement(const PerkRank &rank, Skill skill) noexcept
 
 // --- the catalog ---------------------------------------------------------------
 
-Verdict Classify(Skill tree, const FormKey &firstRank, const EffectSummary &effects)
+Verdict Classify(const FormKey &firstRank, const EffectSummary &effects)
 {
-    if (!IsTrainable(tree))
-        return {PerkEffect::NoEffect, std::string(UntrainedNote(tree))};
-
     if (firstRank.plugin == "Skyrim.esm")
         for (const Known &known : kVanilla)
             if (known.local == firstRank.local)
@@ -470,6 +418,22 @@ Verdict Classify(Skill tree, const FormKey &firstRank, const EffectSummary &effe
     }
 }
 
+std::string VerdictOf(const PerkNode &node)
+{
+    switch (node.effect)
+    {
+    case PerkEffect::Works:
+        return "For companions: " + node.note + " Expected from the record; not yet measured on an NPC.";
+    case PerkEffect::Situational:
+        return "For companions: " + node.note;
+    case PerkEffect::Unverified:
+        return "For companions: unverified. " + node.note;
+    case PerkEffect::NoEffect:
+    default:
+        return "No effect on companions: " + node.note + " Still learned to reach the perks above it.";
+    }
+}
+
 // --- the rules -------------------------------------------------------------------
 
 bool Held(const PerkRules &rules, const FormKey &form)
@@ -490,7 +454,6 @@ PerkStatus Status(const PerkRules &rules, int nodeId)
     const PerkNode &node = rules.graph.Node(nodeId);
     Evaluator evaluator(rules);
 
-    const bool bridge = evaluator.IsBridge(nodeId);
     // Held up to the highest rank held directly: the ranks below it are
     // implied, and count as theirs unless bought here.
     int top = -1;
@@ -505,22 +468,17 @@ PerkStatus Status(const PerkRules &rules, int nodeId)
             ++status.innate;
     }
     status.held = top + 1;
-    if (bridge && status.held == 0 && evaluator.BridgeSatisfied(nodeId))
-    {
-        status.bridge = true;
-        status.held = static_cast<int>(node.ranks.size());
-    }
 
     // Unlearning: the top rank held must be ours, and nothing else of ours
     // may need it.
-    if (status.held > 0 && !status.bridge)
+    if (status.held > 0)
     {
         const FormKey &highest = node.ranks[static_cast<std::size_t>(status.held - 1)].form;
         if (rules.holdings.learned.contains(highest))
         {
             Holdings without = rules.holdings;
             without.learned.erase(highest);
-            const PerkRules after{rules.graph, without, rules.skills, rules.points, rules.offerNoEffect};
+            const PerkRules after{rules.graph, without, rules.skills, rules.points};
             Evaluator check(after);
             for (const FormKey &other : without.learned)
             {
@@ -538,7 +496,7 @@ PerkStatus Status(const PerkRules &rules, int nodeId)
 
     if (status.held >= static_cast<int>(node.ranks.size()))
     {
-        status.block = status.bridge ? PerkBlock::NoEffect : PerkBlock::Maxed;
+        status.block = PerkBlock::Maxed;
         return status;
     }
 
@@ -614,9 +572,7 @@ PerkStatus Status(const PerkRules &rules, int nodeId)
     if (!next.conditions.empty() && next.conditions.back().orNext && !groupMet)
         perkFails = true;
 
-    if (evaluator.IsBridge(nodeId))
-        status.block = PerkBlock::NoEffect;
-    else if (perkFails)
+    if (perkFails)
         status.block = PerkBlock::Requires;
     else if (skillFails)
         status.block = PerkBlock::Skill;
@@ -635,7 +591,7 @@ std::vector<int> WouldBreak(const PerkRules &rules, std::span<const FormKey> rem
         without.innate.erase(form);
         without.learned.erase(form);
     }
-    const PerkRules after{rules.graph, without, rules.skills, rules.points, rules.offerNoEffect};
+    const PerkRules after{rules.graph, without, rules.skills, rules.points};
     Evaluator check(after);
     std::vector<int> broken;
     for (const FormKey &form : without.learned)
@@ -651,14 +607,13 @@ std::vector<int> WouldBreak(const PerkRules &rules, std::span<const FormKey> rem
     return broken;
 }
 
-std::vector<FormKey> Invalidated(const PerkGraph &graph, const Holdings &holdings, const PerSkill<int> &skills,
-                                 bool offerNoEffect)
+std::vector<FormKey> Invalidated(const PerkGraph &graph, const Holdings &holdings, const PerSkill<int> &skills)
 {
     std::vector<std::pair<int, FormKey>> gone; // rank index, form
     Holdings working = holdings;
     for (;;)
     {
-        const PerkRules rules{graph, working, skills, 0, offerNoEffect};
+        const PerkRules rules{graph, working, skills, 0};
         Evaluator evaluator(rules);
         std::vector<std::pair<int, FormKey>> pass;
         for (const FormKey &form : working.learned)

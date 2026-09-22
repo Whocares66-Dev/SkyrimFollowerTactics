@@ -99,6 +99,14 @@ void Refuse(std::string why)
     g_state.refused = std::move(why);
 }
 
+// The same, not shown: for the skill page's clicks, which ask first and say
+// no with a sound of their own.
+void RefuseQuietly(std::string why)
+{
+    log::ui.info("refused: {}", why);
+    g_state.refused = std::move(why);
+}
+
 // Perks on their record that were not bought here: theirs, or another mod's.
 std::unordered_set<FormKey, FormKeyHash> OnRecord(const Companion &c, RE::Actor *actor)
 {
@@ -297,6 +305,7 @@ void RebuildViews()
         CompanionView v;
         v.key = c.key;
         RE::Actor *actor = ActorOf(c.key);
+        v.actor = actor ? actor->GetFormID() : 0;
         if (actor && IsHere(actor))
         {
             v.read = true;
@@ -310,7 +319,7 @@ void RebuildViews()
             {
                 const std::size_t i = Index(skill);
                 v.floors[i] = FloorOf(actor, skill, r);
-                if (const auto usage = ReadSkillUsage(skill); usage && IsTrainable(skill))
+                if (const auto usage = ReadSkillUsage(skill))
                     v.nextLevel[i] = SkillThreshold(r, *usage, v.base[i] + c.learning.skills[i]);
             }
             v.attributes = BaseAttributes(actor);
@@ -462,9 +471,8 @@ void AssignSkillPoint(const FormKey &key, Skill skill, int delta)
             return;
         const Rules r = ReadRules();
         const PerSkill<int> base = BaseSkills(actor);
-        const AssignCheck check =
-            CheckSkill(*c, skill, delta, base, FloorOf(actor, skill, r), Graph(), HoldingsOf(*c, OnRecord(*c, actor)),
-                       g_state.settings.showNoEffectPerks, r);
+        const AssignCheck check = CheckSkill(*c, skill, delta, base, FloorOf(actor, skill, r), Graph(),
+                                             HoldingsOf(*c, OnRecord(*c, actor)), r);
         if (check.block == AssignBlock::PerkNeedsIt)
         {
             Refuse(
@@ -482,7 +490,7 @@ void ResetSkill(const FormKey &key, Skill skill)
 {
     Act([key = key, skill] {
         auto [c, actor] = Present(key, "reset a skill");
-        if (!c || !IsTrainable(skill))
+        if (!c)
             return;
         const Rules r = ReadRules();
         const ResetResult reset =
@@ -510,70 +518,182 @@ void AssignAttributePoint(const FormKey &key, Attribute attribute, int delta)
     });
 }
 
+namespace
+{
+
+// A rank bought, the next of `nodeId`'s: on the game thread, under the lock.
+void LearnNode(const FormKey &key, int nodeId, bool quiet)
+{
+    const auto refuse = [quiet](std::string why) {
+        if (quiet)
+            RefuseQuietly(std::move(why));
+        else
+            Refuse(std::move(why));
+    };
+    auto [c, actor] = Present(key, "learn a perk");
+    if (!c)
+        return;
+    const PerkGraph &graph = Graph();
+    if (nodeId < 0 || static_cast<std::size_t>(nodeId) >= graph.Size())
+        return;
+    const PerkNode &node = graph.Node(nodeId);
+    const Holdings holdings = HoldingsOf(*c, OnRecord(*c, actor));
+    const PerSkill<int> skills = Effective(*c, BaseSkills(actor));
+    const int points = PerkPointsOf(*c, actor, LevelOf(*c, actor, ReadRules()).level);
+    const PerkStatus status = Status({graph, holdings, skills, points}, nodeId);
+    if (status.block != PerkBlock::None)
+    {
+        refuse(fmt::format("{} cannot learn {} now.", c->name, node.name));
+        return;
+    }
+    const int rank = status.held;
+    const FormKey &form = node.ranks[static_cast<std::size_t>(rank)].form;
+    RE::BGSPerk *perk = PerkOf(form);
+    if (!perk)
+    {
+        refuse(fmt::format("{} is not in this load order.", node.name));
+        return;
+    }
+    fp::Learn(*c, node, rank);
+    PublishViews();
+    perkview::Reconcile(actor);
+    // Through the engine's own HasPerk, which is our ForEachPerk.
+    if (!actor->HasPerk(perk))
+        log::perks.warn("{}: learned {}, but the engine's HasPerk says no", c->name, node.name);
+    log::perks.info("{} learned {} ({}/{}), {}", c->name, node.name, rank + 1, node.ranks.size(), ToString(form));
+    if (!quiet)
+        Hud(fmt::format("{} learned {}.", c->name, node.name));
+}
+
+} // namespace
+
 void LearnPerk(const FormKey &key, int nodeId)
 {
-    Act([key = key, nodeId] {
-        auto [c, actor] = Present(key, "learn a perk");
-        if (!c)
+    Act([key = key, nodeId] { LearnNode(key, nodeId, false); });
+}
+
+void LearnPerkByForm(std::uint32_t actorId, std::uint32_t perkForm)
+{
+    Act([actorId, perkForm] {
+        const auto actorKey = KeyOf(RE::TESForm::LookupByID<RE::Actor>(actorId));
+        const auto perkKey = KeyOf(RE::TESForm::LookupByID<RE::BGSPerk>(perkForm));
+        if (!actorKey || !perkKey)
             return;
-        const PerkGraph &graph = Graph();
-        if (nodeId < 0 || static_cast<std::size_t>(nodeId) >= graph.Size())
-            return;
-        const PerkNode &node = graph.Node(nodeId);
-        const Holdings holdings = HoldingsOf(*c, OnRecord(*c, actor));
-        const PerSkill<int> skills = Effective(*c, BaseSkills(actor));
-        const int points = PerkPointsOf(*c, actor, LevelOf(*c, actor, ReadRules()).level);
-        const PerkStatus status = Status({graph, holdings, skills, points, g_state.settings.showNoEffectPerks}, nodeId);
-        if (status.block != PerkBlock::None)
-        {
-            Refuse(fmt::format("{} cannot learn {} now.", c->name, node.name));
-            return;
-        }
-        const int rank = status.held;
-        const FormKey &form = node.ranks[static_cast<std::size_t>(rank)].form;
-        RE::BGSPerk *perk = PerkOf(form);
-        if (!perk)
-        {
-            Refuse(fmt::format("{} is not in this load order.", node.name));
-            return;
-        }
-        fp::Learn(*c, node, rank);
-        PublishViews();
-        perkview::Reconcile(actor);
-        // Through the engine's own HasPerk, which is our ForEachPerk.
-        if (!actor->HasPerk(perk))
-            log::perks.warn("{}: learned {}, but the engine's HasPerk says no", c->name, node.name);
-        log::perks.info("{} learned {} ({}/{}), {}", c->name, node.name, rank + 1, node.ranks.size(), ToString(form));
-        Hud(fmt::format("{} learned {}.", c->name, node.name));
+        if (const auto node = Graph().Find(*perkKey))
+            LearnNode(*actorKey, node->first, true);
     });
 }
 
+std::optional<SkillControls> ControlsFor(RE::FormID actor, int actorValue)
+{
+    const auto skill = SkillFromActorValue(actorValue);
+    if (!skill || actor == 0)
+        return std::nullopt;
+    std::scoped_lock lock(g_mutex);
+    for (const CompanionView &v : g_state.views)
+    {
+        const Companion *found = v.actor == actor && v.read ? Find(v.key) : nullptr;
+        if (!found)
+            continue;
+        const Companion &c = *found;
+        const std::size_t k = Index(*skill);
+        SkillControls out;
+        out.companion = c.key;
+        out.skill = *skill;
+        out.base = v.base[k];
+        out.learned = c.learning.skills[k];
+        out.level = out.base + out.learned;
+        out.perkPoints = v.perkPoints;
+        out.buttons = ButtonsFor(c, *skill, v.base, v.floors[k], Graph(), HoldingsOf(c, v.onRecord), g_state.rules);
+        const auto none = [&](const std::string &why) {
+            out.buttons.canLower = out.buttons.canRaise = out.buttons.canReset = false;
+            out.buttons.lower = out.buttons.raise = out.buttons.reset = why;
+        };
+        if (g_state.settings.released)
+            none("Leveling is off: turn it on in Follower Tactics' Settings.");
+        else if (!v.loaded)
+            none(c.name + " must be with you for this.");
+        out.active = !g_state.settings.released && v.loaded;
+        return out;
+    }
+    return std::nullopt;
+}
+
+namespace
+{
+
+// The top rank of `nodeId` bought here, given back: on the game thread,
+// under the lock.
+void UnlearnNode(const FormKey &key, int nodeId, bool quiet)
+{
+    auto [c, actor] = Present(key, "unlearn a perk");
+    if (!c)
+        return;
+    const PerkGraph &graph = Graph();
+    if (nodeId < 0 || static_cast<std::size_t>(nodeId) >= graph.Size())
+        return;
+    const PerkNode &node = graph.Node(nodeId);
+    const Holdings holdings = HoldingsOf(*c, OnRecord(*c, actor));
+    const PerSkill<int> skills = Effective(*c, BaseSkills(actor));
+    const int points = PerkPointsOf(*c, actor, LevelOf(*c, actor, ReadRules()).level);
+    const PerkStatus status = Status({graph, holdings, skills, points}, nodeId);
+    if (!status.canUnlearn)
+    {
+        std::string why = fmt::format("{} cannot unlearn {}: something else needs it.", c->name, node.name);
+        if (quiet)
+            RefuseQuietly(std::move(why));
+        else
+            Refuse(std::move(why));
+        return;
+    }
+    const FormKey &form = node.ranks[static_cast<std::size_t>(status.held - 1)].form;
+    fp::Unlearn(*c, form);
+    PublishViews();
+    perkview::Reconcile(actor);
+    log::perks.info("{} unlearned {} (rank {})", c->name, node.name, status.held);
+    if (!quiet)
+        Hud(fmt::format("{} unlearned {}.", c->name, node.name));
+}
+
+} // namespace
+
 void UnlearnPerk(const FormKey &key, int nodeId)
 {
-    Act([key = key, nodeId] {
-        auto [c, actor] = Present(key, "unlearn a perk");
-        if (!c)
-            return;
-        const PerkGraph &graph = Graph();
-        if (nodeId < 0 || static_cast<std::size_t>(nodeId) >= graph.Size())
-            return;
-        const PerkNode &node = graph.Node(nodeId);
-        const Holdings holdings = HoldingsOf(*c, OnRecord(*c, actor));
-        const PerSkill<int> skills = Effective(*c, BaseSkills(actor));
-        const int points = PerkPointsOf(*c, actor, LevelOf(*c, actor, ReadRules()).level);
-        const PerkStatus status = Status({graph, holdings, skills, points, g_state.settings.showNoEffectPerks}, nodeId);
-        if (!status.canUnlearn)
-        {
-            Refuse(fmt::format("{} cannot unlearn {}: something else needs it.", c->name, node.name));
-            return;
-        }
-        const FormKey &form = node.ranks[static_cast<std::size_t>(status.held - 1)].form;
-        fp::Unlearn(*c, form);
-        PublishViews();
-        perkview::Reconcile(actor);
-        log::perks.info("{} unlearned {} (rank {})", c->name, node.name, status.held);
-        Hud(fmt::format("{} unlearned {}.", c->name, node.name));
+    Act([key = key, nodeId] { UnlearnNode(key, nodeId, false); });
+}
+
+void UnlearnPerkByForm(std::uint32_t actorId, std::uint32_t perkForm)
+{
+    Act([actorId, perkForm] {
+        const auto actorKey = KeyOf(RE::TESForm::LookupByID<RE::Actor>(actorId));
+        const auto node = NodeOfPerk(perkForm);
+        if (actorKey && node)
+            UnlearnNode(*actorKey, *node, true);
     });
+}
+
+std::optional<PerkControls> PerkControlsFor(RE::FormID actor, std::uint32_t perk)
+{
+    const auto nodeId = NodeOfPerk(perk);
+    if (!nodeId || actor == 0)
+        return std::nullopt;
+    std::scoped_lock lock(g_mutex);
+    for (const CompanionView &v : g_state.views)
+    {
+        const Companion *c = v.actor == actor && v.read ? Find(v.key) : nullptr;
+        if (!c)
+            continue;
+        PerkControls out;
+        if (g_state.settings.released || !v.loaded)
+            return out;
+        const Holdings holdings = HoldingsOf(*c, v.onRecord);
+        const PerSkill<int> skills = Effective(*c, v.base);
+        const PerkStatus status = Status({Graph(), holdings, skills, v.perkPoints}, *nodeId);
+        out.canLearn = status.block == PerkBlock::None;
+        out.canUnlearn = status.canUnlearn;
+        return out;
+    }
+    return std::nullopt;
 }
 
 void SetAsidePerk(const FormKey &key, int nodeId)
@@ -595,8 +715,7 @@ void SetAsidePerk(const FormKey &key, int nodeId)
             return;
         const Holdings holdings = HoldingsOf(*c, onRecord);
         const PerSkill<int> skills = Effective(*c, BaseSkills(actor));
-        const PerkRules rules{graph, holdings, skills, PerkPointsOf(*c, actor, LevelOf(*c, actor, ReadRules()).level),
-                              g_state.settings.showNoEffectPerks};
+        const PerkRules rules{graph, holdings, skills, PerkPointsOf(*c, actor, LevelOf(*c, actor, ReadRules()).level)};
         if (const auto broken = WouldBreak(rules, forms); !broken.empty())
         {
             Refuse(fmt::format("{} cannot set {} aside: {} needs it.", c->name, node.name,
@@ -849,6 +968,52 @@ void SetLevelling(bool on)
             TurnOn();
         else
             TurnOff();
+    });
+}
+
+void AssignSkillAll(const FormKey &key, Skill skill, int direction)
+{
+    Act([key = key, skill, direction] {
+        auto [c, actor] = Present(key, "change their skills");
+        if (!c)
+            return;
+        const Rules r = ReadRules();
+        const PerSkill<int> base = BaseSkills(actor);
+        const int floor = FloorOf(actor, skill, r);
+        const int step = direction < 0 ? -1 : +1;
+        int moved = 0;
+        // As far as - or + would each go; bounded, since each step moves a
+        // level and the skill has at most the cap's worth.
+        for (int guard = 0; guard <= r.skillCap; ++guard)
+        {
+            const Holdings holdings = HoldingsOf(*c, OnRecord(*c, actor));
+            if (CheckSkill(*c, skill, step, base, floor, Graph(), holdings, r).block != AssignBlock::None)
+                break;
+            fp::AssignSkill(*c, skill, step, base[Index(skill)], r);
+            ++moved;
+        }
+        if (moved == 0)
+            return;
+        Reconcile(*c, actor);
+        log::growth.info("{}: {} {} by {}", c->name, Name(skill), step < 0 ? "lowered" : "raised", moved);
+    });
+}
+
+void ResetPerks(const FormKey &key, Skill skill)
+{
+    Act([key = key, skill] {
+        auto [c, actor] = Present(key, "reset their perks");
+        if (!c)
+            return;
+        const auto unlearned = fp::ResetPerks(*c, skill, Graph());
+        if (unlearned.empty())
+            return;
+        PublishViews();
+        perkview::Reconcile(actor);
+        std::string names;
+        for (const std::string &name : unlearned)
+            names += (names.empty() ? "" : ", ") + name;
+        log::perks.info("{}: {} perks reset: {}", c->name, Name(skill), names);
     });
 }
 

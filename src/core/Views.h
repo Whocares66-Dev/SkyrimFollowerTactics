@@ -11,6 +11,7 @@
 #include "Breakdown.h"
 #include "Kinds.h"
 #include "Loadout.h"
+#include "PerkTree.h"
 #include "Snapshot.h"
 
 #include <cstdint>
@@ -64,6 +65,9 @@ struct SheetRow
     unsigned mark{0};
     // The Equipped row of a page (EquippedRow), where the pin glyph goes.
     bool equipped{false};
+    // A skill's row on the Skills tab: its tree, whose page a click on the
+    // value opens (PerkTreeView::key). 0 for a row with no tree.
+    std::uint32_t tree{0};
 };
 
 struct SheetSection

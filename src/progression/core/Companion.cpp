@@ -153,11 +153,9 @@ int SkillFloor(const Rules &r, int raceBonus) noexcept
 }
 
 AssignCheck CheckSkill(const Companion &c, Skill skill, int delta, const PerSkill<int> &base, int floor,
-                       const PerkGraph &graph, const Holdings &holdings, bool showNoEffect, const Rules &r)
+                       const PerkGraph &graph, const Holdings &holdings, const Rules &r)
 {
     const std::size_t i = Index(skill);
-    if (!IsTrainable(skill))
-        return {AssignBlock::NotTrainable, {}};
     const int level = base[i] + c.learning.skills[i];
     if (delta > 0)
     {
@@ -171,7 +169,7 @@ AssignCheck CheckSkill(const Companion &c, Skill skill, int delta, const PerSkil
         return {AssignBlock::AtFloor, {}};
     PerSkill<int> after = Effective(c, base);
     after[i] -= 1;
-    for (const FormKey &form : Invalidated(graph, holdings, after, showNoEffect))
+    for (const FormKey &form : Invalidated(graph, holdings, after))
         for (const LearnedPerk &p : c.perks)
             if (p.form == form)
                 return {AssignBlock::PerkNeedsIt, p.name};
@@ -217,23 +215,64 @@ void AssignAttribute(Companion &c, Attribute attribute, int delta, int step) noe
     }
 }
 
-ResetResult ResetSkill(Companion &c, Skill skill, int base, int floor, const PerkGraph &graph, const Rules &r)
+std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph)
 {
-    ResetResult out;
+    std::vector<std::string> unlearned;
     for (const int id : graph.Tree(skill))
         for (const PerkRank &rank : graph.Node(id).ranks)
             if (const auto it = std::find_if(c.perks.begin(), c.perks.end(),
                                              [&](const LearnedPerk &p) { return p.form == rank.form; });
                 it != c.perks.end())
             {
-                out.unlearned.push_back(it->rank > 1 ? it->name + " (" + std::to_string(it->rank) + ")" : it->name);
+                unlearned.push_back(it->rank > 1 ? it->name + " (" + std::to_string(it->rank) + ")" : it->name);
                 c.perks.erase(it);
             }
+    return unlearned;
+}
+
+bool BoughtInTree(const Companion &c, Skill skill, const PerkGraph &graph)
+{
+    for (const int id : graph.Tree(skill))
+        for (const PerkRank &rank : graph.Node(id).ranks)
+            if (Bought(c, rank.form))
+                return true;
+    return false;
+}
+
+ResetResult ResetSkill(Companion &c, Skill skill, int base, int floor, const PerkGraph &graph, const Rules &r)
+{
+    ResetResult out;
+    out.unlearned = ResetPerks(c, skill, graph);
     const std::size_t i = Index(skill);
     const double before = c.learning.pool;
     while (base + c.learning.skills[i] > floor)
         AssignSkill(c, skill, -1, base, r);
     out.returned = c.learning.pool - before;
+    return out;
+}
+
+SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &base, int floor, const PerkGraph &graph,
+                        const Holdings &holdings, const Rules &r)
+{
+    SkillButtons out;
+    const int level = base[Index(skill)] + c.learning.skills[Index(skill)];
+    const AssignCheck lower = CheckSkill(c, skill, -1, base, floor, graph, holdings, r);
+    const AssignCheck raise = CheckSkill(c, skill, +1, base, floor, graph, holdings, r);
+    out.canLower = lower.block == AssignBlock::None;
+    const std::string cannotLower = lower.block == AssignBlock::PerkNeedsIt ? lower.perk + " needs this skill level"
+                                                                            : std::string("Already at minimum skill");
+    out.lower = out.canLower ? std::string("Click to reduce skill") : cannotLower;
+    out.lowest = out.canLower ? std::string("Click to reduce to minimum skill") : cannotLower;
+    out.canRaise = raise.block == AssignBlock::None;
+    const std::string cannotRaise =
+        raise.block == AssignBlock::AtCap ? std::string("Already at maximum skill") : std::string("Not enough XP");
+    out.raise = out.canRaise ? std::string("Click to increase skill") : cannotRaise;
+    out.highest = out.canRaise ? std::string("Click to increase to maximum skill") : cannotRaise;
+    out.canResetPerks = BoughtInTree(c, skill, graph);
+    out.resetPerks = out.canResetPerks ? std::string("Click to reset perks") : std::string("No perks to reset");
+    out.canReset = level > floor;
+    out.reset = out.canReset ? std::string("Reset skill and perks")
+                             : "At " + std::to_string(floor) + ": where a new character of their race starts it.";
     return out;
 }
 

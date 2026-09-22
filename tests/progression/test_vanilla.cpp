@@ -77,8 +77,6 @@ TEST_CASE("every vanilla node has a verdict with a reason", "[vanilla]")
     {
         INFO(node.name);
         CHECK_FALSE(node.note.empty());
-        if (!fp::IsTrainable(node.skill))
-            CHECK(node.effect == PerkEffect::NoEffect);
     }
 }
 
@@ -157,20 +155,18 @@ TEST_CASE("Paralyzing Strike takes either Savage Strike or Critical Charge", "[v
     CHECK(fp::Status({Vanilla(), viaCharge, skills, 5}, node).block == PerkBlock::None);
 }
 
-TEST_CASE("Eagle Eye is a bridge to Power Shot", "[vanilla]")
+TEST_CASE("Eagle Eye is bought to reach Power Shot, as the player's is", "[vanilla]")
 {
     fp::Holdings h;
     h.learned.insert({"Skyrim.esm", kOverdraw});
     const int shot = NodeOf(kPowerShot);
 
-    const auto low = Skills(Skill::Archery, 29);
-    CHECK(fp::Status({Vanilla(), h, low, 5}, shot).block == PerkBlock::Requires);
-
     const auto enough = Skills(Skill::Archery, 50);
-    const auto eagle = fp::Status({Vanilla(), h, enough, 5}, NodeOf(kEagleEye));
-    CHECK(eagle.bridge);
-    CHECK(eagle.block == PerkBlock::NoEffect);
+    CHECK(fp::Status({Vanilla(), h, enough, 5}, NodeOf(kEagleEye)).block == PerkBlock::None);
+    CHECK(fp::Status({Vanilla(), h, enough, 5}, shot).block == PerkBlock::Requires);
+    h.learned.insert({"Skyrim.esm", kEagleEye});
     CHECK(fp::Status({Vanilla(), h, enough, 5}, shot).block == PerkBlock::None);
+    CHECK(fp::Status({Vanilla(), h, Skills(Skill::Archery, 29), 5}, shot).block == PerkBlock::Skill);
 }
 
 TEST_CASE("Marcurio's own perks read as his record has them", "[vanilla]")

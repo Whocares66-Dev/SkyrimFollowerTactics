@@ -249,14 +249,6 @@ PointButtons Buttons(bool canLower, const std::string &lowerWhy, bool canRaise, 
 
 // What resetting a skill returns: every level above the floor, at what the
 // level is worth.
-double ResetWorth(const Rules &r, int level, int floor)
-{
-    double xp = 0.0;
-    for (int l = floor + 1; l <= level; ++l)
-        xp += XpForSkillLevel(r, l);
-    return xp;
-}
-
 void DrawSkills(const Companion &c, const CompanionView &v, const Snapshot &s, PageState &page)
 {
     const Rules &r = s.rules;
@@ -287,8 +279,6 @@ void DrawSkills(const Companion &c, const CompanionView &v, const Snapshot &s, P
         Im::TableHeadersRow();
         for (const Skill skill : AllSkills())
         {
-            if (!IsTrainable(skill))
-                continue;
             const std::size_t i = Index(skill);
             const int level = effective[i];
             const int floor = v.floors[i];
@@ -312,27 +302,11 @@ void DrawSkills(const Companion &c, const CompanionView &v, const Snapshot &s, P
             else
                 Im::TextDisabled("at %d", r.skillCap);
             Im::TableNextColumn();
-            const AssignCheck lower =
-                CheckSkill(c, skill, -1, v.base, floor, Graph(), holdings, s.settings.showNoEffectPerks, r);
-            const AssignCheck raise =
-                CheckSkill(c, skill, +1, v.base, floor, Graph(), holdings, s.settings.showNoEffectPerks, r);
-            const std::string lowerWhy =
-                !v.loaded ? away
-                : lower.block == AssignBlock::PerkNeedsIt
-                    ? lower.perk + " needs this much " + std::string(Name(skill)) + ": unlearn it, or reset the skill."
-                : lower.block == AssignBlock::AtFloor
-                    ? fmt::format("At {}: where a new character of their race starts it.", floor)
-                    : fmt::format("Into the pool: {} XP.",
-                                  Thousands(static_cast<std::int64_t>(XpForSkillLevel(r, level))));
-            const std::string raiseWhy =
-                !v.loaded ? away
-                : raise.block == AssignBlock::AtCap
-                    ? fmt::format("At {}.", r.skillCap)
-                    : fmt::format("{} XP from the pool; {} in it.",
-                                  Thousands(static_cast<std::int64_t>(XpForSkillLevel(r, level + 1))),
-                                  Thousands(static_cast<std::int64_t>(c.learning.pool)));
-            const PointButtons clicked = Buttons(v.loaded && lower.block == AssignBlock::None, lowerWhy,
-                                                 v.loaded && raise.block == AssignBlock::None, raiseWhy);
+            // What each button does, or why it cannot: core's (ButtonsFor),
+            // as Tactics' skill page has it too.
+            const SkillButtons b = ButtonsFor(c, skill, v.base, floor, Graph(), holdings, r);
+            const PointButtons clicked = Buttons(v.loaded && b.canLower, v.loaded ? b.lower : away,
+                                                 v.loaded && b.canRaise, v.loaded ? b.raise : away);
             if (clicked.lower)
                 AssignSkillPoint(c.key, skill, -1);
             if (clicked.raise)
@@ -351,22 +325,16 @@ void DrawSkills(const Companion &c, const CompanionView &v, const Snapshot &s, P
             }
             else
             {
-                Im::BeginDisabled(!v.loaded || level <= floor);
+                Im::BeginDisabled(!v.loaded || !b.canReset);
                 if (Im::SmallButton("Reset"))
                     page.confirmReset = static_cast<int>(i);
                 Im::EndDisabled();
-                Tooltip(!v.loaded
-                            ? away
-                            : fmt::format("Back to {}: {} XP to reassign, and the perks bought in its tree "
-                                          "returned, as making a skill Legendary does. Free.",
-                                          floor, Thousands(static_cast<std::int64_t>(ResetWorth(r, level, floor)))));
+                Tooltip(v.loaded ? b.reset : away);
             }
             Im::PopID();
         }
         Im::EndTable();
     }
-    Im::TextDisabled("Smithing, Alchemy, Enchanting, Speech, Lockpicking and Pickpocket are not offered: companions "
-                     "don't use them.");
 
     Im::Spacing();
     Im::Text("%s", fmt::format("{} attribute point{} to assign, {} each", v.attributePoints,
@@ -415,38 +383,12 @@ void DrawSkills(const Companion &c, const CompanionView &v, const Snapshot &s, P
 
 // --- Perks -----------------------------------------------------------------------------------
 
-std::string VerdictLine(const PerkNode &node)
-{
-    switch (node.effect)
-    {
-    case PerkEffect::Works:
-        return "For companions: " + node.note + " Expected from the record; not yet measured on an NPC.";
-    case PerkEffect::Situational:
-        return "For companions: " + node.note;
-    case PerkEffect::Unverified:
-        return "For companions: unverified. " + node.note;
-    case PerkEffect::NoEffect:
-    default:
-        return "No effect on companions: " + node.note;
-    }
-}
-
 // The Needs cell: each requirement of the next rank, met ones dimmed, the
 // alternatives of an OR group joined by "or".
-void DrawNeeds(const PerkStatus &status, const PerkNode &node)
+void DrawNeeds(const PerkStatus &status)
 {
     if (status.block == PerkBlock::Maxed)
         return;
-    if (status.block == PerkBlock::NoEffect)
-    {
-        const int req = node.ranks.empty() ? 0 : SkillRequirement(node.ranks.front(), node.skill);
-        Im::TextDisabled("%s", status.bridge
-                                   ? "No effect on companions: counted as learned for the tree"
-                                   : fmt::format("No effect on companions: counted as learned once {} reaches {}",
-                                                 Name(node.skill), req)
-                                         .c_str());
-        return;
-    }
     bool first = true;
     for (std::size_t i = 0; i < status.requirements.size(); ++i)
     {
@@ -503,7 +445,7 @@ void DrawTree(const Companion &c, const CompanionView &v, PageState &page, const
 
         Im::TableNextColumn();
         Im::AlignTextToFramePadding();
-        const bool dim = status.block == PerkBlock::NoEffect || (status.held == 0 && status.block != PerkBlock::None);
+        const bool dim = status.held == 0 && status.block != PerkBlock::None;
         if (dim)
             Im::TextDisabled("%s", node.name.c_str());
         else
@@ -516,15 +458,14 @@ void DrawTree(const Companion &c, const CompanionView &v, PageState &page, const
             Im::PushTextWrapPos(420.0f);
             Im::TextWrapped("%s", node.ranks[shown].description.c_str());
             Im::Spacing();
-            Im::TextDisabled("%s", VerdictLine(node).c_str());
+            Im::TextDisabled("%s", VerdictOf(node).c_str());
             Im::PopTextWrapPos();
             Im::EndTooltip();
         }
 
         Im::TableNextColumn();
         const std::string learned =
-            status.bridge ? std::string("-")
-                          : (status.held > 0 ? fmt::format("{}/{}", status.held, node.ranks.size()) : std::string("-"));
+            status.held > 0 ? fmt::format("{}/{}", status.held, node.ranks.size()) : std::string("-");
         const bool setAside = IsSetAside(c, node);
         Im::Text("%s", learned.c_str());
         if (setAside)
@@ -539,7 +480,7 @@ void DrawTree(const Companion &c, const CompanionView &v, PageState &page, const
         }
 
         Im::TableNextColumn();
-        DrawNeeds(status, node);
+        DrawNeeds(status);
 
         Im::TableNextColumn();
         if (page.confirm == nodeId)
@@ -583,7 +524,7 @@ void DrawTree(const Companion &c, const CompanionView &v, PageState &page, const
             Im::EndDisabled();
             Tooltip(!v.loaded ? AwayReason(c, v) : std::string("Gives the point back."));
         }
-        else if (status.innate > 0 && status.learned == 0 && !status.bridge)
+        else if (status.innate > 0 && status.learned == 0)
         {
             // One of their own. The engine is told it is not held; their
             // record keeps it, so this is undone for nothing (progression/game/PerkView.h).
@@ -616,13 +557,13 @@ void DrawTree(const Companion &c, const CompanionView &v, PageState &page, const
     Im::EndTable();
 }
 
-void DrawPerks(const Companion &c, const CompanionView &v, const Snapshot &s, PageState &page)
+void DrawPerks(const Companion &c, const CompanionView &v, PageState &page)
 {
     const PerkGraph &graph = Graph();
     const Holdings holdings = HoldingsOf(c, v.onRecord);
     const PerSkill<int> skills = Effective(c, v.base);
     const int points = v.perkPoints;
-    const PerkRules rules{graph, holdings, skills, points, s.settings.showNoEffectPerks};
+    const PerkRules rules{graph, holdings, skills, points};
 
     Im::AlignTextToFramePadding();
     const std::string pointsText = points > 0 ? PointsText(points) : std::string("No perk points to spend");
@@ -636,8 +577,6 @@ void DrawPerks(const Companion &c, const CompanionView &v, const Snapshot &s, Pa
     std::vector<Skill> rest;
     for (const Skill skill : AllSkills())
     {
-        if (!IsTrainable(skill) && !s.settings.showNoEffectPerks)
-            continue;
         bool any = false;
         for (const int id : graph.Tree(skill))
             for (const PerkRank &rank : graph.Node(id).ranks)
@@ -658,7 +597,7 @@ void DrawPerks(const Companion &c, const CompanionView &v, const Snapshot &s, Pa
         for (const int id : tree)
         {
             const PerkStatus st = Status(rules, id);
-            heldCount += st.held > 0 && !st.bridge ? 1 : 0;
+            heldCount += st.held > 0 ? 1 : 0;
             ready += st.block == PerkBlock::None ? 1 : 0;
         }
         const std::string title = fmt::format(
@@ -867,7 +806,7 @@ void DrawCompanion(const FormKey &key)
         v.perkPoints > 0 ? fmt::format("Perks ({})###perks", v.perkPoints) : std::string("Perks###perks");
     if (Im::BeginTabItem(perksTab.c_str(), nullptr, 0))
     {
-        DrawPerks(c, v, s, page);
+        DrawPerks(c, v, page);
         Im::EndTabItem();
     }
     if (Im::BeginTabItem("Spells", nullptr, 0))
@@ -1006,7 +945,6 @@ void DrawSettings()
     Im::Checkbox("Level-ups and what they bring", &next.notifyLevels);
     Im::Checkbox("Each skill increase", &next.notifySkills);
     Heading("Perks");
-    Im::Checkbox("Offer perks with no effect on companions, and the crafting trees", &next.showNoEffectPerks);
     if (!(next == s.settings))
         ChangeSettings(next);
 

@@ -21,7 +21,7 @@ Built 2026-09-21, overnight, from [PROGRESSION.md](PROGRESSION.md). The short ve
 | Module | Decides | Tested by |
 |---|---|---|
 | `Levelling` | The player's levelling formulas, over whatever numbers the game has: skill XP from a use, a skill level's threshold, character XP per skill-up, a level's threshold | `test_levelling.cpp`: the level curve's known values, the formulas, a changed setting changing the answer |
-| `Perks` | Each rank's own conditions evaluated (OR groups, the trailing OR vanilla writes), bridges, implied lower ranks, the Learn/Unlearn verdict and why, what a lower skill invalidates, the catalog | `test_perks.cpp` on a small tree; `test_vanilla.cpp` on all 180 real nodes |
+| `Perks` | Each rank's own conditions evaluated (OR groups, the trailing OR vanilla writes), implied lower ranks, the Learn/Unlearn verdict and why, what a lower skill invalidates, the catalog | `test_perks.cpp` on a small tree; `test_vanilla.cpp` on all 180 real nodes |
 | `Spells` | Whether a tome can be taught, and why not | `test_spells.cpp` |
 | `Companion` | The ledger: a use practised, the level (the engine's, or more by what they learned, capped past the player), points as the difference, the reassigning pool and Reset, the engine's delta, perks, spells | `test_companion.cpp`: use to skill-up to character XP, the level's three cases, points, the pool down to the floor and up to the cap, a level a bought perk needs kept until a reset, idempotent application |
 | `Serialize` | The co-save: one bounded JSON record per companion | `test_serialize.cpp`: round trip, unknown fields, a bad record costing only itself, a newer schema, duplicates |

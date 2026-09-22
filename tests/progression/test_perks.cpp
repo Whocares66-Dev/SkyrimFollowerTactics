@@ -145,36 +145,22 @@ TEST_CASE("two parents joined by OR: either one will do", "[perks]")
     CHECK(fp::ConditionsMet({t.graph, h, skills, 1}, t.graph.Node(t.paralyze).ranks[0]));
 }
 
-TEST_CASE("a no-effect perk is a bridge once its own conditions are met", "[perks]")
+TEST_CASE("a perk with no effect on companions is learned like any other, to reach what needs it", "[perks]")
 {
     Tree t;
     fp::Holdings h;
     h.learned.insert(F(0x10));
 
-    auto skills = OneHanded(25);
-    auto zoom = fp::Status({t.graph, h, skills, 1}, t.zoom);
-    CHECK(zoom.block == PerkBlock::NoEffect);
-    CHECK_FALSE(zoom.bridge);
-    CHECK(fp::Status({t.graph, h, skills, 1}, t.shot).block == PerkBlock::Requires);
+    // Short of its skill, it waits for the skill, as any perk does.
+    CHECK(fp::Status({t.graph, h, OneHanded(25), 1}, t.zoom).block == PerkBlock::Skill);
 
-    skills = OneHanded(50);
-    zoom = fp::Status({t.graph, h, skills, 1}, t.zoom);
-    CHECK(zoom.bridge);
-    CHECK(zoom.held == 1);
-    CHECK(zoom.block == PerkBlock::NoEffect);
-    CHECK(fp::Held({t.graph, h, skills, 1}, F(0x60)));
-    CHECK(fp::Status({t.graph, h, skills, 1}, t.shot).block == PerkBlock::None);
-}
-
-TEST_CASE("with no-effect perks offered, a bridge must be bought like any other", "[perks]")
-{
-    Tree t;
-    fp::Holdings h;
-    h.learned.insert(F(0x10));
+    // With it, it can be bought; what needs it waits until it is.
     const auto skills = OneHanded(50);
-    const fp::PerkRules offered{t.graph, h, skills, 1, true};
-    CHECK(fp::Status(offered, t.zoom).block == PerkBlock::None);
-    CHECK(fp::Status(offered, t.shot).block == PerkBlock::Requires);
+    CHECK(fp::Status({t.graph, h, skills, 1}, t.zoom).block == PerkBlock::None);
+    CHECK_FALSE(fp::Held({t.graph, h, skills, 1}, F(0x60)));
+    CHECK(fp::Status({t.graph, h, skills, 1}, t.shot).block == PerkBlock::Requires);
+    h.learned.insert(F(0x60));
+    CHECK(fp::Status({t.graph, h, skills, 1}, t.shot).block == PerkBlock::None);
 }
 
 TEST_CASE("perks they came with count, and are never ours to unlearn", "[perks]")
@@ -236,11 +222,11 @@ TEST_CASE("a lower skill invalidates what needed it, and what needed that", "[pe
     Tree t;
     fp::Holdings h;
     h.learned = {F(0x10), F(0x11), F(0x20), F(0x30)};
-    CHECK(fp::Invalidated(t.graph, h, OneHanded(50), false).empty());
-    CHECK(fp::Invalidated(t.graph, h, OneHanded(25), false) == std::vector<FormKey>{F(0x30)});
+    CHECK(fp::Invalidated(t.graph, h, OneHanded(50)).empty());
+    CHECK(fp::Invalidated(t.graph, h, OneHanded(25)) == std::vector<FormKey>{F(0x30)});
     // At 15 the second Armsman, Stance and Savage all fail; the higher rank
     // is listed first.
-    const auto gone = fp::Invalidated(t.graph, h, OneHanded(15), false);
+    const auto gone = fp::Invalidated(t.graph, h, OneHanded(15));
     CHECK(gone == std::vector<FormKey>{F(0x11), F(0x20), F(0x30)});
 }
 
@@ -253,8 +239,8 @@ TEST_CASE("perks that fail only once another goes are found too", "[perks]")
     graph.Add(Node("Y", {{F(0x90), "", {Has(0x80)}}}));
     fp::Holdings h;
     h.learned = {F(0x80), F(0x90)};
-    CHECK(fp::Invalidated(graph, h, OneHanded(40), false).empty());
-    CHECK(fp::Invalidated(graph, h, OneHanded(30), false) == std::vector<FormKey>{F(0x80), F(0x90)});
+    CHECK(fp::Invalidated(graph, h, OneHanded(40)).empty());
+    CHECK(fp::Invalidated(graph, h, OneHanded(30)) == std::vector<FormKey>{F(0x80), F(0x90)});
 }
 
 TEST_CASE("setting aside a perk something bought here needs is what WouldBreak finds", "[perks]")
@@ -306,12 +292,12 @@ TEST_CASE("the requirement shown for a rank is its own skill's threshold", "[per
 TEST_CASE("the catalog reads a perk's effects", "[perks]")
 {
     const FormKey modded{"Ordinator.esp", 0x1};
-    CHECK(fp::Classify(Skill::OneHanded, modded, {{35}, false, false}).effect == PerkEffect::Works);
-    CHECK(fp::Classify(Skill::OneHanded, modded, {{18}, false, false}).effect == PerkEffect::Situational);
-    CHECK(fp::Classify(Skill::OneHanded, modded, {{54}, false, false}).effect == PerkEffect::Unverified);
-    CHECK(fp::Classify(Skill::Archery, modded, {{20, 27}, false, false}).effect == PerkEffect::NoEffect);
-    CHECK(fp::Classify(Skill::Block, modded, {{}, true, false}).effect == PerkEffect::Works);
-    CHECK(fp::Classify(Skill::Block, modded, {{}, false, false}).effect == PerkEffect::Unverified);
-    CHECK(fp::Classify(Skill::OneHanded, modded, {{150}, false, false}).effect == PerkEffect::Unverified);
-    CHECK(fp::Classify(Skill::Smithing, modded, {{35}, false, false}).effect == PerkEffect::NoEffect);
+    CHECK(fp::Classify(modded, {{35}, false, false}).effect == PerkEffect::Works);
+    CHECK(fp::Classify(modded, {{18}, false, false}).effect == PerkEffect::Situational);
+    CHECK(fp::Classify(modded, {{54}, false, false}).effect == PerkEffect::Unverified);
+    CHECK(fp::Classify(modded, {{20, 27}, false, false}).effect == PerkEffect::NoEffect);
+    CHECK(fp::Classify(modded, {{}, true, false}).effect == PerkEffect::Works);
+    CHECK(fp::Classify(modded, {{}, false, false}).effect == PerkEffect::Unverified);
+    CHECK(fp::Classify(modded, {{150}, false, false}).effect == PerkEffect::Unverified);
+    // Judged by what it does, whatever tree it is in.
 }

@@ -139,7 +139,7 @@ std::optional<PerkGraph> ReadPerkGraph(std::string_view text, std::string *why)
                 summary.ability = e->value("ability", false);
                 summary.quest = e->value("quest", false);
             }
-            Verdict v = Classify(node.skill, node.ranks.front().form, summary);
+            Verdict v = Classify(node.ranks.front().form, summary);
             node.effect = v.effect;
             node.note = std::move(v.note);
         }

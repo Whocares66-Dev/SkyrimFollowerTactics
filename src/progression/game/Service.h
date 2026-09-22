@@ -16,6 +16,7 @@
 #include "progression/core/Spells.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -45,6 +46,7 @@ struct TomeRow
 struct CompanionView
 {
     FormKey key;
+    RE::FormID actor{0};   // the reference's runtime id, when it resolved
     bool read{false};      // read off an actor at least once this session
     bool loaded{false};    // near the player, fully simulated
     bool following{false}; // on the journey: a follower, not told to wait
@@ -105,8 +107,52 @@ void AssignAttributePoint(const FormKey &actor, Attribute attribute, int delta);
 // A skill back to where a new character starts it, its levels into the
 // pool and its tree's bought perks returned, as Legendary does; free.
 void ResetSkill(const FormKey &actor, Skill skill);
+// A skill moved as far as it goes one way (-1 down, +1 up): each level as -
+// and + would move it, while they can.
+void AssignSkillAll(const FormKey &actor, Skill skill, int direction);
+// The perks bought in a skill's tree given back; the skill left as it is.
+void ResetPerks(const FormKey &actor, Skill skill);
 void LearnPerk(const FormKey &actor, int node);
+// The same for a perk named by runtime ids, the actor's and a rank's of
+// its node, as Tactics' skill page has them: resolved on the game thread
+// and learned there in the one action. Nothing for an actor who is no
+// companion of ours.
+void LearnPerkByForm(std::uint32_t actor, std::uint32_t perk);
+
+// A companion's skill as Tactics' skill page heads it: their level with
+// what they have learned, and its -, + and Reset (core ButtonsFor), with
+// leveling off and their being away folded in. `active` is whether a
+// click on the tree can learn. None for an actor who is no companion of
+// ours, or a skill Progression does not know. From the render thread,
+// under the lock.
+struct SkillControls
+{
+    FormKey companion;
+    Skill skill{Skill::OneHanded};
+    int level{0};   // theirs, with what they have learned
+    int base{0};    // what the engine gives them
+    int learned{0}; // on top of it, or taken back below it
+    int perkPoints{0};
+    bool active{false};
+    SkillButtons buttons;
+};
+[[nodiscard]] std::optional<SkillControls> ControlsFor(RE::FormID actor, int actorValue);
 void UnlearnPerk(const FormKey &actor, int node);
+// The same for a perk named by runtime ids, as LearnPerkByForm. Both are the
+// skill page's, which asks PerkControlsFor first and answers with a sound:
+// nothing is shown, a refusal is only logged.
+void UnlearnPerkByForm(std::uint32_t actor, std::uint32_t perk);
+
+// Whether a perk, by any rank's runtime id, can be learned or unlearned for
+// this companion now, as LearnPerk and UnlearnPerk would decide. None for an
+// actor who is no companion of ours, or a perk in no tree. From the render
+// thread, under the lock.
+struct PerkControls
+{
+    bool canLearn{false};
+    bool canUnlearn{false};
+};
+[[nodiscard]] std::optional<PerkControls> PerkControlsFor(RE::FormID actor, std::uint32_t perk);
 // One of their own perks: set aside (the engine is told it is not held; the
 // record keeps it) and taken up again, both free.
 void SetAsidePerk(const FormKey &actor, int node);

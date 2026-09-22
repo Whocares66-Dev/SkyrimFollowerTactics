@@ -214,7 +214,6 @@ std::string WriteSettings(const Settings &s)
            {"autoEnroll", s.autoEnroll},
            {"notifyLevels", s.notifyLevels},
            {"notifySkills", s.notifySkills},
-           {"showNoEffectPerks", s.showNoEffectPerks},
            {"released", s.released}};
     return j.dump();
 }
@@ -228,7 +227,6 @@ std::optional<Settings> ReadSettings(std::string_view text)
     s.autoEnroll = Get<bool>(j, "autoEnroll", s.autoEnroll);
     s.notifyLevels = Get<bool>(j, "notifyLevels", s.notifyLevels);
     s.notifySkills = Get<bool>(j, "notifySkills", s.notifySkills);
-    s.showNoEffectPerks = Get<bool>(j, "showNoEffectPerks", s.showNoEffectPerks);
     s.released = Get<bool>(j, "released", s.released);
     return s;
 }

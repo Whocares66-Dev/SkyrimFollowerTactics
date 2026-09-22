@@ -3973,6 +3973,134 @@ std::vector<HeldPerk> PerksOutsideTrees(RE::Actor *actor)
 }
 } // namespace
 
+namespace
+{
+
+// A skill's tree as the menu draws it, walked once per skill and kept, as
+// TreePerks is: the positions, links, names, descriptions and requirements
+// are the load order's. The actor's part, which ranks they hold, is read per
+// page. The root, which names no perk, is left out with its links.
+struct TreeShape
+{
+    struct Node
+    {
+        std::string name;
+        double x{0.0};
+        double y{0.0};
+        std::vector<RE::BGSPerk *> ranks;
+        std::vector<std::string> descriptions; // a rank's each
+        std::vector<float> requirements;
+        std::vector<std::size_t> children;
+    };
+    std::vector<Node> nodes;
+};
+
+const TreeShape &ShapeOf(RE::ActorValue skill)
+{
+    static std::unordered_map<RE::ActorValue, TreeShape> cache;
+    if (const auto it = cache.find(skill); it != cache.end())
+        return it->second;
+
+    TreeShape shape;
+    auto *list = RE::ActorValueList::GetSingleton();
+    auto *info = list ? list->GetActorValueInfo(skill) : nullptr;
+    if (info && info->perkTree)
+    {
+        // Every node that names a perk, once, each given its index here.
+        std::vector<RE::BGSSkillPerkTreeNode *> nodes;
+        std::unordered_map<const RE::BGSSkillPerkTreeNode *, std::size_t> index;
+        std::unordered_set<const RE::BGSSkillPerkTreeNode *> seen;
+        std::vector<RE::BGSSkillPerkTreeNode *> stack{info->perkTree};
+        while (!stack.empty())
+        {
+            auto *node = stack.back();
+            stack.pop_back();
+            if (!node || !seen.insert(node).second)
+                continue;
+            if (node->perk)
+            {
+                index.emplace(node, nodes.size());
+                nodes.push_back(node);
+            }
+            for (auto *child : node->children)
+                stack.push_back(child);
+        }
+        for (auto *node : nodes)
+        {
+            TreeShape::Node out;
+            out.name = PerkName(node->perk);
+            out.x = static_cast<double>(node->perkGridX) + node->horizontalPosition;
+            out.y = static_cast<double>(node->perkGridY) + node->verticalPosition;
+            out.ranks = ft::RankChain(node->perk, [](RE::BGSPerk *rank) { return rank->nextPerk; });
+            for (RE::BGSPerk *rank : out.ranks)
+            {
+                RE::BSString text;
+                rank->GetDescription(text, rank);
+                out.descriptions.emplace_back(text.c_str() ? text.c_str() : "");
+                out.requirements.push_back(SkillRequirement(rank, skill));
+            }
+            for (auto *child : node->children)
+                if (const auto it = index.find(child); it != index.end())
+                    out.children.push_back(it->second);
+            shape.nodes.push_back(std::move(out));
+        }
+    }
+    return cache.emplace(skill, std::move(shape)).first->second;
+}
+
+} // namespace
+
+std::vector<ft::PerkTreeView> BuildPerkTrees(RE::Actor *actor)
+{
+    std::vector<ft::PerkTreeView> out;
+    auto *list = RE::ActorValueList::GetSingleton();
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    if (!list || !owner)
+        return out;
+    for (int i = 0; i < static_cast<int>(RE::ActorValue::kTotal); ++i)
+    {
+        const auto value = static_cast<RE::ActorValue>(i);
+        auto *info = list->GetActorValueInfo(value);
+        if (!info || !info->skill)
+            continue;
+        const TreeShape &shape = ShapeOf(value);
+        if (shape.nodes.empty())
+            continue;
+        ft::PerkTreeView tree;
+        tree.key = static_cast<std::uint32_t>(i) + 1;
+        const char *name = info->GetFullName();
+        tree.name = name && *name ? name : (info->enumName ? info->enumName : "?");
+        tree.level = actor->IsPlayerRef() ? owner->GetBaseActorValue(value) : owner->GetPermanentActorValue(value);
+        tree.current = owner->GetActorValue(value);
+        tree.value = Fmt("%.0f", tree.level);
+        for (const TreeShape::Node &node : shape.nodes)
+        {
+            ft::PerkTreeNode n;
+            n.name = node.name.empty() ? "?" : node.name;
+            n.x = node.x;
+            n.y = node.y;
+            n.ranks = static_cast<int>(node.ranks.size());
+            if (!node.ranks.empty())
+                n.firstForm = node.ranks.front()->GetFormID();
+            if (!node.requirements.empty())
+                n.firstRequirement = node.requirements.front();
+            for (RE::BGSPerk *rank : node.ranks)
+                if (actor->HasPerk(rank))
+                {
+                    ++n.held;
+                    n.form = rank->GetFormID(); // the top rank held, as the perk rows name it
+                }
+            const std::size_t shown = static_cast<std::size_t>((std::min)(n.held, n.ranks - 1));
+            n.requirement = node.requirements[shown];
+            n.description = node.descriptions[shown];
+            n.children = node.children;
+            tree.nodes.push_back(std::move(n));
+        }
+        out.push_back(std::move(tree));
+    }
+    return out;
+}
+
 std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
 {
     std::vector<PerkPage> out;
@@ -4092,11 +4220,12 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
             if (!info || !info->skill)
                 continue;
             const char *skillName = info->GetFullName();
+            // The top rank held; and a perk not held at all, by its first
+            // rank, since the skill page's names open any perk's page.
             for (const TreePerk &entry : TreePerks(value))
             {
-                if (!actor->HasPerk(entry.perk))
-                    continue;
-                if (entry.perk->nextPerk && actor->HasPerk(entry.perk->nextPerk))
+                const bool held = actor->HasPerk(entry.perk);
+                if (held ? entry.perk->nextPerk && actor->HasPerk(entry.perk->nextPerk) : entry.rank != 1)
                     continue;
                 page(entry.perk, entry.rank, entry.ranks, skillName ? skillName : "");
             }
@@ -4228,6 +4357,8 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         }
 
         row.detail = OwnedPerks(actor, k.value);
+        if (!ShapeOf(k.value).nodes.empty())
+            row.tree = static_cast<std::uint32_t>(k.value) + 1; // BuildPerkTrees' key
         // A skill at zero with no perk in it -- Vampire Lord on a mortal --
         // says nothing; a section of those says nothing either.
         if (av(k.value) == 0.0f && row.detail.empty() && row.modifiers.empty())

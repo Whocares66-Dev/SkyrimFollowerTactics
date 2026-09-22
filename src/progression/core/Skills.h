@@ -77,8 +77,6 @@ template <typename T> using PerAttribute = std::array<T, kAttributeCount>;
 [[nodiscard]] std::string_view Key(Attribute a) noexcept;
 [[nodiscard]] std::optional<Attribute> AttributeFromKey(std::string_view key) noexcept;
 
-// Trained by companions: combat, magic, Sneak.
-[[nodiscard]] bool IsTrainable(Skill s) noexcept;
 // A school of magic: the five whose spells a tome can teach.
 [[nodiscard]] bool IsSchool(Skill s) noexcept;
 

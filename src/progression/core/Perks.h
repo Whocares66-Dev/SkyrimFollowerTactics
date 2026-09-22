@@ -95,6 +95,10 @@ struct PerkNode
     float y{0.0f};
 };
 
+// What a node does for a companion, in words, for a hover: the verdict and
+// why.
+[[nodiscard]] std::string VerdictOf(const PerkNode &node);
+
 class PerkGraph
 {
   public:
@@ -149,7 +153,7 @@ struct Verdict
 
 // A node's verdict: the catalog's own word for a vanilla perk it knows,
 // else a reading of its effects. `firstRank` identifies the node.
-[[nodiscard]] Verdict Classify(Skill tree, const FormKey &firstRank, const EffectSummary &effects);
+[[nodiscard]] Verdict Classify(const FormKey &firstRank, const EffectSummary &effects);
 
 // --- a companion's holdings, and the rules -------------------------------------
 
@@ -163,7 +167,6 @@ enum class PerkBlock : std::uint8_t
 {
     None,     // the next rank can be learned
     Maxed,    // every rank is held
-    NoEffect, // does nothing for a companion (a bridge, or hidden)
     Skill,    // a skill requirement is not met
     Requires, // a perk it needs is not held
     NoPoints, // everything is met but there is nothing to spend
@@ -188,10 +191,9 @@ struct Requirement
 
 struct PerkStatus
 {
-    int held{0};        // ranks held, counting up from the first
-    int innate{0};      // of them, on their own record
-    int learned{0};     // of them, bought here
-    bool bridge{false}; // a no-effect node standing in for a held one
+    int held{0};    // ranks held, counting up from the first
+    int innate{0};  // of them, on their own record
+    int learned{0}; // of them, bought here
     PerkBlock block{PerkBlock::None};
     // The next rank's conditions, each with whether it is met. Empty when
     // every rank is held.
@@ -208,10 +210,10 @@ struct PerkRules
     const Holdings &holdings;
     const PerSkill<int> &skills; // base plus training: what requirements read
     int points{0};
-    bool offerNoEffect{false}; // the setting: no-effect perks are learnable, not bridges
 };
 
-// Whether a perk form counts as held: innate, learned, or a satisfied bridge.
+// Whether a perk form counts as held: innate or learned, or implied by a
+// higher rank of its node held.
 [[nodiscard]] bool Held(const PerkRules &rules, const FormKey &form);
 
 [[nodiscard]] PerkStatus Status(const PerkRules &rules, int node);
@@ -229,6 +231,6 @@ struct PerkRules
 // perk that fails only because another one went is included, after it.
 // Higher ranks come before lower ones of the same node.
 [[nodiscard]] std::vector<FormKey> Invalidated(const PerkGraph &graph, const Holdings &holdings,
-                                               const PerSkill<int> &skills, bool offerNoEffect);
+                                               const PerSkill<int> &skills);
 
 } // namespace fp

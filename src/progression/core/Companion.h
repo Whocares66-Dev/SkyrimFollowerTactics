@@ -138,7 +138,7 @@ void Gift(Companion &c, double xp) noexcept;
 // point for each level after the first. What they have already is spent.
 
 // Perk ranks of the skill trees they hold: their own (less the set-aside)
-// and bought here. A bridge they are only counted as holding is not held.
+// and bought here.
 [[nodiscard]] int HeldRanks(const PerkGraph &graph, const Holdings &holdings) noexcept;
 [[nodiscard]] int PerkPoints(int level, int heldRanks) noexcept;
 
@@ -160,7 +160,6 @@ enum class AssignBlock : std::uint8_t
     NoPoints,     // not enough in the pool, or no attribute points left
     AtCap,        // the skill is at the cap
     AtFloor,      // the skill is at its starting value
-    NotTrainable, // a skill companions don't use (progression/core/Skills.h)
     NoneAssigned, // no attribute point assigned here to take back
     PerkNeedsIt,  // a perk bought here would no longer meet its requirement
 };
@@ -179,8 +178,7 @@ struct AssignCheck
 // Buying costs what the level is worth (XpForSkillLevel); taking it back
 // returns the same. `base` is the skill as the engine has it.
 [[nodiscard]] AssignCheck CheckSkill(const Companion &c, Skill skill, int delta, const PerSkill<int> &base, int floor,
-                                     const PerkGraph &graph, const Holdings &holdings, bool showNoEffect,
-                                     const Rules &r);
+                                     const PerkGraph &graph, const Holdings &holdings, const Rules &r);
 void AssignSkill(Companion &c, Skill skill, int delta, int base, const Rules &r) noexcept;
 
 [[nodiscard]] AssignBlock CheckAttribute(const Companion &c, Attribute attribute, int delta, int available) noexcept;
@@ -197,6 +195,33 @@ struct ResetResult
     std::vector<std::string> unlearned;
 };
 ResetResult ResetSkill(Companion &c, Skill skill, int base, int floor, const PerkGraph &graph, const Rules &r);
+
+// The perks bought in a skill's tree unlearned, their points free again; the
+// skill left where it is. Their names, as ResetResult has them.
+std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph);
+[[nodiscard]] bool BoughtInTree(const Companion &c, Skill skill, const PerkGraph &graph);
+
+// A skill's buttons as a page offers them: whether each can act, and what
+// a click does or why it cannot, in the panel's words. - and + move a
+// level, << and >> as far as it goes (as long as - and + can act); Reset
+// takes the skill and its perks back, Reset perks the perks alone. Whether
+// the companion is here, and whether leveling is on, are the caller's to
+// add.
+struct SkillButtons
+{
+    bool canLower{false};
+    bool canRaise{false};
+    bool canReset{false};
+    bool canResetPerks{false};
+    std::string lower;   // -
+    std::string lowest;  // <<
+    std::string raise;   // +
+    std::string highest; // >>
+    std::string reset;
+    std::string resetPerks;
+};
+[[nodiscard]] SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &base, int floor,
+                                      const PerkGraph &graph, const Holdings &holdings, const Rules &r);
 
 // --- the engine's side of it ----------------------------------------------------------
 

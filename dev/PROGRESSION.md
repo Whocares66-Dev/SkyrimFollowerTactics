@@ -34,7 +34,7 @@ A companion levels as you do. Using a skill raises it: a spell cast, a blow land
 | Five skill points a level, one attribute point, one perk point, each placed with `- +` and taken back freely | Direct assignment works: it is the player's own level-up | Kept for attributes and perks. Skills rise by use instead, as yours do, and can be moved or reset ([Points and reassigning](#points-and-reassigning)) |
 | *Harmonize* rewrites base stats to profile values; *Reset all perks (incl. native)* removes perks the follower came with | Players lose what made a follower themselves, with one click and no preview | Their own skills stay unless you move them; innate perks and spells are protected and labelled, and can only be set aside ([Reconsidering](#reconsidering)) |
 | A perk button is greyed with no reason given; the requirement is the largest number in its conditions | "Why can't I take this?" is the question a tree most needs to answer | Every locked perk says what it needs and what the companion has ([Perks](#perks)) |
-| Every perk in every tree is offered, crafting and lockpicking included | A companion never smiths, barters or picks a lock; a perk that does nothing for them is a wasted point | A catalog that says, per perk, whether it does anything for a companion ([Which perks work](#which-perks-work-for-a-companion)) |
+| Every perk in every tree is offered, crafting and lockpicking included | A perk that does nothing for them is a wasted point | Kept: every skill and every tree is offered alike, since a mod may have followers smith or pick locks; the catalog's verdicts are read off each perk's own effects ([Which perks work](#which-perks-work-for-a-companion)) |
 | The Overview shows everyone at once, and a reset per tree | A party view is the right starting place | Kept: the Overview page, per-perk unlearning with its dependants named, and a reset per skill |
 | Perk tooltips carry the game's own descriptions | Good; players know these words | Kept, with a second line saying what the perk does on a companion |
 
@@ -49,7 +49,7 @@ A companion's skill rises when they use it, by exactly the rules that raise your
 | Block a blow | Block | What the block took, by the game's block settings |
 | Take a blow | Heavy or Light Armor, weighted by what they wear | The physical damage |
 
-Sneak, Lockpicking, Pickpocket, Speech, Smithing, Alchemy and Enchanting only ever train for the player, in the engine's own code, and companions don't use them. Scrolls, staffs, enchanted weapons, powers and shouts train nothing, for you or anyone.
+Sneak, Lockpicking, Pickpocket, Speech, Smithing, Alchemy and Enchanting are trained only for the player in the engine's own code, so a companion's uses of them are not heard; their levels move through the reassigning pool, as any skill's can. Scrolls, staffs, enchanted weapons, powers and shouts train nothing, for you or anyone.
 
 The rate is yours: a skill's next level takes *improve × level ^ `fSkillUseCurve` + offset* skill XP, from each skill's own record. The engine still levels a follower with you as vanilla does, and their class still raises their own skills with it. What they learn by doing is added on top, in the actor's permanent modifier.
 
@@ -88,8 +88,9 @@ A perk point is spent on the Perks tab. A companion can learn a perk rank when:
 
 1. they have an unspent point;
 2. their skill in the tree — their own plus what they've learned — meets that rank's requirement, read from the rank's own conditions (`GetBaseActorValue OneHanded >= 40`);
-3. they hold a perk the node is connected from (any one parent, as the player's trees work), learned here, innate, or a bridge (below);
-4. the perk does something for a companion ([next section](#which-perks-work-for-a-companion)).
+3. they hold a perk the node is connected from (any one parent, as the player's trees work), learned here or innate.
+
+A perk that does nothing for a companion ([next section](#which-perks-work-for-a-companion)) is learned like any other, as the player's is: it costs a point and opens what needs it.
 
 The Perks tab says which of these is missing, in words: each row's *Needs* lists the next rank's requirements, the met ones dimmed and the unmet ones in full with what the companion has — *One-Handed 40 (has 34)*, *Fighting Stance*. Having no points is said once, above the trees.
 
@@ -108,9 +109,9 @@ The 18 vanilla trees were read record by record (`tests/progression/data/vanilla
 | **Works** | Learnable | Armsman, Barbarian, Overdraw, Shield Wall, Juggernaut, Agile Defender, the Novice–Master cost perks, Augmented Flames, Regeneration, Twin Souls, Magic Resistance, Recovery, Stealth |
 | **Situational** | Learnable, with a note | Critical Charge (the AI rarely sprint-attacks), the dual-wield perks, Backstab and the other sneak-attack perks, the Dual Casting perks (see Tactics, below) |
 | **Unverified** | Learnable, with a note | Ranger, Block Runner, Quick Shot: behaviour-graph variables that may or may not drive an NPC's animation |
-| **No effect** | A **bridge**: never bought, never added | Eagle Eye, Steady Hand, Quick Reflexes, Hunter's Discipline, Cushioned, Shadow Warrior, Silent Roll; all of Smithing, Alchemy, Enchanting, Speech, Lockpicking, Pickpocket |
+| **No effect** | Learnable like any other: bought to reach what is above it | Eagle Eye, Steady Hand, Quick Reflexes, Hunter's Discipline, Cushioned, Shadow Warrior, Silent Roll |
 
-A **bridge** is a no-effect perk inside a useful tree. Eagle Eye is useless to a companion but stands between Overdraw and Power Shot. Rather than make you waste a point on it, a bridge counts as learned for the tree once the companion meets its skill requirement: *Eagle Eye — no effect on companions: counted as learned once Archery reaches 30.* Nothing is added to the actor.
+Eagle Eye is useless to a companion but stands between Overdraw and Power Shot, and is bought to reach it as the player's is. Until 2026-09-21 such a perk was a *bridge*, counted as held for nothing once its skill was met; in play that read as a perk that could not be clicked and a tree that could not be climbed, so it went. The same day the crafting trees stopped being hidden and their perks stopped being judged no-effect for being in them: a mod may give followers those skills, and a perk is judged by what it does.
 
 Verdicts are the catalog's word, from reading the records, not from play. Until a perk has been measured on an NPC ([DESIGN.md](DESIGN.md) P0: "measure the effective outcome, not just membership") the tooltip says *expected to work*. A perk from another mod's tree that the catalog doesn't know is judged by its entry points and marked *unverified*.
 
@@ -162,7 +163,7 @@ The pace is yours: a companion who fights as much as you do learns about as fast
 | **The panel** (SKSE Menu Framework, F1) | The companion's sheet: skills, perks, spells; the party overview; settings | Yes |
 | **Notifications** | "Lydia reached level 31: an attribute point and a perk point to assign." | Yes |
 | **Dialogue** | "Let's talk about your training" opens the companion's sheet as a window; "I have a spell for you" opens the Spells tab | Designed below; needs an ESP |
-| **Follower Tactics' panel** | What they've learned shown in Tactics' Skills breakdowns; a link from a learned spell to a rule | Designed below; needs a small interface on each side |
+| **Follower Tactics' panel** | The skill page on its Skills tab, opened by a skill's name (its level, a caret before the number, opens the perks held beneath the row; the table is headed *Skill*, *Level*): the perk tree as the menu draws it (a circle a perk, filled by the ranks held, labelled at whichever of eight places about its circle keeps it clearest of the others; across in the tree's columns as the menu orders them, evenly spaced and stretched to the page's width, and up the page by the level its first rank asks, a perk a hair off the column beside it drawn straight above in it, so nothing moves as ranks are taken and the page never scrolls; the hover gives the name and, at its right, what it needs (and, short of it, what they have, both greyed, the labels aligned), the description, and on one line *Click to acquire perk* at the left and *Right click to remove perk* at the right where each can act). In the header `<<` `-` level `+` `>>` (a level, or as far as it goes), the perks to spend when there are any, and *Reset perks*, which asks once and returns the tree's bought perks, the skill left as it is. A click on a circle acquires its next rank, a right click returns the top one unless a perk bought on it needs it, with the game's own sounds (the perk menu's for a perk taken, the skills menu's step back for one returned, a failed activation's where nothing can be done, and no message either way); a click on a name opens the perk's page, held or not. The page is rebuilt behind each of these, so it shows at once. The buttons and their reasons are the same function as the Progression page's (`ButtonsFor`, core); the player's page has the tree alone. A link from a learned spell to a rule | The skill page built 2026-09-21, not yet seen in play; the spell link designed below |
 
 The panel matches Tactics' look and behaviour so the two read as one product: the same tables, headings, dimmed-with-a-reason rows, hover notes, and one entry per companion. A clickable version of the screens, drawn with only what Dear ImGui can draw, was built in the stand-alone repository (`prototype/` there); it predates learning by doing, still shows the first design's focus-driven Training tab, and was not brought into Tactics. Building it changed the design in the places marked *(from the prototype)*.
 
@@ -207,7 +208,6 @@ The bar is the character XP toward their next level; hovering it says how much o
  Two-Handed          20           —        20    [░░░░░░░░░   0 / 87]    [-] [+]   Reset
  Block               30           +9       39    [███░░░░░░ 121 / 312]   [-] [+]   Reset
  …
- Smithing, Alchemy, Enchanting, Speech, Lockpicking and Pickpocket are not offered: companions don't use them.
 
  1 attribute point to assign, 10 each
  Attribute        Their own   Assigned   Total
@@ -341,7 +341,7 @@ Sneak and the crafting skills by use, skill books and trainers for companions, *
 ## Decisions for you
 
 1. **Supplement vanilla levelling** (this build) or push on owning engine level? Supplementing ships sooner and is safer; owning is purer.
-2. **Bridges** for no-effect perks, or hide those branches entirely?
+2. ~~Bridges for no-effect perks~~: decided 2026-09-21, bought like any other perk (above).
 3. **How far past the player** learning may take a companion: 5 levels now.
 4. **Attribute points from their own values.** An NPC's health, magicka and stamina come from their class, not from choices; counting what they carry above their race's start as points already spent may leave some followers with none to assign. Count it, count half, or not at all?
 5. **Spells outside a companion's calling.** Any companion with the magicka can learn a Novice spell: Lydia, 50 magicka, can learn Flames. That follows from "the book is the teacher", and whether a warrior's AI ever casts it is exactly what Follower Tactics answers. Keep it, or ask for some skill in the school first?

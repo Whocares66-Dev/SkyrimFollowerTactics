@@ -527,8 +527,16 @@ struct PerkPage
     std::vector<SheetSection> sections;
 };
 
-// A page for every perk the follower holds, in a skill's tree or loose.
+// A page for every perk the follower holds, in a skill's tree or loose, and
+// for every tree perk they do not, by its first rank (the skill page's names
+// open any of them).
 [[nodiscard]] std::vector<PerkPage> BuildPerkPages(RE::Actor *actor);
+
+// Every skill's perk tree as the perk menu draws it, and what the actor
+// holds of each node, as the engine answers HasPerk -- so a perk another
+// plugin gives or hides through the engine reads as the game reads it. The
+// Skills tab's skill page; the row's `tree` names one by its key.
+[[nodiscard]] std::vector<ft::PerkTreeView> BuildPerkTrees(RE::Actor *actor);
 
 // The Tactics tab's Combat Style section: the numbers and flags the combat
 // AI is tuned by, read off the style they are using right now -- their live

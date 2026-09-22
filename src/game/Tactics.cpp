@@ -536,6 +536,7 @@ void FillPage(RE::Actor *actor, CharacterView &v, ui::Tab tab)
     case ui::Tab::Skills:
         v.skills = BuildSkillSheet(actor);
         v.perks = BuildPerkPages(actor);
+        v.trees = BuildPerkTrees(actor);
         break;
     default:
         break;

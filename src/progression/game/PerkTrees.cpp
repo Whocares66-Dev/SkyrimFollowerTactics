@@ -6,6 +6,7 @@
 
 #include <fstream>
 #include <queue>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace fp::game
@@ -14,6 +15,8 @@ namespace
 {
 
 PerkGraph g_graph;
+// A rank's runtime id to its node (NodeOfPerk).
+std::unordered_map<RE::FormID, int> g_nodeOf;
 
 std::optional<Comparison> ComparisonOf(RE::CONDITION_ITEM_DATA::OpCode op)
 {
@@ -158,7 +161,7 @@ void ReadTree(Skill skill, RE::BGSSkillPerkTreeNode *root, std::unordered_set<RE
             if (rank != first)
                 seen.insert(rank);
         }
-        Verdict verdict = Classify(skill, *firstKey, effects);
+        Verdict verdict = Classify(*firstKey, effects);
         out.effect = verdict.effect;
         out.note = std::move(verdict.note);
         g_graph.Add(std::move(out));
@@ -192,11 +195,22 @@ void BuildPerkGraph()
     }
     log::perks.info("read {} perks ({} ranks) from the skill trees; {} work for companions", g_graph.Size(), ranks,
                     works);
+    // Each rank's runtime id to its node, for Tactics' tree.
+    for (const auto &node : g_graph.Nodes())
+        for (const PerkRank &rank : node.ranks)
+            if (const RE::BGSPerk *perk = PerkOf(rank.form))
+                g_nodeOf.emplace(perk->GetFormID(), node.id);
 }
 
 const PerkGraph &Graph()
 {
     return g_graph;
+}
+
+std::optional<int> NodeOfPerk(RE::FormID perk)
+{
+    const auto it = g_nodeOf.find(perk);
+    return it == g_nodeOf.end() ? std::nullopt : std::optional<int>(it->second);
 }
 
 RE::BGSPerk *PerkOf(const FormKey &form)

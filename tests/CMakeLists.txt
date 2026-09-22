@@ -44,6 +44,7 @@ add_executable(ft_tests
     test_menuslots.cpp
     test_openrows.cpp
     test_party.cpp
+    test_perktree.cpp
     test_playercast.cpp
     test_profile.cpp
     test_reach.cpp
