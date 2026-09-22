@@ -297,6 +297,45 @@ controller, logged at the start of a fight (the probe in `Tactics.cpp`):
 - With every usable right-hand spell set aside, he drew a dagger. The list
   is the list: the AI falls back to what is left, weapons included.
 
+### Which spells the combat AI can use at all (read 2026-09-22)
+
+A spell in the combat inventory is not a spell the AI will cast. Each magic
+entry's score (slot 0x0C, 45082 on 1.6.1170, shared by every magic entry
+class) is the combat style's magic multiplier times what `CombatMagicItemData`
+(vtable 211955, built by 45319 and run by 45320) makes of the spell's
+effects. For each effect it builds a key -- the effect's archetype
+(`EffectSetting+0xC0`), its actor value (`+0xC4`, or its second one at
+`+0xE0`), the Hostile flag (bit 0 of `+0x68`, 11013) and whether the spell
+is self-delivered (delivery 0, `+0x4C` of the data) -- and looks it up in a
+registry (global 405245) filled at start-up from a table in the executable
+(ID 382289, 23 entries of 0x30 bytes, count at 382379). An effect with no
+entry adds nothing; a spell none of whose effects has one scores 0 and is
+never chosen, pinned or not. The whole table:
+
+| Kind | Archetype (actor value) | Self-delivered | Hostile |
+|---|---|---|---|
+| Damage | ValueModifier (Health, Magicka, Stamina) | no | yes |
+| Stagger, Disarm, Command Summoned, Banish, Turn Undead, Paralysis | their own | no | yes |
+| Scripted | Script | no | yes |
+| Restore | ValueModifier (Health, Magicka, Stamina) | yes | no |
+| Ward | ValueModifier (WardPower) | yes | no |
+| Armour spell | ValueModifier (DamageResist) | yes | no |
+| Summon | SummonCreature | yes, or no | no |
+| Cloak, Light, Invisibility, Bound Weapon | their own | yes | no |
+| Scripted | Script | yes | no |
+| Reanimate | Reanimate | no | no |
+
+So **a hostile spell centred on the caster -- Fire Storm and its kind,
+`TargetType = Self` -- scores 0**: every hostile entry wants a spell that
+is aimed, touched or targeted. Seen on Serana (2026-09-22): Cold Fire
+Storm in her offence list at every fight's start, the engine's score 0.00
+at every ask. A self-delivered spell with a restoring effect is filed with
+the heals and scores well (her Blood Tether, 500), but the AI reaches for a
+heal only when it wants one, and whatever hostile part such a spell has
+counts for nothing. Fear, Calm and Frenzy (Demoralize, Calm, Frenzy) and
+Absorb are not in the table either. A rule's cast (a UseMagic package naming
+the spell) is the way to have a follower use any of these.
+
 ### How a pin is kept from the AI (2026-09-03): its own scoring
 
 The combat AI chooses from a list of scored options, its own per-follower
