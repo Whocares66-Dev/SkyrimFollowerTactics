@@ -17,7 +17,10 @@
 //                 through VisitSpells -- from choosing it.
 //
 // Only castable spells are set aside or added. Abilities are cast from the
-// record by other walks (dev/ENGINE_SPELLS.md) and are left alone.
+// record by other walks (dev/ENGINE_SPELLS.md) and are left alone, a bought
+// perk's among them: the engine lists it on the actor, and the save is kept
+// clean of it by taking it off before the write (progression/game/Service.h,
+// BeforeSave).
 
 #include <cstdint>
 #include <string>

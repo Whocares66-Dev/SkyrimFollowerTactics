@@ -47,6 +47,9 @@ namespace fp::game
 // a companion, in case the save kept one (dev/ENGINE_PERKS.md).
 void DropPerkAbilities(RE::Actor *actor, RE::BGSPerk *perk);
 
+// The ability spells `perk`'s entries grant (Magic Resistance, Recovery).
+[[nodiscard]] std::vector<FormKey> AbilitiesOf(const RE::BGSPerk *perk);
+
 // The calendar's time now.
 
 // Distance in game units; a very large number when either is missing.

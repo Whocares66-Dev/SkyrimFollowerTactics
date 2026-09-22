@@ -23,7 +23,7 @@ Tactics' build (CLAUDE.md): `fp_core` and `fp_tests` are built and run with Tact
 
 As Tactics': SKSE64, Address Library for SKSE Plugins, and SKSE Menu Framework for the panel (F1). Skyrim SE and AE; on VR the perk, spell and learning hooks are not installed.
 
-Progression can be turned off at any time: Tactics' Settings, Progression → *Manage follower progression*. Off, every companion is as their record makes them at once, the record of what they learned kept; on puts it back. Skills, attributes, perks and spells are views in front of the engine, never written, so the mod can be removed without a step first -- except a bought perk that adds an ability (Recovery, Magic Resistance), which the save keeps: to leave nothing behind, turn progression off, let each companion come near, and save.
+Progression can be turned off at any time: Tactics' Settings, Progression → *Manage follower progression*. Off, every companion is as their record makes them at once, the record of what they learned kept; on puts it back. Skills, attributes, perks and spells are views in front of the engine, never written, so the mod can be removed without a step first. A bought perk that adds an ability (Recovery, Magic Resistance) is the one thing the engine puts on the follower, and what it does to a value would sit in the save; it is taken off before each save is written and put back after, so the file keeps none of it.
 
 ## License
 

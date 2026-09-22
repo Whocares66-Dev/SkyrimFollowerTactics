@@ -178,6 +178,12 @@ void OnGameLeft();
 // SKSE's kPreLoadGame: the views go, so an actor built during the load is
 // built as its record has it until the save's ledger is published.
 void BeforeLoad();
+// SKSE's kSaveGame, before the engine writes: the abilities of perks bought
+// here come off every companion near, and a task puts them back the moment
+// the write is done. What an ability does to a value is the engine's own
+// temporary modifier, which a save keeps whether or not the spell behind it
+// is listed (dev/ENGINE_PERKS.md), so the file is written with none of it.
+void BeforeSave();
 
 // --- the co-save (SKSE's callbacks, game thread) ------------------------------
 

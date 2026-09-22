@@ -122,6 +122,19 @@ void DropPerkAbilities(RE::Actor *actor, RE::BGSPerk *perk)
                     log::perks.debug("{}: {}'s ability {} taken off", NameOf(actor), NameOf(perk), NameOf(spell));
 }
 
+std::vector<FormKey> AbilitiesOf(const RE::BGSPerk *perk)
+{
+    std::vector<FormKey> out;
+    if (!perk)
+        return out;
+    for (RE::BGSPerkEntry *entry : perk->perkEntries)
+        if (entry && entry->GetType() == RE::PERK_ENTRY_TYPE::kAbility)
+            if (RE::SpellItem *spell = static_cast<RE::BGSAbilityPerkEntry *>(entry)->ability)
+                if (auto key = KeyOf(spell))
+                    out.push_back(std::move(*key));
+    return out;
+}
+
 float DistanceToPlayer(RE::Actor *actor)
 {
     auto *player = RE::PlayerCharacter::GetSingleton();

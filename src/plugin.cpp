@@ -124,6 +124,10 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
                 ft::game::ReleaseAllLeases("saving");
                 ft::game::EndAllBashes("saving");
                 ft::game::EndAllPlayerCasts("saving");
+                // And the abilities of perks bought here, whose mark on a
+                // value the save would keep; a task puts them back as soon
+                // as the write is done (progression/game/Service.h).
+                fp::game::BeforeSave();
                 // After the releases, so a cast the save cut short reads as
                 // resolved before the save that cut it. SKSE passes the save's
                 // name as the message's data.

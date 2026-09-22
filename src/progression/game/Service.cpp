@@ -958,6 +958,88 @@ void BeforeLoad()
     learning::Forget();
 }
 
+namespace
+{
+
+// What came off a companion for the save, to go straight back on. The actor
+// is held by id, not by pointer: the task runs after the write, and nothing
+// of ours is to outlive the actor it names.
+struct Lent
+{
+    RE::FormID actor{0};
+    std::vector<RE::SpellItem *> abilities;
+    float health{0.0f}; // what they had before, which losing an ability can take
+};
+
+// The abilities back on, the write done.
+void AfterSave(const std::vector<Lent> &lent)
+{
+    for (const Lent &l : lent)
+    {
+        RE::Actor *actor = RE::TESForm::LookupByID<RE::Actor>(l.actor);
+        if (!actor)
+            continue;
+        for (RE::SpellItem *spell : l.abilities)
+            actor->AddSpell(spell);
+        // An ability that holds their health up takes the wound with it when
+        // it goes, and the engine does not give it back when it returns.
+        if (auto *owner = actor->AsActorValueOwner())
+            if (const float now = owner->GetActorValue(RE::ActorValue::kHealth); now < l.health)
+                owner->RestoreActorValue(RE::ActorValue::kHealth, l.health - now);
+        log::party.debug("{}: {} ability/ies back on, the save written", NameOf(actor), l.abilities.size());
+    }
+}
+
+} // namespace
+
+void BeforeSave()
+{
+    std::scoped_lock lock(g_mutex);
+    if (g_state.settings.released)
+        return; // nothing of ours is applied
+    // What an ability does to a value is a temporary modifier on the actor,
+    // and a save keeps the modifier itself -- with the spell listed or not,
+    // and with no effect left to dispel (seen 2026-09-22: a follower's Magic
+    // Resistance still +10 with the plugin gone). So the abilities of perks
+    // bought here come off before the engine writes and go back on the
+    // moment it is done: the file holds none of them, and neither does a
+    // game without the mod.
+    std::vector<Lent> lent;
+    for (Companion &c : g_state.companions)
+    {
+        // Whoever the save holds, near or not: an actor the engine keeps
+        // carries what was applied while they were here.
+        RE::Actor *actor = ActorOf(c.key);
+        if (!actor)
+            continue;
+        const float health =
+            actor->AsActorValueOwner() ? actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth) : 0.0f;
+        Lent mine;
+        const auto record = BasePerks(actor);
+        for (const LearnedPerk &p : c.perks)
+            if (!record.contains(p.form))
+                for (const FormKey &ability : AbilitiesOf(PerkOf(p.form)))
+                    if (auto *spell = Lookup<RE::SpellItem>(ability))
+                        // Only what was really on them goes back on: one who
+                        // was never near while levelling was on has none of
+                        // it, and is not to be given it here.
+                        if (actor->RemoveSpell(spell)) // dispels; the modifier goes with it
+                            mine.abilities.push_back(spell);
+        if (mine.abilities.empty())
+            continue;
+        mine.actor = actor->GetFormID();
+        mine.health = health;
+        log::party.debug("{}: {} bought ability/ies off for the save", c.name, mine.abilities.size());
+        lent.push_back(std::move(mine));
+    }
+    if (lent.empty())
+        return;
+    // The engine writes the save inside the call this message came from, so
+    // a task runs the moment the write is done.
+    if (auto *tasks = SKSE::GetTaskInterface())
+        tasks->AddTask([lent = std::move(lent)]() { AfterSave(lent); });
+}
+
 // --- the co-save ------------------------------------------------------------------------------
 
 std::vector<CoSaveRecord> SaveRecords()
