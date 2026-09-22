@@ -1,6 +1,6 @@
 #include "progression/game/Rules.h"
 
-#include "progression/game/Addresses.h"
+#include "game/Addresses.h"
 
 namespace fp::game
 {

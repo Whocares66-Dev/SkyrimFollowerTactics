@@ -1,6 +1,6 @@
 #include "progression/game/Learning.h"
 
-#include "progression/game/Addresses.h"
+#include "game/Addresses.h"
 #include "progression/game/FastIds.h"
 #include "progression/game/Log.h"
 #include "progression/game/Rules.h"

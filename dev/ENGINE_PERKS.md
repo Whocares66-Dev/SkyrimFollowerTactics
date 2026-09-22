@@ -1,6 +1,6 @@
 # How the engine answers an NPC's perks, and the view we put in front of it
 
-Read 2026-09-21 from the unpacked executables in `C:\Modding\SkyrimVersions` (1.5.97, 1.6.1170, 1.7.104) with `tools/disasm.py`, which is Follower Tactics' disassembler (its `tools/skyrimexe.py` and `addrlib.py`) copied here. Everything below is read from code, not seen in play. The plugin's use of it is `src/progression/game/PerkView.cpp`; the address pairs are in `src/progression/game/Addresses.h`.
+Read 2026-09-21 from the unpacked executables in `C:\Modding\SkyrimVersions` (1.5.97, 1.6.1170, 1.7.104) with `tools/disasm.py`, which is Follower Tactics' disassembler (its `tools/skyrimexe.py` and `addrlib.py`) copied here. Everything below is read from code, not seen in play. The plugin's use of it is `src/progression/game/PerkView.cpp`; the address pairs are in `src/game/Addresses.h`.
 
 ## Why
 
