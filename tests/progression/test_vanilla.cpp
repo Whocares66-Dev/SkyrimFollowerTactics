@@ -2,7 +2,7 @@
 // Skyrim.esm, through the same code the plugin runs on the trees it reads
 // from the engine.
 
-#include "progression/core/PerkData.h"
+#include "PerkData.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -11,7 +11,6 @@
 
 using fp::FormKey;
 using fp::PerkBlock;
-using fp::PerkEffect;
 using fp::Skill;
 
 namespace
@@ -69,39 +68,6 @@ TEST_CASE("all 180 vanilla nodes and 251 ranks read", "[vanilla]")
     for (const auto &node : Vanilla().Nodes())
         ranks += node.ranks.size();
     CHECK(ranks == 251);
-}
-
-TEST_CASE("every vanilla node has a verdict with a reason", "[vanilla]")
-{
-    for (const auto &node : Vanilla().Nodes())
-    {
-        INFO(node.name);
-        CHECK_FALSE(node.note.empty());
-    }
-}
-
-TEST_CASE("the headline combat and magic perks work for a companion", "[vanilla]")
-{
-    for (const std::uint32_t local :
-         {kArmsman, 0x0BABE8u /* Barbarian */, kOverdraw, 0x0BCCAEu /* Shield Wall */, 0x0BCD2Au /* Juggernaut */,
-          0x0BE123u /* Agile Defender */, 0x0F2CA8u /* Novice Destruction */, 0x0581E7u /* Augmented Flames */,
-          0x0D5F1Cu /* Twin Souls */, kMagicResistance, 0x0581F4u /* Recovery */})
-    {
-        const auto &node = Vanilla().Node(NodeOf(local));
-        INFO(node.name);
-        CHECK(node.effect == PerkEffect::Works);
-    }
-}
-
-TEST_CASE("the player's own perks are no-effect", "[vanilla]")
-{
-    for (const std::uint32_t local : {kEagleEye, 0x103ADAu /* Steady Hand */, 0x0D8C33u /* Quick Reflexes */,
-                                      0x051B12u /* Hunter's Discipline */, 0x058214u /* Shadow Warrior */})
-    {
-        const auto &node = Vanilla().Node(NodeOf(local));
-        INFO(node.name);
-        CHECK(node.effect == PerkEffect::NoEffect);
-    }
 }
 
 TEST_CASE("Armsman's five ranks need 0, 20, 40, 60 and 80", "[vanilla]")
@@ -192,19 +158,4 @@ TEST_CASE("Marcurio's own perks read as his record has them", "[vanilla]")
     CHECK(resistance.innate == 1);
     // The next rank needs Alteration 50 and the first rank, which is held.
     CHECK(resistance.block == PerkBlock::Skill);
-}
-
-TEST_CASE("the graph written out reads back the same", "[vanilla]")
-{
-    const auto again = fp::ReadPerkGraph(fp::WritePerkGraph(Vanilla()));
-    REQUIRE(again);
-    REQUIRE(again->Size() == Vanilla().Size());
-    for (std::size_t i = 0; i < again->Size(); ++i)
-    {
-        const auto &a = again->Nodes()[i];
-        const auto &b = Vanilla().Nodes()[i];
-        CHECK(a.name == b.name);
-        CHECK(a.effect == b.effect);
-        CHECK(a.ranks.size() == b.ranks.size());
-    }
 }

@@ -171,7 +171,6 @@ add_library(fp_core STATIC
     src/progression/core/Companion.cpp
     src/progression/core/Ids.cpp
     src/progression/core/Levelling.cpp
-    src/progression/core/PerkData.cpp
     src/progression/core/Perks.cpp
     src/progression/core/Serialize.cpp
     src/progression/core/Skills.cpp

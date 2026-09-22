@@ -1,6 +1,7 @@
 # Progression's rules (src/progression/core, fp_core): an executable of its
 # own beside ft_tests, so the two suites' names and helpers never meet.
 add_executable(fp_tests
+    PerkData.cpp
     test_companion.cpp
     test_ids.cpp
     test_levelling.cpp

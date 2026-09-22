@@ -27,14 +27,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     27
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "OneHanded",
@@ -62,14 +55,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     28
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "OneHanded",
@@ -137,14 +123,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     51
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "OneHanded",
@@ -212,15 +191,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     1,
-     2
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "OneHanded",
@@ -288,14 +259,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     37
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "OneHanded",
@@ -343,12 +307,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "OneHanded",
@@ -441,14 +400,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     35
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "OneHanded",
@@ -483,14 +435,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     51
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "OneHanded",
@@ -518,14 +463,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     35
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "OneHanded",
@@ -553,15 +491,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     1,
-     2
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "TwoHanded",
@@ -589,14 +519,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     27
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "TwoHanded",
@@ -624,14 +547,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     28
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "TwoHanded",
@@ -666,14 +582,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     50
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "TwoHanded",
@@ -741,14 +650,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     51
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "TwoHanded",
@@ -816,15 +718,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     1,
-     2
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "TwoHanded",
@@ -892,14 +786,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     37
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "TwoHanded",
@@ -992,14 +879,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     35
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "TwoHanded",
@@ -1027,15 +907,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     1,
-     2
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "TwoHanded",
@@ -1063,14 +935,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     51
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Archery",
@@ -1163,14 +1028,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     35
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Archery",
@@ -1198,14 +1056,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     54
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Archery",
@@ -1233,14 +1084,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     21
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Archery",
@@ -1268,15 +1112,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     20,
-     27
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Archery",
@@ -1304,12 +1140,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Archery",
@@ -1337,14 +1168,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     54
-    ],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Archery",
@@ -1379,14 +1203,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     51
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Archery",
@@ -1434,12 +1251,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Archery",
@@ -1507,15 +1319,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     1,
-     2
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Block",
@@ -1543,14 +1347,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     26
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Block",
@@ -1578,15 +1375,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     67,
-     70
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Block",
@@ -1614,14 +1403,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     54
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Block",
@@ -1649,14 +1431,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     41
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Block",
@@ -1684,14 +1459,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     52
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Block",
@@ -1784,14 +1552,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     39
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Block",
@@ -1819,12 +1580,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Block",
@@ -1852,14 +1608,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     40
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Block",
@@ -1894,12 +1643,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -1927,14 +1671,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     76
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -1962,14 +1699,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     76
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -1997,14 +1727,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     76
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -2017,14 +1740,7 @@
      "description": "Can create Steel armor and weapons at forges, and improve them twice as much.",
      "conditions": []
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     76
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -2052,14 +1768,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     76
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -2087,14 +1796,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     76
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -2122,14 +1824,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     76
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -2157,14 +1852,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     76
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -2199,14 +1887,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     76
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Smithing",
@@ -2234,12 +1915,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "HeavyArmor",
@@ -2332,14 +2008,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     85
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "HeavyArmor",
@@ -2367,12 +2036,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "HeavyArmor",
@@ -2400,14 +2064,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     33
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "HeavyArmor",
@@ -2435,14 +2092,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     32
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "HeavyArmor",
@@ -2470,14 +2120,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     85
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "HeavyArmor",
@@ -2505,14 +2148,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     85
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "HeavyArmor",
@@ -2540,14 +2176,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     58
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "HeavyArmor",
@@ -2575,12 +2204,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "LightArmor",
@@ -2673,14 +2297,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     85
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "LightArmor",
@@ -2708,14 +2325,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     85
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "LightArmor",
@@ -2743,14 +2353,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     85
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "LightArmor",
@@ -2778,12 +2381,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "LightArmor",
@@ -2818,14 +2416,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     36
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "LightArmor",
@@ -2853,14 +2444,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     32
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Pickpocket",
@@ -2888,12 +2472,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Pickpocket",
@@ -2921,14 +2500,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     56
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Pickpocket",
@@ -2956,14 +2528,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     56
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Pickpocket",
@@ -2991,14 +2556,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     56
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Pickpocket",
@@ -3026,14 +2584,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     84
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Pickpocket",
@@ -3061,14 +2612,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     61
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Pickpocket",
@@ -3096,14 +2640,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     61
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Pickpocket",
@@ -3196,14 +2733,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     56
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3231,14 +2761,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     59
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3266,14 +2789,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     59
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3301,12 +2817,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": true
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3334,14 +2845,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     86
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3369,14 +2873,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     63
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3404,14 +2901,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     65
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3439,12 +2929,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": true
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3472,14 +2957,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     59
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3507,14 +2985,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     59
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3527,14 +2998,7 @@
      "description": "Novice locks are much easier to pick.",
      "conditions": []
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     59
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Lockpicking",
@@ -3562,14 +3026,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     90
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Sneak",
@@ -3597,14 +3054,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     69
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Sneak",
@@ -3632,14 +3082,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     18
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Sneak",
@@ -3732,14 +3175,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     57
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Sneak",
@@ -3767,12 +3203,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Sneak",
@@ -3800,12 +3231,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Sneak",
@@ -3833,12 +3259,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Sneak",
@@ -3866,12 +3287,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Sneak",
@@ -3899,14 +3315,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     18
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Sneak",
@@ -3934,14 +3343,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     18
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alchemy",
@@ -3976,12 +3378,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alchemy",
@@ -4074,14 +3471,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     66
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alchemy",
@@ -4109,14 +3499,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     66
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alchemy",
@@ -4144,14 +3527,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     66
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alchemy",
@@ -4179,14 +3555,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     66
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alchemy",
@@ -4254,14 +3623,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     72
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alchemy",
@@ -4289,14 +3651,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     87
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alchemy",
@@ -4324,14 +3679,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     83
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alchemy",
@@ -4359,14 +3707,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     73
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Speech",
@@ -4459,15 +3800,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     8,
-     60
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Speech",
@@ -4495,14 +3828,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     43
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Speech",
@@ -4530,12 +3856,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": true
-   }
+   ]
   },
   {
    "skill": "Speech",
@@ -4563,15 +3884,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     8,
-     60
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Speech",
@@ -4599,12 +3912,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": true
-   }
+   ]
   },
   {
    "skill": "Speech",
@@ -4632,12 +3940,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Speech",
@@ -4665,12 +3968,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Speech",
@@ -4698,12 +3996,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": true
-   }
+   ]
   },
   {
    "skill": "Speech",
@@ -4731,12 +4024,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -4764,12 +4052,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -4837,12 +4120,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -4910,12 +4188,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -4943,14 +4216,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -4978,14 +4244,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     30
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -5013,14 +4272,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -5048,14 +4300,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -5083,14 +4328,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -5118,14 +4356,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     75
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Alteration",
@@ -5138,14 +4369,7 @@
      "description": "Cast Novice level Alteration spells for half magicka.",
      "conditions": []
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5173,12 +4397,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5213,14 +4432,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     68
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5268,14 +4480,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     88
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5303,14 +4508,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5338,12 +4536,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5371,14 +4564,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     30
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5406,14 +4592,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     30
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5441,14 +4620,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     53
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5476,14 +4648,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5511,12 +4676,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5544,14 +4704,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5579,14 +4732,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5614,12 +4760,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5647,14 +4788,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     75
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Conjuration",
@@ -5667,14 +4801,7 @@
      "description": "Cast Novice level Conjuration spells for half magicka.",
      "conditions": []
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -5702,12 +4829,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -5735,14 +4857,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     75
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -5770,14 +4885,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -5805,12 +4913,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -5838,14 +4941,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -5873,14 +4969,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -5928,14 +5017,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -5983,14 +5065,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -6018,12 +5093,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -6051,12 +5121,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -6084,14 +5149,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     88
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -6119,14 +5177,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -6139,14 +5190,7 @@
      "description": "Cast Novice level Destruction spells for half magicka.",
      "conditions": []
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Destruction",
@@ -6194,14 +5238,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6229,12 +5266,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6262,14 +5294,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     75
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6297,14 +5322,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6332,14 +5350,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6367,14 +5378,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6402,12 +5406,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6435,14 +5434,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6470,14 +5462,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6505,14 +5490,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     71
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6540,15 +5518,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29,
-     30
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6561,14 +5531,7 @@
      "description": "Cast Novice level Restoration spells for half magicka.",
      "conditions": []
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Restoration",
@@ -6616,12 +5579,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": true,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6649,14 +5607,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     55
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6684,14 +5635,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     75
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6719,14 +5663,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6754,14 +5691,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6789,14 +5719,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6824,14 +5747,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6859,14 +5775,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6894,14 +5803,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6936,12 +5838,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [],
-    "ability": false,
-    "quest": true
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -6969,14 +5866,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -7004,14 +5894,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     29
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -7039,14 +5922,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Illusion",
@@ -7059,14 +5935,7 @@
      "description": "Cast Novice level Illusion spells for half magicka.",
      "conditions": []
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     38
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Enchanting",
@@ -7094,14 +5963,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     77
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Enchanting",
@@ -7129,14 +5991,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     78
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Enchanting",
@@ -7229,14 +6084,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     77
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Enchanting",
@@ -7264,14 +6112,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     49
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Enchanting",
@@ -7299,14 +6140,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     77
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Enchanting",
@@ -7334,14 +6168,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     77
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Enchanting",
@@ -7369,14 +6196,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     77
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Enchanting",
@@ -7404,14 +6224,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     77
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   },
   {
    "skill": "Enchanting",
@@ -7446,14 +6259,7 @@
       }
      ]
     }
-   ],
-   "effects": {
-    "entryPoints": [
-     80
-    ],
-    "ability": false,
-    "quest": false
-   }
+   ]
   }
  ]
 }

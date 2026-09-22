@@ -93,31 +93,6 @@ PerkRank RankOf(RE::BGSPerk *perk, const FormKey &key)
     return rank;
 }
 
-EffectSummary EffectsOf(RE::BGSPerk *perk)
-{
-    EffectSummary summary;
-    for (auto *entry : perk->perkEntries)
-    {
-        if (!entry)
-            continue;
-        switch (entry->GetType())
-        {
-        case RE::PERK_ENTRY_TYPE::kEntryPoint:
-            summary.entryPoints.push_back(
-                static_cast<int>(static_cast<RE::BGSEntryPointPerkEntry *>(entry)->entryData.entryPoint.get()));
-            break;
-        case RE::PERK_ENTRY_TYPE::kAbility:
-            summary.ability = true;
-            break;
-        case RE::PERK_ENTRY_TYPE::kQuest:
-        default:
-            summary.quest = true;
-            break;
-        }
-    }
-    return summary;
-}
-
 void ReadTree(Skill skill, RE::BGSSkillPerkTreeNode *root, std::unordered_set<RE::BGSPerk *> &seen)
 {
     std::queue<RE::BGSSkillPerkTreeNode *> todo;
@@ -144,7 +119,6 @@ void ReadTree(Skill skill, RE::BGSSkillPerkTreeNode *root, std::unordered_set<RE
         out.name = NameOf(first);
         out.x = node->horizontalPosition;
         out.y = node->verticalPosition;
-        EffectSummary effects;
         std::unordered_set<RE::BGSPerk *> chain;
         for (RE::BGSPerk *rank = first; rank && chain.insert(rank).second; rank = rank->nextPerk)
         {
@@ -152,16 +126,9 @@ void ReadTree(Skill skill, RE::BGSSkillPerkTreeNode *root, std::unordered_set<RE
             if (!key)
                 break;
             out.ranks.push_back(RankOf(rank, *key));
-            const EffectSummary more = EffectsOf(rank);
-            effects.entryPoints.insert(effects.entryPoints.end(), more.entryPoints.begin(), more.entryPoints.end());
-            effects.ability = effects.ability || more.ability;
-            effects.quest = effects.quest || more.quest;
             if (rank != first)
                 seen.insert(rank);
         }
-        Verdict verdict = Classify(*firstKey, effects);
-        out.effect = verdict.effect;
-        out.note = std::move(verdict.note);
         g_graph.Add(std::move(out));
     }
 }
@@ -185,14 +152,9 @@ void BuildPerkGraph()
         log::perks.debug("{}: {} perks", Name(skill), g_graph.Size() - before);
     }
     std::size_t ranks = 0;
-    std::size_t works = 0;
     for (const auto &node : g_graph.Nodes())
-    {
         ranks += node.ranks.size();
-        works += node.effect == PerkEffect::Works ? 1 : 0;
-    }
-    log::perks.info("read {} perks ({} ranks) from the skill trees; {} work for companions", g_graph.Size(), ranks,
-                    works);
+    log::perks.info("read {} perks ({} ranks) from the skill trees", g_graph.Size(), ranks);
     // Each rank's runtime id to its node, for Tactics' tree.
     for (const auto &node : g_graph.Nodes())
         for (const PerkRank &rank : node.ranks)

@@ -10,9 +10,6 @@
 // the nodes that have two parents; both are evaluated here. A function this
 // file does not know is reported, not guessed.
 //
-// Each node also carries a verdict on whether it does anything for a
-// companion (Classify, below), read from what its effects hook into.
-//
 // What a companion holds is handed in: the perks on their own record
 // (innate, not ours) and the ones bought here (the record's). No Skyrim.
 
@@ -66,16 +63,6 @@ struct Condition
 
 // --- the graph ---------------------------------------------------------------
 
-enum class PerkEffect : std::uint8_t
-{
-    Works,       // hooks into something the engine evaluates for any actor
-    Situational, // works, when the companion does something their AI rarely does
-    Unverified,  // might; nothing read says either way
-    NoEffect,    // only the player's systems read it
-};
-
-[[nodiscard]] std::string_view Name(PerkEffect e) noexcept;
-
 struct PerkRank
 {
     FormKey form;
@@ -89,9 +76,7 @@ struct PerkNode
     Skill skill{Skill::OneHanded};
     std::string name;
     std::vector<PerkRank> ranks;
-    PerkEffect effect{PerkEffect::Unverified};
-    std::string note; // why the verdict, for the hover
-    float x{0.0f};    // the Skills menu's position, for ordering
+    float x{0.0f}; // the Skills menu's position, for ordering
     float y{0.0f};
 };
 
@@ -130,26 +115,6 @@ class PerkGraph
 // the largest GetBaseActorValue/GetActorValue >= threshold on that skill.
 // 0 when there is none.
 [[nodiscard]] int SkillRequirement(const PerkRank &rank, Skill skill) noexcept;
-
-// --- the catalog ---------------------------------------------------------------
-
-// What a perk's effects hook into, as the game side reads them.
-struct EffectSummary
-{
-    std::vector<int> entryPoints; // BGSEntryPoint numbers
-    bool ability{false};          // adds an ability spell
-    bool quest{false};            // runs a quest stage
-};
-
-struct Verdict
-{
-    PerkEffect effect{PerkEffect::Unverified};
-    std::string note;
-};
-
-// A node's verdict: the catalog's own word for a vanilla perk it knows,
-// else a reading of its effects. `firstRank` identifies the node.
-[[nodiscard]] Verdict Classify(const FormKey &firstRank, const EffectSummary &effects);
 
 // --- a companion's holdings, and the rules -------------------------------------
 

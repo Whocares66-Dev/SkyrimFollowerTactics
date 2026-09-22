@@ -1,4 +1,4 @@
-#include "progression/core/PerkData.h"
+#include "PerkData.h"
 
 #include <nlohmann/json.hpp>
 
@@ -23,34 +23,6 @@ std::optional<Comparison> ComparisonFrom(std::string_view op)
         return Comparison::Less;
     if (op == "<=")
         return Comparison::LessOrEqual;
-    return std::nullopt;
-}
-
-std::string_view ComparisonText(Comparison c)
-{
-    switch (c)
-    {
-    case Comparison::Equal:
-        return "==";
-    case Comparison::NotEqual:
-        return "!=";
-    case Comparison::Greater:
-        return ">";
-    case Comparison::GreaterOrEqual:
-        return ">=";
-    case Comparison::Less:
-        return "<";
-    case Comparison::LessOrEqual:
-    default:
-        return "<=";
-    }
-}
-
-std::optional<PerkEffect> EffectFrom(std::string_view name)
-{
-    for (const auto e : {PerkEffect::Works, PerkEffect::Situational, PerkEffect::Unverified, PerkEffect::NoEffect})
-        if (Name(e) == name)
-            return e;
     return std::nullopt;
 }
 
@@ -124,77 +96,9 @@ std::optional<PerkGraph> ReadPerkGraph(std::string_view text, std::string *why)
         if (node.ranks.empty())
             return fail(node.name + " has no ranks");
 
-        const auto effect = EffectFrom(n.value("verdict", std::string{}));
-        if (effect)
-        {
-            node.effect = *effect;
-            node.note = n.value("note", std::string{});
-        }
-        else
-        {
-            EffectSummary summary;
-            if (const auto e = n.find("effects"); e != n.end() && e->is_object())
-            {
-                summary.entryPoints = e->value("entryPoints", std::vector<int>{});
-                summary.ability = e->value("ability", false);
-                summary.quest = e->value("quest", false);
-            }
-            Verdict v = Classify(node.ranks.front().form, summary);
-            node.effect = v.effect;
-            node.note = std::move(v.note);
-        }
         graph.Add(std::move(node));
     }
     return graph;
-}
-
-std::string WritePerkGraph(const PerkGraph &graph)
-{
-    json nodes = json::array();
-    for (const PerkNode &node : graph.Nodes())
-    {
-        json ranks = json::array();
-        for (const PerkRank &rank : node.ranks)
-        {
-            json conditions = json::array();
-            for (const Condition &c : rank.conditions)
-            {
-                json cj{{"op", std::string(ComparisonText(c.comparison))}, {"value", c.value}, {"or", c.orNext}};
-                switch (c.function)
-                {
-                case ConditionFunction::GetBaseActorValue:
-                    cj["fn"] = "GetBaseActorValue";
-                    cj["av"] = c.actorValue;
-                    break;
-                case ConditionFunction::GetActorValue:
-                    cj["fn"] = "GetActorValue";
-                    cj["av"] = c.actorValue;
-                    break;
-                case ConditionFunction::HasPerk:
-                    cj["fn"] = "HasPerk";
-                    cj["perk"] = ToString(c.perk);
-                    break;
-                case ConditionFunction::Other:
-                default:
-                    cj["fn"] = "Other";
-                    cj["name"] = c.otherName;
-                    break;
-                }
-                conditions.push_back(std::move(cj));
-            }
-            ranks.push_back({{"form", ToString(rank.form)},
-                             {"description", rank.description},
-                             {"conditions", std::move(conditions)}});
-        }
-        nodes.push_back({{"skill", std::string(Key(node.skill))},
-                         {"name", node.name},
-                         {"x", node.x},
-                         {"y", node.y},
-                         {"verdict", std::string(Name(node.effect))},
-                         {"note", node.note},
-                         {"ranks", std::move(ranks)}});
-    }
-    return json{{"nodes", std::move(nodes)}}.dump(1);
 }
 
 } // namespace fp

@@ -34,7 +34,7 @@ A companion levels as you do. Using a skill raises it: a spell cast, a blow land
 | Five skill points a level, one attribute point, one perk point, each placed with `- +` and taken back freely | Direct assignment works: it is the player's own level-up | Kept for attributes and perks. Skills rise by use instead, as yours do, and can be moved or reset ([Points and reassigning](#points-and-reassigning)) |
 | *Harmonize* rewrites base stats to profile values; *Reset all perks (incl. native)* removes perks the follower came with | Players lose what made a follower themselves, with one click and no preview | Their own skills stay unless you move them; innate perks and spells are protected and labelled, and can only be set aside ([Reconsidering](#reconsidering)) |
 | A perk button is greyed with no reason given; the requirement is the largest number in its conditions | "Why can't I take this?" is the question a tree most needs to answer | Every locked perk says what it needs and what the companion has ([Perks](#perks)) |
-| Every perk in every tree is offered, crafting and lockpicking included | A perk that does nothing for them is a wasted point | Kept: every skill and every tree is offered alike, since a mod may have followers smith or pick locks; the catalog's verdicts are read off each perk's own effects ([Which perks work](#which-perks-work-for-a-companion)) |
+| Every perk in every tree is offered, crafting and lockpicking included | A perk that does nothing for them is a wasted point | Kept: every skill and every tree is offered alike, since a mod may have followers smith or pick locks ([Every perk alike](#every-perk-alike)) |
 | The Overview shows everyone at once, and a reset per tree | A party view is the right starting place | Per-perk unlearning, refused while a perk bought on it needs it, and a reset per tree; the party is Tactics' list of followers |
 | Perk tooltips carry the game's own descriptions | Good; players know these words | Kept, with a second line saying what the perk does on a companion |
 
@@ -90,7 +90,7 @@ A perk point is spent on the Perks tab. A companion can learn a perk rank when:
 2. their skill in the tree — their own plus what they've learned — meets that rank's requirement, read from the rank's own conditions (`GetBaseActorValue OneHanded >= 40`);
 3. they hold a perk the node is connected from (any one parent, as the player's trees work), learned here or innate.
 
-A perk that does nothing for a companion ([next section](#which-perks-work-for-a-companion)) is learned like any other, as the player's is: it costs a point and opens what needs it.
+A perk that does nothing for a companion ([next section](#every-perk-alike)) is learned like any other, as the player's is: it costs a point and opens what needs it.
 
 The Perks tab says which of these is missing, in words: each row's *Needs* lists the next rank's requirements, the met ones dimmed and the unmet ones in full with what the companion has — *One-Handed 40 (has 34)*, *Fighting Stance*. Having no points is said once, above the trees.
 
@@ -100,20 +100,11 @@ The Perks tab says which of these is missing, in words: each row's *Needs* lists
 
 **Ranks stack, as the player's do.** Each rank of a perk is its own record, and a companion holds every rank they have learned: Armsman's first rank switches itself off once the second is present (its entry's condition is `HasPerk Armsman20 == 0`, read from Skyrim.esm). So learning adds the next rank's record and unlearning removes the top one; nothing is replaced.
 
-### Which perks work for a companion
+### Every perk alike
 
-The 18 vanilla trees were read record by record (`tests/progression/data/vanilla-perks.json`: 180 nodes, 251 ranks, each rank's requirement and entry points). A perk does something for an NPC when its effect goes through an entry point the engine evaluates for any actor (damage, armour, spell cost and magnitude, critical hits, blocking), adds an ability, or is checked by a spell's own conditions (Impact, Deep Freeze). It does nothing when only the player's own systems read it: zoom, slow time, crafting, barter, lockpicks.
+Every perk in every tree is offered and learned as the player's is, whatever it does. Whether it does anything for a follower is the engine's answer, not ours: an effect through an entry point the engine evaluates for any actor (damage, armour, spell cost and magnitude, critical hits, blocking), an ability, or a spell's own conditions reading it (Impact, Deep Freeze) reach a follower; what only the player's own systems read (zoom, slow time, crafting, barter, lockpicks) does not, unless a mod makes it. Eagle Eye does nothing for a companion but stands between Overdraw and Power Shot, and is bought to reach it, as the player's is.
 
-| Verdict | Shown as | Examples |
-|---|---|---|
-| **Works** | Learnable | Armsman, Barbarian, Overdraw, Shield Wall, Juggernaut, Agile Defender, the Novice–Master cost perks, Augmented Flames, Regeneration, Twin Souls, Magic Resistance, Recovery, Stealth |
-| **Situational** | Learnable, with a note | Critical Charge (the AI rarely sprint-attacks), the dual-wield perks, Backstab and the other sneak-attack perks, the Dual Casting perks (see Tactics, below) |
-| **Unverified** | Learnable, with a note | Ranger, Block Runner, Quick Shot: behaviour-graph variables that may or may not drive an NPC's animation |
-| **No effect** | Learnable like any other: bought to reach what is above it | Eagle Eye, Steady Hand, Quick Reflexes, Hunter's Discipline, Cushioned, Shadow Warrior, Silent Roll |
-
-Eagle Eye is useless to a companion but stands between Overdraw and Power Shot, and is bought to reach it as the player's is. Until 2026-09-21 such a perk was a *bridge*, counted as held for nothing once its skill was met; in play that read as a perk that could not be clicked and a tree that could not be climbed, so it went. The same day the crafting trees stopped being hidden and their perks stopped being judged no-effect for being in them: a mod may give followers those skills, and a perk is judged by what it does.
-
-Verdicts are the catalog's word, from reading the records, not from play. Until a perk has been measured on an NPC ([DESIGN.md](DESIGN.md) P0: "measure the effective outcome, not just membership") the tooltip says *expected to work*. A perk from another mod's tree that the catalog doesn't know is judged by its entry points and marked *unverified*.
+*(Until 2026-09-22 each perk carried a verdict -- works, situational, unverified, no effect -- from a catalog of vanilla perks and a reading of entry points, for the hovers. The hovers stopped showing it on 2026-09-21, and with nothing reading it the catalog went. Until 2026-09-21 a no-effect perk was a bridge, counted as held for nothing; in play it read as a perk that could not be clicked, so it went too.)*
 
 **With Follower Tactics**, two perk families gain a second meaning: Tactics' settings can require the school's Dual Casting perk before a follower dual-casts, and the Power Bash perk before they power-bash. The perk rows say so when Tactics is installed.
 

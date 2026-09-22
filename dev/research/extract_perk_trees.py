@@ -10,8 +10,8 @@ avif-raw.json and perks-raw.json (large, not committed). Converting writes:
   perk-trees.json   every node and rank, conditions and effects as read
   perk-trees.txt    the same, readable: one line per node
   ../../tests/progression/data/vanilla-perks.json
-                    the core's own format (progression/core/PerkData.h): entry points as
-                    the engine numbers them, conditions as the core models them
+                    what the tests read (tests/progression/PerkData.h): each node's
+                    place and ranks, conditions as the core models them
 
 Nothing is written outside this repository and no plugin is modified; the
 houseCARL tools used are read_record and batch_record_detail, both read-only.
@@ -236,13 +236,12 @@ def convert():
                 fid = nxt if nxt and ':' in nxt else None
             first = perks[node['perk']]
             out_nodes.append({'skill': skill, 'name': first['name'], 'x': node['x'], 'y': node['y'],
-                              'ranks': ranks, 'effects': {'entryPoints': sorted(entry_points),
-                                                          'ability': ability, 'quest': quest}})
+                              'ranks': ranks})
             reqs = ' > '.join(
                 perks_rank_line(r) for r in ranks)
             lines.append(f"  {first['name']} ({first['editorid']}, {form_key(node['perk'])}): {reqs}"
                          f"  eps={sorted(entry_points)}{' ability' if ability else ''}{' quest' if quest else ''}")
-    target = REPO / 'tests' / 'data' / 'vanilla-perks.json'
+    target = REPO / 'tests' / 'progression' / 'data' / 'vanilla-perks.json'
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps({'source': 'Skyrim.esm, read through houseCARL; see dev/research/extract_perk_trees.py',
                                   'nodes': out_nodes}, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')

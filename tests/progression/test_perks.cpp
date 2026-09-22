@@ -9,7 +9,6 @@ using fp::Condition;
 using fp::ConditionFunction;
 using fp::FormKey;
 using fp::PerkBlock;
-using fp::PerkEffect;
 using fp::Skill;
 
 namespace
@@ -17,7 +16,7 @@ namespace
 
 // A small One-Handed tree with the shapes the vanilla ones have: a ranked
 // root, children that need it, a node with two parents as an OR group (with
-// the trailing OR vanilla writes), and a no-effect node standing between a
+// the trailing OR vanilla writes), and a node standing between a
 // parent and a useful child.
 constexpr int kOneHanded = 6;
 
@@ -42,14 +41,12 @@ Condition Has(std::uint32_t local, bool orNext = false)
     return {ConditionFunction::HasPerk, -1, F(local), Comparison::Equal, 1.0f, orNext, {}};
 }
 
-fp::PerkNode Node(std::string name, std::vector<fp::PerkRank> ranks, PerkEffect effect = PerkEffect::Works,
-                  float y = 0.0f)
+fp::PerkNode Node(std::string name, std::vector<fp::PerkRank> ranks, float y = 0.0f)
 {
     fp::PerkNode n;
     n.skill = fp::Skill::OneHanded;
     n.name = std::move(name);
     n.ranks = std::move(ranks);
-    n.effect = effect;
     n.y = y;
     return n;
 }
@@ -63,10 +60,10 @@ struct Tree
     {
         armsman = graph.Add(Node("Armsman", {{F(0x10), "", {}}, {F(0x11), "", {AtLeast(20), Has(0x10)}}}));
         stance = graph.Add(Node("Stance", {{F(0x20), "", {Has(0x10), AtLeast(20)}}}));
-        savage = graph.Add(Node("Savage", {{F(0x30), "", {Has(0x20), AtLeast(50)}}}, PerkEffect::Works, 0.4f));
-        charge = graph.Add(Node("Charge", {{F(0x40), "", {Has(0x20), AtLeast(50)}}}, PerkEffect::Situational, 0.2f));
+        savage = graph.Add(Node("Savage", {{F(0x30), "", {Has(0x20), AtLeast(50)}}}, 0.4f));
+        charge = graph.Add(Node("Charge", {{F(0x40), "", {Has(0x20), AtLeast(50)}}}, 0.2f));
         paralyze = graph.Add(Node("Paralyze", {{F(0x50), "", {AtLeast(100), Has(0x40, true), Has(0x30, true)}}}));
-        zoom = graph.Add(Node("Zoom", {{F(0x60), "", {Has(0x10), AtLeast(30)}}}, PerkEffect::NoEffect));
+        zoom = graph.Add(Node("Zoom", {{F(0x60), "", {Has(0x10), AtLeast(30)}}}));
         shot = graph.Add(Node("Shot", {{F(0x70), "", {Has(0x60), AtLeast(50)}}}));
     }
 };
@@ -145,7 +142,7 @@ TEST_CASE("two parents joined by OR: either one will do", "[perks]")
     CHECK(fp::ConditionsMet({t.graph, h, skills, 1}, t.graph.Node(t.paralyze).ranks[0]));
 }
 
-TEST_CASE("a perk with no effect on companions is learned like any other, to reach what needs it", "[perks]")
+TEST_CASE("a perk is learned to reach what needs it, whatever it does itself", "[perks]")
 {
     Tree t;
     fp::Holdings h;
@@ -287,19 +284,6 @@ TEST_CASE("the requirement shown for a rank is its own skill's threshold", "[per
     CHECK(fp::SkillRequirement(t.graph.Node(t.armsman).ranks[1], fp::Skill::OneHanded) == 20);
     CHECK(fp::SkillRequirement(t.graph.Node(t.paralyze).ranks[0], fp::Skill::OneHanded) == 100);
     CHECK(fp::SkillRequirement(t.graph.Node(t.paralyze).ranks[0], fp::Skill::Block) == 0);
-}
-
-TEST_CASE("the catalog reads a perk's effects", "[perks]")
-{
-    const FormKey modded{"Ordinator.esp", 0x1};
-    CHECK(fp::Classify(modded, {{35}, false, false}).effect == PerkEffect::Works);
-    CHECK(fp::Classify(modded, {{18}, false, false}).effect == PerkEffect::Situational);
-    CHECK(fp::Classify(modded, {{54}, false, false}).effect == PerkEffect::Unverified);
-    CHECK(fp::Classify(modded, {{20, 27}, false, false}).effect == PerkEffect::NoEffect);
-    CHECK(fp::Classify(modded, {{}, true, false}).effect == PerkEffect::Works);
-    CHECK(fp::Classify(modded, {{}, false, false}).effect == PerkEffect::Unverified);
-    CHECK(fp::Classify(modded, {{150}, false, false}).effect == PerkEffect::Unverified);
-    // Judged by what it does, whatever tree it is in.
 }
 
 TEST_CASE("a condition compares as the engine does, whichever way it is written", "[perks]")
