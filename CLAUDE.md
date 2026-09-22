@@ -143,8 +143,7 @@ there IS a real check, so use it.
 **Each preset's `tidy` lints what its own compile database covers, and no more**: the core presets lint `src/core`, and `src/game` and `src/plugin.cpp` -- which appear only in the *plugin's* database -- are covered by `cmake --build --preset debug --target tidy`. Getting `src/game` covered needs two
 flags that are easy to get wrong:
 
-- `--header-filter=src.(core|game)` keeps CommonLibSSE's thousands of header
-  lines quiet while still checking ours.
+- `--header-filter`, this checkout's `src/` as an absolute path, keeps CommonLibSSE's thousands of header lines quiet while still checking ours. Until 2026-09-22 it named folders (`src.(core|game)`), and every finding in a `src/progression` header was dropped unseen.
 - `--extra-arg-before=/Y-` disables the precompiled header. MSVC's `.pch` is not
   a format clang can read, and **without this clang-tidy fails outright** with
   `not a valid precompiled PCH file` -- while reporting zero findings, which

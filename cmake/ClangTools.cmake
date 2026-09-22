@@ -126,6 +126,17 @@ if(FT_CLANG_TIDY)
     # The stamps deliberately do NOT depend on the compile database: it is
     # rewritten on every configure, and depending on it would mean a full
     # re-check after every build. Delete build/<preset>/tidy to force one.
+    # Reports from any header under this tree's src/, by its absolute path: a
+    # list of folder names left src/progression out until 2026-09-22, and a
+    # bare "src" would also match a vendored library's src/. clang-tidy prints
+    # mixed separators (src\core/I18n.h), hence either slash.
+    set(FT_TIDY_HEADER_FILTER "${CMAKE_SOURCE_DIR}/src/")
+    foreach(_c . + * ? ^ $ "(" ")" "|" "{" "}" "[")
+        string(REPLACE "${_c}" "\\${_c}" FT_TIDY_HEADER_FILTER "${FT_TIDY_HEADER_FILTER}")
+    endforeach()
+    string(REPLACE "/" "[/\\]" FT_TIDY_HEADER_FILTER "${FT_TIDY_HEADER_FILTER}")
+    unset(_c)
+
     set(FT_TIDY_STAMPS "")
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/tidy")
     foreach(_src IN LISTS FT_TIDY_SOURCES)
@@ -136,7 +147,7 @@ if(FT_CLANG_TIDY)
             OUTPUT "${_stamp}"
             COMMAND "${FT_CLANG_TIDY}"
                     -p "${CMAKE_BINARY_DIR}"
-                    --header-filter=src.\(core\|game\)
+                    "--header-filter=${FT_TIDY_HEADER_FILTER}"
                     --extra-arg-before=/Y-
                     --extra-arg=-Wno-unused-command-line-argument
                     "${_src}"
