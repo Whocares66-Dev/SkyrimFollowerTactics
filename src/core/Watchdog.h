@@ -49,8 +49,11 @@ struct FightBook
 // What the tick reads of one pin's thing.
 struct PinSeen
 {
-    bool carried{true}; // a copy of the variant is in the bag (an item; a spell or a voice is always carried)
-    bool on{false};     // worn where the pin says, readied in the voice, in the hand
+    // Still theirs, as the engine answers for each kind: a copy of the
+    // variant in the bag, for an item; known, for a spell, a power or a
+    // shout.
+    bool carried{true};
+    bool on{false}; // worn where the pin says, readied in the voice, in the hand
 };
 
 enum class PinVerdict : std::uint8_t
@@ -66,8 +69,8 @@ enum class PinVerdict : std::uint8_t
 struct BanSeen
 {
     // A thing of the ban is in the bag: a row of the variant it names, or
-    // any copy of the form where it names none. A spell or a shout is
-    // always carried, as a pin's is. The same question PinSeen asks, and
+    // any copy of the form where it names none; a spell, a power or a shout
+    // known. The same question PinSeen asks, and
     // the same answer: a mark holds while there is something for it to
     // hold about.
     bool carried{true};

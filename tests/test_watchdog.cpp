@@ -295,3 +295,34 @@ TEST_CASE("a ban on a variant with no row left is dropped, and enforces nothing"
     REQUIRE(plan.dropBans == std::vector<std::size_t>{0});
     REQUIRE(plan.steps.empty());
 }
+
+TEST_CASE("a pin and a ban on a spell they no longer know are dropped, as a thing no longer carried", "[watchdog]")
+{
+    // A spell forgotten -- through Progression, a script, the console --
+    // reads as not carried (game/Pins.cpp, StillCarried, asks the engine's
+    // HasSpell): the pin has nothing to put back, the ban nothing to keep
+    // off, and neither asks for anything.
+    Holdable flames;
+    flames.form = 0x12FCD;
+    flames.kind = Kind::Spell;
+    flames.grip = Grip::Either;
+    const std::vector<Pin> pins{PinOf(flames, Hand::Left)};
+    const Bans bans{{0x2B96B, std::nullopt}};
+    PinSeen forgotten;
+    forgotten.carried = false;
+    BanSeen alsoForgotten;
+    alsoForgotten.carried = false;
+
+    const WatchPlan plan =
+        PlanWatch(pins, std::span(&forgotten, 1), bans, std::span(&alsoForgotten, 1), true, false, {});
+    CHECK(plan.dropPins == std::vector<std::size_t>{0});
+    CHECK(plan.dropBans == std::vector<std::size_t>{0});
+    CHECK(plan.steps.empty());
+
+    // Known, off the hand: put back, as before.
+    PinSeen known;
+    const WatchPlan back = PlanWatch(pins, std::span(&known, 1), {}, {}, true, false, {});
+    CHECK(back.dropPins.empty());
+    REQUIRE(back.steps.size() == 1);
+    CHECK(back.steps[0].act == WatchAct::PutBack);
+}

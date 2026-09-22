@@ -752,9 +752,12 @@ AfterFight NoteFight(RE::Actor *actor, std::vector<Pin> &pins, bool fighting)
 
 // Do they still HAVE it -- which is not the same as wearing it. A pin is
 // dropped for this and nothing else: taking a thing off is the player's or
-// the AI's business, and a pin exists precisely to answer that. Only an
-// item can go missing; a spell known and a shout unlocked are theirs for
-// good, so those are always carried, as PinSeen has it.
+// the AI's business, and a pin exists precisely to answer that. Each kind
+// is asked the engine's own way: an item while a copy is in the bag; a
+// spell or a power while HasSpell says they know it -- its walk, which
+// Progression's spell view stands in front of, so a spell forgotten there,
+// or taken by a script or the console, is gone here too; a shout while
+// HasShout finds it on their record's list (38783 on AE reads only that).
 //
 // Asked in two places and defined once, because the two disagreeing is the
 // bug this fixed: the watchdog dropped a pin only when the thing was gone,
@@ -763,12 +766,14 @@ AfterFight NoteFight(RE::Actor *actor, std::vector<Pin> &pins, bool fighting)
 // change what they hold, save, load, take them back, and the pins were
 // gone while the bans -- which never asked -- were still there
 // (dev/PIN_RELOAD.md, reported in play 2026-09-19).
-bool StillCarried(RE::Actor *actor, RE::TESForm *thing, bool voice, const std::optional<ft::ItemVariant> &variant)
+bool StillCarried(RE::Actor *actor, RE::TESForm *thing, const std::optional<ft::ItemVariant> &variant)
 {
     if (!actor || !thing)
         return false;
-    if (voice || thing->Is(RE::FormType::Spell))
-        return true;
+    if (auto *spell = thing->As<RE::SpellItem>())
+        return actor->HasSpell(spell);
+    if (auto *shout = thing->As<RE::TESShout>())
+        return actor->HasShout(shout);
     auto *object = thing->As<RE::TESBoundObject>();
     if (!object)
         return true; // nothing that can be worn or readied: left alone
@@ -844,12 +849,16 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             {
                 // A shout is no bound object and a power is no hand spell:
                 // readied or not is the voice slot, and back it goes.
-                seen.on = InVoice(actor, read.form);
+                seen.carried = StillCarried(actor, read.form, {});
+                seen.on = seen.carried && InVoice(actor, read.form);
                 read.why = "put away from the voice";
             }
             else if (read.form->Is(RE::FormType::Spell))
             {
-                seen.on = EquippedIn(actor, read.form, pin.hands);
+                // Known, or the pin goes: a spell forgotten has nothing to
+                // put back.
+                seen.carried = StillCarried(actor, read.form, {});
+                seen.on = seen.carried && EquippedIn(actor, read.form, pin.hands);
                 read.why = "put away";
             }
             else if (auto *object = read.form->As<RE::TESBoundObject>())
@@ -858,7 +867,7 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
                 // pin goes; on, by a row of the variant worn where the pin
                 // says, not the form's.
                 read.variant = pin.thing.variant;
-                seen.carried = StillCarried(actor, read.form, false, read.variant);
+                seen.carried = StillCarried(actor, read.form, read.variant);
                 seen.on = seen.carried && Worn(actor, object, pin.hands, read.variant);
             }
             else
@@ -901,7 +910,7 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             // A ban holds while there is something for it to hold about,
             // exactly as a pin does (StillCarried): a row of the variant it
             // names, any copy of the form where it names none.
-            seen.carried = StillCarried(actor, thing, banDescribed.back().IsVoice(), ban.variant);
+            seen.carried = StillCarried(actor, thing, ban.variant);
             seen.pinned = FindPin(pins, banDescribed.back()) != nullptr;
             seen.on = OnAnywhere(actor, thing, banDescribed.back());
             if (!seen.on || seen.pinned)
@@ -1190,14 +1199,7 @@ void ProbeCombatInventory(RE::Actor *actor)
             missing += (missing.empty() ? "" : ", ") + std::string(NameOr(spell, "?")) + " (" +
                        std::to_string(static_cast<int>(spell->CalculateMagickaCost(actor))) + ")";
     };
-    if (auto *npc = actor->GetActorBase())
-    {
-        if (auto *list = npc->GetSpellList())
-            for (std::uint32_t i = 0; i < list->numSpells; ++i)
-                consider(list->spells[i]);
-    }
-    for (auto *spell : actor->GetActorRuntimeData().addedSpells)
-        consider(spell);
+    ForEachSpell(actor, consider);
     auto *owner = actor->AsActorValueOwner();
     log::pins.debug("{} combat inventory left out: {} -- magicka {:.0f}/{:.0f}", Describe(actor),
                     missing.empty() ? "nothing" : missing,
@@ -1664,7 +1666,7 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
         // next managed, which is what a pin is for; demanding it be worn
         // here forgot the pin of anyone who had sheathed or swapped since
         // the save.
-        const bool has = StillCarried(actor, thing, described.IsVoice(), entry.variant);
+        const bool has = StillCarried(actor, thing, entry.variant);
         if (!has || !Pinnable(described))
         {
             log::pins.warn("{} saved pin on {}{} ({}) does not hold -- {} -- forgotten", Describe(actor), name,
@@ -1695,8 +1697,7 @@ void AdoptBans(RE::Actor *actor, const Bans &bans)
         }
         // Carried, as a pin asks it: a row of the variant it names, any
         // copy of the form where it names none.
-        const bool present =
-            StillCarried(actor, thing, DescribeHoldable(actor, thing, ban.variant).IsVoice(), ban.variant);
+        const bool present = StillCarried(actor, thing, ban.variant);
         if (!present)
         {
             log::pins.warn("{} saved ban on {} -- no longer carried -- forgotten", Describe(actor), log::NameOf(thing));
