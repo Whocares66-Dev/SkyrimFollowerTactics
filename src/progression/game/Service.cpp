@@ -505,9 +505,8 @@ namespace
 // The skill page's, which says it with a sound: nothing is shown.
 void LearnNode(const FormKey &key, int nodeId)
 {
-    auto [c, actor] = Present(key, [](const std::string &name) {
-        Refuse(N_("{} must be with you to learn a perk."), name);
-    });
+    auto [c, actor] =
+        Present(key, [](const std::string &name) { Refuse(N_("{} must be with you to learn a perk."), name); });
     if (!c)
         return;
     const PerkGraph &graph = Graph();
@@ -609,9 +608,8 @@ namespace
 // under the lock. The skill page's, as LearnNode.
 void UnlearnNode(const FormKey &key, int nodeId)
 {
-    auto [c, actor] = Present(key, [](const std::string &name) {
-        Refuse(N_("{} must be with you to unlearn a perk."), name);
-    });
+    auto [c, actor] =
+        Present(key, [](const std::string &name) { Refuse(N_("{} must be with you to unlearn a perk."), name); });
     if (!c)
         return;
     const PerkGraph &graph = Graph();
@@ -680,9 +678,8 @@ void LearnFromTome(std::uint32_t actorId, std::uint32_t bookId)
         RE::SpellItem *spell = TomeSpell(book);
         if (!key || !spell)
             return;
-        auto [c, actor] = Present(*key, [](const std::string &name) {
-            Refuse(N_("{} must be with you to learn a spell."), name);
-        });
+        auto [c, actor] =
+            Present(*key, [](const std::string &name) { Refuse(N_("{} must be with you to learn a spell."), name); });
         if (!c)
             return;
         if (!spellview::Installed())
@@ -731,9 +728,8 @@ void ForgetSpellByForm(std::uint32_t actorId, std::uint32_t spellId)
         auto *spell = RE::TESForm::LookupByID<RE::SpellItem>(spellId);
         if (!key || !spell || spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell)
             return;
-        auto [c, actor] = Present(*key, [](const std::string &name) {
-            Refuse(N_("{} must be with you to forget a spell."), name);
-        });
+        auto [c, actor] =
+            Present(*key, [](const std::string &name) { Refuse(N_("{} must be with you to forget a spell."), name); });
         if (!c)
             return;
         if (!spellview::Installed())
@@ -843,9 +839,8 @@ void SetLevelling(bool on)
 void AssignSkillAll(const FormKey &key, Skill skill, int direction)
 {
     Act([key = key, skill, direction] {
-        auto [c, actor] = Present(key, [](const std::string &name) {
-            Refuse(N_("{} must be with you to change their skills."), name);
-        });
+        auto [c, actor] = Present(
+            key, [](const std::string &name) { Refuse(N_("{} must be with you to change their skills."), name); });
         if (!c)
             return;
         const Rules r = ReadRules();
@@ -861,9 +856,8 @@ void AssignSkillAll(const FormKey &key, Skill skill, int direction)
 void ResetPerks(const FormKey &key, Skill skill)
 {
     Act([key = key, skill] {
-        auto [c, actor] = Present(key, [](const std::string &name) {
-            Refuse(N_("{} must be with you to reset their perks."), name);
-        });
+        auto [c, actor] = Present(
+            key, [](const std::string &name) { Refuse(N_("{} must be with you to reset their perks."), name); });
         if (!c)
             return;
         const auto unlearned = fp::ResetPerks(*c, skill, Graph(), HoldingsOf(*c, OnRecord(*c, actor)));

@@ -1562,8 +1562,7 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
         case ft::ConsumableKind::Food:
             return strongest ? TrFormat("Strongest {} food", effect) : TrFormat("Weakest {} food", effect);
         case ft::ConsumableKind::Ingredient:
-            return strongest ? TrFormat("Strongest {} ingredient", effect)
-                             : TrFormat("Weakest {} ingredient", effect);
+            return strongest ? TrFormat("Strongest {} ingredient", effect) : TrFormat("Weakest {} ingredient", effect);
         default:
             return strongest ? TrFormat("Strongest {} potion", effect) : TrFormat("Weakest {} potion", effect);
         }
@@ -2873,8 +2872,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // rest of the row does.
             const DimText grey(!available);
             if (const std::size_t unavailable = ft::ActionsNotHad(rule, view.holdings); unavailable > 0)
-                Im::TextUnformatted(
-                    TrFormat("{} actions ({} unavailable)", rule.actions.size(), unavailable).c_str());
+                Im::TextUnformatted(TrFormat("{} actions ({} unavailable)", rule.actions.size(), unavailable).c_str());
             else
                 Im::TextUnformatted(TrFormat("{} actions", rule.actions.size()).c_str());
         }
@@ -3194,8 +3192,8 @@ const std::vector<ExtraColumn> kEffectColumns{
     {N_("Duration"), [](const SheetRow &r) { return r.extra; }},
     {N_("Hidden"), [](const SheetRow &r) { return std::string(r.mark != 0 ? "x" : ""); }, true},
 };
-const ExtraColumn kDescriptionColumn{N_("Description"), [](const SheetRow &r) { return r.description; }, false,
-                                     false, true};
+const ExtraColumn kDescriptionColumn{N_("Description"), [](const SheetRow &r) { return r.description; }, false, false,
+                                     true};
 std::vector<ExtraColumn> WithDescription()
 {
     std::vector<ExtraColumn> columns = kEffectColumns;
@@ -4526,10 +4524,10 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
         Im::PopStyleVar(1);
         return;
     }
-    Im::TableSetupColumn(Tr("Name"), Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
-                         static_cast<Im::ImGuiID>(Column::Name));
-    Im::TableSetupColumn(consumables ? Tr("Effect") : Tr("Type"), Im::ImGuiTableColumnFlags_WidthFixed, typeWidth + gutter,
-                         static_cast<Im::ImGuiID>(Column::Type));
+    Im::TableSetupColumn(Tr("Name"), Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort,
+                         1.0f, static_cast<Im::ImGuiID>(Column::Name));
+    Im::TableSetupColumn(consumables ? Tr("Effect") : Tr("Type"), Im::ImGuiTableColumnFlags_WidthFixed,
+                         typeWidth + gutter, static_cast<Im::ImGuiID>(Column::Type));
     // The stat, highest first on the first click: for a weapon or a piece
     // of armour it is the number, and the rest wait on the item's page.
     if (weapons)
@@ -5093,8 +5091,8 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
         Im::PopStyleVar(1);
         return;
     }
-    Im::TableSetupColumn(Tr("Name"), Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
-                         static_cast<Im::ImGuiID>(Column::Name));
+    Im::TableSetupColumn(Tr("Name"), Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort,
+                         1.0f, static_cast<Im::ImGuiID>(Column::Name));
     if (allList)
         Im::TableSetupColumn(Tr("School"), Im::ImGuiTableColumnFlags_WidthFixed, schoolWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::School));
@@ -5103,7 +5101,8 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
     if (!voice)
         Im::TableSetupColumn(Tr("Level"), Im::ImGuiTableColumnFlags_WidthFixed, levelWidth + gutter,
                              static_cast<Im::ImGuiID>(Column::Level));
-    Im::TableSetupColumn(Tr("Mag"), Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
+    Im::TableSetupColumn(Tr("Mag"),
+                         Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                          magnitudeWidth, static_cast<Im::ImGuiID>(Column::Magnitude));
     if (!voice)
         Im::TableSetupColumn(Tr("Cost"), Im::ImGuiTableColumnFlags_WidthFixed, costWidth + gutter,
@@ -5443,8 +5442,8 @@ void DrawEffects(const CharacterView &view)
         Im::PopStyleVar(1);
         return;
     }
-    Im::TableSetupColumn(Tr("Effect"), Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort, 1.0f,
-                         static_cast<Im::ImGuiID>(Column::Name));
+    Im::TableSetupColumn(Tr("Effect"), Im::ImGuiTableColumnFlags_WidthStretch | Im::ImGuiTableColumnFlags_DefaultSort,
+                         1.0f, static_cast<Im::ImGuiID>(Column::Name));
     Im::TableSetupColumn(Tr("Magnitude"),
                          Im::ImGuiTableColumnFlags_WidthFixed | Im::ImGuiTableColumnFlags_PreferSortDescending,
                          magnitudeWidth + gutter, static_cast<Im::ImGuiID>(Column::Magnitude));
@@ -5762,8 +5761,8 @@ void DrawCharacter(const CharacterView &view)
     {
         DrawStatRow(geo, levelLabel.c_str(), experience, kExperience, nullptr, {});
         if (progress && progress->engine != progress->level && Im::IsItemHovered(0))
-            Tooltip(TrFormat("Level {} from the game, {} with what they have learned", progress->engine,
-                             progress->level));
+            Tooltip(
+                TrFormat("Level {} from the game, {} with what they have learned", progress->engine, progress->level));
     }
     else
     {

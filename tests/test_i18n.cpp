@@ -80,4 +80,3 @@ TEST_CASE("the game's language names its catalog", "[i18n]")
     REQUIRE(LocaleFor("KLINGON") == "en-US");
     REQUIRE(LocaleFor("") == "en-US");
 }
-

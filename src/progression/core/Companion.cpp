@@ -256,7 +256,8 @@ AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, in
     out.lower = out.canLower ? TrFormat("Click to reduce {}", name) : TrFormat("Already at minimum {}", name);
     out.lowest = out.canLower ? TrFormat("Click to reduce {} to minimum", name) : out.lower;
     out.canRaise = CheckAttribute(c, attribute, +1, available, base, floor, step) == AssignBlock::None;
-    out.raise = out.canRaise ? TrFormat("Click to increase {}", name) : std::string(Tr("No attribute points available"));
+    out.raise =
+        out.canRaise ? TrFormat("Click to increase {}", name) : std::string(Tr("No attribute points available"));
     out.highest = out.canRaise ? TrFormat("Click to increase {} to maximum", name) : out.raise;
     return out;
 }
@@ -300,13 +301,12 @@ SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &ba
     out.lower = out.canLower ? std::string(Tr("Click to reduce skill")) : cannotLower;
     out.lowest = out.canLower ? std::string(Tr("Click to reduce to minimum skill")) : cannotLower;
     out.canRaise = raise.block == AssignBlock::None;
-    const std::string cannotRaise =
-        raise.block == AssignBlock::AtCap ? std::string(Tr("Already at maximum skill")) : std::string(Tr("Not enough XP"));
+    const std::string cannotRaise = raise.block == AssignBlock::AtCap ? std::string(Tr("Already at maximum skill"))
+                                                                      : std::string(Tr("Not enough XP"));
     out.raise = out.canRaise ? std::string(Tr("Click to increase skill")) : cannotRaise;
     out.highest = out.canRaise ? std::string(Tr("Click to increase to maximum skill")) : cannotRaise;
     out.canResetPerks = HeldInTree(skill, graph, holdings);
-    out.resetPerks =
-        out.canResetPerks ? std::string(Tr("Click to reset perks")) : std::string(Tr("No perks to reset"));
+    out.resetPerks = out.canResetPerks ? std::string(Tr("Click to reset perks")) : std::string(Tr("No perks to reset"));
     return out;
 }
 

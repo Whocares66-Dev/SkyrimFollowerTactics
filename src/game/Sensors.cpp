@@ -3261,7 +3261,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // percent, the one that applies -- "582 (75%)" in a list that caps
         // at 75.
         SheetRow armorRow = Row(Tr("Armor"), Fmt("%.0f", EffectiveArmor(actor)) + " (" +
-                                             Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")");
+                                                 Fmt("%.0f%%", DamageReduction(actor) * 100.0f) + ")");
         armorRow.breakdown = ArmorBreakdown(actor);
         s.rows.push_back(std::move(armorRow));
         // Each resistance with where it comes from as its hover text: the
@@ -3392,7 +3392,7 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
         if (live->flags.all(Flag::kAllowDualWielding))
         {
             SheetRow row = note(Row(Tr("Dual Wield"), ""), Tr("- Can hold a weapon in each hand\n"
-                                                           "- Staves do not count"));
+                                                              "- Staves do not count"));
             row.icon = kGlyphTick;
             s.rows.push_back(std::move(row));
         }
@@ -3402,10 +3402,10 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
         const auto &g = live->generalData;
         SheetSection s{Tr("General"), {}, {}};
         s.rows.push_back(note(Row(Tr("Offensive"), chance(g.offensiveMult)), Tr("- Higher: attacks more often\n"
-                                                                             "- More power attacks")));
-        s.rows.push_back(note(Row(Tr("Defensive"), chance(g.defensiveMult)),
-                              Tr("- Higher: blocks more, holds it longer\n"
-                                 "- Bashes more, given a shield or a weapon")));
+                                                                                "- More power attacks")));
+        s.rows.push_back(
+            note(Row(Tr("Defensive"), chance(g.defensiveMult)), Tr("- Higher: blocks more, holds it longer\n"
+                                                                   "- Bashes more, given a shield or a weapon")));
         s.rows.push_back(note(Row(Tr("Group Offensive"), chance(g.groupOffensiveMult)),
                               Tr("- Replaces Offensive when several attack one target\n"
                                  "- Higher: stays offensive in a crowd")));
@@ -3436,9 +3436,9 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
         s.rows.push_back(note(Row(Tr("Power Attack, Blocking"), score(m.powerAttackBlockingMult)),
                               Tr("- Higher: power-attacks a blocking target more\n"
                                  "- Breaks the block")));
-        s.rows.push_back(note(Row(Tr("Bash"), score(m.bashMult)),
-                              Tr("- Higher: bashes more, with a shield or a bash attack\n"
-                                 "- A bash can stagger")));
+        s.rows.push_back(
+            note(Row(Tr("Bash"), score(m.bashMult)), Tr("- Higher: bashes more, with a shield or a bash attack\n"
+                                                        "- A bash can stagger")));
         s.rows.push_back(note(Row(Tr("Bash, Recoiled"), score(m.bashRecoilMult)),
                               Tr("- Higher: bashes a target recoiling from its blocked attack")));
         s.rows.push_back(
@@ -4348,7 +4348,8 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         else
         {
             if (p != 0.0f)
-                part(TrFormat("{}% {}", Fmt("%+.0f", k.power.sign * p), Tr(k.power.effect)), {{&k.power, p}}, k.power.sign * p);
+                part(TrFormat("{}% {}", Fmt("%+.0f", k.power.sign * p), Tr(k.power.effect)), {{&k.power, p}},
+                     k.power.sign * p);
             if (m != 0.0f)
                 part(TrFormat("{}% {}", Fmt("%+.0f", k.mod.sign * m), Tr(k.mod.effect)), {{&k.mod, m}}, k.mod.sign * m);
         }
@@ -4391,11 +4392,15 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         {AV::kOneHanded, {{AV::kOneHandedModifier, N_("damage"), +1}, {AV::kOneHandedPowerModifier, N_("damage"), +1}}},
         {AV::kTwoHanded, {{AV::kTwoHandedModifier, N_("damage"), +1}, {AV::kTwoHandedPowerModifier, N_("damage"), +1}}},
         {AV::kBlock, {{AV::kBlockModifier, N_("blocked"), +1}, {AV::kBlockPowerModifier, N_("blocked"), +1}}},
-        {AV::kSmithing, {{AV::kSmithingModifier, N_("tempering"), +1}, {AV::kSmithingPowerModifier, N_("tempering"), +1}}},
-        {AV::kHeavyArmor, {{AV::kHeavyArmorModifier, N_("damage"), -1}, {AV::kHeavyArmorPowerModifier, N_("damage"), -1}}},
-        {AV::kLightArmor, {{AV::kLightArmorModifier, N_("damage"), -1}, {AV::kLightArmorPowerModifier, N_("damage"), -1}}},
+        {AV::kSmithing,
+         {{AV::kSmithingModifier, N_("tempering"), +1}, {AV::kSmithingPowerModifier, N_("tempering"), +1}}},
+        {AV::kHeavyArmor,
+         {{AV::kHeavyArmorModifier, N_("damage"), -1}, {AV::kHeavyArmorPowerModifier, N_("damage"), -1}}},
+        {AV::kLightArmor,
+         {{AV::kLightArmorModifier, N_("damage"), -1}, {AV::kLightArmorPowerModifier, N_("damage"), -1}}},
         {AV::kArchery, {{AV::kMarksmanModifier, N_("damage"), +1}, {AV::kMarksmanPowerModifier, N_("damage"), +1}}},
-        {AV::kPickpocket, {{AV::kPickpocketModifier, N_("chance"), +1}, {AV::kPickpocketPowerModifier, N_("chance"), +1}}},
+        {AV::kPickpocket,
+         {{AV::kPickpocketModifier, N_("chance"), +1}, {AV::kPickpocketPowerModifier, N_("chance"), +1}}},
         {AV::kLockpicking,
          {{AV::kLockpickingModifier, N_("sweet spot"), +1}, {AV::kLockpickingPowerModifier, N_("sweet spot"), +1}}},
         {AV::kSneak, {{AV::kSneakingModifier, N_("stealth"), +1}, {AV::kSneakingPowerModifier, N_("stealth"), +1}}},
@@ -4403,12 +4408,17 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
          {{AV::kAlchemyModifier, N_("potion strength"), +1}, {AV::kAlchemyPowerModifier, N_("potion strength"), +1}}},
         // Sell prices up and buy prices down by the same factor: "better prices".
         {AV::kSpeech,
-         {{AV::kSpeechcraftModifier, N_("better prices"), +1}, {AV::kSpeechcraftPowerModifier, N_("better prices"), +1}}},
-        {AV::kAlteration, {{AV::kAlterationModifier, N_("cost"), -1}, {AV::kAlterationPowerModifier, N_("duration"), +1}}},
-        {AV::kConjuration, {{AV::kConjurationModifier, N_("cost"), -1}, {AV::kConjurationPowerModifier, N_("duration"), +1}}},
-        {AV::kDestruction, {{AV::kDestructionModifier, N_("cost"), -1}, {AV::kDestructionPowerModifier, N_("damage"), +1}}},
+         {{AV::kSpeechcraftModifier, N_("better prices"), +1},
+          {AV::kSpeechcraftPowerModifier, N_("better prices"), +1}}},
+        {AV::kAlteration,
+         {{AV::kAlterationModifier, N_("cost"), -1}, {AV::kAlterationPowerModifier, N_("duration"), +1}}},
+        {AV::kConjuration,
+         {{AV::kConjurationModifier, N_("cost"), -1}, {AV::kConjurationPowerModifier, N_("duration"), +1}}},
+        {AV::kDestruction,
+         {{AV::kDestructionModifier, N_("cost"), -1}, {AV::kDestructionPowerModifier, N_("damage"), +1}}},
         {AV::kIllusion, {{AV::kIllusionModifier, N_("cost"), -1}, {AV::kIllusionPowerModifier, N_("magnitude"), +1}}},
-        {AV::kRestoration, {{AV::kRestorationModifier, N_("cost"), -1}, {AV::kRestorationPowerModifier, N_("healing"), +1}}},
+        {AV::kRestoration,
+         {{AV::kRestorationModifier, N_("cost"), -1}, {AV::kRestorationPowerModifier, N_("healing"), +1}}},
         {AV::kEnchanting, {none, none}},
     };
 

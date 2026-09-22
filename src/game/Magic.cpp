@@ -352,9 +352,8 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
         // The skill the spell asks for, and in brackets what the follower
         // has when it is short: "75 (has 51)". That the AI will not choose
         // it then goes without saying.
-        stats.rows.push_back(Row(Tr("Skill"), entry.aboveSkill
-                                                  ? TrFormat("{} (has {})", entry.levelValue, entry.skill)
-                                                  : std::to_string(entry.levelValue)));
+        stats.rows.push_back(Row(Tr("Skill"), entry.aboveSkill ? TrFormat("{} (has {})", entry.levelValue, entry.skill)
+                                                               : std::to_string(entry.levelValue)));
     }
     if (costliest)
     {

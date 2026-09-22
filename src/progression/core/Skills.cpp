@@ -34,8 +34,7 @@ constexpr std::array<SkillText, kSkillCount> kSkillText{{
     {N_("Enchanting"), "Enchanting"},
 }};
 
-constexpr std::array<std::string_view, kAttributeCount> kAttributeName{N_("Health"), N_("Magicka"),
-                                                                         N_("Stamina")};
+constexpr std::array<std::string_view, kAttributeCount> kAttributeName{N_("Health"), N_("Magicka"), N_("Stamina")};
 
 } // namespace
 

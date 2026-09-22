@@ -13,7 +13,8 @@ namespace ft::game
 void LoadLanguage()
 {
     std::vector<std::string> notes;
-    std::string locale = ft::log::ParseIniSettings(ft::ReadText("Data/SKSE/Plugins/FollowerTactics.ini"), notes).language;
+    std::string locale =
+        ft::log::ParseIniSettings(ft::ReadText("Data/SKSE/Plugins/FollowerTactics.ini"), notes).language;
     if (locale.empty())
     {
         const auto *setting = RE::GetINISetting("sLanguage:General");
