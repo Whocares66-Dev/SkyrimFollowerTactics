@@ -95,10 +95,6 @@ struct PerkNode
     float y{0.0f};
 };
 
-// What a node does for a companion, in words, for a hover: the verdict and
-// why.
-[[nodiscard]] std::string VerdictOf(const PerkNode &node);
-
 class PerkGraph
 {
   public:

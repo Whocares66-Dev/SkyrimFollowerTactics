@@ -418,22 +418,6 @@ Verdict Classify(const FormKey &firstRank, const EffectSummary &effects)
     }
 }
 
-std::string VerdictOf(const PerkNode &node)
-{
-    switch (node.effect)
-    {
-    case PerkEffect::Works:
-        return "For companions: " + node.note + " Expected from the record; not yet measured on an NPC.";
-    case PerkEffect::Situational:
-        return "For companions: " + node.note;
-    case PerkEffect::Unverified:
-        return "For companions: unverified. " + node.note;
-    case PerkEffect::NoEffect:
-    default:
-        return "No effect on companions: " + node.note + " Still learned to reach the perks above it.";
-    }
-}
-
 // --- the rules -------------------------------------------------------------------
 
 bool Held(const PerkRules &rules, const FormKey &form)

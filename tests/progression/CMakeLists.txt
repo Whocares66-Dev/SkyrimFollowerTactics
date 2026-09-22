@@ -6,6 +6,7 @@ add_executable(fp_tests
     test_levelling.cpp
     test_perks.cpp
     test_serialize.cpp
+    test_skills.cpp
     test_spells.cpp
     test_vanilla.cpp)
 target_link_libraries(fp_tests PRIVATE fp_core Catch2::Catch2WithMain nlohmann_json::nlohmann_json)

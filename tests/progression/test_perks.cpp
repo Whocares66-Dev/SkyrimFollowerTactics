@@ -301,3 +301,70 @@ TEST_CASE("the catalog reads a perk's effects", "[perks]")
     CHECK(fp::Classify(modded, {{150}, false, false}).effect == PerkEffect::Unverified);
     // Judged by what it does, whatever tree it is in.
 }
+
+TEST_CASE("a condition compares as the engine does, whichever way it is written", "[perks]")
+{
+    // One rank gated on One-Handed against 30 by `op`: learnable at `level`?
+    const auto passes = [](Comparison op, int level) {
+        fp::PerkGraph graph;
+        Condition c = AtLeast(30);
+        c.comparison = op;
+        graph.Add(Node("Test", {{F(0x80), "", {c}}}));
+        const fp::Holdings h;
+        const auto skills = OneHanded(level);
+        return fp::Status({graph, h, skills, 1}, 0).block == PerkBlock::None;
+    };
+    CHECK(passes(Comparison::Equal, 30));
+    CHECK_FALSE(passes(Comparison::Equal, 31));
+    CHECK(passes(Comparison::NotEqual, 31));
+    CHECK_FALSE(passes(Comparison::NotEqual, 30));
+    CHECK(passes(Comparison::Greater, 31));
+    CHECK_FALSE(passes(Comparison::Greater, 30));
+    CHECK(passes(Comparison::GreaterOrEqual, 30));
+    CHECK_FALSE(passes(Comparison::GreaterOrEqual, 29));
+    CHECK(passes(Comparison::Less, 29));
+    CHECK_FALSE(passes(Comparison::Less, 30));
+    CHECK(passes(Comparison::LessOrEqual, 30));
+    CHECK_FALSE(passes(Comparison::LessOrEqual, 31));
+}
+
+TEST_CASE("a perk can ask that another is not held", "[perks]")
+{
+    // HasPerk(0x10) == 0: a mod's either-or pair.
+    fp::PerkGraph graph;
+    Condition without = Has(0x10);
+    without.value = 0.0f;
+    graph.Add(Node("Either", {{F(0x10), "", {}}}));
+    const int other = graph.Add(Node("Or", {{F(0x90), "", {without}}}));
+    fp::Holdings h;
+    const auto skills = OneHanded(15);
+    CHECK(fp::Status({graph, h, skills, 1}, other).block == PerkBlock::None);
+    h.learned.insert(F(0x10));
+    CHECK(fp::Status({graph, h, skills, 1}, other).block != PerkBlock::None);
+}
+
+TEST_CASE("what a condition asks of something that is no skill is left to the engine", "[perks]")
+{
+    // An actor value that is no skill (Health), and a function Progression
+    // does not read (a quest stage, a faction rank): met here, as nothing
+    // here can judge them; the engine's own HasPerk has the last word.
+    fp::PerkGraph graph;
+    Condition health = AtLeast(500);
+    health.actorValue = 24;
+    Condition other = AtLeast(1000);
+    other.function = ConditionFunction::Other;
+    graph.Add(Node("Test", {{F(0xA0), "", {health, other}}}));
+    const fp::Holdings h;
+    const auto skills = OneHanded(15);
+    CHECK(fp::Status({graph, h, skills, 1}, 0).block == PerkBlock::None);
+}
+
+TEST_CASE("a graph read again starts empty", "[perks]")
+{
+    Tree t;
+    REQUIRE(t.graph.Size() == 7);
+    t.graph.Clear();
+    CHECK(t.graph.Size() == 0);
+    CHECK_FALSE(t.graph.Find(F(0x10)).has_value());
+    CHECK(t.graph.Tree(Skill::OneHanded).empty());
+}

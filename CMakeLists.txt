@@ -70,8 +70,9 @@ if(FT_SANITIZE)
     message(STATUS "FT_SANITIZE: AddressSanitizer enabled for the whole build tree")
 endif()
 
-# Test coverage, clang's source-based kind: every region of ft_core gets a
-# counter, ft_tests runs once, and llvm-cov turns the counts into a report
+# Test coverage, clang's source-based kind: every region of ft_core and
+# fp_core gets a counter, ft_tests and fp_tests run once each, and llvm-cov
+# turns the counts into a report
 # (the `coverage` target, tests/CMakeLists.txt). Needs clang-cl, which the
 # core-cov preset selects; cl.exe has no equivalent. The instrumented
 # objects ask the linker for clang_rt.profile themselves (a /DEFAULTLIB

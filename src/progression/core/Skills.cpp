@@ -82,21 +82,6 @@ std::optional<Attribute> AttributeFromKey(std::string_view key) noexcept
     return std::nullopt;
 }
 
-bool IsSchool(Skill s) noexcept
-{
-    switch (s)
-    {
-    case Skill::Alteration:
-    case Skill::Conjuration:
-    case Skill::Destruction:
-    case Skill::Illusion:
-    case Skill::Restoration:
-        return true;
-    default:
-        return false;
-    }
-}
-
 std::optional<Skill> SkillFromActorValue(int av) noexcept
 {
     if (av < 6 || av >= 6 + static_cast<int>(kSkillCount))

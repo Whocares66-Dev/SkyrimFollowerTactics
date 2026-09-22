@@ -3,11 +3,7 @@
 // skill's index plus 6 is its actor value (One-Handed is 6, Enchanting 23),
 // an attribute's plus 24 (Health 24, Magicka 25, Stamina 26). The game side
 // converts with that offset and nothing else (progression/game/Actors.cpp).
-//
-// Which of them a companion is trained in is decided here: the six combat
-// skills, the five schools and Sneak. A companion never smiths, brews,
-// enchants, barters, picks a lock or a pocket, so training those would be
-// growth nobody sees.
+// Every skill is a companion's as it is the player's.
 
 #include <array>
 #include <cstddef>
@@ -76,9 +72,6 @@ template <typename T> using PerAttribute = std::array<T, kAttributeCount>;
 [[nodiscard]] std::optional<Skill> SkillFromKey(std::string_view key) noexcept;
 [[nodiscard]] std::string_view Key(Attribute a) noexcept;
 [[nodiscard]] std::optional<Attribute> AttributeFromKey(std::string_view key) noexcept;
-
-// A school of magic: the five whose spells a tome can teach.
-[[nodiscard]] bool IsSchool(Skill s) noexcept;
 
 // The engine's actor value numbers, for the game side and for the files
 // that name them.

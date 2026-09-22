@@ -414,7 +414,6 @@ TEST_CASE("a skill's buttons say what a click does, or why it cannot", "[compani
 
 TEST_CASE("resetting a tree's perks returns them and leaves the skill", "[companion]")
 {
-    const fp::Rules r = Plain();
     Companion c = Lydia();
     const fp::PerkGraph graph = BladeTree();
     c.learning.skills[fp::Index(Skill::OneHanded)] = 12;
