@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 
 namespace fp
 {
@@ -117,7 +118,7 @@ int OwnAttributePoints(const PerAttribute<int> &base, const PerAttribute<int> &r
 
 int AttributePoints(const Companion &c, int level, int ownPoints) noexcept
 {
-    return std::max(level - 1 - ownPoints - Sum(c.learning.attributePoints), 0);
+    return std::max(std::max(level - 1 - ownPoints, 0) - Sum(c.learning.attributePoints), 0);
 }
 
 std::string ToAssign(int perkPoints, int attributePoints, double pool)
@@ -198,13 +199,16 @@ int AssignSkillAll(Companion &c, Skill skill, int direction, const PerSkill<int>
     return moved;
 }
 
-AssignBlock CheckAttribute(const Companion &c, Attribute attribute, int delta, int available) noexcept
+AssignBlock CheckAttribute(const Companion &c, Attribute attribute, int delta, int available, int base, int floor,
+                           int step) noexcept
 {
-    if (delta > 0 && available < delta)
-        return AssignBlock::NoPoints;
-    if (c.learning.attributePoints[Index(attribute)] + delta < 0)
-        return AssignBlock::NoneAssigned;
-    return AssignBlock::None;
+    if (delta > 0)
+        return available >= 1 ? AssignBlock::None : AssignBlock::NoPoints;
+    const std::size_t a = Index(attribute);
+    const int points = c.learning.attributePoints[a];
+    if (points > 0)
+        return AssignBlock::None; // one of ours, back to the pool
+    return base + c.learning.attributes[a] - step >= floor ? AssignBlock::None : AssignBlock::AtFloor;
 }
 
 void AssignAttribute(Companion &c, Attribute attribute, int delta, int step) noexcept
@@ -212,23 +216,24 @@ void AssignAttribute(Companion &c, Attribute attribute, int delta, int step) noe
     const std::size_t a = Index(attribute);
     int &points = c.learning.attributePoints[a];
     int &value = c.learning.attributes[a];
-    if (delta > 0)
+    const int toward = delta > 0 ? +1 : -1;
+    if (points != 0 && (points > 0) != (toward > 0))
     {
-        ++points;
-        value += step;
+        // Back toward none: what one point was worth when it moved.
+        value -= value / std::abs(points);
+        points += toward;
+        return;
     }
-    else if (points > 0)
-    {
-        value -= value / points;
-        --points;
-    }
+    value += toward * step;
+    points += toward;
 }
 
-int AssignAttributeAll(Companion &c, Attribute attribute, int direction, int available, int step) noexcept
+int AssignAttributeAll(Companion &c, Attribute attribute, int direction, int available, int base, int floor,
+                       int step) noexcept
 {
     const int delta = direction < 0 ? -1 : +1;
     int moved = 0;
-    while (CheckAttribute(c, attribute, delta, available) == AssignBlock::None)
+    while (CheckAttribute(c, attribute, delta, available, base, floor, step) == AssignBlock::None)
     {
         AssignAttribute(c, attribute, delta, step);
         available -= delta;
@@ -237,14 +242,15 @@ int AssignAttributeAll(Companion &c, Attribute attribute, int direction, int ava
     return moved;
 }
 
-AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, int available)
+AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, int available, int base, int floor,
+                                     int step)
 {
     const std::string name(Name(attribute));
     AttributeButtons out;
-    out.canLower = CheckAttribute(c, attribute, -1, available) == AssignBlock::None;
+    out.canLower = CheckAttribute(c, attribute, -1, available, base, floor, step) == AssignBlock::None;
     out.lower = out.canLower ? "Click to reduce " + name : "Already at minimum " + name;
     out.lowest = out.canLower ? "Click to reduce " + name + " to minimum" : out.lower;
-    out.canRaise = CheckAttribute(c, attribute, +1, available) == AssignBlock::None;
+    out.canRaise = CheckAttribute(c, attribute, +1, available, base, floor, step) == AssignBlock::None;
     out.raise = out.canRaise ? "Click to increase " + name : std::string("No attribute points available");
     out.highest = out.canRaise ? "Click to increase " + name + " to maximum" : out.raise;
     return out;

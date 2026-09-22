@@ -132,6 +132,11 @@ Practice Practise(Companion &c, Skill skill, double points, int base, const Skil
 // race's starting values, in attribute points (whole ones, never below 0).
 [[nodiscard]] int OwnAttributePoints(const PerAttribute<int> &base, const PerAttribute<int> &raceStart,
                                      const Rules &r) noexcept;
+// The attribute points to assign: what a player at `level` would have had,
+// less what their own values carry (`ownPoints`), never below 0; less the
+// points assigned here, a point taken back below their own values counting
+// as one returned. So a follower whose class carried them past the player's
+// count has none from their level, and has what they take back.
 [[nodiscard]] int AttributePoints(const Companion &c, int level, int ownPoints) noexcept;
 
 // Those two, and the reassigning pool, in words: "an attribute point and a
@@ -143,11 +148,10 @@ Practice Practise(Companion &c, Skill skill, double points, int base, const Skil
 enum class AssignBlock : std::uint8_t
 {
     None,
-    NoPoints,     // not enough in the pool, or no attribute points left
-    AtCap,        // the skill is at the cap
-    AtFloor,      // the skill is at its starting value
-    NoneAssigned, // no attribute point assigned here to take back
-    PerkNeedsIt,  // a perk bought here would no longer meet its requirement
+    NoPoints,    // not enough in the pool, or no attribute points left
+    AtCap,       // the skill is at the cap
+    AtFloor,     // the skill is at its starting value
+    PerkNeedsIt, // a perk bought here would no longer meet its requirement
 };
 
 struct AssignCheck
@@ -171,14 +175,23 @@ void AssignSkill(Companion &c, Skill skill, int delta, int base, const Rules &r)
 int AssignSkillAll(Companion &c, Skill skill, int direction, const PerSkill<int> &base, int floor,
                    const PerkGraph &graph, const Holdings &holdings, const Rules &r);
 
-[[nodiscard]] AssignBlock CheckAttribute(const Companion &c, Attribute attribute, int delta, int available) noexcept;
-// A point on adds `step` (iAVDhmsLevelUp now); a point off takes back
-// what one point added.
+// One attribute point onto an attribute (+1) or off it (-1), as a skill's
+// level is: off takes back a point assigned here, or, with none, a point of
+// their own value, down to `floor`, their race's starting value, and returns
+// it to spend elsewhere. `base` is the value as the engine gives them, `step`
+// what a point is worth (iAVDhmsLevelUp now).
+[[nodiscard]] AssignBlock CheckAttribute(const Companion &c, Attribute attribute, int delta, int available, int base,
+                                         int floor, int step) noexcept;
+// A point moving away from none adds or takes `step`; one moving back
+// toward none gives back what it was worth when it moved, as the player's
+// level-ups keep theirs: a setting changed later moves only the points
+// after it.
 void AssignAttribute(Companion &c, Attribute attribute, int delta, int step) noexcept;
 // An attribute moved as far as it goes one way (`direction` -1 down, +1
 // up): a point at a time, while CheckAttribute allows the next, `available`
 // the points to assign before the first. How many it moved.
-int AssignAttributeAll(Companion &c, Attribute attribute, int direction, int available, int step) noexcept;
+int AssignAttributeAll(Companion &c, Attribute attribute, int direction, int available, int base, int floor,
+                       int step) noexcept;
 
 // An attribute's buttons as the character sheet offers them, as a skill's
 // are (ButtonsFor): - and + a point, << and >> as far as it goes.
@@ -191,7 +204,8 @@ struct AttributeButtons
     std::string raise;   // +
     std::string highest; // >>
 };
-[[nodiscard]] AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, int available);
+[[nodiscard]] AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, int available, int base,
+                                                   int floor, int step);
 
 // The perks bought in a skill's tree unlearned, their points free again; the
 // skill left where it is. Their names, a rank after the first as

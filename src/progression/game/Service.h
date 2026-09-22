@@ -42,7 +42,8 @@ struct CompanionView
     PerSkill<int> floors{};       // where each skill starts for a new character of their race
     PerSkill<double> nextLevel{}; // skill XP from each trainable skill's level to the next
     PerSkill<int> base{};
-    PerAttribute<int> attributes{};
+    PerAttribute<int> attributes{};      // as the engine gives them, without the points
+    PerAttribute<int> attributeFloors{}; // their race's starting values: where taking back stops
     std::unordered_set<FormKey, FormKeyHash>
         onRecord; // perks on their own record not bought here, set-aside ones included
 };

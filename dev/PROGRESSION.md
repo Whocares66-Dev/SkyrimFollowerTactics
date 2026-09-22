@@ -321,5 +321,5 @@ Sneak and the crafting skills by use, skill books and trainers for companions, *
 1. **Supplement vanilla levelling** (this build) or push on owning engine level? Supplementing ships sooner and is safer; owning is purer.
 2. ~~Bridges for no-effect perks~~: decided 2026-09-21, bought like any other perk (above).
 3. **How far past the player** learning may take a companion: 5 levels now.
-4. **Attribute points from their own values.** An NPC's health, magicka and stamina come from their class, not from choices; counting what they carry above their race's start as points already spent may leave some followers with none to assign. Count it, count half, or not at all?
+4. ~~Attribute points from their own values~~: decided 2026-09-22. What their class put into their health, magicka and stamina counts as points spent, and can be taken back, down to their race's starting values, a point returned for each 10 to spend elsewhere, as a skill can be taken below their own value to its floor. So a follower their class carried past the player's count (Serana at 50) has no points from their level, and can move what they have.
 5. ~~Spells outside a companion's calling~~: decided 2026-09-21, a tome teaches anyone who does not know the spell, as it does the player (above).

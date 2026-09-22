@@ -127,6 +127,15 @@ inline constexpr std::size_t kGetBaseActorValueSlot = 3;
     return REL::Module::get().version() < SKSE::RUNTIME_SSE_1_6_629 ? 0xB0 : 0xB8;
 }
 
+// (actor, value): the value's current and maximum marked stale in the
+// cache on the actor's process, for the values whose info says the process
+// caches them (kAIProcessCachesCurrentValue, kAIProcessCachesMaxValue) --
+// the skills among them. The engine's own base setter calls it after every
+// write (38465 on AE, through 37561 on SE); a value read with the cache
+// fresh is the cache's, whatever the base now reads. Same ID on 1.7.104
+// (an exact match); SE's by its place in the setter and its shape.
+inline constexpr REL::RelocationID kMarkValueStale{37534, 38483};
+
 // The melee and projectile hit handler, and inside it the call that hands
 // the finished HitData to the victim's processing (38586 on AE, 37633 on
 // SE): the call hit mods commonly hook. The weapon, Block and armour skill

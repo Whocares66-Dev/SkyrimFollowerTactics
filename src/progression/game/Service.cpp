@@ -211,6 +211,21 @@ void NoteLevel(Companion &c, RE::Actor *actor, const Rules &r)
     }
 }
 
+// Health that points assigned to it held above nothing, and that has just
+// lost them -- progression off, or points taken back -- left at 1: taking
+// the points is not a blow.
+void KeepAlive(const Companion &c, RE::Actor *actor)
+{
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    if (!owner)
+        return;
+    if (const float health = owner->GetActorValue(RE::ActorValue::kHealth); health < 1.0f)
+    {
+        owner->RestoreActorValue(RE::ActorValue::kHealth, 1.0f - health);
+        log::party.info("{}: health left at {:.0f} without the points it had, raised to 1", c.name, health);
+    }
+}
+
 // Everything of ours off a companion, progression off, as far as the engine
 // keeps it on the actor: perks back to their record's through the engine's
 // rank change, the abilities of bought perks dropped directly as well, in
@@ -223,12 +238,7 @@ void Release(Companion &c, RE::Actor *actor)
 {
     if (g_releasedDone.contains(c.key))
         return;
-    if (auto *owner = actor->AsActorValueOwner())
-        if (const float health = owner->GetActorValue(RE::ActorValue::kHealth); health < 1.0f)
-        {
-            owner->RestoreActorValue(RE::ActorValue::kHealth, 1.0f - health);
-            log::party.info("{}: health left at {:.0f} without the points assigned to it, raised to 1", c.name, health);
-        }
+    KeepAlive(c, actor);
     const auto record = BasePerks(actor);
     for (const LearnedPerk &p : c.perks)
         if (!record.contains(p.form))
@@ -305,6 +315,7 @@ void RebuildViews()
                     v.nextLevel[i] = SkillThreshold(r, *usage, v.base[i] + c.learning.skills[i]);
             }
             v.attributes = BaseAttributes(actor);
+            v.attributeFloors = RaceStart(actor);
             v.onRecord = OnRecord(c, actor);
         }
         else if (previous != g_state.views.end())
@@ -402,10 +413,17 @@ void AssignAttributePoint(const FormKey &key, Attribute attribute, int delta)
         if (!c)
             return;
         const Rules r = ReadRules();
+        const std::size_t i = Index(attribute);
         const int available = AttributePointsOf(*c, actor, LevelOf(*c, actor, r).level, r);
-        if (CheckAttribute(*c, attribute, delta, available) != AssignBlock::None)
+        if (CheckAttribute(*c, attribute, delta, available, BaseAttributes(actor)[i], RaceStart(actor)[i],
+                           r.attributePerLevel) != AssignBlock::None)
             return;
         fp::AssignAttribute(*c, attribute, delta, r.attributePerLevel);
+        if (attribute == Attribute::Health && delta < 0)
+        {
+            PublishViews();
+            KeepAlive(*c, actor);
+        }
     });
 }
 
@@ -416,8 +434,15 @@ void AssignAttributeAll(const FormKey &key, Attribute attribute, int direction)
         if (!c)
             return;
         const Rules r = ReadRules();
+        const std::size_t i = Index(attribute);
         const int available = AttributePointsOf(*c, actor, LevelOf(*c, actor, r).level, r);
-        const int moved = fp::AssignAttributeAll(*c, attribute, direction, available, r.attributePerLevel);
+        const int moved = fp::AssignAttributeAll(*c, attribute, direction, available, BaseAttributes(actor)[i],
+                                                 RaceStart(actor)[i], r.attributePerLevel);
+        if (attribute == Attribute::Health && direction < 0 && moved != 0)
+        {
+            PublishViews();
+            KeepAlive(*c, actor);
+        }
         if (moved != 0)
             log::growth.info("{}: {} {} by {} point(s)", c->name, Name(attribute), direction < 0 ? "lowered" : "raised",
                              moved);
@@ -442,7 +467,8 @@ std::optional<AttributeControls> AttributeControlsFor(RE::FormID actor)
         for (std::size_t i = 0; i < kAttributeCount; ++i)
         {
             AttributeButtons &b = out.buttons[i];
-            b = AttributeButtonsFor(*c, static_cast<Attribute>(i), v.attributePoints);
+            b = AttributeButtonsFor(*c, static_cast<Attribute>(i), v.attributePoints, v.attributes[i],
+                                    v.attributeFloors[i], g_state.rules.attributePerLevel);
             if (why)
             {
                 b.canLower = b.canRaise = false;

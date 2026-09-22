@@ -116,8 +116,10 @@ TEST_CASE("points are what a player at the level would have had, less what they 
     fp::AssignAttribute(c, fp::Attribute::Health, +1, 10);
     fp::AssignAttribute(c, fp::Attribute::Health, +1, 10);
     CHECK(fp::AttributePoints(c, 10, 5) == 2);
-    CHECK(fp::CheckAttribute(c, fp::Attribute::Magicka, +1, 0) == fp::AssignBlock::NoPoints);
-    CHECK(fp::CheckAttribute(c, fp::Attribute::Magicka, -1, 2) == fp::AssignBlock::NoneAssigned);
+    CHECK(fp::CheckAttribute(c, fp::Attribute::Magicka, +1, 0, 100, 100, 10) == fp::AssignBlock::NoPoints);
+    // Their own Magicka at their race's start: nothing to take back.
+    CHECK(fp::CheckAttribute(c, fp::Attribute::Magicka, -1, 2, 100, 100, 10) == fp::AssignBlock::AtFloor);
+    CHECK(fp::CheckAttribute(c, fp::Attribute::Magicka, -1, 2, 150, 100, 10) == fp::AssignBlock::None);
     CHECK(c.learning.attributes[fp::Index(fp::Attribute::Health)] == 20);
 
     // A point keeps what it added when assigned, as the player's level-ups
@@ -267,8 +269,9 @@ TEST_CASE("attribute points move one at a time or as far as they go, and say why
 {
     Companion c = Lydia();
 
-    // No points to assign, none assigned: nothing can move.
-    auto b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 0);
+    // No points to assign, none assigned, their own Health at their race's
+    // start: nothing can move.
+    auto b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 0, 100, 100, 10);
     CHECK_FALSE(b.canLower);
     CHECK(b.lower == "Already at minimum Health");
     CHECK(b.lowest == "Already at minimum Health");
@@ -277,16 +280,16 @@ TEST_CASE("attribute points move one at a time or as far as they go, and say why
     CHECK(b.highest == "No attribute points available");
 
     // Three to assign: >> takes all three, 10 each.
-    b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 3);
+    b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 3, 100, 100, 10);
     CHECK(b.canRaise);
     CHECK(b.raise == "Click to increase Health");
     CHECK(b.highest == "Click to increase Health to maximum");
-    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, +1, 3, 10) == 3);
+    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, +1, 3, 100, 100, 10) == 3);
     CHECK(c.learning.attributePoints[fp::Index(fp::Attribute::Health)] == 3);
     CHECK(c.learning.attributes[fp::Index(fp::Attribute::Health)] == 30);
 
     // None left: + cannot; - and << can.
-    b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 0);
+    b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 0, 100, 100, 10);
     CHECK_FALSE(b.canRaise);
     CHECK(b.canLower);
     CHECK(b.lower == "Click to reduce Health");
@@ -294,11 +297,52 @@ TEST_CASE("attribute points move one at a time or as far as they go, and say why
 
     // << gives every point back; Magicka's are untouched.
     fp::AssignAttribute(c, fp::Attribute::Magicka, +1, 10);
-    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, -1, 0, 10) == 3);
+    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, -1, 0, 100, 100, 10) == 3);
     CHECK(c.learning.attributePoints[fp::Index(fp::Attribute::Health)] == 0);
     CHECK(c.learning.attributes[fp::Index(fp::Attribute::Health)] == 0);
     CHECK(c.learning.attributes[fp::Index(fp::Attribute::Magicka)] == 10);
-    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, -1, 0, 10) == 0);
+    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, -1, 0, 100, 100, 10) == 0);
+}
+
+TEST_CASE("their own attribute values can be taken back to the race's start and spent elsewhere", "[companion]")
+{
+    // Serana at 50: their class put more into their values than 49 points
+    // would, so their level leaves none to assign.
+    Companion c = Lydia();
+    constexpr int kOwnPoints = 83;
+    CHECK(fp::AttributePoints(c, 50, kOwnPoints) == 0);
+
+    // Health 541 over a race start of 50: three points taken back return
+    // three to spend, and cost 10 of Health each.
+    for (int i = 0; i < 3; ++i)
+    {
+        REQUIRE(fp::CheckAttribute(c, fp::Attribute::Health, -1, 0, 541, 50, 10) == fp::AssignBlock::None);
+        fp::AssignAttribute(c, fp::Attribute::Health, -1, 10);
+    }
+    CHECK(c.learning.attributes[fp::Index(fp::Attribute::Health)] == -30);
+    CHECK(fp::AttributePoints(c, 50, kOwnPoints) == 3);
+
+    // Spent on Magicka: three points of 10.
+    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Magicka, +1, 3, 296, 50, 10) == 3);
+    CHECK(c.learning.attributes[fp::Index(fp::Attribute::Magicka)] == 30);
+    CHECK(fp::AttributePoints(c, 50, kOwnPoints) == 0);
+
+    // One moved back: Magicka gives a point back, Health takes it again.
+    fp::AssignAttribute(c, fp::Attribute::Magicka, -1, 10);
+    fp::AssignAttribute(c, fp::Attribute::Health, +1, 10);
+    CHECK(c.learning.attributes[fp::Index(fp::Attribute::Health)] == -20);
+    CHECK(c.learning.attributePoints[fp::Index(fp::Attribute::Health)] == -2);
+    CHECK(fp::AttributePoints(c, 50, kOwnPoints) == 0);
+
+    // << takes Health down to the race's start, and no further: 541 - 20
+    // leaves 471 above 50, 47 points of 10, the last reaching 51.
+    CHECK(fp::AssignAttributeAll(c, fp::Attribute::Health, -1, 0, 541, 50, 10) == 47);
+    CHECK(541 + c.learning.attributes[fp::Index(fp::Attribute::Health)] == 51);
+    CHECK(fp::CheckAttribute(c, fp::Attribute::Health, -1, 0, 541, 50, 10) == fp::AssignBlock::AtFloor);
+    const auto b = fp::AttributeButtonsFor(c, fp::Attribute::Health, 49, 541, 50, 10);
+    CHECK_FALSE(b.canLower);
+    CHECK(b.lower == "Already at minimum Health");
+    CHECK(b.canRaise);
 }
 
 TEST_CASE("a perk held counts against the level's points, and unlearning gives it back", "[companion]")

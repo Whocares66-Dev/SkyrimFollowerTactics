@@ -89,6 +89,7 @@ The engine's level only moves when the player's does, so the player's level-up e
   - `+` buys a level from the pool at the same rate;
   - Reset takes a skill to its floor (`iAVDSkillStart` plus the race's bonus to it) and returns the perks bought in its tree, as Legendary does, for free;
   - a level a bought perk needs can't be taken back with `−`.
+- **Attributes move the same way** (the Character tab, a click on Health, Stamina or Magicka): `+` spends a point for 10 of the value, `−` takes back one assigned here or, with none, one of their own value, down to their race's starting value, returning it to spend elsewhere. A point gives back what it was worth when it moved.
 
 ## Read, not written (2026-09-22)
 
@@ -105,6 +106,8 @@ So one slot changes all three reads, and every reader that asks through the acto
 
 What this buys: nothing of it is in the save, so loading without Progression, or turning progression off, has the follower as their record makes them at once, with no withdrawing and no uninstall step; and the engine raising their own values as they level with the player moves only the base under what they learned. The ledger no longer records what was applied.
 
+**The cache.** Some values' current and maximum figures are cached on the actor's process, per the value's info (`kAIProcessCachesCurrentValue`, `kAIProcessCachesMaxValue`): the current value's getter (38462) answers from the cache while it is fresh (40229 reads it, 40230 fills it) and works it out through the base only when it is stale. The skills' current values are among them. The engine's own base setter marks a value stale after writing it (38483 on AE and 1.7.104, 37534 on SE: the current value if the process caches it, 40225, and the maximum, 40227). The view writes nothing, so it marks them itself: every skill and attribute of each companion it names, or named before, whenever it publishes. Without that the Skills tab showed the levels from before a point was moved (seen 2026-09-22), since its column is the current value. The build before wrote a permanent modifier, and the engine's own write marked the cache stale then, which is why it showed.
+
 One guard: points assigned to health hold the wounds they cover. Turning progression off takes them away at once, so a follower whose health would be at or below nothing without them is left at 1 as they are released.
 
 ## Not verified
@@ -113,7 +116,7 @@ One guard: points assigned to health hold the wounds they cover. Turning progres
 - **That the hooks run.** Settings shows the uses heard: from magic, from blows landed, from hits taken. After a fight with a companion who swings a sword and casts, all three should have moved.
 - **The rates.** Followers fight all the time and take a lot of hits. By the player's own rules their armour and Block skills may climb faster than a player's, until the curve slows them.
 - **Concentration spells** report every frame, and each report is a task queued to the game thread. It's cheap per task, but not measured.
-- **Attribute points from their own values.** An NPC's health, magicka and stamina come from their class, not from level-up choices, so "what they already carry" may give too many points or none. The first session should log a few followers' numbers.
+- **Attribute points from their own values.** An NPC's health, magicka and stamina come from their class, not from level-up choices; counted as points spent, a class that carried them past the player's count leaves none from their level (Serana at 50, 2026-09-22), and they move what they have instead.
 
 ## Reproducing
 

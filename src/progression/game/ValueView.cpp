@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <memory>
+#include <vector>
 
 namespace fp::game::valueview
 {
@@ -26,6 +27,9 @@ FastIds g_fast;
 
 using GetBaseFn = float (*)(RE::ActorValueOwner *, RE::ActorValue);
 GetBaseFn g_getBase = nullptr;
+// Game thread: the actors the last Publish named, so one no longer named
+// has its values marked stale too.
+std::vector<RE::FormID> g_named;
 bool g_installed = false;
 std::ptrdiff_t g_ownerOffset = 0;
 
@@ -51,6 +55,22 @@ float GetBaseHook(RE::ActorValueOwner *self, RE::ActorValue av)
     return base + static_cast<float>(it->second.attributes[static_cast<std::size_t>(value - kFirstAttribute)]);
 }
 
+// Every skill and attribute of these actors marked stale in their process's
+// cache, as the engine's own setter does after a write: read next, each is
+// worked out again through the base, and so through the view. Without it a
+// cached value -- the skills' current values are cached -- keeps the number
+// from before (seen 2026-09-22: the Skills tab's levels unmoved by a point
+// moved).
+void MarkStale(const std::vector<RE::FormID> &ids)
+{
+    using MarkFn = void (*)(RE::Actor *, RE::ActorValue);
+    static REL::Relocation<MarkFn> mark{addr::kMarkValueStale};
+    for (const RE::FormID id : ids)
+        if (auto *actor = RE::TESForm::LookupByID<RE::Actor>(id); actor && actor->Is3DLoaded())
+            for (int value = kFirstSkill; value < kFirstAttribute + static_cast<int>(kAttributeCount); ++value)
+                mark(actor, static_cast<RE::ActorValue>(value));
+}
+
 } // namespace
 
 void Install()
@@ -73,9 +93,18 @@ bool Installed() noexcept
 
 void Publish(std::unordered_map<RE::FormID, Bonus> bonuses, int skillCap)
 {
+    std::vector<RE::FormID> named;
+    named.reserve(bonuses.size());
+    for (const auto &entry : bonuses)
+        named.push_back(entry.first);
     g_skillCap.store(skillCap, std::memory_order_relaxed);
     g_fast.Set(bonuses);
     g_views.store(std::make_shared<const Views>(std::move(bonuses)), std::memory_order_release);
+    // Those named now and those named before: joining, changing, leaving.
+    std::vector<RE::FormID> touched = g_named;
+    touched.insert(touched.end(), named.begin(), named.end());
+    g_named = std::move(named);
+    MarkStale(touched);
 }
 
 float EngineBase(RE::Actor *actor, RE::ActorValue av)
@@ -88,6 +117,7 @@ float EngineBase(RE::Actor *actor, RE::ActorValue av)
 
 void Forget()
 {
+    g_named.clear();
     g_fast.Clear();
     g_views.store(std::make_shared<const Views>(), std::memory_order_release);
 }

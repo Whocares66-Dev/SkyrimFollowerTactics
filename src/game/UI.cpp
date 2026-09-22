@@ -6777,7 +6777,7 @@ void DrawSettings()
     Im::Spacing();
     // What a follower must have before a thing is offered at all
     // (game/Settings.h). Each is saved with the game.
-    CentredHeading("Customize");
+    CentredHeading("Combat");
     ft::Settings settings = CurrentSettings();
     const ft::Settings was = settings;
     // All three are followers' alone, and each says so: a combat style is a
