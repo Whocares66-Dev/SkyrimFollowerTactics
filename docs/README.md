@@ -28,7 +28,7 @@ Open http://127.0.0.1:4000/SkyrimFollowerTactics/. Re-run the build after editin
 
 `_data/guide.json` defines the sidebar's page links and heading anchors. Keep it aligned with headings when editing. The sidebar stays on the left at every screen size; its arrow collapses it to a narrow rail. Click **Table of contents** to collapse all sections when all are open, or expand them all otherwise. Individual sections can also be collapsed. Search is Just the Docs' built-in Lunr index, including headings and body content; Ctrl+K / Cmd+K focuses it.
 
-Screenshots live in `assets/img/panel/`. The Settings screenshot appears in the enabling and disabling section of `guide/tactics.md`.
+Screenshots live in `assets/img/panel/`. `settings.png` shows the full Settings page; `settings_combat.png` shows the Combat section. The new training screenshots appear in `guide/training.md`.
 
 `guide/changelog.md` appears before Thanks in the sidebar. Keep its content aligned with the repository's `CHANGELOG.md` when adding release notes.
 
@@ -40,8 +40,8 @@ The versioned build uses [`.github/workflows/docs.yml`](../.github/workflows/doc
 
 ## Versions
 
-- The site root shows the current `master` guide, labeled by `docs_version` in `_config.yml` (currently `0.2.0`). Local previews use the working tree.
-- Each `vMAJOR.MINOR.PATCH` tag is built from its own `docs/` directory under `/<version>/`, such as `/SkyrimFollowerTactics/0.1.0/`. Tags must contain a buildable Jekyll guide. Creating `v0.2.0` adds `/0.2.0/` automatically.
+- The site root shows the current `master` guide, labeled by `docs_version` in `_config.yml` (currently `0.3.0`). Local previews use the working tree.
+- Each `vMAJOR.MINOR.PATCH` tag is built from its own `docs/` directory under `/<version>/`, such as `/SkyrimFollowerTactics/0.2.0/`. Tags must contain a buildable Jekyll guide. Creating `v0.3.0` adds `/0.3.0/` automatically.
 - Only the current sidebar and header templates, custom stylesheet, and guide script are shared with historical builds, so older docs get the same title, version selector, and navigation controls. The version selector sits in the top bar before the Nexus Mods and GitHub icons. Page content, navigation data, screenshots, and search indexes come from the tag. Search stays within the selected version.
 - The selector keeps the current page when that permalink exists in the other version, otherwise it opens that version's home page.
 - Keep release tags unchanged to preserve their docs. Before tagging a release, finish its guide and set `docs_version` to the release number; afterward, advance the working guide to the next development version.

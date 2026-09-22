@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+Major changes since `v0.2.0`:
+
+- **Follower training:** unique followers gain skill experience through use. Skill-ups add character experience on the same curve used by the player, and training levels grant attribute and perk points.
+- **Reassigning points:** move Health, Magicka, and Stamina points; move skill levels using their experience value; learn, return, or reset perks from a skill's tree, including perks a follower started with.
+- **Spell learning:** teach a follower a spell from a tome in their inventory, or forget a spell from its Magic page. A forgotten original spell can be restored later.
+- **Reversible changes:** training keeps its own record without permanently changing the follower's original skills, attributes, perks, or spells. Turn off `Settings` → `Progression` → `Manage follower progression` to return to their normal state; turn it back on to restore training. Removing the mod also returns followers to their normal state.
+- **Localized panel:** interface text now follows the game's language, with English and Simplified Chinese catalogs and English fallback for untranslated text.
+
 ## 0.2.0
 
 Major changes since `v0.1.0`:

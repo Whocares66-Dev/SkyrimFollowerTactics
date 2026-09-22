@@ -10,6 +10,8 @@ has_toc: false
 
 The `Skills` tab shows skills and perks.
 
+For a trained follower, click a skill to [reassign its levels and perks]({{ '/training/' | relative_url }}#skills-and-perks) on its perk tree.
+
 ![Skills]({{ "/assets/img/panel/skills.png" | relative_url }}){: .screenshot loading="lazy"}
 
 Custom skills added by [Custom Skills Framework](https://www.nexusmods.com/skyrimspecialedition/mods/41780) are supported.

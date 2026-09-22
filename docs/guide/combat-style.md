@@ -2,7 +2,7 @@
 layout: "default"
 title: "Combat Style"
 permalink: "/combat-style/"
-nav_order: 9
+nav_order: 10
 has_toc: false
 ---
 
@@ -28,4 +28,4 @@ Dual-wielding only applies to melee weapons. Having a sword in one hand and a st
 
 In `Settings`, the requirement to have the right combat style to dual-wield can be removed.
 
-![Settings customize]({{ "/assets/img/panel/settings_customize.png" | relative_url }}){: .screenshot loading="lazy"}
+![Combat settings]({{ "/assets/img/panel/settings_combat.png" | relative_url }}){: .screenshot loading="lazy"}

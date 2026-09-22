@@ -221,6 +221,32 @@
     ]
   },
   {
+    "title": "Follower training",
+    "url": "/training/",
+    "headings": [
+      {
+        "title": "Levels and attributes",
+        "anchor": "levels-and-attributes",
+        "level": 2
+      },
+      {
+        "title": "Skills and perks",
+        "anchor": "skills-and-perks",
+        "level": 2
+      },
+      {
+        "title": "Teach and forget spells",
+        "anchor": "teach-and-forget-spells",
+        "level": 2
+      },
+      {
+        "title": "Turn training off or remove the mod",
+        "anchor": "turn-training-off-or-remove-the-mod",
+        "level": 2
+      }
+    ]
+  },
+  {
     "title": "Combat Style",
     "url": "/combat-style/",
     "headings": [

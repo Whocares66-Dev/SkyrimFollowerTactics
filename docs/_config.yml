@@ -1,6 +1,6 @@
 title: Follower Tactics
-docs_version: 0.2.0
-description: Follower Tactics is a Skyrim mod for player and follower tactics in and out of combat, and follower equipment management.
+docs_version: 0.3.0
+description: Follower Tactics is a Skyrim mod for player and follower tactics, follower equipment management, and reversible follower training.
 url: https://whocares66-dev.github.io
 baseurl: /SkyrimFollowerTactics
 remote_theme: just-the-docs/just-the-docs@v0.12.0

@@ -2,7 +2,7 @@
 layout: "default"
 title: "Thanks"
 permalink: "/thanks/"
-nav_order: 12
+nav_order: 13
 has_toc: false
 ---
 

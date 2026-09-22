@@ -10,6 +10,8 @@ has_toc: false
 
 The `Inventory` tab contains information about what the player or follower is carrying, such as [weapons](#weapons) and [potions](#potions).
 
+A trained follower can [learn a spell from a tome]({{ '/training/' | relative_url }}#teach-and-forget-spells) they carry.
+
 ![Inventory all]({{ "/assets/img/panel/inventory_all.png" | relative_url }}){: .screenshot loading="lazy"}
 
 ## Weapons

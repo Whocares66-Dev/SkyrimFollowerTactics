@@ -10,6 +10,8 @@ has_toc: false
 
 The `Character` tab contains information about the player or follower, such as their health / stamina / magicka, level, and currently [equipped weapons]({{ '/inventory/' | relative_url }}#weapons).
 
+For a trained follower, it also shows experience toward the next level and controls for [assigning or reassigning attributes]({{ '/training/' | relative_url }}#levels-and-attributes).
+
 ![Character]({{ "/assets/img/panel/character.png" | relative_url }}){: .screenshot loading="lazy"}
 
 ## Breakdowns

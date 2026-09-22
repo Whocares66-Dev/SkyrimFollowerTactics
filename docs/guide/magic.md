@@ -14,4 +14,6 @@ The `Magic` tab contains information about the player or follower's spells, grou
 
 Clicking on a spell name shows its details.
 
+On a trained follower's spell page, **Forget** removes a taught spell or sets aside one they originally knew. See [Teach and forget spells]({{ '/training/' | relative_url }}#teach-and-forget-spells).
+
 ![Spell details]({{ "/assets/img/panel/spell_details.png" | relative_url }}){: .screenshot loading="lazy"}
