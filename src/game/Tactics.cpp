@@ -383,6 +383,12 @@ void FillVitals(RE::Actor *actor, CharacterView &v, bool inCombat)
     v.name = DisplayNameOf(actor);
     v.inCombat = inCombat;
     v.level = actor->GetLevel();
+    if (auto *player = actor->IsPlayerRef() ? RE::PlayerCharacter::GetSingleton() : nullptr)
+        if (const auto *skills = player->GetInfoRuntimeData().skills; skills && skills->data)
+        {
+            v.experience = {skills->data->xp, skills->data->levelThreshold};
+            v.hasExperience = true;
+        }
     v.health = ReadStat(actor, RE::ActorValue::kHealth);
     v.stamina = ReadStat(actor, RE::ActorValue::kStamina);
     v.magicka = ReadStat(actor, RE::ActorValue::kMagicka);

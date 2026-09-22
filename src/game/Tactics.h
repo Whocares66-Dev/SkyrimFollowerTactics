@@ -59,6 +59,11 @@ struct CharacterView
     bool nearby{true};
 
     std::uint16_t level{0};
+    // The player's experience toward their next level, as the level-up menu
+    // counts it; a follower's is Progression's (progression/game/Service.h,
+    // LevelFor), asked for when the page is drawn.
+    ft::Stat experience{};
+    bool hasExperience{false};
     ft::Stat health{};
     ft::Stat stamina{};
     ft::Stat magicka{};

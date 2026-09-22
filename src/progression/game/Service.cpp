@@ -584,6 +584,17 @@ void LearnPerkByForm(std::uint32_t actorId, std::uint32_t perkForm)
     });
 }
 
+std::optional<LevelProgress> LevelFor(RE::FormID actor)
+{
+    if (actor == 0)
+        return std::nullopt;
+    std::scoped_lock lock(g_mutex);
+    for (const CompanionView &v : g_state.views)
+        if (v.actor == actor && v.read && Find(v.key))
+            return v.progress;
+    return std::nullopt;
+}
+
 std::optional<SkillControls> ControlsFor(RE::FormID actor, int actorValue)
 {
     const auto skill = SkillFromActorValue(actorValue);

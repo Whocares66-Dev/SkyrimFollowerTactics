@@ -137,6 +137,11 @@ struct SkillControls
     SkillButtons buttons;
 };
 [[nodiscard]] std::optional<SkillControls> ControlsFor(RE::FormID actor, int actorValue);
+
+// A companion's level and the experience into it, as their page shows it:
+// none for an actor who is no companion of ours, or one not read yet. From
+// the render thread, under the lock.
+[[nodiscard]] std::optional<LevelProgress> LevelFor(RE::FormID actor);
 void UnlearnPerk(const FormKey &actor, int node);
 // The same for a perk named by runtime ids, as LearnPerkByForm. Both are the
 // skill page's, which asks PerkControlsFor first and answers with a sound:

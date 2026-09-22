@@ -289,6 +289,9 @@ void DrawStatRow(const RowGeometry &g, const char *barLabel, const ft::Stat &sta
                                        Im::GetColorU32(Im::ImGuiCol_Text, 1.0f), overlay.c_str());
     }
 
+    // A row with nothing to say on the right leaves it empty.
+    if (!statLabel)
+        return;
     TextRightAlignedAt(g.statLabelRight, statLabel);
 
     Im::SameLine(g.valueLeft, -1.0f);
@@ -5422,10 +5425,18 @@ void DrawCharacter(const CharacterView &view)
     // border.
     Im::Spacing();
 
-    // Three rows, each carrying a bar on the left and a stat on the right, laid
-    // out from measured widths so every column is flush and nothing depends on
-    // the length of an English word.
-    const std::string levelText = std::to_string(static_cast<unsigned>(view.level));
+    // Four rows of a bar on the left -- health, stamina, magicka, and the
+    // level beside the experience toward the next -- and two stats on the
+    // right, laid out from measured widths so every column is flush and
+    // nothing depends on the length of an English word. The player's
+    // experience is the level-up menu's; a follower Progression levels has
+    // its own (LevelFor); another follower has a level and no experience.
+    const auto progress = view.player ? std::nullopt : fp::game::LevelFor(view.id);
+    const int level = progress ? progress->level : static_cast<int>(view.level);
+    const std::string levelLabel = "Level " + std::to_string(level);
+    const bool hasExperience = view.hasExperience || progress.has_value();
+    const ft::Stat experience =
+        progress ? ft::Stat{static_cast<float>(progress->into), static_cast<float>(progress->toNext)} : view.experience;
     const std::string statusText = view.inCombat ? "combat" : "idle";
     char carriedBuf[64];
     std::snprintf(carriedBuf, sizeof(carriedBuf), "%.0f / %.0f", view.carriedWeight, view.carryCapacity);
@@ -5440,7 +5451,8 @@ void DrawCharacter(const CharacterView &view)
     const float inset = style->ItemSpacing.x;
 
     RowGeometry geo;
-    geo.barLabelRight = originX + inset + WidestLabel({"Health", "Stamina", "Magicka"});
+    geo.barLabelRight =
+        originX + inset + (std::max)(WidestLabel({"Health", "Stamina", "Magicka"}), TextWidth(levelLabel));
     geo.barLeft = geo.barLabelRight + 12.0f;
 
     // The stat column is pinned to the RIGHT edge of the panel rather than left
@@ -5448,26 +5460,22 @@ void DrawCharacter(const CharacterView &view)
     // Mirror the inset on the right so the stat values sit inboard of the border
     // by the same amount the labels do on the left.
     const float contentRight = originX + Im::GetContentRegionAvail().x - inset;
-    const float valueWidth = (std::max)({TextWidth(levelText), TextWidth(statusText), TextWidth(carriedText)});
+    const float valueWidth = (std::max)(TextWidth(statusText), TextWidth(carriedText));
     geo.valueLeft = contentRight - valueWidth;
     geo.statLabelRight = geo.valueLeft - 12.0f;
 
     DrawStatRow(
-        geo, "Health", view.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Level",
-        [&] { Im::Text("%s", levelText.c_str()); }, view.healthBreakdown);
-
-    DrawStatRow(
-        geo, "Stamina", view.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Status",
+        geo, "Health", view.health, Im::ImVec4(0.75f, 0.25f, 0.25f, 1.0f), "Status",
         [&] {
             if (view.inCombat)
                 Im::TextColored(Im::ImVec4(0.95f, 0.65f, 0.35f, 1.0f), "%s", statusText.c_str());
             else
                 Im::TextDisabled("%s", statusText.c_str());
         },
-        view.staminaBreakdown);
+        view.healthBreakdown);
 
     DrawStatRow(
-        geo, "Magicka", view.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), "Carrying",
+        geo, "Stamina", view.stamina, Im::ImVec4(0.30f, 0.65f, 0.35f, 1.0f), "Carrying",
         [&] {
             // Over capacity is worth seeing: an overencumbered follower
             // cannot fight properly, and otherwise you would only notice
@@ -5480,7 +5488,26 @@ void DrawCharacter(const CharacterView &view)
             if (!view.carryBreakdown.empty() && Im::IsItemHovered(0))
                 BreakdownTooltip(view.carryBreakdown);
         },
-        view.magickaBreakdown);
+        view.staminaBreakdown);
+
+    DrawStatRow(geo, "Magicka", view.magicka, Im::ImVec4(0.25f, 0.40f, 0.80f, 1.0f), nullptr, {},
+                view.magickaBreakdown);
+
+    // The level beside its experience, in a muted gold; a follower with no
+    // experience of ours has the level alone.
+    if (hasExperience)
+    {
+        DrawStatRow(geo, levelLabel.c_str(), experience, Im::ImVec4(0.76f, 0.60f, 0.28f, 1.0f), nullptr, {});
+        if (progress && progress->engine != progress->level && Im::IsItemHovered(0))
+            Tooltip(fmt::format("Level {} from the game, {} with what they have learned", progress->engine,
+                                progress->level));
+    }
+    else
+    {
+        Im::SetCursorPosX((std::max)(0.0f, geo.barLabelRight - TextWidth(levelLabel)));
+        Im::AlignTextToFramePadding();
+        Im::Text("%s", levelLabel.c_str());
+    }
 
     Im::Spacing();
 
