@@ -248,25 +248,58 @@ void Tooltip(std::string_view text)
         Im::SetTooltip("%s", std::string(text).c_str());
 }
 
-// A requirement as a greyed spell's hover says it, in an open tooltip: the
+// A requirement and what is had of it, as every greyed hover says it: the
 // two labels right-aligned to one edge, so the skill and the numbers line
-// up beneath each other.
+// up beneath each other. The one layout for a spell above skill, an effect
+// above skill and a perk's requirement.
 //
 //   Needs: Archery (30)
 //     Has: Archery (25)
-void NeedsAndHas(const std::string &skill, int need, int has)
+struct NeedsHasBlock
 {
-    const char *needsLabel = Tr("Needs:");
-    const char *hasLabel = Tr("Has:");
-    const float labelWidth = (std::max)(TextWidth(needsLabel), TextWidth(hasLabel));
-    const auto line = [&](const char *label, int value) {
-        Im::SetCursorPosX(Im::GetCursorPos().x + labelWidth - TextWidth(label));
-        Im::Text("%s", label);
-        Im::SameLine(0.0f, -1.0f);
-        Im::Text("%s (%d)", skill.c_str(), value);
-    };
-    line(needsLabel, need);
-    line(hasLabel, has);
+    std::string needs;
+    std::string has; // empty: the Needs line alone
+
+    [[nodiscard]] float LabelWidth() const
+    {
+        return (std::max)(TextWidth(Tr("Needs:")), TextWidth(Tr("Has:")));
+    }
+    [[nodiscard]] float Width() const
+    {
+        return LabelWidth() + Im::GetStyle()->ItemSpacing.x + (std::max)(TextWidth(needs), TextWidth(has));
+    }
+    // At `x` in the window; the first line on the current one when
+    // `sameLine`, as a perk's sits beside its name.
+    void Draw(float x, bool sameLine = false) const
+    {
+        const float labels = LabelWidth();
+        const auto line = [&](const char *label, const std::string &value) {
+            Im::SetCursorPosX(x + labels - TextWidth(label));
+            Im::Text("%s", label);
+            Im::SameLine(0.0f, Im::GetStyle()->ItemSpacing.x);
+            Im::Text("%s", value.c_str());
+        };
+        if (sameLine)
+            Im::SameLine(0.0f, 0.0f);
+        line(Tr("Needs:"), needs);
+        if (!has.empty())
+            line(Tr("Has:"), has);
+    }
+};
+
+NeedsHasBlock NeedsAndHas(const std::string &skill, int need, std::optional<int> has)
+{
+    return {fmt::format("{} ({})", skill, need), has ? fmt::format("{} ({})", skill, *has) : std::string()};
+}
+
+// The block as a hover of its own, under any other reason for the grey.
+void NeedsAndHasTooltip(const std::string &skill, int need, int has, const std::string &above = {})
+{
+    Im::BeginTooltip();
+    if (!above.empty())
+        Im::Text("%s", above.c_str());
+    NeedsAndHas(skill, need, has).Draw(Im::GetCursorPosX());
+    Im::EndTooltip();
 }
 
 // Place text so its RIGHT edge lands on rightX. Right-aligning the labels is
@@ -3356,9 +3389,12 @@ struct ExtraColumn
 };
 
 // The columns an effect table carries after Name and Effect. Each drawn
-// only where some row has it. An item's or a spell's page ends with the
+// only where some row has it: School and Level only where an effect has a
+// school, and a level above none. An item's or a spell's page ends with the
 // effects' descriptions, wrapped; the effect's own page ends with Source.
 const std::vector<ExtraColumn> kEffectColumns{
+    {N_("School"), [](const SheetRow &r) { return r.school; }},
+    {N_("Level"), [](const SheetRow &r) { return r.level; }},
     {N_("Remaining"), [](const SheetRow &r) { return r.remaining; }},
     {N_("Duration"), [](const SheetRow &r) { return r.extra; }},
     {N_("Hidden"), [](const SheetRow &r) { return std::string(r.mark != 0 ? "x" : ""); }, true},
@@ -3566,7 +3602,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg0, stripe, -1);
             // A row set aside -- an effect whose conditions do not hold --
             // is the shadowed rows' grey, with the reason on its name.
-            const DimText grey(!row.aside.empty());
+            const DimText grey(!row.aside.empty() || row.needsLevel > 0);
             bool open = false;
             if (levelOpens)
             {
@@ -3637,8 +3673,15 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Im::SetCursorScreenPos(Im::ImVec2(pos.x + marker, pos.y));
                 Im::Text("%s", row.label.c_str());
             }
-            if (!row.aside.empty() && Im::IsItemHovered(0))
-                Tooltip(row.aside);
+            if ((!row.aside.empty() || row.needsLevel > 0) && Im::IsItemHovered(0))
+            {
+                if (row.needsLevel > 0)
+                    NeedsAndHasTooltip(row.school, row.needsLevel, row.hasLevel, row.aside);
+                else
+                {
+                    Tooltip(row.aside);
+                }
+            }
 
             Im::TableSetColumnIndex(1);
             if (levelOpens)
@@ -5355,9 +5398,7 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
         // pin only the reason for now.
         if (dim && entry->aboveSkill && Im::IsItemHovered(0))
         {
-            Im::BeginTooltip();
-            NeedsAndHas(entry->school, entry->levelValue, entry->skill);
-            Im::EndTooltip();
+            NeedsAndHasTooltip(entry->needsSchool, entry->needsLevel, entry->hasLevel);
         }
         else if (dim && entry->locked && Im::IsItemHovered(0))
             Im::SetTooltip("%s", Tr("No word unlocked"));
@@ -6226,15 +6267,9 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
         const int need = static_cast<int>(node.requirement);
         const int has = static_cast<int>(tree.level);
         const bool short_ = needs && has < need;
-        const std::string needValue = fmt::format("{} ({})", tree.name, need);
-        const std::string hasValue = fmt::format("{} ({})", tree.name, has);
-        const float spacing = Im::GetStyle()->ItemSpacing.x;
+        const NeedsHasBlock requirement = NeedsAndHas(tree.name, need, short_ ? std::optional<int>(has) : std::nullopt);
         const float wide = font * 2.0f;
-        const char *needsLabel = Tr("Needs:");
-        const char *hasLabel = Tr("Has:");
-        const float tagWidth = (std::max)(TextWidth(needsLabel), TextWidth(hasLabel));
-        const float block =
-            needs ? tagWidth + spacing + (std::max)(TextWidth(needValue), short_ ? TextWidth(hasValue) : 0.0f) : 0.0f;
+        const float block = needs ? requirement.Width() : 0.0f;
         const TreeHandlers::Actions can = on.actions ? on.actions(node) : TreeHandlers::Actions{};
         const char *kAcquire = Tr("Click to acquire perk");
         const char *kRemove = Tr("Right click to remove perk");
@@ -6249,17 +6284,7 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
         if (needs)
         {
             const DimText grey(short_);
-            const float blockX = x0 + lineWidth - block;
-            const auto line = [&](const char *label, const std::string &value) {
-                Im::SetCursorPosX(blockX + tagWidth - TextWidth(label));
-                Im::Text("%s", label);
-                Im::SameLine(0.0f, spacing);
-                Im::Text("%s", value.c_str());
-            };
-            Im::SameLine(0.0f, 0.0f);
-            line(needsLabel, needValue);
-            if (short_)
-                line(hasLabel, hasValue);
+            requirement.Draw(x0 + lineWidth - block, true);
         }
         if (!node.description.empty())
         {

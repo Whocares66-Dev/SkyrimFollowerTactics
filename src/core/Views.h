@@ -48,6 +48,15 @@ struct SheetRow
     std::string extra;
     std::string remaining;
     std::string link;
+    // An effect's magic school and the skill it asks in it, where it has
+    // them: the engine keeps a follower's spell out of their combat AI's
+    // list while any effect's level is above their skill in its school.
+    std::string school;
+    std::string level;
+    // A follower's spell effect above their skill: the row is set aside, and
+    // its hover says Needs and Has as a greyed spell's does. 0 for none.
+    int needsLevel{0};
+    int hasLevel{0};
     // An effect's description with its numbers filled in, for a table
     // with a wrapped last column of them.
     std::string description;
@@ -272,6 +281,12 @@ struct MagicEntry
     // neither cast nor pinned, and the hand cells take no click for it.
     // Never the player's: no combat AI chooses for them.
     bool aboveSkill{false};
+    // Which effect keeps it out, for the hover: the first one short of the
+    // follower's skill -- its school, its level, their skill in it. Ice
+    // Storm's Permafrost (75), not its damage (50).
+    std::string needsSchool;
+    int needsLevel{0};
+    int hasLevel{0};
     int castValue{0};      // the delivery behind the word, for sorting
     float costValue{0.0f}; // magicka, for sorting; 0 for powers and shouts
     // The cost written out -- the effects, the skill curve, each perk

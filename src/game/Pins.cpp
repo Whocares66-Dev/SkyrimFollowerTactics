@@ -191,18 +191,8 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form, const std::option
         // did exactly that, the opposite of what the tests prove.
         thing.count = 2;
         thing.grip = SpellGrip(spell);
-        // Above the follower's skill in its school: the combat AI will not
-        // choose it. An effect of no school (a power's, an ability's) has
-        // no skill to ask about -- its skill is kNone, and asking for that
-        // actor value must not happen: the engine's own getter shrugs it
-        // off, but ActorValueExtension's hook of it indexes a table with
-        // the number and crashes (Nordic Souls, 2026-09-08, on Serana).
-        const auto *costliest = spell->GetCostliestEffectItem();
-        const auto *effect = costliest ? costliest->baseEffect : nullptr;
-        auto *owner = actor->AsActorValueOwner();
-        const auto school = effect ? effect->GetMagickSkill() : RE::ActorValue::kNone;
-        if (effect && owner && school != RE::ActorValue::kNone)
-            thing.unusable = effect->GetMinimumSkillLevel() > owner->GetActorValue(school);
+        // Above the follower's skill: the combat AI never has it.
+        thing.unusable = AboveSkillForAI(actor, spell);
     }
     else if (auto *armor = form->As<RE::TESObjectARMO>())
     {

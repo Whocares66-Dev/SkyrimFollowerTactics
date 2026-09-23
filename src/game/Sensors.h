@@ -62,6 +62,26 @@ struct Carried
 // inactive ones, greyed.)
 void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEffect &)> &fn);
 
+// Is the spell kept out of their combat AI's list by skill? The engine's
+// list asks EVERY effect with a school for its minimum skill, and one
+// short keeps the whole spell out (45328, dev/COMBAT_AI.md "Which spells get
+// into the list"): Adamant's Permafrost, at 75 on Ice Storm, kept Serana's
+// out at Destruction 50-odd (2026-09-22), where the costliest effect alone
+// said 50. The AI's gate, not a casting limit: a rule's cast and the
+// player cast it regardless.
+[[nodiscard]] bool AboveSkillForAI(RE::Actor *actor, const RE::MagicItem *spell);
+
+// The first effect that keeps it out, as AboveSkillForAI reads it: the
+// effect's school, its level, and their skill in that school. Empty for a
+// spell they may use.
+struct SkillGate
+{
+    RE::ActorValue school{RE::ActorValue::kNone};
+    int level{0};
+    float has{0.0f};
+};
+[[nodiscard]] std::optional<SkillGate> FirstSkillGate(RE::Actor *actor, const RE::MagicItem *spell);
+
 // Seconds until the voice can shout again, 0 when it can. The engine
 // keeps this per actor, NPCs too; negative or nonsense (an hour or more)
 // reads as "can shout".

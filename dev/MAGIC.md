@@ -280,7 +280,7 @@ controller, logged at the start of a fight (the probe in `Tactics.cpp`):
   they are at that moment. Removing a spell from her lists after that does
   nothing for the fight in progress: Firebolt was set aside three
   milliseconds after "entered combat" and cast anyway.
-- **It skips any spell whose level is above her skill.** Marcurio at
+- **It skips any spell whose level is above her skill** -- every effect with a school is asked, not only the costliest (`dev/COMBAT_AI.md` section 0). Marcurio at
   Destruction 39 and Restoration 45: Chain Lightning and Close Wounds
   (Adept, 50) were left out with magicka at 210/210; every Apprentice and
   Novice spell was in. This is the AI's CHOICE, not a casting limit: a cast

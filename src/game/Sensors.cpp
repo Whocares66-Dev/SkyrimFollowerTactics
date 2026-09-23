@@ -274,6 +274,33 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
     }
 }
 
+std::optional<SkillGate> FirstSkillGate(RE::Actor *actor, const RE::MagicItem *spell)
+{
+    auto *owner = actor && spell ? actor->AsActorValueOwner() : nullptr;
+    if (!owner)
+        return std::nullopt;
+    // An effect of no school (a power's, an ability's) has no skill to ask
+    // about -- its skill is kNone, and asking for that actor value must not
+    // happen: the engine's own getter shrugs it off, but
+    // ActorValueExtension's hook of it indexes a table with the number and
+    // crashes (Nordic Souls, 2026-09-08, on Serana).
+    for (const auto *effect : ResolvedEffects(*spell))
+    {
+        const auto school = effect->baseEffect->GetMagickSkill();
+        if (school == RE::ActorValue::kNone)
+            continue;
+        const auto level = static_cast<int>(effect->baseEffect->GetMinimumSkillLevel());
+        if (const float has = owner->GetActorValue(school); static_cast<float>(level) > has)
+            return SkillGate{school, level, has};
+    }
+    return std::nullopt;
+}
+
+bool AboveSkillForAI(RE::Actor *actor, const RE::MagicItem *spell)
+{
+    return FirstSkillGate(actor, spell).has_value();
+}
+
 float VoiceRecoveryOf(RE::Actor *actor)
 {
     const float recovery = actor ? actor->GetVoiceRecoveryTime() : 0.0f;
@@ -929,6 +956,14 @@ SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
                               ? actor->GetActorRuntimeData().currentCombatTarget.get()
                               : RE::NiPointer<RE::Actor>{};
     RE::Actor *enemy = fighting && !fighting->IsDead() ? fighting.get() : nullptr;
+    // Whose skill each effect's level is asked of: a follower's, for a
+    // spell, which their combat AI never has while one effect's level is
+    // above their skill (AboveSkillForAI). The player casts at any skill,
+    // and a scroll, a potion or an enchantment asks none.
+    const auto *spell = magic->As<RE::SpellItem>();
+    auto *gated = actor && !actor->IsPlayerRef() && spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell
+                      ? actor->AsActorValueOwner()
+                      : nullptr;
     for (const auto *effect : ResolvedEffects(*magic))
     {
         ConditionParties parties{actor, actor};
@@ -940,8 +975,26 @@ SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
         // The record's magnitude is unsigned; a detrimental effect takes
         // it away.
         const float amount = magnitude(effect);
-        section.rows.push_back(
-            EffectEntryRow(*effect, effect->baseEffect->IsDetrimental() ? -amount : amount, parties));
+        SheetRow row = EffectEntryRow(*effect, effect->baseEffect->IsDetrimental() ? -amount : amount, parties);
+        if (const auto school = effect->baseEffect->GetMagickSkill(); school != RE::ActorValue::kNone)
+        {
+            row.school = ValueName(school);
+            // A level only where it gates anything: a spell's. A staff, an
+            // enchantment, a potion or a scroll asks no skill (45328 runs
+            // only as the engine lists spells).
+            if (const auto level = effect->baseEffect->GetMinimumSkillLevel();
+                level > 0 && spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell)
+            {
+                row.level = std::to_string(level);
+                if (const float skill = gated ? gated->GetActorValue(school) : 0.0f;
+                    gated && skill < static_cast<float>(level))
+                {
+                    row.needsLevel = static_cast<int>(level);
+                    row.hasLevel = static_cast<int>(skill);
+                }
+            }
+        }
+        section.rows.push_back(std::move(row));
     }
     return section;
 }
