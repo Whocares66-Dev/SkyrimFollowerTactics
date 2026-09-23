@@ -1636,6 +1636,22 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
     });
 }
 
+void RequestWearAll(ft::ActorId id, std::vector<WearTarget> targets, WearRequest request)
+{
+    auto *task = SKSE::GetTaskInterface();
+    if (!task || targets.empty())
+        return;
+    task->AddTask([id, targets = std::move(targets), request]() {
+        auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+        if (!actor)
+            return;
+        for (const WearTarget &target : targets)
+            if (auto *thing = RE::TESForm::LookupByID(target.form))
+                Wear(actor, thing, request, Hand::None, By::Player, target.variant, nullptr);
+        RefreshShownPage();
+    });
+}
+
 std::vector<ft::PinEntry> PlayerPinsOf(ft::ActorId id)
 {
     std::scoped_lock lock(g_pinMutex);

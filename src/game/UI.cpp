@@ -4239,16 +4239,56 @@ bool FilterBox(const char *id, char *buffer, std::size_t size)
     return changed;
 }
 
-// A list's filter box, and on its line against the right edge how many of
-// the list's rows the filter leaves: "12 items", "3 of 12 items" -- `noun`
-// translated by the caller. Above the
-// table, not under it, where a long list pushed the count out of sight;
-// counted after the box, so the number answers this frame's text.
+// Ban every row the filter leaves, or unban them when every one is banned
+// already: search for what to set aside, then one click. The ban sign,
+// lit while all of them are banned -- in the theme's colour for a thing
+// selected, as an open drawer and a chosen menu item are, where the
+// button-pressed colour was left at ImGui's own blue. Nothing to do with
+// no rows.
+struct BanAll
+{
+    // The rows the filter leaves, as the game side takes them, and whether
+    // each is banned. Read when drawn, so it answers this frame's text.
+    std::function<std::vector<std::pair<WearTarget, bool>>()> rows;
+    ft::ActorId who{0};
+};
+
+void BanAllButton(const char *id, const BanAll &banAll)
+{
+    const auto rows = banAll.rows();
+    const bool every =
+        !rows.empty() && std::all_of(rows.begin(), rows.end(), [](const auto &row) { return row.second; });
+    if (every)
+        Im::PushStyleColor(Im::ImGuiCol_Button, Im::GetStyle()->Colors[Im::ImGuiCol_Header]);
+    const bool clicked = GlyphButton(std::string(id) + "banall", Im::GetFrameHeight(), Glyph::Ban);
+    if (every)
+        Im::PopStyleColor(1);
+    if (Im::IsItemHovered(0))
+        Im::SetTooltip("%s", every ? Tr("Click to unban all visible rows") : Tr("Click to ban all visible rows"));
+    if (!clicked || rows.empty())
+        return;
+    std::vector<WearTarget> targets;
+    for (const auto &[target, banned] : rows)
+        if (banned == every)
+            targets.push_back(target);
+    RequestWearAll(banAll.who, std::move(targets), every ? WearRequest::Unban : WearRequest::Ban);
+}
+
+// A list's filter box, the ban-all where the list takes one, and on its
+// line against the right edge how many of the list's rows the filter
+// leaves: "12 items", "3 of 12 items" -- `noun` translated by the caller.
+// Above the table, not under it, where a long list pushed the count out of
+// sight; counted after the box, so the number answers this frame's text.
 void FilterRow(const char *id, char *buffer, std::size_t size, const std::function<std::size_t()> &shown,
-               std::size_t total, const char *noun)
+               std::size_t total, const char *noun, const BanAll *banAll = nullptr)
 {
     const float right = Im::GetCursorPosX() + Im::GetContentRegionAvail().x - Im::GetStyle()->ItemSpacing.x;
     FilterBox(id, buffer, size);
+    if (banAll)
+    {
+        Im::SameLine(0.0f, -1.0f);
+        BanAllButton(id, *banAll);
+    }
     const std::size_t count = shown();
     const std::string text =
         count == total ? TrFormat("{} {}", total, noun) : TrFormat("{} of {} {}", count, total, noun);
@@ -4664,6 +4704,19 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
     std::size_t inCategory = 0;
     for (const auto &item : view.inventory)
         inCategory += (state.category < 0 || static_cast<int>(item.category) == state.category) ? 1 : 0;
+    // Ban-all on the lists a ban means something on, Weapons, Armor and
+    // Arrows, and not the player's: no ban there.
+    const bool bannable = !view.player && (state.category == static_cast<int>(ItemCategory::Weapons) ||
+                                           state.category == static_cast<int>(ItemCategory::Armor) ||
+                                           state.category == static_cast<int>(ItemCategory::Arrows));
+    const BanAll banItems{[&] {
+                              std::vector<std::pair<WearTarget, bool>> rows;
+                              for (const auto &item : view.inventory)
+                                  if (ItemShown(item, state) && item.equipable)
+                                      rows.push_back({{item.form, item.variant}, item.banned});
+                              return rows;
+                          },
+                          view.id};
     FilterRow(
         "##invfilter", g_inventoryList.filter, sizeof(g_inventoryList.filter),
         [&] {
@@ -4671,7 +4724,7 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
                 std::count_if(view.inventory.begin(), view.inventory.end(),
                               [&](const InventoryItem &item) { return ItemShown(item, state); }));
         },
-        inCategory, Tr("items"));
+        inCategory, Tr("items"), bannable ? &banItems : nullptr);
     Im::Spacing();
 
     // Which columns this list has. A stat column only where the stat means
@@ -5280,6 +5333,16 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
         if (VoiceEntry(entry) == voice && (state.category < 0 || static_cast<int>(entry.category) == state.category))
             ++inCategory;
     }
+    // Ban-all on a school's list, not All's, which has no equip cells, and
+    // not the player's: no ban there.
+    const BanAll banMagic{[&] {
+                              std::vector<std::pair<WearTarget, bool>> rows;
+                              for (const auto &entry : view.magic)
+                                  if (MagicShown(entry, list))
+                                      rows.push_back({{entry.form, std::nullopt}, entry.banned});
+                              return rows;
+                          },
+                          view.id};
     FilterRow(
         voice ? "##shoutfilter" : "##magicfilter", list.shared.filter, sizeof(list.shared.filter),
         [&] {
@@ -5287,7 +5350,7 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
                 std::count_if(view.magic.begin(), view.magic.end(),
                               [&](const MagicEntry &entry) { return MagicShown(entry, list); }));
         },
-        inCategory, MagicNoun(state.category, voice));
+        inCategory, MagicNoun(state.category, voice), state.category >= 0 && !view.player ? &banMagic : nullptr);
     Im::Spacing();
 
     // Which columns. Only the Magic tab's All list has a School column;

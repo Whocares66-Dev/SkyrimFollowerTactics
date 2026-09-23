@@ -110,6 +110,16 @@ namespace ft::game
 void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand hand = Hand::None,
                  std::optional<ft::ItemVariant> variant = std::nullopt, const void *row = nullptr);
 
+// The same request for many rows at once, in one task and one refresh:
+// the panel's ban-all over a filtered list. Each row by its form and, for
+// an item, its copy.
+struct WearTarget
+{
+    std::uint32_t form{0};
+    std::optional<ft::ItemVariant> variant;
+};
+void RequestWearAll(ft::ActorId id, std::vector<WearTarget> targets, WearRequest request);
+
 // The rules' side of the same book, on the game thread, from the tick. A
 // rule's pin is the panel's pin: it goes in the same book, shows in the
 // same cells, and the panel can let it go. Pin puts `form` in `hand` --

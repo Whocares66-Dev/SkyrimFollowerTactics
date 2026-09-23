@@ -586,6 +586,8 @@
   "Modifiers": "修正值",
   "Filter": "筛选",
   "Clear the filter": "清除筛选",
+  "Click to unban all visible rows": "点击解除禁用所有可见行",
+  "Click to ban all visible rows": "点击禁用所有可见行",
   "{} {}": "{} {}",
   "{} of {} {}": "{0} / {1} {2}",
   "All": "全部",

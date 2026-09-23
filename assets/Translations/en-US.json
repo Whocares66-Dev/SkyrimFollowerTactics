@@ -586,6 +586,8 @@
   "Modifiers": "Modifiers",
   "Filter": "Filter",
   "Clear the filter": "Clear the filter",
+  "Click to unban all visible rows": "Click to unban all visible rows",
+  "Click to ban all visible rows": "Click to ban all visible rows",
   "{} {}": "{} {}",
   "{} of {} {}": "{} of {} {}",
   "All": "All",
