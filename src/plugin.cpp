@@ -5,6 +5,7 @@
 // (tests/), and the plugin links the same libraries the tests do, so
 // nothing is re-proved here.
 
+#include "fix/DispelHold.h"
 #include "fix/StaffCharge.h"
 #include "game/AiScore.h"
 #include "game/Blows.h"
@@ -117,6 +118,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
                                       fresh ? "a new game begins" : "a save is loaded");
                 ft::game::ResetPackages();
                 ft::game::ResetAiScores();
+                ft::fix::ResetDispelHold();
                 ft::game::ResetBashes();
                 ft::game::ResetPlayerCasts();
                 fp::game::OnGameStarted();

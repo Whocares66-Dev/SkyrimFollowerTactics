@@ -287,6 +287,7 @@ if(FT_BUILD_PLUGIN)
         ${PROJECT_NAME}
         SOURCES
             src/plugin.cpp
+            src/fix/DispelHold.cpp
             src/fix/StaffCharge.cpp
             src/game/AiScore.cpp
             src/game/Log.cpp

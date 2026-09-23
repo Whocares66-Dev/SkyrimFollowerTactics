@@ -7,6 +7,7 @@
 #include "core/I18n.h"
 #include "core/Marks.h"
 #include "core/Watchdog.h"
+#include "fix/DispelHold.h"
 #include "game/Addresses.h"
 #include "game/AiScore.h"
 
@@ -1098,10 +1099,12 @@ float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
     if (!originalFn)
         return self->itemScore;
     const RE::NiPointer<RE::Actor> actor = AttackerOf(controller);
-    // A follower's own answer first -- perks, immunities, variety, their
-    // spells standing down for a rule's cast (AiScore.h) -- and the pins
-    // and bans over it: a zero here stays zero.
-    const float score = FollowerScore(self, controller, actor.get(), originalFn(self, controller));
+    // The engine's answer as src/fix/ corrects it, for every actor; then a
+    // follower's own -- perks, immunities, variety, their spells standing
+    // down for a rule's cast (AiScore.h) -- and the pins and bans over it:
+    // a zero here stays zero.
+    const float fixed = fix::HoldBackDispellers(self, actor.get(), originalFn(self, controller));
+    const float score = FollowerScore(self, controller, actor.get(), fixed);
     const char *why = "";
     if (!ShadowedEntry(self, actor.get(), why))
     {

@@ -143,7 +143,7 @@ inline constexpr REL::RelocationID kMarkValueStale{37534, 38483};
 inline constexpr REL::RelocationID kHitHandler{37673, 38627};
 inline constexpr REL::VariantOffset kHitHandlerVictimCall{0x3C0, 0x4A8, 0};
 
-// The combat AI's item count and its rebuild (fix/StaffCharge.h): a staff
+// The combat AI's item count and its rebuild (dev/COMBAT_AI.md 0): a staff
 // copy below its enchantment's cost counts as no copy, the cost asked of
 // MagicItem::CalculateMagickaCost with a null caster at one call in each --
 // SetItemCount's own, and the copy inlined in the rebuild. Both calls are

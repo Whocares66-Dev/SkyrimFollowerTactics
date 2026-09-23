@@ -23,9 +23,9 @@
 //   after it is cast (core/Variety.h)
 //
 // Everything else -- their heals, wards, buffs, and every entry of every
-// actor who is not a follower -- is the engine's own answer. The
-// stand-down is always on; the rest is the Settings page's Varied AI
-// choices.
+// actor who is not a follower -- is the engine's own answer, as corrected
+// in src/fix/. The stand-down is always on; the rest is the Settings
+// page's Varied AI choices.
 
 #include <cstdint>
 #include <vector>
