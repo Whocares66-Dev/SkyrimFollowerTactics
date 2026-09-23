@@ -21,6 +21,7 @@ endif()
 add_executable(
     ft_tests
     test_archive.cpp
+    test_attackscore.cpp
     test_bag.cpp
     test_bash.cpp
     test_blows.cpp
@@ -57,6 +58,7 @@ add_executable(
     test_spells.cpp
     test_table.cpp
     test_tick.cpp
+    test_variety.cpp
     test_vocabulary.cpp
     test_watchdog.cpp
 )

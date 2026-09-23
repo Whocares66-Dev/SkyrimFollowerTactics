@@ -232,6 +232,14 @@ using Trace = std::vector<Verdict>;
 // a rule that was not reached.
 using ActionTrace = std::vector<std::vector<Verdict>>;
 
+// Is an action waiting for the follower's own cast to end -- its rule met,
+// and held back only because the AI is casting? The game side holds the
+// AI's own spells back while one is (game/AiScore.h), so the AI finishes
+// the cast in hand and starts no other, and the rule gets its turn. Read
+// per action: a rule's summary is its first action's verdict, which can be
+// another's.
+[[nodiscard]] bool WaitsOnOwnCast(const ActionTrace &trace) noexcept;
+
 // Pure. Reads the snapshot, mutates only ctx's bookkeeping when a rule fires.
 // Pass a trace to get a verdict per rule, and an action trace for one per
 // action. The list's moment (RuleSet::moment) says when it decides: the

@@ -5,6 +5,7 @@
 #include "core/Tick.h"
 #include "core/Vocabulary.h"
 #include "game/Actions.h"
+#include "game/AiScore.h"
 #include "game/Blows.h"
 #include "game/Log.h"
 #include "game/Packages.h"
@@ -640,6 +641,11 @@ ft::ActorTick::Now ReadTick(ft::ActorId id, const ft::ActorRules &rules, bool fi
 // to evaluate, the snapshot, the rules -- is core's (core/Coordinator.h,
 // DecideTurn, tested); this reads the actor, builds the snapshot when one
 // is asked for, performs the action decided and says what happened.
+// Who of this tick's followers has a rule waiting on their own cast: handed
+// to the AI's score at the end of the tick, where their spells stand down
+// until the rule has its turn (AiScore.h). Game thread.
+std::vector<std::uint32_t> g_waitingOnOwnCast;
+
 void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool held)
 {
     const ft::ActorId id = actor->GetFormID();
@@ -666,6 +672,8 @@ void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool hel
     const ft::TickResult turn = ft::DecideTurn(state.run, lists, facts, now, snapshot, &trace, &actionTrace);
     if (!turn)
         return;
+    if (!player && ft::WaitsOnOwnCast(actionTrace))
+        g_waitingOnOwnCast.push_back(id);
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
 
     const ft::Moment moment = *turn.plan.list;
@@ -924,6 +932,7 @@ void Tick()
 
     KeepPins(followers);
 
+    g_waitingOnOwnCast.clear();
     // Out of combat there is nothing to decide, so the expensive work -- the
     // inventory scan inside BuildSnapshot, and the evaluation itself -- is
     // skipped entirely. What remains is a few actor-value reads, so the panel
@@ -978,6 +987,11 @@ void Tick()
         }
         RunTurn(player, now, RulesOf(player->GetFormID()), held != ft::HeldReason::None);
     }
+
+    // Every turn has had its say: the AI hears who is waiting on their own
+    // cast, and who no longer is.
+    SetWaitingOnOwnCast(std::move(g_waitingOnOwnCast));
+    g_waitingOnOwnCast.clear();
 
     // Armed cast requests are withdrawn from here, whether or not anyone is
     // still fighting: a request must not outlive the moment it was made for.

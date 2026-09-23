@@ -146,6 +146,7 @@ add_library(
     ft_core
     STATIC
     src/core/Archive.cpp
+    src/core/AttackScore.cpp
     src/core/BagView.cpp
     src/core/Bash.cpp
     src/core/Blows.cpp
@@ -181,6 +182,7 @@ add_library(
     src/core/Spells.cpp
     src/core/Table.cpp
     src/core/Tick.cpp
+    src/core/Variety.cpp
     src/core/Vocabulary.cpp
     src/core/Watchdog.cpp
 )
@@ -286,6 +288,7 @@ if(FT_BUILD_PLUGIN)
         SOURCES
             src/plugin.cpp
             src/fix/StaffCharge.cpp
+            src/game/AiScore.cpp
             src/game/Log.cpp
             src/game/Sensors.cpp
             src/game/Sheet.cpp

@@ -581,9 +581,21 @@ struct PerkPage
 // skill-boost perk for whoever holds it), times the attack damage
 // multiplier, plus flat melee damage. `entry` may be null, in which case
 // the weapon is taken as untempered. `out`, when given, is the figure
-// written out.
+// written out. `target` is whom the perks are asked against; null, the
+// actor stands in, as the inventory menu has it.
 [[nodiscard]] float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry,
-                                 ft::Breakdown *out = nullptr);
+                                 ft::Breakdown *out = nullptr, RE::Actor *target = nullptr);
+
+// The weapon's skill, their level in it, and the factor it gives their
+// damage: the engine's min + (max - min) * skill / 100, from the player's
+// pair of settings or everyone else's.
+struct WeaponSkillCurve
+{
+    RE::ActorValue skill{RE::ActorValue::kOneHanded};
+    float level{0.0f};
+    float factor{1.0f};
+};
+[[nodiscard]] WeaponSkillCurve SkillCurveOf(RE::Actor *actor, RE::TESObjectWEAP *weapon);
 
 // The armour rating a piece gives them, the same way: base, times tempering,
 // times the armour skill's curve, through their perks. Clothing rates 0.

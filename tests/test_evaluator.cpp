@@ -1821,8 +1821,15 @@ TEST_CASE("a power is used like a cast: known, not running, not mid-cast, free o
     s.spells.active.clear();
     s.now += 10.0;
     s.traits.status |= Bit(StatusKind::Casting);
-    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    ActionTrace actions;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace, &actions).Fired());
     REQUIRE(trace.at(0) == Verdict::Casting);
+    // Which the game side reads as "hold the AI's own spells back".
+    REQUIRE(WaitsOnOwnCast(actions));
+    s.traits.status = 0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace, &actions).Fired());
+    REQUIRE_FALSE(WaitsOnOwnCast(actions));
+    s.traits.status |= Bit(StatusKind::Casting);
 
     // Aimed anywhere, like a cast: the menu sorts powers by delivery.
     REQUIRE(IsActionValidFor(ActionTargetKind::Enemy, ActionKind::UsePower));

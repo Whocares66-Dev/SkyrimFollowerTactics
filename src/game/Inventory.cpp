@@ -457,12 +457,12 @@ namespace
 {
 } // namespace
 
-float ActualMagnitude(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect)
+float ActualMagnitude(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect, RE::Actor *target)
 {
     float value = effect ? effect->effectItem.magnitude : 0.0f;
     if (caster && spell)
-        RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModSpellMagnitude, caster, spell,
-                                            static_cast<RE::Actor *>(nullptr), &value);
+        RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModSpellMagnitude, caster, spell, target,
+                                            &value);
     return value;
 }
 

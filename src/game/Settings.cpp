@@ -15,6 +15,8 @@ namespace
 std::atomic_bool g_requireDualWieldStyle{true};
 std::atomic_bool g_requireDualCastPerks{false};
 std::atomic_bool g_requirePowerBashPerk{false};
+// Read by the AI's score, on its own threads.
+std::atomic_bool g_variedAiChoices{false};
 
 } // namespace
 
@@ -24,6 +26,7 @@ ft::Settings CurrentSettings()
     settings.requireDualWieldStyle = g_requireDualWieldStyle.load(std::memory_order_relaxed);
     settings.requireDualCastPerks = g_requireDualCastPerks.load(std::memory_order_relaxed);
     settings.requirePowerBashPerk = g_requirePowerBashPerk.load(std::memory_order_relaxed);
+    settings.variedAiChoices = g_variedAiChoices.load(std::memory_order_relaxed);
     return settings;
 }
 
@@ -33,18 +36,23 @@ void SetSettings(const ft::Settings &settings)
     g_requireDualWieldStyle.store(settings.requireDualWieldStyle, std::memory_order_relaxed);
     g_requireDualCastPerks.store(settings.requireDualCastPerks, std::memory_order_relaxed);
     g_requirePowerBashPerk.store(settings.requirePowerBashPerk, std::memory_order_relaxed);
+    g_variedAiChoices.store(settings.variedAiChoices, std::memory_order_relaxed);
     if (before.requireDualWieldStyle == settings.requireDualWieldStyle &&
         before.requireDualCastPerks == settings.requireDualCastPerks &&
-        before.requirePowerBashPerk == settings.requirePowerBashPerk)
+        before.requirePowerBashPerk == settings.requirePowerBashPerk &&
+        before.variedAiChoices == settings.variedAiChoices)
         return;
     log::tactics.event(log::Level::Info, "settings.changed",
                        {{"requireDualWieldStyle", settings.requireDualWieldStyle},
                         {"requireDualCastPerks", settings.requireDualCastPerks},
-                        {"requirePowerBashPerk", settings.requirePowerBashPerk}},
-                       "settings: dual wield combat style {}, dual casting perks {}, power bash perk {}",
+                        {"requirePowerBashPerk", settings.requirePowerBashPerk},
+                        {"variedAiChoices", settings.variedAiChoices}},
+                       "settings: dual wield combat style {}, dual casting perks {}, power bash perk {}, "
+                       "varied AI choices {}",
                        settings.requireDualWieldStyle ? "required" : "not required",
                        settings.requireDualCastPerks ? "required" : "not required",
-                       settings.requirePowerBashPerk ? "required" : "not required");
+                       settings.requirePowerBashPerk ? "required" : "not required",
+                       settings.variedAiChoices ? "on" : "off");
 }
 
 } // namespace ft::game

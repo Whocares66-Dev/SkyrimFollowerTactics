@@ -8,6 +8,7 @@
 #include "core/Marks.h"
 #include "core/Watchdog.h"
 #include "game/Addresses.h"
+#include "game/AiScore.h"
 
 #include "game/Log.h"
 #include "game/Sensors.h"
@@ -1106,11 +1107,18 @@ float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
     // being silently scored 0 for everyone.
     if (!originalFn)
         return self->itemScore;
-    const float score = originalFn(self, controller);
     const RE::NiPointer<RE::Actor> actor = AttackerOf(controller);
+    // A follower's own answer first -- perks, immunities, variety, their
+    // spells standing down for a rule's cast (AiScore.h) -- and the pins
+    // and bans over it: a zero here stays zero.
+    const float score = FollowerScore(self, controller, actor.get(), originalFn(self, controller));
     const char *why = "";
     if (!ShadowedEntry(self, actor.get(), why))
+    {
+        NoteAnswer(self, controller, actor.get(), score);
         return score;
+    }
+    NoteAnswer(self, controller, actor.get(), 0.0f);
     bool first = false;
     {
         std::scoped_lock lock(g_pinMutex);
@@ -1164,7 +1172,11 @@ void ProbeCombatInventory(RE::Actor *actor)
         g_probedFights.erase(id);
         return;
     }
-    if (!g_probedFights.insert(id).second)
+    // The engine fills the list a moment after the fight begins: an empty
+    // one is asked again next tick, or it reads as every spell left out.
+    const bool filled =
+        std::ranges::any_of(controller->inventory->inventoryItems, [](const auto &items) { return !items.empty(); });
+    if (!filled || !g_probedFights.insert(id).second)
         return;
     {
         std::scoped_lock lock(g_pinMutex);

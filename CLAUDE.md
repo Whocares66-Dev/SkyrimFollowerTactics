@@ -5,7 +5,7 @@ A Dragon Age: Origins-style tactics system for Skyrim SE/AE followers: an ordere
 
 Read `dev/PLAN.md` first. `dev/RESEARCH.md` has the sourced findings behind it, with
 explicit uncertainty flags. `dev/MAGIC.md` is how casting works and what does not;
-`dev/SCORING.md` is how the combat AI scores and chooses what to hold and cast (the score, the category order, each caster's gates, read from the executable 2026-09-22, not yet verified in play) and where a different chooser could go;
+`dev/COMBAT_AI.md` is the combat AI: how it scores and chooses what to hold and cast (the score, the category order, each caster's gates, dual casting, read from the executable 2026-09-22), the combat style that tunes it, and what we change for a follower's weapons and attack spells: perks and immunities in the score, a held weighted-random pick with a recency penalty, and their spells standing down while a rule waits to cast (built 2026-09-22 on `wip-scoring`, not yet verified in play);
 `dev/PROFILES.md` is how tactics live in the save (format, when, versioning);
 `dev/UNIQUE.md` is how one copy of an item is told from another (the engine's
 unique id, what a pin, a ban and a rule name, what is still to verify);

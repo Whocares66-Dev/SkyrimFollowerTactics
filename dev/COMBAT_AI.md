@@ -1,4 +1,4 @@
-# How the combat AI chooses what to hold
+# The combat AI: how it chooses, and what tunes it
 
 Read from the disassembly of 1.6.1170 (AE Address Library IDs) on 2026-09-22, branch `wip-scoring`. **Nothing here is verified in play yet.** Each claim is READ (seen in the instructions) or INFERRED; unmarked means READ. GMST values are the executable's compiled defaults; whether Skyrim.esm or an ini overrides any of them is not checked. The working notes, with raw dumps and helper scripts, were in `build/scoring/` (untracked): `score-functions.md`, `selection.md`, `casters.md`.
 
@@ -178,6 +178,21 @@ A per-slot behaviour-tree node (tree built by 47688, "Action Equipment Dynamic C
 - The 3 to 5 s minimum equip time.
 - The 1 s rescore.
 
+## 6. Dual casting (read 2026-09-23)
+
+The combat AI dual-casts on its own; nothing of ours asks it to. The magic behaviour tree (49112) runs, per hand's magic context and for either casting type, a fallback over three children, re-rolled each cycle (the re-roll INFERRED):
+
+```
+1. RandomNode(p = CalcDualCastMagicChance 49095) -> PrepareDualCast (49110/49111) -> cast with dual = true
+2. RandomNode(p = CalcCastMagicChance 49094)     -> the single cast
+3. Idle 0.25 s
+```
+
+- **The chance** (49095, checked): 0 unless the context's caster is the **left** hand; else `fCombatMagicDualCastChance` (372195, 0.33) × the caster's own cast chance (caster slot 08). For an attack spell that is lerp(0.05, 0.75, offensiveMult) released, lerp(0.25, 1, ...) streamed, so **1.65% to 24.75%** a try for a released attack spell, and 0.33 for a buff, heal, ward or cloak (their cast chance is 1). The combat style reaches it only through its offensive multiplier; there is no dual-cast field in `TESCombatStyle`.
+- **The conditions** (PrepareDualCast): the right hand holds the **same spell**; magicka at least `fMagicDualCastingCostMult` (376265, 1.5) × cost + `fMagicDualCastingCostBase` (376262, 0), the cost through the perks (11321); both casters idle and ready (`bMLh_Ready`, `bMRh_Ready`) and the caster's own start check. A released spell waits for the right hand to be idle. A stream needs the right hand already channelling; after `fCombatMagicDualCastInterruptTime` (372192, 2.5 s) it is interrupted and the pair restarts as a dual cast. Distance plays no part.
+- **The cast** (38762): same spell in both hands, spell type Spell, all casters idle; sets the dual flag (unless the spell has NoDualCastModifications) and casts from the left, at 1.5 times the cost. **The `CanDualCastSpell` perk entry is asked only for the player**, so an NPC needs no Dual Casting perk to dual-cast. What the Dual Casting perks do to an NPC's dual cast's power is not traced.
+- **The equip side is the gate that matters:** the same spell must be in both hands, which the loadout (44899) decides. With "Varied AI choices" on, each hand's entry of a spell has its own random draw, so both hands hold the same spell less often than in vanilla, where the top spell tops both hands' lists, and the AI dual-casts less.
+
 ## Why the three behaviours
 
 - **The same spell every time.** Category 0, best score first, deterministic score, no gate on a fire-and-forget attack spell but "not fleeing", and nothing that remembers the last cast.
@@ -216,6 +231,87 @@ Two things to settle before building it:
 - **The other score readers.** The +0.1 held bonus, the 10% minimum-score rule and set A's range choice all read the same answer. Noise reaches them too. The range choice is the one that could change behaviour visibly: a sampled bow could pull a melee follower back to range.
 
 The sampler, the penalty and their tests belong in `src/core` (a pure function from scores, a clock and a seed to adjusted scores); only the hook stays in `src/game`.
+
+## What we change (built 2026-09-22, `wip-scoring`; not yet verified in play)
+
+Weapons and attack spells only: category 0, a follower's (a player teammate, never the player, never an enemy). The Settings page's Combat section has the switch, **Varied AI choices**, off by default and saved with the game (`ft::Settings::variedAiChoices`); it gates the perks, the immunities and the variety, not the stand-down for a rule's cast, which is tactics' own and always on. Heals, wards and buffs keep the engine's gates and order. The code is `src/game/AiScore.cpp`, called from the score hook in `Pins.cpp` before the pins and bans. The testable part is `src/core/Variety.h` and `WaitsOnOwnCast` in `core/Evaluator.h`.
+
+| | The engine | Ours |
+|---|---|---|
+| **Which attack spell** | Best score, every rescore: the same spell wins until magicka or range says otherwise | A random pick weighted by score: each spell's score is multiplied by a random factor `exp(T(g − γ))`, where `g` is a Gumbel draw, so the winner is spell `i` with probability ∝ `score_i^(1/T)`. `T` = 1, so a spell scoring twice another is cast twice as often |
+| **Repeating** | Nothing remembers the last cast | Counted in attack casts, not seconds, so a quick caster and a slow one are treated alike: each of the last attack casts that was this spell takes its share, the last cast half the score, the one before a quarter, halving each cast back, each cast of it multiplying in (A, B, A leaves A x0.5 x0.875). The last eight are kept. A heal or a buff neither counts nor ages them. Forgotten when the fight ends |
+| **The draw's reach** | – | The random factor is capped at ×10 either way: the Gumbel tail reached ×1152 in play, and the engine reads the same answer for the loadout's fighting range and the 10% rule on short-reach attacks. The cap moves the odds by about a point |
+| **Swapping** | Only the engine's minimum equip time (3 s for magic) and a +0.1 bonus for the held item | Each entry's draw is held until something says it has had its turn or cannot have one: **its own** spell cast, and the engine's 3 s past; the entry unusable (a score of 0, an enemy it cannot touch); another enemy; the fight over. No timer of ours: until 2026-09-23 a draw with no cast went after 10 s, a guess. So a spell the draw favoured keeps its turn until used. Until the same day one cast redrew every entry: Serana's Ice Storm won a draw, was equipped, and lost the draw to the other hand's cast before it was ever cast |
+| **Weapon damage** | Base × skill curve + MeleeDamage. No perks, no AttackDamageMult | × (our figure / the plain one). Our figure goes through the ModAttackDamage perk entry point against the actual enemy (Armsman, Overdraw, a perk against undead), plus AttackDamageMult |
+| **Spell worth** | What one cast does (magnitude × duration): no cost, no cast time, so the biggest, dearest spell always wins | Per second of the follower's time, with magicka counted as time: `damage per cast / (charge + hold + price × cost)` (`core/AttackScore.h`). The price is 0 on a full pool and rises, squared, to one point's regeneration time on an empty one, so the dear spell wins while magicka lasts and the efficient one as it runs low. A stream (concentration spell) is its magnitude over the engine's 3 s scoring duration, and the cost per second over the same. A staff costs nothing (its charge is the recharge rule's business). A scroll costs no magicka but is the backup for when magicka runs low: its score is taken at the pool's drained share, squared (none full, all of it empty), where vanilla scores it as a spell with no Magic multiplier and never holds it back. Weapons are already per second, but the two are **not** one unit: the engine's per-cast figure for a spell carries its effect kinds' weights, the x2 for an aimed spell, the style's Magic multiplier and Script effects' AI scores, so a caster's spells ran 200 to 400 a second against a sword's 18 in play (Serana, 2026-09-22), as they outweigh it in vanilla too |
+| **Spell damage** | The record's magnitude | × (the magnitude after the ModSpellMagnitude perks, against the enemy / the record's): Augmented Flames and the like |
+| **Immunity** | Resistances only (`CheckResistance`). The attack-spell gate checks nothing else | Also zero when every hostile effect's conditions spare the enemy, asked as the engine asks when the effect lands: the ImmuneParalysis keyword, a drain that skips undead and automatons |
+| **A rule's cast** | The AI keeps casting its own spells. A rule waits for each cast to end and can wait a whole fight, or arm and time out while the AI starts another | While a rule waits on the follower's own cast, or holds a cast record, their own spells score 0 (the spell our record casts excepted). The AI finishes the cast in hand, starts no other, and the rule gets its turn |
+
+**What the log says** (`[ai]`, at debug):
+- **Once per entry per draw,** every component of its score. For a spell: the engine's per-cast figure, the perk factor, the charge and hold (or the stream's length), the cost and magicka's price with the pool and its regeneration, the per-second result, the recency factor, the draw, the answer and the draw's number. For a weapon: the engine's per-second figure, the perk factor and the enemy.
+- **At every cast,** the spell cast, their magicka, and every attack entry's latest answer, highest first: what the choice was made against.
+- A stand-down, and a spell answered 0 because every hostile effect spares the enemy, once each per fight.
+- **Once per entry per fight, every entry,** switch on or off: its category, the engine's score, and its reach (minimum, optimal, maximum, equip range), which the loadout scores down by ×0.1 outside.
+- **The loadout, each time it changes:** the set the engine equips from, with its items' answers and the set's score; the set it would want at any range; what is in hand; and the distance readings the range test uses. Read at the first entry of a rescore, on the AI's own thread. The set's fields are read by offset: CommonLib names them wrongly (`dev/COMMONLIB.md`).
+
+**Why it is better:**
+- **Variety without flicker.** The pick is random but weighted, so strong spells still dominate. The draw is scale-free, so it needs no tuning per follower or level. Holding the draw until a cast keeps the engine's own "best first" from turning it into swapping.
+- **A truer estimate.** The score now counts what the follower's perks and effects do to this enemy, which the engine left out, and stops wasting casts on an enemy the spell cannot touch.
+- **Tactics and AI stop stepping on each other.** Tactics already waited for the AI rather than interrupting it (`core/Evaluator.cpp`, CastAvailability). Now the AI waits for tactics, for as long as a rule is actually waiting.
+
+A scroll is a spell record and takes the spell path whole. A staff is a weapon record whose cast is its enchantment, and is scored as that enchantment: perks, conditions, draw and penalty. Whether the cast event names the enchantment for a staff, which the penalty needs, is not yet seen.
+
+**Left as the engine has it, on purpose:**
+- **No random draw on weapons.** A random swap between a sword and a bow is worse than none. Weapons do still compete with the varied spells, so a spellsword sometimes casts where they would have swung.
+- **Tempering and a weapon's enchantment.** The engine's entry names the form, not the copy.
+- **The category order and every gate.** Cloaks are still eager; section 4's hook points are where that would change.
+
+## Combat styles: the AI's tuning
+
+A `CSTY` record is the combat AI's tuning, not its logic: the engine code above reads its numbers and flags. An actor uses the style on their base record (`TESNPC::combatStyle`), and in a fight their `CombatController` holds a pointer to it too. The field descriptions are the Creation Kit wiki's ("Combat Style"), kept here because that page refuses automated fetches. The ranges are measured: every style in this load order, 163 of them, read through houseCARL (2026-09-03).
+
+**Where the code above reads it:**
+- The **equipment score multipliers** multiply each entry's score at every rescore, once a second (section 2), so a change takes effect within a second, not at the next fight: Magic, Shout and Staff on magic entries (45084), Melee, Ranged and Unarmed on weapons (26416).
+- The **offensive multiplier** sets the AI's hold before releasing an attack spell (45354) and its cast chance, and through that the dual-cast chance (section 6).
+- The **defensive multiplier** sets the health a heal waits for (section 4, Restore).
+- The **Allow Dual Wielding** flag: an actor whose style forbids it takes a left-hand weapon straight off again.
+
+**Two scales:**
+
+| family | fields | range seen | neutral |
+|---|---|---|---|
+| chances and movement | offensive, defensive, group offensive, avoid threat, special attack, circle, fallback, flank distance, stalk time, strafe | 0 to 1 | -- |
+| score and attack multipliers | the six equipment scores; attack staggered, power attack staggered, power attack blocking, bash, bash recoiled, bash attacking, bash power attacking | 0 to 10 | 1 |
+
+The panel shows each value as `x / 1` or `x / 10` accordingly. Reference points: csHumanMagic (Marcurio) has magic score 4.05, melee 0.76, offensive 0.65, defensive 0.5, Dueling; csHumanMissile has ranged 3.2, melee 0.83. Of the 163 styles, 113 are Dueling, 27 Dueling with dual wielding, 11 Flanking, 2 Flanking with dual wielding.
+
+**The fields (Creation Kit wiki):**
+
+- General
+  - **Offensive Mult**: works with Defensive. The higher, the more likely a character attacks, the more often, and the more often with a power attack.
+  - **Defensive Mult**: the higher, the more a character blocks, the longer the block is held, and the more they bash if they can.
+  - **Group Offensive Mult**: overrides Offensive in a group: the more actors attacking one target, the less offensive each is, by this mult. Higher keeps them offensive in groups.
+  - **Avoid Threat Chance**: not used, or use unknown to the wiki's author.
+  - **Equipment Score Mults**: the higher, the more likely the actor uses that kind of equipment. Multiplied into the damage output of the attack, so a weak melee attack against strong spells needs a very high melee mult before the actor prefers melee: a comparison of weighted damage, not a share of the time (section 2 has the formulas).
+- Melee
+  - **Attack Staggered** / **Power Attack Staggered**: the higher, the more likely an attack, or a power attack, on a staggered target.
+  - **Power Attack Blocking**: the more likely a power attack on a blocking target, to break the block.
+  - **Special Attack**: not used, or use unknown.
+  - **Bash**: the more likely a bash (a shield's, or an attack flagged as a bash), which can stagger and interrupt. **Bash Recoiled**, **Bash Attack**, **Bash Power Attack**: against a target recoiling from its own blocked attack, mid-attack, mid-power-attack.
+  - **Allow Dual Wielding** (flag): lets an NPC dual wield; works only on NPCs with dual-wielding animations, humanoids.
+- Close range, one of two modes by flag
+  - **Dueling**: **Circle Mult** (how much the actor circles the target rather than standing still), **Fallback Mult** (chance to back off).
+  - **Flanking**: **Flank Distance** (distance kept while flanking), **Stalk Time** (time spent flanking before attacking).
+- Long range: **Strafe Mult**, how much the actor strafes to dodge projectiles out of melee range.
+- Flight: dragons only; not shown.
+
+**What the panel does with it:**
+- The Combat Style tab, before Tactics, shows the live style with these descriptions as hover text and only the active close-range pair; the two unused fields and the flight fields are left off.
+- A left-hand weapon pin gives the follower a **runtime copy** of the style with dual wielding allowed (`AllowDualWield` in `Tactics.cpp`), assigned to their record and their live controller. Vanilla styles are shared by every actor of a kind (csHumanMagic by every mage), so a style is never edited in place. The copy (`CreateDuplicateForm`, a 0xFF FormID) is not written to the save: created forms are saved only for weapons, armour, potions, enchantments and references, and the NPC change form does not carry the combat style. So it, and anything pointing at it, is gone on reload, which is what makes it safe to uninstall over.
+- Next, perhaps: a dropdown of named styles (wizard, spellsword, berserker, archer) as tuned copies, the `SetCombatStyle` palette `PLAN.md` 3.8 anticipates. Since the score multipliers are read at every rescore, such a change would take effect within a second.
+
+The style used to be this project's only lever on the AI, the decision logic being out of reach. It is no longer: sections 2 to 5 are the logic, and "What we change" hooks it.
 
 ## Not yet read or verified
 

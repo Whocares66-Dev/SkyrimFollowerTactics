@@ -16,14 +16,8 @@ in `dev/PLAN.md`.
 
 ## Casting
 
-- **Deferring to the AI's own cast, in play.** A cast rule now waits
-  (verdict "casting") while the follower is mid-cast on a spell of their
-  own, instead of interrupting it (2026-09-04, Lightning Bolt on "magicka
-  above half" cut off every spell Marcurio began). The risk is the other
-  way: an AI that casts back to back never lets the rule through. Watch
-  for a cast rule whose Status sits on "casting" for whole fights; if it
-  does, the next knob is the cast cooldown, 2 s to 4 s, or letting the
-  rule through once it has waited some seconds.
+- **Deferring to the AI's own cast, in play.** A cast rule waits (verdict "casting") while the follower is mid-cast on a spell of their own, instead of interrupting it (2026-09-04, Lightning Bolt on "magicka above half" cut off every spell Marcurio began). The risk was the other way: an AI that casts back to back never lets the rule through. Since 2026-09-22 (`wip-scoring`) the AI's own spells stand down while a rule waits so or holds a cast record (`dev/COMBAT_AI.md` "What we change"), so the AI finishes the cast in hand and starts no other. To see: `[ai] ... has a rule waiting on their own cast`, then the rule firing within a cast's length, and no lease ending unfired while the AI casts.
+- **The AI's attack choice, in play** (built 2026-09-22 on `wip-scoring`, `dev/COMBAT_AI.md` "What we change"). With the log at debug, a caster follower in a long fight: the `[ai]` lines give each attack spell's engine score, perks, recency and draw; the spell cast should vary, change no sooner than a cast plus 3 s, and a spell whose hostile effects' conditions spare the enemy (a paralysis on an automaton) should read "answered 0". Also: the weapon factor on a follower with Armsman (about 1.2 to 2); whether calling the perk entry point and condition checks from the AI's thread is safe (it is where the engine's own gates evaluate conditions, but not seen); and whether a spell zeroed while in hand is put away within a second or cast once more first.
 - **Sustain length in the editor.** A concentration rule's stream length is
   the rule's numeric argument, which the panel does not expose; every stream
   runs the 3 s default. Likely shape: a random length within a range, which

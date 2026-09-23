@@ -74,3 +74,28 @@ Both wrappers load the equip manager singleton from a global and `jmp` to the me
 **What we do instead.** Bind both as `(SE, AE)` pairs (`src/game/Addresses.h`) and call them on the game thread (`UnequipSpellNow` and `UnequipShoutNow`, `src/game/Pins.cpp`). There is no Papyrus fallback: the IDs resolve on both lines. The SE halves, 37947 and 37948, were read on 1.5.97 by the same route on 2026-09-18 (`dev/VERSIONS.md` has the trace); the AE ones hold across every AE database. Not yet verified in play.
 
 **Upstream.** A PR would add the two to `ActorEquipManager.h` and `.cpp` beside `EquipSpell` and `EquipShout`, as `RELOCATION_ID(37947, 38903)` and `RELOCATION_ID(37948, 38904)`, both halves now read. Not reported yet, and whether an issue exists was not checked -- `gh` is not installed here.
+
+## Wrong: the combat inventory's layout (found 2026-09-22)
+
+**What is wrong.** `CombatEquipment` (`include/RE/C/CombatInventory.h`), the loadout the combat AI builds once a second (`dev/COMBAT_AI.md` 3), names its fields in the wrong order after the first two. Read from the engine's own writes to it: `AddItem` (44837), which pushes an item and ORs its slot bits in, and the initialiser in the loadout builder (44899), which sets the two ranges to `fCombatMaximumRange` (4096):
+
+| offset | CommonLib's name | what it is |
+|---|---|---|
+| 0x00 | `items` | the entries admitted (right) |
+| 0x18 | `slot` | the slot mask, the OR of the items' `itemSlot.slot` bits (a mask, not one slot) |
+| 0x1C | `maxRange` | **the set's score**: the sum of the admitted attack entries' scores |
+| 0x20 | `optimalRange` | **the maximum range**: the least over the items, 4096 to start |
+| 0x24 | `minRange` | **the optimal range**, the same way |
+| 0x28 | `score` | **the minimum range**: items that reach less add no score |
+
+**And around it, in `CombatInventory`:**
+- `unk118` and `unk148` are the two sets the builder fills: `unk118` the loadout it would want at any range (raw scores), `unk148` the one it equips from (scores cut to a tenth for an entry out of reach). Only `unk148` is equipped.
+- `unk0E8` is a map the builder copies and asks (44927, 44959). INFERRED: a count per form, which the builder asks of a staff.
+- `minimumEffectiveDistance` and `maximumEffectiveDistance` (0x1B0, 0x1B4) are written by 50693 and read as the current distance to the target by the magic casters' range tests, not as range limits (INFERRED from how they are read).
+- `CombatInventoryItem::GetCategory` returns `CATEGORY`, whose only enumerator is `kTotal = 7`. The seven values it returns are the categories in `dev/COMBAT_AI.md` 3: 0 attack, 1 restore, 2 and 3 wards and defence, 4 long buffs, 5 short buffs, 6 block. Missing names, not wrong ones.
+
+**How it was found.** The first disassembly pass over the loadout (2026-09-22) read the fields off the builder's instructions and flagged CommonLib's order as wrong; nothing of ours read the struct until the loadout log (below). Not yet confirmed in play: the loadout log's first readings will be the check.
+
+**What we do instead.** `SetOf` in `src/game/AiScore.cpp` reads the items and the score by offset (0x1C), not by CommonLib's names, and names the two sets by what they are.
+
+**Upstream.** A PR would rename `CombatEquipment`'s fields after `slot` (and `slot` to a mask) and name `unk118`/`unk148`; the SE offsets are unread. Not reported yet.

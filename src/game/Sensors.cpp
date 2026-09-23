@@ -2937,42 +2937,20 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
     }
 }
 
-float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry, ft::Breakdown *out)
+WeaponSkillCurve SkillCurveOf(RE::Actor *actor, RE::TESObjectWEAP *weapon)
 {
-    if (!actor || !weapon)
-        return 0.0f;
-    ft::Breakdown local;
-    ft::Breakdown &b = out ? *out : local;
-    b = {};
-    float damage = weapon->GetAttackDamage();
-    ft::Start(b, Tr("Base"), damage);
-    if (const float tempering = Tempering(entry); tempering != 1.0f)
-    {
-        damage *= tempering;
-        ft::Multiply(b, Tr("Tempering"), tempering);
-    }
-
     // The skill curve: UESP gives it as (1 + skill / 200), which is what the
     // fallbacks below encode. The settings are read by the names the engine
     // uses so a rebalancing mod that changes them is honoured; the resolved
     // curve is logged once so a wrong name shows up as a wrong number in the
     // log rather than as a silently vanilla curve.
     using AV = RE::ActorValue;
-    AV skill = AV::kOneHanded;
-    AV fortify = AV::kOneHandedModifier;
-    AV fortifyPower = AV::kOneHandedPowerModifier;
+    WeaponSkillCurve out;
+    out.skill = AV::kOneHanded;
     if (weapon->IsTwoHandedSword() || weapon->IsTwoHandedAxe())
-    {
-        skill = AV::kTwoHanded;
-        fortify = AV::kTwoHandedModifier;
-        fortifyPower = AV::kTwoHandedPowerModifier;
-    }
+        out.skill = AV::kTwoHanded;
     else if (weapon->IsBow() || weapon->IsCrossbow())
-    {
-        skill = AV::kArchery;
-        fortify = AV::kMarksmanModifier;
-        fortifyPower = AV::kMarksmanPowerModifier;
-    }
+        out.skill = AV::kArchery;
 
     // The skill curve: min + (max - min) * skill / 100, and the engine
     // keeps one pair of settings for the player and another for everyone
@@ -2992,46 +2970,75 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     (void)logged;
 
     auto *owner = actor->AsActorValueOwner();
-    const float skillLevel = owner ? owner->GetActorValue(skill) : 0.0f;
+    out.level = owner ? owner->GetActorValue(out.skill) : 0.0f;
     const bool player = actor->IsPlayerRef();
     const float lo = player ? pcMin : npcMin;
     const float hi = player ? pcMax : npcMax;
-    const float curve = lo + (hi - lo) * skillLevel / 100.0f;
-    damage *= curve;
-    ft::Multiply(b, ValueName(skill) + " (" + Fmt("%.0f", skillLevel) + ")", curve).detail =
-        ValueLines(actor, skill, skillLevel);
+    out.factor = lo + (hi - lo) * out.level / 100.0f;
+    return out;
+}
+
+float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry, ft::Breakdown *out,
+                   RE::Actor *target)
+{
+    if (!actor || !weapon)
+        return 0.0f;
+    ft::Breakdown local;
+    ft::Breakdown &b = out ? *out : local;
+    b = {};
+    float damage = weapon->GetAttackDamage();
+    ft::Start(b, Tr("Base"), damage);
+    if (const float tempering = Tempering(entry); tempering != 1.0f)
+    {
+        damage *= tempering;
+        ft::Multiply(b, Tr("Tempering"), tempering);
+    }
+
+    using AV = RE::ActorValue;
+    const WeaponSkillCurve curve = SkillCurveOf(actor, weapon);
+    damage *= curve.factor;
+    // The lines' sources are walked only for a breakdown someone reads: the
+    // AI's score asks for the figure alone, once a second per weapon.
+    auto &skillLine = ft::Multiply(b, ValueName(curve.skill) + " (" + Fmt("%.0f", curve.level) + ")", curve.factor);
+    if (out)
+        skillLine.detail = ValueLines(actor, curve.skill, curve.level);
 
     // Perks, through the engine's own entry point, so Armsman and the rest
-    // count exactly as they do in a swing. The entry point wants a target,
-    // and there is none outside a fight; they stand in for it themself. A
-    // perk that reads the target (against undead, say) evaluates against
-    // them and so stays out of the figure -- the same figure the player's
-    // own inventory menu shows, which has no target either. Fortify
-    // One-handed and its kin count here too, for whoever holds the hidden
-    // perk that reads them (every NPC in Nordic Souls; no follower in
+    // count exactly as they do in a swing. The entry point wants a target;
+    // with none given -- the sheet, outside a fight -- they stand in for it
+    // themself. A perk that reads the target (against undead, say) then
+    // evaluates against them and so stays out of the figure -- the same
+    // figure the player's own inventory menu shows, which has no target
+    // either. The AI's score passes the enemy, and such a perk counts.
+    // Fortify One-handed and its kin count here too, for whoever holds the
+    // hidden perk that reads them (every NPC in Nordic Souls; no follower in
     // vanilla): multiplying the value in by hand as well doubled it
     // (dev/MODIFIERS.md, 2026-09-13).
-    (void)fortify;
-    (void)fortifyPower;
-    AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, {weapon, actor});
-    RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, actor, weapon, actor,
+    RE::Actor *against = target ? target : actor;
+    if (out)
+        AddEntryPointLines(b, actor, RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, {weapon, against});
+    RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModAttackDamage, actor, weapon, against,
                                         &damage);
 
     // The multiplier on every physical hit (a Vampire Lord's, a mod's), 1
     // for plain, and flat points on the weapon's listed damage: both per
     // UESP's account of what the listed damage carries, not yet read off
     // the executable (dev/MODIFIERS.md).
-    if (owner)
+    if (auto *owner = actor->AsActorValueOwner())
     {
         if (const float mult = owner->GetActorValue(AV::kAttackDamageMult); mult > 0.0f && mult != 1.0f)
         {
             damage *= mult;
-            ft::Multiply(b, Tr("Attack Damage Mult"), mult).detail = ValueLines(actor, AV::kAttackDamageMult, mult);
+            auto &line = ft::Multiply(b, Tr("Attack Damage Mult"), mult);
+            if (out)
+                line.detail = ValueLines(actor, AV::kAttackDamageMult, mult);
         }
         if (const float flat = owner->GetActorValue(AV::kMeleeDamage); flat != 0.0f)
         {
             damage += flat;
-            ft::Add(b, Tr("Melee Damage"), flat).detail = ValueLines(actor, AV::kMeleeDamage, flat);
+            auto &line = ft::Add(b, Tr("Melee Damage"), flat);
+            if (out)
+                line.detail = ValueLines(actor, AV::kMeleeDamage, flat);
         }
     }
 
@@ -3476,7 +3483,7 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
     const auto chance = [](float x) { return Fmt("%.2f", x) + " / 1"; };
     const auto score = [](float x) { return Fmt("%.2f", x) + " / 10"; };
     // Hover text: the Creation Kit wiki's word on each field, as bullets.
-    // dev/COMBAT_STYLE.md has the page.
+    // dev/COMBAT_AI.md "Combat styles" has the page.
     const auto note = [](SheetRow row, const char *text) {
         row.note = text;
         return row;

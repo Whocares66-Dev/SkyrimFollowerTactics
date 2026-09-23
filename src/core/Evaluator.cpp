@@ -876,6 +876,13 @@ Verdict Admit(const Rule &r, Moment moment, const Snapshot &snap, const EvalCont
 
 } // namespace
 
+bool WaitsOnOwnCast(const ActionTrace &trace) noexcept
+{
+    return std::any_of(trace.begin(), trace.end(), [](const std::vector<Verdict> &rule) {
+        return std::find(rule.begin(), rule.end(), Verdict::Casting) != rule.end();
+    });
+}
+
 void RestartCooldown(EvalContext &ctx, const Action &a, ActorId target, double now)
 {
     ctx.Block(CooldownKey(a, target), now + MinimumCooldown(a.kind));

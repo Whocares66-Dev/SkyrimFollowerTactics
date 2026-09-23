@@ -164,6 +164,7 @@ class Module
 // One per source file that logs. The name is what appears in the brackets and
 // what a query greps for, so it stays lower case and stays put.
 inline constexpr Module actions{"actions"};
+inline constexpr Module ai{"ai"};
 inline constexpr Module blows{"blows"};
 inline constexpr Module customskills{"customskills"};
 inline constexpr Module fix{"fix"};

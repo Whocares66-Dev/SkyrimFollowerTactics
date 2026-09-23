@@ -6,6 +6,7 @@
 // nothing is re-proved here.
 
 #include "fix/StaffCharge.h"
+#include "game/AiScore.h"
 #include "game/Blows.h"
 #include "game/Hits.h"
 #include "game/I18n.h"
@@ -46,6 +47,7 @@ void OnDataLoaded()
     ft::game::WatchHits();
     ft::fix::InstallStaffChargeFix();
     ft::game::FindToggles();
+    ft::game::WatchCasts();
 
     ft::log::plugin.info("FollowerTactics loaded");
 
@@ -114,6 +116,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
                 ft::log::plugin.event(ft::log::Level::Info, "game.loaded", {{"newGame", fresh}}, "{}",
                                       fresh ? "a new game begins" : "a save is loaded");
                 ft::game::ResetPackages();
+                ft::game::ResetAiScores();
                 ft::game::ResetBashes();
                 ft::game::ResetPlayerCasts();
                 fp::game::OnGameStarted();

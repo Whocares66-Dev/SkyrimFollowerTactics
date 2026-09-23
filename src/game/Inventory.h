@@ -35,7 +35,10 @@ namespace ft::game
 // the Fortify <School> actor values into the same entry points -- the
 // PowerModifier for potions, the Modifier for enchantments (dev/RESEARCH.md
 // 6). What it does NOT include is dual casting, a flag of the cast itself.
-[[nodiscard]] float ActualMagnitude(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect);
+// `target` is whom the magnitude's perks are asked against: none for a
+// menu, the enemy for the AI's score, where a perk against undead counts.
+[[nodiscard]] float ActualMagnitude(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect,
+                                    RE::Actor *target = nullptr);
 [[nodiscard]] float ActualDuration(RE::Actor *caster, RE::MagicItem *spell, const RE::Effect *effect);
 
 // A spell's description with <mag>, <dur> and <area> filled for THIS caster,

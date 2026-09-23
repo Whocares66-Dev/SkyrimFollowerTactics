@@ -120,6 +120,10 @@ struct Settings
     bool requireDualWieldStyle{true};
     bool requireDualCastPerks{false};
     bool requirePowerBashPerk{false};
+    // A follower's weapons and attack spells scored with their perks, the
+    // enemy's immunities and some variety, over the combat AI's own
+    // (dev/COMBAT_AI.md "What we change"). Off is vanilla's choice.
+    bool variedAiChoices{false};
 };
 
 [[nodiscard]] std::string WriteSettings(const Settings &settings);

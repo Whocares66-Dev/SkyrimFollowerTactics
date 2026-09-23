@@ -481,6 +481,7 @@ std::string WriteSettings(const Settings &settings)
     j["requireDualWieldStyle"] = settings.requireDualWieldStyle;
     j["requireDualCastPerks"] = settings.requireDualCastPerks;
     j["requirePowerBashPerk"] = settings.requirePowerBashPerk;
+    j["variedAiChoices"] = settings.variedAiChoices;
     return j.dump(2);
 }
 
@@ -494,6 +495,7 @@ std::optional<Settings> ReadSettings(std::string_view text)
     s.requireDualWieldStyle = Bool(j, "requireDualWieldStyle").value_or(s.requireDualWieldStyle);
     s.requireDualCastPerks = Bool(j, "requireDualCastPerks").value_or(s.requireDualCastPerks);
     s.requirePowerBashPerk = Bool(j, "requirePowerBashPerk").value_or(s.requirePowerBashPerk);
+    s.variedAiChoices = Bool(j, "variedAiChoices").value_or(s.variedAiChoices);
     return s;
 }
 

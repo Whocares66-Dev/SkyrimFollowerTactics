@@ -8,9 +8,13 @@
 // a hint to the AI, not a law -- so each is the player's choice, and what
 // they choose is saved with the game (game/Profiles.h, dev/PROFILES.md).
 //
-// Read by the tick building a snapshot and by the panel drawing a menu;
-// written by the panel and by a load. Three atomics, so a read costs
-// nothing.
+// And one that is no gate: varied AI choices, which has the AI's
+// score for a follower's weapons and attack spells answered by ours
+// (game/AiScore.h).
+//
+// Read by the tick building a snapshot, by the panel drawing a menu and by
+// the AI's score; written by the panel and by a load. Atomics, so a read
+// costs nothing.
 
 #include "core/Profile.h"
 
