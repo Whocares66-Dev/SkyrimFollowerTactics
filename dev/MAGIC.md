@@ -332,8 +332,9 @@ Storm in her offence list at every fight's start, the engine's score 0.00
 at every ask. A self-delivered spell with a restoring effect is filed with
 the heals and scores well (her Blood Tether, 500), but the AI reaches for a
 heal only when it wants one, and whatever hostile part such a spell has
-counts for nothing. Fear, Calm and Frenzy (Demoralize, Calm, Frenzy) and
-Absorb are not in the table either. A rule's cast (a UseMagic package naming
+counts for nothing. Fear, Calm and Frenzy (Demoralize, Calm, Frenzy) are
+not in the table either; Absorb is, filed with Damage (`dev/SCORING.md`,
+which has the whole scoring and choosing path). A rule's cast (a UseMagic package naming
 the spell) is the way to have a follower use any of these.
 
 ### How a pin is kept from the AI (2026-09-03): its own scoring
