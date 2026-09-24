@@ -31,9 +31,10 @@ struct ActorRules
     }
 };
 
-// The spells the actor's rules cast, from both lists, each once: what the
-// snapshot prices. A rule added in the panel is in the next tick's lists,
-// so a newly named spell is priced on the tick it could first fire.
+// What the actor's rules cast -- spells, scrolls, powers, shouts -- from both
+// lists, each once: what the snapshot prices and reads the lasting effects
+// of (SpellState::lasting). A rule added in the panel is in the next tick's
+// lists, so a newly named spell is priced on the tick it could first fire.
 [[nodiscard]] std::vector<std::uint32_t> SpellsNamedBy(const ActorRules &rules);
 
 // What a tick does for an actor: the list to evaluate, or none, and the

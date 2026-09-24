@@ -245,9 +245,9 @@ TEST_CASE("a switched-off list drops only its own sequence", "[tick]")
 
 TEST_CASE("the spells the rules name, from both lists, each once", "[tick]")
 {
-    const auto cast = [](std::uint32_t form) {
+    const auto cast = [](std::uint32_t form, ActionKind kind = ActionKind::CastSpell) {
         Rule r = test::HealBelow(0.5f);
-        r.FirstAction().kind = ActionKind::CastSpell;
+        r.FirstAction().kind = kind;
         r.FirstAction().form = form;
         return r;
     };
@@ -258,8 +258,13 @@ TEST_CASE("the spells the rules name, from both lists, each once", "[tick]")
     rules.combat.rules.push_back(cast(0));               // a cast of nothing yet
     rules.idle.rules.push_back(cast(0x2F3B8));
     rules.idle.rules.push_back(cast(0x12FCD)); // the same spell in both lists
+    // A scroll, a power and a shout are casts too: their lasting effects
+    // are read as a spell's are.
+    rules.idle.rules.push_back(cast(0x0E4B1, ActionKind::UseScroll));
+    rules.idle.rules.push_back(cast(0x0FE12, ActionKind::UsePower));
+    rules.combat.rules.push_back(cast(0x3291D, ActionKind::Shout));
     const auto named = SpellsNamedBy(rules);
-    REQUIRE(named == std::vector<std::uint32_t>{0x12FCD, 0x2F3B8});
+    REQUIRE(named == std::vector<std::uint32_t>{0x12FCD, 0x3291D, 0x2F3B8, 0x0E4B1, 0x0FE12});
     REQUIRE(&rules.Of(Moment::Idle) == &rules.idle);
     REQUIRE(&rules.Of(Moment::Combat) == &rules.combat);
 }

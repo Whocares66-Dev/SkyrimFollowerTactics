@@ -11,7 +11,7 @@ std::vector<std::uint32_t> SpellsNamedBy(const ActorRules &rules)
     for (const RuleSet *list : {&rules.combat, &rules.idle})
         for (const Rule &rule : list->rules)
             for (const Action &action : rule.actions)
-                if (action.kind == ActionKind::CastSpell && action.form != 0 &&
+                if (IsCast(action.kind) && action.form != 0 &&
                     std::find(named.begin(), named.end(), action.form) == named.end())
                     named.push_back(action.form);
     return named;

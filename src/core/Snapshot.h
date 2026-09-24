@@ -171,6 +171,27 @@ struct RunningEffect
     float magnitude{0.0f};
 };
 
+// Would taking or casting a thing add anything: one of its lasting effects
+// not already in force at least as strongly under its name. `lasting` is the
+// thing's effects that last, as its record has them; `inForce` what runs on
+// the actor from things that do not stack with it -- alchemy with alchemy,
+// spells with spells -- as the records that applied them have them. Records
+// against records: a mod that rescales an effect once it lands (Gourmet's
+// food, run at 10 of a record's 25) cannot make the same dose read as
+// weaker than itself. A thing with nothing lasting -- a restore, an attack
+// -- is not judged here (true): its cooldown spaces it.
+[[nodiscard]] inline bool AnyWouldLand(const std::vector<RunningEffect> &lasting,
+                                       const std::vector<RunningEffect> &inForce)
+{
+    if (lasting.empty())
+        return true;
+    return std::any_of(lasting.begin(), lasting.end(), [&](const RunningEffect &effect) {
+        return std::none_of(inForce.begin(), inForce.end(), [&](const RunningEffect &running) {
+            return running.name == effect.name && running.magnitude >= effect.magnitude;
+        });
+    });
+}
+
 // A corpse nearby: dead, not already raised or summoned, loaded. Its level
 // is what a Reanimate's cap is measured against.
 struct CorpseView
@@ -263,6 +284,21 @@ struct PotionStock
     // active-effect list we already have. A Fortify or a Resist runs for
     // a minute and is here throughout.
     std::vector<RunningEffect> running;
+
+    // A carried thing's lasting boons, as its record has them: what a rule
+    // naming it would take it for. Its banes do not count -- a wine's
+    // regeneration damage is no reason to drink it -- nor an instant effect,
+    // which never lingers to be in force.
+    [[nodiscard]] std::vector<RunningEffect> LastingOf(std::uint32_t form, ConsumableKind kind) const
+    {
+        std::vector<RunningEffect> out;
+        for (const auto &c : carried)
+            if (c.form == form && c.kind == kind)
+                for (const auto &e : c.effects)
+                    if (e.duration > 0.0f && !e.harmful)
+                        out.push_back({e.name, e.magnitude});
+        return out;
+    }
 
     [[nodiscard]] int CountOf(std::uint32_t form, ConsumableKind kind) const
     {
@@ -516,6 +552,32 @@ struct SpellState
     [[nodiscard]] bool IsActive(std::uint32_t form) const
     {
         return std::find(active.begin(), active.end(), form) != active.end();
+    }
+
+    // What spells, scrolls, powers and shouts have in force on the actor,
+    // as the records that applied it have it. Not abilities or enchantments,
+    // which stack with a spell of the same name as they do with a potion,
+    // and not alchemy (PotionStock::running): each family is asked of its
+    // own. A scroll of Oakflesh is here for the spell's cast.
+    std::vector<RunningEffect> running;
+
+    // The lasting effects of each spell, scroll or shout a rule names --
+    // shown, not hostile, as its record has them: what casting it on
+    // oneself would put up. A shout's are its highest word's.
+    struct Lasting
+    {
+        std::uint32_t form{0};
+        std::vector<RunningEffect> effects;
+    };
+    std::vector<Lasting> lasting;
+
+    // Nothing for a form not named by a rule, or with nothing lasting.
+    [[nodiscard]] std::vector<RunningEffect> LastingOf(std::uint32_t form) const
+    {
+        for (const auto &l : lasting)
+            if (l.form == form)
+                return l.effects;
+        return {};
     }
 };
 

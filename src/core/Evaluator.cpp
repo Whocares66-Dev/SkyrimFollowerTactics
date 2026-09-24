@@ -559,6 +559,12 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
     // this. HasResource has already said the bag is not empty.
     if (IsConsume(a.kind) && ChoosesForm(a.kind))
         return ChosenForm(a, s) == 0;
+    // A named thing to eat or drink: nothing of it would land -- every
+    // lasting boon it gives already in force from alchemy at least as
+    // strongly. One that would add even one is taken; one with nothing
+    // lasting (a restore) is spaced by its cooldown alone.
+    if (IsConsume(a.kind) && NamesConsumable(a.kind))
+        return !AnyWouldLand(s.potions.LastingOf(a.form, ConsumableOf(a.kind)), s.potions.running);
     // A poison goes on a clean weapon; a gem into one that cannot pay for
     // its next hit. None such in hand, and the rule waits, as a buff rule
     // waits on the buff.
@@ -573,8 +579,19 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
     // worth picking is that long, so re-casting can only be stopped by
     // seeing the effect still running. Embrace of Shadows runs three
     // minutes, and a greater power is once a day besides.
+    // A cast on oneself is also done when nothing it would put up would
+    // land: each lasting effect already in force from a spell, a scroll, a
+    // power or a shout at least as strongly -- a scroll's Oakflesh for the
+    // spell's. On anyone else, only its own effects running on the caster
+    // say so: the snapshot has no one else's in force.
     if (IsCast(a.kind))
-        return a.form != 0 && s.spells.IsActive(a.form);
+    {
+        if (a.form == 0)
+            return false;
+        if (s.spells.IsActive(a.form))
+            return true;
+        return target == s.self && !AnyWouldLand(s.spells.LastingOf(a.form), s.spells.running);
+    }
     if (IsEquip(a.kind))
     {
         // Availability, the mechanism the note in Rule.h says every

@@ -1751,6 +1751,32 @@ void FillBag(RE::Actor *actor, ft::Snapshot &s)
     s.pins = actor->IsPlayerRef() ? WornAsPins(actor) : PinsOf(s.self);
 }
 
+// What casting a spell, a scroll or a shout on oneself would put up (core's
+// SpellState::lasting): its effects that last -- a duration, or a constant
+// effect -- shown and not hostile, as its record has them. A shout by the
+// word its action shouts, the highest unlocked.
+std::vector<ft::RunningEffect> LastingEffectsOf(RE::TESForm *form)
+{
+    RE::MagicItem *item = form ? form->As<RE::MagicItem>() : nullptr;
+    if (auto *shout = form ? form->As<RE::TESShout>() : nullptr)
+        if (const int word = HighestUnlockedWord(shout); word >= 0)
+            item = shout->variations[word].spell;
+    std::vector<ft::RunningEffect> out;
+    if (!item)
+        return out;
+    using Flag = RE::EffectSetting::EffectSettingData::Flag;
+    const bool constant = item->GetCastingType() == RE::MagicSystem::CastingType::kConstantEffect;
+    for (const RE::Effect *effect : ResolvedEffects(*item))
+    {
+        const auto *base = effect->baseEffect;
+        const char *name = base->GetFullName();
+        const bool lasts = constant || (effect->effectItem.duration > 0 && !base->data.flags.any(Flag::kNoDuration));
+        if (lasts && name && *name && !base->IsHostile() && !base->data.flags.any(Flag::kHideInUI))
+            out.push_back({name, effect->effectItem.magnitude});
+    }
+    return out;
+}
+
 ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::uint32_t> &priced)
 {
     ft::Snapshot s;
@@ -1974,10 +2000,29 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
         }
     }
 
+    // What each cast a rule names would put up, and what spells have in
+    // force: whether a cast on oneself would add anything (core's
+    // AnyWouldLand), by the records on both sides.
+    for (const std::uint32_t id : priced)
+        if (auto effects = LastingEffectsOf(RE::TESForm::LookupByID(id)); !effects.empty())
+            s.spells.lasting.push_back({id, std::move(effects)});
+
     lap(Step::Spells);
     std::vector<ft::EffectSeen> effects;
-    ForEachActiveEffect(actor, [&effects](RE::ActiveEffect &ae) {
+    ForEachActiveEffect(actor, [&effects, &s](RE::ActiveEffect &ae) {
         effects.push_back({ae.spell ? ae.spell->GetFormID() : 0, ae.duration, ae.elapsedSeconds});
+        // A spell's, a scroll's, a power's or a shout's, live and shown: not
+        // an ability's or an enchantment's, which stack with a cast of the
+        // name, and not alchemy's, which the bag asks of its own.
+        using Type = RE::MagicSystem::SpellType;
+        const auto type = ae.spell ? ae.spell->GetSpellType() : Type::kAbility;
+        const auto *base = ae.effect->baseEffect;
+        const char *name = base->GetFullName();
+        if ((type == Type::kSpell || type == Type::kScroll || type == Type::kPower || type == Type::kLesserPower ||
+             type == Type::kVoicePower) &&
+            ae.duration > 0.0f && ae.elapsedSeconds < ae.duration && name && *name &&
+            !base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
+            s.spells.running.push_back({name, ae.effect->effectItem.magnitude});
     });
     const auto active = ft::ActiveSpells(effects, shoutWords);
     s.spells.active.insert(s.spells.active.end(), active.begin(), active.end());

@@ -109,6 +109,8 @@ Most actions are self-explanatory. A few are worth highlighting.
 
 The `Any buff` action for `Potion` picks a random potion that adds or improves a buff, e.g. Fortify Conjuration. An alchemy effect already active at equal or greater magnitude does not count as an improvement.
 
+A named potion, food, spell, scroll, power or shout used on the character themself is skipped while every lasting effect it gives is already active at equal or greater magnitude. Potions and food are compared with other alchemy; spells, scrolls, powers and shouts with each other.
+
 For potions, food, and ingredients, `Strongest` and `Weakest` choose by effect. `Weakest` keeps stronger items in reserve: if the weakest item's effect is already covered, it waits instead of consuming a stronger one. `Strongest` can replace a weaker active effect.
 
 ![Action any buff]({{ "/assets/img/panel/action_any_buff.png" | relative_url }}){: .screenshot loading="lazy"}
