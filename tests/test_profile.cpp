@@ -143,6 +143,17 @@ Profile Everything()
     enchanted.label = "Warden";
     p.pins.push_back({0x12E49, enchanted, Hand::None}); // a cuirass: the enchanted copy, renamed
     p.pins.push_back({0x12FCD, {}, Hand::Left});        // a spell in one hand
+    {
+        // An effect running: a toggle's ability's, on.
+        Rule r;
+        r.predicate = PredicateKind::EffectRunning;
+        r.conditionForm = 0xFE00098D;
+        Action power;
+        power.kind = ActionKind::UsePower;
+        power.form = 0xFE00087D;
+        r.actions.push_back(power);
+        p.rules.rules.push_back(r);
+    }
     ItemVariant tempered;
     tempered.tempering = 1.2f;
     p.bans = {{0x2F3B8, {}}, {0x12E49, tempered}};

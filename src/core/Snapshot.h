@@ -66,6 +66,17 @@ struct ActorTraits
     // the engine's commanded-actor list, counted. The Summon condition.
     int summons{0};
 
+    // The effects running on the actor, by name: for each, the FormID of
+    // every base effect of its name, whatever applied it -- a scroll's
+    // Oakflesh is the spell's, a food's Fortify Health Regeneration a
+    // potion's. The Effect condition.
+    std::vector<std::uint32_t> effects;
+
+    [[nodiscard]] bool HasEffect(std::uint32_t effect) const noexcept
+    {
+        return effect != 0 && std::find(effects.begin(), effects.end(), effect) != effects.end();
+    }
+
     // What is in the actor's hands, a bit per DamageKind: Melee for a
     // blade, Ranged for a bow or crossbow, Magic for a spell or a staff,
     // and the kind of damage any of it does -- an enchantment's, a staff's

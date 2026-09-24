@@ -68,7 +68,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", N_("Corpse")},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 37> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 38> kPredicates{{
     {PredicateKind::Any, "any", N_("Any")}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::CombatBegins, "combat-begins", N_("Combat start")},
     {PredicateKind::CombatEnds, "combat-ends", N_("Combat end")},
@@ -103,6 +103,7 @@ constexpr std::array<Entry<PredicateKind>, 37> kPredicates{{
     {PredicateKind::CorpseNone, "corpse-none", N_("None")},
     {PredicateKind::LevelHighest, "level-highest", N_("Highest level")},
     {PredicateKind::LevelLowest, "level-lowest", N_("Lowest level")},
+    {PredicateKind::EffectRunning, "effect-running", N_("Effect")},
     {PredicateKind::WeaponChargeNeeded, "weapon-charge-needed", N_("Weapon charge: needed")},
     {PredicateKind::WeaponPoisonNone, "weapon-poison-none", N_("Weapon poison: none")},
     {PredicateKind::WeaponPoisonActive, "weapon-poison-active", N_("Weapon poison: active")},
@@ -403,6 +404,8 @@ std::string_view Describe(PredicateKind v) noexcept
     case PredicateKind::SummonNone:
     case PredicateKind::SummonActive:
         return Tr("A summon or a raised corpse.");
+    case PredicateKind::EffectRunning:
+        return Tr("Its effect is running now.");
     case PredicateKind::WeaponChargeNeeded:
         return Tr("An enchanted weapon in hand has three hits of charge or fewer left.");
     case PredicateKind::CorpseNone:

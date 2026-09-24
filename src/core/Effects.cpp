@@ -161,4 +161,18 @@ std::vector<PotionStock::Effect> ConsumableEffectsOf(std::span<const ConsumableE
     return out;
 }
 
+std::vector<EffectPick> ArrangeEffectPicks(std::vector<EffectPick> candidates)
+{
+    std::vector<EffectPick> picks;
+    for (EffectPick &candidate : candidates)
+    {
+        if (candidate.effect == 0 || candidate.name.empty() ||
+            std::ranges::any_of(picks, [&](const EffectPick &pick) { return pick.name == candidate.name; }))
+            continue;
+        picks.push_back(std::move(candidate));
+    }
+    std::ranges::stable_sort(picks, [](const EffectPick &a, const EffectPick &b) { return a.name < b.name; });
+    return picks;
+}
+
 } // namespace ft

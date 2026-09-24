@@ -437,6 +437,8 @@ std::string SubjectText(const ft::Rule &r, const FollowerView &view)
     return std::string(ft::DisplayName(r.subject));
 }
 
+std::string FormName(std::uint32_t form); // below, with the actions
+
 std::string ConditionText(const ft::Rule &r, const FollowerView &view)
 {
     // Who, a colon, then what: "Self: Attacked by Fire". The colon keeps
@@ -448,6 +450,9 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view)
         return TrFormat("{}: {}", subject, ft::DisplayName(r.statusKind));
     if (r.predicate == ft::PredicateKind::Type)
         return TrFormat("{}: {}", subject, ft::DisplayName(r.typeKind));
+    // An effect reads by its name, as a status does: "Self: Oakflesh".
+    if (r.predicate == ft::PredicateKind::EffectRunning)
+        return TrFormat("{}: {}", subject, FormName(r.conditionForm));
     // A resistance reads as "Resistance Fire", then lowest, highest or the
     // number; an attack as "Attacked by Fire". Each a line of its own, so
     // a language may put the kind first.
@@ -860,6 +865,7 @@ int ConditionGroup(ft::PredicateKind p)
     case ft::PredicateKind::Type:
         return 5;
     case ft::PredicateKind::Status:
+    case ft::PredicateKind::EffectRunning:
         return 6;
     case ft::PredicateKind::SummonNone:
     case ft::PredicateKind::SummonActive:
@@ -967,13 +973,15 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             std::optional<ft::StatusKind> status;
             std::optional<ft::TypeKind> type;
             std::optional<std::uint32_t> member;
+            std::optional<std::uint32_t> conditionForm; // a family's keyword, an effect's source
         };
         const auto pick = [&](const char *label, ft::PredicateKind which, const Extras &x = {}, bool tip = true) {
             const std::uint32_t subjectForm = x.member.value_or(form);
             const bool selected =
                 rule.subject == subject && rule.subjectForm == subjectForm && rule.predicate == which &&
                 (!x.damage || rule.damageKind == *x.damage) && (!x.status || rule.statusKind == *x.status) &&
-                (!x.type || rule.typeKind == *x.type) && (!x.arg || std::abs(rule.conditionArg - *x.arg) < 0.001f);
+                (!x.type || rule.typeKind == *x.type) && (!x.conditionForm || rule.conditionForm == *x.conditionForm) &&
+                (!x.arg || std::abs(rule.conditionArg - *x.arg) < 0.001f);
             if (CascadeItem(label, selected))
             {
                 rule.subject = subject;
@@ -985,6 +993,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     rule.statusKind = *x.status;
                 if (x.type)
                     rule.typeKind = *x.type;
+                if (x.conditionForm)
+                    rule.conditionForm = *x.conditionForm;
                 if (x.arg)
                     rule.conditionArg = *x.arg;
                 changed = true;
@@ -1236,6 +1246,27 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     Extras x;
                     x.status = kind;
                     pick(std::string(ft::DisplayName(kind)).c_str(), predicate, x);
+                }
+                Im::EndMenu();
+                continue;
+            }
+
+            // Effect, right below Status: an effect running on the subject,
+            // one of those the page's actor carries or knows leaves, by name;
+            // only what is there to pick, and not drawn with nothing under
+            // it. A rule answers by name, so its record need not be the
+            // pick's to be the one ticked.
+            if (predicate == ft::PredicateKind::EffectRunning)
+            {
+                if (view.effectPicks.empty() || !BeginCascade(Tr("Effect")))
+                    continue;
+                const std::string current =
+                    rule.predicate == ft::PredicateKind::EffectRunning ? FormName(rule.conditionForm) : "";
+                for (const ft::EffectPick &effect : view.effectPicks)
+                {
+                    Extras x;
+                    x.conditionForm = effect.name == current ? rule.conditionForm : effect.effect;
+                    pick(effect.name.c_str(), predicate, x, false);
                 }
                 Im::EndMenu();
                 continue;

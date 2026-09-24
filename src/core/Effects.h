@@ -9,8 +9,9 @@
 #include "Kinds.h"
 #include "Snapshot.h"
 
+#include <array>
+#include <cstdint>
 #include <span>
-
 #include <string>
 #include <string_view>
 #include <vector>
@@ -86,5 +87,21 @@ struct ConsumableEffectSeen
 [[nodiscard]] std::vector<PotionStock::Effect> ConsumableEffectsOf(std::span<const ConsumableEffectSeen> effects,
                                                                    ConsumableKind kind, bool readsSkillMods,
                                                                    bool readsSkillPowerMods);
+
+// The Effect condition's picks: the effects what the page's actor carries or
+// knows leaves running, by name, as one list -- how an effect is applied is
+// not the question. A rule stores one record of the effect (Rule::
+// conditionForm) and is answered by any record of its name (ActorTraits::
+// effects): a scroll of Oakflesh is Oakflesh, and a food's Fortify Health
+// Regeneration is a potion's.
+struct EffectPick
+{
+    std::string name;
+    std::uint32_t effect{0};
+};
+
+// One pick per name, the first given, by name. None without an effect or a
+// name.
+[[nodiscard]] std::vector<EffectPick> ArrangeEffectPicks(std::vector<EffectPick> candidates);
 
 } // namespace ft

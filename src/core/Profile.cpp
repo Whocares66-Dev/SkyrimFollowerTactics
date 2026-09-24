@@ -126,6 +126,10 @@ json WriteRule(const Rule &r, const FormCodec &codec)
         cond["type"] = WireName(r.typeKind);
     if (UsesDamage(r.predicate))
         cond["damage"] = WireName(r.damageKind);
+    // The effect, as a form: another load order's Oakflesh reads back as
+    // its own.
+    if (r.predicate == PredicateKind::EffectRunning)
+        cond["effect"] = codec.encode(r.conditionForm);
     j["if"] = std::move(cond);
 
     json then;
@@ -375,6 +379,13 @@ struct FormField
                 return drop("member \"" + f.text + "\" is not in this load order");
             r.subjectForm = f.id;
         }
+    }
+    if (r.predicate == PredicateKind::EffectRunning)
+    {
+        const FormField f = ReadForm(*cond, "effect", codec);
+        if (!f.ok)
+            return drop("effect \"" + f.text + "\" is not in this load order");
+        r.conditionForm = f.id;
     }
     if (const auto arg = Num(*cond, "arg"))
         r.conditionArg = static_cast<float>(*arg);

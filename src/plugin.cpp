@@ -15,6 +15,7 @@
 #include "game/PlayerCast.h"
 #include "game/Profiles.h"
 #include "game/Tactics.h"
+#include "game/Toggles.h"
 #include "game/UI.h"
 #include "progression/game/Events.h"
 #include "progression/game/Learning.h"
@@ -44,6 +45,7 @@ void OnDataLoaded()
     ft::game::RefuseEquipsAgainstPins();
     ft::game::WatchHits();
     ft::fix::InstallStaffChargeFix();
+    ft::game::FindToggles();
 
     ft::log::plugin.info("FollowerTactics loaded");
 

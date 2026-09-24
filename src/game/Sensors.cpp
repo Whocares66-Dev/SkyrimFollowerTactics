@@ -18,6 +18,7 @@
 #include "game/Packages.h"
 #include "game/Pins.h"
 #include "game/Settings.h"
+#include "game/Toggles.h"
 #include "game/Util.h"
 
 #include <algorithm>
@@ -28,6 +29,7 @@
 #include <initializer_list>
 #include <optional>
 #include <random>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -1462,6 +1464,30 @@ void ReadKinds(RE::Actor *actor, ft::ActorTraits &traits)
             traits.SetType(people.kind);
 }
 
+namespace
+{
+
+// Every base effect of the effect's name: the load order's records of one
+// name, indexed once, on first use, after the data has loaded. A nameless
+// effect is only itself, `own` its FormID.
+std::span<const RE::FormID> SameNamedEffects(const RE::EffectSetting *effect, const RE::FormID &own)
+{
+    static const auto byName = [] {
+        std::unordered_map<std::string, std::vector<RE::FormID>> names;
+        if (auto *data = RE::TESDataHandler::GetSingleton())
+            for (const auto *each : data->GetFormArray<RE::EffectSetting>())
+                if (const char *name = each ? each->GetName() : nullptr; name && *name)
+                    names[name].push_back(each->GetFormID());
+        return names;
+    }();
+    const char *name = effect->GetName();
+    if (const auto it = name && *name ? byName.find(name) : byName.end(); it != byName.end())
+        return it->second;
+    return {&own, 1};
+}
+
+} // namespace
+
 ft::ActorTraits ReadTraits(RE::Actor *actor)
 {
     ft::ActorTraits traits;
@@ -1491,6 +1517,16 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
             ForEachActiveEffect(actor, [&](RE::ActiveEffect &effect) {
                 auto *ae = &effect;
                 const auto *base = ae->effect->baseEffect;
+                // The effect by its name, whatever record carries it: a
+                // rule's record answers for all of its name. A hidden one
+                // counts for nothing -- survival mode's bookkeeping named
+                // Fortify Health Regeneration would hold the condition
+                // true, unseen.
+                const RE::FormID own = base->GetFormID();
+                if (!base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
+                    for (const RE::FormID id : SameNamedEffects(base, own))
+                        if (!traits.HasEffect(id))
+                            traits.effects.push_back(id);
                 // Burning, frostbitten, shocked: a hostile effect resisted by
                 // that element. The keyword would say the same of vanilla
                 // spells; the resist value says it of modded ones too.
@@ -2030,6 +2066,83 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
 
     std::sort(out.begin(), out.end(), [](const SpellOption &a, const SpellOption &b) { return a.name < b.name; });
     return out;
+}
+
+namespace
+{
+
+using EffectFlag = RE::EffectSetting::EffectSettingData::Flag;
+
+bool Lasts(const RE::MagicItem &item, const RE::Effect &effect)
+{
+    if (item.GetCastingType() == RE::MagicSystem::CastingType::kConstantEffect)
+        return true;
+    return effect.effectItem.duration > 1 && !effect.baseEffect->data.flags.any(EffectFlag::kNoDuration);
+}
+
+// What a pick of this item stands for: the item, where it leaves something
+// lasting; else the ability it has been seen to turn on, a toggle's.
+const RE::MagicItem *LastingOrToggled(const RE::MagicItem *item)
+{
+    if (!item || LastingEffect(item))
+        return item;
+    const auto *spell = item->As<RE::SpellItem>();
+    return spell ? ToggledAbility(spell) : nullptr;
+}
+
+} // namespace
+
+const RE::Effect *LastingEffect(const RE::MagicItem *item)
+{
+    if (!item)
+        return nullptr;
+    const RE::Effect *best = nullptr;
+    const auto rank = [](const RE::Effect *effect) {
+        return std::pair(!effect->baseEffect->data.flags.any(EffectFlag::kHideInUI), effect->cost);
+    };
+    for (const RE::Effect *effect : ResolvedEffects(*item))
+        if (Lasts(*item, *effect) && (!best || rank(effect) > rank(best)))
+            best = effect;
+    return best;
+}
+
+std::vector<ft::EffectPick> ScanEffectPicks(const std::vector<SpellOption> &spells,
+                                            const std::vector<ConsumableOption> &consumables)
+{
+    std::vector<ft::EffectPick> candidates;
+    const auto add = [&](const RE::MagicItem *item) {
+        const RE::Effect *effect = LastingEffect(LastingOrToggled(item));
+        // A summon is the Summon condition's: Black Market's merchant,
+        // Conjure Familiar. A hidden effect never counts (ReadTraits).
+        if (!effect || effect->baseEffect->HasArchetype(RE::EffectSetting::Archetype::kSummonCreature) ||
+            effect->baseEffect->data.flags.any(EffectFlag::kHideInUI))
+            return;
+        candidates.push_back({NameOf(effect->baseEffect), effect->baseEffect->GetFormID()});
+    };
+    for (const auto &option : consumables)
+    {
+        if (option.kind == ft::ConsumableKind::Potion || option.kind == ft::ConsumableKind::Food)
+            add(RE::TESForm::LookupByID<RE::AlchemyItem>(option.form));
+    }
+    // A spell, a scroll or a shout cast on oneself: an aimed one leaves its
+    // effect on the target, and a drain's share on the caster is not what
+    // it is cast for. A scroll is its spell's pick.
+    for (const auto &option : spells)
+    {
+        if ((option.kind == SpellOption::Kind::Spell || option.kind == SpellOption::Kind::Scroll) && option.selfOnly)
+            add(RE::TESForm::LookupByID<RE::MagicItem>(option.form));
+        else if (option.kind == SpellOption::Kind::Power)
+            add(RE::TESForm::LookupByID<RE::SpellItem>(option.form));
+        else if (option.kind == SpellOption::Kind::Shout && option.selfOnly)
+        {
+            // The word a Shout action shouts: the highest unlocked.
+            const auto *shout = RE::TESForm::LookupByID<RE::TESShout>(option.form);
+            const int word = shout ? HighestUnlockedWord(shout) : -1;
+            if (word >= 0)
+                add(shout->variations[word].spell);
+        }
+    }
+    return ft::ArrangeEffectPicks(std::move(candidates));
 }
 
 // --- character sheet ---------------------------------------------------------

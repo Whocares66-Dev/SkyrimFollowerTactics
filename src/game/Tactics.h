@@ -114,6 +114,8 @@ struct FollowerView : CharacterView
     // The potions, food and ingredients they carry, for the Consume menu.
     // Same reasoning.
     std::vector<ConsumableOption> consumables;
+    // The Effect condition's picks (core/Effects.h), from the two above.
+    std::vector<ft::EffectPick> effectPicks;
     // The Tactics tab's Combat Style section.
     std::vector<SheetSection> combatStyle;
     // What the editor greys a rule by (core/Editor.h), from the same scans

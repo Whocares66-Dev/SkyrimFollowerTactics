@@ -544,6 +544,47 @@ TEST_CASE("a negated group condition binds one the plain one does not hold of", 
     REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
 }
 
+TEST_CASE("an effect holds while that effect runs, whatever applied it", "[effect]")
+{
+    // "If Blood Sacrifice is on, turn it off": the effect of the ability the
+    // toggle turns on.
+    constexpr std::uint32_t kBloodSacrificeEffect = 0xFE00098D;
+    Snapshot s = Party();
+    s.spells.known.push_back(kFirebolt);
+    Rule r = About(SubjectKind::Self, PredicateKind::EffectRunning);
+    r.conditionForm = kBloodSacrificeEffect;
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = kFirebolt;
+    RuleSet rs;
+    rs.rules.push_back(r);
+
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+    s.traits.effects = {0x0001CEA8, kBloodSacrificeEffect};
+    REQUIRE(FirstVerdict(rs, s) == Verdict::Fired);
+    rs.rules[0].negated = true;
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+    s.traits.effects.clear();
+    REQUIRE(FirstVerdict(rs, s) == Verdict::Fired);
+
+    // Of an enemy: the one it runs on.
+    constexpr std::uint32_t kParalysis = 0x00073F29;
+    rs.rules[0] = About(SubjectKind::Enemy, PredicateKind::EffectRunning);
+    rs.rules[0].conditionForm = kParalysis;
+    rs.rules[0].actionTarget = ActionTargetKind::Enemy;
+    rs.rules[0].FirstAction().kind = ActionKind::CastSpell;
+    rs.rules[0].FirstAction().form = kFirebolt;
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+    s.enemies[1].traits.effects = {kParalysis};
+    Decision d;
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    REQUIRE(d.subjectId() == kFarEnemy);
+
+    REQUIRE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::EffectRunning));
+    REQUIRE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::EffectRunning));
+    REQUIRE(CanNegate(PredicateKind::EffectRunning));
+    REQUIRE_FALSE(ActorTraits{}.HasEffect(0));
+}
+
 TEST_CASE("a negated condition binds the nearest, whatever the measure", "[not]")
 {
     // Plain "below 50%" hands over the most hurt; "not below 50%" ranks by

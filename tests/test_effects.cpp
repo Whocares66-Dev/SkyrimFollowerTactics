@@ -120,3 +120,34 @@ TEST_CASE("a skill fortify counts as a buff only where a perk reads it", "[effec
     REQUIRE_FALSE(ConsumableEffectsOf(one, ConsumableKind::Potion, false, false)[0].buff);
     REQUIRE(ConsumableEffectsOf(one, ConsumableKind::Potion, true, false)[0].buff);
 }
+
+TEST_CASE("the effect picks are one list, one per name, by name", "[effects][picks]")
+{
+    constexpr std::uint32_t kOakflesh = 0x0005AD5C;
+    constexpr std::uint32_t kFlameCloak = 0x0003AEA2;
+    constexpr std::uint32_t kPotionRegen = 0x0003EB06;
+    constexpr std::uint32_t kFoodRegen = 0xFE000800;
+    constexpr std::uint32_t kBloodSacrifice = 0xFE00098D;
+
+    const auto picks = ArrangeEffectPicks({
+        {"Oakflesh", kOakflesh},
+        {"Fortify Health Regeneration", kPotionRegen},
+        // A food's effect of the same name, another record: one pick, the
+        // first given.
+        {"Fortify Health Regeneration", kFoodRegen},
+        // A scroll of a spell known: the same effect again.
+        {"Oakflesh", kOakflesh},
+        {"Flame Cloak", kFlameCloak},
+        {"Blood Sacrifice", kBloodSacrifice},
+        // Nothing that lasts, or no name: nothing to pick.
+        {"Firebolt", 0},
+        {"", 0x1234},
+    });
+    REQUIRE(picks.size() == 4);
+    REQUIRE(picks[0].name == "Blood Sacrifice");
+    REQUIRE(picks[1].name == "Flame Cloak");
+    REQUIRE(picks[2].name == "Fortify Health Regeneration");
+    REQUIRE(picks[2].effect == kPotionRegen);
+    REQUIRE(picks[3].name == "Oakflesh");
+    REQUIRE(ArrangeEffectPicks({}).empty());
+}

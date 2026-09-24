@@ -76,6 +76,8 @@ std::optional<bool> Common(const Rule &r, const Facts &f)
         return f.traits.HitBy(r.damageKind);
     case PredicateKind::Status:
         return f.traits.Has(r.statusKind);
+    case PredicateKind::EffectRunning:
+        return f.traits.HasEffect(r.conditionForm);
     case PredicateKind::Type:
         return f.traits.Is(r.typeKind);
     case PredicateKind::SummonNone:

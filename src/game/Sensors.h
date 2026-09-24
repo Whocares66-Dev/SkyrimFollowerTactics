@@ -8,6 +8,7 @@
 #include "core/BagView.h"
 #include "core/Blows.h"
 #include "core/Breakdown.h"
+#include "core/Effects.h"
 #include "core/Rule.h"
 #include "core/Snapshot.h"
 #include "core/Views.h"
@@ -320,6 +321,21 @@ struct ConsumableOption
 // actor's spell list and none of them are castable, so offering them would
 // be offering rules that can never work.
 [[nodiscard]] std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor);
+
+// The effect a spell, power, shout word, potion or food is named by in the
+// Effect condition: its effect that lasts -- more than a second, which a
+// tick half a second apart can see, or every effect of a constant one, an
+// ability -- the shown one before a hidden one, then the costliest. Null
+// where nothing lasts: Firebolt, Fast Healing, a Restore Health potion, a
+// teleport's momentary script, a toggle's power.
+[[nodiscard]] const RE::Effect *LastingEffect(const RE::MagicItem *item);
+
+// The Effect condition's picks (core/Effects.h), from the scans the
+// editor's menus already make: the potions and food carried, the spells
+// known and the scrolls carried, the shouts and the powers -- a toggle's
+// power by the ability its script turns on (game/Toggles.h).
+[[nodiscard]] std::vector<ft::EffectPick> ScanEffectPicks(const std::vector<SpellOption> &spells,
+                                                          const std::vector<ConsumableOption> &consumables);
 
 // Castable means SpellType::kSpell; a power is kPower or kLesserPower -- or
 // a power a shout slot is leasing, which reads as Voice for the lease

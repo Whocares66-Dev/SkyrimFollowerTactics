@@ -431,6 +431,7 @@ void FillTactics(RE::Actor *actor, FollowerView &v, ft::Moment moment)
     FillMagic(actor, v);
     v.spells = ScanCastableSpells(actor);
     v.consumables = ScanCarriedConsumables(actor);
+    v.effectPicks = ScanEffectPicks(v.spells, v.consumables);
     v.peers.clear();
     for (auto *other : CollectManagedFollowers())
     {

@@ -97,6 +97,13 @@ enum class PredicateKind : std::uint8_t
     // burning, fleeing ... Any subject; a few kinds are not asked about
     // the follower themself (IsStatusValidFor).
     Status,
+    // An effect runs on the subject: one of the name of the base effect
+    // Rule::conditionForm names, whatever applied it -- the spell or its
+    // scroll, a potion or a food. Any subject. Listed right under Status,
+    // as the effects what the page's actor carries or knows leaves (core/
+    // Effects.h, EffectPick): "Self: Oakflesh"; a toggle's power, Blood
+    // Sacrifice, by the ability it turns on (game/Toggles.h).
+    EffectRunning,
     // The follower's own weapons, each hand asked, Self only, under one
     // "Weapon" heading above Armor as the editor walks this enum. Charge
     // needed: an enchanted weapon in hand cannot pay for one more hit (one
@@ -432,6 +439,9 @@ struct Rule
     // Which kind of damage, for the Resistance predicates, Hit type and
     // Hit by. Ignored by every other predicate.
     DamageKind damageKind{DamageKind::Fire};
+    // Which base effect, for PredicateKind::EffectRunning. As opaque here as an
+    // action's form is. Ignored by every other predicate.
+    std::uint32_t conditionForm{0};
 
     ActionTargetKind actionTarget{ActionTargetKind::Self};
     // Which follower, for ActionTargetKind::Follower.

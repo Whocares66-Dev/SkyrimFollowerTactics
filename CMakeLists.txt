@@ -298,6 +298,7 @@ if(FT_BUILD_PLUGIN)
             src/game/Blows.cpp
             src/game/PlayerCast.cpp
             src/game/Tactics.cpp
+            src/game/Toggles.cpp
             src/game/Util.cpp
             src/game/UI.cpp
             src/game/Packages.cpp
