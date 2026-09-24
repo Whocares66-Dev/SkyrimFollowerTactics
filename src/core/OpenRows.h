@@ -8,9 +8,11 @@
 #include "Rule.h"
 #include "Snapshot.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace ft
 {
@@ -37,7 +39,9 @@ class OpenRows
     void Open(const std::string &key);
     void Close(const std::string &key);
 
-    // Two rules of one list swapped: their drawers swap with them.
+    // A rule of one list moved from `from` to `to`, the rules between
+    // shifting a place towards where it was: their drawers go with them.
+    // One step is a swap.
     void Move(ActorId actor, Moment moment, std::size_t from, std::size_t to);
     // A rule removed from a list of `count`: its drawer goes, and the
     // drawers of the rules after it in that list move up one.
@@ -49,5 +53,28 @@ class OpenRows
     // "untouched", which the caller answers for.
     std::unordered_map<std::string, bool> keys_;
 };
+
+// Where a rule dragged from `from` lands, dropped before row `before` (the
+// list's length for after the last): its own place is out of the list
+// while it is carried, so a drop below it lands one higher.
+[[nodiscard]] constexpr std::size_t DroppedAt(std::size_t from, std::size_t before) noexcept
+{
+    return before > from ? before - 1 : before;
+}
+
+// The item at `from` moved to `to`, the ones between shifting a place: the
+// list's half of OpenRows::Move.
+template <class T> void MoveItem(std::vector<T> &items, std::size_t from, std::size_t to)
+{
+    if (from >= items.size() || to >= items.size() || from == to)
+        return;
+    const auto at = items.begin();
+    if (from < to)
+        std::rotate(at + static_cast<std::ptrdiff_t>(from), at + static_cast<std::ptrdiff_t>(from) + 1,
+                    at + static_cast<std::ptrdiff_t>(to) + 1);
+    else
+        std::rotate(at + static_cast<std::ptrdiff_t>(to), at + static_cast<std::ptrdiff_t>(from),
+                    at + static_cast<std::ptrdiff_t>(from) + 1);
+}
 
 } // namespace ft

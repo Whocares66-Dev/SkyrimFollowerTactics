@@ -124,3 +124,51 @@ TEST_CASE("a drawer nobody clicked stays unclicked through a move and a removal"
     REQUIRE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 0), true));
     REQUIRE_FALSE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 0), false));
 }
+
+TEST_CASE("a rule dragged over several carries its drawer, and the ones between shift", "[openrows][drag]")
+{
+    constexpr ActorId kLydia = 0xA2C94;
+    OpenRows rows;
+    // Of five rules, 1 is open and 3 clicked shut; the others untouched.
+    rows.Open(OpenRows::Key(kLydia, Moment::Combat, 1));
+    rows.Close(OpenRows::Key(kLydia, Moment::Combat, 3));
+
+    // 1 dragged down to 3: 2 and 3 move up to 1 and 2.
+    rows.Move(kLydia, Moment::Combat, 1, 3);
+    REQUIRE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 3), false));
+    REQUIRE_FALSE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 2), true)); // the shut one, moved up
+    REQUIRE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 1), true));       // untouched, moved up
+    REQUIRE_FALSE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 1), false));
+
+    // And back up to 0: 0, 1 and 2 move down a place.
+    rows.Move(kLydia, Moment::Combat, 3, 0);
+    REQUIRE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 0), false));
+    REQUIRE_FALSE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 3), true));
+    REQUIRE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 4), true)); // outside the span: untouched
+
+    // Onto itself: nothing.
+    rows.Move(kLydia, Moment::Combat, 0, 0);
+    REQUIRE(rows.IsOpen(OpenRows::Key(kLydia, Moment::Combat, 0), false));
+}
+
+TEST_CASE("a drop lands where the line was drawn, and the list follows", "[openrows][drag]")
+{
+    // Dropped above itself or just below itself: where it was.
+    REQUIRE(DroppedAt(2, 2) == 2);
+    REQUIRE(DroppedAt(2, 3) == 2);
+    // Above an earlier row: that row's place. Below a later one: one less,
+    // its own place having left the list.
+    REQUIRE(DroppedAt(2, 0) == 0);
+    REQUIRE(DroppedAt(0, 5) == 4);
+    REQUIRE(DroppedAt(1, 4) == 3);
+
+    std::vector<char> list{'a', 'b', 'c', 'd', 'e'};
+    MoveItem(list, 1, DroppedAt(1, 4)); // b dropped between d and e
+    REQUIRE(list == std::vector<char>{'a', 'c', 'd', 'b', 'e'});
+    MoveItem(list, 4, DroppedAt(4, 0)); // e dropped above all
+    REQUIRE(list == std::vector<char>{'e', 'a', 'c', 'd', 'b'});
+    MoveItem(list, 0, 1); // one step: a swap
+    REQUIRE(list == std::vector<char>{'a', 'e', 'c', 'd', 'b'});
+    MoveItem(list, 2, 9); // out of range: nothing
+    REQUIRE(list == std::vector<char>{'a', 'e', 'c', 'd', 'b'});
+}

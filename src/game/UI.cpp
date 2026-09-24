@@ -41,6 +41,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <initializer_list>
 #include <mutex>
@@ -2397,7 +2398,8 @@ std::string RuleKey(ft::ActorId follower, ft::Moment moment, std::size_t index)
 
 // The open state follows the rule when rules are moved or removed, so a
 // drawer does not stay behind at an index another rule has taken
-// (core/OpenRows.h, tested).
+// (core/OpenRows.h, tested). A move is from one place to another, the
+// rules between shifting a place: a drag's, or an arrow's one step.
 void MoveOpenState(ft::ActorId follower, ft::Moment moment, std::size_t from, std::size_t to)
 {
     g_openRows.Move(follower, moment, from, to);
@@ -2579,6 +2581,52 @@ bool DrawActionsDrawer(ft::Rule &rule, std::size_t ruleIndex, const FollowerView
 // same means as DrawSections: a piece is closed above the drawer and
 // another opened beneath it with the same columns, the striping counted
 // across pieces, the outer borders drawn by hand down the drawer's sides.
+//
+// A rule is moved by dragging its number: what is carried is which rule of
+// which list, and a drop on another list is not taken.
+constexpr const char *kRulePayload = "FT_RULE";
+struct RuleDrag
+{
+    ft::ActorId actor{0};
+    ft::Moment moment{ft::Moment::Combat};
+    std::size_t index{0};
+};
+
+// What follows the mouse while a rule is dragged: the row as the table has
+// it -- number, NOT, condition, action -- at the table's own column widths,
+// under the translucency the drag source pushes.
+void DrawRulePreview(const ft::Rule &rule, std::size_t index, const FollowerView &view,
+                     const std::array<float, 4> &widths)
+{
+    constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_SizingFixedFit;
+    if (!Im::BeginTable("##rulepreview", 4, flags, Im::ImVec2(0.0f, 0.0f), 0.0f))
+        return;
+    for (const float width : widths)
+        Im::TableSetupColumn("", Im::ImGuiTableColumnFlags_WidthFixed, (std::max)(width, 1.0f), 0);
+    Im::TableNextRow(0, 0.0f);
+    Im::TableSetColumnIndex(0);
+    Im::AlignTextToFramePadding();
+    Im::Text("%zu", index + 1);
+    Im::TableSetColumnIndex(1);
+    if (rule.negated)
+    {
+        const Im::ImVec2 pos = Im::GetCursorScreenPos();
+        const float size = Im::GetFrameHeight();
+        const float leftEdge = pos.x + (Im::GetContentRegionAvail().x - size) * 0.5f;
+        DrawGlyph(Im::GetWindowDrawList(), Glyph::Tick, {leftEdge, pos.y}, {leftEdge + size, pos.y + size},
+                  Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
+    }
+    Im::TableSetColumnIndex(2);
+    Im::AlignTextToFramePadding();
+    Im::TextUnformatted(ConditionText(rule, view).c_str());
+    Im::TableSetColumnIndex(3);
+    Im::AlignTextToFramePadding();
+    Im::TextUnformatted((rule.actions.size() == 1 ? ActionText(rule.actions.front(), view)
+                                                  : TrFormat("{} actions", rule.actions.size()))
+                            .c_str());
+    Im::EndTable();
+}
+
 bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 {
     constexpr auto flags = Im::ImGuiTableFlags_Borders | Im::ImGuiTableFlags_SizingStretchProp;
@@ -2707,6 +2755,15 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     int moveFrom = -1;
     int moveTo = -1;
     int removeAt = -1;
+    // Where each rule's row begins on screen, and where the list ends: what
+    // a dragged rule's drop is placed by. A rule's span runs to the next
+    // row, its drawer's actions included.
+    std::vector<float> rowTops;
+    float listBottom = 0.0f;
+    // The columns' left edges on the last row laid out, for the preview a
+    // dragged rule shows: # NOT Condition Action Order. Kept across frames,
+    // since the row being dragged has not laid out its later cells yet.
+    static std::array<float, 5> columnX{};
 
     for (std::size_t i = 0; i < rules.rules.size(); ++i)
     {
@@ -2729,6 +2786,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             Im::TableSetBgColor(Im::ImGuiTableBgTarget_RowBg0, stripe, -1);
 
         Im::TableSetColumnIndex(0);
+        // The row's top: the cell's content, less the padding pushed above.
+        rowTops.push_back(Im::GetCursorScreenPos().y - 2.0f);
         {
             // The whole cell is the switch, lit while hovered; the tick is
             // drawn centred in it at the size of the other glyphs on the row.
@@ -2779,6 +2838,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // every row with a condition five pixels taller than the header
         // (measured, ScreenShot107: 51 px against 46).
         Im::TableSetColumnIndex(2);
+        columnX[1] = Im::GetCursorScreenPos().x;
         {
             // The same cell-wide switch as On, with the same tick in it: a
             // rule's condition is negated by ticking it, and the row then
@@ -2810,14 +2870,42 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             }
         }
 
+        // The number is the handle a rule is dragged by: the whole cell, lit
+        // while hovered, and live for a rule that is off, as the Order
+        // column is -- an off rule is still in the list and can still be
+        // moved. So it stands outside the row's dimmed region and greys its
+        // number by hand.
+        EndDimmed();
         Im::TableSetColumnIndex(1);
-        Im::AlignTextToFramePadding();
+        columnX[0] = Im::GetCursorScreenPos().x;
         {
-            const DimText grey(!available);
+            const Im::ImVec2 pos = Im::GetCursorScreenPos();
+            Im::InvisibleButton(("##drag" + rowId).c_str(),
+                                Im::ImVec2((std::max)(Im::GetContentRegionAvail().x, 1.0f), Im::GetFrameHeight()), 0);
+            if (Im::IsItemHovered(0) || Im::IsItemActive())
+                Im::TableSetBgColor(Im::ImGuiTableBgTarget_CellBg, hovered, -1);
+            if (Im::IsItemHovered(0) && !Im::GetDragDropPayload())
+                Im::SetTooltip("%s", Tr("Click and drag to reorder"));
+            Im::PushStyleVar(Im::ImGuiStyleVar_Alpha, 0.6f);
+            if (Im::BeginDragDropSource(0))
+            {
+                const RuleDrag drag{view.id, rules.moment, i};
+                Im::SetDragDropPayload(kRulePayload, &drag, sizeof(drag), 0);
+                DrawRulePreview(rule, i, view,
+                                {columnX[1] - columnX[0], columnX[2] - columnX[1], columnX[3] - columnX[2],
+                                 columnX[4] - columnX[3]});
+                Im::EndDragDropSource();
+            }
+            Im::PopStyleVar(1);
+            Im::SetCursorScreenPos(pos);
+            Im::AlignTextToFramePadding();
+            const DimText grey(!available || !rule.enabled);
             Im::Text("%zu", i + 1);
         }
+        BeginDimmed(!rule.enabled);
 
         Im::TableSetColumnIndex(3);
+        columnX[2] = Im::GetCursorScreenPos().x;
         if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, rules.moment, setAside))
             changed = true;
 
@@ -2834,6 +2922,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // half of ItemSpacing.x instead -- 3 px where the border is 1 -- and
         // put the drawer two pixels left of the line it was meant to sit on.
         const float thenLeft = Im::GetCursorScreenPos().x - kCellPadX - 1.0f;
+        columnX[3] = Im::GetCursorScreenPos().x;
         if (rule.actions.empty())
             rule.actions.emplace_back();
         const std::string key = RuleKey(view.id, rules.moment, i);
@@ -2914,6 +3003,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // Order is semantics, not decoration: rules are first-match-wins, so
         // moving a row changes which rule shadows which.
         Im::TableSetColumnIndex(5);
+        columnX[4] = Im::GetCursorScreenPos().x;
         OrderButtons(rowId, row, i, rules.rules.size(), true, moveFrom, moveTo, removeAt);
 
         // Back to the switches: every cell is drawn, so the row's height is
@@ -2947,6 +3037,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
     if (inTable)
     {
         endPiece();
+        listBottom = drawerTop;
     }
     else if (drawerOpen && draw)
     {
@@ -2956,14 +3047,62 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::ImDrawListManager::AddLine(draw, {left, drawerTop}, {left, bottom}, border, 1.0f);
         Im::ImDrawListManager::AddLine(draw, {right, drawerTop}, {right, bottom}, border, 1.0f);
         Im::ImDrawListManager::AddLine(draw, {left, bottom}, {right, bottom}, border, 1.0f);
+        listBottom = bottom;
     }
     Im::PopStyleVar(2);
 
-    // Applied after the loop: mutating the vector mid-iteration would invalidate
-    // the reference the current row still holds.
-    if (moveFrom >= 0 && moveTo >= 0 && moveTo < static_cast<int>(rules.rules.size()))
+    // A rule of this list dragged over it: the line where it would land,
+    // above the row whose upper half the mouse is in, and the move on the
+    // drop. None where it would land where it is.
+    const auto *payload = Im::GetDragDropPayload();
+    if (payload && !rowTops.empty() && payload->DataSize == static_cast<int>(sizeof(RuleDrag)) &&
+        std::strcmp(payload->DataType, kRulePayload) == 0)
     {
-        std::swap(rules.rules[static_cast<std::size_t>(moveFrom)], rules.rules[static_cast<std::size_t>(moveTo)]);
+        RuleDrag drag;
+        std::memcpy(&drag, payload->Data, sizeof(drag));
+        if (drag.actor == view.id && drag.moment == rules.moment && drag.index < rowTops.size())
+        {
+            const float mouseY = Im::GetMousePos().y;
+            std::size_t before = rowTops.size();
+            for (std::size_t k = 0; k < rowTops.size(); ++k)
+            {
+                const float next = k + 1 < rowTops.size() ? rowTops[k + 1] : listBottom;
+                if (mouseY < (rowTops[k] + next) * 0.5f)
+                {
+                    before = k;
+                    break;
+                }
+            }
+            const std::size_t to = ft::DroppedAt(drag.index, before);
+            const Im::ImRect list{{left, rowTops.front()}, {right, listBottom}};
+            if (Im::BeginDragDropTargetCustom(list,
+                                              Im::GetID(("##ruledrop" + RuleKey(view.id, rules.moment, 0)).c_str())))
+            {
+                if (to != drag.index && draw)
+                {
+                    // The theme's colour for a divider being dragged, which
+                    // this line is: a theme sets it to its accent, where
+                    // DragDropTarget is left at ImGui's own yellow by most.
+                    const float y = before < rowTops.size() ? rowTops[before] : listBottom;
+                    Im::ImDrawListManager::AddLine(draw, {left, y}, {right, y},
+                                                   Im::GetColorU32(Im::ImGuiCol_SeparatorActive, 1.0f), 3.0f);
+                }
+                if (Im::AcceptDragDropPayload(kRulePayload, Im::ImGuiDragDropFlags_AcceptNoDrawDefaultRect))
+                {
+                    moveFrom = static_cast<int>(drag.index);
+                    moveTo = static_cast<int>(to);
+                }
+                Im::EndDragDropTarget();
+            }
+        }
+    }
+
+    // Applied after the loop: mutating the vector mid-iteration would invalidate
+    // the reference the current row still holds. A drag's move may be a
+    // long one, the rows between shifting a place; an arrow's is a swap.
+    if (moveFrom >= 0 && moveTo >= 0 && moveTo < static_cast<int>(rules.rules.size()) && moveFrom != moveTo)
+    {
+        ft::MoveItem(rules.rules, static_cast<std::size_t>(moveFrom), static_cast<std::size_t>(moveTo));
         MoveOpenState(view.id, rules.moment, static_cast<std::size_t>(moveFrom), static_cast<std::size_t>(moveTo));
         changed = true;
     }

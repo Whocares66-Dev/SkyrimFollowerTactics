@@ -14,6 +14,8 @@ Tactics are condition-action rules, evaluated every 0.5s (a "tick") for the play
 
 The list is evaluated top-down. When a [**condition**](#conditions) is met, the corresponding [**actions**](#actions) are tried. If none can be executed, evaluation moves to the next rule in the same tick. See [Unavailable](#unavailable).
 
+To move a rule, drag it by its number to where you want it; a line shows where it will land. The arrows in the **Order** column move it one place.
+
 The **Tactics** tab runs in combat, including `Combat start` and `Combat end` rules. **Idle Tactics** runs out of combat. Each character has both lists; add a rule to both if you want it in both.
 
 ## Player tactics

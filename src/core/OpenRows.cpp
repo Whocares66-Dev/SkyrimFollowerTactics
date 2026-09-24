@@ -1,6 +1,9 @@
 #include "core/OpenRows.h"
 
+#include <algorithm>
+#include <optional>
 #include <utility>
+#include <vector>
 
 namespace ft
 {
@@ -49,20 +52,25 @@ void OpenRows::Close(const std::string &key)
 
 void OpenRows::Move(ActorId actor, Moment moment, std::size_t from, std::size_t to)
 {
-    const std::string fromKey = Key(actor, moment, from);
-    const std::string toKey = Key(actor, moment, to);
-    const auto fromIt = keys_.find(fromKey);
-    const auto toIt = keys_.find(toKey);
-    const bool hadFrom = fromIt != keys_.end();
-    const bool hadTo = toIt != keys_.end();
-    const bool fromOpen = hadFrom && fromIt->second;
-    const bool toOpen = hadTo && toIt->second;
-    keys_.erase(fromKey);
-    keys_.erase(toKey);
-    if (hadFrom)
-        keys_[toKey] = fromOpen;
-    if (hadTo)
-        keys_[fromKey] = toOpen;
+    if (from == to)
+        return;
+    // What is remembered of each rule in the span, by where it goes: the
+    // moved one to `to`, each between it and there one place towards
+    // `from`. Taken out whole and put back, so no move overwrites another.
+    const std::size_t lo = (std::min)(from, to);
+    const std::size_t hi = (std::max)(from, to);
+    std::vector<std::pair<std::size_t, std::optional<bool>>> moved;
+    for (std::size_t i = lo; i <= hi; ++i)
+    {
+        const auto it = keys_.find(Key(actor, moment, i));
+        const std::size_t dest = i == from ? to : (from < to ? i - 1 : i + 1);
+        moved.emplace_back(dest, it == keys_.end() ? std::nullopt : std::optional<bool>(it->second));
+        if (it != keys_.end())
+            keys_.erase(it);
+    }
+    for (const auto &[dest, open] : moved)
+        if (open)
+            keys_[Key(actor, moment, dest)] = *open;
 }
 
 void OpenRows::Remove(ActorId actor, Moment moment, std::size_t at, std::size_t count)
