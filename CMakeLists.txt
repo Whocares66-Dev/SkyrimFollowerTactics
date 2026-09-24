@@ -170,6 +170,7 @@ add_library(
     src/core/MenuSlots.cpp
     src/core/OpenRows.cpp
     src/core/PlayerCast.cpp
+    src/core/PluginFile.cpp
     src/core/Party.cpp
     src/core/PerkTree.cpp
     src/core/Profile.cpp
