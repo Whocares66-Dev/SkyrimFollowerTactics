@@ -143,6 +143,19 @@ inline constexpr REL::RelocationID kMarkValueStale{37534, 38483};
 inline constexpr REL::RelocationID kHitHandler{37673, 38627};
 inline constexpr REL::VariantOffset kHitHandlerVictimCall{0x3C0, 0x4A8, 0};
 
+// The combat AI's item count and its rebuild (fix/StaffCharge.h): a staff
+// copy below its enchantment's cost counts as no copy, the cost asked of
+// MagicItem::CalculateMagickaCost with a null caster at one call in each --
+// SetItemCount's own, and the copy inlined in the rebuild. Both calls are
+// rewritten to ask it of the actor (fix/StaffCharge.cpp), whose inventory is in
+// rbp at the first and on the rebuild's frame at the second.
+inline constexpr REL::RelocationID kCalculateMagickaCost{11213, 11321};
+inline constexpr REL::RelocationID kSetItemCount{43653, 44884};
+inline constexpr REL::VariantOffset kSetItemCountCostCall{0x4B, 0x43, 0};
+inline constexpr REL::RelocationID kRebuildInventory{43648, 44879};
+inline constexpr REL::VariantOffset kRebuildInventoryCostCall{0x56F, 0x2CA, 0};
+inline constexpr REL::VariantOffset kRebuildInventoryFrame{0x140, 0xD0, 0};
+
 } // namespace ft::game::addr
 
 // Progression's code, in fp::game, names these as addr:: too.

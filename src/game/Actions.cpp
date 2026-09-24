@@ -7,6 +7,7 @@
 #include "game/PlayerCast.h"
 #include "game/Sensors.h"
 #include "game/Sheet.h"
+#include "game/Tactics.h"
 #include "game/Util.h"
 
 #include "RE/B/BGSAction.h"
@@ -143,44 +144,20 @@ ActionResult ApplyPoison(RE::Actor *actor, RE::AlchemyItem *poison)
     return ActionResult::Performed;
 }
 
-// Spend a soul gem into the weapon in hand whose charge is empty, the right
-// hand before the left. What the engine's own recharge routine does, read
-// from the executable: the gem's soul value through the Mod Soul Gem
-// Recharge perk entry point, added to what is left and capped at the full
-// charge, written to ExtraCharge on the worn copy; the weapon's ability
-// refreshed; the gem removed, or emptied if it is reusable (Azura's Star:
-// the routine sets the soul on its entry back to none); the recharge sound
-// played. The gem is the rule's: a policy's is chosen by the evaluator
-// (ChosenForm) and arrives as the step's form like a named one.
-ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
+// Spend a soul gem into one copy of an enchanted weapon: what the engine's
+// own recharge routine does, read from the executable -- the gem's soul
+// value through the Mod Soul Gem Recharge perk entry point, added to what is
+// left and capped at the full charge, written to ExtraCharge on the copy;
+// the weapon's ability refreshed where the copy is held (`held`, its hand);
+// the gem removed, or emptied if it is reusable (Azura's Star: the routine
+// sets the soul on its entry back to none); the recharge sound played.
+ActionResult RechargeCopy(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::ExtraDataList *list,
+                          std::optional<Hand> held, const WeaponCharge &state, std::uint32_t gemForm)
 {
-    RE::TESObjectWEAP *weapon = nullptr;
-    bool left = false;
-    WeaponCharge state;
-    for (const bool hand : {false, true})
-    {
-        auto *candidate = WeaponIn(actor, hand);
-        const WeaponCharge c = ChargeOf(actor, candidate, hand ? Hand::Left : Hand::Right);
-        if (candidate && c.enchanted && c.charge < c.costPerHit)
-        {
-            weapon = candidate;
-            left = hand;
-            state = c;
-            break;
-        }
-    }
-    if (!weapon)
-        return ActionResult::MissingItem;
-
     const auto gems = ScanSoulGems(actor);
     const auto it = std::find_if(gems.begin(), gems.end(), [&](const auto &g) { return g.form == gemForm; });
     auto *gem = RE::TESForm::LookupByID<RE::TESSoulGem>(gemForm);
     if (it == gems.end() || !gem)
-        return ActionResult::MissingItem;
-
-    // That hand's copy: with the same sword in each hand, the one in need.
-    RE::ExtraDataList *worn = WornList(actor, weapon, left ? Hand::Left : Hand::Right);
-    if (!worn)
         return ActionResult::MissingItem;
 
     float value = it->charge;
@@ -190,18 +167,18 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
     const bool reusable = gem->HasKeywordString("ReusableSoulGem");
     // The order is core's (core/Blows.h, PlanRecharge, tested): the charge
     // written, the ability refreshed from it, the gem spent last.
-    for (const ft::ItemStep step : ft::PlanRecharge(weapon != nullptr, worn != nullptr, true, reusable))
+    for (const ft::ItemStep step : ft::PlanRecharge(weapon != nullptr, list != nullptr, true, reusable))
     {
         switch (step)
         {
         case ft::ItemStep::WriteCharge:
-            if (auto *xCharge = worn->GetByType<RE::ExtraCharge>())
+            if (auto *xCharge = list->GetByType<RE::ExtraCharge>())
                 xCharge->charge = charge;
             else
             {
                 auto *fresh = new RE::ExtraCharge();
                 fresh->charge = charge;
-                worn->Add(fresh);
+                list->Add(fresh);
             }
             break;
         case ft::ItemStep::RefreshAbility:
@@ -211,7 +188,8 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
             // value from the record, or the full charge with no record).
             // The engine's own recharge writes nothing else, so neither
             // does this.
-            actor->UpdateWeaponAbility(weapon, worn, left);
+            if (held)
+                actor->UpdateWeaponAbility(weapon, list, *held == Hand::Left);
             break;
         case ft::ItemStep::EmptyGem: {
             // The soul a reusable gem holds is ExtraSoul on its entry; the
@@ -221,10 +199,10 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
             bool emptied = false;
             if (gemEntry && gemEntry->extraLists)
             {
-                for (auto *list : *gemEntry->extraLists)
+                for (auto *gemList : *gemEntry->extraLists)
                 {
-                    if (list && list->GetSoulLevel() != RE::SOUL_LEVEL::kNone &&
-                        list->RemoveByType(RE::ExtraDataType::kSoul))
+                    if (gemList && gemList->GetSoulLevel() != RE::SOUL_LEVEL::kNone &&
+                        gemList->RemoveByType(RE::ExtraDataType::kSoul))
                     {
                         emptied = true;
                         break;
@@ -258,6 +236,26 @@ ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
                        "{} spent {} ({:.0f}) into {}: charge {:.0f} -> {:.0f} of {:.0f}", Describe(actor),
                        log::NameOf(gem), it->charge, log::NameOf(weapon), state.charge, charge, state.maxCharge);
     return ActionResult::Performed;
+}
+
+// The weapon in hand whose charge is wanted, the right hand before the
+// left, charged with the rule's gem. The gem is the rule's: a policy's is
+// chosen by the evaluator (ChosenForm) and arrives as the step's form like
+// a named one.
+ActionResult ChargeWeapon(RE::Actor *actor, std::uint32_t gemForm)
+{
+    for (const bool left : {false, true})
+    {
+        auto *weapon = WeaponIn(actor, left);
+        const Hand hand = left ? Hand::Left : Hand::Right;
+        const WeaponCharge c = ChargeOf(actor, weapon, hand);
+        if (!weapon || !c.enchanted || !ft::ChargeWanted(c.charge, c.maxCharge, c.costPerHit))
+            continue;
+        // That hand's copy: with the same sword in each hand, the one in need.
+        RE::ExtraDataList *worn = WornList(actor, weapon, hand);
+        return worn ? RechargeCopy(actor, weapon, worn, hand, c, gemForm) : ActionResult::MissingItem;
+    }
+    return ActionResult::MissingItem;
 }
 
 // What a cast request comes back as, in the action's words.
@@ -644,6 +642,50 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // capability flags and this switch have drifted apart.
         return ActionResult::NoSuchAction;
     }
+}
+
+void RequestCharge(ft::ActorId id, std::uint32_t form, const void *row)
+{
+    auto *task = SKSE::GetTaskInterface();
+    if (!task)
+        return;
+    // Queued to the game thread and run there once, republishing the page
+    // as the panel's wear clicks do: the clock is frozen while it is open.
+    task->AddTask([id, form, row]() {
+        auto *actor = RE::TESForm::LookupByID<RE::Actor>(id);
+        auto *weapon = RE::TESForm::LookupByID<RE::TESObjectWEAP>(form);
+        if (!actor || !weapon)
+            return;
+        // A row of its own is its list; the plain stack's copy short of
+        // charge can only be the one in hand, whose live charge is the
+        // hand's and whose list carries no ExtraCharge yet.
+        RE::ExtraDataList *list = row ? ListOfAddress(actor, weapon, static_cast<const RE::ExtraDataList *>(row))
+                                      : WornStackList(actor, weapon, Hand::None);
+        if (!list)
+        {
+            log::actions.info("{} {}: the copy to charge is no longer carried", Describe(actor), log::NameOf(weapon));
+            RefreshShownPage();
+            return;
+        }
+        std::optional<Hand> held;
+        if (ListWorn(list, Hand::Left))
+            held = Hand::Left;
+        else if (ListWorn(list, Hand::Right))
+            held = Hand::Right;
+        WeaponCharge state = ChargeOf(actor, weapon, held.value_or(Hand::None));
+        if (!held)
+        {
+            const auto *xCharge = list->GetByType<RE::ExtraCharge>();
+            state.charge = xCharge ? xCharge->charge : state.maxCharge;
+        }
+        if (!state.enchanted || state.charge >= state.maxCharge)
+            return;
+        const std::uint32_t gem = ft::ChooseSoulGem(ScanSoulGems(actor), state.maxCharge - state.charge, false);
+        if (gem == 0)
+            return;
+        (void)RechargeCopy(actor, weapon, list, held, state, gem);
+        RefreshShownPage();
+    });
 }
 
 } // namespace ft::game

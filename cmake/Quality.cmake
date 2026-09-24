@@ -267,11 +267,14 @@ if(FT_CLANG_TIDY)
             GLOB FT_TIDY_GAME
             CONFIGURE_DEPENDS
             "${CMAKE_SOURCE_DIR}/src/game/*.cpp"
+            "${CMAKE_SOURCE_DIR}/src/fix/*.cpp"
             "${CMAKE_SOURCE_DIR}/src/progression/game/*.cpp"
             "${CMAKE_SOURCE_DIR}/src/*.cpp"
         )
         list(APPEND FT_TIDY_SOURCES ${FT_TIDY_GAME})
-        set(FT_TIDY_SCOPE "src/core, src/game, src/progression and src/*.cpp")
+        set(FT_TIDY_SCOPE
+            "src/core, src/game, src/fix, src/progression and src/*.cpp"
+        )
     endif()
     # The tests are in every preset's database that builds them. tests/.clang-tidy
     # says what is relaxed there, and why.

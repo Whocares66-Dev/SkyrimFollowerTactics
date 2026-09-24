@@ -284,6 +284,7 @@ if(FT_BUILD_PLUGIN)
         ${PROJECT_NAME}
         SOURCES
             src/plugin.cpp
+            src/fix/StaffCharge.cpp
             src/game/Log.cpp
             src/game/Sensors.cpp
             src/game/Sheet.cpp

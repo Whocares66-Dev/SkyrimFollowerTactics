@@ -3023,6 +3023,18 @@ TEST_CASE("a charge rule needs an enchanted weapon, and waits when none needs a 
     REQUIRE(verdict() == Verdict::Fired);
     s.leftWeapon = {};
     REQUIRE(verdict() == Verdict::ConditionFalse);
+    // Wanted at three hits left, not at the last one: a charge rule far
+    // down a list may not be reached before the weapon is spent.
+    s.rightWeapon = {true, false, true, 60.0f, 100.0f, 20.0f};
+    REQUIRE(verdict() == Verdict::Fired);
+    s.rightWeapon = {true, false, true, 61.0f, 100.0f, 20.0f};
+    REQUIRE(verdict() == Verdict::ConditionFalse);
+    // A weapon holding fewer than three hits in all is charged whenever it
+    // is not full, and never when it is.
+    s.rightWeapon = {true, false, true, 49.0f, 50.0f, 20.0f};
+    REQUIRE(verdict() == Verdict::Fired);
+    s.rightWeapon = {true, false, true, 50.0f, 50.0f, 20.0f};
+    REQUIRE(verdict() == Verdict::ConditionFalse);
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::WeaponChargeNeeded));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::WeaponChargeNeeded));
 }

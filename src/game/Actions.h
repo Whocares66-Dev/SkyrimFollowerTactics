@@ -61,4 +61,9 @@ enum class ActionResult : std::uint8_t
 ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor, int ruleIndex,
                      std::string_view ruleName);
 
+// The panel's Charge button: one copy of an enchanted weapon -- `row`, an
+// Inventory row's list, or null for the plain stack -- charged with the
+// weakest filled gem carried, on the game thread.
+void RequestCharge(ft::ActorId id, std::uint32_t form, const void *row);
+
 } // namespace ft::game

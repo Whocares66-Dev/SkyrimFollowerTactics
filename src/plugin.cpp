@@ -5,6 +5,7 @@
 // (tests/), and the plugin links the same libraries the tests do, so
 // nothing is re-proved here.
 
+#include "fix/StaffCharge.h"
 #include "game/Blows.h"
 #include "game/Hits.h"
 #include "game/I18n.h"
@@ -42,6 +43,7 @@ void OnDataLoaded()
     ft::game::WatchCombatScores();
     ft::game::RefuseEquipsAgainstPins();
     ft::game::WatchHits();
+    ft::fix::InstallStaffChargeFix();
 
     ft::log::plugin.info("FollowerTactics loaded");
 
@@ -72,12 +74,13 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
     // the ini says -- and writes a version banner. Every line then went
     // through its logger, the ini's level never applied to a release build,
     // and the lines our Init wrote were truncated away (2026-09-11).
-    // The trampoline is for the two call-site rewrites: the panel's, the
-    // input queue's hand-off (ui::Install), and Progression's, the hit
-    // handler's call to the victim's side (progression/game/Learning.cpp):
-    // fourteen bytes each, a five-byte call's worth. The function-entry
-    // hooks go through Detours instead.
-    SKSE::Init(skse, {.log = false, .trampoline = true, .trampolineSize = 28});
+    // The trampoline is for the call-site rewrites: the panel's, the input
+    // queue's hand-off (ui::Install); Progression's, the hit handler's call
+    // to the victim's side (progression/game/Learning.cpp); and the two
+    // staff charge calls with their stubs (fix/StaffCharge.cpp): fourteen
+    // bytes a call, and 15 and 19 for the stubs. The function-entry hooks go
+    // through Detours instead.
+    SKSE::Init(skse, {.log = false, .trampoline = true, .trampolineSize = 128});
 
     ft::log::plugin.info("FollowerTactics starting up");
 

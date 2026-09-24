@@ -508,6 +508,21 @@ struct SpellState
     }
 };
 
+// How many hits' worth of charge is the low mark. Charge is wanted at it,
+// not at the last hit: a charge rule may be far down a list and seldom
+// reached, and a staff spent down to nothing leaves the AI's hands for the
+// bag, where the rule does not look -- Serana used Rahgot's Staff once and
+// put it away before the rule's turn came (2026-09-23). Nothing in the game
+// holds fewer than three hits, and the full-charge test below keeps a
+// weapon that did from being charged full.
+inline constexpr float kChargeLowMarkHits = 3.0f;
+
+// Charge wanted: three hits or fewer left, and not full.
+[[nodiscard]] constexpr bool ChargeWanted(float charge, float maxCharge, float costPerHit) noexcept
+{
+    return maxCharge > 0.0f && charge < maxCharge && charge <= kChargeLowMarkHits * costPerHit;
+}
+
 struct Snapshot
 {
     ActorId self{0};
@@ -576,8 +591,8 @@ struct Snapshot
         bool takesPoison{false};
         bool poisoned{false};
         // Its enchantment's charge, when it has one: what is left, the
-        // full amount, and what one hit draws. Needed when a hit cannot be
-        // paid for, which is when the enchantment stops landing.
+        // full amount, and what one hit draws. Needed with a buffer, not at
+        // the last hit (ChargeWanted).
         bool enchanted{false};
         float charge{0.0f};
         float maxCharge{0.0f};
@@ -588,7 +603,7 @@ struct Snapshot
         }
         [[nodiscard]] constexpr bool ChargeNeeded() const noexcept
         {
-            return enchanted && maxCharge > 0.0f && charge < costPerHit;
+            return enchanted && ChargeWanted(charge, maxCharge, costPerHit);
         }
         // What a charge would fill: how a Charge policy sizes its gem.
         [[nodiscard]] constexpr float Missing() const noexcept

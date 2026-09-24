@@ -20,6 +20,7 @@
 #include "core/Rows.h"
 #include "core/Table.h"
 #include "core/Vocabulary.h"
+#include "game/Actions.h"
 #include "game/Addresses.h"
 #include "game/Log.h"
 #include "game/Pins.h"
@@ -4764,6 +4765,21 @@ bool AskedActionAtRight(const char *label, bool can, const std::string &hover, b
     return AskedAction(label, can, hover, asking);
 }
 
+// An action at the right of the line just drawn that asks nothing -- Charge
+// -- greyed where it cannot act, its hover saying what a click does or why
+// it cannot. True the frame it is clicked.
+bool ActionAtRight(const char *label, bool can, const char *hover, float lineRight)
+{
+    Im::SameLine(0.0f, 0.0f);
+    Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineRight - AskedActionWidth(label, false)));
+    Im::BeginDisabled(!can);
+    const bool clicked = Im::Button(label, Im::ImVec2(0.0f, 0.0f));
+    Im::EndDisabled();
+    if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+        Tooltip(hover);
+    return clicked;
+}
+
 // The head of a detail page, which every tab that has one draws the same
 // way: a back arrow, borderless as the panel's other glyph buttons, the
 // name beside it, and a word after the name where the page has one.
@@ -4830,6 +4846,19 @@ void DrawItemDetail(const CharacterView &view, const InventoryItem &item, PanelS
             return;
         }
         panel.inventory.confirming = asking ? item.Key() : 0;
+    }
+    // Charge, straight from the bag: without it a copy is charged only by
+    // a rule, once it is in hand.
+    if (item.chargeable)
+    {
+        const bool full = item.charge >= item.maxCharge;
+        const bool gem = std::any_of(view.inventory.begin(), view.inventory.end(),
+                                     [](const InventoryItem &i) { return i.filledSoulGem; });
+        const char *hover = full   ? Tr("Fully charged")
+                            : !gem ? Tr("No soul gem available")
+                                   : Tr("Click to charge with weakest soul gem");
+        if (ActionAtRight(Tr("Charge"), !full && gem, hover, lineRight))
+            RequestCharge(view.id, item.form, item.row);
     }
 
     Im::Spacing();

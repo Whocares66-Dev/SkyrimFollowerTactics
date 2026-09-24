@@ -112,6 +112,13 @@ enum class ItemCategory : std::uint8_t
 struct InventoryItem
 {
     std::uint32_t form{0};
+    // An enchanted weapon's charge, this copy's: what is left and the full
+    // amount. The detail page's Charge button reads them.
+    bool chargeable{false};
+    float charge{0.0f};
+    float maxCharge{0.0f};
+    // A soul gem with a soul in it: what the Charge button spends.
+    bool filledSoulGem{false};
     // Which of the form's copies this row is. The bag keeps one entry per
     // form; the copies that stand apart from the rest -- enchanted at an
     // enchanter, renamed, tempered, poisoned, charged, holding a soul -- are

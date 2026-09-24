@@ -166,6 +166,7 @@ class Module
 inline constexpr Module actions{"actions"};
 inline constexpr Module blows{"blows"};
 inline constexpr Module customskills{"customskills"};
+inline constexpr Module fix{"fix"};
 inline constexpr Module forms{"forms"};
 inline constexpr Module hits{"hits"};
 inline constexpr Module packages{"packages"};

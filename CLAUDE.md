@@ -29,7 +29,7 @@ entry points over actor values; research and thoughts, with the open questions);
 Skyrim, so the only route to automated tests is logic that does not need the game.
 `src/core/` (Snapshot, Rule, Evaluator) compiles with no Skyrim, no SKSE, no CommonLibSSE
 and is covered by Catch2. `src/game/` holds every `RE::` call and is thin, imperative, and
-verified by playing. If you want to `#include "RE/Skyrim.h"` in `core/`, the code belongs in
+verified by playing. `src/fix/` is `RE::` code too, kept apart: corrections to the engine's own behaviour, always on, for every actor, with no setting -- a staff the combat AI drops at half the charge it can still cast -- where `src/game/` is the mod's features. If you want to `#include "RE/Skyrim.h"` in `core/`, the code belongs in
 `game/`.
 
 ## Environment — verified, do not "fix"
@@ -136,7 +136,7 @@ there IS a real check, so use it.
 
 ### The linter's blind spot, and how it hid
 
-**Each preset's `tidy` lints what its own compile database covers, and no more**: the core presets lint `src/core`, `src/progression/core` and `tests` (with the two checks `tests/.clang-tidy` relaxes), and `src/game` and `src/plugin.cpp` -- which appear only in the *plugin's* database -- are covered by `cmake --build --preset debug --target tidy`. Getting `src/game` covered needs two
+**Each preset's `tidy` lints what its own compile database covers, and no more**: the core presets lint `src/core`, `src/progression/core` and `tests` (with the two checks `tests/.clang-tidy` relaxes), and `src/game`, `src/fix` and `src/plugin.cpp` -- which appear only in the *plugin's* database -- are covered by `cmake --build --preset debug --target tidy`. The folders are named in `cmake/Quality.cmake`, so a new one is linted only once it is added there. Getting `src/game` covered needs two
 flags that are easy to get wrong:
 
 - `--header-filter`, this checkout's `src/` as an absolute path, keeps CommonLibSSE's thousands of header lines quiet while still checking ours. Until 2026-09-22 it named folders (`src.(core|game)`), and every finding in a `src/progression` header was dropped unseen.

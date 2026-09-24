@@ -83,6 +83,30 @@ const char *WeaponTypeName(const RE::TESObjectWEAP *weapon)
     }
 }
 
+// The charge of this row's copy: its ExtraCharge, full with none, and while
+// it is held the hand's live value, which the engine writes back to the
+// copy only on unequip (ChargeOf, 2026-09-08). The enchantment and the full
+// charge are the form's.
+WeaponCharge RowCharge(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEntryData *entry)
+{
+    WeaponCharge c = ChargeOf(actor, weapon, Hand::None);
+    if (!c.enchanted || !entry || !entry->extraLists)
+        return c;
+    c.charge = c.maxCharge;
+    for (auto *list : *entry->extraLists)
+    {
+        if (!list)
+            continue;
+        if (const auto *xCharge = list->GetByType<RE::ExtraCharge>())
+            c.charge = xCharge->charge;
+        const bool left = list->HasType(RE::ExtraDataType::kWornLeft);
+        if (auto *owner = actor->AsActorValueOwner(); owner && (left || list->HasType(RE::ExtraDataType::kWorn)))
+            c.charge = owner->GetActorValue(left ? RE::ActorValue::kLeftItemCharge : RE::ActorValue::kRightItemCharge);
+    }
+    c.charge = std::clamp(c.charge, 0.0f, c.maxCharge);
+    return c;
+}
+
 } // namespace
 
 ft::Grip ArmorGrip(const RE::TESObjectARMO *armor)
@@ -401,7 +425,9 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         stats.rows.push_back(Row(Tr("Capacity"), SoulName(gem->GetMaximumCapacity())));
         // The soul in this particular gem lives on the entry, not the record:
         // a filled Grand gem is the same base object as an empty one.
-        stats.rows.push_back(Row(Tr("Contains"), SoulName(entry ? entry->GetSoulLevel() : gem->GetContainedSoul())));
+        const RE::SOUL_LEVEL soul = entry ? entry->GetSoulLevel() : gem->GetContainedSoul();
+        stats.rows.push_back(Row(Tr("Contains"), SoulName(soul)));
+        item.filledSoulGem = soul != RE::SOUL_LEVEL::kNone;
         return;
     }
     if (object->Is(RE::FormType::KeyMaster))
@@ -640,7 +666,10 @@ void DescribeStack(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEn
         std::string charge;
         if (auto *weapon = object->As<RE::TESObjectWEAP>())
         {
-            const WeaponCharge c = ChargeOf(actor, weapon, Hand::None);
+            const WeaponCharge c = RowCharge(actor, weapon, entry);
+            item.chargeable = c.enchanted && c.maxCharge > 0.0f;
+            item.charge = c.charge;
+            item.maxCharge = c.maxCharge;
             if (c.enchanted && c.maxCharge > 0.0f)
             {
                 char text[64];

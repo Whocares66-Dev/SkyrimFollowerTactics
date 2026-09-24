@@ -404,7 +404,7 @@ std::string_view Describe(PredicateKind v) noexcept
     case PredicateKind::SummonActive:
         return Tr("A summon or a raised corpse.");
     case PredicateKind::WeaponChargeNeeded:
-        return Tr("An enchanted weapon in hand cannot pay for one more hit.");
+        return Tr("An enchanted weapon in hand has three hits of charge or fewer left.");
     case PredicateKind::CorpseNone:
     case PredicateKind::LevelHighest:
     case PredicateKind::LevelLowest:
