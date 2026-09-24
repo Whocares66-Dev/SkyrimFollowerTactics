@@ -255,6 +255,10 @@ enum class MagicCategory : std::uint8_t
 struct MagicEntry
 {
     std::uint32_t form{0};
+    [[nodiscard]] std::uint32_t Key() const noexcept
+    {
+        return form;
+    }
     std::string name;
     MagicCategory category{MagicCategory::Powers};
     // The columns: the school as the game names it, the level word the

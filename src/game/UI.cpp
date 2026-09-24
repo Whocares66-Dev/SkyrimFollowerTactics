@@ -4021,6 +4021,21 @@ PanelState &Panel(ft::ActorId id)
 Tab g_shownTab = Tab::None;
 ft::ActorId g_shownPage = 0;
 
+// The row a tab's page is open on, found again in this frame's list by the
+// row's Key(), the one identity its click and its ImGui id use as well;
+// null for the list. A row gone since the page was opened -- drunk,
+// dropped, run out -- closes the page.
+template <typename Row, typename Key> const Row *OpenRow(const std::vector<Row> &rows, Key &open)
+{
+    if (open == Key{})
+        return nullptr;
+    const auto found = std::find_if(rows.begin(), rows.end(), [&open](const Row &row) { return row.Key() == open; });
+    if (found != rows.end())
+        return &*found;
+    open = Key{};
+    return nullptr;
+}
+
 // Leaving a tab's detail page: it closes, and the page goes back where the
 // page came from -- the list it is filed under, or the sheet a link opened
 // it from, whose tab is selected again. `home` is the tab the state belongs
@@ -5174,18 +5189,10 @@ void DrawInventory(const CharacterView &view)
     PanelState &panel = Panel(view.id);
     InventoryTabState &state = panel.inventory;
 
-    if (state.detail != 0)
+    if (const auto *item = OpenRow(view.inventory, state.detail))
     {
-        for (const auto &item : view.inventory)
-        {
-            if (item.Key() == state.detail)
-            {
-                DrawItemDetail(view, item, panel);
-                return;
-            }
-        }
-        // Gone -- drunk, dropped, or handed over. Back to the list.
-        state.detail = 0;
+        DrawItemDetail(view, *item, panel);
+        return;
     }
 
     if (view.inventory.empty())
@@ -5817,17 +5824,10 @@ void DrawMagicPage(const CharacterView &view, const MagicList &list)
     MagicTabState &state = list.state;
     const bool voice = list.voice;
 
-    if (state.detail != 0)
+    if (const auto *entry = OpenRow(view.magic, state.detail))
     {
-        for (const auto &entry : view.magic)
-        {
-            if (entry.form == state.detail)
-            {
-                DrawMagicDetail(view, entry, Panel(view.id), state, list.home);
-                return;
-            }
-        }
-        state.detail = 0;
+        DrawMagicDetail(view, *entry, Panel(view.id), state, list.home);
+        return;
     }
 
     const bool any = std::any_of(view.magic.begin(), view.magic.end(),
@@ -6383,193 +6383,173 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
 void DrawSkills(const CharacterView &view)
 {
     SkillsTabState &state = Panel(view.id).skills;
-    if (state.detail != 0)
+    if (const PerkPage *page = OpenRow(view.perks, state.detail))
     {
-        const PerkPage *page = nullptr;
-        for (const auto &p : view.perks)
-            if (p.form == state.detail)
-                page = &p;
-        if (!page)
-        {
+        if (BackButton())
             state.detail = 0;
-        }
-        else
+        DetailName(page->name);
+        Im::Spacing();
+        // The perk's facts; then its effects, each with the conditions
+        // that gate it beneath, in the table the skills open into.
+        const auto split = page->sections.begin() + (page->sections.empty() ? 0 : 1);
+        const std::vector<SheetSection> info(page->sections.begin(), split);
+        const std::vector<SheetSection> effects(split, page->sections.end());
+        DrawSections(info, false);
+        // No third column: an entry whose conditions fail is greyed,
+        // as an effect's row is, not marked.
+        DrawSections(
+            effects, true, {}, nullptr,
+            [](const SheetRow &row, const std::string &key, float left, float right) {
+                DrawConditionDrawer(row, key, left, right);
+            },
+            N_("Name"), N_("Value"));
+        if (!page->description.empty())
         {
-            if (BackButton())
-                state.detail = 0;
-            DetailName(page->name);
+            CentredHeading(Tr("Description"));
+            Im::TextWrapped("%s", page->description.c_str());
             Im::Spacing();
-            // The perk's facts; then its effects, each with the conditions
-            // that gate it beneath, in the table the skills open into.
-            const auto split = page->sections.begin() + (page->sections.empty() ? 0 : 1);
-            const std::vector<SheetSection> info(page->sections.begin(), split);
-            const std::vector<SheetSection> effects(split, page->sections.end());
-            DrawSections(info, false);
-            // No third column: an entry whose conditions fail is greyed,
-            // as an effect's row is, not marked.
-            DrawSections(
-                effects, true, {}, nullptr,
-                [](const SheetRow &row, const std::string &key, float left, float right) {
-                    DrawConditionDrawer(row, key, left, right);
-                },
-                N_("Name"), N_("Value"));
-            if (!page->description.empty())
-            {
-                CentredHeading(Tr("Description"));
-                Im::TextWrapped("%s", page->description.c_str());
-                Im::Spacing();
-            }
-            return;
         }
+        return;
     }
     // A skill's page: its tree, under its name and its level, as the perk
     // menu heads it. A perk's page opened from here comes back to it.
-    if (state.tree != 0)
+    if (const auto *tree = OpenRow(view.trees, state.tree))
     {
-        const auto tree = std::find_if(view.trees.begin(), view.trees.end(),
-                                       [&](const ft::PerkTreeView &t) { return t.key == state.tree; });
-        if (tree == view.trees.end())
+        // The name at the left; the level in the middle; the perks to
+        // spend and Reset perks at the right. A follower Progression
+        // levels has <<, -, + and >> about the level (Progression's
+        // ControlsFor), each greyed with why when it cannot act; the
+        // player, and a follower it does not level, the level alone.
+        const auto controls =
+            view.player ? std::nullopt : fp::game::ControlsFor(view.id, static_cast<int>(tree->key) - 1);
+        const float lineX = Im::GetCursorPosX();
+        const float lineWidth = Im::GetContentRegionAvail().x;
+        const float button = Im::GetFrameHeight();
+        const auto pointButton = [&](const char *id, Glyph glyph, bool can, const std::string &why) {
+            Im::BeginDisabled(!can);
+            Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+            const bool clicked = GlyphButton(id, button, glyph);
+            Im::PopStyleVar(1);
+            Im::EndDisabled();
+            if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+                Tooltip(why);
+            return clicked;
+        };
+        const auto move = [&](int direction, bool allTheWay) {
+            if (allTheWay)
+                fp::game::AssignSkillAll(controls->companion, controls->skill, direction);
+            else
+                fp::game::AssignSkillPoint(controls->companion, controls->skill, direction);
+            RefreshAfterAction();
+        };
+
+        if (BackButton())
         {
             state.tree = 0;
+            state.confirmReset = false;
         }
-        else
+        DetailName(tree->name);
+
+        const std::string level = controls ? std::to_string(controls->level) : tree->value;
+        const float group = TextWidth(level) + (controls ? 4.0f * (button + kCellPadX) : 0.0f);
+        Im::SameLine(0.0f, 0.0f);
+        Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineX + (lineWidth - group) / 2.0f));
+        if (controls)
         {
-            // The name at the left; the level in the middle; the perks to
-            // spend and Reset perks at the right. A follower Progression
-            // levels has <<, -, + and >> about the level (Progression's
-            // ControlsFor), each greyed with why when it cannot act; the
-            // player, and a follower it does not level, the level alone.
-            const auto controls =
-                view.player ? std::nullopt : fp::game::ControlsFor(view.id, static_cast<int>(tree->key) - 1);
-            const float lineX = Im::GetCursorPosX();
-            const float lineWidth = Im::GetContentRegionAvail().x;
-            const float button = Im::GetFrameHeight();
-            const auto pointButton = [&](const char *id, Glyph glyph, bool can, const std::string &why) {
-                Im::BeginDisabled(!can);
-                Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-                const bool clicked = GlyphButton(id, button, glyph);
-                Im::PopStyleVar(1);
-                Im::EndDisabled();
-                if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-                    Tooltip(why);
-                return clicked;
-            };
-            const auto move = [&](int direction, bool allTheWay) {
-                if (allTheWay)
-                    fp::game::AssignSkillAll(controls->companion, controls->skill, direction);
-                else
-                    fp::game::AssignSkillPoint(controls->companion, controls->skill, direction);
-                RefreshAfterAction();
-            };
-
-            if (BackButton())
-            {
-                state.tree = 0;
-                state.confirmReset = false;
-            }
-            DetailName(tree->name);
-
-            const std::string level = controls ? std::to_string(controls->level) : tree->value;
-            const float group = TextWidth(level) + (controls ? 4.0f * (button + kCellPadX) : 0.0f);
-            Im::SameLine(0.0f, 0.0f);
-            Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineX + (lineWidth - group) / 2.0f));
-            if (controls)
-            {
-                const fp::SkillButtons &b = controls->buttons;
-                if (pointButton("lowest", Glyph::AllTheWayLeft, b.canLower, b.lowest))
-                    move(-1, true);
-                Im::SameLine(0.0f, kCellPadX);
-                if (pointButton("lower", Glyph::Minus, b.canLower, b.lower))
-                    move(-1, false);
-                Im::SameLine(0.0f, kCellPadX);
-            }
-            Im::AlignTextToFramePadding();
-            Im::Text("%s", level.c_str());
-            if (Im::IsItemHovered(0))
-            {
-                if (controls && controls->learned != 0)
-                    Tooltip(TrFormat("{} their own, {:+} learned", controls->base, controls->learned));
-                else if (!controls && tree->current != tree->level)
-                    Tooltip(TrFormat("{:.0f} with the effects on it", tree->current));
-            }
-            if (controls)
-            {
-                const fp::SkillButtons &b = controls->buttons;
-                Im::SameLine(0.0f, kCellPadX);
-                if (pointButton("raise", Glyph::Plus, b.canRaise, b.raise))
-                    move(+1, false);
-                Im::SameLine(0.0f, kCellPadX);
-                if (pointButton("highest", Glyph::AllTheWayRight, b.canRaise, b.highest))
-                    move(+1, true);
-
-                // The perks to spend, then Reset perks, which asks once: it
-                // gives back every perk bought in the tree, free to buy again
-                // but not one click away.
-                const std::string available = controls->perkPoints <= 0 ? std::string()
-                                              : controls->perkPoints == 1
-                                                  ? std::string(Tr("1 perk available"))
-                                                  : TrFormat("{} perks available", controls->perkPoints);
-                const float buttons = AskedActionWidth(Tr("Reset perks"), state.confirmReset && b.canResetPerks);
-                Im::SameLine(0.0f, 0.0f);
-                const float lead = available.empty() ? 0.0f : TextWidth(available) + kCellPadX;
-                Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineX + lineWidth - buttons - lead));
-                if (!available.empty())
-                {
-                    Im::AlignTextToFramePadding();
-                    Im::Text("%s", available.c_str());
-                    Im::SameLine(0.0f, kCellPadX);
-                }
-                if (AskedAction(Tr("Reset perks"), b.canResetPerks, b.resetPerks, state.confirmReset))
-                {
-                    fp::game::ResetPerks(controls->companion, controls->skill);
-                    PlayGameSound(kPerkReturnedSound);
-                    RefreshAfterAction();
-                }
-            }
-            Im::Spacing();
-
-            // The tree: a circle's click acquires its next rank, a right
-            // click gives the top one back, each where Progression says it
-            // can (PerkControlsFor) and with the game's own sound; where it
-            // cannot, the failure sound and nothing else. A name's click
-            // opens the perk's page -- the top rank held, or the first.
-            TreeHandlers on;
-            const auto can = [&view](const ft::PerkTreeNode &node) {
-                return view.player || node.firstForm == 0 ? std::nullopt
-                                                          : fp::game::PerkControlsFor(view.id, node.firstForm);
-            };
-            on.node = [&view, can](const ft::PerkTreeNode &node, bool right) {
-                const auto controlsNow = can(node);
-                if (!right && controlsNow && controlsNow->canLearn)
-                {
-                    fp::game::LearnPerkByForm(view.id, node.firstForm);
-                    PlayGameSound(kPerkTakenSound);
-                    RefreshAfterAction();
-                }
-                else if (right && controlsNow && controlsNow->canUnlearn)
-                {
-                    fp::game::UnlearnPerkByForm(view.id, node.firstForm);
-                    PlayGameSound(kPerkReturnedSound);
-                    RefreshAfterAction();
-                }
-                else
-                    PlayGameSound(kRefusedSound);
-            };
-            on.name = [&state](const ft::PerkTreeNode &node) {
-                state.detail = node.form != 0 ? node.form : node.firstForm;
-            };
-            on.actions = [can](const ft::PerkTreeNode &node) {
-                TreeHandlers::Actions out;
-                if (const auto controlsNow = can(node))
-                {
-                    out.acquire = controlsNow->canLearn;
-                    out.remove = controlsNow->canUnlearn;
-                }
-                return out;
-            };
-            DrawPerkTree(*tree, on);
-            return;
+            const fp::SkillButtons &b = controls->buttons;
+            if (pointButton("lowest", Glyph::AllTheWayLeft, b.canLower, b.lowest))
+                move(-1, true);
+            Im::SameLine(0.0f, kCellPadX);
+            if (pointButton("lower", Glyph::Minus, b.canLower, b.lower))
+                move(-1, false);
+            Im::SameLine(0.0f, kCellPadX);
         }
+        Im::AlignTextToFramePadding();
+        Im::Text("%s", level.c_str());
+        if (Im::IsItemHovered(0))
+        {
+            if (controls && controls->learned != 0)
+                Tooltip(TrFormat("{} their own, {:+} learned", controls->base, controls->learned));
+            else if (!controls && tree->current != tree->level)
+                Tooltip(TrFormat("{:.0f} with the effects on it", tree->current));
+        }
+        if (controls)
+        {
+            const fp::SkillButtons &b = controls->buttons;
+            Im::SameLine(0.0f, kCellPadX);
+            if (pointButton("raise", Glyph::Plus, b.canRaise, b.raise))
+                move(+1, false);
+            Im::SameLine(0.0f, kCellPadX);
+            if (pointButton("highest", Glyph::AllTheWayRight, b.canRaise, b.highest))
+                move(+1, true);
+
+            // The perks to spend, then Reset perks, which asks once: it
+            // gives back every perk bought in the tree, free to buy again
+            // but not one click away.
+            const std::string available = controls->perkPoints <= 0 ? std::string()
+                                          : controls->perkPoints == 1
+                                              ? std::string(Tr("1 perk available"))
+                                              : TrFormat("{} perks available", controls->perkPoints);
+            const float buttons = AskedActionWidth(Tr("Reset perks"), state.confirmReset && b.canResetPerks);
+            Im::SameLine(0.0f, 0.0f);
+            const float lead = available.empty() ? 0.0f : TextWidth(available) + kCellPadX;
+            Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineX + lineWidth - buttons - lead));
+            if (!available.empty())
+            {
+                Im::AlignTextToFramePadding();
+                Im::Text("%s", available.c_str());
+                Im::SameLine(0.0f, kCellPadX);
+            }
+            if (AskedAction(Tr("Reset perks"), b.canResetPerks, b.resetPerks, state.confirmReset))
+            {
+                fp::game::ResetPerks(controls->companion, controls->skill);
+                PlayGameSound(kPerkReturnedSound);
+                RefreshAfterAction();
+            }
+        }
+        Im::Spacing();
+
+        // The tree: a circle's click acquires its next rank, a right
+        // click gives the top one back, each where Progression says it
+        // can (PerkControlsFor) and with the game's own sound; where it
+        // cannot, the failure sound and nothing else. A name's click
+        // opens the perk's page -- the top rank held, or the first.
+        TreeHandlers on;
+        const auto can = [&view](const ft::PerkTreeNode &node) {
+            return view.player || node.firstForm == 0 ? std::nullopt
+                                                      : fp::game::PerkControlsFor(view.id, node.firstForm);
+        };
+        on.node = [&view, can](const ft::PerkTreeNode &node, bool right) {
+            const auto controlsNow = can(node);
+            if (!right && controlsNow && controlsNow->canLearn)
+            {
+                fp::game::LearnPerkByForm(view.id, node.firstForm);
+                PlayGameSound(kPerkTakenSound);
+                RefreshAfterAction();
+            }
+            else if (right && controlsNow && controlsNow->canUnlearn)
+            {
+                fp::game::UnlearnPerkByForm(view.id, node.firstForm);
+                PlayGameSound(kPerkReturnedSound);
+                RefreshAfterAction();
+            }
+            else
+                PlayGameSound(kRefusedSound);
+        };
+        on.name = [&state](const ft::PerkTreeNode &node) {
+            state.detail = node.form != 0 ? node.form : node.firstForm;
+        };
+        on.actions = [can](const ft::PerkTreeNode &node) {
+            TreeHandlers::Actions out;
+            if (const auto controlsNow = can(node))
+            {
+                out.acquire = controlsNow->canLearn;
+                out.remove = controlsNow->canUnlearn;
+            }
+            return out;
+        };
+        DrawPerkTree(*tree, on);
+        return;
     }
     // The skills, with their trees; then the perks in no tree, in the same
     // table the trees open into, under a heading of their own. A perk's

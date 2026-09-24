@@ -43,7 +43,11 @@ struct PerkTreeNode
 struct PerkTreeView
 {
     std::uint32_t key{0}; // what the skill's row names it by (SheetRow::tree)
-    std::string name;     // "One-Handed"
+    [[nodiscard]] std::uint32_t Key() const noexcept
+    {
+        return key;
+    }
+    std::string name; // "One-Handed"
     // The skill's level as a requirement reads it -- without fortify
     // effects: the base for the player, the menu's own measure; the base
     // and the permanent modifier for a follower, where Progression keeps

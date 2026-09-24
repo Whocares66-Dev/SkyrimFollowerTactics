@@ -553,6 +553,10 @@ void AddEntryPointLines(ft::Breakdown &b, RE::Actor *actor, RE::BGSEntryPoint::E
 struct PerkPage
 {
     std::uint32_t form{0};
+    [[nodiscard]] std::uint32_t Key() const noexcept
+    {
+        return form;
+    }
     std::string name;
     std::string description;
     // "Perk Details", the facts; then "Effects", one row per entry -- what it does,
