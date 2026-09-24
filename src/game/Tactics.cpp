@@ -800,9 +800,9 @@ void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool hel
 //   Main::freezeTime the clock itself, which is what the framework sets when
 //                    FreezeTimeOnMenu = true.
 //
-// Whether a pausing menu ALSO sets freezeTime is not established, so the two
-// are OR-ed rather than one being assumed to imply the other. Both are a
-// pointer dereference; there is nothing to win by guessing.
+// A pausing menu does not set freezeTime: in 1.6.1170 the only code that
+// sets it is the console's `tfc 1` (ToggleFreeCameraMode), so neither signal
+// implies the other and both are needed.
 //
 // Asking about the clock rather than about panel-is-open also gets
 // FreezeTimeOnMenu = false right for free: with the freeze off, time keeps
@@ -812,8 +812,7 @@ void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool hel
 // Logged on change only. This runs every tick, and a gate that stays silent
 // when it works is indistinguishable from one that is not running at all --
 // which is exactly how the previous version stayed hidden for a whole test
-// round. It also tells us WHICH signal caught a given menu, so this can be
-// narrowed later on evidence rather than on a guess.
+// round. It also says WHICH signal caught a given menu.
 bool EvaluationHeld()
 {
     auto *ui = RE::UI::GetSingleton();

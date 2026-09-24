@@ -626,8 +626,8 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
         if (std::abs(ae->magnitude) < 0.005f)
             return;
         // A dual effect's second value takes the magnitude times the
-        // record's weight: the Creation Kit's definition, not read off the
-        // executable.
+        // record's weight: the effect copies the weight when it is made
+        // (34319) and applies it to the second value (34324).
         const bool first = base->data.primaryAV == value;
         Contribution c{std::move(source), NameOr(base, ""),
                        first ? ae->magnitude : ae->magnitude * base->data.secondAVWeight};
@@ -1410,8 +1410,9 @@ BlowPlan PlanBash(RE::Actor *actor, bool power)
     plan.stamina = (power ? GameSetting("fStaminaPowerBashBase", 55.0f) : GameSetting("fStaminaBashBase", 35.0f)) *
                    StaminaMultOf(actor, plan.event);
     // The bash's own reach setting (fCombatBashReach, 141 in vanilla) at the
-    // actor's scale, held against the same measure as a swing's; that the
-    // engine measures a bash that way was not read.
+    // actor's scale, held against the same measure as a swing's: the
+    // engine's reach (38538) is that setting times the scale while the
+    // actor's melee state is a bash, and the weapon's reach otherwise.
     plan.reach = GameSetting("fCombatBashReach", 141.0f) * actor->GetScale();
     return plan;
 }
