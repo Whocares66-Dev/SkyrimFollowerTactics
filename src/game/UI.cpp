@@ -3966,14 +3966,7 @@ struct MagicTabState
 
 struct EffectsTabState
 {
-    // The row open in detail, by effect, source and the worn item behind
-    // the source; 0 for the list. The item is part of it because two
-    // pieces enchanted alike share one enchantment form, and their rows
-    // were one row to the panel: the necklace's clicks went to the ring's
-    // (Remiel's Silver Ruby pair, 2026-09-11).
-    std::uint32_t detailForm{0};
-    std::uint32_t detailSource{0};
-    std::uint32_t detailLink{0};
+    ft::EffectKey detail{}; // the row open in detail, by EffectRow::Key; empty for the list
 };
 
 struct SkillsTabState
@@ -5703,19 +5696,10 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Charac
 void DrawEffects(const CharacterView &view)
 {
     auto &state = Panel(view.id).effects;
-    if (state.detailForm != 0)
+    if (const auto *row = OpenRow(view.effects, state.detail))
     {
-        for (const auto &row : view.effects)
-        {
-            if (row.form == state.detailForm && row.sourceForm == state.detailSource &&
-                row.linkForm == state.detailLink)
-            {
-                DrawEffectDetail(row, state, view);
-                return;
-            }
-        }
-        // It has run out since the page was opened: back to the list.
-        state = {};
+        DrawEffectDetail(*row, state, view);
+        return;
     }
 
     Im::Spacing();
@@ -5766,7 +5750,7 @@ void DrawEffects(const CharacterView &view)
     for (const EffectRow *row : VisibleEffects(view))
     {
         char buf[64];
-        std::snprintf(buf, sizeof(buf), "##effect%08X_%08X_%08X", row->form, row->sourceForm, row->linkForm);
+        std::snprintf(buf, sizeof(buf), "##effect%p_%08X", row->token, row->form);
 
         Im::TableNextRow(0, 0.0f);
         // Running but changing nothing for this follower, or running but
@@ -5778,11 +5762,7 @@ void DrawEffects(const CharacterView &view)
         Im::TableSetColumnIndex(0);
         const Im::ImVec2 pos = Im::GetCursorScreenPos();
         if (CellClicked(buf))
-        {
-            state.detailForm = row->form;
-            state.detailSource = row->sourceForm;
-            state.detailLink = row->linkForm;
-        }
+            state.detail = row->Key();
         if (!row->applied && Im::IsItemHovered(0))
             Im::SetTooltip("%s", Tr("Not applied"));
         else if (!row->active && Im::IsItemHovered(0))
@@ -6921,7 +6901,7 @@ void DrawSheetTabs(const CharacterView &view, Tab select)
     {
         const EffectsTabState &effects = panel.effects;
         TabBody(Tab::Effects, view.id, [&] { DrawEffects(view); },
-                {effects.detailForm, effects.detailSource, effects.detailLink});
+                {reinterpret_cast<std::uintptr_t>(effects.detail.first), effects.detail.second});
         Im::EndTabItem();
     }
     if (BeginSheetTab(Tr("Skills"), Tab::Skills, select))

@@ -1036,8 +1036,8 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
             continue;
 
         EffectRow row;
+        row.token = ae;
         row.form = base->GetFormID();
-        row.sourceForm = ae->spell ? ae->spell->GetFormID() : 0;
         row.applied = EffectApplies(actor, base);
         // Running but not acting, by the engine's flag, which the sheet's
         // totals read too (ForEachActiveEffect). Not by asking the
@@ -1062,7 +1062,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
                 row.linkForm = worn.form;
             }
             else
-                row.linkForm = row.sourceForm;
+                row.linkForm = ae->spell->GetFormID();
             if (row.source.empty() && ae->spell->GetName())
                 row.source = ae->spell->GetName();
         }

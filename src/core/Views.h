@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ft
@@ -335,12 +336,24 @@ struct MagicEntry
     std::string description;
 };
 
+using EffectKey = std::pair<const void *, std::uint32_t>;
+
 struct EffectRow
 {
-    // The base effect and what applied it, together the row's identity:
-    // the same effect can run twice from two sources.
+    // The running effect itself, opaque, and its base effect: the row's
+    // identity. Never dereferenced here. Nothing read off the records
+    // tells two rows apart: two pieces enchanted alike share one
+    // enchantment (Remiel's Silver Ruby pair, 2026-09-11), and one ability
+    // can carry the same effect several times at magnitudes of its own
+    // (Blood of the Ancients' five, 2026-09-24). The base effect is kept
+    // beside it so an address the engine hands to a later effect, with
+    // the clock running behind the panel, is not taken for this one.
+    const void *token{nullptr};
     std::uint32_t form{0};
-    std::uint32_t sourceForm{0};
+    [[nodiscard]] EffectKey Key() const noexcept
+    {
+        return {token, form};
+    }
     // What the source's name links to, where it has a page: the worn item
     // behind an enchantment, else the spell. The panel decides whether a
     // page exists, by its own lists.
