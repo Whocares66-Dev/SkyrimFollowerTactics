@@ -24,6 +24,14 @@ ft::PerkTreeNode At(double x, float level = 0.0f)
     return node;
 }
 
+// A node at `x` across and `y` up in the records, whose perk asks no level.
+ft::PerkTreeNode Placed(double x, double y)
+{
+    ft::PerkTreeNode node = At(x);
+    node.y = y;
+    return node;
+}
+
 constexpr float kRing = 10.0f;
 constexpr float kGap = 5.0f;
 constexpr float kLine = 16.0f;
@@ -65,15 +73,82 @@ TEST_CASE("a cluster in the records opens up as widely as the rest: the columns 
     CHECK(shared.centres[0].x == shared.centres[1].x);
 }
 
-TEST_CASE("a perk a hair off the column beside it is drawn in that column, unless one there shares its level",
+TEST_CASE("a perk a hair off the column beside it is drawn in that column, unless their circles would meet",
           "[perktree]")
 {
     // Alchemy's Green Thumb (2.46, level 70) over Concentrated Poison (2.567,
-    // level 60): straight above it. Two at one level stay apart.
+    // level 60): straight above it. Two at one level stay apart, and two a
+    // few levels apart, whose circles would overlap.
     const auto d = Draw({At(2.567, 60.0f), At(2.46, 70.0f), At(0.0, 0.0f)}, {}, 400.0f, 300.0f);
     CHECK(d.centres[0].x == d.centres[1].x);
     const auto apart = Draw({At(2.567, 60.0f), At(2.46, 60.0f), At(0.0, 0.0f)}, {}, 400.0f, 300.0f);
     CHECK(apart.centres[0].x != apart.centres[1].x);
+    const auto near = Draw({At(2.567, 60.0f), At(2.46, 63.0f), At(0.0, 0.0f)}, {}, 400.0f, 300.0f);
+    CHECK(near.centres[0].x != near.centres[1].x);
+}
+
+TEST_CASE("a tree whose perks ask no level sits by the records' own heights", "[perktree]")
+{
+    const auto d = Draw({Placed(1.0, 0.5), Placed(2.0, 2.0), Placed(0.0, 3.5)}, {}, 400.0f, 216.0f);
+    CHECK(d.centres[0].y == Approx(206.0f));
+    CHECK(d.centres[2].y == Approx(10.0f));
+    CHECK(d.centres[1].y == Approx((d.centres[0].y + d.centres[2].y) / 2.0f));
+    // Perks that all ask one level have no height in it either.
+    std::vector<ft::PerkTreeNode> alike{Placed(1.0, 0.5), Placed(2.0, 2.0), Placed(0.0, 3.5)};
+    for (auto &node : alike)
+        node.firstRequirement = 20.0f;
+    const auto same = Draw(alike, {}, 400.0f, 216.0f);
+    for (std::size_t i = 0; i < alike.size(); ++i)
+        CHECK(same.centres[i].y == d.centres[i].y);
+    // A tree whose perks ask levels keeps them, whatever the records' heights.
+    std::vector<ft::PerkTreeNode> levelled = alike;
+    levelled[0].firstRequirement = 100.0f;
+    const auto byLevel = Draw(levelled, {}, 400.0f, 216.0f);
+    CHECK(byLevel.centres[0].y == Approx(10.0f));
+    CHECK(byLevel.centres[1].y == byLevel.centres[2].y);
+}
+
+TEST_CASE("a tree at the records' places keeps their spacing across", "[perktree]")
+{
+    // Mirrored: 4 leftmost, three units from 1, which is one from 0. Drawn
+    // three times as far apart, not as evenly spaced columns.
+    const auto d = Draw({Placed(0.0, 0.0), Placed(1.0, 1.0), Placed(4.0, 2.0)}, {}, 400.0f, 300.0f);
+    CHECK(d.centres[2].x < d.centres[1].x);
+    CHECK(d.centres[1].x < d.centres[0].x);
+    CHECK(d.centres[1].x - d.centres[2].x == Approx(3.0f * (d.centres[0].x - d.centres[1].x)));
+}
+
+TEST_CASE("circles that would meet at the records' places are pushed apart", "[perktree]")
+{
+    const auto d = Draw({Placed(1.0, 1.0), Placed(1.02, 1.01), Placed(0.0, 0.0), Placed(3.0, 2.0)}, {}, 400.0f, 300.0f);
+    CHECK(std::hypot(d.centres[0].x - d.centres[1].x, d.centres[0].y - d.centres[1].y) >= Approx(2.0f * kRing + kGap));
+    // Two on one spot part too, and stay in the box.
+    const auto same =
+        Draw({Placed(1.0, 1.0), Placed(1.0, 1.0), Placed(0.0, 0.0), Placed(3.0, 2.0)}, {}, 400.0f, 300.0f);
+    CHECK(std::hypot(same.centres[0].x - same.centres[1].x, same.centres[0].y - same.centres[1].y) >=
+          Approx(2.0f * kRing + kGap));
+    for (const ft::TreePoint &c : same.centres)
+    {
+        CHECK(c.x >= kRing);
+        CHECK(c.x <= 400.0f - kRing);
+    }
+}
+
+TEST_CASE("Vampire Lord's tree, which asks no levels, is drawn with no two circles meeting", "[perktree]")
+{
+    // The perks' places in the records (Scion.esp's tree, 2026-09-24): the
+    // grid cell plus the offset in it, across and up.
+    const std::vector<ft::PerkTreeNode> nodes{
+        Placed(4.029, 0.280), Placed(2.786, 0.457), Placed(1.543, 0.871), Placed(0.143, 2.000), Placed(3.014, 1.800),
+        Placed(4.029, 2.740), Placed(4.029, 3.680), Placed(5.057, 1.840), Placed(5.257, 0.486), Placed(6.586, 0.900),
+        Placed(8.043, 2.000), Placed(5.414, 1.114), Placed(6.329, 2.014), Placed(2.657, 1.086), Placed(1.829, 2.057)};
+    const auto d = Draw(nodes, {}, 900.0f, 600.0f);
+    for (std::size_t i = 0; i < nodes.size(); ++i)
+        for (std::size_t j = i + 1; j < nodes.size(); ++j)
+            CHECK(std::hypot(d.centres[i].x - d.centres[j].x, d.centres[i].y - d.centres[j].y) >= 2.0f * kRing);
+    // Not one row: the lowest at the bottom, the highest at the top.
+    CHECK(d.centres[0].y == Approx(600.0f - kRing));
+    CHECK(d.centres[6].y == Approx(kRing));
 }
 
 TEST_CASE("a tree is stretched across the page's width, its labels kept on it", "[perktree]")
@@ -191,9 +266,13 @@ TEST_CASE("a link runs from one circle's edge to the other's, and none is drawn 
     CHECK(link.a.y == Approx(d.centres[0].y - kRing));
     CHECK(link.b.y == Approx(d.centres[1].y + kRing));
 
-    // In a box so short that the two circles touch, there is nowhere to
-    // draw it.
-    const auto squeezed = Draw(nodes, {}, 400.0f, 2.0f * kRing + 4.0f);
+    // In a box so small that the two circles touch, there is nowhere to
+    // draw it. (Short alone is not enough: two whose circles would meet
+    // are not given one column.)
+    nodes[1].x = 1.0;
+    const auto squeezed = Draw(nodes, {}, 2.0f * kRing + 4.0f, 2.0f * kRing + 4.0f);
+    REQUIRE(std::hypot(squeezed.centres[0].x - squeezed.centres[1].x, squeezed.centres[0].y - squeezed.centres[1].y) <
+            2.0f * kRing);
     CHECK(squeezed.links.empty());
 }
 

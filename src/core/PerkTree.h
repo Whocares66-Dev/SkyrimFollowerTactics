@@ -28,7 +28,8 @@ struct PerkTreeNode
     // held or given back (Progression, "Innate perks").
     bool theirs{false};
     // The skill level its first rank asks, 0 for none: how far up the page
-    // it sits, which the ranks taken never change.
+    // it sits in a tree whose perks ask levels, which the ranks taken never
+    // change.
     float firstRequirement{0.0f};
     // Of the next rank to take, or of the last when every rank is held.
     float requirement{0.0f}; // the skill level it asks; 0 for none
@@ -112,12 +113,18 @@ struct TreeDrawing
     std::vector<TreeLink> links;
 };
 
-// Across, the tree's columns as the menu orders them (mirrored), evenly
-// spaced -- every distinct place across is a column, so a cluster in the
-// records opens up as widely as the rest -- stretched to the widest that
-// keeps every circle and label in the box; up, the level the node's first
-// rank asks, 0 at the bottom and 100 at the top. Both are the records'
-// alone, so nothing an actor holds moves a node. A circle reaches `ring`
+// A tree is placed one of two ways. One whose perks ask levels of the skill
+// is placed by them: up, the level the node's first rank asks, 0 at the
+// bottom and 100 at the top; across, its columns as the menu orders them
+// (mirrored), evenly spaced -- every distinct place across is a column, so a
+// cluster in the records opens up as widely as the rest -- a node near a
+// column joining it unless their circles would meet. One whose perks all ask
+// alike (Vampire Lord's ask nothing) is placed as the menu draws it, at the
+// records' own places, mirrored across; circles that would meet there are
+// pushed apart until a label's gap lies between them. Either way the tree is
+// stretched across to the widest that keeps every circle and label in the
+// box. Both ways are the records' alone, so nothing an actor holds moves a
+// node. A circle reaches `ring`
 // from its centre; a label, `labelWidth[i]` wide and `lineHeight` tall,
 // sits `gap` past it. Each label takes the place about its circle that
 // runs into the least: off the page worst, then another node's circle or

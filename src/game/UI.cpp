@@ -6234,8 +6234,9 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
     const float height = (std::max)(room.y - 2.0f, radius * 4.0f);
 
     // Where each node and its label go (core/PerkTree.h): across in the
-    // tree's columns, up by its first rank's level, each label at the place
-    // about its circle that keeps it clearest. A label is measured with every
+    // tree's columns, up by its first rank's level (by the records' heights
+    // in a tree that asks none), each label at the place about its circle
+    // that keeps it clearest. A label is measured with every
     // rank held, so a rank taken cannot widen it and move the tree.
     const float ring = radius + 2.0f; // the circle with its hover ring
     std::vector<std::string> labels;

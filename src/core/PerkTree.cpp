@@ -185,6 +185,125 @@ constexpr LabelPlace kFromRight[] = {LabelPlace::Right,  LabelPlace::UpRight, La
                                      LabelPlace::Up,     LabelPlace::Down,    LabelPlace::Left,
                                      LabelPlace::UpLeft, LabelPlace::DownLeft};
 
+// Where a strategy stands the nodes before the page is fitted: across in
+// its own units, which the fitting stretches to the box, and up already on
+// the page, between `top` and `bottom`.
+struct Placement
+{
+    std::vector<double> across;
+    std::vector<float> rise;
+};
+
+// A tree whose perks ask levels of the skill. Up, the first rank's level, 0
+// at the bottom and 100 at the top. Across, the columns in the menu's order
+// (mirrored: the largest x leftmost), evenly spaced: every distinct place
+// across is a column, so a cluster in the records opens up as widely as the
+// rest. A place within kNear of the column beside it joins it -- the records
+// set a perk a hair off the one it grows from, and it is drawn straight
+// above -- unless its circle would meet one already there.
+Placement ByLevel(const std::vector<PerkTreeNode> &nodes, float ring, float top, float bottom)
+{
+    const std::size_t n = nodes.size();
+    Placement out{std::vector<double>(n, 0.0), std::vector<float>(n)};
+    for (std::size_t i = 0; i < n; ++i)
+        out.rise[i] = bottom - (std::clamp)(nodes[i].firstRequirement, 0.0f, 100.0f) / 100.0f * (bottom - top);
+
+    constexpr double kNear = 0.15;
+    std::vector<std::size_t> byX(n);
+    for (std::size_t i = 0; i < n; ++i)
+        byX[i] = i;
+    std::stable_sort(byX.begin(), byX.end(), [&](std::size_t a, std::size_t b) { return nodes[a].x > nodes[b].x; });
+    std::size_t column = 0;
+    double previous = nodes[byX.front()].x;
+    std::vector<float> heights{out.rise[byX.front()]};
+    for (std::size_t k = 1; k < n; ++k)
+    {
+        const std::size_t i = byX[k];
+        const bool taken = std::any_of(heights.begin(), heights.end(),
+                                       [&](float y) { return std::abs(y - out.rise[i]) < 2.0f * ring; });
+        if (previous - nodes[i].x > kNear || taken)
+        {
+            ++column;
+            heights.clear();
+        }
+        previous = nodes[i].x;
+        heights.push_back(out.rise[i]);
+        out.across[i] = static_cast<double>(column);
+    }
+    return out;
+}
+
+// A tree whose perks all ask alike -- nothing at all, as Vampire Lord's and
+// Werewolf's -- has no height in its levels, and stands as the menu draws
+// it: at the records' own places, mirrored across, the lowest at the bottom
+// and the highest at the top. Only for a tree whose heights differ
+// (PlacedByLevel).
+Placement ByRecord(const std::vector<PerkTreeNode> &nodes, float top, float bottom)
+{
+    const auto byX = [](const PerkTreeNode &a, const PerkTreeNode &b) { return a.x < b.x; };
+    const auto byY = [](const PerkTreeNode &a, const PerkTreeNode &b) { return a.y < b.y; };
+    const double mostX = std::max_element(nodes.begin(), nodes.end(), byX)->x;
+    const auto [lowY, highY] = std::minmax_element(nodes.begin(), nodes.end(), byY);
+    const double span = highY->y - lowY->y;
+    Placement out;
+    for (const PerkTreeNode &node : nodes)
+    {
+        out.across.push_back(mostX - node.x);
+        out.rise.push_back(bottom - static_cast<float>((node.y - lowY->y) / span) * (bottom - top));
+    }
+    return out;
+}
+
+// A tree is placed by its levels unless they place nothing: every perk asks
+// the same, and the records' heights differ.
+bool PlacedByLevel(const std::vector<PerkTreeNode> &nodes)
+{
+    const auto [low, high] =
+        std::minmax_element(nodes.begin(), nodes.end(), [](const PerkTreeNode &a, const PerkTreeNode &b) {
+            return a.firstRequirement < b.firstRequirement;
+        });
+    const auto [lowY, highY] = std::minmax_element(
+        nodes.begin(), nodes.end(), [](const PerkTreeNode &a, const PerkTreeNode &b) { return a.y < b.y; });
+    return low->firstRequirement != high->firstRequirement || highY->y <= lowY->y;
+}
+
+// Circles nearer than `apart`, centre to centre, pushed away from each other
+// along the line between them, half the shortfall each, and kept in the box;
+// a pass at a time, in the nodes' order so the drawing is the same every
+// time, until none is too near or kPasses have run. Two on one spot part
+// across, the earlier to the left.
+void Separate(std::vector<TreePoint> &centres, float apart, float left, float right, float top, float bottom)
+{
+    constexpr int kPasses = 64;
+    const auto keep = [&](TreePoint &p) {
+        p.x = (std::clamp)(p.x, left, (std::max)(left, right));
+        p.y = (std::clamp)(p.y, top, (std::max)(top, bottom));
+    };
+    for (int pass = 0; pass < kPasses; ++pass)
+    {
+        bool moved = false;
+        for (std::size_t i = 0; i < centres.size(); ++i)
+            for (std::size_t j = i + 1; j < centres.size(); ++j)
+            {
+                const float dx = centres[j].x - centres[i].x;
+                const float dy = centres[j].y - centres[i].y;
+                const float distance = std::sqrt(dx * dx + dy * dy);
+                if (distance >= apart)
+                    continue;
+                const float push = (apart - distance) / 2.0f;
+                const float ux = distance > 0.0f ? dx / distance : 1.0f;
+                const float uy = distance > 0.0f ? dy / distance : 0.0f;
+                centres[i] = {centres[i].x - ux * push, centres[i].y - uy * push};
+                centres[j] = {centres[j].x + ux * push, centres[j].y + uy * push};
+                keep(centres[i]);
+                keep(centres[j]);
+                moved = true;
+            }
+        if (!moved)
+            return;
+    }
+}
+
 } // namespace
 
 TreeDrawing LayOutTree(const std::vector<PerkTreeNode> &nodes, const std::vector<float> &labelWidth, float ring,
@@ -197,35 +316,18 @@ TreeDrawing LayOutTree(const std::vector<PerkTreeNode> &nodes, const std::vector
     const std::vector<bool> outerLeft = LabelsLeft(nodes);
     const auto labelOf = [&](std::size_t i) { return i < labelWidth.size() ? labelWidth[i] : 0.0f; };
 
-    // Across: the columns in the menu's order (mirrored: the largest x
-    // leftmost), evenly spaced. A place within kNear of the column beside it
-    // joins it -- the records set a perk a hair off the one it grows from,
-    // and it is drawn straight above -- unless a node already there sits at
-    // its level, where the two circles would be one.
-    constexpr double kNear = 0.15;
-    std::vector<std::size_t> byX(n);
-    for (std::size_t i = 0; i < n; ++i)
-        byX[i] = i;
-    std::stable_sort(byX.begin(), byX.end(), [&](std::size_t a, std::size_t b) { return nodes[a].x > nodes[b].x; });
-    std::vector<double> across(n, 0.0);
-    {
-        std::size_t column = 0;
-        double previous = nodes[byX.front()].x;
-        std::vector<float> levels{nodes[byX.front()].firstRequirement};
-        for (std::size_t k = 1; k < n; ++k)
-        {
-            const PerkTreeNode &node = nodes[byX[k]];
-            const bool taken = std::find(levels.begin(), levels.end(), node.firstRequirement) != levels.end();
-            if (previous - node.x > kNear || taken)
-            {
-                ++column;
-                levels.clear();
-            }
-            previous = node.x;
-            levels.push_back(node.firstRequirement);
-            across[byX[k]] = static_cast<double>(column);
-        }
-    }
+    // Up is inside the box by half a line.
+    const float half = (std::max)(ring, lineHeight / 2.0f);
+    float top = half;
+    float bottom = height - half;
+    if (bottom < top)
+        top = bottom = height / 2.0f;
+    const bool byLevel = PlacedByLevel(nodes);
+    const Placement place = byLevel ? ByLevel(nodes, ring, top, bottom) : ByRecord(nodes, top, bottom);
+    const std::vector<double> &across = place.across;
+
+    // Across, stretched to the widest that keeps every circle and label in
+    // the box.
     std::vector<float> left(n);
     std::vector<float> right(n);
     for (std::size_t i = 0; i < n; ++i)
@@ -256,18 +358,14 @@ TreeDrawing LayOutTree(const std::vector<PerkTreeNode> &nodes, const std::vector
     }
     const double offset = (width - (last - first)) / 2.0 - first;
 
-    // Up: the first rank's level on 0..100, inside the box by half a line.
-    const float half = (std::max)(ring, lineHeight / 2.0f);
-    float top = half;
-    float bottom = height - half;
-    if (bottom < top)
-        top = bottom = height / 2.0f;
     out.centres.reserve(n);
     for (std::size_t i = 0; i < n; ++i)
-    {
-        const float level = (std::clamp)(nodes[i].firstRequirement, 0.0f, 100.0f) / 100.0f;
-        out.centres.push_back({static_cast<float>(offset + scale * across[i]), bottom - level * (bottom - top)});
-    }
+        out.centres.push_back({static_cast<float>(offset + scale * across[i]), place.rise[i]});
+    // A tree at the records' places keeps their crowds, and a crowd's
+    // circles are parted with a label's air between them. A tree by its
+    // levels has no crowds: its columns part them.
+    if (!byLevel)
+        Separate(out.centres, 2.0f * ring + gap, ring, width - ring, top, bottom);
 
     // The links, each bowed past any node standing between its ends, so a
     // link that passes a node is not read as one that meets it. A node is
