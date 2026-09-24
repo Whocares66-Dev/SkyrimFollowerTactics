@@ -300,7 +300,7 @@ ft::MagickaPool PoolOf(RE::Actor *actor)
     pool.max = owner->GetPermanentActorValue(RE::ActorValue::kMagicka);
     const float rate = owner->GetActorValue(RE::ActorValue::kMagickaRate);
     const float rateMult = owner->GetActorValue(RE::ActorValue::kMagickaRateMult);
-    pool.regenPerSecond = pool.max * rate / 100.0f * (rateMult > 0.0f ? rateMult / 100.0f : 1.0f) * combatMult;
+    pool.regenPerSecond = (std::max)(0.0f, pool.max * rate / 100.0f * rateMult / 100.0f * combatMult);
     return pool;
 }
 
@@ -392,9 +392,11 @@ class CastSink : public RE::BSTEventSink<RE::TESSpellCastEvent>
 CastSink g_castSink;
 
 // What an effect's area, in feet as the record gives it, reaches in game
-// units (INFERRED, UESP's 21.33 units a foot; the log says each distance and
-// radius, to be read against a cast).
-constexpr float kUnitsPerFoot = 21.33f;
+// units. 64/3 is the engine's foot where it converts one: a cloak's
+// magnitude, in feet, is its radius at that many units (34243, the only
+// reader of the constant on 1.6.1170). That an area takes the same foot is
+// INFERRED; the log says each distance and radius, to be read against a cast.
+constexpr float kUnitsPerFoot = 64.0f / 3.0f;
 
 // A hostile spell cast on oneself -- Fire Storm and its kind -- the engine
 // scores nothing: its registry has no hostile entry for a self-delivered
