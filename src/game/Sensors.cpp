@@ -1169,12 +1169,16 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
 // the sheet's tooltip listed the enchantment against a total without it.
 // The value is written when the pieces change and can trail a skill
 // gained since; the effects are worth more than that. Combined as the
-// vanilla damage code does: rating x fArmorScalingFactor / 100 + the
-// hidden sum, capped at fMaxArmorRating.
-// The combination is the one thing not read from the engine -- it is inline
-// in the damage code, so a mod that hooks the FORMULA (Armor Rating
-// Rescaled, Armor Rating Redux) is not reflected; one that changes the
-// settings or the ratings is. The Character sheet's Armor row shows this
+// hit handler does (44014, read on 1.6.1170): rating x fArmorScalingFactor
+// / 100 + the hidden sum, capped at fMaxArmorRating. Two differences, both
+// by decision: the attacker's Mod Target Damage Resistance perks (entry
+// point 0x25, applied before the cap) are left out, since this is the
+// actor's own armour and not one blow's; and the engine sets no floor, so a
+// negative rating makes a blow do more, where this stops at 0 -- an
+// oversight in the engine's arithmetic, not a state to plan around.
+// The formula is inline in the handler, so a mod that hooks it (Armor
+// Rating Rescaled, Armor Rating Redux) is not reflected; one that changes
+// the settings or the ratings is. The Character sheet's Armor row shows this
 // number in parentheses after the rating, and ArmorReadings logs the parts
 // once per actor so the semantics can be checked against the sheet in play.
 float DamageReduction(RE::Actor *actor)
