@@ -199,9 +199,15 @@ std::vector<ft::RunningEffect> RunningEffects(RE::Actor *actor)
         const auto type = ae.spell ? ae.spell->GetSpellType() : Type::kSpell;
         if (type != Type::kPotion && type != Type::kPoison && type != Type::kIngredient)
             return;
+        // The strength as the record of what applied it has it, not as it
+        // runs: the bag's side is read off the records too (ConsumableEffects),
+        // and the two must be the same kind of number. As it runs, a mod's
+        // rescaling after it lands reads as a weaker dose than the same food
+        // in the bag: Gourmet's goat cheese, 25 on the record, ran at 10, and
+        // "eat the strongest" ate one every few seconds (2026-09-24).
         const char *name = ae.effect->baseEffect->GetFullName();
         if (name && *name)
-            out.push_back({name, ae.magnitude});
+            out.push_back({name, ae.effect->effectItem.magnitude});
     });
     return out;
 }

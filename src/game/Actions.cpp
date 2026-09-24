@@ -53,6 +53,31 @@ ActionResult Consume(RE::Actor *actor, RE::TESBoundObject *item)
     if (!equipManager)
         return ActionResult::NoEquipManager;
 
+    // What it is taken against, at debug: each effect's magnitude beside
+    // what is in force under that name -- as it runs, and as its record has
+    // it, which is what a rule compares (core's PotionStock::Outdone,
+    // RunningEffects) -- and from what.
+    if (auto *magic = item->As<RE::MagicItem>(); magic && log::Enabled(log::Level::Debug))
+    {
+        std::string text;
+        for (const RE::Effect *effect : ResolvedEffects(*magic))
+        {
+            const char *name = effect->baseEffect->GetFullName();
+            if (!name || !*name)
+                continue;
+            std::string running;
+            ForEachActiveEffect(actor, [&](RE::ActiveEffect &ae) {
+                const char *other = ae.effect->baseEffect->GetFullName();
+                if (other && std::string_view(other) == name)
+                    running += fmt::format("{}{:.2f} (record {:.2f}) from {}", running.empty() ? "" : ", ",
+                                           ae.magnitude, ae.effect->effectItem.magnitude, log::NameOf(ae.spell));
+            });
+            text += fmt::format("{}{} {:.2f} (in force: {})", text.empty() ? "" : "; ", name,
+                                effect->effectItem.magnitude, running.empty() ? std::string("none") : running);
+        }
+        log::actions.debug("{} takes {}: {}", Describe(actor), log::NameOf(item), text);
+    }
+
     equipManager->EquipObject(actor, item,
                               /*extraData*/ nullptr,
                               /*count*/ 1,
