@@ -11,6 +11,7 @@ are the two command lines over them, sharing `run`:
     --vtable <id> [count]      the function slots of a vtable, by its ID
     --refs <id | hex_rva>      every instruction in .text that reaches it: calls, jumps, rip-relative operands
     --string <text>            where a NUL-terminated string sits, and its refs
+    --name <text>              the IDs whose name holds the text (tools/names.py)
     --match <build> <id>       the functions here shaped like <id> in <build>
     --bytes <hex_rva> <n>      raw bytes
 
@@ -18,6 +19,9 @@ are the two command lines over them, sharing `run`:
 not correspond: a body is normalised by making every address the same, then
 every function of this build is compared against it. An exact match is the
 same function or an identical twin; `--refs` on each tells which.
+
+Every ID printed carries the name its source gives it, where one does
+(tools/names.py): CommonLib's function or table, or our Addresses.h entry.
 
 A body stops at the first ret/int3 followed by padding, or at max_bytes; a
 shape also stops at a jmp followed by padding, so a tail jump ends one.
@@ -32,6 +36,7 @@ import capstone
 import pefile
 
 import addrlib
+import names
 
 
 class Image:
@@ -41,6 +46,7 @@ class Image:
         self.rev = {}
         for i, o in self.ids.items():
             self.rev.setdefault(o, i)
+        self.names = names.load(version)
         self.owners = sorted(self.ids.items(), key=lambda kv: kv[1])
         self.offs = [o for _, o in self.owners]
         self.md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
@@ -64,11 +70,17 @@ class Image:
         k = bisect.bisect_right(self.offs, rva) - 1
         return self.owners[k] if k >= 0 else (None, 0)
 
+    def label(self, id_):
+        """`ID 16137`, or `ID 16137 addr::kResetInventoryWeight` where the
+        source names it."""
+        name = self.names.get(id_)
+        return f"ID {id_} {name}" if name else f"ID {id_}"
+
     def id_note(self, v):
         if v in self.rev:
-            return f"  ; ID {self.rev[v]}"
+            return f"  ; {self.label(self.rev[v])}"
         if self.base <= v < self.base + 0x8000000 and (v - self.base) in self.rev:
-            return f"  ; ID {self.rev[v - self.base]}"
+            return f"  ; {self.label(self.rev[v - self.base])}"
         return ""
 
     def instructions(self, rva, maxb=0x600, tail_jmp=False, stop=True):
@@ -260,7 +272,7 @@ def print_references(img, target):
     found = img.references(target)
     for ins, oid, ooff in found:
         print(
-            f"{ins.address:#x}: {ins.mnemonic} {ins.op_str}  in ID {oid} ({ooff:#x} +{ins.address - ooff:#x})"
+            f"{ins.address:#x}: {ins.mnemonic} {ins.op_str}  in {img.label(oid)} ({ooff:#x} +{ins.address - ooff:#x})"
         )
     print(f"{len(found)} reference(s)")
 
@@ -273,17 +285,27 @@ def run(img, args):
     if args[0] == "--lookup":
         rva = int(args[1], 16)
         oid, ooff = img.owner(rva)
-        print(f"ID {oid} at {ooff:#x} (+{rva - ooff:#x})")
+        print(f"{img.label(oid)} at {ooff:#x} (+{rva - ooff:#x})")
     elif args[0] == "--vtable":
         n = int(args[2]) if len(args) > 2 else 16
         for k, r in enumerate(img.vtable(int(args[1]), n)):
-            print(f"[{k:02X}] {r:#x}" + (f"  ID {img.rev[r]}" if r in img.rev else ""))
+            print(
+                f"[{k:02X}] {r:#x}"
+                + (f"  {img.label(img.rev[r])}" if r in img.rev else "")
+            )
     elif args[0] == "--refs":
         print_references(img, target_of(img, args[1]))
     elif args[0] == "--string":
         for rva in img.strings(args[1]):
             print(f"{args[1]!r} at {rva:#x}" + img.id_note(rva))
             print_references(img, rva)
+    elif args[0] == "--name":
+        want = args[1].lower()
+        found = sorted((i, n) for i, n in img.names.items() if want in n.lower())
+        for i, n in found:
+            where = f" at {img.ids[i]:#x}" if i in img.ids else " (not in this build)"
+            print(f"ID {i} {n}{where}")
+        print(f"{len(found)} name(s) in {img.version}")
     elif args[0] == "--match":
         src = FileImage(*addrlib.resolve(["--version", args[1]]))
         rva = src.ids[int(args[2])]
@@ -293,7 +315,8 @@ def run(img, args):
         found = img.matches(want, want_bytes)
         for ratio, i, o in found:
             print(
-                f"ID {i} at {o:#x}" + ("" if ratio == 1.0 else f"  ({ratio:.0%} alike)")
+                f"{img.label(i)} at {o:#x}"
+                + ("" if ratio == 1.0 else f"  ({ratio:.0%} alike)")
             )
         print(
             f"{sum(1 for r, _, _ in found if r == 1.0)} exact match(es) in {img.version}"
