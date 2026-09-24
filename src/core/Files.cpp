@@ -1,6 +1,7 @@
 #include "core/Files.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cwctype>
 #include <fstream>
 #include <sstream>
@@ -61,11 +62,26 @@ std::string FileLabel(const std::filesystem::path &file)
 {
     try
     {
-        return file.filename().string();
+        const std::u8string name = file.filename().u8string();
+        return {name.begin(), name.end()};
     }
     catch (const std::exception &)
     {
-        return "(a file whose name does not convert)";
+        // Not valid UTF-16 -- an unpaired surrogate -- so written out a unit
+        // at a time, which keeps it apart from every other name.
+        std::string out;
+        for (const wchar_t unit : file.filename().wstring())
+        {
+            if (unit < 0x80)
+            {
+                out += static_cast<char>(unit);
+                continue;
+            }
+            char hex[8];
+            std::snprintf(hex, sizeof(hex), "\\u%04X", static_cast<unsigned>(unit));
+            out += hex;
+        }
+        return out;
     }
 }
 

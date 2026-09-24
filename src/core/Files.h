@@ -23,7 +23,9 @@ namespace ft
 // The whole of a file, as bytes; empty when it cannot be read.
 [[nodiscard]] std::string ReadText(const std::filesystem::path &file);
 
-// A file's name for the log, or a stand-in when it does not convert.
+// A file's name, in UTF-8: for the log, and, one folder's files having one
+// name each, what tells them apart. A name that is not valid UTF-16 is
+// written out unit by unit (\uD800), so no two files share one.
 [[nodiscard]] std::string FileLabel(const std::filesystem::path &file);
 
 } // namespace ft

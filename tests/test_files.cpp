@@ -83,3 +83,16 @@ TEST_CASE("a file is read whole, and one that is not there reads as nothing", "[
     REQUIRE(ReadText(folder.path / "missing.json").empty());
     REQUIRE(FileLabel(folder.path / "one.json") == "one.json");
 }
+
+TEST_CASE("every file name has a label of its own", "[files]")
+{
+    // Past ASCII: in UTF-8.
+    REQUIRE(FileLabel(std::filesystem::path(L"Dr\u00e4chenblut.json")) == "Dr\xC3\xA4"
+                                                                          "chenblut.json");
+    // Not valid UTF-16, which no conversion takes: the odd unit written out,
+    // so two such names are still two labels.
+    const std::wstring lone{L'\xD800'};
+    const std::wstring other{L'\xDC00'};
+    REQUIRE(FileLabel(std::filesystem::path(lone + L".json")) == "\\uD800.json");
+    REQUIRE(FileLabel(std::filesystem::path(lone + L".json")) != FileLabel(std::filesystem::path(other + L".json")));
+}
