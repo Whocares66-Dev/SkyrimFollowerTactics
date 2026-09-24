@@ -4779,13 +4779,15 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         }
         // Custom Skills Framework's trees sit with the other skills: a row
         // each with its perks held, and its level where the tree keeps one,
-        // for the player alone, whose level the framework's globals are. A
-        // tree with nothing to show says nothing, as a vanilla skill at zero
-        // -- except to a follower Progression levels, for whom the row is
-        // the way to the tree they buy their first perk of it in.
+        // for the player alone, whose level the framework's globals are.
+        // Every tree for the player, as the framework's own menu lists
+        // them, and for a follower Progression levels, for whom the row is
+        // the way to the tree they buy their first perk of it in; for
+        // another follower, a tree with nothing to show says nothing, as a
+        // vanilla skill at zero.
         if (category.code == 0)
         {
-            const bool levelled = !actor->IsPlayerRef() && fp::game::LevelFor(actor->GetFormID()).has_value();
+            const bool every = actor->IsPlayerRef() || fp::game::LevelFor(actor->GetFormID()).has_value();
             const std::vector<CustomSkillTree> &custom = CustomSkillTrees();
             for (std::size_t i = 0; i < custom.size(); ++i)
             {
@@ -4795,7 +4797,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                 row.detail = OwnedPerks(actor, tree);
                 if (!tree.nodes.empty())
                     row.tree = CustomTreeKey(i); // BuildPerkTrees' key
-                if (!row.detail.empty() || (level && tree.level->value > 0.0f) || (levelled && !tree.nodes.empty()))
+                if (!row.detail.empty() || (level && tree.level->value > 0.0f) || (every && !tree.nodes.empty()))
                     s.rows.push_back(std::move(row));
             }
         }
