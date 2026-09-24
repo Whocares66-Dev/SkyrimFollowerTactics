@@ -3559,8 +3559,10 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
         // Elfborn stone is +3 on the rate itself. Written as the two factors,
         // each over its terms: as lines of flat rates, each multiplier source
         // read as the rate it added, and a stone that doubled the rate
-        // doubled them unseen (2026-09-15). Rate times multiplier is UESP's
-        // account, not read off the executable.
+        // doubled them unseen (2026-09-15). Rate times multiplier is the
+        // engine's regeneration (38460), which also slows each in a fight
+        // and passes health through the Mod Recovered Health perks; this is
+        // the rate out of a fight, without those perks.
         SheetSection s{Tr("Regen"), {}, {}};
         const auto regen = [&](const char *label, RE::ActorValue rate, RE::ActorValue mult) {
             const float current = av(rate);

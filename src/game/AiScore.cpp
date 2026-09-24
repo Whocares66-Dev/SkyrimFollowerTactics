@@ -283,8 +283,9 @@ std::string EngineChargeOf(RE::CombatInventoryItem *entry, RE::Actor *actor)
 }
 
 // Their pool as the price reads it: magicka now and at most, and what comes
-// back a second in a fight -- the rate (percent of the maximum a second),
-// its multiplier (percent), and the game's own slowing of it in combat.
+// back a second in a fight, as the engine's regeneration (38460) has it --
+// the rate (percent of the maximum a second), its multiplier (percent; at
+// 0 nothing comes back), and the game's own slowing of it in combat.
 ft::MagickaPool PoolOf(RE::Actor *actor)
 {
     auto *owner = actor->AsActorValueOwner();
@@ -668,8 +669,9 @@ float FollowerScore(RE::CombatInventoryItem *entry, RE::CombatController *contro
         }
         if (!priced)
         {
-            // A stream's cost is by the second (INFERRED: the engine's own
-            // figure for one, as the magic menu shows it).
+            // A stream's cost is by the second: the caster's update (34143)
+            // drains the spell's cost times each frame's time while it
+            // streams.
             cost = magic->CalculateMagickaCost(actor);
             std::scoped_lock lock(g_mutex);
             ChoiceFor(actor, controller, now).costs[magic->GetFormID()] = cost;
