@@ -6157,10 +6157,17 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // switch greys the same way, for the same reason.
     BeginDimmed(!followerEnabled || !all);
     // Edit a copy, then hand the whole set back. Nothing partial is ever
-    // visible to the tick.
+    // visible to the tick. The page is built again after: what each rule
+    // could do is judged at the build and read by the rule's place, so a
+    // rule added, moved, removed or changed read another's verdict until
+    // then -- a Use power rule read "Unsupported", the verdict of the new
+    // rule with no action that had been in its place (2026-09-23).
     ft::RuleSet editable = rules;
     if (DrawRuleTable(editable, view))
+    {
         SetRules(view.id, std::move(editable));
+        RefreshAfterAction();
+    }
     EndDimmed();
 }
 
