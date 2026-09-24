@@ -108,3 +108,24 @@ def load(version):
         pass
     side = se if version.startswith("1.5") else ae
     return {i: " | ".join(n) for i, n in side.items() if i != 0}
+
+
+if __name__ == "__main__":
+    # `python tools/names.py --csv 1.6.1170`: one `rva,name` line per named
+    # ID of that build, for tools/ghidra/ImportNames.java.
+    import sys
+
+    sys.path.insert(0, HERE)
+    import addrlib
+
+    if sys.argv[1:2] != ["--csv"] or len(sys.argv) != 3:
+        raise SystemExit("usage: names.py --csv <version>")
+    version, _, lib = addrlib.resolve(["--version", sys.argv[2]])
+    ids = addrlib.load(lib)[2]
+    # Every name, the vtables' too: Ghidra's analysis of these builds makes no
+    # vtable labels of its own (checked 2026-09-24), and a label on a vtable is
+    # what tells a class's virtual calls apart.
+    for i, names in sorted(load(version).items()):
+        name = names.split(" | ")[0]
+        if i in ids:
+            print(f"{ids[i]:x},{name}")

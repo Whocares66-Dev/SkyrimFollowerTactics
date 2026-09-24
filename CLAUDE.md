@@ -328,7 +328,12 @@ one is SteamStub-encrypted and reads as noise) and the database comes from
 `AddressLibrary/`, any format; 1.6.1170 by default. Every ID it prints
 carries the name CommonLib or our `src/game/Addresses.h` gives it
 (`tools/names.py`), so naming an address there names it in every read
-after; `--name <text>` finds IDs by name. `tools/addrlib.py --all
+after; `--name <text>` finds IDs by name. Ghidra 12.1.4 has each build
+analysed under `C:\Modding\SkyrimVersions\ghidra`, and
+`tools/ghidra-mcp.ps1 [-Version <build>]` serves one over MCP to the servers
+`.mcp.json` names, every name above imported first: use it to decompile and
+cross-reference; `disasm.py` keeps IDs, matching across builds and the live
+process. `tools/addrlib.py --all
 <ids>` looks IDs up in every build's database at once. While the game is
 running, `tools/livedisasm.py` reads the decrypted code out of the live
 process instead, with the same modes plus `--callers <id>` (every call into
