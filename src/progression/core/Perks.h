@@ -71,10 +71,32 @@ struct PerkRank
     std::vector<Condition> conditions;
 };
 
+// The tree a node is in: a skill's, or one Custom Skills Framework adds, by
+// the id its file gives it ("Dragonborn.json/Dragonborn", ft::CustomSkillId),
+// which no other tree loaded shares. A skill is its own tree's name, so a
+// Skill stands for one wherever a tree is asked for.
+struct TreeRef
+{
+    std::optional<Skill> skill;
+    std::string custom; // empty for a skill's
+
+    TreeRef() = default;
+    TreeRef(Skill s) noexcept : skill(s)
+    {
+    }
+    [[nodiscard]] static TreeRef Custom(std::string id)
+    {
+        TreeRef tree;
+        tree.custom = std::move(id);
+        return tree;
+    }
+    friend bool operator==(const TreeRef &, const TreeRef &) = default;
+};
+
 struct PerkNode
 {
     int id{-1};
-    Skill skill{Skill::OneHanded};
+    TreeRef tree{Skill::OneHanded};
     std::string name;
     std::vector<PerkRank> ranks;
     float x{0.0f}; // the Skills menu's position, for ordering
@@ -102,7 +124,8 @@ class PerkGraph // NOLINT(bugprone-exception-escape)
     [[nodiscard]] std::optional<std::pair<int, int>> Find(const FormKey &form) const;
     // A tree's nodes, in the order the Perks tab lists them: by the lowest
     // skill requirement, then top to bottom as the Skills menu places them.
-    [[nodiscard]] std::vector<int> Tree(Skill skill) const;
+    // A custom tree's perks ask no skill, and go by their places alone.
+    [[nodiscard]] std::vector<int> Tree(const TreeRef &tree) const;
     // The nodes a node's first rank names in HasPerk conditions: what the
     // player would call its parents.
     [[nodiscard]] std::vector<int> Parents(int id) const;

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace ft::game
@@ -32,7 +33,8 @@ std::string Translated(const std::string &name)
 CustomSkillTree TreeOf(const CustomSkill &skill, const std::string &file)
 {
     CustomSkillTree tree;
-    tree.name = Translated(skill.name.empty() ? skill.id : skill.name);
+    tree.id = CustomSkillId(file, skill);
+    tree.name = skill.name.empty() ? skill.id : skill.name;
     if (auto *form = skill.level ? Resolve(*skill.level) : nullptr)
         tree.level = form->As<RE::TESGlobal>();
     // Each node's perk, or none where the load order has none: such a node
@@ -43,7 +45,7 @@ CustomSkillTree TreeOf(const CustomSkill &skill, const std::string &file)
         auto *form = node.perk ? Resolve(*node.perk) : nullptr;
         perks.push_back(form ? form->As<RE::BGSPerk>() : nullptr);
         if (!perks.back())
-            log::customskills.debug("{}: {} node {} names no perk in the load order", file, tree.name, node.id);
+            log::customskills.debug("{}: node {} names no perk in the load order", tree.id, node.id);
     }
     for (const KeptNode &kept : KeptTree(PlacesOf(skill), [&perks](std::size_t i) { return perks[i] != nullptr; }))
     {
@@ -63,12 +65,12 @@ CustomSkillTree TreeOf(const CustomSkill &skill, const std::string &file)
 // This reads a file and resolves the forms it names.
 std::vector<CustomSkillTree> Load()
 {
-    return ft::LoadSkillTrees(
+    std::vector<CustomSkillTree> trees = ft::LoadSkillTrees(
         ft::JsonFilesIn(std::filesystem::path{"Data/SKSE/Plugins/CustomSkills"}),
         [](const std::filesystem::path &file) { return ft::ReadText(file); },
         [](const CustomSkill &skill, const std::string &label) {
             CustomSkillTree tree = TreeOf(skill, label);
-            log::customskills.info("{}: {}, {} perks", label, tree.name, tree.nodes.size());
+            log::customskills.info("{}: {} perks", tree.id, tree.nodes.size());
             return tree;
         },
         [](const std::string &label, std::string_view skill, std::string_view why) {
@@ -77,6 +79,15 @@ std::vector<CustomSkillTree> Load()
             else
                 log::customskills.warn("{}: skill {} left out, {}", label, skill, why);
         });
+    // A tree is known by its id, so the first to claim one keeps it.
+    std::unordered_set<std::string> ids;
+    std::erase_if(trees, [&ids](const CustomSkillTree &tree) {
+        if (ids.insert(tree.id).second)
+            return false;
+        log::customskills.warn("{}: left out, another tree has its id", tree.id);
+        return true;
+    });
+    return trees;
 }
 
 } // namespace
@@ -85,6 +96,11 @@ const std::vector<CustomSkillTree> &CustomSkillTrees()
 {
     static const std::vector<CustomSkillTree> trees = Load();
     return trees;
+}
+
+std::string DisplayName(const CustomSkillTree &tree)
+{
+    return Translated(tree.name);
 }
 
 } // namespace ft::game

@@ -137,17 +137,20 @@ std::optional<std::pair<int, int>> PerkGraph::Find(const FormKey &form) const
     return it->second;
 }
 
-std::vector<int> PerkGraph::Tree(Skill skill) const
+std::vector<int> PerkGraph::Tree(const TreeRef &tree) const
 {
     std::vector<int> ids;
     for (const PerkNode &node : nodes_)
-        if (node.skill == skill)
+        if (node.tree == tree)
             ids.push_back(node.id);
+    const auto requirement = [&tree](const PerkNode &node) {
+        return node.ranks.empty() || !tree.skill ? 0 : SkillRequirement(node.ranks.front(), *tree.skill);
+    };
     std::stable_sort(ids.begin(), ids.end(), [&](int a, int b) {
         const PerkNode &na = nodes_[static_cast<std::size_t>(a)];
         const PerkNode &nb = nodes_[static_cast<std::size_t>(b)];
-        const int ra = na.ranks.empty() ? 0 : SkillRequirement(na.ranks.front(), skill);
-        const int rb = nb.ranks.empty() ? 0 : SkillRequirement(nb.ranks.front(), skill);
+        const int ra = requirement(na);
+        const int rb = requirement(nb);
         if (ra != rb)
             return ra < rb;
         return na.y < nb.y;

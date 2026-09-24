@@ -208,27 +208,36 @@ struct AttributeButtons
 [[nodiscard]] AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, int available, int base,
                                                    int floor, int step);
 
-// Every perk held in a skill's tree given back -- the bought unlearned, their
-// own set aside -- their points free again; the skill left where it is.
-// Their names, a rank after the first as "Armsman (2)".
-std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph, const Holdings &holdings);
-[[nodiscard]] bool HeldInTree(Skill skill, const PerkGraph &graph, const Holdings &holdings);
+// Every perk held in a tree given back -- the bought unlearned, their own
+// set aside -- their points free again; a skill left where it is. Their
+// names, a rank after the first as "Armsman (2)".
+std::vector<std::string> ResetPerks(Companion &c, const TreeRef &tree, const PerkGraph &graph,
+                                    const Holdings &holdings);
+[[nodiscard]] bool HeldInTree(const TreeRef &tree, const PerkGraph &graph, const Holdings &holdings);
+
+// A tree's Reset perks as its page offers it: whether it can act, and what
+// a click does or why it cannot, in the panel's words. Whether the
+// companion is here, and whether leveling is on, are the caller's to add.
+struct ResetButton
+{
+    bool can{false};
+    std::string text;
+};
+[[nodiscard]] ResetButton ResetButtonFor(const TreeRef &tree, const PerkGraph &graph, const Holdings &holdings);
 
 // A skill's buttons as a page offers them: whether each can act, and what
 // a click does or why it cannot, in the panel's words. - and + move a
-// level, << and >> as far as it goes (as long as - and + can act); Reset
-// perks gives back the perks bought in its tree. Whether the companion is
-// here, and whether leveling is on, are the caller's to add.
+// level, << and >> as far as it goes (as long as - and + can act). Whether
+// the companion is here, and whether leveling is on, are the caller's to
+// add.
 struct SkillButtons
 {
     bool canLower{false};
     bool canRaise{false};
-    bool canResetPerks{false};
     std::string lower;   // -
     std::string lowest;  // <<
     std::string raise;   // +
     std::string highest; // >>
-    std::string resetPerks;
 };
 [[nodiscard]] SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &base, int floor,
                                       const PerkGraph &graph, const Holdings &holdings, const Rules &r);

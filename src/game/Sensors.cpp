@@ -20,6 +20,7 @@
 #include "game/Settings.h"
 #include "game/Toggles.h"
 #include "game/Util.h"
+#include "progression/game/Service.h"
 
 #include <algorithm>
 #include <array>
@@ -4314,8 +4315,9 @@ const TreeShape &ShapeOf(const CustomSkillTree &tree)
     return cache.emplace(&tree, std::move(shape)).first->second;
 }
 
-// A custom tree's key, the skill row's and the tree page's: clear of every
-// skill's, which is its actor value plus one.
+// A custom tree's key, the skill row's and the tree page's: the panel's
+// handle for this session, never saved -- the tree is known by its id --
+// and clear of every skill's, which is its actor value plus one.
 std::uint32_t CustomTreeKey(std::size_t index)
 {
     return 0x10000u + static_cast<std::uint32_t>(index);
@@ -4399,7 +4401,8 @@ std::vector<ft::PerkTreeView> BuildPerkTrees(RE::Actor *actor)
             continue;
         ft::PerkTreeView tree;
         tree.key = CustomTreeKey(i);
-        tree.name = custom[i].name;
+        tree.custom = custom[i].id;
+        tree.name = DisplayName(custom[i]);
         if (custom[i].level && actor->IsPlayerRef())
         {
             tree.level = tree.current = custom[i].level->value;
@@ -4547,7 +4550,7 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
             {
                 RE::BGSPerk *perk = node.ranks[r];
                 if (actor->HasPerk(perk) ? TopRankHeld(actor, perk) : r == 0)
-                    page(perk, static_cast<int>(r) + 1, static_cast<int>(node.ranks.size()), tree.name);
+                    page(perk, static_cast<int>(r) + 1, static_cast<int>(node.ranks.size()), DisplayName(tree));
             }
     for (const HeldPerk &held : PerksOutsideTrees(actor))
         page(held.perk, held.rank, 1, "");
@@ -4777,19 +4780,22 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         // Custom Skills Framework's trees sit with the other skills: a row
         // each with its perks held, and its level where the tree keeps one,
         // for the player alone, whose level the framework's globals are. A
-        // tree with nothing to show says nothing, as a vanilla skill at zero.
+        // tree with nothing to show says nothing, as a vanilla skill at zero
+        // -- except to a follower Progression levels, for whom the row is
+        // the way to the tree they buy their first perk of it in.
         if (category.code == 0)
         {
+            const bool levelled = !actor->IsPlayerRef() && fp::game::LevelFor(actor->GetFormID()).has_value();
             const std::vector<CustomSkillTree> &custom = CustomSkillTrees();
             for (std::size_t i = 0; i < custom.size(); ++i)
             {
                 const CustomSkillTree &tree = custom[i];
                 const bool level = tree.level && actor->IsPlayerRef();
-                SheetRow row = Row(tree.name, level ? Fmt("%.0f", tree.level->value) : std::string{});
+                SheetRow row = Row(DisplayName(tree), level ? Fmt("%.0f", tree.level->value) : std::string{});
                 row.detail = OwnedPerks(actor, tree);
                 if (!tree.nodes.empty())
                     row.tree = CustomTreeKey(i); // BuildPerkTrees' key
-                if (!row.detail.empty() || (level && tree.level->value > 0.0f))
+                if (!row.detail.empty() || (level && tree.level->value > 0.0f) || (levelled && !tree.nodes.empty()))
                     s.rows.push_back(std::move(row));
             }
         }

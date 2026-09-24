@@ -29,13 +29,21 @@ struct CustomTreeNode
 
 struct CustomSkillTree
 {
-    std::string name;                  // translated where the file gives a key
+    std::string id;                    // ft::CustomSkillId, "Dragonborn.json/Dragonborn": no other tree's
+    std::string name;                  // as the file writes it, perhaps a translation key: DisplayName
     RE::TESGlobal *level{nullptr};     // none for a tree without levels
     std::vector<CustomTreeNode> nodes; // in the tree's order (ft::TreeOrder)
 };
 
 // Every tree the installed files add, by file name and then as each file
-// lists them. Empty where the framework's files are not installed.
+// lists them. Empty where the framework's files are not installed. Read
+// with Progression's perk graph, at data load.
 [[nodiscard]] const std::vector<CustomSkillTree> &CustomSkillTrees();
+
+// A tree's name in the game's language, from the strings SKSE loads from
+// Interface/Translations where the file gives a key ("$CampingPlusPlus_Name"),
+// and as written otherwise. Asked when shown, not when read: whether the
+// game's strings are in by data load is not measured.
+[[nodiscard]] std::string DisplayName(const CustomSkillTree &tree);
 
 } // namespace ft::game

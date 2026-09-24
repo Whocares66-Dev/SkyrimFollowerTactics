@@ -160,6 +160,11 @@ std::vector<std::size_t> TreeOrder(const std::vector<TreeNodePlace> &nodes)
     return order;
 }
 
+std::string CustomSkillId(std::string_view file, const CustomSkill &skill)
+{
+    return std::string(file) + "/" + skill.id;
+}
+
 std::vector<KeptNode> KeptTree(const std::vector<TreeNodePlace> &nodes, const std::function<bool(std::size_t)> &keep)
 {
     constexpr std::size_t kLeftOut = static_cast<std::size_t>(-1);

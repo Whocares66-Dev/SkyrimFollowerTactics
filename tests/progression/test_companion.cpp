@@ -39,7 +39,7 @@ fp::PerkGraph BladeTree()
     fp::PerkGraph graph;
     fp::PerkNode node;
     node.name = "Blade";
-    node.skill = Skill::OneHanded;
+    node.tree = Skill::OneHanded;
     node.ranks = {
         {{"Test.esp", 1},
          "",
@@ -228,12 +228,12 @@ TEST_CASE("resetting a tree's perks gives back every rank held, theirs and bough
     fp::PerkGraph graph = BladeTree();
     fp::PerkNode ranked;
     ranked.name = "Armsman";
-    ranked.skill = Skill::OneHanded;
+    ranked.tree = Skill::OneHanded;
     ranked.ranks = {{{"Test.esp", 2}, "", {}}, {{"Test.esp", 3}, "", {}}};
     graph.Add(ranked);
     fp::PerkNode other;
     other.name = "Overdraw";
-    other.skill = Skill::Archery;
+    other.tree = Skill::Archery;
     other.ranks = {{{"Test.esp", 4}, "", {}}};
     graph.Add(other);
 
@@ -254,6 +254,51 @@ TEST_CASE("resetting a tree's perks gives back every rank held, theirs and bough
     CHECK_FALSE(fp::HeldInTree(Skill::OneHanded, graph, after));
     CHECK(fp::HeldInTree(Skill::Archery, graph, after));
     CHECK(fp::ResetPerks(c, Skill::OneHanded, graph, after).empty());
+}
+
+TEST_CASE("a custom tree's perks are a tree of their own, bought with the same points", "[companion]")
+{
+    // Blade in One-Handed; Dragonborn and Deep Breath, which asks for it, in
+    // Stormcrown's tree.
+    fp::PerkGraph graph = BladeTree();
+    const fp::TreeRef dragonborn = fp::TreeRef::Custom("Dragonborn.json/Dragonborn");
+    fp::PerkNode root;
+    root.name = "Dragonborn";
+    root.tree = dragonborn;
+    root.ranks = {{{"Stormcrown.esp", 0x80F}, "", {}}};
+    graph.Add(root);
+    fp::PerkNode breath;
+    breath.name = "Deep Breath";
+    breath.tree = dragonborn;
+    breath.ranks = {
+        {{"Stormcrown.esp", 0x81D},
+         "",
+         {{fp::ConditionFunction::HasPerk, -1, {"Stormcrown.esp", 0x80F}, fp::Comparison::Equal, 1.0f, false, {}}}}};
+    graph.Add(breath);
+
+    // Neither tree lists the other's nodes; one custom tree is not another.
+    CHECK(graph.Tree(Skill::OneHanded) == std::vector<int>{0});
+    CHECK(graph.Tree(dragonborn) == std::vector<int>{1, 2});
+    CHECK(graph.Tree(fp::TreeRef::Custom("Other.json/Dragonborn")).empty());
+
+    // Deep Breath waits for its parent, as any tree's perk does, and costs a
+    // point as any does.
+    Companion c = Lydia();
+    const fp::PerSkill<int> skills = Base(15);
+    const auto before = fp::HoldingsOf(c, {});
+    CHECK(fp::Status({graph, before, skills, 2}, 2).block == fp::PerkBlock::Requires);
+    CHECK(fp::Status({graph, before, skills, 2}, 1).block == fp::PerkBlock::None);
+    fp::Learn(c, graph.Node(1), 0);
+    const auto after = fp::HoldingsOf(c, {});
+    CHECK(fp::Status({graph, after, skills, 1}, 2).block == fp::PerkBlock::None);
+    CHECK(fp::HeldRanks(graph, after) == 1);
+
+    // Its reset gives back its own and nothing of One-Handed's.
+    fp::Learn(c, graph.Node(0), 0);
+    REQUIRE(fp::ResetButtonFor(dragonborn, graph, fp::HoldingsOf(c, {})).can);
+    CHECK(fp::ResetPerks(c, dragonborn, graph, fp::HoldingsOf(c, {})) == std::vector<std::string>{"Dragonborn"});
+    CHECK(fp::HeldInTree(Skill::OneHanded, graph, fp::HoldingsOf(c, {})));
+    CHECK_FALSE(fp::HeldInTree(dragonborn, graph, fp::HoldingsOf(c, {})));
 }
 
 TEST_CASE("a skill reads with what they learned on top, within the cap", "[companion]")
@@ -357,7 +402,7 @@ TEST_CASE("a perk held counts against the level's points, and unlearning gives i
     fp::PerkGraph graph;
     fp::PerkNode armsman;
     armsman.name = "Armsman";
-    armsman.skill = Skill::OneHanded;
+    armsman.tree = Skill::OneHanded;
     armsman.ranks = {{{"Skyrim.esm", 0x0BABE4}, "", {}}, {{"Skyrim.esm", 0x079343}, "", {}}};
     graph.Add(armsman);
     fp::Learn(c, graph.Node(0), 0);
@@ -386,7 +431,7 @@ TEST_CASE("one of their own perks given back returns its point, and costs one to
     fp::PerkGraph graph;
     fp::PerkNode recovery;
     recovery.name = "Recovery";
-    recovery.skill = Skill::Restoration;
+    recovery.tree = Skill::Restoration;
     recovery.ranks = {{{"Skyrim.esm", 0x0581F4}, "", {}}, {{"Skyrim.esm", 0x0581F5}, "", {}}};
     graph.Add(recovery);
     // As Marcurio's record has it: the second rank without the first.
@@ -458,8 +503,9 @@ TEST_CASE("a skill's buttons say what a click does, or why it cannot", "[compani
     CHECK_FALSE(b.canRaise);
     CHECK(b.raise == "Not enough XP");
     CHECK(b.highest == "Not enough XP");
-    CHECK_FALSE(b.canResetPerks);
-    CHECK(b.resetPerks == "No perks to reset");
+    const auto nothing = fp::ResetButtonFor(Skill::OneHanded, graph, fp::HoldingsOf(c, {}));
+    CHECK_FALSE(nothing.can);
+    CHECK(nothing.text == "No perks to reset");
 
     // Above it, with the pool: every one can act.
     c.learning.pool = 1500.0;
@@ -482,8 +528,9 @@ TEST_CASE("a skill's buttons say what a click does, or why it cannot", "[compani
     b = fp::ButtonsFor(c, Skill::OneHanded, Base(25), 15, graph, fp::HoldingsOf(c, {}), r);
     CHECK_FALSE(b.canLower);
     CHECK(b.lower == "Blade needs this skill level");
-    CHECK(b.canResetPerks);
-    CHECK(b.resetPerks == "Click to reset perks");
+    const auto reset = fp::ResetButtonFor(Skill::OneHanded, graph, fp::HoldingsOf(c, {}));
+    CHECK(reset.can);
+    CHECK(reset.text == "Click to reset perks");
 
     // Every skill alike: Smithing moves as One-Handed does.
     b = fp::ButtonsFor(c, Skill::Smithing, Base(25), 15, graph, fp::HoldingsOf(c, {}), r);

@@ -6400,6 +6400,18 @@ void DrawPerkTree(const ft::PerkTreeView &tree, const TreeHandlers &on)
     }
 }
 
+// A tree page's tree as Progression names it: a skill's, a custom tree's
+// by its id, or none for a skill Progression does not level (Vampire
+// Lord's).
+std::optional<fp::TreeRef> ProgressionTree(const ft::PerkTreeView &tree)
+{
+    if (!tree.custom.empty())
+        return fp::TreeRef::Custom(tree.custom);
+    if (const auto skill = tree.skill ? fp::SkillFromActorValue(*tree.skill) : std::nullopt)
+        return fp::TreeRef(*skill);
+    return std::nullopt;
+}
+
 void DrawSkills(const CharacterView &view)
 {
     SkillsTabState &state = Panel(view.id).skills;
@@ -6437,10 +6449,15 @@ void DrawSkills(const CharacterView &view)
     {
         // The name at the left; the level in the middle; the perks to
         // spend and Reset perks at the right. A follower Progression
-        // levels has <<, -, + and >> about the level (Progression's
-        // ControlsFor), each greyed with why when it cannot act; the
-        // player, and a follower it does not level, the level alone.
+        // levels has <<, -, + and >> about a skill's level (Progression's
+        // ControlsFor), and in any tree it knows, a skill's or a custom
+        // one, the perks to spend and Reset perks (TreeControlsFor), each
+        // greyed with why when it cannot act; the player, and a follower
+        // it does not level, the level alone.
         const auto controls = view.player || !tree->skill ? std::nullopt : fp::game::ControlsFor(view.id, *tree->skill);
+        const auto progressionTree = ProgressionTree(*tree);
+        const auto perks =
+            view.player || !progressionTree ? std::nullopt : fp::game::TreeControlsFor(view.id, *progressionTree);
         const float lineX = Im::GetCursorPosX();
         const float lineWidth = Im::GetContentRegionAvail().x;
         const float button = Im::GetFrameHeight();
@@ -6501,15 +6518,16 @@ void DrawSkills(const CharacterView &view)
             Im::SameLine(0.0f, kCellPadX);
             if (pointButton("highest", Glyph::AllTheWayRight, b.canRaise, b.highest))
                 move(+1, true);
-
+        }
+        if (perks)
+        {
             // The perks to spend, then Reset perks, which asks once: it
             // gives back every perk bought in the tree, free to buy again
             // but not one click away.
-            const std::string available = controls->perkPoints <= 0 ? std::string()
-                                          : controls->perkPoints == 1
-                                              ? std::string(Tr("1 perk available"))
-                                              : TrFormat("{} perks available", controls->perkPoints);
-            const float buttons = AskedActionWidth(Tr("Reset perks"), state.confirmReset && b.canResetPerks);
+            const std::string available = perks->perkPoints <= 0   ? std::string()
+                                          : perks->perkPoints == 1 ? std::string(Tr("1 perk available"))
+                                                                   : TrFormat("{} perks available", perks->perkPoints);
+            const float buttons = AskedActionWidth(Tr("Reset perks"), state.confirmReset && perks->reset.can);
             Im::SameLine(0.0f, 0.0f);
             const float lead = available.empty() ? 0.0f : TextWidth(available) + kCellPadX;
             Im::SetCursorPosX((std::max)(Im::GetCursorPosX() + kCellPadX, lineX + lineWidth - buttons - lead));
@@ -6519,9 +6537,9 @@ void DrawSkills(const CharacterView &view)
                 Im::Text("%s", available.c_str());
                 Im::SameLine(0.0f, kCellPadX);
             }
-            if (AskedAction(Tr("Reset perks"), b.canResetPerks, b.resetPerks, state.confirmReset))
+            if (AskedAction(Tr("Reset perks"), perks->reset.can, perks->reset.text, state.confirmReset))
             {
-                fp::game::ResetPerks(controls->companion, controls->skill);
+                fp::game::ResetPerks(perks->companion, perks->tree);
                 PlayGameSound(kPerkReturnedSound);
                 RefreshAfterAction();
             }

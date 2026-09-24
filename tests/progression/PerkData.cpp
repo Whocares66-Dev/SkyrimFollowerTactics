@@ -48,7 +48,7 @@ std::optional<PerkGraph> ReadPerkGraph(std::string_view text, std::string *why)
         if (!skill)
             return fail("node " + std::to_string(index) + " has no skill");
         PerkNode node;
-        node.skill = *skill;
+        node.tree = *skill;
         node.name = n.value("name", std::string{});
         node.x = n.value("x", 0.0f);
         node.y = n.value("y", 0.0f);

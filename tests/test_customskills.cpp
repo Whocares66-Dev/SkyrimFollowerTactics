@@ -126,6 +126,15 @@ TEST_CASE("a perk with two parents comes after the deeper one", "[customskills]"
     REQUIRE(TreeOrder(nodes) == std::vector<std::size_t>{0, 1, 2, 3});
 }
 
+TEST_CASE("a tree is known by its file and its id in it", "[customskills]")
+{
+    CustomSkill dragonborn;
+    dragonborn.id = "Dragonborn";
+    CHECK(CustomSkillId("Dragonborn.json", dragonborn) == "Dragonborn.json/Dragonborn");
+    // One id in two files is two trees.
+    CHECK(CustomSkillId("Other.json", dragonborn) != CustomSkillId("Dragonborn.json", dragonborn));
+}
+
 TEST_CASE("a node whose perk is not in the load order is left out, and the links to it with it", "[customskills]")
 {
     // Root -> A -> B, and Root -> C; A's perk is missing.

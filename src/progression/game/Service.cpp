@@ -587,13 +587,11 @@ std::optional<SkillControls> ControlsFor(RE::FormID actor, int actorValue)
         out.base = v.base[k];
         out.learned = c.learning.skills[k];
         out.level = out.base + out.learned;
-        out.perkPoints = v.perkPoints;
         out.buttons = ButtonsFor(c, *skill, v.base, v.floors[k], Graph(), HoldingsOf(c, v.onRecord), g_state.rules);
         if (const auto why = CannotChange(c, v))
         {
-            out.buttons.canLower = out.buttons.canRaise = out.buttons.canResetPerks = false;
-            out.buttons.lower = out.buttons.lowest = out.buttons.raise = out.buttons.highest = out.buttons.resetPerks =
-                *why;
+            out.buttons.canLower = out.buttons.canRaise = false;
+            out.buttons.lower = out.buttons.lowest = out.buttons.raise = out.buttons.highest = *why;
         }
         out.active = !CannotChange(c, v);
         return out;
@@ -853,14 +851,43 @@ void AssignSkillAll(const FormKey &key, Skill skill, int direction)
     });
 }
 
-void ResetPerks(const FormKey &key, Skill skill)
+std::optional<TreeControls> TreeControlsFor(RE::FormID actor, const TreeRef &tree)
 {
-    Act([key = key, skill] {
+    if (actor == 0)
+        return std::nullopt;
+    std::scoped_lock lock(g_mutex);
+    for (const CompanionView &v : g_state.views)
+    {
+        const Companion *c = v.actor == actor && v.read ? Find(v.key) : nullptr;
+        if (!c)
+            continue;
+        TreeControls out;
+        out.companion = c->key;
+        out.tree = tree;
+        out.perkPoints = v.perkPoints;
+        out.reset = ResetButtonFor(tree, Graph(), HoldingsOf(*c, v.onRecord));
+        if (const auto why = CannotChange(*c, v))
+        {
+            out.reset.can = false;
+            out.reset.text = *why;
+        }
+        return out;
+    }
+    return std::nullopt;
+}
+
+void ResetPerks(const FormKey &key, const TreeRef &tree)
+{
+    // The tree's parts, not the TreeRef: captured whole, clang-tidy reads the
+    // closure's move as throwing (bugprone-exception-escape; why is not
+    // established), and its parts it does not.
+    Act([key = key, skill = tree.skill, custom = tree.custom] {
+        const TreeRef tree = skill ? TreeRef(*skill) : TreeRef::Custom(custom);
         auto [c, actor] = Present(
             key, [](const std::string &name) { Refuse(N_("{} must be with you to reset their perks."), name); });
         if (!c)
             return;
-        const auto unlearned = fp::ResetPerks(*c, skill, Graph(), HoldingsOf(*c, OnRecord(*c, actor)));
+        const auto unlearned = fp::ResetPerks(*c, tree, Graph(), HoldingsOf(*c, OnRecord(*c, actor)));
         if (unlearned.empty())
             return;
         PublishViews();
@@ -868,7 +895,8 @@ void ResetPerks(const FormKey &key, Skill skill)
         std::string names;
         for (const std::string &name : unlearned)
             names += (names.empty() ? "" : ", ") + name;
-        log::perks.info("{}: {} perks reset: {}", c->name, Name(skill), names);
+        log::perks.info("{}: {} perks reset: {}", c->name, tree.skill ? std::string(Name(*tree.skill)) : tree.custom,
+                        names);
     });
 }
 

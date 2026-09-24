@@ -4,6 +4,7 @@
 #include "progression/game/Log.h"
 
 #include "core/I18n.h"
+#include "game/CustomSkillsFramework.h"
 
 #include <queue>
 #include <unordered_map>
@@ -117,7 +118,7 @@ void ReadTree(Skill skill, RE::BGSSkillPerkTreeNode *root, std::unordered_set<RE
             continue;
 
         PerkNode out;
-        out.skill = skill;
+        out.tree = skill;
         out.name = NameOf(first);
         out.x = node->horizontalPosition;
         out.y = node->verticalPosition;
@@ -152,6 +153,34 @@ void BuildPerkGraph()
         const std::size_t before = g_graph.Size();
         ReadTree(skill, info->perkTree, seen);
         log::perks.debug("{}: {} perks", Name(skill), g_graph.Size() - before);
+    }
+    // Custom Skills Framework's trees, after the skills': a companion spends
+    // the same points in them, and their perks ask for the perks before
+    // them as any tree's do. A perk already in a skill's tree stays there.
+    for (const ft::game::CustomSkillTree &tree : ft::game::CustomSkillTrees())
+    {
+        const std::size_t before = g_graph.Size();
+        for (const ft::game::CustomTreeNode &node : tree.nodes)
+        {
+            RE::BGSPerk *first = node.ranks.front();
+            if (!seen.insert(first).second || !KeyOf(first))
+                continue;
+            PerkNode out;
+            out.tree = TreeRef::Custom(tree.id);
+            out.name = NameOf(first);
+            out.x = static_cast<float>(node.x);
+            out.y = static_cast<float>(node.y);
+            for (RE::BGSPerk *rank : node.ranks)
+            {
+                const auto key = KeyOf(rank);
+                if (!key)
+                    break;
+                out.ranks.push_back(RankOf(rank, *key));
+                seen.insert(rank);
+            }
+            g_graph.Add(std::move(out));
+        }
+        log::perks.debug("{}: {} perks", tree.id, g_graph.Size() - before);
     }
     std::size_t ranks = 0;
     for (const auto &node : g_graph.Nodes())

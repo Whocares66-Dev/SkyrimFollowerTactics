@@ -49,6 +49,14 @@ struct CustomSkill
     std::vector<CustomSkillNode> nodes;
 };
 
+// A tree's identity: its file's name (FileLabel) and the skill's id in it,
+// "Dragonborn.json/Dragonborn". A tree has no form of its own, and the
+// globals it names are optional and may be shared; a folder's files have a
+// name each, and a file's skills an id each, so the pair is the tree's
+// alone however the other files come and go. The loader keeps the first
+// tree to claim one.
+[[nodiscard]] std::string CustomSkillId(std::string_view file, const CustomSkill &skill);
+
 // One file's skills. Empty, with `error` set, for text that is not the
 // framework's JSON.
 [[nodiscard]] std::vector<CustomSkill> ParseCustomSkills(std::string_view json, std::string *error = nullptr);

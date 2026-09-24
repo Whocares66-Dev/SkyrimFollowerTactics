@@ -78,8 +78,9 @@ struct AttributeControls
 // A skill moved as far as it goes one way (-1 down, +1 up): each level as -
 // and + would move it, while they can (progression/core/Companion.h).
 void AssignSkillAll(const FormKey &actor, Skill skill, int direction);
-// The perks bought in a skill's tree given back; the skill left as it is.
-void ResetPerks(const FormKey &actor, Skill skill);
+// The perks held in a tree given back, the bought unlearned and their own
+// set aside; a skill left as it is.
+void ResetPerks(const FormKey &actor, const TreeRef &tree);
 // The next rank of a perk, named by runtime ids -- the actor's and a rank's
 // of its node, as Tactics' skill page has them -- resolved on the game
 // thread and learned there in the one action. Nothing for an actor who is
@@ -87,7 +88,7 @@ void ResetPerks(const FormKey &actor, Skill skill);
 void LearnPerkByForm(std::uint32_t actor, std::uint32_t perk);
 
 // A companion's skill as Tactics' skill page heads it: their level with
-// what they have learned, and its -, + and Reset (core ButtonsFor), with
+// what they have learned, and its - and + (core ButtonsFor), with
 // progression off and their being away folded in. `active` is whether a
 // click on the tree can learn. None for an actor who is no companion of
 // ours, or a skill Progression does not know. From the render thread,
@@ -99,11 +100,24 @@ struct SkillControls
     int level{0};   // theirs, with what they have learned
     int base{0};    // what the engine gives them
     int learned{0}; // on top of it, or taken back below it
-    int perkPoints{0};
     bool active{false};
     SkillButtons buttons;
 };
 [[nodiscard]] std::optional<SkillControls> ControlsFor(RE::FormID actor, int actorValue);
+
+// A companion's perks in one tree, a skill's or a custom one, as Tactics'
+// tree page heads them: the points to spend, and Reset perks (core
+// ResetButtonFor) with progression off and their being away folded in.
+// None for an actor who is no companion of ours. From the render thread,
+// under the lock.
+struct TreeControls
+{
+    FormKey companion;
+    TreeRef tree;
+    int perkPoints{0};
+    ResetButton reset;
+};
+[[nodiscard]] std::optional<TreeControls> TreeControlsFor(RE::FormID actor, const TreeRef &tree);
 
 // A companion's level and the experience into it, as their page shows it:
 // none for an actor who is no companion of ours, or one not read yet. From

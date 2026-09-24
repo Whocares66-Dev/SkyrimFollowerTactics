@@ -262,10 +262,10 @@ AttributeButtons AttributeButtonsFor(const Companion &c, Attribute attribute, in
     return out;
 }
 
-std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &graph, const Holdings &holdings)
+std::vector<std::string> ResetPerks(Companion &c, const TreeRef &tree, const PerkGraph &graph, const Holdings &holdings)
 {
     std::vector<std::string> gone;
-    for (const int id : graph.Tree(skill))
+    for (const int id : graph.Tree(tree))
     {
         const PerkNode &node = graph.Node(id);
         for (std::size_t r = 0; r < node.ranks.size(); ++r)
@@ -279,13 +279,21 @@ std::vector<std::string> ResetPerks(Companion &c, Skill skill, const PerkGraph &
     return gone;
 }
 
-bool HeldInTree(Skill skill, const PerkGraph &graph, const Holdings &holdings)
+bool HeldInTree(const TreeRef &tree, const PerkGraph &graph, const Holdings &holdings)
 {
-    for (const int id : graph.Tree(skill))
+    for (const int id : graph.Tree(tree))
         for (const PerkRank &rank : graph.Node(id).ranks)
             if (holdings.innate.contains(rank.form) || holdings.learned.contains(rank.form))
                 return true;
     return false;
+}
+
+ResetButton ResetButtonFor(const TreeRef &tree, const PerkGraph &graph, const Holdings &holdings)
+{
+    ResetButton out;
+    out.can = HeldInTree(tree, graph, holdings);
+    out.text = out.can ? std::string(Tr("Click to reset perks")) : std::string(Tr("No perks to reset"));
+    return out;
 }
 
 SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &base, int floor, const PerkGraph &graph,
@@ -305,8 +313,6 @@ SkillButtons ButtonsFor(const Companion &c, Skill skill, const PerSkill<int> &ba
                                                                       : std::string(Tr("Not enough XP"));
     out.raise = out.canRaise ? std::string(Tr("Click to increase skill")) : cannotRaise;
     out.highest = out.canRaise ? std::string(Tr("Click to increase to maximum skill")) : cannotRaise;
-    out.canResetPerks = HeldInTree(skill, graph, holdings);
-    out.resetPerks = out.canResetPerks ? std::string(Tr("Click to reset perks")) : std::string(Tr("No perks to reset"));
     return out;
 }
 

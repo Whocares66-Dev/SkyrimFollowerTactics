@@ -44,7 +44,7 @@ Condition Has(std::uint32_t local, bool orNext = false)
 fp::PerkNode Node(std::string name, std::vector<fp::PerkRank> ranks, float y = 0.0f)
 {
     fp::PerkNode n;
-    n.skill = fp::Skill::OneHanded;
+    n.tree = fp::Skill::OneHanded;
     n.name = std::move(name);
     n.ranks = std::move(ranks);
     n.y = y;
