@@ -61,6 +61,12 @@ inline constexpr REL::RelocationID kAliasOverrideMapCapacity{502247, 369298};
 // CombatInventoryItem's score call: the slot replaced in each entry
 // class's vtable so the AI's choice defers to the pins (dev/UNIQUE.md).
 inline constexpr std::size_t kCalculateScoreSlot = 0x0C;
+// CombatInventoryItem's equip check (dev/COMBAT_AI.md 4), replaced beside the
+// score so a follower's self-targeting damage spell is not refused by the
+// check of the caster the engine filed it under (fix of AiScore.h,
+// SelfDamageMayEquip). Read on 1.6.1170 (the attack caster's 46419, the
+// script caster's 45633) and 1.5.97 (44758).
+inline constexpr std::size_t kCheckShouldEquipSlot = 0x0F;
 
 // --- Progression: the perk and spell views, and learning by doing -----------
 // (dev/ENGINE_PERKS.md, dev/ENGINE_SPELLS.md, dev/ENGINE_SKILLS.md, read on

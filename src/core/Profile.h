@@ -122,8 +122,14 @@ struct Settings
     bool requirePowerBashPerk{false};
     // A follower's weapons and attack spells scored with their perks, the
     // enemy's immunities and some variety, over the combat AI's own
-    // (dev/COMBAT_AI.md "What we change"). Off is vanilla's choice.
-    bool variedAiChoices{false};
+    // (dev/COMBAT_AI.md "What we change"). On by default; off is vanilla's
+    // choice.
+    bool variedAiChoices{true};
+    // A follower's hostile spells cast on themself -- Fire Storm and its
+    // kind -- scored as the engine scores an aimed one, where the engine
+    // scores them nothing and never casts them (dev/COMBAT_AI.md). On by
+    // default; off is vanilla's. A spell not wanted is banned.
+    bool selfDamageSpells{true};
 };
 
 [[nodiscard]] std::string WriteSettings(const Settings &settings);

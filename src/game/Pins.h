@@ -211,6 +211,10 @@ void KeepPins(const std::vector<RE::Actor *> &followers);
 // is computed until the AI asks, and nothing on the tick.
 void WatchCombatScores();
 
+// Which kind of entry the AI filed it as -- "attack spells", "scripted
+// spells" -- by its class, for the log.
+[[nodiscard]] std::string CombatEntryClass(const RE::CombatInventoryItem *entry);
+
 // Once, at data load: detour the engine's three equips -- an item, a spell
 // into a hand, a shout or power into the voice -- so that an equip of ITS
 // choosing, or a script's or a package's, is refused when it names a

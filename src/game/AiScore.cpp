@@ -5,6 +5,7 @@
 #include "game/Inventory.h"
 #include "game/Log.h"
 #include "game/Packages.h"
+#include "game/Pins.h"
 #include "game/Sensors.h"
 #include "game/Settings.h"
 #include "game/Util.h"
@@ -44,6 +45,12 @@ struct Choice
     // Entries the engine files elsewhere or scores 0 or less, said once a
     // fight: an attack spell the AI never uses is found here.
     std::unordered_set<const void *> listed;
+    // A spell cast on oneself, scored here: how many enemies its rings last
+    // reached, so the log says each time that changes.
+    std::unordered_map<const void *, int> selfArea;
+    // Entries the engine's equip check refused and ours allowed, said once
+    // a fight.
+    std::unordered_set<const void *> allowed;
     // The loadout last logged, so it is said once each time it changes.
     std::string loadout;
     // Each spell's magicka cost, priced once a fight: the engine's cost
@@ -244,6 +251,8 @@ Choice &ChoiceFor(RE::Actor *actor, const RE::CombatController *controller, doub
         choice.logged.clear();
         choice.heldBack.clear();
         choice.listed.clear();
+        choice.selfArea.clear();
+        choice.allowed.clear();
         choice.loadout.clear();
         choice.costs.clear();
         choice.last.clear();
@@ -382,6 +391,130 @@ class CastSink : public RE::BSTEventSink<RE::TESSpellCastEvent>
 
 CastSink g_castSink;
 
+// What an effect's area, in feet as the record gives it, reaches in game
+// units (INFERRED, UESP's 21.33 units a foot; the log says each distance and
+// radius, to be read against a cast).
+constexpr float kUnitsPerFoot = 21.33f;
+
+// A hostile spell cast on oneself -- Fire Storm and its kind -- the engine
+// scores nothing: its registry has no hostile entry for a self-delivered
+// spell (dev/MAGIC.md, "Which spells the combat AI can use at all"). Scored
+// here as the engine scores an aimed one (dev/COMBAT_AI.md 2): the style's
+// magic multiplier times each damage effect's magnitude x its duration, at
+// least a second, times the engine's weight for what it damages (health 1,
+// magicka 0.5, stamina 0.33), less the enemy's resistance to it -- for
+// every enemy the effect's area reaches, each at its own distance, so the
+// rings of Cold Fire Storm add up to what would land on the crowd around
+// the caster. Its stagger, slow and the rest
+// are not damage and count for nothing, as the engine's damage entry has
+// them. None reach, and it is 0: cast now it would hit nobody. A player who
+// does not want these cast bans them.
+//
+// The engine gives such a spell no reach either -- 0 to 0, so its loadout
+// counts it at a tenth however close the enemy (dev/COMBAT_AI.md 3) -- and
+// `reach` is the largest ring's radius, which the entry is given.
+struct SelfArea
+{
+    float score{0.0f};
+    float distance{0.0f};
+    float reach{0.0f};
+    int enemies{0};    // the enemies it was asked against
+    int reached{0};    // the most any one ring reaches
+    std::string rings; // "60 ft 60 x3, 40 ft 20 x1", each ring and how many it reaches, for the log
+};
+
+// The engine's weight for damage to a value (dev/COMBAT_AI.md 2), 0 for an
+// effect that is not damage.
+float DamageWeight(const RE::Effect &effect)
+{
+    const auto *base = effect.baseEffect;
+    using Archetype = RE::EffectSetting::Archetype;
+    if (!base->IsHostile() || effect.effectItem.area == 0 ||
+        !(base->HasArchetype(Archetype::kValueModifier) || base->HasArchetype(Archetype::kPeakValueModifier) ||
+          base->HasArchetype(Archetype::kDualValueModifier)))
+        return 0.0f;
+    switch (base->data.primaryAV)
+    {
+    case RE::ActorValue::kHealth:
+        return 1.0f;
+    case RE::ActorValue::kMagicka:
+        return 0.5f;
+    case RE::ActorValue::kStamina:
+        return 0.33f;
+    default:
+        return 0.0f;
+    }
+}
+
+// Whom the caster's side is fighting: the combat group's targets, read
+// under the group's lock and resolved outside it, the dead left out; the
+// controller's own target among them if the group has not listed it yet.
+std::vector<RE::NiPointer<RE::Actor>> EnemiesOf(const RE::CombatController *controller, RE::Actor *target)
+{
+    std::vector<RE::ActorHandle> handles;
+    if (auto *group = controller ? controller->combatGroup : nullptr)
+    {
+        const RE::BSReadLockGuard locker(group->lock);
+        for (const auto &listed : group->targets)
+            handles.push_back(listed.targetHandle);
+    }
+    std::vector<RE::NiPointer<RE::Actor>> enemies;
+    for (const auto &handle : handles)
+        if (auto enemy = handle.get(); enemy && !enemy->IsDead())
+            enemies.push_back(std::move(enemy));
+    if (target && !target->IsDead() &&
+        std::ranges::none_of(enemies, [&](const auto &enemy) { return enemy.get() == target; }))
+        enemies.emplace_back(target);
+    return enemies;
+}
+
+SelfArea SelfAreaScore(RE::Actor *caster, RE::MagicItem *spell, RE::Actor *target,
+                       const RE::CombatController *controller)
+{
+    SelfArea out;
+    if (!caster || !spell || spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
+        return out;
+    // Every enemy, each at its own distance and with its own resistance:
+    // what the rings would land on, summed. With none the rings still give
+    // the reach, and reach nobody.
+    const auto enemies = EnemiesOf(controller, target);
+    std::vector<float> distances;
+    distances.reserve(enemies.size());
+    for (const auto &enemy : enemies)
+        distances.push_back(caster->GetPosition().GetDistance(enemy->GetPosition()));
+    out.distance = target ? caster->GetPosition().GetDistance(target->GetPosition()) : FLT_MAX;
+    static const float maxResist = GameSetting("fPlayerMaxResistance", 85.0f);
+    double sum = 0.0;
+    for (const RE::Effect *effect : ResolvedEffects(*spell))
+    {
+        const auto *base = effect->baseEffect;
+        const float weight = DamageWeight(*effect);
+        if (!(weight > 0.0f))
+            continue;
+        const float radius = static_cast<float>(effect->effectItem.area) * kUnitsPerFoot;
+        out.reach = (std::max)(out.reach, radius);
+        int reached = 0;
+        for (std::size_t i = 0; i < enemies.size(); ++i)
+        {
+            if (distances[i] > radius)
+                continue;
+            ++reached;
+            double magnitude = effect->effectItem.magnitude;
+            auto *owner = enemies[i]->AsActorValueOwner();
+            if (const auto resist = base->data.resistVariable; owner && resist != RE::ActorValue::kNone)
+                magnitude *= 1.0 - std::clamp(owner->GetActorValue(resist), -100.0f, maxResist) / 100.0;
+            sum += magnitude * weight * (std::max)(1u, effect->effectItem.duration);
+        }
+        out.reached = (std::max)(out.reached, reached);
+        out.rings += fmt::format("{}{} ft {:.0f} x{}", out.rings.empty() ? "" : ", ", effect->effectItem.area,
+                                 effect->effectItem.magnitude, reached);
+    }
+    out.enemies = static_cast<int>(enemies.size());
+    const auto *style = controller ? controller->combatStyle : nullptr;
+    out.score = static_cast<float>(sum * (style ? style->generalData.magicScoreMult : 1.0f));
+    return out;
+}
+
 } // namespace
 
 float FollowerScore(RE::CombatInventoryItem *entry, RE::CombatController *controller, RE::Actor *actor, float engine)
@@ -416,23 +549,61 @@ float FollowerScore(RE::CombatInventoryItem *entry, RE::CombatController *contro
             first = FirstTime(ChoiceFor(actor, controller, TacticsSeconds()).listed, entry);
         }
         if (first)
-            log::ai.debug("{} AI entry {}{}: category {} ({}), engine score {:.2f}{}; {}{}", Describe(actor),
-                          log::NameOf(item), HandTagOf(entry), category, CategoryName(category), engine,
-                          engine > 0.0f ? "" : " -- never queued", ReachOf(entry), StaffChargeOf(actor, item));
+            log::ai.debug("{} AI entry {}{}: category {} ({}), filed with the {}, engine score {:.2f}{}; {}{}",
+                          Describe(actor), log::NameOf(item), HandTagOf(entry), category, CategoryName(category),
+                          CombatEntryClass(entry), engine, engine > 0.0f ? "" : " -- never queued", ReachOf(entry),
+                          StaffChargeOf(actor, item));
     }
-    // The rest is the Settings page's "Varied AI choices"; the stand-down
-    // above is tactics' own, and stays whatever it says.
-    if (category != kOffence || !CurrentSettings().variedAiChoices)
+    // The rest is the Settings page's two switches, "Use self-targeting
+    // damage spells" and "Varied AI choices"; the stand-down above is
+    // tactics' own, and stays whatever they say.
+    const ft::Settings settings = CurrentSettings();
+    if (category != kOffence || (!settings.variedAiChoices && !settings.selfDamageSpells))
         return engine;
-    // The engine's own 0: the entry cannot be used now, and gives up its
-    // draw (core/Variety.h).
+    const RE::NiPointer<RE::Actor> target = controller->targetHandle.get();
+    // A hostile spell cast on oneself, with its switch on (SelfAreaScore).
+    // Its reach goes on the entry, so the loadout does not count it at a
+    // tenth: the largest ring's radius, where the engine reads it (slots 06
+    // and 07 return maxRange and a point between it and minRange,
+    // CommonLib's names for +0x34 and +0x30, read on 1.5.97 and 1.6.1170).
+    // The entry is a spell's or a scroll's, a CombatInventoryItemMagic.
+    auto *spell = item->As<RE::TESObjectWEAP>() ? nullptr : item->As<RE::MagicItem>();
+    const SelfArea area =
+        settings.selfDamageSpells && spell ? SelfAreaScore(actor, spell, target.get(), controller) : SelfArea{};
+    if (area.reach > 0.0f)
+        static_cast<RE::CombatInventoryItemMagic *>(entry)->maxRange = area.reach;
+    // The engine's own 0. Such a spell is scored here instead; anything
+    // else cannot be used now, and gives up its draw (core/Variety.h).
     if (!(engine > 0.0f))
     {
-        std::scoped_lock lock(g_mutex);
-        ChoiceFor(actor, controller, TacticsSeconds()).variety.Release(reinterpret_cast<std::uintptr_t>(entry));
-        return engine;
+        if (!area.rings.empty() && log::Enabled(log::Level::Debug))
+        {
+            bool changed = false;
+            {
+                std::scoped_lock lock(g_mutex);
+                auto &seen = ChoiceFor(actor, controller, TacticsSeconds()).selfArea;
+                const auto [it, fresh] = seen.try_emplace(entry, area.reached);
+                changed = fresh || it->second != area.reached;
+                it->second = area.reached;
+            }
+            if (changed)
+                log::ai.debug("{} AI score of {}{}: cast on themself, the engine's {:.2f} replaced -- {} enemies, {} "
+                              "at {:.0f} units; rings reach {} -> {:.2f}",
+                              Describe(actor), log::NameOf(item), HandTagOf(entry), engine, area.enemies,
+                              target ? Describe(target.get()) : std::string("nobody"), area.distance, area.rings,
+                              area.score);
+        }
+        if (!(area.score > 0.0f))
+        {
+            std::scoped_lock lock(g_mutex);
+            ChoiceFor(actor, controller, TacticsSeconds()).variety.Release(reinterpret_cast<std::uintptr_t>(entry));
+            return engine;
+        }
+        engine = area.score;
     }
-    const RE::NiPointer<RE::Actor> target = controller->targetHandle.get();
+    // Scored as the engine scores; the rest is variety's.
+    if (!settings.variedAiChoices)
+        return engine;
 
     auto *weapon = item->As<RE::TESObjectWEAP>();
     if (weapon && !weapon->IsStaff())
@@ -536,6 +707,38 @@ float FollowerScore(RE::CombatInventoryItem *entry, RE::CombatController *contro
                       StaffChargeOf(actor, item));
     }
     return varied.score;
+}
+
+bool SelfDamageMayEquip(RE::CombatInventoryItem *entry, RE::CombatController *controller, RE::Actor *actor)
+{
+    if (!entry || !entry->item || !controller || !actor || actor->IsPlayerRef() || !actor->IsPlayerTeammate() ||
+        !CurrentSettings().selfDamageSpells || static_cast<int>(entry->GetCategory()) != kOffence ||
+        !(entry->itemScore > 0.0f) || (controller->state && controller->state->isFleeing))
+        return false;
+    auto *spell = entry->item->As<RE::TESObjectWEAP>() ? nullptr : entry->item->As<RE::MagicItem>();
+    if (!spell || spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf ||
+        std::ranges::none_of(ResolvedEffects(*spell),
+                             [](const RE::Effect *effect) { return DamageWeight(*effect) > 0.0f; }))
+        return false;
+    // What the engine charges to hold it, against what they have: the
+    // afford check its own gates make first.
+    if (RE::CombatInventoryItemResource resource{}; entry->GetResource(resource))
+    {
+        auto *owner = actor->AsActorValueOwner();
+        if (!owner || owner->GetActorValue(resource.actorValue) < resource.value)
+            return false;
+    }
+    bool first = false;
+    {
+        std::scoped_lock lock(g_mutex);
+        first = ChoiceFor(actor, controller, TacticsSeconds()).allowed.insert(entry).second;
+    }
+    if (first)
+        log::ai.debug("{} AI's equip check refused {}{} (filed with the {}); allowed as a self-targeting damage spell, "
+                      "scored {:.2f}",
+                      Describe(actor), log::NameOf(entry->item), HandTagOf(entry), CombatEntryClass(entry),
+                      entry->itemScore);
+    return true;
 }
 
 void NoteAnswer(RE::CombatInventoryItem *entry, RE::CombatController *controller, RE::Actor *actor, float answer)

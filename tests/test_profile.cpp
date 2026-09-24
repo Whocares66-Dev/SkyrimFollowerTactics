@@ -214,20 +214,23 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     REQUIRE(s.requireDualWieldStyle); // vanilla's own answer: the style decides
     REQUIRE_FALSE(s.requireDualCastPerks);
     REQUIRE_FALSE(s.requirePowerBashPerk);
-    REQUIRE_FALSE(s.variedAiChoices); // vanilla's choice until the player asks
+    REQUIRE(s.variedAiChoices); // on unless the player wants vanilla's choice
+    REQUIRE(s.selfDamageSpells);
 
     s.tacticsEnabled = false;
     s.requireDualWieldStyle = false;
     s.requireDualCastPerks = true;
     s.requirePowerBashPerk = true;
-    s.variedAiChoices = true;
+    s.variedAiChoices = false;
+    s.selfDamageSpells = false;
     const auto back = ReadSettings(WriteSettings(s));
     REQUIRE(back);
     REQUIRE_FALSE(back->tacticsEnabled);
     REQUIRE_FALSE(back->requireDualWieldStyle);
     REQUIRE(back->requireDualCastPerks);
     REQUIRE(back->requirePowerBashPerk);
-    REQUIRE(back->variedAiChoices);
+    REQUIRE_FALSE(back->variedAiChoices);
+    REQUIRE_FALSE(back->selfDamageSpells);
 
     // A key this build does not know is ignored, and one it knows but the
     // document does not carry keeps its default.
@@ -237,7 +240,8 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     REQUIRE(partial->requireDualWieldStyle);
     REQUIRE_FALSE(partial->requireDualCastPerks);
     REQUIRE(partial->requirePowerBashPerk);
-    REQUIRE_FALSE(partial->variedAiChoices);
+    REQUIRE(partial->variedAiChoices);
+    REQUIRE(partial->selfDamageSpells);
 
     // Not a document at all: nothing read, and the caller keeps what it has.
     REQUIRE_FALSE(ReadSettings("{").has_value());

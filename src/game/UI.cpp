@@ -7124,9 +7124,14 @@ void DrawSettings()
                Tr("Click for more variation in weapon use, spellcasting, etc. (follower only)"),
                Tr("Click for less variation in weapon use, spellcasting, etc. (follower only)")))
         settings.variedAiChoices = !settings.variedAiChoices;
+    if (toggle("selfDamageSpells", settings.selfDamageSpells, Tr("Use self-targeting damage spells"),
+               Tr("Click to have AI use self-targeting damage spells like Firestorm (follower only)"),
+               Tr("Click to have AI not use self-targeting damage spells like Firestorm (follower only)")))
+        settings.selfDamageSpells = !settings.selfDamageSpells;
     if (settings.requireDualWieldStyle != was.requireDualWieldStyle ||
         settings.requireDualCastPerks != was.requireDualCastPerks ||
-        settings.requirePowerBashPerk != was.requirePowerBashPerk || settings.variedAiChoices != was.variedAiChoices)
+        settings.requirePowerBashPerk != was.requirePowerBashPerk || settings.variedAiChoices != was.variedAiChoices ||
+        settings.selfDamageSpells != was.selfDamageSpells)
         SetSettings(settings);
 
     // Progression's switch, kept with the save. Off, every follower is as

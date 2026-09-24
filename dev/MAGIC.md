@@ -325,7 +325,7 @@ never chosen, pinned or not. The whole table:
 | Scripted | Script | yes | no |
 | Reanimate | Reanimate | no | no |
 
-So **a hostile spell centred on the caster -- Fire Storm and its kind,
+So **a hostile spell centred on the caster -- Fire Storm and its kind (scored by us with Use self-targeting damage spells on, `dev/COMBAT_AI.md` "What we change"),
 `TargetType = Self` -- scores 0**: every hostile entry wants a spell that
 is aimed, touched or targeted. Seen on Serana (2026-09-22): Cold Fire
 Storm in her offence list at every fight's start, the engine's score 0.00

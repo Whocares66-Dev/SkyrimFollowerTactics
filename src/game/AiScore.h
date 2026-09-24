@@ -53,6 +53,17 @@ void NoteAnswer(RE::CombatInventoryItem *entry, RE::CombatController *controller
 // on their own cast (core's WaitsOnOwnCast): the set replaces the last.
 void SetWaitingOnOwnCast(std::vector<std::uint32_t> followers);
 
+// Whether a follower's self-targeting damage spell may be equipped where the
+// engine's equip check refused it. The engine files a spell under a caster
+// by its best-matching effect, and a spell cast on oneself whose harm has
+// no entry is filed under whatever else it has -- Cold Fire Storm under the
+// script caster -- whose check was made for another kind of spell. With
+// "Use self-targeting damage spells" on: an attack spell cast on oneself
+// with damage rings, last scored above 0 (an enemy in reach), affordable,
+// the caster not fleeing. Any thread.
+[[nodiscard]] bool SelfDamageMayEquip(RE::CombatInventoryItem *entry, RE::CombatController *controller,
+                                      RE::Actor *actor);
+
 // Once, at data load: hear every spell cast, for the penalty and the hold.
 void WatchCasts();
 

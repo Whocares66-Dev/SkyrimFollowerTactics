@@ -1016,6 +1016,12 @@ std::unordered_set<const RE::CombatInventoryItem *> g_zeroedOnce;
 using ScoreFn = float (*)(RE::CombatInventoryItem *, RE::CombatController *);
 std::unordered_map<std::uintptr_t, ScoreFn> g_scoreOriginals;
 using addr::kCalculateScoreSlot;
+// The equip check, replaced beside the score in the same tables, and what
+// each table is, for the log.
+using GateFn = bool (*)(RE::CombatInventoryItem *, RE::CombatController *);
+std::unordered_map<std::uintptr_t, GateFn> g_gateOriginals;
+std::unordered_map<std::uintptr_t, std::string> g_classNames;
+using addr::kCheckShouldEquipSlot;
 
 // The actor whose AI this controller is, or null. The hook fires for every
 // creature's AI, not only a follower's, and the attacker is found by its
@@ -1125,18 +1131,41 @@ float ScoreHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
     return 0.0f;
 }
 
+// The engine's equip check, and then ours: a follower's self-targeting
+// damage spell that check refuses may still be equipped (AiScore.h).
+bool GateHook(RE::CombatInventoryItem *self, RE::CombatController *controller)
+{
+    const auto vtable = *reinterpret_cast<const std::uintptr_t *>(self);
+    GateFn originalFn = nullptr;
+    {
+        std::scoped_lock lock(g_pinMutex);
+        if (const auto original = g_gateOriginals.find(vtable); original != g_gateOriginals.end())
+            originalFn = original->second;
+    }
+    if (!originalFn)
+        return false;
+    if (originalFn(self, controller))
+        return true;
+    const RE::NiPointer<RE::Actor> actor = AttackerOf(controller);
+    return SelfDamageMayEquip(self, controller, actor.get());
+}
+
 void WatchScoresIn(std::uintptr_t vtable, const char *what)
 {
     std::scoped_lock lock(g_pinMutex);
     if (g_scoreOriginals.contains(vtable))
         return;
-    // The original is recorded BEFORE the slot is written, so a call that
-    // lands between the two finds it.
+    // The originals are recorded BEFORE the slots are written, so a call
+    // that lands between the two finds them.
     REL::Relocation<std::uintptr_t> table{vtable};
     const auto slot = table.address() + kCalculateScoreSlot * sizeof(std::uintptr_t);
     g_scoreOriginals[vtable] = reinterpret_cast<ScoreFn>(*reinterpret_cast<std::uintptr_t *>(slot));
+    const auto gate = table.address() + kCheckShouldEquipSlot * sizeof(std::uintptr_t);
+    g_gateOriginals[vtable] = reinterpret_cast<GateFn>(*reinterpret_cast<std::uintptr_t *>(gate));
+    g_classNames[vtable] = what;
     table.write_vfunc(kCalculateScoreSlot, ScoreHook);
-    log::pins.debug("watching the AI's score of {} (vtable {:X})", what, vtable);
+    table.write_vfunc(kCheckShouldEquipSlot, GateHook);
+    log::pins.debug("watching the AI's score and equip check of {} (vtable {:X})", what, vtable);
 }
 
 void WatchScoreOf(RE::CombatInventoryItem *entry)
@@ -1214,6 +1243,16 @@ void ProbeCombatInventory(RE::Actor *actor)
 }
 
 } // namespace
+
+std::string CombatEntryClass(const RE::CombatInventoryItem *entry)
+{
+    if (!entry)
+        return "none";
+    const auto vtable = *reinterpret_cast<const std::uintptr_t *>(entry);
+    std::scoped_lock lock(g_pinMutex);
+    const auto it = g_classNames.find(vtable);
+    return it != g_classNames.end() ? it->second : fmt::format("vtable {:X}", vtable);
+}
 
 // Mark the scanned items and spells that are pinned, and those the AI is
 // kept from, for the panel's cells; and drop any pin for something the
