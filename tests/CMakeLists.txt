@@ -51,6 +51,7 @@ add_executable(
     test_logsettings.cpp
     test_marks.cpp
     test_menuslots.cpp
+    test_names.cpp
     test_openrows.cpp
     test_party.cpp
     test_perktree.cpp

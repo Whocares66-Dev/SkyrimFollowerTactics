@@ -226,7 +226,7 @@ effects, the `AbResist*` abilities, the armour settings and base ratings).
 
 ## 7. Weapon (built and played 2026-09-08)
 
-The follower's own weapons, hand by hand, under one "Weapon" heading with three entries.
+The follower's own weapons, hand by hand, under one "Weapon" heading with three entries, by name in the language shown, as the statuses are.
 
 **Charge needed** holds when an enchanted weapon in hand cannot pay for its next hit: its charge is below its enchantment's cost. One hit draws one fixed number, the enchantment's cost, whatever the attack; the game's own "Uses" figure is the charge divided by it. So the test is definite, and there is no percentage to choose. A weapon never used carries no ExtraCharge and reads as full. The pair is `Self: Weapon charge needed -> Self: Charge with strongest soul gem`.
 

@@ -8,6 +8,7 @@
 #include "core/CustomSkills.h"
 #include "core/Effects.h"
 #include "core/I18n.h"
+#include "core/Names.h"
 #include "core/Party.h"
 #include "core/Reach.h"
 #include "core/Spells.h"
@@ -864,8 +865,7 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         }
         // By name, the record's order being the author's; two of one name
         // keep their order, the weaker first as a rule.
-        std::stable_sort(effects.rows.begin(), effects.rows.end(),
-                         [](const SheetRow &a, const SheetRow &b) { return a.label < b.label; });
+        ft::SortByName(effects.rows, [](const auto &row) -> std::string_view { return row.label; });
         // A perk with no entries shows the table all the same, one row of
         // N/A beside the description below it, so a description promising
         // 60% over an effect of nothing is seen as the mismatch it is
@@ -1114,7 +1114,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             found.push_back({name && *name ? name : (info->enumName ? info->enumName : "?"), value, category});
         }
     }
-    std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) { return a.name < b.name; });
+    ft::SortByName(found, [](const auto &item) -> std::string_view { return item.name; });
 
     struct Category
     {
@@ -1161,8 +1161,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             }
         }
         // By name within a section, the custom trees among the game's own.
-        std::stable_sort(s.rows.begin(), s.rows.end(),
-                         [](const SheetRow &a, const SheetRow &b) { return a.label < b.label; });
+        ft::SortByName(s.rows, [](const auto &row) -> std::string_view { return row.label; });
         if (!s.rows.empty())
             out.push_back(std::move(s));
     }
@@ -1194,7 +1193,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
                 row.aside = aside;
             s.rows.push_back(std::move(row));
         }
-        std::sort(s.rows.begin(), s.rows.end(), [](const SheetRow &a, const SheetRow &b) { return a.label < b.label; });
+        ft::SortByName(s.rows, [](const auto &row) -> std::string_view { return row.label; });
         if (!s.rows.empty())
             out.push_back(std::move(s));
     }

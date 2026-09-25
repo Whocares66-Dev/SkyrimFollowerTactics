@@ -1,8 +1,8 @@
 #include "game/Magic.h"
 
 #include "core/I18n.h"
+#include "core/Names.h"
 #include "core/Spells.h"
-
 #include "core/Vocabulary.h"
 #include "game/Sheet.h"
 
@@ -556,7 +556,7 @@ std::vector<MagicEntry> ScanMagic(RE::Actor *actor)
         }
     }
 
-    std::sort(out.begin(), out.end(), [](const MagicEntry &a, const MagicEntry &b) { return a.name < b.name; });
+    ft::SortByName(out, [](const auto &item) -> std::string_view { return item.name; });
     return out;
 }
 

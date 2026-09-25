@@ -8,6 +8,7 @@
 #include "core/CustomSkills.h"
 #include "core/Effects.h"
 #include "core/I18n.h"
+#include "core/Names.h"
 #include "core/Party.h"
 #include "core/Reach.h"
 #include "core/Spells.h"
@@ -242,7 +243,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         }
     }
 
-    std::sort(out.begin(), out.end(), [](const SpellOption &a, const SpellOption &b) { return a.name < b.name; });
+    ft::SortByName(out, [](const auto &item) -> std::string_view { return item.name; });
     return out;
 }
 

@@ -1,5 +1,7 @@
 #include "Effects.h"
 
+#include "core/Names.h"
+
 #include <algorithm>
 #include <array>
 
@@ -171,7 +173,7 @@ std::vector<EffectPick> ArrangeEffectPicks(std::vector<EffectPick> candidates)
             continue;
         picks.push_back(std::move(candidate));
     }
-    std::ranges::stable_sort(picks, [](const EffectPick &a, const EffectPick &b) { return a.name < b.name; });
+    SortByName(picks, [](const auto &item) -> std::string_view { return item.name; });
     return picks;
 }
 

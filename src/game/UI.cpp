@@ -16,6 +16,7 @@
 #include "core/Effects.h"
 #include "core/I18n.h"
 #include "core/MenuSlots.h"
+#include "core/Names.h"
 #include "core/OpenRows.h"
 #include "core/Routes.h"
 #include "core/Rows.h"
@@ -945,8 +946,7 @@ bool DrawsHeading(ft::PredicateKind p)
 std::vector<FollowerView::Peer> SortedPeers(const FollowerView &view)
 {
     std::vector<FollowerView::Peer> peers = view.peers;
-    std::sort(peers.begin(), peers.end(),
-              [](const FollowerView::Peer &a, const FollowerView::Peer &b) { return a.name < b.name; });
+    ft::SortByName(peers, [](const auto &item) -> std::string_view { return item.name; });
     return peers;
 }
 
@@ -1145,11 +1145,26 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             {
                 if (!BeginCascade(Tr("Weapon")))
                     continue;
-                pick(Tr("Charge needed"), ft::PredicateKind::WeaponChargeNeeded);
-                submenu(Tr("Poison"), {{ft::PredicateKind::WeaponPoisonNone, Tr("None")},
-                                       {ft::PredicateKind::WeaponPoisonActive, Tr("Active")}});
-                submenu(Tr("Bound"), {{ft::PredicateKind::WeaponBoundNone, Tr("None")},
-                                      {ft::PredicateKind::WeaponBoundActive, Tr("Active")}});
+                // By name in the language shown, as the statuses are.
+                const char *bound = Tr("Bound");
+                const char *charge = Tr("Charge needed");
+                const char *poison = Tr("Poison");
+                std::vector<std::pair<const char *, std::function<void()>>> entries{
+                    {bound,
+                     [&] {
+                         submenu(bound, {{ft::PredicateKind::WeaponBoundNone, Tr("None")},
+                                         {ft::PredicateKind::WeaponBoundActive, Tr("Active")}});
+                     }},
+                    {charge, [&] { pick(charge, ft::PredicateKind::WeaponChargeNeeded); }},
+                    {poison,
+                     [&] {
+                         submenu(poison, {{ft::PredicateKind::WeaponPoisonNone, Tr("None")},
+                                          {ft::PredicateKind::WeaponPoisonActive, Tr("Active")}});
+                     }},
+                };
+                ft::SortByName(entries, [](const auto &entry) { return std::string_view(entry.first); });
+                for (const auto &entry : entries)
+                    entry.second();
                 Im::EndMenu();
                 continue;
             }
@@ -1251,10 +1266,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::TypeKind::COUNT); ++ki)
                     if (ft::IsGroupHead(static_cast<ft::TypeKind>(ki)))
                         heads.push_back(static_cast<ft::TypeKind>(ki));
-                const auto byName = [](ft::TypeKind a, ft::TypeKind b) {
-                    return ft::DisplayName(a) < ft::DisplayName(b);
-                };
-                std::sort(heads.begin(), heads.end(), byName);
+                const auto name = [](ft::TypeKind kind) { return ft::DisplayName(kind); };
+                ft::SortByName(heads, name);
                 for (const ft::TypeKind head : heads)
                 {
                     if (!BeginCascade(std::string(ft::DisplayName(head)).c_str()))
@@ -1268,7 +1281,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                         if (const auto kind = static_cast<ft::TypeKind>(ki);
                             ft::GroupOf(kind) == head && !ft::IsGroupHead(kind))
                             members.push_back(kind);
-                    std::sort(members.begin(), members.end(), byName);
+                    ft::SortByName(members, name);
                     for (const ft::TypeKind kind : members)
                     {
                         Extras x;
@@ -1292,8 +1305,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     if (ft::IsStatusValidFor(subject, static_cast<ft::StatusKind>(ki)) &&
                         ft::IsStatusValidIn(moment, static_cast<ft::StatusKind>(ki)))
                         kinds.push_back(static_cast<ft::StatusKind>(ki));
-                std::sort(kinds.begin(), kinds.end(),
-                          [](ft::StatusKind a, ft::StatusKind b) { return ft::DisplayName(a) < ft::DisplayName(b); });
+                ft::SortByName(kinds, [](ft::StatusKind kind) { return ft::DisplayName(kind); });
                 for (const ft::StatusKind kind : kinds)
                 {
                     Extras x;

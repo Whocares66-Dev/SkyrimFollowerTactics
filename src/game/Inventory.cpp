@@ -1,6 +1,7 @@
 #include "game/Inventory.h"
 
 #include "core/I18n.h"
+#include "core/Names.h"
 
 #include "game/Sheet.h"
 
@@ -772,8 +773,11 @@ std::vector<InventoryItem> ScanInventory(RE::Actor *actor)
     // Ties by key, or two rows of one name -- the plain stack and the
     // enchanted copy -- would swap places from one scan to the next.
     std::sort(out.begin(), out.end(), [](const InventoryItem &a, const InventoryItem &b) {
-        const int byName = a.name.compare(b.name);
-        return byName != 0 ? byName < 0 : a.Key() < b.Key();
+        if (ft::NameBefore(a.name, b.name))
+            return true;
+        if (ft::NameBefore(b.name, a.name))
+            return false;
+        return a.Key() < b.Key();
     });
     return out;
 }

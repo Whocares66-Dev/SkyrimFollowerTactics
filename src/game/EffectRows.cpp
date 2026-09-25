@@ -8,6 +8,7 @@
 #include "core/CustomSkills.h"
 #include "core/Effects.h"
 #include "core/I18n.h"
+#include "core/Names.h"
 #include "core/Party.h"
 #include "core/Reach.h"
 #include "core/Spells.h"
@@ -399,8 +400,7 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         out.push_back(std::move(row));
     }
 
-    std::sort(out.begin(), out.end(),
-              [](const EffectRow &a, const EffectRow &b) { return _stricmp(a.name.c_str(), b.name.c_str()) < 0; });
+    ft::SortByName(out, [](const auto &item) -> std::string_view { return item.name; });
     return out;
 }
 

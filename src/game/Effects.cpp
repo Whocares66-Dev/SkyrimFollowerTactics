@@ -8,6 +8,7 @@
 #include "core/CustomSkills.h"
 #include "core/Effects.h"
 #include "core/I18n.h"
+#include "core/Names.h"
 #include "core/Party.h"
 #include "core/Reach.h"
 #include "core/Spells.h"
@@ -244,8 +245,7 @@ std::vector<ConsumableOption> ScanCarriedConsumables(RE::Actor *actor)
         out.push_back(
             {object->GetFormID(), NameOr(object, "?"), static_cast<int>(count), *kind, std::move(effects), any});
     }
-    std::sort(out.begin(), out.end(),
-              [](const ConsumableOption &a, const ConsumableOption &b) { return a.name < b.name; });
+    ft::SortByName(out, [](const auto &item) -> std::string_view { return item.name; });
     return out;
 }
 namespace

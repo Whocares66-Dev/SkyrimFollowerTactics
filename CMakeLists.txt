@@ -171,6 +171,7 @@ add_library(
     src/core/LogSettings.cpp
     src/core/Marks.cpp
     src/core/MenuSlots.cpp
+    src/core/Names.cpp
     src/core/OpenRows.cpp
     src/core/PlayerCast.cpp
     src/core/PluginFile.cpp
