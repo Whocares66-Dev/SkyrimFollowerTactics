@@ -160,15 +160,35 @@ TEST_CASE("an effect row is searched by its name, its time left and its source",
     row.remainingText = "42 s";
     row.source = "Amulet of Health";
     row.magnitude = 25.0f;
-    REQUIRE(EffectShown(row, "fortify"));
-    REQUIRE(EffectShown(row, "42 s"));
-    REQUIRE(EffectShown(row, "amulet"));
-    REQUIRE(EffectShown(row, "25"));
-    REQUIRE(EffectShown(row, ""));
-    REQUIRE_FALSE(EffectShown(row, "magicka"));
+    REQUIRE(EffectShown(row, false, "fortify"));
+    REQUIRE(EffectShown(row, false, "42 s"));
+    REQUIRE(EffectShown(row, false, "amulet"));
+    REQUIRE(EffectShown(row, false, "25"));
+    REQUIRE(EffectShown(row, false, ""));
+    REQUIRE_FALSE(EffectShown(row, false, "magicka"));
     // No magnitude: no number to match.
     row.magnitude = 0.0f;
-    REQUIRE_FALSE(EffectShown(row, "25"));
+    REQUIRE_FALSE(EffectShown(row, false, "25"));
+}
+
+TEST_CASE("a hidden effect is listed only when hidden effects are asked for", "[rows]")
+{
+    EffectRow shown;
+    shown.name = "Fortify Health";
+    EffectRow hidden = shown;
+    hidden.hidden = true;
+
+    REQUIRE(EffectListed(shown, false));
+    REQUIRE(EffectListed(shown, true));
+    REQUIRE_FALSE(EffectListed(hidden, false));
+    REQUIRE(EffectListed(hidden, true));
+
+    // Asked for, it is searched as any other row; not asked for, no text
+    // brings it back.
+    REQUIRE(EffectShown(hidden, true, "fortify"));
+    REQUIRE_FALSE(EffectShown(hidden, true, "magicka"));
+    REQUIRE_FALSE(EffectShown(hidden, false, "fortify"));
+    REQUIRE_FALSE(EffectShown(hidden, false, ""));
 }
 
 TEST_CASE("an item's cells: which hand can take it, what is in it, and what the book says", "[rows]")

@@ -374,6 +374,9 @@ struct EffectRow
     // when it lands, and can read false ever after (Adamant's Bastion asks
     // whether the cast was dual). Listed greyed, hovering as "Inactive".
     bool active{true};
+    // The game's own list hides it (the record's Hide in UI flag). Listed
+    // only when the player asks for hidden effects.
+    bool hidden{false};
 
     // The page: the effect's numbers as the first section, then what its
     // source does, effect by effect, each opening on its conditions -- the

@@ -568,7 +568,9 @@ enum class Glyph
     CaretRight,
     Up,
     Down,
-    Back
+    Back,
+    Eye,
+    EyeSlash
 };
 
 unsigned Codepoint(Glyph glyph)
@@ -597,6 +599,10 @@ unsigned Codepoint(Glyph glyph)
         return 0xF062; // arrow-up: a move, not a sort direction
     case Glyph::Down:
         return 0xF063; // arrow-down
+    case Glyph::Eye:
+        return 0xF06E; // eye
+    case Glyph::EyeSlash:
+        return 0xF070; // eye-slash
     case Glyph::Back:
     default:
         return 0xF060; // arrow-left
@@ -618,6 +624,10 @@ std::string Utf8(unsigned codepoint)
 // row. The pin draws at kPinScale for a margin; the tick is a short glyph
 // and fits at 1, as do buttons, whose frame is taller than the glyph.
 constexpr float kPinScale = 0.75f;
+// The eye and the struck-through eye are wider than their em (1.125 and
+// 1.25 of it), so at full size they fill a square button that the cross
+// and the arrows sit inside with room to spare.
+constexpr float kWideGlyphScale = 0.8f;
 
 // Where a glyph's ink lies within its em, at that scale, relative to the
 // pen: the font's own glyph rectangle. A glyph is centred in its em by its
@@ -696,11 +706,12 @@ void DrawGlyph(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 lo, Im::ImVec2 hi, 
 // to the left. The text colour carries the disabled dimming.
 // `painted` false leaves the square empty: a switch that is off shows no
 // tick, as the rule rows' On cells do, rather than a ghost of one.
-bool GlyphButton(const std::string &id, float size, Glyph glyph, bool painted = true)
+bool GlyphButton(const std::string &id, float size, Glyph glyph, bool painted = true, float scale = 1.0f)
 {
     const bool clicked = Im::Button(("##" + id).c_str(), Im::ImVec2(size, size));
     if (auto *draw = Im::GetWindowDrawList(); draw && painted)
-        DrawGlyph(draw, glyph, Im::GetItemRectMin(), Im::GetItemRectMax(), Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
+        DrawGlyph(draw, glyph, Im::GetItemRectMin(), Im::GetItemRectMax(), Im::GetColorU32(Im::ImGuiCol_Text, 1.0f),
+                  scale);
     return clicked;
 }
 
@@ -3888,6 +3899,10 @@ ListView g_shoutList;
 // And the two that only filter.
 char g_effectsFilter[kFilterLen]{};
 char g_perksFilter[kFilterLen]{};
+// Whether the Effects tab lists what the game's own list hides. A way of
+// looking at the list, as a chip is, not a search: kept when the panel
+// reopens, and one for every page.
+bool g_showHiddenEffects = false;
 
 // Every filter box, emptied at once. A filter is what the player is looking
 // for now, not a setting: a page reopened shows the whole list again. The
@@ -4282,20 +4297,21 @@ void BanAllButton(const char *id, const BanAll &banAll)
     RequestWearAll(banAll.who, std::move(targets), every ? WearRequest::Unban : WearRequest::Ban);
 }
 
-// A list's filter box, the ban-all where the list takes one, and on its
-// line against the right edge how many of the list's rows the filter
-// leaves: "12 items", "3 of 12 items" -- `noun` translated by the caller.
-// Above the table, not under it, where a long list pushed the count out of
-// sight; counted after the box, so the number answers this frame's text.
+// A list's filter box, the list's own buttons beside it -- the ban-all,
+// the hidden effects' switch -- and on its line against the right edge how
+// many of the list's rows the filter leaves: "12 items", "3 of 12 items" --
+// `noun` translated by the caller. Above the table, not under it, where a
+// long list pushed the count out of sight; counted after the box, so the
+// number answers this frame's text.
 void FilterRow(const char *id, char *buffer, std::size_t size, const std::function<std::size_t()> &shown,
-               std::size_t total, const char *noun, const BanAll *banAll = nullptr)
+               std::size_t total, const char *noun, const std::function<void()> &beside = {})
 {
     const float right = Im::GetCursorPosX() + Im::GetContentRegionAvail().x - Im::GetStyle()->ItemSpacing.x;
     FilterBox(id, buffer, size);
-    if (banAll)
+    if (beside)
     {
         Im::SameLine(0.0f, -1.0f);
-        BanAllButton(id, *banAll);
+        beside();
     }
     const std::size_t count = shown();
     const std::string text =
@@ -4732,7 +4748,8 @@ void DrawInventoryList(const CharacterView &view, InventoryTabState &state)
                 std::count_if(view.inventory.begin(), view.inventory.end(),
                               [&](const InventoryItem &item) { return ItemShown(item, state); }));
         },
-        inCategory, Tr("items"), bannable ? &banItems : nullptr);
+        inCategory, Tr("items"),
+        bannable ? std::function<void()>([&] { BanAllButton("##invfilter", banItems); }) : nullptr);
     Im::Spacing();
 
     // Which columns this list has. A stat column only where the stat means
@@ -5343,14 +5360,17 @@ void DrawMagicList(const CharacterView &view, const MagicList &list)
                               return rows;
                           },
                           view.id};
+    const char *filterId = voice ? "##shoutfilter" : "##magicfilter";
     FilterRow(
-        voice ? "##shoutfilter" : "##magicfilter", list.shared.filter, sizeof(list.shared.filter),
+        filterId, list.shared.filter, sizeof(list.shared.filter),
         [&] {
             return static_cast<std::size_t>(
                 std::count_if(view.magic.begin(), view.magic.end(),
                               [&](const MagicEntry &entry) { return MagicShown(entry, list); }));
         },
-        inCategory, MagicNoun(state.category, voice), state.category >= 0 && !view.player ? &banMagic : nullptr);
+        inCategory, MagicNoun(state.category, voice),
+        state.category >= 0 && !view.player ? std::function<void()>([&] { BanAllButton(filterId, banMagic); })
+                                            : nullptr);
     Im::Spacing();
 
     // Which columns. Only the Magic tab's All list has a School column;
@@ -5583,10 +5603,28 @@ void DrawMagicDetail(const CharacterView &view, const MagicEntry &entry, PanelSt
 // comes from. Read on the tick, so with the clock frozen behind the panel
 // the times stand still, as they do in the game's own menu. A name opens
 // the effect's page, as on the Inventory and Magic tabs.
-// Does the row hold the filter's text in a cell the table shows?
+bool EffectListed(const EffectRow &row)
+{
+    return ft::EffectListed(row, g_showHiddenEffects);
+}
+
+// Is the row listed, and does it hold the filter's text in a cell the
+// table shows?
 bool EffectShown(const EffectRow &row)
 {
-    return ft::EffectShown(row, g_effectsFilter);
+    return ft::EffectShown(row, g_showHiddenEffects, g_effectsFilter);
+}
+
+// The switch beside the filter: the eye while hidden effects are listed,
+// struck through while they are not.
+void HiddenEffectsButton()
+{
+    if (GlyphButton("effectshidden", Im::GetFrameHeight(), g_showHiddenEffects ? Glyph::Eye : Glyph::EyeSlash, true,
+                    kWideGlyphScale))
+        g_showHiddenEffects = !g_showHiddenEffects;
+    if (Im::IsItemHovered(0))
+        Im::SetTooltip("%s",
+                       g_showHiddenEffects ? Tr("Click to hide hidden effects") : Tr("Click to show hidden effects"));
 }
 
 // The rows that pass the filter, in the order the header asks for.
@@ -5703,13 +5741,14 @@ void DrawEffects(const CharacterView &view)
     }
 
     Im::Spacing();
+    const auto listed = static_cast<std::size_t>(std::count_if(view.effects.begin(), view.effects.end(), EffectListed));
     FilterRow(
         "##effectsfilter", g_effectsFilter, sizeof(g_effectsFilter),
         [&] { return static_cast<std::size_t>(std::count_if(view.effects.begin(), view.effects.end(), EffectShown)); },
-        view.effects.size(), Tr("effects"));
+        listed, Tr("effects"), HiddenEffectsButton);
     Im::Spacing();
 
-    if (view.effects.empty())
+    if (listed == 0)
     {
         Im::SetCursorPosX(Im::GetCursorPosX() + kCellPadX);
         Im::TextDisabled("%s", Tr("No active effects."));
