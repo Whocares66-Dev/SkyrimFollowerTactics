@@ -2639,6 +2639,52 @@ struct RuleDrag
 // What follows the mouse while a rule is dragged: the row as the table has
 // it -- number, NOT, condition, action -- at the table's own column widths,
 // under the translucency the drag source pushes.
+// The rule table's tick: a square the row's height, centred across the cell
+// whose top-left is `pos`, in the text colour of the moment, so a row's
+// greying reaches it.
+void DrawCellTick(Im::ImVec2 pos)
+{
+    auto *draw = Im::GetWindowDrawList();
+    if (!draw)
+        return;
+    const float size = Im::GetFrameHeight();
+    const float leftEdge = pos.x + (Im::GetContentRegionAvail().x - size) * 0.5f;
+    DrawGlyph(draw, Glyph::Tick, {leftEdge, pos.y}, {leftEdge + size, pos.y + size},
+              Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
+}
+
+// A rule's On and NOT: the whole cell the switch, lit while hovered, the
+// tick in it while on and none while off. A dead cell, `why` its reason,
+// answers nothing and says why on hover, and the caller slashes it once
+// the row's height is known; its tick stays, greyed, where `keepTick`
+// says the state still holds (a negated condition on a rule set aside).
+// -> whether it was clicked.
+bool SwitchCell(const std::string &id, bool on, const std::string &why, bool keepTick, const char *turnOff,
+                const char *turnOn)
+{
+    const Im::ImVec2 pos = Im::GetCursorScreenPos();
+    const bool live = why.empty();
+    bool clicked = false;
+    if (live)
+    {
+        clicked = CellClicked(("##" + id).c_str(), Im::GetFrameHeight());
+        if (Im::IsItemHovered(0))
+            Im::SetTooltip("%s", on ? turnOff : turnOn);
+    }
+    else
+    {
+        Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
+        if (HoveringLastRect())
+            Tooltip(why);
+    }
+    if (on && (live || keepTick))
+    {
+        const DimText grey(!live);
+        DrawCellTick(pos);
+    }
+    return clicked;
+}
+
 void DrawRulePreview(const ft::Rule &rule, std::size_t index, const FollowerView &view,
                      const std::array<float, 4> &widths)
 {
@@ -2653,13 +2699,7 @@ void DrawRulePreview(const ft::Rule &rule, std::size_t index, const FollowerView
     Im::Text("%zu", index + 1);
     Im::TableSetColumnIndex(1);
     if (rule.negated)
-    {
-        const Im::ImVec2 pos = Im::GetCursorScreenPos();
-        const float size = Im::GetFrameHeight();
-        const float leftEdge = pos.x + (Im::GetContentRegionAvail().x - size) * 0.5f;
-        DrawGlyph(Im::GetWindowDrawList(), Glyph::Tick, {leftEdge, pos.y}, {leftEdge + size, pos.y + size},
-                  Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
-    }
+        DrawCellTick(Im::GetCursorScreenPos());
     Im::TableSetColumnIndex(2);
     Im::AlignTextToFramePadding();
     Im::TextUnformatted(ConditionText(rule, view).c_str());
@@ -2832,35 +2872,13 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::TableSetColumnIndex(0);
         // The row's top: the cell's content, less the padding pushed above.
         rowTops.push_back(Im::GetCursorScreenPos().y - 2.0f);
+        // Off is no tick at all, as an unequipped item's cell on the
+        // Inventory tab; the row's dimming says the rest. A rule set aside
+        // shows no tick either: its switch's state is not what decides it.
+        if (SwitchCell("on" + rowId, rule.enabled, setAside, false, Tr("Click to disable"), Tr("Click to enable")))
         {
-            // The whole cell is the switch, lit while hovered; the tick is
-            // drawn centred in it at the size of the other glyphs on the row.
-            // Off is no tick at all, as an unequipped item's cell on the
-            // Inventory tab; the row's dimming says the rest.
-            const Im::ImVec2 pos = Im::GetCursorScreenPos();
-            if (!available)
-            {
-                // Slashed at the end of the row, once its height is known.
-                Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
-                if (HoveringLastRect())
-                    Tooltip(setAside);
-            }
-            else if (CellClicked(("##on" + rowId).c_str(), Im::GetFrameHeight()))
-            {
-                rule.enabled = !rule.enabled;
-                changed = true;
-            }
-            if (available && Im::IsItemHovered(0))
-                Im::SetTooltip("%s", rule.enabled ? Tr("Click to disable") : Tr("Click to enable"));
-
-            if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.enabled && available)
-            {
-                const float size = Im::GetFrameHeight();
-                const float cell = Im::GetContentRegionAvail().x;
-                const float leftEdge = pos.x + (cell - size) * 0.5f;
-                DrawGlyph(drawList, Glyph::Tick, {leftEdge, pos.y}, {leftEdge + size, pos.y + size},
-                          Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
-            }
+            rule.enabled = !rule.enabled;
+            changed = true;
         }
 
         // A rule that is off reads as off: its number, condition and action
@@ -2884,33 +2902,18 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         Im::TableSetColumnIndex(2);
         columnX[1] = Im::GetCursorScreenPos().x;
         {
-            // The same cell-wide switch as On, with the same tick in it: a
-            // rule's condition is negated by ticking it, and the row then
+            // A rule's condition is negated by ticking it, and the row then
             // reads "not <condition>". Some conditions cannot be negated
-            // (ft::CanNegate), and their cell is dead and says why.
+            // (ft::CanNegate), and their cell is dead and says why. On a
+            // rule set aside the tick stays, grey with the condition it
+            // negates, which such a rule greys though its row is not dimmed.
             const bool can = ft::CanNegate(rule.predicate);
-            const Im::ImVec2 pos = Im::GetCursorScreenPos();
-            if (!can || !available)
-            {
-                Im::Dummy(Im::ImVec2(Im::GetContentRegionAvail().x, Im::GetFrameHeight()));
-                if (HoveringLastRect())
-                    Tooltip(can ? setAside : std::string(Tr("Condition cannot be negated")));
-            }
-            else if (CellClicked(("##not" + rowId).c_str(), Im::GetFrameHeight()))
+            const std::string why = can ? setAside : std::string(Tr("Condition cannot be negated"));
+            if (SwitchCell("not" + rowId, rule.negated, why, can, Tr("Click to remove the NOT"),
+                           Tr("Click to negate condition")))
             {
                 rule.negated = !rule.negated;
                 changed = true;
-            }
-            if (can && available && Im::IsItemHovered(0))
-                Im::SetTooltip("%s", rule.negated ? Tr("Click to remove the NOT") : Tr("Click to negate condition"));
-
-            if (auto *drawList = Im::GetWindowDrawList(); drawList && rule.negated && can)
-            {
-                const float size = Im::GetFrameHeight();
-                const float cell = Im::GetContentRegionAvail().x;
-                const float leftEdge = pos.x + (cell - size) * 0.5f;
-                DrawGlyph(drawList, Glyph::Tick, {leftEdge, pos.y}, {leftEdge + size, pos.y + size},
-                          Im::GetColorU32(Im::ImGuiCol_Text, 1.0f));
             }
         }
 
