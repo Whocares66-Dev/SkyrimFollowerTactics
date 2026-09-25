@@ -691,8 +691,8 @@ struct Capabilities
 {
     bool castingAvailable{true};
 
-    // Not to be done for THIS actor at all, ever: what the player's body
-    // has no route for (game/PlayerCast.h says which). The menu leaves
+    // Not to be done for THIS actor at all, ever: what the actor has no
+    // route for (core/Routes.h says which). The menu leaves
     // those actions out, and a rule of one from a hand-edited profile
     // reports Unsupported, as a cast does without cast records.
     std::array<bool, static_cast<std::size_t>(ActionKind::COUNT)> unsupported{};

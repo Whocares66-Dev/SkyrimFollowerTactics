@@ -174,6 +174,7 @@ add_library(
     src/core/OpenRows.cpp
     src/core/PlayerCast.cpp
     src/core/PluginFile.cpp
+    src/core/Routes.cpp
     src/core/Party.cpp
     src/core/PerkTree.cpp
     src/core/Profile.cpp

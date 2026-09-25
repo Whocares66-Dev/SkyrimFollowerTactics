@@ -43,7 +43,7 @@ struct CharacterView
     // The player's own page. Their equip cells equip and unequip and no
     // more: a pin and a ban are a leash on the combat AI, and nothing is
     // choosing for the player. Their rules offer what their body has a
-    // route for (game/PlayerCast.h, PlayerSupports).
+    // route for (core/Routes.h).
     bool player{false};
     bool inCombat{false};
     // With the player, and so fully simulated. False for a follower in

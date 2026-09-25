@@ -1,5 +1,6 @@
 #include "game/Actions.h"
 
+#include "core/Routes.h"
 #include "game/Blows.h"
 #include "game/Log.h"
 #include "game/Packages.h"
@@ -10,14 +11,8 @@
 #include "game/Tactics.h"
 #include "game/Util.h"
 
-#include "RE/B/BGSAction.h"
-#include "RE/C/CombatAnimation.h"
-
 #include <algorithm>
 #include <cmath>
-
-// wingdi.h names a GetObject of its own, over the default-object lookup.
-#undef GetObject
 
 namespace ft::game
 {
@@ -301,27 +296,6 @@ ActionResult ResultOf(CastRequest request)
     return ActionResult::NoSuchAction;
 }
 
-// A power attack on the player's own body: the engine's action the attack
-// handler sends for a hold past the power-attack delay (read from
-// 1.6.1170: the right, left or dual power attack action by the hands),
-// through the graph as a CombatAnimation, as a follower's bash goes.
-bool PerformPlayerPowerAttack(RE::Actor *player, ft::Swing swing)
-{
-    auto *defaults = RE::BGSDefaultObjectManager::GetSingleton();
-    using Object = RE::BGSDefaultObjectManager::DefaultObject;
-    const auto id = swing == ft::Swing::Left   ? Object::kActionLeftPowerAttack
-                    : swing == ft::Swing::Both ? Object::kActionDualPowerAttack
-                                               : Object::kActionRightPowerAttack;
-    auto *action = defaults ? defaults->GetObject<RE::BGSAction>(id) : nullptr;
-    auto *anim = action ? RE::CombatAnimation::Create(player, action) : nullptr;
-    if (!anim)
-        return false;
-    const bool performed = anim->Execute();
-    anim->~CombatAnimation();
-    RE::free(anim);
-    return performed;
-}
-
 // The same for a cast on the player's own body (game/PlayerCast.h).
 ActionResult ResultOf(PlayerCastRequest request)
 {
@@ -375,21 +349,15 @@ const char *ToString(ActionResult r) noexcept
     case ActionResult::Requested:
         return "requested";
     case ActionResult::NoSuchAction:
-        return "action not implemented in this phase";
+        return "no way to perform it here";
     case ActionResult::MissingItem:
         return "item missing at dispatch";
     case ActionResult::NoEquipManager:
         return "ActorEquipManager unavailable";
     case ActionResult::Busy:
-        return "every package slot is mid-cast";
+        return "a cast or a blow of theirs is still in flight";
     case ActionResult::NoTarget:
         return "the spell needs a target and there is no one to fight";
-    case ActionResult::WeaponSheathed:
-        return "the weapon is not drawn";
-    case ActionResult::MidSwing:
-        return "already mid-swing";
-    case ActionResult::GraphRefused:
-        return "the animation graph refused the blow -- blocking, staggered or recovering";
     }
     return "?";
 }
@@ -425,230 +393,207 @@ ActionResult PointAt(RE::Actor *actor, std::uint32_t target)
     return ActionResult::Performed;
 }
 
+namespace
+{
+
+// A potion or a food is an AlchemyItem, an ingredient an IngredientItem.
+// The evaluator only fires this when the snapshot says they carry it, so a
+// null is a form that stopped being one between snapshot and dispatch.
+RE::TESBoundObject *Consumable(std::uint32_t form)
+{
+    auto *item = RE::TESForm::LookupByID(form);
+    return item && (item->Is(RE::FormType::AlchemyItem) || item->Is(RE::FormType::Ingredient))
+               ? item->As<RE::TESBoundObject>()
+               : nullptr;
+}
+
+// The shout or the power a voice action names; null for a form of the
+// other kind.
+RE::TESForm *VoiceForm(const ft::Action &action)
+{
+    auto *form = RE::TESForm::LookupByID(action.form);
+    const bool shout = action.kind == ft::ActionKind::Shout;
+    return form && (shout ? form->As<RE::TESShout>() != nullptr : form->As<RE::SpellItem>() != nullptr) ? form
+                                                                                                        : nullptr;
+}
+
+// A follower's power or shout, through their Shout record: a one-word
+// wrapper shout whose word casts the power, fired by the Shout procedure
+// from the voice, which is where a power lives. The UseMagic route was
+// measured first (2026-09-04, Voice of the Emperor): the package was
+// selected on every request and the AI never cast, because that procedure
+// casts from a hand. The instant caster would apply the effect with no
+// animation; a performance was wanted, so the Shout package it is
+// (dev/ACTIONS.md 7). A shout goes through the same package with the shout
+// itself in the package's input, no wrapper. Aimed as a cast is: a Self
+// power or shout on the follower, anything else at whom the rule aimed it.
+ActionResult VoiceByRecord(RE::Actor *actor, const ft::Action &action, RE::TESForm *form, ft::ActorId target,
+                           int ruleIndex, std::string_view ruleName)
+{
+    const RE::SpellItem *delivery = nullptr;
+    if (auto *asShout = form->As<RE::TESShout>())
+        delivery = asShout->variations[0].spell;
+    else
+        delivery = form->As<RE::SpellItem>();
+    std::uint32_t targetId = actor->GetFormID();
+    if (delivery && delivery->GetDelivery() != RE::MagicSystem::Delivery::kSelf && target != 0 &&
+        target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
+        targetId = target;
+    const char *what = action.kind == ft::ActionKind::Shout ? "shout" : "power";
+    log::actions.debug("{}: {} through a shout slot", what, log::NameOf(form));
+    const auto request = RequestShout(actor, action.form, targetId, ruleIndex, ruleName);
+    log::actions.debug("{}: {}", what, ToString(request));
+    return ResultOf(request);
+}
+
+// A follower's spell or scroll, through their UseMagic record. Who it goes
+// at: a Self-delivery spell (Fast Healing, Oakflesh) cannot take a target;
+// anything else goes at whom the RULE aimed it -- the ally it matched, the
+// player, their attacker, which is how Heal Other reaches the hurt one.
+// Aimed at the follower themself, or at no one, a targeted spell goes at
+// the enemy they are engaging.
+ActionResult CastByRecord(RE::Actor *actor, const ft::Action &action, ft::ActorId target, int ruleIndex,
+                          std::string_view ruleName)
+{
+    std::uint32_t targetId = actor->GetFormID();
+    // A spell, or a scroll: both MagicItems, cast the same way.
+    auto *spell = RE::TESForm::LookupByID<RE::MagicItem>(action.form);
+    if (spell)
+        log::actions.debug("cast: {} is {} / {}", log::NameOf(spell),
+                           spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration ? "concentration"
+                                                                                                   : "fire-and-forget",
+                           spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf ? "self" : "targeted");
+    if (spell && spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
+    {
+        // A Location spell -- a conjuration -- aimed at the follower goes
+        // at their own feet, which is where a summon is wanted; every
+        // other aimed spell aimed at no one goes at the enemy.
+        const bool atOwnFeet =
+            target == actor->GetFormID() && spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation;
+        if (target != 0 && target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
+        {
+            targetId = target;
+        }
+        else if (!atOwnFeet)
+        {
+            auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
+            if (!enemy)
+            {
+                log::actions.debug("cast: {} needs a target and the follower is fighting no one", log::NameOf(spell));
+                return ActionResult::NoTarget;
+            }
+            targetId = enemy->GetFormID();
+        }
+    }
+    // actionArg is the sustain time for a concentration spell, when a rule
+    // sets one; zero takes the default.
+    const auto request = RequestCast(actor, action.form, targetId, action.arg, action.dual, ruleIndex, ruleName);
+    log::actions.debug("cast: {}", ToString(request));
+    return ResultOf(request);
+}
+
+// A pin, in the same book as the panel's, or the player's plain equip.
+// Naming nothing lets go of every pin of the kind -- in the hand named,
+// for a weapon or a spell -- and takes those things off, so the AI decides
+// again. An arrow policy arrives with the form it chose. The evaluator
+// only fires this when the snapshot says they have the thing, so a miss
+// here is a form that left them between snapshot and dispatch.
+ActionResult Equip(RE::Actor *actor, const ft::Action &action, bool pin)
+{
+    if (action.form == 0)
+    {
+        ReleaseKind(actor, ft::KindOf(action.kind), ft::TakesHand(action.kind) ? action.hand : Hand::None);
+        return ActionResult::Performed;
+    }
+    const bool worn = pin ? PinNow(actor, action.form, action.hand, action.variant)
+                          : WearNow(actor, action.form, WearRequest::Equip, action.hand, action.variant);
+    return worn ? ActionResult::Performed : ActionResult::MissingItem;
+}
+
+// A bash, a power bash or a power attack, the player's as a follower's
+// (game/Blows.h). A follower is pointed at an enemy who is not their target
+// first, as Attack does, and the blow goes at whom they fight; the player
+// aims for themself, and the blow goes where they look.
+ActionResult Blow(RE::Actor *actor, const ft::Action &action, ft::ActorId target, int ruleIndex,
+                  std::string_view ruleName)
+{
+    std::uint32_t at = 0;
+    if (!actor->IsPlayerRef())
+    {
+        const auto current = actor->GetActorRuntimeData().currentCombatTarget.get();
+        at = current ? current->GetFormID() : 0;
+        if (target != 0 && target != actor->GetFormID() && target != at)
+        {
+            if (PointAt(actor, target) != ActionResult::Performed)
+                return ActionResult::NoTarget;
+            at = target;
+        }
+    }
+    const BlowPlan blow = PlanBlow(actor, action.kind);
+    if (!blow.Possible())
+        return ActionResult::MissingItem;
+    const BlowRequest request =
+        action.kind == ft::ActionKind::PowerAttack
+            ? RequestStrike(actor, at, blow.event, ruleIndex, ruleName)
+            : RequestBash(actor, at, action.kind == ft::ActionKind::PowerBash, ruleIndex, ruleName);
+    return request == BlowRequest::Started ? ActionResult::Requested : ActionResult::Busy;
+}
+
+} // namespace
+
 ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor, int ruleIndex,
                      std::string_view ruleName)
 {
     if (!actor)
         return ActionResult::MissingItem;
-
-    switch (action.kind)
+    // Which way is core's (core/Routes.h, tested): the player's casts go by
+    // a press of their own controls (game/PlayerCast.h), their equips are
+    // plain, and they have no Attack; the rest is one way for both.
+    const ft::Route route =
+        ft::RouteOf(action.kind, actor->IsPlayerRef() ? ft::Performer::Player : ft::Performer::Follower);
+    switch (route)
     {
-    case ft::ActionKind::ChargeStrongestSoulGem:
-    case ft::ActionKind::ChargeWeakestSoulGem:
-    case ft::ActionKind::ChargeSoulGem:
-        return ChargeWeapon(actor, action.form);
-    case ft::ActionKind::ApplyStrongest:
-    case ft::ActionKind::ApplyWeakest:
-    case ft::ActionKind::ApplyAny:
-    case ft::ActionKind::ApplyPoison: {
+    case ft::Route::None:
+        // The capabilities stop these being written at all; reaching here
+        // means a rule of one came through.
+        return ActionResult::NoSuchAction;
+    case ft::Route::Consume:
+        return Consume(actor, Consumable(action.form));
+    case ft::Route::ApplyPoison: {
         auto *poison = RE::TESForm::LookupByID<RE::AlchemyItem>(action.form);
         return ApplyPoison(actor, poison && poison->IsPoison() ? poison : nullptr);
     }
-    case ft::ActionKind::DrinkStrongest:
-    case ft::ActionKind::DrinkWeakest:
-    case ft::ActionKind::DrinkAny:
-    case ft::ActionKind::DrinkPotion:
-    case ft::ActionKind::EatStrongestFood:
-    case ft::ActionKind::EatWeakestFood:
-    case ft::ActionKind::EatAnyFood:
-    case ft::ActionKind::EatFood:
-        // One named potion or food. The evaluator only fires this when the
-        // snapshot says they carry it, so a null here is a form that
-        // stopped being one between snapshot and dispatch.
-        return Consume(actor, RE::TESForm::LookupByID<RE::AlchemyItem>(action.form));
-    case ft::ActionKind::EatStrongestIngredient:
-    case ft::ActionKind::EatWeakestIngredient:
-    case ft::ActionKind::EatIngredient:
-        return Consume(actor, RE::TESForm::LookupByID<RE::IngredientItem>(action.form));
-
-    case ft::ActionKind::UsePower:
-    case ft::ActionKind::Shout: {
-        // A power is performed through the follower's Shout package: a one-word wrapper shout
-        // whose word casts the power, fired by the Shout procedure from the
-        // voice, which is where a power lives. The UseMagic route was
-        // measured first (2026-09-04, Voice of the Emperor): the package was
-        // selected on every request and the AI never cast, because that
-        // procedure casts from a hand. The instant caster would apply the
-        // effect with no animation; a performance was wanted, so the Shout
-        // package it is (dev/ACTIONS.md 7). A shout goes through the same package
-        // with the shout itself in the package's input, no wrapper. Aimed as
-        // a cast is: a Self power or shout on the follower, anything else at
-        // whom the rule aimed it.
-        const bool shout = action.kind == ft::ActionKind::Shout;
-        auto *form = RE::TESForm::LookupByID(action.form);
-        const RE::SpellItem *delivery = nullptr;
-        if (auto *asShout = form ? form->As<RE::TESShout>() : nullptr)
-            delivery = asShout->variations[0].spell;
-        else if (auto *asSpell = form ? form->As<RE::SpellItem>() : nullptr)
-            delivery = asSpell;
-        if (!form || (shout && !form->As<RE::TESShout>()) || (!shout && !form->As<RE::SpellItem>()))
+    case ft::Route::Charge:
+        return ChargeWeapon(actor, action.form);
+    case ft::Route::CastPress: {
+        const auto request = RequestPlayerCast(actor, action.form, action.arg, action.dual, ruleIndex, ruleName);
+        log::actions.debug("cast on the player: {}", ToString(request));
+        return ResultOf(request);
+    }
+    case ft::Route::CastRecord:
+        return CastByRecord(actor, action, target, ruleIndex, ruleName);
+    case ft::Route::VoicePress:
+    case ft::Route::VoiceRecord: {
+        auto *form = VoiceForm(action);
+        if (!form)
             return ActionResult::MissingItem;
-        // The player's own voice, by the shout control; a power or shout
-        // goes at whom the player aims, as their own does.
-        if (actor->IsPlayerRef())
-        {
-            const auto request = RequestPlayerVoice(actor, action.form, ruleIndex, ruleName);
-            log::actions.debug("{} on the player: {}", shout ? "shout" : "power", ToString(request));
-            return ResultOf(request);
-        }
-        std::uint32_t targetId = actor->GetFormID();
-        if (delivery && delivery->GetDelivery() != RE::MagicSystem::Delivery::kSelf && target != 0 &&
-            target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
-            targetId = target;
-        const char *what = shout ? "shout" : "power";
-        log::actions.debug("{}: {} through a shout slot", what, log::NameOf(form));
-        const auto request = RequestShout(actor, action.form, targetId, ruleIndex, ruleName);
-        log::actions.debug("{}: {}", what, ToString(request));
+        if (route == ft::Route::VoiceRecord)
+            return VoiceByRecord(actor, action, form, target, ruleIndex, ruleName);
+        const auto request = RequestPlayerVoice(actor, action.form, ruleIndex, ruleName);
+        log::actions.debug("{} on the player: {}", action.kind == ft::ActionKind::Shout ? "shout" : "power",
+                           ToString(request));
         return ResultOf(request);
     }
-
-    case ft::ActionKind::CastSpell:
-    case ft::ActionKind::UseScroll: {
-        // The player casts from their own hand, by a press of its control
-        // (game/PlayerCast.h), and aims as they aim; a scroll is not read yet.
-        if (actor->IsPlayerRef())
-        {
-            const auto request = RequestPlayerCast(actor, action.form, action.arg, action.dual, ruleIndex, ruleName);
-            log::actions.debug("cast on the player: {}", ToString(request));
-            return ResultOf(request);
-        }
-        // The package route. Who the spell goes at. A Self-delivery spell (Fast Healing,
-        // Oakflesh) cannot take a target. Anything else goes at whom the
-        // RULE aimed it: the ally it matched, the player, their attacker --
-        // that is how Heal Other reaches the hurt one. Aimed at the follower
-        // themself, or at no one, a targeted spell goes at the enemy they
-        // are engaging, as it always did.
-        std::uint32_t targetId = actor->GetFormID();
-        // A spell, or a scroll: both MagicItems, cast the same way.
-        auto *spell = RE::TESForm::LookupByID<RE::MagicItem>(action.form);
-        if (spell)
-            log::actions.debug("cast: {} is {} / {}", log::NameOf(spell),
-                               spell->GetCastingType() == RE::MagicSystem::CastingType::kConcentration
-                                   ? "concentration"
-                                   : "fire-and-forget",
-                               spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf ? "self" : "targeted");
-        if (spell && spell->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
-        {
-            // A Location spell -- a conjuration -- aimed at the follower goes
-            // at their own feet, which is where a summon is wanted; every
-            // other aimed spell aimed at no one goes at the enemy.
-            const bool atOwnFeet =
-                target == actor->GetFormID() && spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation;
-            if (target != 0 && target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
-            {
-                targetId = target;
-            }
-            else if (!atOwnFeet)
-            {
-                auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
-                if (!enemy)
-                {
-                    log::actions.debug("cast: {} needs a target and the follower is fighting no one",
-                                       log::NameOf(spell));
-                    return ActionResult::NoTarget;
-                }
-                targetId = enemy->GetFormID();
-            }
-        }
-
-        // actionArg is the sustain time for a concentration spell, when a rule
-        // sets one; zero takes the default.
-        const auto request = RequestCast(actor, action.form, targetId, action.arg, action.dual, ruleIndex, ruleName);
-        log::actions.debug("cast: {}", ToString(request));
-        return ResultOf(request);
-    }
-
-    case ft::ActionKind::EquipWeapon:
-    case ft::ActionKind::EquipSpell:
-    case ft::ActionKind::EquipArrows:
-    case ft::ActionKind::EquipStrongestArrows:
-    case ft::ActionKind::EquipWeakestArrows:
-    case ft::ActionKind::EquipArmor:
-        // A pin, in the same book as the panel's. Naming nothing lets go of
-        // every pin of the kind -- in the hand named, for a weapon or a
-        // spell -- and takes those things off, so the AI decides again. An
-        // arrow policy arrives with the form it chose. The evaluator only
-        // fires this when the snapshot says they have the thing, so a miss
-        // here is a form that left them between snapshot and dispatch.
-        if (action.form == 0)
-        {
-            ReleaseKind(actor, ft::KindOf(action.kind), ft::TakesHand(action.kind) ? action.hand : Hand::None);
-            return ActionResult::Performed;
-        }
-        // The player's is a plain equip: a pin is a leash on a combat AI
-        // the player does not run.
-        if (actor->IsPlayerRef())
-            return WearNow(actor, action.form, WearRequest::Equip, action.hand, action.variant)
-                       ? ActionResult::Performed
-                       : ActionResult::MissingItem;
-        return PinNow(actor, action.form, action.hand, action.variant) ? ActionResult::Performed
-                                                                       : ActionResult::MissingItem;
-
-    case ft::ActionKind::Attack:
+    case ft::Route::Pin:
+    case ft::Route::Wear:
+        return Equip(actor, action, route == ft::Route::Pin);
+    case ft::Route::Target:
         return PointAt(actor, target);
-
-    case ft::ActionKind::PowerAttack:
-    case ft::ActionKind::Bash:
-    case ft::ActionKind::PowerBash: {
-        // At an enemy who is not the follower's target, point them there
-        // first, as Attack does. The player aims for themself: the blow
-        // goes where they are looking.
-        const bool player = actor->IsPlayerRef();
-        const auto current = actor->GetActorRuntimeData().currentCombatTarget.get();
-        const std::uint32_t currentId = current ? current->GetFormID() : 0;
-        const bool elsewhere = !player && target != 0 && target != actor->GetFormID();
-        if (elsewhere && target != currentId)
-        {
-            if (PointAt(actor, target) != ActionResult::Performed)
-                return ActionResult::NoTarget;
-        }
-        const BlowPlan blow = PlanBlow(actor, action.kind);
-        if (!blow.Possible())
-            return ActionResult::MissingItem;
-
-        // A bash is made from a block, as the engine makes one: raised, the
-        // bash asked for once it is up, lowered (game/Blows.h). The same
-        // actions the attack handler sends for the player's own block and
-        // attack, so the sequence is theirs too, aimed by nobody.
-        if (action.kind != ft::ActionKind::PowerAttack)
-            return RequestBash(actor, player ? 0 : target, action.kind == ft::ActionKind::PowerBash, ruleIndex,
-                               ruleName) == BlowRequest::Started
-                       ? ActionResult::Requested
-                       : ActionResult::Busy;
-
-        if (player)
-        {
-            auto *state = actor->AsActorState();
-            if (!state || !state->IsWeaponDrawn())
-                return ActionResult::WeaponSheathed;
-            if (state->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone)
-                return ActionResult::MidSwing;
-            const bool sent = PerformPlayerPowerAttack(actor, blow.swing);
-            log::actions.debug("power attack: {} by the engine's action ({:.0f} stamina){}", Describe(actor),
-                               blow.stamina, sent ? "" : " -- the action was refused");
-            return sent ? ActionResult::Performed : ActionResult::GraphRefused;
-        }
-
-        // A follower's power attack as their combat AI makes one: the right
-        // attack action carrying the attack their hands make, taken once
-        // their own swing is over and the target is in front (game/Blows.h,
-        // RequestStrike). Not the UseWeapon record, which drew the attack
-        // from the race's list without looking at the hands: a follower with
-        // a sword and a shield was given the dual-wield one, once aborted,
-        // once played (2026-09-24, 09-25). Not a bare event either, which
-        // the graph turned away mid-swing: 3 of 11 landed (2026-09-09).
-        return RequestStrike(actor, elsewhere ? target : currentId, blow.event, ruleIndex, ruleName) ==
-                       BlowRequest::Started
-                   ? ActionResult::Requested
-                   : ActionResult::Busy;
+    case ft::Route::Bash:
+    case ft::Route::Strike:
+        return Blow(actor, action, target, ruleIndex, ruleName);
     }
-
-    default:
-        // Every other action is Phase 4. The rule engine's Capabilities table is
-        // what should stop these being authored at all; reaching here means the
-        // capability flags and this switch have drifted apart.
-        return ActionResult::NoSuchAction;
-    }
+    return ActionResult::NoSuchAction;
 }
 
 void RequestCharge(ft::ActorId id, std::uint32_t form, const void *row)

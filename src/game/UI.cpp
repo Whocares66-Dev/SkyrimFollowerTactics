@@ -17,6 +17,7 @@
 #include "core/I18n.h"
 #include "core/MenuSlots.h"
 #include "core/OpenRows.h"
+#include "core/Routes.h"
 #include "core/Rows.h"
 #include "core/Table.h"
 #include "core/Vocabulary.h"
@@ -2003,11 +2004,10 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         return true;
     };
     // Valid on this target and in this list -- no blow out of a fight --
-    // and one the player's body has a route for when this is the player's
-    // page (game/PlayerCast.h).
+    // and one this page's actor has a route for (core/Routes.h).
     const auto valid = [&](ft::ActionKind action) {
         return ft::IsActionValidFor(target, action) && ft::IsActionValidIn(moment, action) &&
-               (!view.player || PlayerSupports(action));
+               ft::RouteOf(action, view.player ? ft::Performer::Player : ft::Performer::Follower) != ft::Route::None;
     };
 
     // One leaf that picks a policy: the strongest of a kind, the weakest.

@@ -2,6 +2,7 @@
 
 #include "core/Coordinator.h"
 #include "core/Evaluator.h"
+#include "core/Routes.h"
 #include "core/Tick.h"
 #include "core/Vocabulary.h"
 #include "game/Actions.h"
@@ -233,33 +234,33 @@ const ft::RuleSet kNoRules;
 // records (game/Packages.h); without them they report Unsupported, a
 // truthful "not available here" rather than a rule that silently never
 // fires.
+// A cast or a blow of OURS still in flight -- a follower's cast lease is
+// held from the request until their own spell-fire event names the spell --
+// makes every action wait, not just another of its kind: a pin into the
+// casting hand or a potion would cut it off. "Combat start: cast
+// Stoneflesh, equip Flames" put Flames in the hand half a second into the
+// cast. A list in progress waits on the next tick; a fresh rule yields for
+// this one. Ours only: the AI's own casting, a pinned Flames streaming all
+// fight, holds nothing up. The player's casts are their own runs
+// (game/PlayerCast.h); their blows are a follower's (game/Blows.h).
+bool MidRequest(const RE::Actor *actor)
+{
+    const bool casting = actor->IsPlayerRef() ? IsPlayerMidCast() : IsMidCast(actor);
+    return casting || IsMidBlow(actor);
+}
+
 ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
 {
     ft::Capabilities caps;
-    // The player's casts go through the input handler, not the cast
-    // records (game/PlayerCast.h), and what their body has no route for is
-    // marked off, so a rule of it says so. Ours in flight holds every
-    // action, as a follower's does below.
-    if (actor->IsPlayerRef())
-    {
-        for (std::size_t i = 0; i < caps.unsupported.size(); ++i)
-            caps.unsupported[i] = !PlayerSupports(static_cast<ft::ActionKind>(i));
-        if (IsPlayerMidCast())
-            caps.busy.fill(true);
-        return caps;
-    }
-    caps.castingAvailable = HasCastForms(actor);
-
-    // A cast of OURS still in the air -- the lease is held from the request
-    // until the follower's own spell-fire event names the spell -- makes
-    // every action wait, not just another cast: a pin into the casting hand
-    // or a potion would cut it off. "Combat start: cast Stoneflesh, equip
-    // Flames" put Flames in the hand half a second into the cast. A list in
-    // progress waits on the next tick; a fresh rule yields for this one.
-    // Ours only: the AI's own casting, a pinned Flames streaming all fight,
-    // holds nothing up. A blow in flight is held the same way, a power
-    // attack or a bash from its block: a pin or a potion would cut either off.
-    if (IsMidCast(actor) || IsMidBlow(actor))
+    // What the actor has no route for is marked off, so a rule of it says
+    // so (core/Routes.h): the player's Attack.
+    const ft::Performer performer = actor->IsPlayerRef() ? ft::Performer::Player : ft::Performer::Follower;
+    for (std::size_t i = 0; i < caps.unsupported.size(); ++i)
+        caps.unsupported[i] = ft::RouteOf(static_cast<ft::ActionKind>(i), performer) == ft::Route::None;
+    // A follower's casts need their own records (game/Packages.h); the
+    // player's go through the input handler.
+    caps.castingAvailable = performer == ft::Performer::Player || HasCastForms(actor);
+    if (MidRequest(actor))
         caps.busy.fill(true);
     return caps;
 }
@@ -655,7 +656,7 @@ void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool hel
     ft::TickFacts facts;
     facts.now = ReadTick(id, lists, actor->IsInCombat(), held);
     facts.caps = RuntimeCapabilities(actor);
-    facts.busy = player ? IsPlayerMidCast() : (IsMidCast(actor) || IsMidBlow(actor));
+    facts.busy = MidRequest(actor);
 
     // The cost measured is the snapshot and the evaluation -- the rules'
     // own. The panel's pages are not in it: they are built when someone is

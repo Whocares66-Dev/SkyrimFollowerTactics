@@ -56,14 +56,6 @@ class Actor;
 namespace ft::game
 {
 
-// What the player's tactics can do: every action but Attack, which points
-// a combat AI the player does not run at a target the player aims at
-// themself. The blows go by the engine's own attack actions, the equips are
-// plain equips (game/Pins.h, WearNow), the casts and the voice are this
-// file's. The menu leaves Attack out on the player's page, and the
-// evaluator reports it from a hand-edited profile as unsupported.
-[[nodiscard]] bool PlayerSupports(ft::ActionKind kind) noexcept;
-
 // Why the player cannot be acted for right now, or null: in dialogue, the
 // fighting controls disabled by a scene, in furniture, mounted, in a kill
 // move, knocked down, swimming, in beast form, the 3D not loaded. Each a

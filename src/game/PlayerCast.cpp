@@ -670,11 +670,6 @@ PlayerCastRequest Start(RE::Actor *player, Run run)
 
 } // namespace
 
-bool PlayerSupports(ft::ActionKind kind) noexcept
-{
-    return kind != ft::ActionKind::Attack;
-}
-
 // The facts the hold is judged on; which of them wins is core's
 // (core/PlayerCast.h, HeldBy, tested).
 ft::HeldReason PlayerHeld(RE::Actor *player)
