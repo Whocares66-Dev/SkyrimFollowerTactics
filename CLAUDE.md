@@ -92,18 +92,27 @@ Last verified green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 18 (`cor
 
 ## Before every commit
 
-Run these before each commit, not after every edit: while a change is in progress, run only what tells you whether it works. Each one has already caught something real in this project:
+Run these before each commit, not after every edit: while a change is in progress, run only what tells you whether it works. Build and package first, optimistically, when the user is waiting to try a change; the checks come after. Each one has already caught something real in this project:
 
 ```powershell
 .\tools\build.ps1 -Preset core -Test        # 1. tests
 cmake --build --preset core --target format # 2. formatters, rewrite in place: C++, Python, PowerShell, CMake
-cmake --build --preset core --target tidy   # 3. linters: src/core and tests, Python, PowerShell (seconds; only what changed)
-.\tools\build.ps1 -Preset debug             # 4. the plugin builds
+.\tools\build.ps1 -Preset debug             # 3. the plugin builds (tools\package.ps1's release build counts)
 ```
 
-(2) and (3) need the developer environment, so run them from a shell where
+## Before a merge or a push
+
+The linters and the sanitizer run once, before the branch lands on master or is pushed, not at each commit: a full pass of the plugin's lint is ten to fifteen minutes. What they find is fixed and folded into the branch commit it belongs to (a fixup commit and an autosquash rebase), before master moves.
+
+```powershell
+cmake --build --preset core --target tidy   # linters: src/core and tests, Python, PowerShell
+cmake --build --preset debug --target tidy  # the linter over src/game, src/fix and src/plugin.cpp too
+.\tools\build.ps1 -Preset core-asan -Test   # AddressSanitizer
+```
+
+The formatter and the linters need the developer environment, so run them from a shell where
 `tools\build.ps1` has already imported it, or wrap them the same way it does.
-(3) reads `.clang-tidy` at the repo root: the bugprone, performance, analyzer,
+The core `tidy` reads `.clang-tidy` at the repo root: the bugprone, performance, analyzer,
 concurrency and misc groups, nothing stylistic; the file says what is excluded and
 why, and names the one known false positive. It runs one clang-tidy per file, so
 Ninja spreads them across cores and skips the files that have not changed: a full
@@ -112,16 +121,9 @@ pass is ~99 s, one touched file ~6.6 s, nothing changed ~3.6 s. Delete
 measurements behind that: the per-file cost is the checks walking CommonLibSSE's
 inlined header bodies, and no filter avoids it.
 
-Before a commit, and before anything is called done, all four must be green, plus both of these:
+The plugin's `tidy` is the slow one -- every `src/game` translation unit parses the whole of CommonLibSSE, which no filter avoids and which the `/Y-` below means clang cannot precompile once and reuse, and a change to a core header re-lints every file.
 
-```powershell
-.\tools\build.ps1 -Preset core-asan -Test   # AddressSanitizer
-cmake --build --preset debug --target tidy  # the linter over src/game and src/plugin.cpp too
-```
-
-The second is the slower one -- every `src/game` translation unit parses the whole of CommonLibSSE, which no filter avoids and which the `/Y-` above means clang cannot precompile once and reuse. Spread across cores it is about a minute and a half against `src/core`'s twenty seconds, which is why it sits here rather than in the fast loop.
-
-(2) and (3) cover every language of ours: clang-format and clang-tidy for C++, ruff (`ruff.toml` says which rules and why) for Python, PSScriptAnalyzer on its default rules for PowerShell, through `tools\check-powershell.ps1`, and gersemi (`.gersemirc`) for CMake, which is formatted but not linted (`cmake/Quality.cmake` says why). All but the C++ pair find their files through git, what it tracks or would track, so a script in a new folder is not missed; C++ is everything under `src` and `tests`. A tool that is not installed is said when CMake configures, and its language skipped: `pip install --user ruff gersemi`, and `Install-Module PSScriptAnalyzer -Scope CurrentUser` under pwsh 7.
+The formatter and the linters cover every language of ours: clang-format and clang-tidy for C++, ruff (`ruff.toml` says which rules and why) for Python, PSScriptAnalyzer on its default rules for PowerShell, through `tools\check-powershell.ps1`, and gersemi (`.gersemirc`) for CMake, which is formatted but not linted (`cmake/Quality.cmake` says why). All but the C++ pair find their files through git, what it tracks or would track, so a script in a new folder is not missed; C++ is everything under `src` and `tests`. A tool that is not installed is said when CMake configures, and its language skipped: `pip install --user ruff gersemi`, and `Install-Module PSScriptAnalyzer -Scope CurrentUser` under pwsh 7.
 
 PSScriptAnalyzer's rule against `Write-Host` allows it inside a function whose verb is `Show`, so every script prints through the `Show-*` helpers in `tools\console.ps1`, dot-sourced at the top of each; a state-changing function declares `SupportsShouldProcess` and asks `$PSCmdlet.ShouldProcess` before it writes, which is what makes `-WhatIf` on the downgrade script honest.
 
@@ -130,9 +132,10 @@ that compiled perfectly: the tests caught a cooldown interaction that changed
 behaviour silently, the formatter has caught hand-written code on nearly every
 pass, and extending the linter to `src/game` found dead code within a minute.
 
-**Do not report work as finished without running them.** "It compiles" is the
-weakest signal available here -- the whole point of the `RE::`-free core is that
-there IS a real check, so use it.
+**Do not report work as finished without running them** -- the per-commit ones
+for a commit, all of them for a merge. "It compiles" is the weakest signal
+available here -- the whole point of the `RE::`-free core is that there IS a real
+check, so use it.
 
 ### The linter's blind spot, and how it hid
 
@@ -152,7 +155,7 @@ Until 2026-09-09 `tidy` reached across presets instead, pointing `-p` at `build/
 
 Work on a feature branch, never master, and commit as you go, one coherent change per commit.
 
-A branch lands on master as logical commits, one per feature or fix it carries: a later fix to a feature, an attempt the branch replaced and a docs follow-up are folded into the commit they belong to, and what the branch did separately stays separate. Never one squash of the whole branch, and never every work-in-progress commit as it stood. Before master moves, check that the rebuilt history ends on the branch's own tree (`git diff <branch> <rebuilt>` is empty). Rewriting a master already pushed is a force push, with `--force-with-lease`.
+A branch lands on master as logical commits, one per feature or fix it carries: a later fix to a feature, an attempt the branch replaced and a docs follow-up are folded into the commit they belong to, and what the branch did separately stays separate. Never one squash of the whole branch, and never every work-in-progress commit as it stood. Before master moves, run the checks under "Before a merge or a push" and fold their fixes in, then check that the rebuilt history ends on the branch's own tree (`git diff <branch> <rebuilt>` is empty). Rewriting a master already pushed is a force push, with `--force-with-lease`.
 
 ## Toolchain gotchas already hit
 
