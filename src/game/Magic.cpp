@@ -11,7 +11,11 @@
 
 #include "game/Pins.h"
 
+#include "game/EffectRows.h"
+#include "game/Effects.h"
 #include "game/Inventory.h"
+#include "game/Spells.h"
+#include "game/Values.h"
 
 #include <algorithm>
 #include <array>

@@ -45,4 +45,10 @@ namespace ft::game
 // none.
 [[nodiscard]] const char *SoulName(RE::SOUL_LEVEL level);
 
+// The two glyphs an Equipped row is made of, Font Awesome's check and
+// thumbtack: the same codepoints the panel's own Glyph table uses, so the
+// row reads as the Inventory and Magic tabs' cells do.
+inline constexpr unsigned kGlyphTick = 0xF00C;
+inline constexpr unsigned kGlyphPin = 0xF08D;
+
 } // namespace ft::game

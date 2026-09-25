@@ -8,6 +8,7 @@
 #include "game/Actions.h"
 #include "game/AiScore.h"
 #include "game/Blows.h"
+#include "game/EffectRows.h"
 #include "game/Log.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
@@ -17,6 +18,7 @@
 #include "game/Sheet.h"
 #include "game/UI.h"
 #include "game/Util.h"
+#include "game/Values.h"
 #include "progression/game/Service.h"
 
 #include <algorithm>

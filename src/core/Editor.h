@@ -45,7 +45,7 @@ struct Holdings
     // The spells, powers, shouts and scrolls the cast menu offers (a spell
     // above the follower's skill is not among them).
     std::vector<std::uint32_t> castable;
-    // Of those, the ones the Dual Cast menu offers (game/Sensors.cpp
+    // Of those, the ones the Dual Cast menu offers (game/Spells.cpp
     // CanDualCast).
     std::vector<std::uint32_t> dualCastable;
     // Whether they have the Power Bash perk, where the Settings page asks

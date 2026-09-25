@@ -2,6 +2,7 @@
 
 #include "core/PlayerCast.h"
 #include "game/Actions.h"
+#include "game/Bag.h"
 #include "game/Graph.h"
 #include "game/Log.h"
 #include "game/Magic.h"

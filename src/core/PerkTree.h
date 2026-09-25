@@ -2,7 +2,7 @@
 // A skill's perk tree as the perk menu draws it, for the skill's page on the
 // Skills tab: where each node goes, what the actor holds of it, and the
 // geometry of drawing it -- the layout, and the part of a circle a node's
-// held ranks fill. The game side reads the tree (game/Sensors.h,
+// held ranks fill. The game side reads the tree (game/PerkSheet.h,
 // BuildPerkTrees); the panel draws it (game/UI.cpp). No Skyrim.
 
 #include <cstddef>

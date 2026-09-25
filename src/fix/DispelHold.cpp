@@ -1,5 +1,6 @@
 #include "fix/DispelHold.h"
 
+#include "game/Effects.h"
 #include "game/Log.h"
 #include "game/Sensors.h"
 #include "game/Util.h"

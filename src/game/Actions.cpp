@@ -1,6 +1,7 @@
 #include "game/Actions.h"
 
 #include "core/Routes.h"
+#include "game/Bag.h"
 #include "game/Blows.h"
 #include "game/Log.h"
 #include "game/Packages.h"

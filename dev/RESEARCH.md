@@ -384,7 +384,7 @@ gets `OneHandedModifier` +35 and nothing turns it into damage. Not yet confirmed
 (`Actor::HasPerk` on a follower would settle it); until it is, a bonus shown for a follower
 is a bonus the game may not be applying.
 
-**Consequence for the Skills tab** (`src/game/Sensors.cpp`, `BuildSkillSheet`): one
+**Consequence for the Skills tab** (`src/game/PerkSheet.cpp`, `BuildSkillSheet`): one
 bracketed bonus per non-magic skill, "cost" and "magnitude/duration" for a school, nothing
 for Enchanting, and a tooltip naming the source of each number.
 

@@ -19,6 +19,7 @@
 #include "game/Sensors.h"
 #include "game/Tactics.h"
 #include "game/Toggles.h"
+#include "game/Traits.h"
 #include "game/UI.h"
 #include "progression/game/Events.h"
 #include "progression/game/Learning.h"

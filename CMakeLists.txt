@@ -295,6 +295,14 @@ if(FT_BUILD_PLUGIN)
             src/game/AiScore.cpp
             src/game/Log.cpp
             src/game/Sensors.cpp
+            src/game/Bag.cpp
+            src/game/CharacterSheet.cpp
+            src/game/EffectRows.cpp
+            src/game/Effects.cpp
+            src/game/PerkSheet.cpp
+            src/game/Spells.cpp
+            src/game/Traits.cpp
+            src/game/Values.cpp
             src/game/Sheet.cpp
             src/game/Inventory.cpp
             src/game/Magic.cpp

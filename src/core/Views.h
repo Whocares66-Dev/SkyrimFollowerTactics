@@ -6,7 +6,7 @@
 // values only, so the decisions over them -- which rows a filter leaves,
 // what a cell says, what a click asks -- are testable without the game or
 // ImGui; what fills them is the game's (game/Inventory.h, game/Magic.h,
-// game/Sensors.h).
+// game/Sensors.h and the sheet files beside it).
 
 #include "Breakdown.h"
 #include "Kinds.h"

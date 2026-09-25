@@ -394,7 +394,7 @@ struct Action // NOLINT(clang-analyzer-core.uninitialized.Assign)
 
     // For CastSpell: cast from both hands at once, for the stronger and
     // dearer spell. Only a spell the snapshot marks dualable
-    // (game/Sensors.cpp CanDualCast), and the menu offers no other.
+    // (game/Spells.cpp CanDualCast), and the menu offers no other.
     bool dual{false};
 
     // Which effect, for the eight policies: the magic effect's name as the

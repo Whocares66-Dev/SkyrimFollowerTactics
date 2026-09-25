@@ -2,10 +2,13 @@
 
 #include "core/Bash.h"
 #include "core/Blows.h"
+#include "core/Reach.h"
 #include "core/Strike.h"
 #include "game/Graph.h"
 #include "game/Log.h"
 #include "game/Sensors.h"
+#include "game/Settings.h"
+#include "game/Sheet.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
 
@@ -422,6 +425,218 @@ void ResetBlows()
 {
     g_runs.clear();
     g_strikes.clear();
+}
+
+const RE::BGSAttackData *AttackDataFor(RE::Actor *actor, const char *event)
+{
+    if (!actor || !event)
+        return nullptr;
+    const RE::BSFixedString key(event);
+    const auto lookup = [&key](const RE::BGSAttackDataForm *form) -> const RE::BGSAttackData * {
+        const auto *map = form ? form->attackDataMap.get() : nullptr;
+        if (!map)
+            return nullptr;
+        const auto it = map->attackDataMap.find(key);
+        return it != map->attackDataMap.end() ? it->second.get() : nullptr;
+    };
+    const RE::BGSAttackData *attack = lookup(actor->GetActorBase());
+    return attack ? attack : lookup(actor->GetRace());
+}
+
+// What each hand holds, in core's words, for the blow rules. A
+// two-hander, a bow or a crossbow is the right hand's with the left
+// described as empty: the engine reports it from both hands.
+ft::Hands DescribeHands(RE::Actor *actor)
+{
+    const auto held = [](RE::TESForm *form) {
+        if (!form)
+            return ft::Held::Nothing;
+        if (auto *weapon = form->As<RE::TESObjectWEAP>())
+        {
+            switch (weapon->GetWeaponType())
+            {
+            case RE::WEAPON_TYPE::kOneHandSword:
+            case RE::WEAPON_TYPE::kOneHandDagger:
+            case RE::WEAPON_TYPE::kOneHandAxe:
+            case RE::WEAPON_TYPE::kOneHandMace:
+                return ft::Held::OneHander;
+            case RE::WEAPON_TYPE::kTwoHandSword:
+            case RE::WEAPON_TYPE::kTwoHandAxe:
+                return ft::Held::TwoHander;
+            case RE::WEAPON_TYPE::kBow:
+            case RE::WEAPON_TYPE::kCrossbow:
+                return ft::Held::Bow;
+            case RE::WEAPON_TYPE::kStaff:
+                return ft::Held::Staff;
+            default:
+                return ft::Held::Nothing; // the fists' record
+            }
+        }
+        if (auto *armor = form->As<RE::TESObjectARMO>())
+            return armor->IsShield() ? ft::Held::Shield : ft::Held::Nothing;
+        if (form->As<RE::TESObjectLIGH>())
+            return ft::Held::Torch;
+        if (form->As<RE::MagicItem>())
+            return ft::Held::Spell;
+        return ft::Held::Nothing;
+    };
+    ft::Hands hands;
+    RE::TESForm *rightHeld = actor->GetEquippedObject(false);
+    RE::TESForm *leftHeld = actor->GetEquippedObject(true);
+    hands.right = held(rightHeld);
+    hands.left = leftHeld == rightHeld && (hands.right == ft::Held::TwoHander || hands.right == ft::Held::Bow)
+                     ? ft::Held::Nothing
+                     : held(leftHeld);
+    return hands;
+}
+namespace
+{
+
+// A body's radius as the engine's melee test takes it (47276, and 37868,
+// whose cached result 37443 reads, on 1.6.1170): the bound max Y times the
+// scale, 16 for an empty box. Not CommonLib's Actor::GetBoundRadius, which
+// reads another field.
+// What the reach measure reads of an actor (core/Reach.h).
+ft::Body BodyOf(const RE::Actor &actor)
+{
+    const RE::NiPoint3 at = actor.GetPosition();
+    const RE::NiPoint3 min = actor.GetBoundMin();
+    const RE::NiPoint3 max = actor.GetBoundMax();
+    return {at.x, at.y, at.z, min.y, max.y, min.z, max.z, actor.GetScale()};
+}
+
+} // namespace
+
+// The engine's measure, core's (core/Reach.h, tested).
+float ReachDistance(const RE::Actor *from, const RE::Actor *to)
+{
+    if (!from || !to)
+        return (std::numeric_limits<float>::max)();
+    return ft::ReachDistance(BodyOf(*from), BodyOf(*to));
+}
+namespace
+{
+
+// Skyrim.esm's Unarmed weapon: what the engine prices a power attack with
+// when the right hand holds no weapon.
+constexpr RE::FormID kUnarmedWeapon = 0x000001F4;
+
+// The stamina multiplier of the attack an event starts: the follower's base
+// record's attack data, where the engine reads it, else the race's; 1 when
+// neither names the event.
+float StaminaMultOf(RE::Actor *actor, const char *event)
+{
+    const RE::BGSAttackData *attack = AttackDataFor(actor, event);
+    return attack ? attack->data.staminaMult : 1.0f;
+}
+
+} // namespace
+
+BlowPlan PlanPowerAttack(RE::Actor *actor)
+{
+    BlowPlan plan;
+    if (!actor)
+        return plan;
+    RE::TESForm *rightHeld = actor->GetEquippedObject(false);
+    RE::TESForm *leftHeld = actor->GetEquippedObject(true);
+    auto *right = rightHeld ? rightHeld->As<RE::TESObjectWEAP>() : nullptr;
+    auto *left = leftHeld ? leftHeld->As<RE::TESObjectWEAP>() : nullptr;
+
+    // The attack, by the hands (core's rule). A swing names a hand with a
+    // weapon in it, and DescribeHands read the same two objects, so the
+    // checks below never fail; they are for the reader and the analyser, per
+    // case because the analyser does not carry one check across a switch.
+    plan.swing = ft::SwingWith(DescribeHands(actor));
+    switch (plan.swing)
+    {
+    case ft::Swing::Both:
+        if (!right || !left)
+            return plan;
+        break;
+    case ft::Swing::Right:
+        if (!right)
+            return plan;
+        break;
+    case ft::Swing::Left:
+        if (!left)
+            return plan;
+        break;
+    case ft::Swing::Fists:
+        break;
+    case ft::Swing::None:
+        return plan;
+    }
+    plan.event = ft::PowerAttackEvent(plan.swing);
+
+    // The cost as the engine's own routine prices a power attack (26429 on
+    // 1.6.1170, which the UseWeapon procedure asks too; dev/ACTIONS.md 6):
+    // the RIGHT hand's weapon's weight, 1 with none there, times
+    // fStaminaAttackWeaponMult, plus fStaminaAttackWeaponBase, times
+    // fPowerAttackStaminaPenalty -- 1, 20 and 2 in vanilla; then the Mod Power
+    // Attack Stamina entry point with that weapon, or Unarmed; then the
+    // attack's own stamina multiplier. A left-hand swing is priced by the
+    // right hand, as the engine prices it.
+    float cost = ft::PowerAttackStamina(
+        right ? right->GetWeight() : 1.0f, GameSetting("fStaminaAttackWeaponMult", 1.0f),
+        GameSetting("fStaminaAttackWeaponBase", 20.0f), GameSetting("fPowerAttackStaminaPenalty", 2.0f));
+    if (auto *priced = right ? right : RE::TESForm::LookupByID<RE::TESObjectWEAP>(kUnarmedWeapon))
+        RE::BGSEntryPoint::HandleEntryPoint(RE::BGSEntryPoint::ENTRY_POINT::kModPowerAttackStamina, actor, priced,
+                                            &cost);
+    plan.stamina = (std::max)(0.0f, cost * StaminaMultOf(actor, plan.event));
+    // The engine's own reach for the actor and what they hold -- the weapon's
+    // reach times fCombatDistance, or the race's unarmed reach, times the
+    // actor's scale (dev/ACTIONS.md 6). The bodies are in the enemy's
+    // ReachDistance, as the engine leaves them out of its distance.
+    plan.reach = actor->GetReach();
+    return plan;
+}
+
+bool PowerBashPerkMet(RE::Actor *actor)
+{
+    // The Block tree's Power Bash perk (058F67). The idle tree asks it of
+    // the player alone, so a follower needs it only where Settings says so,
+    // and the player needs it whatever Settings says.
+    if (!CurrentSettings().requirePowerBashPerk && !(actor && actor->IsPlayerRef()))
+        return true;
+    constexpr std::uint32_t kPowerBashPerk = 0x00058F67;
+    auto *perk = RE::TESForm::LookupByID<RE::BGSPerk>(kPowerBashPerk);
+    return actor && perk && actor->HasPerk(perk);
+}
+
+BlowPlan PlanBash(RE::Actor *actor, bool power)
+{
+    BlowPlan plan;
+    if (!actor || !ft::BashesWith(DescribeHands(actor)))
+        return plan;
+    plan.event = ft::BashEvent(power);
+    if (power)
+        plan.perk = PowerBashPerkMet(actor);
+    // The cost as the engine prices a bash (26429): the setting for the kind
+    // -- fStaminaBashBase 35, fStaminaPowerBashBase 55 in vanilla -- times the
+    // attack's own stamina multiplier. No perk entry point prices a bash.
+    plan.stamina = (power ? GameSetting("fStaminaPowerBashBase", 55.0f) : GameSetting("fStaminaBashBase", 35.0f)) *
+                   StaminaMultOf(actor, plan.event);
+    // The bash's own reach setting (fCombatBashReach, 141 in vanilla) at the
+    // actor's scale, held against the same measure as a swing's: the
+    // engine's reach (38538) is that setting times the scale while the
+    // actor's melee state is a bash, and the weapon's reach otherwise.
+    plan.reach = GameSetting("fCombatBashReach", 141.0f) * actor->GetScale();
+    return plan;
+}
+
+BlowPlan PlanBlow(RE::Actor *actor, ft::ActionKind kind)
+{
+    switch (kind)
+    {
+    case ft::ActionKind::PowerAttack:
+        return PlanPowerAttack(actor);
+    case ft::ActionKind::Bash:
+        return PlanBash(actor, false);
+    case ft::ActionKind::PowerBash:
+        return PlanBash(actor, true);
+    default:
+        return {};
+    }
 }
 
 } // namespace ft::game

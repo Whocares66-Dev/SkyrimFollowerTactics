@@ -221,7 +221,7 @@ struct PotionStock
         // follower is worth buffing with before the swords come out, as
         // against a Restore, which is the emergency being saved for. Judged
         // on the game side from the effect record, not from its name, so a
-        // mod's own Fortify counts (src/game/Sensors.cpp, dev/ACTIONS.md).
+        // mod's own Fortify counts (src/game/Effects.cpp, dev/ACTIONS.md).
         // Meaningless on a poison, where every bane goes at the enemy.
         bool buff{false};
         // A bane: Detrimental or Hostile on the record. Kept beside the boons
@@ -490,7 +490,7 @@ struct SpellState
         std::uint32_t form{0};
         float magicka{0.0f};
         // Whether they can dual cast it, and what that costs: the game
-        // side's CanDualCast and DualCastCost (game/Sensors.cpp).
+        // side's CanDualCast and DualCastCost (game/Spells.cpp).
         bool dualable{false};
         float dualMagicka{0.0f};
     };

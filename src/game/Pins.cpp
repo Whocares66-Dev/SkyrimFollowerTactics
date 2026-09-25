@@ -17,6 +17,7 @@
 
 #include "game/Packages.h"
 
+#include "game/Bag.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
 

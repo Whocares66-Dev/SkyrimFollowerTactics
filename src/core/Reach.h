@@ -3,7 +3,7 @@
 // reach (47273 on 1.6.1170, dev/ACTIONS.md 6): centre to centre, flat when
 // their heights differ by 48 or more and either end of the attacker's
 // bounds lies within the target's, less both bodies' radii. The game reads
-// each actor's position, bounds and scale (game/Sensors.cpp,
+// each actor's position, bounds and scale (game/Blows.cpp,
 // ReachDistance); the measure is here, where its thresholds are tested.
 // Not mirrored: a pair of flags on the two actors that has the engine test
 // the overlap at any difference in height; under 48 the flat and full

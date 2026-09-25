@@ -2,6 +2,7 @@
 
 #include "core/AttackScore.h"
 #include "core/Variety.h"
+#include "game/Bag.h"
 #include "game/Inventory.h"
 #include "game/Log.h"
 #include "game/Packages.h"
@@ -9,6 +10,7 @@
 #include "game/Sensors.h"
 #include "game/Settings.h"
 #include "game/Util.h"
+#include "game/Values.h"
 
 #include <algorithm>
 #include <mutex>
@@ -159,7 +161,7 @@ float MagnitudeFactor(RE::Actor *actor, RE::MagicItem *magic, RE::Actor *target)
 // Does every hostile effect's conditions spare this enemy? Asked as the
 // engine asks when the effect lands: the enemy as Subject, the caster as
 // Target, both lists, the spell's entry's and the effect record's
-// (Sensors.cpp, EffectEntryRow). The engine's score counts resistances and
+// (EffectRows.cpp, EffectEntryRow). The engine's score counts resistances and
 // nothing of these, and its attack-spell gate does not ask them either
 // (dev/COMBAT_AI.md 4): a paralysis on an automaton, a drain on the undead.
 bool SparedByConditions(RE::MagicItem *magic, RE::Actor *caster, RE::Actor *target)

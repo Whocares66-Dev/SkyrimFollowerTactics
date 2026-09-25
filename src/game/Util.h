@@ -7,6 +7,7 @@
 // Anything else stays inline until it has repeated three times.
 
 #include <chrono>
+#include <cstdint>
 #include <ranges>
 #include <string>
 
@@ -52,5 +53,10 @@ namespace ft::game
 {
     return item.effects | std::views::filter([](const RE::Effect *effect) { return effect && effect->baseEffect; });
 }
+
+// A game setting by name, looked up on every call (a mod may change one
+// mid-session), or `vanilla` where the game has no such setting.
+[[nodiscard]] float GameSetting(const char *name, float vanilla);
+[[nodiscard]] std::int32_t GameSetting(const char *name, std::int32_t vanilla);
 
 } // namespace ft::game

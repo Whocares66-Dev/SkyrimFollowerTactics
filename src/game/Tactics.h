@@ -8,10 +8,14 @@
 
 #include "core/Editor.h"
 #include "core/Evaluator.h"
+#include "game/CharacterSheet.h"
+#include "game/Effects.h"
 #include "game/Inventory.h"
 #include "game/Magic.h"
+#include "game/PerkSheet.h"
 #include "game/Profiles.h"
 #include "game/Sensors.h"
+#include "game/Spells.h"
 
 #include <functional>
 #include <memory>

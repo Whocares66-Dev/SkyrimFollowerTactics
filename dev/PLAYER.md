@@ -26,7 +26,7 @@ The goal as asked: mostly **out of combat** -- keep an armour spell up without r
 | Attack | **no** | above |
 | Power Attack, Bash, Power Bash | **built** (third round): a follower's own requests (`game/Blows.h`), aimed by nobody, so the blow goes where the player looks -- the bashes by the block-then-attack sequence, and since 2026-09-25 the power attack as a follower's is made, the right attack action carrying the attack the hands make, taken once the player's own swing, shout or spell is over and followed to its hit (`core/Strike.h`; not yet seen in play for the player). Until then it was the power attack action the handler sends for a hold past its delay, fired at once and refused mid-swing | in play; the Power Bash perk is asked of the player whatever Settings says, since the idle tree asks it of the player itself |
 
-The snapshot already reads the player correctly where it matters for these: spell cost uses the player's settings (`fMagicCasterPCSkillCost*`, `Sensors.cpp`), perks outside the trees are found for the player, and a spell above skill is not dimmed for the player (`Magic.cpp`). The player's page was built on those readers.
+The snapshot already reads the player correctly where it matters for these: spell cost uses the player's settings (`fMagicCasterPCSkillCost*`, `Values.cpp`), perks outside the trees are found for the player, and a spell above skill is not dimmed for the player (`Magic.cpp`). The player's page was built on those readers.
 
 ## Casting
 

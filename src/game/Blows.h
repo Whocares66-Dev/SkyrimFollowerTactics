@@ -22,12 +22,16 @@
 // follower's AI would have the block down again between two steps. The
 // turn is the backstop, for a deadline or an event that never came.
 
+#include "core/Blows.h"
+#include "core/Rule.h"
+
 #include <cstdint>
 #include <string_view>
 
 namespace RE
 {
 class Actor;
+class BGSAttackData;
 } // namespace RE
 
 namespace ft::game
@@ -66,5 +70,50 @@ void EndAllBlows(const char *why);
 
 // Forget every request. For a game load: the handles mean nothing now.
 void ResetBlows();
+
+// The attack data an event names for this actor: their own record's, else
+// their race's, as the engine finds it. Null where neither has it.
+[[nodiscard]] const RE::BGSAttackData *AttackDataFor(RE::Actor *actor, const char *event);
+
+// How far a swing has to reach to strike `to`, as the engine's melee test
+// measures it: centre to centre, less both bodies (dev/ACTIONS.md 6).
+[[nodiscard]] float ReachDistance(const RE::Actor *from, const RE::Actor *to);
+
+// A blow with what the actor holds: the animation event that starts it,
+// the stamina it costs, and how far it reaches, held against an enemy's
+// ReachDistance. No event where the hands hold nothing for it. The race record's attack data carries the events and
+// their multipliers (dev/ACTIONS.md 6).
+struct BlowPlan
+{
+    const char *event{nullptr};
+    float stamina{0.0f};
+    float reach{0.0f};
+    // Whether the follower has the perk the Settings page asks for this
+    // blow, where it asks one (game/Settings.h). True when it asks none.
+    bool perk{true};
+    // A power attack's hands, which pick the player's attack action.
+    ft::Swing swing{ft::Swing::None};
+    [[nodiscard]] bool Possible() const noexcept
+    {
+        return event != nullptr;
+    }
+};
+// A power attack, chosen by the hands, the right asked first: the right
+// hand's blade or two-hander (attackPowerStartInPlace), both at once
+// (...DualWield), else the left's blade (...LeftHand), else the fists (the
+// right hand's event). None for a bow, a staff, a spell or a shield alone.
+[[nodiscard]] BlowPlan PlanPowerAttack(RE::Actor *actor);
+// A bash (bashStart) or a power bash (bashPowerStart), with what blocks: a
+// shield or a torch in the left hand, or the right hand's weapon with the
+// left hand empty.
+[[nodiscard]] BlowPlan PlanBash(RE::Actor *actor, bool power);
+// The blow a kind of action strikes; an empty plan for any other kind.
+[[nodiscard]] BlowPlan PlanBlow(RE::Actor *actor, ft::ActionKind kind);
+
+// Does the actor meet what the Settings page asks before a power bash: the
+// Block tree's Power Bash perk, where it asks for one. True when it asks
+// none, whatever is in the hands -- what they hold is a separate question,
+// and PlanBash asks it.
+[[nodiscard]] bool PowerBashPerkMet(RE::Actor *actor);
 
 } // namespace ft::game
