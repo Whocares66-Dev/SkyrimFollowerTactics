@@ -79,6 +79,24 @@ inline constexpr std::size_t kCheckShouldEquipSlot = 0x0F;
 // body is an exact shape match of the AE one (tools/disasm.py --match).
 inline constexpr REL::RelocationID kQueuePerkRankChange{36007, 36982};
 
+// (inventory changes): the inventory's cached total weight marked stale (-1,
+// the last value kept beside it) and, for a character, the owner's cached
+// weight too. What the player's AddPerk (40770 on AE) calls after queueing
+// the rank change and marking the armour stale, since a perk can change what
+// things weigh; the follower's perks go through the same steps
+// (progression/game/PerkView.cpp). The SE body differs only in the owner's
+// field offset (0x1F8 against 0x200); the same ID on 1.7.104, an exact match.
+inline constexpr REL::RelocationID kResetInventoryWeight{15897, 16137};
+
+// A sink added to the event the queued rank change sends once it has landed
+// (kQueuePerkRankChange's task, carried out by 23353 on SE and 23822 on AE,
+// which apply or remove each of the perk's entries and then send it): the
+// actor, the perk, and its new rank, 0 for taken off -- the same three
+// fields at the same places on both lines. The engine's own registration
+// for that event's static source; nothing in vanilla registers one. The
+// same ID on 1.7.104.
+inline constexpr REL::RelocationID kAddPerkRankChangedSink{23317, 23783};
+
 // Character's vtable slots (the same numbers on SE and AE; VR differs and is
 // not built). The engine's HasPerk for any actor is ForEachPerk with a finder
 // visitor, so patching ForEachPerk changes HasPerk too.

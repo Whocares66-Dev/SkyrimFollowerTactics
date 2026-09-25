@@ -149,6 +149,41 @@ void Move(RE::Actor *actor, const Ranks &current, const Ranks &desired)
         log::perks.debug("{}: {} perk(s) queued on, {} off", NameOf(actor), on, off);
 }
 
+// What the queued rank change sends once it has landed
+// (addr::kAddPerkRankChangedSink): the actor, the perk, and its new rank.
+struct PerkRankChanged
+{
+    RE::Actor *actor{nullptr};
+    RE::BGSPerk *perk{nullptr};
+    std::uint8_t rank{0};
+};
+
+// A rank landed on a managed companion, put on or taken off: what the
+// player's AddPerk marks stale after its change (40770 on AE), and the
+// player's removal after its own (40771) -- the armour sum and the
+// inventory's weight, the two figures the engine keeps worked out and a
+// perk can move, and works out again only when told. Without it Well Fitted
+// bought left the armour as it was until something was re-equipped
+// (2026-09-24). AddPerk marks them as it queues; here they are marked as the
+// change lands, so no read can come between the two. The rest of what a
+// perk does, the engine asks of the entries as it goes.
+class RankChangedSink final : public RE::BSTEventSink<PerkRankChanged>
+{
+  public:
+    RE::BSEventNotifyControl ProcessEvent(const PerkRankChanged *event, RE::BSTEventSource<PerkRankChanged> *) override
+    {
+        if (!event || !event->actor || !MaybeManaged(event->actor->GetFormID()))
+            return RE::BSEventNotifyControl::kContinue;
+        using ResetWeightFn = void (*)(RE::InventoryChanges *);
+        static REL::Relocation<ResetWeightFn> resetWeight{addr::kResetInventoryWeight};
+        event->actor->OnArmorActorValueChanged();
+        if (auto *inventory = event->actor->GetInventoryChanges(true))
+            resetWeight(inventory);
+        return RE::BSEventNotifyControl::kContinue;
+    }
+};
+RankChangedSink g_rankChanged;
+
 // Character::ForEachPerk: the record's perks, for everyone but a managed
 // companion; for them the record's less the set-aside, then the added. The
 // visitor's first slot takes a PerkRankData and answers 1 to go on, 0 to
@@ -236,6 +271,9 @@ void Install()
     g_applyPerksFromBase = reinterpret_cast<ApplyPerksFromBaseFn>(slot(addr::kApplyPerksFromBaseSlot));
     table.write_vfunc(addr::kForEachPerkSlot, &ForEachPerkHook);
     table.write_vfunc(addr::kApplyPerksFromBaseSlot, &ApplyPerksFromBaseHook);
+    using AddSinkFn = void (*)(RE::BSTEventSink<PerkRankChanged> *);
+    REL::Relocation<AddSinkFn> addSink{addr::kAddPerkRankChangedSink};
+    addSink(&g_rankChanged);
     log::perks.info("Character's ForEachPerk and ApplyPerksFromBase replaced: companions' perks are a view over their "
                     "records, which are left alone");
 }

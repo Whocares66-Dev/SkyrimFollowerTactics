@@ -60,15 +60,21 @@ float GetBaseHook(RE::ActorValueOwner *self, RE::ActorValue av)
 // worked out again through the base, and so through the view. Without it a
 // cached value -- the skills' current values are cached -- keeps the number
 // from before (seen 2026-09-22: the Skills tab's levels unmoved by a point
-// moved).
+// moved). Their armour sum too, which the armour skills' levels go into
+// and the engine keeps until told its inputs changed, as a perk's rank
+// landing tells it (progression/game/PerkView.cpp); the view answers at
+// once, so at once.
 void MarkStale(const std::vector<RE::FormID> &ids)
 {
     using MarkFn = void (*)(RE::Actor *, RE::ActorValue);
     static REL::Relocation<MarkFn> mark{addr::kMarkValueStale};
     for (const RE::FormID id : ids)
         if (auto *actor = RE::TESForm::LookupByID<RE::Actor>(id); actor && actor->Is3DLoaded())
+        {
             for (int value = kFirstSkill; value < kFirstAttribute + static_cast<int>(kAttributeCount); ++value)
                 mark(actor, static_cast<RE::ActorValue>(value));
+            actor->OnArmorActorValueChanged();
+        }
 }
 
 } // namespace
