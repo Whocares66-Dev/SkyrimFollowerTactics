@@ -1597,6 +1597,23 @@ std::span<const RE::FormID> SameNamedEffects(const RE::EffectSetting *effect, co
     return {&own, 1};
 }
 
+bool LowersOwnValue(const RE::EffectSetting *effect)
+{
+    if (!effect->IsDetrimental())
+        return false;
+    using Archetype = RE::EffectArchetypes::ArchetypeID;
+    switch (effect->GetArchetype())
+    {
+    case Archetype::kValueModifier:
+    case Archetype::kPeakValueModifier:
+    case Archetype::kDualValueModifier:
+    case Archetype::kAbsorb:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // Skyrim.esm's Bleeding Damage, what the axe perks apply.
 constexpr RE::FormID kPerkBleedingDamage = 0x000C367A;
 // Skyrim.esm's Targe of the Blooded bash (dunTargeOfTheBloodedME): named
@@ -1676,10 +1693,14 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
                     for (const RE::FormID id : SameNamedEffects(base, own))
                         if (!traits.HasEffect(id))
                             traits.effects.push_back(id);
-                // Burning, frostbitten, shocked: a hostile effect resisted by
-                // that element. The keyword would say the same of vanilla
-                // spells; the resist value says it of modded ones too.
-                if (base->IsDetrimental())
+                // Burning, frostbitten, shocked: the element's damage to the
+                // actor, an effect resisted by it that lowers a value of the
+                // actor it runs on. The keyword would say the same of vanilla
+                // spells; the resist value says it of modded ones too. The
+                // lowering keeps out what only names the resistance: an
+                // atronach's cloak on the atronach, which harms whoever
+                // comes near through an effect of its own, and a visual.
+                if (LowersOwnValue(base))
                 {
                     switch (base->data.resistVariable)
                     {
