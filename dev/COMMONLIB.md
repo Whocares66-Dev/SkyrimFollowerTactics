@@ -111,6 +111,16 @@ Both wrappers load the equip manager singleton from a global and `jmp` to the me
 
 **Upstream.** A PR would add `InventoryChanges::ResetWeight()` as `RELOCATION_ID(15897, 16137)`, and an event in CommonLib's usual shape for a static source (as `ActorKill`): a struct with the three fields in an `Event`, `static_assert(sizeof(Event) == 0x18)`, and `static BSTEventSource<Event>* GetEventSource()` as `RELOCATION_ID(23404, 23866)`. The name is ours to propose, `PerkRankChanged` or similar. Both should run in play here first. Not reported yet.
 
+## Short: `Actor::UseSkill` and `PlayerCharacter::AddSkillExperience` pass too few arguments (found 2026-09-24)
+
+**What is wrong.** `Actor::UseSkill(ActorValue, float, TESForm*)` (slot 0xF7) declares three arguments after `this`; the engine passes four. The player's override reads the fourth, a 32-bit value, off the stack (`[rsp + 0x70]` after its `sub rsp, 0x48`, the caller's fifth slot): 40488 on AE and 39413 on SE, the same body on both lines. CommonLib names that same function `PlayerCharacter::AddSkillExperience(ActorValue, float)` (`RELOCATION_ID(39413, 40488)`) and calls it with two, so the form arrives as whatever `r9` holds and the fourth as whatever sits on the stack.
+
+**Why it matters.** The override hands both to the skill advance (41561 on AE), which writes the skill, the form and the fourth value onto the player (0xAF0, 0x9F8, 0xAF4) for the length of the Mod Skill Use perk entry point (0x16), then clears them. A perk condition that reads the form or that value during it sees garbage through CommonLib's call. What vanilla's conditions read there beyond the skill (*IsAdvanceSkill*, 0xAF0) was not checked, so how often this shows is not known.
+
+**What we do instead.** `src/progression/game/Learning.cpp` declares the slot with all four (`UseSkillFn`) and passes each on unchanged; nothing of ours calls `AddSkillExperience`.
+
+**Upstream.** A PR would add the fourth argument to `Actor::UseSkill` (a `std::uint32_t`, its meaning not established), and give `AddSkillExperience` the form and the fourth with defaults of `nullptr` and 0, the values 41561 clears them to. Found while checking our own declarations against the executables with Ghidra; not reported yet.
+
 ## Not a bug: `RelocateVirtual`'s second index is VR's (checked 2026-09-24)
 
 `Actor::OnArmorActorValueChanged` is `RelocateVirtual(0x0CA, 0x0CC, ...)` and `Actor::CalcArmorRating` `RelocateVirtual(0x0E6, 0x0E8, ...)`. The first number is the slot on **SE and AE alike**, the second VR's (`include/REL/Relocation.h`: `a_seAndAEVtableIndex`, `a_vrVtableIndex`); read as (SE, AE), the pair looks two slots off on AE, which it is not. The executables agree with CommonLib: on 1.5.97, 1.6.1170 and 1.7.104 Character's slot 0xCA is the armour invalidation (39180 on SE, 40254 on AE: the cached armour sum and base factor sum set to -1, Damage Resist queued to be worked out again) and 0xE6 the walk that fills them (39174, 40248), and the engine's own `GetArmorBaseFactorSum` calls them at `[vtable + 0x650]` and `[vtable + 0x730]` on both lines. Call CommonLib's, as `src/progression/game/PerkView.cpp` does.
