@@ -121,7 +121,7 @@ The `Charge` action for enchanted weapons has two policies. `Strongest` picks th
 
 ### Dual casting and power bashing
 
-Under `Settings` → `Combat`, two switches control whether followers need perks for these actions:
+Under `Settings` → `Requirements`, two switches control whether followers need perks for these actions:
 
 - `Require Dual Casting perks`: requires the spell school's Dual Casting perk for `Dual Cast`.
 - `Require Power Bash perk`: requires the Block tree's Power Bash perk for `Power Bash`.

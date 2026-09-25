@@ -7132,11 +7132,10 @@ void DrawSettings()
     Im::Spacing();
     // What a follower must have before a thing is offered at all
     // (game/Settings.h). Each is saved with the game.
-    CentredHeading(Tr("Combat"));
+    CentredHeading(Tr("Requirements"));
     ft::Settings settings = CurrentSettings();
     const ft::Settings was = settings;
-    // All four are followers' alone, and each says so -- the attack choice
-    // because the player's is their own: a combat style is a
+    // Every one is followers' alone, and each says so: a combat style is a
     // thing only an NPC has, which not every player knows; the player's own
     // dual cast is paired by the engine behind its perk check
     // (game/PlayerCast.h); and the player has no blow to require a perk of.
@@ -7152,6 +7151,11 @@ void DrawSettings()
                Tr("Click to require the Power Bash perk for power bashing (follower only)"),
                Tr("Click to not require the Power Bash perk for power bashing (follower only)")))
         settings.requirePowerBashPerk = !settings.requirePowerBashPerk;
+
+    // How a follower's combat AI chooses, over the engine's own
+    // (dev/COMBAT_AI.md "What we change"); the player's choices are theirs.
+    Im::Spacing();
+    CentredHeading(Tr("Combat AI"));
     if (toggle("variedAiChoices", settings.variedAiChoices, Tr("Varied AI choices"),
                Tr("Click for more variation in weapon use, spellcasting, etc. (follower only)"),
                Tr("Click for less variation in weapon use, spellcasting, etc. (follower only)")))

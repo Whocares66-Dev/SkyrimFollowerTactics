@@ -244,7 +244,7 @@ The sampler, the penalty and their tests belong in `src/core` (a pure function f
 
 ## What we change (built 2026-09-22, `wip-scoring`; not yet verified in play)
 
-Weapons and attack spells only: category 0, a follower's (a player teammate, never the player, never an enemy). The Settings page's Combat section has the switch, **Varied AI choices**, on by default and saved with the game (`ft::Settings::variedAiChoices`); it gates the perks, the immunities and the variety, not the stand-down for a rule's cast, which is tactics' own and always on. Heals, wards and buffs keep the engine's gates and order. The code is `src/game/AiScore.cpp`, called from the score hook in `Pins.cpp` before the pins and bans. The testable part is `src/core/Variety.h` and `WaitsOnOwnCast` in `core/Evaluator.h`.
+Weapons and attack spells only: category 0, a follower's (a player teammate, never the player, never an enemy). The Settings page's Combat AI section has the switch, **Varied AI choices**, on by default and saved with the game (`ft::Settings::variedAiChoices`); it gates the perks, the immunities and the variety, not the stand-down for a rule's cast, which is tactics' own and always on. Heals, wards and buffs keep the engine's gates and order. The code is `src/game/AiScore.cpp`, called from the score hook in `Pins.cpp` before the pins and bans. The testable part is `src/core/Variety.h` and `WaitsOnOwnCast` in `core/Evaluator.h`.
 
 | | The engine | Ours |
 |---|---|---|
