@@ -21,6 +21,7 @@
 #include "game/Toggles.h"
 #include "game/Util.h"
 #include "progression/game/Service.h"
+#include "progression/game/ValueView.h"
 
 #include <algorithm>
 #include <array>
@@ -818,6 +819,35 @@ ft::Breakdown CarryWeightBreakdown(RE::Actor *actor)
     ft::Close(b);
     return b;
 }
+
+namespace
+{
+// A skill's level: the engine's base, what a companion Progression levels
+// has learned on top of it (the value view adds that to the base the
+// engine reads), and each effect on the skill by its source. Empty where
+// the base is the whole of it, which the level already says. The player's
+// base is taken as it reads: EngineBase asks Character's own slot, which
+// is not the player's class.
+ft::Breakdown SkillBreakdown(RE::Actor *actor, RE::ActorValue skill)
+{
+    auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
+    if (!owner)
+        return {};
+    const ValueParts parts = PartsOf(actor, skill);
+    const float own = actor->IsPlayerRef() ? parts.base : fp::game::valueview::EngineBase(actor, skill);
+    ft::Breakdown b;
+    ft::Start(b, Tr("Base"), own);
+    if (parts.base != own)
+        ft::Add(b, Tr("Learned"), parts.base - own);
+    for (const Contribution &c : parts.sources)
+        ft::Add(b, c.source, c.amount);
+    b.total = owner->GetActorValue(skill);
+    ft::Close(b);
+    if (b.lines.size() == 1)
+        return {};
+    return b;
+}
+} // namespace
 
 // The conditions of one list, a row each: the call, the comparison, and a
 // tick where it holds for the parties. `on` names the entry's argument the
@@ -4609,6 +4639,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
 
     const auto skill = [&](SheetSection &s, const Skill &k) {
         SheetRow row = Row(k.label, Fmt("%.0f", av(k.value)));
+        row.breakdown = SkillBreakdown(actor, k.value);
         // Only what applies. A follower has Fortify One-handed +35 on the
         // value and no perk to turn it into damage; a bonus that changes
         // nothing is not shown.

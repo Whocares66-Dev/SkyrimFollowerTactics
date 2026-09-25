@@ -350,6 +350,7 @@
   "{} ({})": "{}（{}）",
   "Hidden bonus (x{})": "隐藏加成（x{}）",
   "Base": "基础",
+  "Learned": "已学",
   "Conditions not met": "条件未满足",
   "Effects": "效果",
   "Inactive": "未生效",

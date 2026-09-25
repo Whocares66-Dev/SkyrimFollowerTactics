@@ -3748,8 +3748,10 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 Im::Text("%s", row.value.c_str());
             }
             // What made the value is hover text on the value itself, beside
-            // the number it explains; on the Modifiers cell where the row
-            // has one, since that is the number it explains there.
+            // the number it explains; on the Modifiers cell where that cell
+            // holds one plain figure, since that is the number it explains
+            // there. Where the figures hover apart, or there is none, the
+            // row's is the value's: a skill's level beside its bonuses.
             const auto explain = [&] {
                 if (!Im::IsItemHovered(0))
                     return;
@@ -3758,7 +3760,9 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 else if (!row.note.empty())
                     NoteTooltip(row.note);
             };
-            if (!modifiers)
+            const bool modifierExplains =
+                hasThird && row.mark == 0 && row.modifierParts.empty() && !row.modifiers.empty();
+            if (!modifiers || (hasThird && !modifierExplains))
                 explain();
             if (modifiers)
             {
@@ -3794,7 +3798,8 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     else
                     {
                         Im::Text("%s", row.modifiers.c_str());
-                        explain();
+                        if (modifierExplains)
+                            explain();
                     }
                 }
                 for (const auto &column : extras)
