@@ -12,8 +12,11 @@
 // the step performs it through a callback and reads the answer in the same
 // step. The test's callback is a script of answers.
 
+#include "GraphEvents.h"
+
 #include <cstdint>
 #include <functional>
+#include <string>
 
 namespace ft
 {
@@ -65,6 +68,14 @@ struct StrikeSeen
     int powerStops{0};
     int attackStops{0};
 };
+
+// The counts, from the request's watch on the follower's graph.
+void Hear(StrikeSeen &seen, const Heard &heard) noexcept;
+
+// A step and what it read, as its log line says it: "step at 123.456:
+// holder=1 drawn=1 attacking=0 casting=0 facing=1 hitFrames=0
+// powerStops=0 attackStops=0".
+[[nodiscard]] std::string ReadsOf(const StrikeSeen &seen, double now);
 
 // One step, where the request can take it; the reason it is over, or null
 // while it goes on. `perform` takes the action and answers whether the

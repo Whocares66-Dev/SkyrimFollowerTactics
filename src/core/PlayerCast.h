@@ -13,6 +13,9 @@
 // they go out through a callback that performs them, which the test
 // records.
 
+#include "GraphEvents.h"
+#include "Loadout.h"
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -80,6 +83,11 @@ struct CastState
     double requestedAt{0.0};
     double stepAt{0.0};
     double settledAt{-1.0}; // the lent hands' equip heard past cutting a charge short
+    // The run's watch's counts when the hands were lent and when the press
+    // went: an InterruptCast since the one is the lent hands' equip, a fire
+    // of ours since the other is this press's.
+    int interruptsAtLend{0};
+    int firesAtPress{0};
     double pressedAt{-1.0};
     double readyAt{-1.0};
     double releasedAt{-1.0};
@@ -98,10 +106,11 @@ struct CastSeen
 {
     bool player{true};  // resolves, with an actor state
     bool placed{false}; // the spell in every hand the run takes, or the form in the voice
-    // The lent hands' equip can no longer cut a charge short: its
-    // InterruptCast heard since the lend. A press before it is cut short by
-    // it; one after it is held until the equip animation ends.
-    bool equipSettled{false};
+    // The InterruptCasts the run's watch has heard: one since the lend is
+    // the lent hands' equip, which can no longer cut a charge short. A
+    // press before it is cut short by it; one after it is held until the
+    // equip animation ends.
+    int interrupts{0};
     enum class Weapon : std::uint8_t
     {
         Drawn,
@@ -130,8 +139,16 @@ struct CastSeen
     const char *refusal{nullptr}; // why the engine refuses the cast now, or null
     int wordsCharged{-1};         // a shout's, else -1
     bool onUsedList{false};       // a power on the used list now
-    bool fireSeen{false};         // our spell's fire event, or the voice's
+    int ownFires{0};              // our spell's fire events, or the voice's, the watch has heard
 };
+
+// The run's watch on the player's graph: the fires that are its own -- the
+// spell leaving a hand the run takes, or the voice going off, whatever it
+// was -- and what steps it: the lent hands' InterruptCast, while it waits
+// for one.
+[[nodiscard]] std::vector<OwnFire> CastOwnFires(bool voice, Hand hand, std::uint32_t form);
+[[nodiscard]] GraphTags CastWakes(CastStep step) noexcept;
+void Hear(CastSeen &seen, const Heard &heard) noexcept;
 
 enum class CastCommand : std::uint8_t
 {

@@ -3,6 +3,7 @@
 #include "core/Lease.h"
 #include "game/Addresses.h"
 #include "game/Forms.h"
+#include "game/Graph.h"
 #include "game/Log.h"
 #include "game/Magic.h"
 #include "game/Sheet.h"
@@ -10,7 +11,6 @@
 #include "game/Util.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cstring>
 #include <initializer_list>
 #include <memory>
@@ -171,22 +171,15 @@ struct Slot
     // Whom the stream is aimed at, so it can stop when they are dead.
     RE::ActorHandle target;
 
-    // Set from the animation thread; read and cleared by the tick. The ONLY
-    // things the sink writes. `fired`: our spell left the follower's hand.
-    // `stopped`: a CastStop arrived after that -- for a stream, its end.
-    // `begun`: a BeginCast event (voice or either hand), so the deadline can
-    // step back and let a cast that has started finish, whatever it takes.
-    std::atomic<bool> fired{false};
-    std::atomic<bool> stopped{false};
-    std::atomic<bool> begun{false};
-    // What the sink READS, and the only things it reads of the slot: whose
-    // the lease is, which spell the slot casts, which shout it shouts (0 for
-    // none). Set by Arm once the lease is held, cleared by Release before
-    // it goes; the lease, `spell` and `shouting` themselves are the game
-    // thread's and are reset under the sink's feet.
-    std::atomic<std::uint32_t> holder{0};
-    std::atomic<std::uint32_t> spellId{0};
-    std::atomic<std::uint32_t> shoutId{0};
+    // The holder's graph from the arm, which the tick reads (core/Lease.h,
+    // Hear): our spell or voice leaving them; a CastStop after that, for a
+    // stream its end; a BeginCast, so the deadline can step back and let a
+    // cast that has started finish, whatever it takes. A UseMagic package
+    // does NOT complete after its cast (measured: still their current
+    // package four seconds later, with them standing idle), so the end of a
+    // cast is heard. The fire events come for every spell they cast, their
+    // own combat spells included; the watch's own fires are ours.
+    ft::GraphWatch watch;
     // Whom the record was aimed at when armed (the holder, for a self-cast)
     // and the rule that asked for it (given to Arm; -1 when idle): what the
     // release reports as rule.resolved. Kept as an id because the handle
@@ -213,8 +206,7 @@ struct Kit
 // Every follower's records by reference ID, until the game quits: forms are
 // never deleted, so the map is never pruned either. Only the game thread
 // inserts, under the lock, and it reads without; a reader on another thread
-// -- the animation sink, an equip detour -- takes the lock shared. A kit
-// never moves once made.
+// -- an equip detour -- takes the lock shared. A kit never moves once made.
 std::unordered_map<RE::FormID, std::unique_ptr<Kit>> g_kits;
 std::shared_mutex g_kitsMutex;
 // Followers whose records could not be made, so the tick does not make
@@ -249,101 +241,6 @@ std::uint32_t PackageId(const Slot &slot)
 {
     return slot.package ? slot.package->GetFormID() : 0;
 }
-
-// The release signals come from their animation graph.
-//
-// A UseMagic package does NOT complete after its cast (measured: still their
-// current package four seconds later, with them standing idle), so the end of
-// a cast has to be observed. The graph emits MRh_SpellFire_Event /
-// MLh_SpellFire_Event when a spell leaves a hand, and CastStop when a cast
-// ends. Both fire for EVERY spell they cast, their own combat spells included,
-// so the sink reads which spell is equipped in the firing hand and flags the
-// slot only for ours (the caster's currentSpell is already null by then).
-// The tick does the releasing; the sink only sets flags.
-class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
-{
-  public:
-    RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent *ev,
-                                          RE::BSTEventSource<RE::BSAnimationGraphEvent> *) override
-    {
-        if (!ev || !ev->holder || ev->tag.empty())
-            return RE::BSEventNotifyControl::kContinue;
-
-        const std::uint32_t who = ev->holder->GetFormID();
-        const char *tag = ev->tag.c_str();
-        const bool right = _stricmp(tag, "MRh_SpellFire_Event") == 0;
-        const bool left = _stricmp(tag, "MLh_SpellFire_Event") == 0;
-        const bool voice = _stricmp(tag, "Voice_SpellFire_Event") == 0;
-        const bool begin = _stricmp(tag, "BeginCastVoice") == 0 || _stricmp(tag, "BeginCastRight") == 0 ||
-                           _stricmp(tag, "BeginCastLeft") == 0;
-        const bool stop = _stricmp(tag, "CastStop") == 0;
-
-        auto *kit = SharedKitOf(who);
-        if (!kit)
-            return RE::BSEventNotifyControl::kContinue;
-        for (auto *slotPtr : {&kit->spell, &kit->voice})
-        {
-            auto &slot = *slotPtr;
-            if (slot.holder.load(std::memory_order_acquire) != who)
-                continue;
-            // A stream that has fired and now stops has ended, whether the
-            // CastTime ran out or something interrupted it.
-            if (stop && slot.fired.load(std::memory_order_relaxed))
-                slot.stopped.store(true, std::memory_order_relaxed);
-
-            if (begin)
-                slot.begun.store(true, std::memory_order_relaxed);
-            // A shout slot fires from the voice. Measured 2026-09-04: a
-            // power through the wrapper emits BeginCastVoice and, 0.1 s
-            // later, Voice_SpellFire_Event. Which of the wrapper's words the
-            // engine chose, and what the voice caster holds, go in the log
-            // so a shout that lands nothing can be read.
-            const std::uint32_t shoutId = slot.shoutId.load(std::memory_order_relaxed);
-            if (voice && shoutId != 0)
-            {
-                auto *actor = const_cast<RE::TESObjectREFR *>(ev->holder)->As<RE::Actor>();
-                const auto *process = actor ? actor->GetActorRuntimeData().currentProcess : nullptr;
-                const auto *high = process ? process->high : nullptr;
-                const auto *voiceItem =
-                    actor ? actor->GetActorRuntimeData().selectedSpells[RE::Actor::SlotTypes::kPowerOrShout] : nullptr;
-                const auto *caster =
-                    actor ? actor->GetActorRuntimeData().magicCasters[RE::Actor::SlotTypes::kPowerOrShout] : nullptr;
-                const bool ourVoice = high && high->currentShout && high->currentShout->GetFormID() == shoutId;
-                log::packages.at(ourVoice ? log::Level::Info : log::Level::Debug,
-                                 "anim {:08X}: voice fired: shout {:08X} variation {} level {}, voice slot "
-                                 "holds {:08X}, caster spell {:08X} -- {}",
-                                 who, high && high->currentShout ? high->currentShout->GetFormID() : 0,
-                                 high ? static_cast<std::int32_t>(high->currentShoutVariation) : -99,
-                                 actor ? actor->GetCurrentShoutLevel() : -99, voiceItem ? voiceItem->GetFormID() : 0,
-                                 caster && caster->currentSpell ? caster->currentSpell->GetFormID() : 0,
-                                 ourVoice ? "OURS" : "not ours");
-                if (ourVoice)
-                    slot.fired.store(true, std::memory_order_relaxed);
-                continue;
-            }
-            if (!right && !left)
-                continue;
-
-            // Which spell just left that hand? The spell EQUIPPED in it: the
-            // UseMagic procedure equips what it casts, and the caster's own
-            // currentSpell is already null when this event arrives.
-            auto *actor = const_cast<RE::TESObjectREFR *>(ev->holder)->As<RE::Actor>();
-            const auto *spell =
-                actor ? actor->GetActorRuntimeData()
-                            .selectedSpells[right ? RE::Actor::SlotTypes::kRightHand : RE::Actor::SlotTypes::kLeftHand]
-                      : nullptr;
-            const std::uint32_t firedID = spell ? spell->GetFormID() : 0;
-            const bool ours = firedID == slot.spellId.load(std::memory_order_relaxed);
-            log::packages.at(ours ? log::Level::Info : log::Level::Debug,
-                             "anim {:08X}: {} hand fired {:08X} \"{}\" -- {}", who, right ? "right" : "left", firedID,
-                             log::NameOf(spell), ours ? "OURS" : "the follower's own, ignored");
-            if (ours)
-                slot.fired.store(true, std::memory_order_relaxed);
-        }
-        return RE::BSEventNotifyControl::kContinue;
-    }
-};
-SpellFireSink g_fireSink;
 
 // Where the PackageTarget sits inside a TargetSelector input's data, learned
 // at load by finding the canary rather than hardcoded:
@@ -883,7 +780,7 @@ void SpendScroll(Slot &slot, RE::Actor *actor)
 // follower has gone, and their id is given instead.
 void ReportResolved(const Slot &slot, RE::Actor *holder, std::uint32_t holderId, const char *reason, double seconds)
 {
-    const bool cast = slot.fired.load(std::memory_order_relaxed);
+    const bool cast = slot.watch.HeardSoFar().ownFires > 0;
     const char *kind = "spell";
     if (slot.wrapper)
         kind = slot.power ? "power" : "shout";
@@ -946,19 +843,13 @@ void Release(Slot &slot)
         slot.power = nullptr;
     }
     PutWordsBack(slot);
-    // The sink stops looking before the lease goes.
-    slot.holder.store(0, std::memory_order_release);
-    slot.spellId.store(0, std::memory_order_relaxed);
-    slot.shoutId.store(0, std::memory_order_relaxed);
+    slot.watch.Close();
     slot.shouting = nullptr;
     // The lease's destructor asks the AI to re-evaluate; the record is off
     // the stack by then.
     slot.lease.reset();
     slot.target = {};
     SetPackageTarget(slot.package, nullptr); // no target handle outlives its lease
-    slot.fired.store(false, std::memory_order_relaxed);
-    slot.stopped.store(false, std::memory_order_relaxed);
-    slot.begun.store(false, std::memory_order_relaxed);
     slot.run.extended = false;
     slot.run.seenRunning = false;
     slot.run.streaming = false;
@@ -1049,27 +940,12 @@ CastRequest Arm(Slot &slot, RE::Actor *actor, float sustain, double window, int 
     // that never starts does not hold them for the sustain on top. Whether
     // it streams is the request's, set before this.
     slot.run = ft::ArmLease(TacticsSeconds(), window, slot.run.sustained, sustain);
-    slot.fired.store(false, std::memory_order_relaxed);
-    slot.stopped.store(false, std::memory_order_relaxed);
-    slot.begun.store(false, std::memory_order_relaxed);
-
-    // Registering the sink is what makes a fire event reach us at all. On
-    // every request, not once per actor: the graph is rebuilt on a cell
-    // change and a 3D reload, and a sink on the old one hears nothing; the
-    // library's AddAnimationGraphEventSink looks for the sink first and
-    // adds it only where it is missing (RE/A/Actor.cpp), so this costs a
-    // walk of the graph's sinks and nothing else.
-    if (actor->AddAnimationGraphEventSink(&g_fireSink))
-        log::packages.debug("animation sink added on {:08X}", actor->GetFormID());
 
     // Onto the follower's stack, then the lease points the condition at
     // them in its constructor. From here on the record is theirs until the
     // lease is destroyed, and only that clears the condition.
     slot.lease.emplace(actor, slot.condition);
-    // What the sink may read, the holder last: from here the sink looks.
-    slot.spellId.store(slot.spell, std::memory_order_relaxed);
-    slot.shoutId.store(slot.shouting ? slot.shouting->GetFormID() : 0, std::memory_order_relaxed);
-    slot.holder.store(actor->GetFormID(), std::memory_order_release);
+    slot.watch = WatchGraph(actor, {}, ft::LeaseOwnFires(slot.spell, slot.shouting ? slot.shouting->GetFormID() : 0));
     const Stack stack = FindStack(actor);
     PutOnStack(stack, slot.package);
     slot.onStack = stack.packages != nullptr;
@@ -1336,9 +1212,7 @@ void ResetPackages()
         // false by then and the entry never passes.
         slot.onStack = false;
         slot.placedIn = nullptr;
-        slot.holder.store(0, std::memory_order_release);
-        slot.spellId.store(0, std::memory_order_relaxed);
-        slot.shoutId.store(0, std::memory_order_relaxed);
+        slot.watch.Close();
         slot.shouting = nullptr;
         if (slot.lease)
             slot.lease->Abandon();
@@ -1349,9 +1223,6 @@ void ResetPackages()
         slot.run.seenRunning = false;
         slot.run.streaming = false;
         slot.run.extended = false;
-        slot.fired.store(false, std::memory_order_relaxed);
-        slot.stopped.store(false, std::memory_order_relaxed);
-        slot.begun.store(false, std::memory_order_relaxed);
         slot.targetId = 0;
         slot.ruleIndex = -1;
         slot.ruleName.clear();
@@ -1401,13 +1272,13 @@ void TickPackages(double now, const std::vector<RE::Actor *> &followers)
         if (actor)
         {
             seen.running = actor->GetCurrentPackage() == slot.package;
-            seen.fired = slot.fired.load(std::memory_order_relaxed);
-            seen.stopped = slot.stopped.load(std::memory_order_relaxed);
-            seen.begun = slot.begun.load(std::memory_order_relaxed);
+            ft::Hear(seen, slot.watch.HeardSoFar());
             // A stream at a corpse is wasted magicka and a follower
             // standing still.
             seen.targetDead = slot.run.sustained && slot.target && slot.target.get() && slot.target.get()->IsDead();
         }
+        log::packages.debug("{}: lease {}", actor ? Describe(actor.get()) : log::Id(slot.lease->FormID()),
+                            ft::ReadsOf(seen, now));
         const ft::LeaseKind kind = slot.power     ? ft::LeaseKind::Power
                                    : slot.wrapper ? ft::LeaseKind::Shout
                                                   : ft::LeaseKind::Spell;

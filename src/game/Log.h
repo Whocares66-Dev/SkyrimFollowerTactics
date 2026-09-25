@@ -169,6 +169,7 @@ inline constexpr Module blows{"blows"};
 inline constexpr Module customskills{"customskills"};
 inline constexpr Module fix{"fix"};
 inline constexpr Module forms{"forms"};
+inline constexpr Module graph{"graph"};
 inline constexpr Module hits{"hits"};
 inline constexpr Module packages{"packages"};
 inline constexpr Module pins{"pins"};

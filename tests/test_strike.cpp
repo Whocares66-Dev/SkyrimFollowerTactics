@@ -170,4 +170,14 @@ TEST_CASE("taken, then watched: never swung, or still swinging", "[strike]")
     REQUIRE_FALSE(AdvanceStrike(long_, Ready(), 100.0, takes.Fn()));
     REQUIRE_FALSE(AdvanceStrike(long_, Swinging(), 101.0, takes.Fn()));
     REQUIRE(Over(AdvanceStrike(long_, Swinging(), 103.0, takes.Fn())) == "watch over, still swinging");
+
+    // At its hit, and still in the attack state with no end event when the
+    // watch is over.
+    StrikeState hitLong = RequestStrikeAt(100.0);
+    REQUIRE_FALSE(AdvanceStrike(hitLong, Ready(), 100.0, takes.Fn()));
+    StrikeSeen hit = Swinging();
+    hit.hitFrames = 1;
+    REQUIRE_FALSE(AdvanceStrike(hitLong, hit, 100.6, takes.Fn()));
+    REQUIRE(hitLong.hitAt == 100.6);
+    REQUIRE(Over(AdvanceStrike(hitLong, hit, 103.0, takes.Fn())) == "watch over, hit but still swinging");
 }

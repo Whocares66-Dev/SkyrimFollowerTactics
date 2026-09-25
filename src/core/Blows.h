@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GraphEvents.h"
 #include "Loadout.h"
 
 #include <cstdint>
@@ -60,6 +61,19 @@ enum class Swing : std::uint8_t
 [[nodiscard]] const char *PowerAttackEvent(Swing swing) noexcept;
 // bashStart, or bashPowerStart.
 [[nodiscard]] const char *BashEvent(bool power) noexcept;
+
+// The follower's graph events that step a bash or a power attack in
+// flight, as read from their graph in play (2026-09-24): their own swing
+// over (attackStop, PowerAttackStop), the block up and ready
+// (blockStartOut) or down (blockStop), the bash over (bashStop,
+// bashExit), a power attack's swing (PowerAttack_Start_end, preHitFrame,
+// weaponSwing) and its hit (HitFrame), and their own shout or spell over
+// (shoutStop, CastStop).
+inline constexpr GraphTags kBlowWakes{
+    GraphTag::AttackStop,  GraphTag::PowerAttackStop, GraphTag::BlockStartOut,       GraphTag::BlockStop,
+    GraphTag::BashStop,    GraphTag::BashExit,        GraphTag::PowerAttackStartEnd, GraphTag::PreHitFrame,
+    GraphTag::WeaponSwing, GraphTag::HitFrame,        GraphTag::ShoutStop,           GraphTag::CastStop,
+};
 
 // The cost as the engine's own routine prices a power attack (26429 on
 // 1.6.1170, dev/ACTIONS.md 6), before the perk entry point and the

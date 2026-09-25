@@ -3,6 +3,31 @@
 namespace ft
 {
 
+std::vector<OwnFire> LeaseOwnFires(std::uint32_t spell, std::uint32_t shout)
+{
+    std::vector<OwnFire> fires{{GraphTag::SpellFireLeft, spell}, {GraphTag::SpellFireRight, spell}};
+    if (shout != 0)
+        fires.push_back({GraphTag::SpellFireVoice, shout});
+    return fires;
+}
+
+void Hear(LeaseSeen &seen, const Heard &heard) noexcept
+{
+    seen.fired = heard.ownFires > 0;
+    seen.stopped = heard.stopsAfterOwnFire > 0;
+    seen.begun = heard.Count(GraphTag::BeginCastLeft) + heard.Count(GraphTag::BeginCastRight) +
+                     heard.Count(GraphTag::BeginCastVoice) >
+                 0;
+}
+
+std::string ReadsOf(const LeaseSeen &seen, double now)
+{
+    const auto flag = [](bool value) { return value ? "1" : "0"; };
+    return StepAt(now) + "holder=" + flag(seen.holder) + " running=" + flag(seen.running) +
+           " fired=" + flag(seen.fired) + " stopped=" + flag(seen.stopped) + " begun=" + flag(seen.begun) +
+           " targetDead=" + flag(seen.targetDead);
+}
+
 LeaseState ArmLease(double now, double window, bool sustained, float sustain) noexcept
 {
     LeaseState state;

@@ -9,17 +9,22 @@
 // the step asks for -- spend the scroll, report, release -- stay the game's.
 // No Skyrim.
 
+#include "GraphEvents.h"
+
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
+#include <vector>
 
 namespace ft
 {
 
-// The lease's own standing between ticks. The sink's flags (fired,
-// stopped, begun) are not here: they are written from the engine's
-// threads and are read into a LeaseSeen each tick.
+// The lease's own standing between ticks. What the graph said (fired,
+// stopped, begun) is not here: the lease's watch hears it on the engine's
+// threads, and it is read into a LeaseSeen each tick.
 struct LeaseState
 {
     double armedAt{0.0};
@@ -50,13 +55,26 @@ struct LeaseSeen
 {
     bool holder{true};   // the follower still resolves; false: unloaded or gone
     bool running{false}; // our package is their current one
-    // The sink's flags: our spell or voice left them; a CastStop after
+    // From the lease's watch: our spell or voice left them; a CastStop after
     // that, the stream's end; a BeginCast.
     bool fired{false};
     bool stopped{false};
     bool begun{false};
     bool targetDead{false}; // a stream's target
 };
+
+// The fires that are the lease's own: the slot's spell leaving either
+// hand -- the UseMagic procedure equips what it casts, in whichever hand
+// -- and, for a shout slot, the voice going off while the shout it holds
+// is the one being shouted. 0 for no shout.
+[[nodiscard]] std::vector<OwnFire> LeaseOwnFires(std::uint32_t spell, std::uint32_t shout);
+
+// The watch's part of the reading: fired, stopped after, begun.
+void Hear(LeaseSeen &seen, const Heard &heard) noexcept;
+
+// A step and what it read, as its log line says it: "step at 123.456:
+// holder=1 running=1 fired=0 stopped=0 begun=0 targetDead=0".
+[[nodiscard]] std::string ReadsOf(const LeaseSeen &seen, double now);
 
 // What the voice slot is casting, for the reason's wording.
 enum class LeaseKind

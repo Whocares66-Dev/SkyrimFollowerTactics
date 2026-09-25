@@ -60,7 +60,7 @@ The right attack action from the block, in the next two fights (2026-09-15): 10 
 
 **Hands** (`src/core/Blows`), the right asked first and then the left, as a poison goes on. A power attack: the right hand's blade or two-hander, both at once when the left holds a blade too; else the left's blade, whatever the right holds; else the fists, with both hands empty. A bash: the right hand's weapon with the left hand empty, else a shield or a torch in the left. With neither the rule is skipped: "nothing to power attack with", "nothing to bash with".
 
-**Stepping** (`src/game/Blows.cpp`): on the follower's graph events, one step queued on the game thread per event, with the half-second turn the backstop. At the turn alone the AI would lower a raised block between two steps. A 50 ms tick stepped both until 2026-09-24; it is the player's cast's alone now (`dev/PLAYER.md`, "Why the cast keeps a 50 ms tick").
+**Stepping** (`src/game/Blows.cpp`): on the follower's graph events, one step queued on the game thread per event, with the half-second turn the backstop. A request opens a watch on the follower's graph (`core/GraphEvents.h`, `game/Graph.cpp`), which counts the events its steps read and wakes on those they wait on (`kBlowWakes`, `core/Blows.h`). At the turn alone the AI would lower a raised block between two steps. A 50 ms tick stepped both until 2026-09-24; it is the player's cast's alone now (`dev/PLAYER.md`, "Why the cast keeps a 50 ms tick").
 
 While either is in flight the follower's other rules wait, as they do for a cast. Both report through `rule.resolved` (`dev/EVENTS.md`), with the timings and refusals that say which step held a bash up.
 

@@ -118,7 +118,7 @@ TEST_CASE("a spell in a drawn hand: pressed on the first tick, released at ready
     REQUIRE(run.step == CastStep::Firing);
 
     CastSeen fired = Charging(5);
-    fired.fireSeen = true;
+    fired.ownFires = 1;
     REQUIRE_FALSE(AdvancePlayerCast(run, fired, 100.6, sent.Fn()));
     REQUIRE(run.fired);
     REQUIRE(run.firedAt == 100.6);
@@ -159,7 +159,7 @@ TEST_CASE("the spell is lent once and waited for; the voice the same", "[playerc
     REQUIRE(sentPlaced.Last() == CastCommand::LendHands);
     REQUIRE(placed.step == CastStep::Lending);
     CastSeen settled = Free();
-    settled.equipSettled = true;
+    settled.interrupts = 1;
     REQUIRE_FALSE(AdvancePlayerCast(placed, settled, 100.1, sentPlaced.Fn()));
     REQUIRE(sentPlaced.Last() == CastCommand::Press);
     REQUIRE(placed.settledAt == 100.1);
@@ -282,7 +282,7 @@ TEST_CASE("a stream is held from when it starts, for its sustain, and its end is
     REQUIRE_FALSE(run.released);
 
     CastSeen streaming = Casting();
-    streaming.fireSeen = true;
+    streaming.ownFires = 1;
     REQUIRE_FALSE(AdvancePlayerCast(run, streaming, 100.6, sent.Fn()));
     REQUIRE(run.firedAt == 100.6);
     REQUIRE_FALSE(AdvancePlayerCast(run, streaming, 102.4, sent.Fn()));
@@ -353,7 +353,7 @@ TEST_CASE("a shout holds the control for its words, or taps for one; a power is 
     CastSeen idleVoice = Free();
     REQUIRE_FALSE(AdvancePlayerCast(one, idleVoice, 100.5, sentOne.Fn()));
     CastSeen voiceFired = Free();
-    voiceFired.fireSeen = true;
+    voiceFired.ownFires = 1;
     REQUIRE(Over(AdvancePlayerCast(one, voiceFired, 100.6, sentOne.Fn())) == "shout fired");
     REQUIRE(one.fired);
     REQUIRE(sentOne.Last() == CastCommand::MarkPowerUsed);
@@ -405,7 +405,7 @@ TEST_CASE("released and nothing fired: ended without firing, or never fired", "[
     REQUIRE_FALSE(AdvancePlayerCast(fired, Free(), 100.0, sent.Fn()));
     REQUIRE_FALSE(AdvancePlayerCast(fired, Ready(), 100.5, sent.Fn()));
     CastSeen seen = Charging(5);
-    seen.fireSeen = true;
+    seen.ownFires = 1;
     REQUIRE_FALSE(AdvancePlayerCast(fired, seen, 100.6, sent.Fn()));
     REQUIRE_FALSE(AdvancePlayerCast(fired, Charging(5), 102.5, sent.Fn()));
     REQUIRE(Over(AdvancePlayerCast(fired, Charging(5), 102.6, sent.Fn())) == "spell fired");

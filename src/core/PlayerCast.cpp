@@ -15,6 +15,31 @@ void Begin(CastState &run, CastStep step, double now) noexcept
 
 } // namespace
 
+std::vector<OwnFire> CastOwnFires(bool voice, Hand hand, std::uint32_t form)
+{
+    // The voice's fire says nothing of what went off; the run is the only
+    // voice of the player's in flight.
+    if (voice)
+        return {{GraphTag::SpellFireVoice, std::nullopt}};
+    std::vector<OwnFire> fires;
+    if (Overlap(hand, Hand::Left))
+        fires.push_back({GraphTag::SpellFireLeft, form});
+    if (Overlap(hand, Hand::Right))
+        fires.push_back({GraphTag::SpellFireRight, form});
+    return fires;
+}
+
+GraphTags CastWakes(CastStep step) noexcept
+{
+    return step == CastStep::Lending ? GraphTags{GraphTag::InterruptCast} : GraphTags{};
+}
+
+void Hear(CastSeen &seen, const Heard &heard) noexcept
+{
+    seen.interrupts = heard.Count(GraphTag::InterruptCast);
+    seen.ownFires = heard.ownFires;
+}
+
 const char *ToString(CastStep step) noexcept
 {
     switch (step)
@@ -79,12 +104,14 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
     if (!seen.player)
         return "player vanished";
     const auto late = [&](double window) { return now - run.stepAt >= window; };
+    const bool fireSeen = run.pressed && seen.ownFires > run.firesAtPress;
 
     if (run.step == CastStep::Lending)
     {
         if (!seen.placed && !run.lendAsked)
         {
             run.lendAsked = true;
+            run.interruptsAtLend = seen.interrupts;
             perform(run.voice ? CastCommand::LendVoice : CastCommand::LendHands);
             return nullptr;
         }
@@ -104,7 +131,7 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
         // never heard, the press goes at the lend's deadline, as before.
         if (run.lendAsked && !run.voice)
         {
-            if (seen.equipSettled)
+            if (seen.interrupts > run.interruptsAtLend)
                 run.settledAt = now;
             else if (!late(kLendSeconds))
                 return nullptr;
@@ -147,6 +174,7 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
         run.pressed = true;
         run.pressedAt = now;
         run.usedBefore = run.voice && seen.onUsedList;
+        run.firesAtPress = seen.ownFires;
         perform(CastCommand::Press);
         Begin(run, CastStep::Charging, now);
         return nullptr;
@@ -209,7 +237,7 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
 
     if (run.step == CastStep::Holding)
     {
-        if (seen.fireSeen && run.firedAt < 0.0)
+        if (fireSeen && run.firedAt < 0.0)
             run.firedAt = now;
         if (seen.casterIdle)
         {
@@ -231,7 +259,7 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
         // A power fires on the release with nothing to see but the engine's
         // used-power list taking it.
         const bool powerLanded = run.voice && !run.usedBefore && seen.onUsedList;
-        if (seen.fireSeen || powerLanded)
+        if (fireSeen || powerLanded)
         {
             run.fired = true;
             run.firedAt = now;

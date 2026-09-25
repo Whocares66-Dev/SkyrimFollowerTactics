@@ -3,6 +3,21 @@
 namespace ft
 {
 
+void Hear(StrikeSeen &seen, const Heard &heard) noexcept
+{
+    seen.hitFrames = heard.Count(GraphTag::HitFrame);
+    seen.powerStops = heard.Count(GraphTag::PowerAttackStop);
+    seen.attackStops = heard.Count(GraphTag::AttackStop);
+}
+
+std::string ReadsOf(const StrikeSeen &seen, double now)
+{
+    return StepAt(now) + "holder=" + (seen.holder ? "1" : "0") + " drawn=" + (seen.weaponDrawn ? "1" : "0") +
+           " attacking=" + (seen.attacking ? "1" : "0") + " casting=" + (seen.casting ? "1" : "0") +
+           " facing=" + (seen.facing ? "1" : "0") + " hitFrames=" + std::to_string(seen.hitFrames) +
+           " powerStops=" + std::to_string(seen.powerStops) + " attackStops=" + std::to_string(seen.attackStops);
+}
+
 StrikeState RequestStrikeAt(double now) noexcept
 {
     StrikeState state;

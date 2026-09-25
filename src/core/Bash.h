@@ -13,8 +13,11 @@
 // answer in the same tick, as the follower's own AI would. The test's
 // callback is a script of answers.
 
+#include "GraphEvents.h"
+
 #include <cstdint>
 #include <functional>
+#include <string>
 
 namespace ft
 {
@@ -92,6 +95,15 @@ struct BashSeen
     int blockOuts{0};
     int bashStops{0};
 };
+
+// The counts, from the request's watch on the follower's graph.
+void Hear(BashSeen &seen, const Heard &heard) noexcept;
+
+// A step and what it read, as its log line says it: "step at 123.456:
+// holder=1 drawn=1 blocking=0 attack=none state=0 blockOuts=0
+// bashStops=0". A log with these lines replays without reconstruction
+// (tests/test_replay.cpp).
+[[nodiscard]] std::string ReadsOf(const BashSeen &seen, double now);
 
 // The two actions the step may take, each answered at once.
 enum class BashCommand : std::uint8_t

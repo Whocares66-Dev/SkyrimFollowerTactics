@@ -3,6 +3,23 @@
 namespace ft
 {
 
+void Hear(BashSeen &seen, const Heard &heard) noexcept
+{
+    seen.blockOuts = heard.Count(GraphTag::BlockStartOut);
+    seen.bashStops = heard.Count(GraphTag::BashStop);
+}
+
+std::string ReadsOf(const BashSeen &seen, double now)
+{
+    const char *attack = seen.attack == BashSeen::Attack::None   ? "none"
+                         : seen.attack == BashSeen::Attack::Bash ? "bash"
+                                                                 : "other";
+    return StepAt(now) + "holder=" + (seen.holder ? "1" : "0") + " drawn=" + (seen.weaponDrawn ? "1" : "0") +
+           " blocking=" + (seen.blocking ? "1" : "0") + " attack=" + attack +
+           " state=" + std::to_string(seen.attackState) + " blockOuts=" + std::to_string(seen.blockOuts) +
+           " bashStops=" + std::to_string(seen.bashStops);
+}
+
 BashState RequestBashAt(double now, bool power) noexcept
 {
     BashState state;

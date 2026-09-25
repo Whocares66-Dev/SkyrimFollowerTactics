@@ -37,6 +37,8 @@ add_executable(
     test_evaluator.cpp
     test_eventring.cpp
     test_files.cpp
+    test_graphevents.cpp
+    test_replay.cpp
     test_hitkinds.cpp
     test_hits.cpp
     test_i18n.cpp

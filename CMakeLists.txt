@@ -160,6 +160,7 @@ add_library(
     src/core/Effects.cpp
     src/core/Evaluator.cpp
     src/core/EventRing.cpp
+    src/core/GraphEvents.cpp
     src/core/Files.cpp
     src/core/HitKinds.cpp
     src/core/HitTable.cpp
@@ -301,6 +302,7 @@ if(FT_BUILD_PLUGIN)
             src/game/I18n.cpp
             src/game/Actions.cpp
             src/game/Blows.cpp
+            src/game/Graph.cpp
             src/game/PlayerCast.cpp
             src/game/Tactics.cpp
             src/game/Toggles.cpp

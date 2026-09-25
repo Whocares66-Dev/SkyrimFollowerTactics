@@ -2,6 +2,7 @@
 
 #include "core/PlayerCast.h"
 #include "game/Actions.h"
+#include "game/Graph.h"
 #include "game/Log.h"
 #include "game/Magic.h"
 #include "game/Pins.h"
@@ -59,75 +60,15 @@ struct Run
     float magickaAtRequest = 0.0f;
     int ruleIndex = -1;
     std::string ruleName;
+    // The player's graph from the request: the lent hands' equip, the fire
+    // (core/PlayerCast.h, Hear).
+    ft::GraphWatch watch;
 };
 
 // One at a time: the player has one body. Game thread; the flag is the
 // pacing thread's.
 std::optional<Run> g_run;
 std::atomic<bool> g_inFlight{false};
-
-// The fire events, set by the animation graph's sink and read by the
-// tick. Which spell left the hand is read in the sink, as a follower's is
-// (game/Packages.cpp): the caster's currentSpell is already null by then,
-// and the hand's selected spell is what fired.
-std::atomic<std::uint32_t> g_firedLeft{0};
-std::atomic<std::uint32_t> g_firedRight{0};
-std::atomic<bool> g_firedVoice{false};
-// The lent hands' equip can no longer cut a charge short: its InterruptCast,
-// heard since Lend cleared this before equipping (core/PlayerCast.h,
-// equipSettled).
-std::atomic<bool> g_equipSettled{false};
-
-class PlayerFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
-{
-  public:
-    RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent *ev,
-                                          RE::BSTEventSource<RE::BSAnimationGraphEvent> *) override
-    {
-        if (!ev || !ev->holder || ev->tag.empty() || !ev->holder->IsPlayerRef())
-            return RE::BSEventNotifyControl::kContinue;
-        const char *tag = ev->tag.c_str();
-        const bool right = _stricmp(tag, "MRh_SpellFire_Event") == 0;
-        const bool left = _stricmp(tag, "MLh_SpellFire_Event") == 0;
-        if (_stricmp(tag, "Voice_SpellFire_Event") == 0)
-        {
-            g_firedVoice.store(true, std::memory_order_relaxed);
-            return RE::BSEventNotifyControl::kContinue;
-        }
-        if (_stricmp(tag, "InterruptCast") == 0)
-        {
-            g_equipSettled.store(true, std::memory_order_relaxed);
-            // The step it lets go of, taken on the game thread as soon as
-            // the task queue drains rather than at the next fast tick: one
-            // task for the event, which queues nothing further (CLAUDE.md,
-            // "A task must never re-arm itself"). Only while the run still
-            // waits on it; the tick stays the backstop.
-            if (g_inFlight.load(std::memory_order_relaxed))
-                if (auto *tasks = SKSE::GetTaskInterface())
-                    tasks->AddTask([] {
-                        if (g_run && g_run->state.step == ft::CastStep::Lending)
-                            StepInFlightNow();
-                    });
-        }
-        // Everything the graph says while a cast of ours is in flight, while
-        // the cast's other steps are made to follow events rather than the
-        // fast tick (the wip-events branch).
-        if (g_inFlight.load(std::memory_order_relaxed))
-            log::player.debug("anim: {}", tag);
-        if (!right && !left)
-            return RE::BSEventNotifyControl::kContinue;
-        auto *actor = const_cast<RE::TESObjectREFR *>(ev->holder)->As<RE::Actor>();
-        const auto *spell =
-            actor ? actor->GetActorRuntimeData()
-                        .selectedSpells[right ? RE::Actor::SlotTypes::kRightHand : RE::Actor::SlotTypes::kLeftHand]
-                  : nullptr;
-        const std::uint32_t id = spell ? spell->GetFormID() : 0;
-        (right ? g_firedRight : g_firedLeft).store(id, std::memory_order_relaxed);
-        log::player.debug("anim: the {} hand fired {:08X} \"{}\"", right ? "right" : "left", id, log::NameOf(spell));
-        return RE::BSEventNotifyControl::kContinue;
-    }
-};
-PlayerFireSink g_fireSink;
 
 // --- the handler ------------------------------------------------------------
 
@@ -347,7 +288,6 @@ void Lend(RE::Actor *player, Run &run)
                       : run.hand == ft::Hand::Left ? "left"
                                                    : "right",
                       heldText(0), heldText(1));
-    g_equipSettled.store(false, std::memory_order_relaxed);
     // A scroll goes into the hand as the item it is, one copy, now.
     if (spell->Is(RE::FormType::Scroll))
     {
@@ -625,23 +565,6 @@ void Finish(Run &run, RE::Actor *player, const char *reason, double now)
     Report(run, player, now);
 }
 
-// Whether the fire event for this run has come.
-bool FireSeen(const Run &run)
-{
-    if (run.state.voice)
-        return g_firedVoice.load(std::memory_order_relaxed);
-    const std::uint32_t left = g_firedLeft.load(std::memory_order_relaxed);
-    const std::uint32_t right = g_firedRight.load(std::memory_order_relaxed);
-    return (Takes(run.hand, true) && left == run.form) || (Takes(run.hand, false) && right == run.form);
-}
-
-void ClearFireFlags()
-{
-    g_firedLeft.store(0, std::memory_order_relaxed);
-    g_firedRight.store(0, std::memory_order_relaxed);
-    g_firedVoice.store(false, std::memory_order_relaxed);
-}
-
 // One step, where the run can take it; the reason it is over, or null while
 // it goes on. The step is core's (AdvancePlayerCast); this reads the player
 // into what it asks about and performs the commands it sends.
@@ -657,7 +580,7 @@ const char *Advance(Run &run, RE::Actor *player, double now)
     {
         const auto &runtime = player->GetActorRuntimeData();
         seen.placed = run.state.voice ? runtime.selectedPower == run.voiceForm : SpellPlaced(player, run);
-        seen.equipSettled = g_equipSettled.load(std::memory_order_relaxed);
+        ft::Hear(seen, run.watch.HeardSoFar());
         const auto weapon = state->GetWeaponState();
         seen.weapon = weapon == RE::WEAPON_STATE::kDrawn      ? ft::CastSeen::Weapon::Drawn
                       : weapon == RE::WEAPON_STATE::kSheathed ? ft::CastSeen::Weapon::Sheathed
@@ -681,7 +604,6 @@ const char *Advance(Run &run, RE::Actor *player, double now)
             seen.refusal = Refused(caster, run.spell);
         seen.wordsCharged = run.state.shout ? WordsCharged(player) : -1;
         seen.onUsedList = run.state.voice && OnUsedList(player, run.spell);
-        seen.fireSeen = FireSeen(run);
     }
     const auto perform = [&](ft::CastCommand command) {
         switch (command)
@@ -703,7 +625,6 @@ const char *Advance(Run &run, RE::Actor *player, double now)
             player->DrawWeaponMagicHands(true);
             break;
         case ft::CastCommand::Press:
-            ClearFireFlags();
             PressFor(run);
             log::player.debug("{}: pressed for {} ({} hand{})", Describe(player),
                               log::NameOf(run.voiceForm ? run.voiceForm : run.spell), HandName(run),
@@ -735,9 +656,8 @@ PlayerCastRequest Start(RE::Actor *player, Run run)
     run.state.requestedAt = TacticsSeconds();
     run.state.stepAt = run.state.requestedAt;
     run.magickaAtRequest = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagicka);
-    // The library's AddAnimationGraphEventSink looks for the sink first, so
-    // asking on every request adds it once.
-    player->AddAnimationGraphEventSink(&g_fireSink);
+    run.watch =
+        WatchGraph(player, ft::CastWakes(run.state.step), ft::CastOwnFires(run.state.voice, run.hand, run.form));
     g_run = std::move(run);
     g_inFlight.store(true, std::memory_order_relaxed);
     log::player.debug("{}: {} requested from the {} hand", Describe(player),
@@ -864,7 +784,9 @@ void TickPlayerCasts(double now)
         Finish(*g_run, player, over, now);
         g_run.reset();
         g_inFlight.store(false, std::memory_order_relaxed);
+        return;
     }
+    g_run->watch.SetWakes(ft::CastWakes(g_run->state.step));
 }
 
 void EndAllPlayerCasts(const char *why)

@@ -1,7 +1,9 @@
 #include "game/Blows.h"
 
 #include "core/Bash.h"
+#include "core/Blows.h"
 #include "core/Strike.h"
+#include "game/Graph.h"
 #include "game/Log.h"
 #include "game/Sensors.h"
 #include "game/Tactics.h"
@@ -10,11 +12,8 @@
 #include "RE/C/CombatAnimation.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cmath>
-#include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace ft::game
@@ -40,6 +39,9 @@ struct Run
     // The event of the attack data current when the bash state was first
     // seen: bashStart or bashPowerStart.
     std::string attackEvent;
+    // Their graph from the request: what the steps count, and what steps
+    // them.
+    ft::GraphWatch watch;
 };
 
 // A power attack's request (core/Strike.h).
@@ -54,98 +56,12 @@ struct StrikeRun
     float headingOffAtRequest = -1.0f;
     int ruleIndex = -1;
     std::string ruleName;
+    ft::GraphWatch watch; // as a bash's
 };
 
-// Game thread. The count, of both kinds, is the graph sink's, which only
-// asks whether any is in flight.
+// Game thread.
 std::vector<Run> g_runs;
 std::vector<StrikeRun> g_strikes;
-std::atomic<int> g_inFlight{0};
-
-void CountInFlight()
-{
-    g_inFlight.store(static_cast<int>(g_runs.size() + g_strikes.size()), std::memory_order_relaxed);
-}
-
-// Each actor's events the steps count (core/Bash.h BashSeen, core/Strike.h
-// StrikeSeen): written by the graph's sink on its thread, read by the step.
-struct Counted
-{
-    int blockOuts = 0;
-    int bashStops = 0;
-    int hitFrames = 0;
-    int powerStops = 0;
-    int attackStops = 0;
-};
-std::mutex g_countedMutex;
-std::unordered_map<std::uint32_t, Counted> g_counted;
-
-Counted CountedOf(std::uint32_t id)
-{
-    std::scoped_lock lock(g_countedMutex);
-    const auto it = g_counted.find(id);
-    return it == g_counted.end() ? Counted{} : it->second;
-}
-
-// The events a blow's steps wait on, read from the follower's graph in play
-// (2026-09-24): their own swing over (attackStop, PowerAttackStop), the
-// block up and ready (blockStartOut) or down (blockStop), the bash over
-// (bashStop, bashExit), a power attack's swing (PowerAttack_Start_end,
-// preHitFrame, weaponSwing) and its hit (HitFrame), and their own shout or
-// spell over (shoutStop, CastStop).
-bool StepsOn(const char *tag)
-{
-    for (const char *wanted :
-         {"attackStop", "PowerAttackStop", "blockStartOut", "blockStop", "bashStop", "bashExit",
-          "PowerAttack_Start_end", "preHitFrame", "weaponSwing", "HitFrame", "shoutStop", "CastStop"})
-        if (_stricmp(tag, wanted) == 0)
-            return true;
-    return false;
-}
-
-// The counted events, by their tag; null for one not counted.
-int *CountOf(Counted &counted, const char *tag)
-{
-    if (_stricmp(tag, "blockStartOut") == 0)
-        return &counted.blockOuts;
-    if (_stricmp(tag, "bashStop") == 0)
-        return &counted.bashStops;
-    if (_stricmp(tag, "HitFrame") == 0)
-        return &counted.hitFrames;
-    if (_stricmp(tag, "PowerAttackStop") == 0)
-        return &counted.powerStops;
-    if (_stricmp(tag, "attackStop") == 0)
-        return &counted.attackStops;
-    return nullptr;
-}
-
-// The follower's animation graph, while a blow is in flight: a step queued
-// for each event one waits on, on the game thread as soon as the task queue
-// drains -- one task per event, which queues nothing further (CLAUDE.md, "A
-// task must never re-arm itself"). A debug build logs every event, while the
-// rest of the branch's steps are made to follow them.
-class BashGraphSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
-{
-  public:
-    RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent *ev,
-                                          RE::BSTEventSource<RE::BSAnimationGraphEvent> *) override
-    {
-        if (!ev || !ev->holder || ev->tag.empty() || g_inFlight.load(std::memory_order_relaxed) == 0)
-            return RE::BSEventNotifyControl::kContinue;
-        const char *tag = ev->tag.c_str();
-        log::blows.debug("anim {:08X}: {}", ev->holder->GetFormID(), tag);
-        {
-            std::scoped_lock lock(g_countedMutex);
-            if (int *count = CountOf(g_counted[ev->holder->GetFormID()], tag))
-                ++*count;
-        }
-        if (StepsOn(tag))
-            if (auto *tasks = SKSE::GetTaskInterface())
-                tasks->AddTask([] { StepInFlightNow(); });
-        return RE::BSEventNotifyControl::kContinue;
-    }
-};
-BashGraphSink g_graphSink;
 
 const char *EventOf(const Run &run) noexcept
 {
@@ -259,16 +175,20 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
                                                                : ft::BashSeen::Attack::Other;
         seen.attackState = static_cast<int>(attack);
     }
-    const Counted counted = CountedOf(run.id);
-    seen.blockOuts = counted.blockOuts;
-    seen.bashStops = counted.bashStops;
+    ft::Hear(seen, run.watch.HeardSoFar());
+    log::blows.debug("{}: {} {}", Describe(actor), KindOf(run), ft::ReadsOf(seen, now));
     const bool sawBashBefore = run.state.sawBash;
     const auto perform = [&](ft::BashCommand command) {
         if (command == ft::BashCommand::RaiseBlock)
+        {
             // The combat AI's own way up, from its Block behaviour: the left
             // attack action, which the idle tree resolves into a block for
             // what is in the hands.
-            return RE::CombatAnimation::Execute(actor, RE::CombatAnimation::ANIM::kActionLeftAttack);
+            const bool raised = RE::CombatAnimation::Execute(actor, RE::CombatAnimation::ANIM::kActionLeftAttack);
+            log::blows.debug("{}: the left attack action for the block {} {:.2f} s after the request", Describe(actor),
+                             raised ? "taken" : "turned away", now - run.state.requestedAt);
+            return raised;
+        }
         // A bash is the right attack action from the block, which the tree
         // resolves into bashStart; the action is what sets the bash attack
         // state. A power bash is the same action carrying bashPowerStart.
@@ -279,11 +199,10 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
             taken = RE::CombatAnimation::Execute(actor, target.get(), RE::CombatAnimation::ANIM::kActionRightAttack);
         else
             taken = RE::CombatAnimation::Execute(actor, RE::CombatAnimation::ANIM::kActionRightAttack);
-        if (taken)
-            log::blows.debug("{}: {} taken {:.2f} s after the request", Describe(actor),
-                             run.state.power ? "the right attack action carrying bashPowerStart"
-                                             : "the right attack action from the block",
-                             now - run.state.requestedAt);
+        log::blows.debug("{}: {} {} {:.2f} s after the request", Describe(actor),
+                         run.state.power ? "the right attack action carrying bashPowerStart"
+                                         : "the right attack action from the block",
+                         taken ? "taken" : "turned away", now - run.state.requestedAt);
         return taken;
     };
     const char *over = ft::AdvanceBash(run.state, seen, now, perform);
@@ -372,10 +291,8 @@ const char *AdvanceStrikeRun(StrikeRun &run, RE::Actor *actor, double now)
         const auto target = run.target.get();
         seen.facing = OffStrike(actor, target.get(), attack) <= strike;
     }
-    const Counted counted = CountedOf(run.id);
-    seen.hitFrames = counted.hitFrames;
-    seen.powerStops = counted.powerStops;
-    seen.attackStops = counted.attackStops;
+    ft::Hear(seen, run.watch.HeardSoFar());
+    log::blows.debug("{}: power attack {}", Describe(actor), ft::ReadsOf(seen, now));
     const auto perform = [&] {
         const bool taken = PerformRightAttackWith(actor, run.event.c_str());
         log::blows.debug("{}: the right attack action carrying {} {} {:.2f} s after the request", Describe(actor),
@@ -431,12 +348,9 @@ BlowRequest RequestBash(RE::Actor *actor, std::uint32_t targetId, bool power, in
     run.ruleName = ruleName;
     const double now = TacticsSeconds();
     run.state = ft::RequestBashAt(now, power);
-    // What steps the request: added where it is missing, since the graph is
-    // rebuilt on a cell change and a 3D reload.
-    actor->AddAnimationGraphEventSink(&g_graphSink);
+    run.watch = WatchGraph(actor, ft::kBlowWakes);
     g_runs.push_back(std::move(run));
     log::blows.debug("{}: {} requested", Describe(actor), power ? "power bash" : "bash");
-    CountInFlight();
     // The first step now rather than on the next event: a follower who is
     // free and already blocking bashes on this frame.
     TickBlows(now);
@@ -463,10 +377,9 @@ BlowRequest RequestStrike(RE::Actor *actor, std::uint32_t targetId, const char *
     run.ruleName = ruleName;
     const double now = TacticsSeconds();
     run.state = ft::RequestStrikeAt(now);
-    actor->AddAnimationGraphEventSink(&g_graphSink);
+    run.watch = WatchGraph(actor, ft::kBlowWakes);
     g_strikes.push_back(std::move(run));
     log::blows.debug("{}: power attack {} requested", Describe(actor), event);
-    CountInFlight();
     // The first step now: a follower who is free and facing swings on this
     // frame.
     TickBlows(now);
@@ -486,7 +399,6 @@ void TickBlows(double now)
 {
     TickBashes(now);
     TickStrikes(now);
-    CountInFlight();
 }
 
 void EndAllBlows(const char *why)
@@ -504,14 +416,12 @@ void EndAllBlows(const char *why)
     }
     g_runs.clear();
     g_strikes.clear();
-    CountInFlight();
 }
 
 void ResetBlows()
 {
     g_runs.clear();
     g_strikes.clear();
-    CountInFlight();
 }
 
 } // namespace ft::game
