@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,9 @@ struct PerkTreeView
     {
         return key;
     }
+    // The actor value whose tree it is; none for a tree Custom Skills
+    // Framework adds, which no skill of the engine's levels.
+    std::optional<int> skill;
     std::string name; // "One-Handed"
     // The skill's level as a requirement reads it -- without fortify
     // effects: the base for the player, the menu's own measure; the base

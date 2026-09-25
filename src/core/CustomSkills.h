@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -72,6 +73,18 @@ struct TreeNodePlace
 // Sky Above at 1.68 left of Deep Breath at -1.68; 2026-09-15); then as given.
 // A node on a cycle, which no tree should have, comes after the rest.
 [[nodiscard]] std::vector<std::size_t> TreeOrder(const std::vector<TreeNodePlace> &nodes);
+
+// A tree's nodes as they are kept: in the tree's order (TreeOrder), the
+// ones `keep` answers for -- a node whose perk is in the load order -- each
+// with its place in `nodes` and its links to the kept ones, as indices into
+// the result. A link to a node left out goes with it.
+struct KeptNode
+{
+    std::size_t source{0};
+    std::vector<std::size_t> children;
+};
+[[nodiscard]] std::vector<KeptNode> KeptTree(const std::vector<TreeNodePlace> &nodes,
+                                             const std::function<bool(std::size_t)> &keep);
 
 // How far a rank chain is walked. A perk names the first rank and the rest
 // chain from it; a chain longer than this is not a rank chain, and one that

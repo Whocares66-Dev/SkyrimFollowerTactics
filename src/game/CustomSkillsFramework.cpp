@@ -35,21 +35,23 @@ CustomSkillTree TreeOf(const CustomSkill &skill, const std::string &file)
     tree.name = Translated(skill.name.empty() ? skill.id : skill.name);
     if (auto *form = skill.level ? Resolve(*skill.level) : nullptr)
         tree.level = form->As<RE::TESGlobal>();
-    for (const std::size_t i : TreeOrder(PlacesOf(skill)))
+    // Each node's perk, or none where the load order has none: such a node
+    // is left out, and the links to it with it (KeptTree).
+    std::vector<RE::BGSPerk *> perks;
+    for (const CustomSkillNode &node : skill.nodes)
     {
-        const CustomSkillNode &node = skill.nodes[i];
         auto *form = node.perk ? Resolve(*node.perk) : nullptr;
-        auto *perk = form ? form->As<RE::BGSPerk>() : nullptr;
-        if (!perk)
-        {
+        perks.push_back(form ? form->As<RE::BGSPerk>() : nullptr);
+        if (!perks.back())
             log::customskills.debug("{}: {} node {} names no perk in the load order", file, tree.name, node.id);
-            continue;
-        }
+    }
+    for (const KeptNode &kept : KeptTree(PlacesOf(skill), [&perks](std::size_t i) { return perks[i] != nullptr; }))
+    {
+        const CustomSkillNode &node = skill.nodes[kept.source];
         // A node names the first rank; the rest chain through nextPerk,
         // walked by the same core function the vanilla trees walk with.
-        const std::vector<RE::BGSPerk *> chain = ft::RankChain(perk, [](RE::BGSPerk *rank) { return rank->nextPerk; });
-        for (std::size_t r = 0; r < chain.size(); ++r)
-            tree.perks.push_back({chain[r], static_cast<int>(r) + 1, static_cast<int>(chain.size())});
+        tree.nodes.push_back({ft::RankChain(perks[kept.source], [](RE::BGSPerk *rank) { return rank->nextPerk; }),
+                              node.x, node.y, kept.children});
     }
     return tree;
 }
@@ -66,7 +68,7 @@ std::vector<CustomSkillTree> Load()
         [](const std::filesystem::path &file) { return ft::ReadText(file); },
         [](const CustomSkill &skill, const std::string &label) {
             CustomSkillTree tree = TreeOf(skill, label);
-            log::customskills.info("{}: {}, {} perks", label, tree.name, tree.perks.size());
+            log::customskills.info("{}: {}, {} perks", label, tree.name, tree.nodes.size());
             return tree;
         },
         [](const std::string &label, std::string_view skill, std::string_view why) {

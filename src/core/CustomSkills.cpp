@@ -160,4 +160,23 @@ std::vector<std::size_t> TreeOrder(const std::vector<TreeNodePlace> &nodes)
     return order;
 }
 
+std::vector<KeptNode> KeptTree(const std::vector<TreeNodePlace> &nodes, const std::function<bool(std::size_t)> &keep)
+{
+    constexpr std::size_t kLeftOut = static_cast<std::size_t>(-1);
+    std::vector<std::size_t> kept(nodes.size(), kLeftOut);
+    std::vector<KeptNode> out;
+    for (const std::size_t i : TreeOrder(nodes))
+    {
+        if (!keep(i))
+            continue;
+        kept[i] = out.size();
+        out.push_back({i, {}});
+    }
+    for (KeptNode &node : out)
+        for (const std::size_t child : nodes[node.source].children)
+            if (child < nodes.size() && kept[child] != kLeftOut)
+                node.children.push_back(kept[child]);
+    return out;
+}
+
 } // namespace ft

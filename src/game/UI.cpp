@@ -6440,8 +6440,7 @@ void DrawSkills(const CharacterView &view)
         // levels has <<, -, + and >> about the level (Progression's
         // ControlsFor), each greyed with why when it cannot act; the
         // player, and a follower it does not level, the level alone.
-        const auto controls =
-            view.player ? std::nullopt : fp::game::ControlsFor(view.id, static_cast<int>(tree->key) - 1);
+        const auto controls = view.player || !tree->skill ? std::nullopt : fp::game::ControlsFor(view.id, *tree->skill);
         const float lineX = Im::GetCursorPosX();
         const float lineWidth = Im::GetContentRegionAvail().x;
         const float button = Im::GetFrameHeight();

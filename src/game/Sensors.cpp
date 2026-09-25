@@ -2625,14 +2625,17 @@ std::vector<SheetRow> OwnedPerks(RE::Actor *actor, RE::ActorValue skill)
 std::vector<SheetRow> OwnedPerks(RE::Actor *actor, const CustomSkillTree &tree)
 {
     std::vector<SheetRow> rows;
-    for (const CustomSkillPerk &entry : tree.perks)
-    {
-        if (!TopRankHeld(actor, entry.perk))
-            continue;
-        RE::BSString text;
-        entry.perk->GetDescription(text, entry.perk);
-        rows.push_back(PerkRow(actor, entry.perk, entry.rank, entry.ranks, text.c_str() ? text.c_str() : ""));
-    }
+    for (const CustomTreeNode &node : tree.nodes)
+        for (std::size_t r = 0; r < node.ranks.size(); ++r)
+        {
+            RE::BGSPerk *perk = node.ranks[r];
+            if (!TopRankHeld(actor, perk))
+                continue;
+            RE::BSString text;
+            perk->GetDescription(text, perk);
+            rows.push_back(PerkRow(actor, perk, static_cast<int>(r) + 1, static_cast<int>(node.ranks.size()),
+                                   text.c_str() ? text.c_str() : ""));
+        }
     return rows;
 }
 
@@ -4279,6 +4282,83 @@ const TreeShape &ShapeOf(RE::ActorValue skill)
     return cache.emplace(skill, std::move(shape)).first->second;
 }
 
+// A Custom Skills Framework tree's shape, kept as a skill's is. A node's
+// requirements are not read: the framework keeps a tree's level in a
+// global, and no installed tree has one to measure what its perks ask of
+// it. With none, the tree is drawn at the file's own places, as the
+// framework's menu draws it (core/PerkTree.h).
+const TreeShape &ShapeOf(const CustomSkillTree &tree)
+{
+    static std::unordered_map<const CustomSkillTree *, TreeShape> cache;
+    if (const auto it = cache.find(&tree); it != cache.end())
+        return it->second;
+
+    TreeShape shape;
+    for (const CustomTreeNode &node : tree.nodes)
+    {
+        TreeShape::Node out;
+        out.name = PerkName(node.ranks.front());
+        out.x = node.x;
+        out.y = node.y;
+        out.ranks = node.ranks;
+        for (RE::BGSPerk *rank : node.ranks)
+        {
+            RE::BSString text;
+            rank->GetDescription(text, rank);
+            out.descriptions.emplace_back(text.c_str() ? text.c_str() : "");
+        }
+        out.requirements.assign(node.ranks.size(), 0.0f);
+        out.children = node.children;
+        shape.nodes.push_back(std::move(out));
+    }
+    return cache.emplace(&tree, std::move(shape)).first->second;
+}
+
+// A custom tree's key, the skill row's and the tree page's: clear of every
+// skill's, which is its actor value plus one.
+std::uint32_t CustomTreeKey(std::size_t index)
+{
+    return 0x10000u + static_cast<std::uint32_t>(index);
+}
+
+// A tree's nodes for an actor: its shape, with what they hold of each node
+// and what their own record gives them.
+std::vector<ft::PerkTreeNode> NodesFor(RE::Actor *actor, const TreeShape &shape)
+{
+    std::unordered_set<const RE::BGSPerk *> record;
+    if (const auto *npc = actor->GetActorBase(); npc && npc->perks)
+        for (std::uint32_t k = 0; k < npc->perkCount; ++k)
+            record.insert(npc->perks[k].perk);
+    std::vector<ft::PerkTreeNode> nodes;
+    for (const TreeShape::Node &node : shape.nodes)
+    {
+        ft::PerkTreeNode n;
+        n.name = node.name.empty() ? "?" : node.name;
+        n.x = node.x;
+        n.y = node.y;
+        n.ranks = static_cast<int>(node.ranks.size());
+        if (!node.ranks.empty())
+            n.firstForm = node.ranks.front()->GetFormID();
+        if (!node.requirements.empty())
+            n.firstRequirement = node.requirements.front();
+        for (RE::BGSPerk *rank : node.ranks)
+        {
+            if (actor->HasPerk(rank))
+            {
+                ++n.held;
+                n.form = rank->GetFormID(); // the top rank held, as the perk rows name it
+            }
+            n.theirs = n.theirs || record.contains(rank);
+        }
+        const std::size_t shown = static_cast<std::size_t>((std::min)(n.held, n.ranks - 1));
+        n.requirement = node.requirements[shown];
+        n.description = node.descriptions[shown];
+        n.children = node.children;
+        nodes.push_back(std::move(n));
+    }
+    return nodes;
+}
+
 } // namespace
 
 std::vector<ft::PerkTreeView> BuildPerkTrees(RE::Actor *actor)
@@ -4299,42 +4379,33 @@ std::vector<ft::PerkTreeView> BuildPerkTrees(RE::Actor *actor)
             continue;
         ft::PerkTreeView tree;
         tree.key = static_cast<std::uint32_t>(i) + 1;
+        tree.skill = i;
         const char *name = info->GetFullName();
         tree.name = name && *name ? name : (info->enumName ? info->enumName : "?");
         tree.level = actor->IsPlayerRef() ? owner->GetBaseActorValue(value) : owner->GetPermanentActorValue(value);
         tree.current = owner->GetActorValue(value);
         tree.value = Fmt("%.0f", tree.level);
-        // Their own record's perks, held or not: what was chosen for them.
-        std::unordered_set<const RE::BGSPerk *> record;
-        if (const auto *npc = actor->GetActorBase(); npc && npc->perks)
-            for (std::uint32_t k = 0; k < npc->perkCount; ++k)
-                record.insert(npc->perks[k].perk);
-        for (const TreeShape::Node &node : shape.nodes)
+        tree.nodes = NodesFor(actor, shape);
+        out.push_back(std::move(tree));
+    }
+    // Custom Skills Framework's trees, after the game's own. The level where
+    // a tree keeps one, for the player alone, whose level the framework's
+    // globals are.
+    const std::vector<CustomSkillTree> &custom = CustomSkillTrees();
+    for (std::size_t i = 0; i < custom.size(); ++i)
+    {
+        const TreeShape &shape = ShapeOf(custom[i]);
+        if (shape.nodes.empty())
+            continue;
+        ft::PerkTreeView tree;
+        tree.key = CustomTreeKey(i);
+        tree.name = custom[i].name;
+        if (custom[i].level && actor->IsPlayerRef())
         {
-            ft::PerkTreeNode n;
-            n.name = node.name.empty() ? "?" : node.name;
-            n.x = node.x;
-            n.y = node.y;
-            n.ranks = static_cast<int>(node.ranks.size());
-            if (!node.ranks.empty())
-                n.firstForm = node.ranks.front()->GetFormID();
-            if (!node.requirements.empty())
-                n.firstRequirement = node.requirements.front();
-            for (RE::BGSPerk *rank : node.ranks)
-            {
-                if (actor->HasPerk(rank))
-                {
-                    ++n.held;
-                    n.form = rank->GetFormID(); // the top rank held, as the perk rows name it
-                }
-                n.theirs = n.theirs || record.contains(rank);
-            }
-            const std::size_t shown = static_cast<std::size_t>((std::min)(n.held, n.ranks - 1));
-            n.requirement = node.requirements[shown];
-            n.description = node.descriptions[shown];
-            n.children = node.children;
-            tree.nodes.push_back(std::move(n));
+            tree.level = tree.current = custom[i].level->value;
+            tree.value = Fmt("%.0f", tree.level);
         }
+        tree.nodes = NodesFor(actor, shape);
         out.push_back(std::move(tree));
     }
     return out;
@@ -4471,11 +4542,13 @@ std::vector<PerkPage> BuildPerkPages(RE::Actor *actor)
         }
     }
     for (const CustomSkillTree &tree : CustomSkillTrees())
-    {
-        for (const CustomSkillPerk &entry : tree.perks)
-            if (TopRankHeld(actor, entry.perk))
-                page(entry.perk, entry.rank, entry.ranks, tree.name);
-    }
+        for (const CustomTreeNode &node : tree.nodes)
+            for (std::size_t r = 0; r < node.ranks.size(); ++r)
+            {
+                RE::BGSPerk *perk = node.ranks[r];
+                if (actor->HasPerk(perk) ? TopRankHeld(actor, perk) : r == 0)
+                    page(perk, static_cast<int>(r) + 1, static_cast<int>(node.ranks.size()), tree.name);
+            }
     for (const HeldPerk &held : PerksOutsideTrees(actor))
         page(held.perk, held.rank, 1, "");
     return out;
@@ -4707,11 +4780,15 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         // tree with nothing to show says nothing, as a vanilla skill at zero.
         if (category.code == 0)
         {
-            for (const CustomSkillTree &tree : CustomSkillTrees())
+            const std::vector<CustomSkillTree> &custom = CustomSkillTrees();
+            for (std::size_t i = 0; i < custom.size(); ++i)
             {
+                const CustomSkillTree &tree = custom[i];
                 const bool level = tree.level && actor->IsPlayerRef();
                 SheetRow row = Row(tree.name, level ? Fmt("%.0f", tree.level->value) : std::string{});
                 row.detail = OwnedPerks(actor, tree);
+                if (!tree.nodes.empty())
+                    row.tree = CustomTreeKey(i); // BuildPerkTrees' key
                 if (!row.detail.empty() || (level && tree.level->value > 0.0f))
                     s.rows.push_back(std::move(row));
             }
@@ -4731,8 +4808,8 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             for (const TreePerk &entry : TreePerks(f.value))
                 inTrees.insert(entry.perk);
         for (const CustomSkillTree &tree : CustomSkillTrees())
-            for (const CustomSkillPerk &entry : tree.perks)
-                inTrees.insert(entry.perk);
+            for (const CustomTreeNode &node : tree.nodes)
+                inTrees.insert(node.ranks.begin(), node.ranks.end());
         SheetSection s{Tr("Other Perks"), {}, {}};
         for (const HeldPerk &held : PerksOutsideTrees(actor))
         {

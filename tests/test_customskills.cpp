@@ -126,6 +126,26 @@ TEST_CASE("a perk with two parents comes after the deeper one", "[customskills]"
     REQUIRE(TreeOrder(nodes) == std::vector<std::size_t>{0, 1, 2, 3});
 }
 
+TEST_CASE("a node whose perk is not in the load order is left out, and the links to it with it", "[customskills]")
+{
+    // Root -> A -> B, and Root -> C; A's perk is missing.
+    std::vector<TreeNodePlace> nodes(4);
+    nodes[0].children = {1, 3}; // Root
+    nodes[1].children = {2};    // A
+    nodes[3].x = 1.0;           // C
+    const auto kept = KeptTree(nodes, [](std::size_t i) { return i != 1; });
+    REQUIRE(kept.size() == 3);
+    // In the tree's order: Root, then C, one link down, then B, two.
+    CHECK(kept[0].source == 0);
+    CHECK(kept[1].source == 3);
+    CHECK(kept[2].source == 2);
+    // Root keeps its link to C, by C's place among the kept; A's to B went
+    // with A.
+    CHECK(kept[0].children == std::vector<std::size_t>{1});
+    CHECK(kept[1].children.empty());
+    CHECK(kept[2].children.empty());
+}
+
 TEST_CASE("a tree with a loop still lists every node once", "[customskills]")
 {
     // Root -> A, and A <-> B: no tree should, and a bad file must not hang.
