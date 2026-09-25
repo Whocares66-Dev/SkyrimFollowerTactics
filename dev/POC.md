@@ -50,7 +50,7 @@ A few things the tests established that were not obvious from the design:
 
 ## Build
 
-Tactics' build, and its checks (CLAUDE.md, "After every edit"): Progression's core is `fp_core`, its tests `fp_tests`, both run by the `core` presets' tests; the formatter and both tidy targets cover `src/progression`.
+Tactics' build, and its checks (CLAUDE.md, "Before every commit"): Progression's core is `fp_core`, its tests `fp_tests`, both run by the `core` presets' tests; the formatter and both tidy targets cover `src/progression`.
 
 ```powershell
 .\tools\build.ps1 -Preset core -Test     # both cores and their tests: seconds

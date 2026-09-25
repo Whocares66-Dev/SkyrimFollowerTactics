@@ -59,7 +59,7 @@ bare `cmake --preset` outside that environment still fails; the script is the su
 entry point.)
 
 ```powershell
-.\tools\build.ps1 -Preset core  -Test      # rule engine + tests. Seconds. Use constantly.
+.\tools\build.ps1 -Preset core  -Test      # rule engine + tests. Seconds.
 .\tools\build.ps1 -Preset debug            # SKSE plugin. First run builds CommonLibSSE-NG.
 .\tools\build.ps1 -Preset core-asan -Test  # same core tests, under AddressSanitizer
 .\tools\build.ps1 -Preset core-cov -Coverage  # same, under clang-cl; which lines the tests reach
@@ -90,10 +90,9 @@ For a version already set in CMake, run `.\tools\release.ps1 none`; the script p
 
 Last verified green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 18 (`core-cov`), 2026-09-09. Counts -- how many cases, what percentage covered -- are deliberately not kept here: they move with every test added, and a number that goes stale in a week teaches you to distrust the page. Run the presets and read the numbers off them.
 
-## After every edit
+## Before every commit
 
-Run these. They are fast, and each one has already caught something real in this
-project:
+Run these before each commit, not after every edit: while a change is in progress, run only what tells you whether it works. Each one has already caught something real in this project:
 
 ```powershell
 .\tools\build.ps1 -Preset core -Test        # 1. tests
@@ -113,7 +112,7 @@ pass is ~99 s, one touched file ~6.6 s, nothing changed ~3.6 s. Delete
 measurements behind that: the per-file cost is the checks walking CommonLibSSE's
 inlined header bodies, and no filter avoids it.
 
-Before anything is called done, all four must be green, plus both of these:
+Before a commit, and before anything is called done, all four must be green, plus both of these:
 
 ```powershell
 .\tools\build.ps1 -Preset core-asan -Test   # AddressSanitizer
@@ -148,6 +147,12 @@ flags that are easy to get wrong:
   know is messy, check it actually parsed.
 
 Until 2026-09-09 `tidy` reached across presets instead, pointing `-p` at `build/debug` whenever that directory existed. That test is answered at CONFIGURE time, so it went stale in exactly the tree that most needs it -- a fresh clone, or a new worktree -- and clang-tidy then parsed `src/game` with guessed flags and buried the real findings under `no type named 'string_view' in namespace 'std'` and `inline variables are a C++17 extension` -- errors that look like a catastrophe in our own headers and mean nothing at all. It is the `.pch` blind spot wearing the opposite mask, a catastrophic-looking run rather than a clean-looking one, and it is answered the same way: **check that it actually parsed.**
+
+## Commits and merging
+
+Work on a feature branch, never master, and commit as you go, one coherent change per commit.
+
+A branch lands on master as logical commits, one per feature or fix it carries: a later fix to a feature, an attempt the branch replaced and a docs follow-up are folded into the commit they belong to, and what the branch did separately stays separate. Never one squash of the whole branch, and never every work-in-progress commit as it stood. Before master moves, check that the rebuilt history ends on the branch's own tree (`git diff <branch> <rebuilt>` is empty). Rewriting a master already pushed is a force push, with `--force-with-lease`.
 
 ## Toolchain gotchas already hit
 
