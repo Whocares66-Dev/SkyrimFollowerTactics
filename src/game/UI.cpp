@@ -936,6 +936,7 @@ bool DrawsHeading(ft::PredicateKind p)
     case ft::PredicateKind::WeaponPoisonActive:
     case ft::PredicateKind::WeaponBoundNone:
     case ft::PredicateKind::WeaponBoundActive:
+    case ft::PredicateKind::ArrowsAvailable:
         return false;
     default:
         return !ft::IsAbove(p) && !ft::IsExtreme(p);
@@ -1127,6 +1128,12 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             {
                 submenu(Tr("Combat"),
                         {{ft::PredicateKind::CombatBegins, Tr("Start")}, {ft::PredicateKind::CombatEnds, Tr("End")}});
+                continue;
+            }
+            if (predicate == ft::PredicateKind::ArrowsNone)
+            {
+                submenu(Tr("Arrows"), {{ft::PredicateKind::ArrowsNone, Tr("None")},
+                                       {ft::PredicateKind::ArrowsAvailable, Tr("Available")}});
                 continue;
             }
             if (predicate == ft::PredicateKind::SummonNone)

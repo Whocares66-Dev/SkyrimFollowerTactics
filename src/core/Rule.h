@@ -119,6 +119,11 @@ enum class PredicateKind : std::uint8_t
     WeaponPoisonActive,
     WeaponBoundNone,
     WeaponBoundActive,
+    // The follower carries no ammunition (None), or some (Available):
+    // arrows or bolts, as the Equip arrows actions count them. Self only,
+    // under an "Arrows" heading after Weapon.
+    ArrowsNone,
+    ArrowsAvailable,
     // The share of a blow the subject's armour turns away, 0 to 0.8, under
     // conditionArg. Any subject.
     ArmorPctBelow,

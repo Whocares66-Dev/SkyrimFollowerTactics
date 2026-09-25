@@ -2989,6 +2989,38 @@ TEST_CASE("a bound weapon in either hand is Active, and in neither None", "[eval
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::WeaponBoundActive));
 }
 
+TEST_CASE("arrows available while any ammunition is carried, none when it is spent", "[evaluator]")
+{
+    Snapshot s = Healthy();
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction() = DrinkMagicka();
+    RuleSet rs;
+    rs.rules.push_back(r);
+    const auto holds = [&](PredicateKind p) {
+        EvalContext ctx;
+        rs.rules[0].predicate = p;
+        return Evaluate(rs, s, ctx).Fired();
+    };
+
+    // A bow and nothing to shoot: None.
+    s.loadout.push_back(Held(0x0003B562, Kind::Weapon, Grip::Both));
+    REQUIRE(holds(PredicateKind::ArrowsNone));
+    REQUIRE_FALSE(holds(PredicateKind::ArrowsAvailable));
+    // A quiver: Available. Bolts count as arrows do, as the arrow actions
+    // choose from both.
+    s.loadout.push_back(Held(kArrows, Kind::Ammo, Grip::None));
+    REQUIRE_FALSE(holds(PredicateKind::ArrowsNone));
+    REQUIRE(holds(PredicateKind::ArrowsAvailable));
+    // The last one shot: None again.
+    s.loadout.back().count = 0;
+    REQUIRE(holds(PredicateKind::ArrowsNone));
+
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::ArrowsAvailable));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::ArrowsNone));
+}
+
 TEST_CASE("the gem for a charge: the largest that fits, else the smallest carried", "[evaluator]")
 {
     // Petty 250, lesser 500, common 1000, as the game's settings have them.

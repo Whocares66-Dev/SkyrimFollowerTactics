@@ -776,6 +776,14 @@ struct Snapshot
     // in the hands asked for is done, so the rule falls through.
     std::vector<Holdable> loadout;
     std::vector<Pin> pins;
+
+    // Any ammunition carried, arrows or bolts, as the arrow policies count
+    // it: the Arrows condition.
+    [[nodiscard]] bool CarriesAmmo() const noexcept
+    {
+        return std::any_of(loadout.begin(), loadout.end(),
+                           [](const Holdable &thing) { return thing.IsAmmo() && thing.count > 0; });
+    }
 };
 
 } // namespace ft

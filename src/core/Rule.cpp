@@ -484,6 +484,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::WeaponPoisonActive:
         case PredicateKind::WeaponBoundNone:
         case PredicateKind::WeaponBoundActive:
+        case PredicateKind::ArrowsNone:
+        case PredicateKind::ArrowsAvailable:
             return true;
         default:
             return false;

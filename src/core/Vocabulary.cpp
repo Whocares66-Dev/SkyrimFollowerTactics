@@ -68,7 +68,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", N_("Corpse")},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 40> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 42> kPredicates{{
     {PredicateKind::Any, "any", N_("Any")}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::CombatBegins, "combat-begins", N_("Combat start")},
     {PredicateKind::CombatEnds, "combat-ends", N_("Combat end")},
@@ -109,6 +109,8 @@ constexpr std::array<Entry<PredicateKind>, 40> kPredicates{{
     {PredicateKind::WeaponPoisonActive, "weapon-poison-active", N_("Weapon poison: active")},
     {PredicateKind::WeaponBoundNone, "weapon-bound-none", N_("Bound weapon: none")},
     {PredicateKind::WeaponBoundActive, "weapon-bound-active", N_("Bound weapon: active")},
+    {PredicateKind::ArrowsNone, "arrows-none", N_("Arrows: none")},
+    {PredicateKind::ArrowsAvailable, "arrows-available", N_("Arrows: available")},
 }};
 
 constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
