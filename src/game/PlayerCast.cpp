@@ -106,7 +106,7 @@ class PlayerFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
                 if (auto *tasks = SKSE::GetTaskInterface())
                     tasks->AddTask([] {
                         if (g_run && g_run->state.step == ft::CastStep::Lending)
-                            StepPlayerCastNow();
+                            StepInFlightNow();
                     });
         }
         // Everything the graph says while a cast of ours is in flight, while

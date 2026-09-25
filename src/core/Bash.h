@@ -1,11 +1,12 @@
 #pragma once
 // A follower's bash, from the request to the bash seen: wait for the weapon
 // drawn and no swing, raise the block by the combat AI's own action, wait
-// for it to be up and steady, take the bash by the right attack action
+// for it to be up and ready, take the bash by the right attack action
 // from the block, watch for the bash attack state. The game side reads the
-// actor each fast tick and performs the two actions (game/Blows.cpp); the
-// steps, the waits, the refusals and the reason it is over are decided
-// here, where every deadline and every reason is tested. No Skyrim.
+// actor as their animation graph's events come, and on the half-second
+// turn, and performs the two actions (game/Blows.cpp); the steps, the
+// waits, the refusals and the reason it is over are decided here, where
+// every deadline and every reason is tested. No Skyrim.
 //
 // The two actions answer at once -- the engine takes them or turns them
 // away -- so the step performs them through a callback and reads the
@@ -25,12 +26,6 @@ inline constexpr double kBashDeadlineSeconds = 2.0;
 // How long a bash that was taken is watched for the bash attack state.
 // The animation is under a second; one not seen by then was not made.
 inline constexpr double kBashWatchSeconds = 1.5;
-// How long a request that had to wait -- for the follower's own swing to
-// end, or the block to come up -- holds the bash once the hands are free
-// with the block up. Asked for on the tick the wait ended, the tree chose
-// an ordinary attack or nothing: no bash in eight such requests, where
-// ten of twelve that went straight through bashed (2026-09-15).
-inline constexpr double kBashSettleSeconds = 0.25;
 
 enum class BashStep : std::uint8_t
 {
@@ -48,9 +43,15 @@ struct BashState
     double blockUpAt{-1.0};
     double sentAt{-1.0};
     // Since when the hands have been free (the weapon drawn, no attack),
-    // and free with the block up; -1 while they are not.
+    // and free with the block up and ready; -1 while they are not.
     double freeSince{-1.0};
     double steadySince{-1.0};
+    // The block's ready events counted when the request last waited: one
+    // since then is the block raised or back and ready, one from before is
+    // not. And the bash's end events counted when it was taken: one since
+    // then is the bash made.
+    int blockOutsBefore{0};
+    int bashStopsBefore{0};
     // When the bash attack state was first seen, and when it was over; -1
     // for not yet. A bash is short, and one cut off shorter still.
     double bashFrom{-1.0};
@@ -70,7 +71,7 @@ struct BashState
 
 [[nodiscard]] BashState RequestBashAt(double now, bool power) noexcept;
 
-// What the fast tick reads of the follower.
+// What the step reads of the follower.
 struct BashSeen
 {
     bool holder{true}; // the follower still resolves
@@ -86,6 +87,10 @@ struct BashSeen
     };
     Attack attack{Attack::None};
     int attackState{0};
+    // The block's animation reaching its ready point, blockStartOut, and
+    // a bash's end, bashStop, each counted over the actor's graph.
+    int blockOuts{0};
+    int bashStops{0};
 };
 
 // The two actions the step may take, each answered at once.

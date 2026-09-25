@@ -65,7 +65,7 @@ BashSeen Swinging()
 
 } // namespace
 
-TEST_CASE("free and already blocking: the bash goes at once, and is made when the bash state ends", "[bash]")
+TEST_CASE("free and already blocking: the bash goes at once, and is made when its bashStop is heard", "[bash]")
 {
     BashState run = RequestBashAt(100.0, false);
     Takes takes;
@@ -80,12 +80,30 @@ TEST_CASE("free and already blocking: the bash goes at once, and is made when th
     REQUIRE_FALSE(AdvanceBash(run, Bashing(), 100.1, takes.Fn()));
     REQUIRE(run.sawBash);
     REQUIRE(run.bashFrom == 100.1);
-    REQUIRE(Over(AdvanceBash(run, Blocking(), 100.6, takes.Fn())) == "bash made");
+    // The state left, but no bashStop yet: not over.
+    REQUIRE_FALSE(AdvanceBash(run, Blocking(), 100.3, takes.Fn()));
+    BashSeen stopped = Blocking();
+    stopped.bashStops = 1;
+    REQUIRE(Over(AdvanceBash(run, stopped, 100.6, takes.Fn())) == "bash made");
     REQUIRE(run.bashEnd == 100.6);
     REQUIRE(takes.asked.size() == 1);
+
+    // No step inside the bash state at all: its bashStop alone makes it.
+    // One from before the bash was taken does not.
+    BashState quick = RequestBashAt(200.0, true);
+    BashSeen before = Blocking();
+    before.bashStops = 4;
+    REQUIRE_FALSE(AdvanceBash(quick, before, 200.0, takes.Fn()));
+    REQUIRE(quick.step == BashStep::Bashing);
+    REQUIRE_FALSE(AdvanceBash(quick, before, 200.2, takes.Fn()));
+    BashSeen after = Drawn();
+    after.bashStops = 5;
+    REQUIRE(Over(AdvanceBash(quick, after, 200.6, takes.Fn())) == "bash made");
+    REQUIRE(quick.sawBash);
+    REQUIRE(quick.bashFrom < 0.0);
 }
 
-TEST_CASE("the block raised is not up on that tick, so a raised block always settles", "[bash]")
+TEST_CASE("the block raised is not up on that step, so a raised block waits for it to be ready", "[bash]")
 {
     BashState run = RequestBashAt(100.0, false);
     Takes takes;
@@ -96,41 +114,52 @@ TEST_CASE("the block raised is not up on that tick, so a raised block always set
     REQUIRE(run.step == BashStep::Blocking);
     REQUIRE(run.waited);
 
-    // Up: steady from now, and the bash waits out the settle.
+    // Up, but its animation not yet ready: however long, no bash.
     REQUIRE_FALSE(AdvanceBash(run, Blocking(), 100.05, takes.Fn()));
     REQUIRE(run.blockUpAt == 100.05);
-    REQUIRE(run.steadySince == 100.05);
+    REQUIRE(run.steadySince < 0.0);
+    REQUIRE_FALSE(AdvanceBash(run, Blocking(), 100.9, takes.Fn()));
     REQUIRE(takes.asked.size() == 1);
-    REQUIRE_FALSE(AdvanceBash(run, Blocking(), 100.29, takes.Fn()));
-    REQUIRE(takes.asked.size() == 1);
-    REQUIRE_FALSE(AdvanceBash(run, Blocking(), 100.30, takes.Fn()));
+    // Its blockStartOut heard: the bash, on that step.
+    BashSeen ready = Blocking();
+    ready.blockOuts = 1;
+    REQUIRE_FALSE(AdvanceBash(run, ready, 100.95, takes.Fn()));
     REQUIRE(takes.asked.back() == BashCommand::Bash);
+    REQUIRE(run.steadySince == 100.95);
     REQUIRE(run.step == BashStep::Bashing);
 }
 
-TEST_CASE("a swing of their own, or the block dropped, starts the settle over", "[bash]")
+TEST_CASE("a swing of their own, or the block dropped, waits for the block to be ready again", "[bash]")
 {
     BashState run = RequestBashAt(100.0, false);
     Takes takes;
-    // Mid-swing at the request: wait, hands not free.
-    REQUIRE_FALSE(AdvanceBash(run, Swinging(), 100.0, takes.Fn()));
+    // Mid-swing at the request, the block ready from before the swing: wait,
+    // hands not free.
+    BashSeen swinging = Swinging();
+    swinging.blockOuts = 3;
+    REQUIRE_FALSE(AdvanceBash(run, swinging, 100.0, takes.Fn()));
     REQUIRE(run.waited);
     REQUIRE(run.freeSince < 0.0);
     REQUIRE(takes.asked.empty());
-    // Free, already blocking: the bash waits for the settle.
-    REQUIRE_FALSE(AdvanceBash(run, Blocking(), 100.5, takes.Fn()));
+    // Free and blocking, but no ready event since the swing: the old one
+    // does not count.
+    BashSeen blocking = Blocking();
+    blocking.blockOuts = 3;
+    REQUIRE_FALSE(AdvanceBash(run, blocking, 100.5, takes.Fn()));
     REQUIRE(run.freeSince == 100.5);
-    REQUIRE(run.steadySince == 100.5);
     REQUIRE(takes.asked.empty());
-    // The block dropped mid-settle: steady starts over.
-    REQUIRE_FALSE(AdvanceBash(run, Drawn(), 100.6, takes.Fn()));
-    REQUIRE(run.steadySince < 0.0);
-    REQUIRE_FALSE(AdvanceBash(run, Blocking(), 100.7, takes.Fn()));
-    REQUIRE(run.steadySince == 100.7);
-    REQUIRE_FALSE(AdvanceBash(run, Blocking(), 100.9, takes.Fn()));
+    // Ready, then dropped before the step that would take it: it waits for
+    // the next ready event.
+    BashSeen dropped = Drawn();
+    dropped.blockOuts = 4;
+    REQUIRE_FALSE(AdvanceBash(run, dropped, 100.6, takes.Fn()));
+    blocking.blockOuts = 4;
+    REQUIRE_FALSE(AdvanceBash(run, blocking, 100.7, takes.Fn()));
     REQUIRE(takes.asked.empty());
-    REQUIRE_FALSE(AdvanceBash(run, Blocking(), 100.95, takes.Fn()));
+    blocking.blockOuts = 5;
+    REQUIRE_FALSE(AdvanceBash(run, blocking, 100.75, takes.Fn()));
     REQUIRE(takes.asked == std::vector<BashCommand>{BashCommand::Bash});
+    REQUIRE(run.steadySince == 100.75);
 }
 
 TEST_CASE("refusals are counted and named at the deadline", "[bash]")
@@ -170,7 +199,7 @@ TEST_CASE("the deadline names where the request was stuck", "[bash]")
     REQUIRE_FALSE(AdvanceBash(raised, Drawn(), 100.0, takes.Fn()));
     REQUIRE(Over(AdvanceBash(raised, Drawn(), 102.0, takes.Fn())) == "deadline, block never up");
 
-    // Up, but a swing keeps starting the settle over.
+    // Up, but a swing keeps it from being ready.
     BashState unsteady = RequestBashAt(100.0, false);
     REQUIRE_FALSE(AdvanceBash(unsteady, Drawn(), 100.0, takes.Fn()));
     REQUIRE_FALSE(AdvanceBash(unsteady, Blocking(), 100.1, takes.Fn()));

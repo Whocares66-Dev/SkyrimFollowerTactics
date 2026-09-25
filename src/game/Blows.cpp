@@ -2,13 +2,16 @@
 
 #include "core/Bash.h"
 #include "game/Log.h"
+#include "game/Tactics.h"
 #include "game/Util.h"
 
 #include "RE/C/CombatAnimation.h"
 
 #include <algorithm>
 #include <atomic>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ft::game
@@ -40,6 +43,66 @@ struct Run
 // is in flight.
 std::vector<Run> g_runs;
 std::atomic<int> g_inFlight{0};
+
+// Each actor's block-ready and bash-end events counted (core/Bash.h,
+// BashSeen): written by the graph's sink on its thread, read by the step.
+struct Counted
+{
+    int blockOuts = 0;
+    int bashStops = 0;
+};
+std::mutex g_countedMutex;
+std::unordered_map<std::uint32_t, Counted> g_counted;
+
+Counted CountedOf(std::uint32_t id)
+{
+    std::scoped_lock lock(g_countedMutex);
+    const auto it = g_counted.find(id);
+    return it == g_counted.end() ? Counted{} : it->second;
+}
+
+// The events a bash's steps wait on, read from the follower's graph in play
+// (2026-09-24): their own swing over (attackStop, PowerAttackStop), the
+// block up and ready (blockStartOut) or down (blockStop), the bash over
+// (bashStop, bashExit).
+bool StepsOn(const char *tag)
+{
+    for (const char *wanted : {"attackStop", "PowerAttackStop", "blockStartOut", "blockStop", "bashStop", "bashExit"})
+        if (_stricmp(tag, wanted) == 0)
+            return true;
+    return false;
+}
+
+// The follower's animation graph, while a bash is in flight: a step queued
+// for each event one waits on, on the game thread as soon as the task queue
+// drains -- one task per event, which queues nothing further (CLAUDE.md, "A
+// task must never re-arm itself"). A debug build logs every event, while the
+// rest of the branch's steps are made to follow them.
+class BashGraphSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
+{
+  public:
+    RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent *ev,
+                                          RE::BSTEventSource<RE::BSAnimationGraphEvent> *) override
+    {
+        if (!ev || !ev->holder || ev->tag.empty() || g_inFlight.load(std::memory_order_relaxed) == 0)
+            return RE::BSEventNotifyControl::kContinue;
+        const char *tag = ev->tag.c_str();
+        log::blows.debug("anim {:08X}: {}", ev->holder->GetFormID(), tag);
+        const bool blockOut = _stricmp(tag, "blockStartOut") == 0;
+        const bool bashStop = _stricmp(tag, "bashStop") == 0;
+        if (blockOut || bashStop)
+        {
+            std::scoped_lock lock(g_countedMutex);
+            Counted &counted = g_counted[ev->holder->GetFormID()];
+            ++(blockOut ? counted.blockOuts : counted.bashStops);
+        }
+        if (StepsOn(tag))
+            if (auto *tasks = SKSE::GetTaskInterface())
+                tasks->AddTask([] { StepInFlightNow(); });
+        return RE::BSEventNotifyControl::kContinue;
+    }
+};
+BashGraphSink g_graphSink;
 
 const char *EventOf(const Run &run) noexcept
 {
@@ -153,6 +216,9 @@ const char *Advance(Run &run, RE::Actor *actor, double now)
                                                                : ft::BashSeen::Attack::Other;
         seen.attackState = static_cast<int>(attack);
     }
+    const Counted counted = CountedOf(run.id);
+    seen.blockOuts = counted.blockOuts;
+    seen.bashStops = counted.bashStops;
     const bool sawBashBefore = run.state.sawBash;
     const auto perform = [&](ft::BashCommand command) {
         if (command == ft::BashCommand::RaiseBlock)
@@ -202,6 +268,9 @@ BashRequest RequestBash(RE::Actor *actor, std::uint32_t targetId, bool power, in
     run.ruleName = ruleName;
     const double now = TacticsSeconds();
     run.state = ft::RequestBashAt(now, power);
+    // What steps the request: added where it is missing, since the graph is
+    // rebuilt on a cell change and a 3D reload.
+    actor->AddAnimationGraphEventSink(&g_graphSink);
     g_runs.push_back(std::move(run));
     log::blows.debug("{}: {} requested", Describe(actor), power ? "power bash" : "bash");
     // The first step now rather than on the next fast tick: a follower who is

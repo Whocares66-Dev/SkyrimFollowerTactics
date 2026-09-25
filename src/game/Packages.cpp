@@ -310,6 +310,11 @@ class SpellFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
         auto *kit = SharedKitOf(who);
         if (!kit)
             return RE::BSEventNotifyControl::kContinue;
+        // Everything the graph says of one holding the power attack record:
+        // which event marks the swing's end, for the record to go back on
+        // it instead of a 50 ms poll (the wip-events branch).
+        if (kit->weapon.holder.load(std::memory_order_acquire) == who)
+            log::packages.debug("anim {:08X}: {}", who, tag);
         for (auto *slotPtr : {&kit->spell, &kit->voice})
         {
             auto &slot = *slotPtr;

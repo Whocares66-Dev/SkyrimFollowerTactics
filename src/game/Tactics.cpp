@@ -883,6 +883,10 @@ void Tick()
     if (!RE::PlayerCharacter::GetSingleton())
         return;
 
+    // A bash steps on its actor's graph events (game/Blows.h); the turn is
+    // the backstop, for a deadline, or a step whose event never came.
+    TickBashes(now);
+
     const auto followers = CollectManagedFollowers();
     RefreshRoster(followers);
 
@@ -1210,38 +1214,27 @@ SharedView ObserveFollower(ft::ActorId id)
 
 namespace
 {
-// The fast tick: every 50 ms while a blow or a cast on the player is in
-// flight, and not otherwise. A bash is steps -- the block raised, the bash
-// sent once it is up -- and a power attack's record has to go back the moment
-// its swing ends; at the half-second turn the follower's AI lowers the block
-// between two steps, or the procedure starts a second power attack. The
-// player's cast is steps too, and its release has to land the moment the
-// caster is ready.
+// The fast tick: every 50 ms while a power attack's record is held or a
+// cast on the player is in flight, and not otherwise. The record has to go
+// back the moment its swing ends, before the procedure starts a second
+// power attack, and the cast's release has to land the moment the caster
+// is ready. A bash steps on its actor's graph events instead
+// (game/Blows.h), with the half-second turn the backstop.
 constexpr double kFastInterval = 0.05;
 std::atomic_bool g_fastQueued{false};
 
-// Steps are taken only while time runs and the player is there: the fast
-// tick's, and those an event asks for (StepPlayerCastNow).
-bool StepsHeld()
-{
-    return EvaluationHeld() || !RE::PlayerCharacter::GetSingleton();
-}
+} // namespace
 
-void FastTick()
+// Steps are taken only while time runs and the player is there: the fast
+// tick's, and those an event asks for.
+void StepInFlightNow()
 {
-    if (StepsHeld())
+    if (EvaluationHeld() || !RE::PlayerCharacter::GetSingleton())
         return;
     const double now = TacticsSeconds();
     TickWeaponLeases(now);
     TickBashes(now);
     TickPlayerCasts(now);
-}
-} // namespace
-
-void StepPlayerCastNow()
-{
-    if (!StepsHeld())
-        TickPlayerCasts(TacticsSeconds());
 }
 
 void Install()
@@ -1276,12 +1269,12 @@ void Install()
                 else
                     g_tickQueued.store(false);
             }
-            else if ((AnyWeaponLease() || AnyBashInFlight() || AnyPlayerCastInFlight()) && !g_fastQueued.exchange(true))
+            else if ((AnyWeaponLease() || AnyPlayerCastInFlight()) && !g_fastQueued.exchange(true))
             {
                 if (task)
                     task->AddTask([] {
                         g_fastQueued.store(false);
-                        FastTick();
+                        StepInFlightNow();
                     });
                 else
                     g_fastQueued.store(false);

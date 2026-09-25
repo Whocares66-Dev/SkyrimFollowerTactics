@@ -16,9 +16,11 @@
 // So a request is steps: the hands free (the weapon drawn, no swing in
 // progress), the block raised unless it is up already, the bash asked for
 // once it is up, the bash watched until it ends, the block lowered if the
-// request raised it. The fast tick advances them (game/Tactics.cpp), every 50 ms
-// while any is in flight: at the half-second turn the follower's AI would
-// have the block down again between two steps.
+// request raised it. The follower's animation graph advances them: each
+// event a step waits on -- their own swing ended, the block up and ready,
+// the bash over -- queues a step at once; at the half-second turn the
+// follower's AI would have the block down again between two steps. The
+// turn is the backstop, for a deadline or an event that never came.
 
 #include <cstdint>
 #include <string_view>
@@ -47,8 +49,7 @@ enum class BashRequest : std::uint8_t
 // or a potion mid-bash would cut it off. Game thread.
 [[nodiscard]] bool IsMidBash(const RE::Actor *actor);
 
-// Is any in flight? Any thread: the pacing thread asks it to decide whether
-// the fast tick is wanted.
+// Is any in flight? Any thread.
 [[nodiscard]] bool AnyBashInFlight() noexcept;
 
 // Advance every request by a step where it can go on. Game thread.
