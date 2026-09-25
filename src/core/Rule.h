@@ -157,6 +157,10 @@ enum class PredicateKind : std::uint8_t
     // commanded-actor list per actor. Listed under one "Summon" heading.
     SummonNone,
     SummonActive,
+    // Where the follower is: Rule::locationKind -- in a player home, inside,
+    // in a cave, a city, a hold (Rule::conditionForm) ... Self only: the
+    // party stands in one place. The idle list's alone (IsPredicateValidIn).
+    Location,
     // The corpses: none about, or the one of the highest or lowest level.
     // Corpse only. Not IsExtreme: they have no below-predicate to hang
     // under, and their measure is a level, not a fraction.
@@ -448,8 +452,12 @@ struct Rule
     // Which kind of damage, for the Resistance predicates, Hit type and
     // Hit by. Ignored by every other predicate.
     DamageKind damageKind{DamageKind::Fire};
-    // Which base effect, for PredicateKind::EffectRunning. As opaque here as an
-    // action's form is. Ignored by every other predicate.
+    // Which place, for PredicateKind::Location. Ignored by every other
+    // predicate.
+    LocationKind locationKind{LocationKind::Exterior};
+    // Which base effect, for PredicateKind::EffectRunning; which hold's
+    // location record, for Location's Hold. As opaque here as an action's
+    // form is. Ignored by every other predicate.
     std::uint32_t conditionForm{0};
 
     ActionTargetKind actionTarget{ActionTargetKind::Self};
@@ -511,7 +519,9 @@ struct RuleSet
 // snapshot carries -- every one of these is answerable out of a fight,
 // and answers false -- so it is a menu question as much as an evaluator
 // one: the editor leaves them out, and the evaluator reports a rule of one
-// InvalidCondition, as it does a pair the subject cannot answer.
+// InvalidCondition, as it does a pair the subject cannot answer. The
+// combat list has one of its own: Location, which was asked for the idle
+// list alone.
 [[nodiscard]] bool IsSubjectValidIn(Moment moment, SubjectKind subject) noexcept;
 [[nodiscard]] bool IsPredicateValidIn(Moment moment, PredicateKind predicate) noexcept;
 [[nodiscard]] bool IsStatusValidIn(Moment moment, StatusKind status) noexcept;

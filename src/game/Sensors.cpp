@@ -18,6 +18,7 @@
 #include "game/Magic.h"
 #include "game/Packages.h"
 #include "game/Pins.h"
+#include "game/Places.h"
 #include "game/Settings.h"
 #include "game/Sheet.h"
 #include "game/Spells.h"
@@ -296,6 +297,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
     s.stamina = ReadStat(actor, RE::ActorValue::kStamina);
 
     s.inCombat = actor->IsInCombat();
+    ReadPlaces(actor, s);
     s.voiceRecovery = VoiceRecoveryOf(actor);
     for (const auto kind : {ft::ActionKind::PowerAttack, ft::ActionKind::Bash, ft::ActionKind::PowerBash})
     {

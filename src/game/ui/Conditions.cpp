@@ -7,6 +7,7 @@
 #include "core/Effects.h"
 #include "core/Names.h"
 #include "core/Vocabulary.h"
+#include "game/Places.h"
 #include "game/Tactics.h"
 #include <SKSEMenuFramework.h>
 #include <cmath>
@@ -95,10 +96,10 @@ std::string SubjectText(const ft::Rule &r, const FollowerView &view)
 }
 
 // The two about a fight, under one "Combat" heading: Start, End.
-// The condition cascade in eight groups, a divider between them: Any; the
+// The condition cascade in groups, a divider between them: Any; the
 // fight's edges; the three stats; the enemy's relation to the party
 // (Attacking, Attacked by); the hits (Hit type, Hit by); Status; the
-// equipment -- weapon, armour, resistance; the summon. (The corpse
+// equipment -- weapon, armour, resistance; the summon; where one is. (The corpse
 // questions are a subject of their own and fall in one group.)
 int ConditionGroup(ft::PredicateKind p)
 {
@@ -127,6 +128,8 @@ int ConditionGroup(ft::PredicateKind p)
     case ft::PredicateKind::SummonNone:
     case ft::PredicateKind::SummonActive:
         return 8;
+    case ft::PredicateKind::Location:
+        return 9;
     default:
         return 7;
     }
@@ -166,6 +169,12 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view)
         return TrFormat("{}: {}", subject, ft::DisplayName(r.statusKind));
     if (r.predicate == ft::PredicateKind::Type)
         return TrFormat("{}: {}", subject, ft::DisplayName(r.typeKind));
+    // A place with where it is: "Self: In Cave"; a hold by the game's
+    // name for it, "Self: In Whiterun".
+    if (r.predicate == ft::PredicateKind::Location && r.locationKind == ft::LocationKind::Hold)
+        return TrFormat("{}: {}", subject, TrFormat("In {}", HoldName(r.conditionForm)));
+    if (r.predicate == ft::PredicateKind::Location)
+        return TrFormat("{}: {}", subject, TrFormat("In {}", ft::DisplayName(r.locationKind)));
     // An effect reads by its name, as a status does: "Self: Oakflesh".
     if (r.predicate == ft::PredicateKind::EffectRunning)
         return TrFormat("{}: {}", subject, FormName(r.conditionForm));
@@ -293,6 +302,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             std::optional<ft::DamageKind> damage;
             std::optional<ft::StatusKind> status;
             std::optional<ft::TypeKind> type;
+            std::optional<ft::LocationKind> location;
             std::optional<std::uint32_t> member;
             std::optional<std::uint32_t> conditionForm; // a family's keyword, an effect's source
         };
@@ -301,7 +311,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             const bool selected =
                 rule.subject == subject && rule.subjectForm == subjectForm && rule.predicate == which &&
                 (!x.damage || rule.damageKind == *x.damage) && (!x.status || rule.statusKind == *x.status) &&
-                (!x.type || rule.typeKind == *x.type) && (!x.conditionForm || rule.conditionForm == *x.conditionForm) &&
+                (!x.type || rule.typeKind == *x.type) && (!x.location || rule.locationKind == *x.location) &&
+                (!x.conditionForm || rule.conditionForm == *x.conditionForm) &&
                 (!x.arg || std::abs(rule.conditionArg - *x.arg) < 0.001f);
             if (CascadeItem(label, selected))
             {
@@ -314,6 +325,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     rule.statusKind = *x.status;
                 if (x.type)
                     rule.typeKind = *x.type;
+                if (x.location)
+                    rule.locationKind = *x.location;
                 if (x.conditionForm)
                     rule.conditionForm = *x.conditionForm;
                 if (x.arg)
@@ -587,6 +600,77 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     Extras x;
                     x.status = kind;
                     pick(std::string(ft::DisplayName(kind)).c_str(), predicate, x);
+                }
+                Im::EndMenu();
+                continue;
+            }
+
+            // A place: Home, Interior, Exterior, then the groups by name, each
+            // a heading of Any and its kinds by name; a group of one kind a
+            // leaf; the holds the load order has, by the game's names.
+            if (predicate == ft::PredicateKind::Location)
+            {
+                if (!BeginCascade(predicateName.c_str()))
+                    continue;
+                const auto place = [&](const char *label, ft::LocationKind kind, std::uint32_t hold = 0) {
+                    Extras x;
+                    x.location = kind;
+                    if (kind == ft::LocationKind::Hold)
+                        x.conditionForm = hold;
+                    pick(label, predicate, x);
+                };
+                const auto name = [](ft::LocationKind kind) { return std::string(ft::DisplayName(kind)); };
+                for (const ft::LocationKind kind :
+                     {ft::LocationKind::Home, ft::LocationKind::Interior, ft::LocationKind::Exterior})
+                    place(name(kind).c_str(), kind);
+                Im::Separator();
+                std::vector<ft::LocationGroup> sections;
+                for (std::size_t gi = 1; gi < static_cast<std::size_t>(ft::LocationGroup::COUNT); ++gi)
+                    sections.push_back(static_cast<ft::LocationGroup>(gi));
+                ft::SortByName(sections, [](ft::LocationGroup section) { return ft::DisplayName(section); });
+                for (const ft::LocationGroup section : sections)
+                {
+                    const std::string title(ft::DisplayName(section));
+                    if (section == ft::LocationGroup::Hold)
+                    {
+                        std::vector<HoldPick> holds = Holds();
+                        if (holds.empty() || !BeginCascade(title.c_str()))
+                            continue;
+                        ft::SortByName(holds, [](const HoldPick &hold) -> std::string_view { return hold.name; });
+                        for (const HoldPick &hold : holds)
+                            place(hold.name.c_str(), ft::LocationKind::Hold, hold.form);
+                        Im::EndMenu();
+                        continue;
+                    }
+                    std::optional<ft::LocationKind> any;
+                    std::vector<ft::LocationKind> kinds;
+                    for (std::size_t ki = 0; ki < static_cast<std::size_t>(ft::LocationKind::COUNT); ++ki)
+                    {
+                        const auto kind = static_cast<ft::LocationKind>(ki);
+                        if (ft::GroupOf(kind) != section)
+                            continue;
+                        if (ft::IsGroupAny(kind))
+                            any = kind;
+                        else
+                            kinds.push_back(kind);
+                    }
+                    if (kinds.empty())
+                    {
+                        if (any)
+                            place(title.c_str(), *any);
+                        continue;
+                    }
+                    if (!BeginCascade(title.c_str()))
+                        continue;
+                    if (any)
+                    {
+                        place(Tr("Any"), *any);
+                        Im::Separator();
+                    }
+                    ft::SortByName(kinds, [](ft::LocationKind kind) { return ft::DisplayName(kind); });
+                    for (const ft::LocationKind kind : kinds)
+                        place(name(kind).c_str(), kind);
+                    Im::EndMenu();
                 }
                 Im::EndMenu();
                 continue;

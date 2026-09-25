@@ -34,6 +34,11 @@ using json = nlohmann::ordered_json;
     return p == PredicateKind::Type;
 }
 
+[[nodiscard]] bool UsesLocation(PredicateKind p) noexcept
+{
+    return p == PredicateKind::Location;
+}
+
 [[nodiscard]] bool UsesDamage(PredicateKind p) noexcept
 {
     return IsResistance(p) || p == PredicateKind::HitBy || p == PredicateKind::HitType;
@@ -126,6 +131,12 @@ json WriteRule(const Rule &r, const FormCodec &codec)
         cond["type"] = WireName(r.typeKind);
     if (UsesDamage(r.predicate))
         cond["damage"] = WireName(r.damageKind);
+    if (UsesLocation(r.predicate))
+        cond["location"] = WireName(r.locationKind);
+    // A hold as a form, as the effect is: another load order's Whiterun
+    // reads back as its own.
+    if (UsesLocation(r.predicate) && r.locationKind == LocationKind::Hold)
+        cond["hold"] = codec.encode(r.conditionForm);
     // The effect, as a form: another load order's Oakflesh reads back as
     // its own.
     if (r.predicate == PredicateKind::EffectRunning)
@@ -409,6 +420,20 @@ struct FormField
             r.damageKind = *d;
         else
             return drop("unknown damage kind \"" + *damage + "\"");
+    }
+    if (const auto location = Str(*cond, "location"))
+    {
+        if (const auto l = LocationFromWireName(*location))
+            r.locationKind = *l;
+        else
+            return drop("unknown location \"" + *location + "\"");
+    }
+    if (UsesLocation(r.predicate) && r.locationKind == LocationKind::Hold)
+    {
+        const FormField f = ReadForm(*cond, "hold", codec);
+        if (!f.ok)
+            return drop("hold \"" + f.text + "\" is not in this load order");
+        r.conditionForm = f.id;
     }
 
     const json *then = Obj(j, "then");

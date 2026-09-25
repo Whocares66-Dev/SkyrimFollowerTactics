@@ -3052,6 +3052,102 @@ TEST_CASE("arrows available while any ammunition is carried, none when it is spe
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Ally, PredicateKind::ArrowsNone));
 }
 
+TEST_CASE("a location holds where the follower is: inside or out, and at home", "[evaluator]")
+{
+    Snapshot s = Healthy();
+    s.inCombat = false;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Location;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction() = DrinkMagicka();
+    RuleSet rs;
+    rs.moment = Moment::Idle;
+    rs.rules.push_back(r);
+    const auto holds = [&](LocationKind kind, bool negated = false) {
+        EvalContext ctx;
+        rs.rules[0].locationKind = kind;
+        rs.rules[0].negated = negated;
+        return Evaluate(rs, s, ctx).Fired();
+    };
+
+    // No cell under them, as between loads: nowhere, either way round.
+    REQUIRE_FALSE(holds(LocationKind::Interior));
+    REQUIRE_FALSE(holds(LocationKind::Exterior));
+    // A road.
+    s.places = Bit(LocationKind::Exterior);
+    REQUIRE(holds(LocationKind::Exterior));
+    REQUIRE_FALSE(holds(LocationKind::Interior));
+    REQUIRE_FALSE(holds(LocationKind::Home));
+    REQUIRE(holds(LocationKind::Home, true));
+    // Breezehome: inside, and home.
+    s.places = Bit(LocationKind::Interior) | Bit(LocationKind::Home);
+    REQUIRE(holds(LocationKind::Interior));
+    REQUIRE(holds(LocationKind::Home));
+    REQUIRE_FALSE(holds(LocationKind::Exterior));
+
+    // Breezehome read up the chain: the house, the city it lies in, the
+    // hold that holds both.
+    s.places |= Bit(LocationKind::House) | Bit(LocationKind::City) | Bit(LocationKind::Settlement);
+    s.hold = 0x16772; // WhiterunHoldLocation
+    REQUIRE(holds(LocationKind::City));
+    REQUIRE(holds(LocationKind::Settlement));
+    REQUIRE_FALSE(holds(LocationKind::Town));
+    REQUIRE_FALSE(holds(LocationKind::Cave));
+    rs.rules[0].conditionForm = 0x16772;
+    REQUIRE(holds(LocationKind::Hold));
+    rs.rules[0].conditionForm = 0x1676C; // RiftHoldLocation
+    REQUIRE_FALSE(holds(LocationKind::Hold));
+    REQUIRE(holds(LocationKind::Hold, true));
+    // Outside any hold, no hold holds, and a rule naming none matches none.
+    s.hold = 0;
+    rs.rules[0].conditionForm = 0;
+    REQUIRE_FALSE(holds(LocationKind::Hold));
+
+    // Of the follower alone.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Location));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Location));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Follower, PredicateKind::Location));
+    REQUIRE(CanNegate(PredicateKind::Location));
+}
+
+TEST_CASE("the places fall into the menu's groups, each Any first", "[evaluator]")
+{
+    REQUIRE(GroupOf(LocationKind::Home) == LocationGroup::None);
+    REQUIRE(GroupOf(LocationKind::Exterior) == LocationGroup::None);
+    REQUIRE(GroupOf(LocationKind::Castle) == LocationGroup::Building);
+    REQUIRE(GroupOf(LocationKind::Temple) == LocationGroup::Building);
+    REQUIRE(GroupOf(LocationKind::Cave) == LocationGroup::Cave);
+    REQUIRE(GroupOf(LocationKind::WerewolfLair) == LocationGroup::Dungeon);
+    REQUIRE(GroupOf(LocationKind::Fort) == LocationGroup::Fort);
+    REQUIRE(GroupOf(LocationKind::Hold) == LocationGroup::Hold);
+    REQUIRE(GroupOf(LocationKind::NordicRuin) == LocationGroup::Ruin);
+    REQUIRE(GroupOf(LocationKind::OrcStronghold) == LocationGroup::Settlement);
+    // One Any to a group at most, and it is the group's first kind.
+    for (std::size_t g = 1; g < static_cast<std::size_t>(LocationGroup::COUNT); ++g)
+    {
+        int anys = 0;
+        bool first = true;
+        for (std::size_t k = 0; k < static_cast<std::size_t>(LocationKind::COUNT); ++k)
+        {
+            const auto kind = static_cast<LocationKind>(k);
+            if (GroupOf(kind) != static_cast<LocationGroup>(g))
+                continue;
+            if (IsGroupAny(kind))
+            {
+                ++anys;
+                REQUIRE(first);
+            }
+            first = false;
+        }
+        REQUIRE(anys <= 1);
+    }
+    REQUIRE(GroupOf(LocationKind::Building) == LocationGroup::Building);
+    REQUIRE(IsGroupAny(LocationKind::Building));
+    REQUIRE_FALSE(IsGroupAny(LocationKind::Hold));
+    REQUIRE_FALSE(IsGroupAny(LocationKind::Castle));
+}
+
 TEST_CASE("the gem for a charge: the largest that fits, else the smallest carried", "[evaluator]")
 {
     // Petty 250, lesser 500, common 1000, as the game's settings have them.

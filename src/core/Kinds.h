@@ -142,6 +142,110 @@ enum class DamageKind : std::uint8_t
     return static_cast<std::uint8_t>(1u << static_cast<unsigned>(kind));
 }
 
+// Where an actor is, for the Location condition (dev/CONDITIONS.md 2c): in
+// a player home, inside or out -- the three first, in that order -- then
+// by group. Inside or out is the cell's; a hold is the location record the
+// rule names (Rule::conditionForm); every other kind is a keyword the
+// location or one it lies in carries (game/Places.cpp says which). One bit
+// each in Snapshot::places, Hold aside: Snapshot::hold. Exterior is not
+// read as Interior's opposite: an actor with no cell under them is
+// neither.
+enum class LocationKind : std::uint8_t
+{
+    Home,
+    Interior,
+    Exterior,
+    Building, // the group's Any
+    Castle,
+    Guild,
+    House,
+    Inn,
+    Store,
+    Temple,
+    Cave, // a group of one, as asked: which cave is which is who holds it
+    // Who holds a dungeon, indoors or out, apart from what it is built as.
+    Dungeon, // the group's Any
+    AnimalDen,
+    BanditCamp,
+    DragonLair,
+    DragonPriestLair,
+    DraugrCrypt,
+    FalmerHive,
+    ForswornCamp,
+    GiantCamp,
+    HagravenNest,
+    RieklingCamp,
+    SprigganGrove,
+    VampireLair,
+    WarlockLair,
+    WerebearLair,
+    WerewolfLair,
+    Fort, // a group of one: no kinds of fort in the keywords
+    Hold,
+    Ruin, // the group's Any
+    DwarvenRuin,
+    NordicRuin,
+    Settlement, // the group's Any
+    City,
+    Town,
+    OrcStronghold,
+
+    COUNT
+};
+
+static_assert(static_cast<unsigned>(LocationKind::COUNT) <= 64);
+
+[[nodiscard]] constexpr std::uint64_t Bit(LocationKind kind) noexcept
+{
+    return std::uint64_t{1} << static_cast<unsigned>(kind);
+}
+
+// The headings of the Location menu after the first three, each a group of
+// kinds. None is the first three.
+enum class LocationGroup : std::uint8_t
+{
+    None,
+    Building,
+    Cave,
+    Dungeon,
+    Fort,
+    Hold,
+    Ruin,
+    Settlement,
+
+    COUNT
+};
+
+[[nodiscard]] constexpr LocationGroup GroupOf(LocationKind kind) noexcept
+{
+    using K = LocationKind;
+    using G = LocationGroup;
+    if (kind >= K::Settlement)
+        return G::Settlement;
+    if (kind >= K::Ruin)
+        return G::Ruin;
+    if (kind == K::Hold)
+        return G::Hold;
+    if (kind == K::Fort)
+        return G::Fort;
+    if (kind >= K::Dungeon)
+        return G::Dungeon;
+    if (kind >= K::Cave)
+        return G::Cave;
+    if (kind >= K::Building)
+        return G::Building;
+    return G::None;
+}
+
+// The kind a group's Any is, its first; none for the first three, and for
+// Hold, whose kind is one hold named.
+[[nodiscard]] constexpr bool IsGroupAny(LocationKind kind) noexcept
+{
+    using K = LocationKind;
+    return kind == K::Building || kind == K::Cave || kind == K::Dungeon || kind == K::Fort || kind == K::Ruin ||
+           kind == K::Settlement;
+}
+
 // Which consumable a consume action names, and which each carried one is.
 // The snapshot tags every carried consumable with one, so a hand-edited
 // profile cannot drink a cabbage: the form has to be carried AS that kind.

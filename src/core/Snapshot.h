@@ -619,6 +619,15 @@ struct Snapshot
     Stat stamina{};
 
     bool inCombat{false};
+    // Where the actor is, for the Location condition: a bit per
+    // LocationKind, and the hold's location record, 0 outside any.
+    std::uint64_t places{0};
+    std::uint32_t hold{0};
+    // In that kind of place; for Hold, in the hold `form` names.
+    [[nodiscard]] constexpr bool At(LocationKind kind, std::uint32_t form = 0) const noexcept
+    {
+        return kind == LocationKind::Hold ? hold != 0 && hold == form : (places & Bit(kind)) != 0;
+    }
     // A blow the actor could strike with what is in the hands, priced on
     // the game side: whether it is possible at all, the stamina it costs,
     // and how far it reaches, held against an enemy's reachDistance. A

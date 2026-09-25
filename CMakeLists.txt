@@ -308,6 +308,7 @@ if(FT_BUILD_PLUGIN)
             src/game/Inventory.cpp
             src/game/Magic.cpp
             src/game/Pins.cpp
+            src/game/Places.cpp
             src/game/Hits.cpp
             src/game/I18n.cpp
             src/game/Actions.cpp

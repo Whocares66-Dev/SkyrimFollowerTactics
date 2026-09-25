@@ -185,6 +185,7 @@ void RequireSame(const Rule &a, const Rule &b)
     REQUIRE(a.statusKind == b.statusKind);
     REQUIRE(a.typeKind == b.typeKind);
     REQUIRE(a.damageKind == b.damageKind);
+    REQUIRE(a.locationKind == b.locationKind);
     REQUIRE(a.actionTarget == b.actionTarget);
     REQUIRE(a.actionTargetForm == b.actionTargetForm);
     REQUIRE(a.actions.size() == b.actions.size());
@@ -636,6 +637,46 @@ TEST_CASE("a type condition writes its kind and reads it back", "[profile]")
     REQUIRE(read.warnings.empty());
     REQUIRE(read.profile->rules.rules.size() == 1);
     REQUIRE(read.profile->rules.rules[0].typeKind == TypeKind::DarkElf);
+}
+
+TEST_CASE("a location condition writes its place and reads it back", "[profile]")
+{
+    Profile p;
+    Rule r;
+    r.predicate = PredicateKind::Location;
+    r.locationKind = LocationKind::Home;
+    r.FirstAction().kind = ActionKind::DrinkAny;
+    p.rules.rules.push_back(r);
+    const auto j = nlohmann::json::parse(WriteProfile(p, kHex));
+    REQUIRE(j["rules"][0]["if"]["predicate"] == "location");
+    REQUIRE(j["rules"][0]["if"]["location"] == "home");
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules.size() == 1);
+    REQUIRE(read.profile->rules.rules[0].locationKind == LocationKind::Home);
+
+    // A hold carries its record, as an effect does.
+    p.rules.rules[0].locationKind = LocationKind::Hold;
+    p.rules.rules[0].conditionForm = 0x16772;
+    const auto hold = nlohmann::json::parse(WriteProfile(p, kHex));
+    REQUIRE(hold["rules"][0]["if"]["location"] == "hold");
+    REQUIRE(hold["rules"][0]["if"].contains("hold"));
+    const auto heldBack = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(heldBack.warnings.empty());
+    REQUIRE(heldBack.profile->rules.rules[0].locationKind == LocationKind::Hold);
+    REQUIRE(heldBack.profile->rules.rules[0].conditionForm == 0x16772);
+    // Any other place carries none.
+    p.rules.rules[0].locationKind = LocationKind::DraugrCrypt;
+    REQUIRE_FALSE(nlohmann::json::parse(WriteProfile(p, kHex))["rules"][0]["if"].contains("hold"));
+
+    const std::string rule = R"({
+        "if": { "subject": "self", "predicate": "location", "location": "tavern" },
+        "then": { "target": "self", "do": [ { "action": "drink-any" } ] }
+    })";
+    const auto unknown = ReadProfile(OneRuleFile(rule), kHex);
+    REQUIRE(unknown.profile->rules.rules.empty());
+    REQUIRE(unknown.warnings.size() == 1);
+    REQUIRE(unknown.warnings[0].find("tavern") != std::string::npos);
 }
 
 TEST_CASE("an unknown action is dropped alone and its rule kept", "[profile]")

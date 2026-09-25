@@ -109,6 +109,25 @@ TEST_CASE("a cooldown spent in the fight holds in the idle list after it", "[idl
     REQUIRE(Evaluate(idle, s, ctx, &trace).Fired());
 }
 
+TEST_CASE("Location is the idle list's alone", "[idle][validity]")
+{
+    REQUIRE(IsPredicateValidIn(Moment::Idle, PredicateKind::Location));
+    REQUIRE_FALSE(IsPredicateValidIn(Moment::Combat, PredicateKind::Location));
+
+    // A hand-edited profile's, in the combat list: reported, never asked.
+    Rule r = Always("Restore Health");
+    r.predicate = PredicateKind::Location;
+    r.locationKind = LocationKind::Interior;
+    RuleSet combat;
+    combat.rules.push_back(r);
+    Snapshot s = Healthy();
+    s.places = Bit(LocationKind::Interior);
+    EvalContext ctx;
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(combat, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::InvalidCondition);
+}
+
 TEST_CASE("what the idle list has no use for is invalid in it, and only in it", "[idle][validity]")
 {
     for (const auto subject :

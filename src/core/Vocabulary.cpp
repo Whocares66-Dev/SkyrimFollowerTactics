@@ -68,7 +68,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", N_("Corpse")},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 42> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 43> kPredicates{{
     {PredicateKind::Any, "any", N_("Any")}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::CombatBegins, "combat-begins", N_("Combat start")},
     {PredicateKind::CombatEnds, "combat-ends", N_("Combat end")},
@@ -100,6 +100,7 @@ constexpr std::array<Entry<PredicateKind>, 42> kPredicates{{
     {PredicateKind::ResistancePctAbove, "resistance-pct-above", N_("Resistance")},
     {PredicateKind::SummonNone, "summon-none", N_("Summon: none")},
     {PredicateKind::SummonActive, "summon-active", N_("Summon: active")},
+    {PredicateKind::Location, "location", N_("Location")},
     {PredicateKind::CorpseNone, "corpse-none", N_("None")},
     {PredicateKind::LevelHighest, "level-highest", N_("Highest level")},
     {PredicateKind::LevelLowest, "level-lowest", N_("Lowest level")},
@@ -222,6 +223,60 @@ constexpr std::array<Entry<TypeKind>, 26> kTypes{{
     {TypeKind::Werewolf, "werewolf", N_("Werewolf")},
 }};
 
+// A place, as the rule names it and as the menu shows it. Each name reads
+// alone after "In", as the condition does: "Self: In Draugr crypt".
+constexpr std::array<Entry<LocationKind>, 36> kLocations{{
+    {LocationKind::Home, "home", N_("Home")},
+    {LocationKind::Interior, "interior", N_("Interior")},
+    {LocationKind::Exterior, "exterior", N_("Exterior")},
+    {LocationKind::Building, "building", N_("Building")},
+    {LocationKind::Castle, "castle", N_("Castle")},
+    {LocationKind::Guild, "guild", N_("Guild")},
+    {LocationKind::House, "house", N_("House")},
+    {LocationKind::Inn, "inn", N_("Inn")},
+    {LocationKind::Store, "store", N_("Store")},
+    {LocationKind::Temple, "temple", N_("Temple")},
+    {LocationKind::Cave, "cave", N_("Cave")},
+    {LocationKind::Dungeon, "dungeon", N_("Dungeon")},
+    {LocationKind::AnimalDen, "animal-den", N_("Animal den")},
+    {LocationKind::BanditCamp, "bandit-camp", N_("Bandit camp")},
+    {LocationKind::DragonLair, "dragon-lair", N_("Dragon lair")},
+    {LocationKind::DragonPriestLair, "dragon-priest-lair", N_("Dragon priest lair")},
+    {LocationKind::DraugrCrypt, "draugr-crypt", N_("Draugr crypt")},
+    {LocationKind::FalmerHive, "falmer-hive", N_("Falmer hive")},
+    {LocationKind::ForswornCamp, "forsworn-camp", N_("Forsworn camp")},
+    {LocationKind::GiantCamp, "giant-camp", N_("Giant camp")},
+    {LocationKind::HagravenNest, "hagraven-nest", N_("Hagraven nest")},
+    {LocationKind::RieklingCamp, "riekling-camp", N_("Riekling camp")},
+    {LocationKind::SprigganGrove, "spriggan-grove", N_("Spriggan grove")},
+    {LocationKind::VampireLair, "vampire-lair", N_("Vampire lair")},
+    {LocationKind::WarlockLair, "warlock-lair", N_("Warlock lair")},
+    {LocationKind::WerebearLair, "werebear-lair", N_("Werebear lair")},
+    {LocationKind::WerewolfLair, "werewolf-lair", N_("Werewolf lair")},
+    {LocationKind::Fort, "fort", N_("Fort")},
+    {LocationKind::Hold, "hold", N_("Hold")},
+    {LocationKind::Ruin, "ruin", N_("Ruin")},
+    {LocationKind::DwarvenRuin, "dwarven-ruin", N_("Dwarven ruin")},
+    {LocationKind::NordicRuin, "nordic-ruin", N_("Nordic ruin")},
+    {LocationKind::Settlement, "settlement", N_("Settlement")},
+    {LocationKind::City, "city", N_("City")},
+    {LocationKind::Town, "town", N_("Town")},
+    {LocationKind::OrcStronghold, "orc-stronghold", N_("Orc stronghold")},
+}};
+
+// The Location menu's headings. No wire name: a rule names a kind, and the
+// group is the kind's.
+constexpr std::array<std::pair<LocationGroup, std::string_view>, 8> kLocationGroups{{
+    {LocationGroup::None, ""},
+    {LocationGroup::Building, N_("Building")},
+    {LocationGroup::Cave, N_("Cave")},
+    {LocationGroup::Dungeon, N_("Dungeon")},
+    {LocationGroup::Fort, N_("Fort")},
+    {LocationGroup::Hold, N_("Hold")},
+    {LocationGroup::Ruin, N_("Ruin")},
+    {LocationGroup::Settlement, N_("Settlement")},
+}};
+
 constexpr std::array<Entry<DamageKind>, 8> kDamageKinds{{
     {DamageKind::Melee, "melee", N_("Melee")},
     {DamageKind::Ranged, "ranged", N_("Ranged")},
@@ -242,6 +297,8 @@ static_assert(kActions.size() == static_cast<std::size_t>(ActionKind::COUNT));
 static_assert(kStatuses.size() == static_cast<std::size_t>(StatusKind::COUNT));
 static_assert(kTypes.size() == static_cast<std::size_t>(TypeKind::COUNT));
 static_assert(kDamageKinds.size() == static_cast<std::size_t>(DamageKind::COUNT));
+static_assert(kLocations.size() == static_cast<std::size_t>(LocationKind::COUNT));
+static_assert(kLocationGroups.size() == static_cast<std::size_t>(LocationGroup::COUNT));
 
 } // namespace
 
@@ -277,6 +334,10 @@ std::string_view WireName(DamageKind v) noexcept
 {
     return LookupWire(kDamageKinds, v);
 }
+std::string_view WireName(LocationKind v) noexcept
+{
+    return LookupWire(kLocations, v);
+}
 
 std::optional<SubjectKind> SubjectFromWireName(std::string_view s) noexcept
 {
@@ -309,6 +370,10 @@ std::optional<TypeKind> TypeFromWireName(std::string_view s) noexcept
 std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept
 {
     return Parse(kDamageKinds, s);
+}
+std::optional<LocationKind> LocationFromWireName(std::string_view s) noexcept
+{
+    return Parse(kLocations, s);
 }
 
 bool IsWireName(std::string_view s) noexcept
@@ -376,6 +441,17 @@ std::string_view DisplayName(TypeKind v) noexcept
 std::string_view DisplayName(DamageKind v) noexcept
 {
     return LookupDisplay(kDamageKinds, v);
+}
+std::string_view DisplayName(LocationKind v) noexcept
+{
+    return LookupDisplay(kLocations, v);
+}
+std::string_view DisplayName(LocationGroup v) noexcept
+{
+    for (const auto &[group, name] : kLocationGroups)
+        if (group == v)
+            return name.empty() ? name : Tr(name);
+    return "Unknown";
 }
 ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 {
