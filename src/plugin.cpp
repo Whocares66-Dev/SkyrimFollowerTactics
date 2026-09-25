@@ -16,6 +16,7 @@
 #include "game/Pins.h"
 #include "game/PlayerCast.h"
 #include "game/Profiles.h"
+#include "game/Sensors.h"
 #include "game/Tactics.h"
 #include "game/Toggles.h"
 #include "game/UI.h"
@@ -122,6 +123,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
                 ft::fix::ResetDispelHold();
                 ft::game::ResetBlows();
                 ft::game::ResetPlayerCasts();
+                ft::game::ForgetStatuses();
                 fp::game::OnGameStarted();
             }
 

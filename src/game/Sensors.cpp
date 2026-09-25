@@ -9,6 +9,7 @@
 #include "core/Party.h"
 #include "core/Reach.h"
 #include "core/Spells.h"
+#include "core/Vocabulary.h"
 
 #include "game/CustomSkillsFramework.h"
 #include "game/Hits.h"
@@ -29,6 +30,7 @@
 #include <cmath>
 #include <cstdio>
 #include <initializer_list>
+#include <mutex>
 #include <optional>
 #include <random>
 #include <span>
@@ -1652,7 +1654,44 @@ bool IsBleed(const RE::EffectSetting *effect)
     return bleeds.contains(effect->GetFormID());
 }
 
+// Each actor's statuses as last read, so the log can say when they change:
+// otherwise a Status rule that never holds cannot tell "not detected" from
+// "never happened". Read by the tick and by the panel's pages.
+std::mutex g_statusesMutex;
+std::unordered_map<RE::FormID, std::uint32_t> g_statuses;
+
+void LogStatusChanges(RE::Actor *actor, std::uint32_t now)
+{
+    std::uint32_t was = 0;
+    {
+        std::scoped_lock lock(g_statusesMutex);
+        std::uint32_t &last = g_statuses[actor->GetFormID()];
+        was = last;
+        last = now;
+    }
+    if (was == now)
+        return;
+    std::string gained;
+    std::string lost;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(ft::StatusKind::COUNT); ++i)
+    {
+        const auto kind = static_cast<ft::StatusKind>(i);
+        if (((was ^ now) & ft::Bit(kind)) == 0)
+            continue;
+        std::string &into = (now & ft::Bit(kind)) != 0 ? gained : lost;
+        into += (into.empty() ? "" : ", ") + std::string(ft::WireName(kind));
+    }
+    log::sensors.debug("{}: {}{}{}", Describe(actor), gained.empty() ? "" : "now " + gained,
+                       gained.empty() || lost.empty() ? "" : "; ", lost.empty() ? "" : "no longer " + lost);
+}
+
 } // namespace
+
+void ForgetStatuses()
+{
+    std::scoped_lock lock(g_statusesMutex);
+    g_statuses.clear();
+}
 
 ft::ActorTraits ReadTraits(RE::Actor *actor)
 {
@@ -1761,6 +1800,7 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     // of the casters' states, one bit per source.
     if (actor->WhoIsCasting() != 0)
         traits.Set(ft::StatusKind::Casting);
+    LogStatusChanges(actor, traits.status);
     return traits;
 }
 

@@ -67,7 +67,7 @@ The vanilla condition functions (`HasMagicEffectKeyword`, `IsStaggered`,
 direct reads above are what they read, so they are kept as a debugging
 cross-check, not the hot path.
 
-Snapshot: a `status` bit set per actor view.
+Snapshot: a `status` bit set per actor view. With the log at debug, each change of an actor's statuses is a line of its own, `Cave Bear (FF000C1A): now bleeding; no longer staggered`, whoever's snapshot read it first (`LogStatusChanges` in `src/game/Sensors.cpp`, since 2026-09-25): without it a Status rule that never holds cannot tell a status not detected from one that never happened.
 
 ## 2a. Type: what kind of being (built 2026-09-12)
 

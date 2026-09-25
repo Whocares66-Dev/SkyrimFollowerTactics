@@ -675,6 +675,11 @@ struct WeaponSkillCurve
 // listed as known and in the loadout.
 ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::uint32_t> &priced);
 
+// A load or a new game: the statuses last read of every actor forgotten, so
+// the debug line that says when an actor's statuses change starts afresh --
+// a created reference's FormID names another actor in another save.
+void ForgetStatuses();
+
 // Where a snapshot's time goes, step by step -- self, party, hands,
 // spells, effects, the bag -- each with its microseconds since last asked,
 // in build order. On the tick's cost line, so a slow snapshot names its
