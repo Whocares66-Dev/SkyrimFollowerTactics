@@ -226,13 +226,15 @@ effects, the `AbResist*` abilities, the armour settings and base ratings).
 
 ## 7. Weapon (built and played 2026-09-08)
 
-The follower's own weapons, hand by hand, under one "Weapon" heading with two entries.
+The follower's own weapons, hand by hand, under one "Weapon" heading with three entries.
 
 **Charge needed** holds when an enchanted weapon in hand cannot pay for its next hit: its charge is below its enchantment's cost. One hit draws one fixed number, the enchantment's cost, whatever the attack; the game's own "Uses" figure is the charge divided by it. So the test is definite, and there is no percentage to choose. A weapon never used carries no ExtraCharge and reads as full. The pair is `Self: Weapon charge needed -> Self: Charge with strongest soul gem`.
 
 **Poison: None / Active** holds when a weapon in hand takes a poison (anything but a staff) and has none on it, or carries one. With a poisoned sword right and a clean dagger left both hold, and with a spell right and a dagger left the dagger is what is asked about. The pair is `Self: Weapon poison none -> Self: Apply weakest health poison`; the action goes to the right hand's weapon if that is clean, else the left's, so two firings dress both hands, and with both poisoned it reports "poisoned" and waits. The engine's own inventory menu is stricter: it poisons the right hand only and never the left (`dev/ACTIONS.md`).
 
-Self only: the snapshot reads the follower's own hands. The wire names are `weapon-charge-needed`, `weapon-poison-none` and `weapon-poison-active` (the last two were briefly `weapon-unpoisoned` and `weapon-poisoned` on 2026-09-08; a save carrying those drops the rule with a warning).
+**Bound: None / Active** holds when neither hand holds a bound weapon, or either does (added 2026-09-25, issue #3; seen in play the same day). What makes one bound is the Bound Weapon flag on the weapon record (`TESObjectWEAP::IsBound`, `flags2` bit 13), which every weapon a Bound-archetype effect conjures carries: all 61 such effects in Nordic Souls (vanilla, Dragonborn, and BSAssets, Vigilant, Unslaad, Mysticism, Adamant, Necrotic, Dragon Cult Draugr) name a weapon with it, the renamed ones too -- Necrotic's, the Flame Bow, the Bow of Meridia -- so neither a name nor a keyword is asked. The weapon in hand, not the effect: the engine takes the weapon away when the effect ends and ends the effect when the weapon is put away, so the two agree, and the hand is what the condition is about. The pair is `Self: Bound weapon none -> Self: Cast Bound Sword`; a bound bow sits in the right hand as any bow does.
+
+Self only: the snapshot reads the follower's own hands. The wire names are `weapon-charge-needed`, `weapon-poison-none`, `weapon-poison-active`, `weapon-bound-none` and `weapon-bound-active` (the last two were briefly `weapon-unpoisoned` and `weapon-poisoned` on 2026-09-08; a save carrying those drops the rule with a warning).
 
 ## 9. The cascade as it reads (2026-09-08)
 

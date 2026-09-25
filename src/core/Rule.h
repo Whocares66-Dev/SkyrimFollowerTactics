@@ -111,10 +111,14 @@ enum class PredicateKind : std::uint8_t
     // attack; the game's own "Uses" is the charge over that number). The
     // poison pair: a weapon in hand takes a poison and has none (None), or
     // carries one (Active); with a poisoned sword right and a clean dagger
-    // left both hold.
+    // left both hold. The bound pair: no bound weapon in either hand (None),
+    // or one in either (Active) -- a weapon a spell conjured, by the flag
+    // the engine marks it with, whatever it is called.
     WeaponChargeNeeded,
     WeaponPoisonNone,
     WeaponPoisonActive,
+    WeaponBoundNone,
+    WeaponBoundActive,
     // The share of a blow the subject's armour turns away, 0 to 0.8, under
     // conditionArg. Any subject.
     ArmorPctBelow,

@@ -305,6 +305,12 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::WeaponPoisonActive:
         held = s.AnyWeaponPoisoned();
         break;
+    case PredicateKind::WeaponBoundNone:
+        held = !s.AnyWeaponBound();
+        break;
+    case PredicateKind::WeaponBoundActive:
+        held = s.AnyWeaponBound();
+        break;
     default:
         held = Common(r, FactsOf(s)).value_or(false);
         break;

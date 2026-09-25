@@ -386,6 +386,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
             hand.charge = c.charge;
             hand.maxCharge = c.maxCharge;
             hand.costPerHit = c.costPerHit;
+            hand.bound = weapon->IsBound();
         }
     }
     s.soulGems = ScanSoulGems(actor);

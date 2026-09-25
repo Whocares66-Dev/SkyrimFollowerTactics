@@ -99,6 +99,10 @@
 ;               spell will take -- well, it does, but a bear at level 12
 ;               is exactly the Serana-raises-a-rat case the Corpse
 ;               condition is meant to rank away from.
+;    0009E2A9   Spell Tome: Bound Sword  teaches Bound Sword (000211EB):
+;               learned from the Magic tab's Learn, for the Weapon >
+;               Bound condition (IF Self: Bound weapon none THEN Cast
+;               Bound Sword).
 ;
 ;  FOOD and INGREDIENTS, for the Consume menu's other two lists.
 ;  Both go through the same equip call as a potion; whether an
@@ -273,6 +277,7 @@ addspell 00088821
 addshout 00013E07
 addspell 000204C3
 addspell 00065BD7
+additem 0009E2A9 1
 
 additem 00064B33 3
 additem 0004B0BA 5

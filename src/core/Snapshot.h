@@ -670,6 +670,8 @@ struct Snapshot
         float charge{0.0f};
         float maxCharge{0.0f};
         float costPerHit{0.0f};
+        // A weapon a spell conjured, Bound Sword or a mod's own.
+        bool bound{false};
         [[nodiscard]] constexpr bool Clean() const noexcept
         {
             return takesPoison && !poisoned;
@@ -705,6 +707,10 @@ struct Snapshot
     [[nodiscard]] constexpr bool AnyWeaponChargeNeeded() const noexcept
     {
         return rightWeapon.ChargeNeeded() || leftWeapon.ChargeNeeded();
+    }
+    [[nodiscard]] constexpr bool AnyWeaponBound() const noexcept
+    {
+        return rightWeapon.bound || leftWeapon.bound;
     }
 
     // The filled soul gems carried, each with what its soul puts into a

@@ -2956,6 +2956,39 @@ TEST_CASE("weapon poisoned and unpoisoned read each hand", "[evaluator]")
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::WeaponPoisonActive));
 }
 
+TEST_CASE("a bound weapon in either hand is Active, and in neither None", "[evaluator]")
+{
+    Snapshot s = Healthy();
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction() = DrinkMagicka();
+    RuleSet rs;
+    rs.rules.push_back(r);
+    const auto holds = [&](PredicateKind p) {
+        EvalContext ctx;
+        rs.rules[0].predicate = p;
+        return Evaluate(rs, s, ctx).Fired();
+    };
+
+    // Empty hands, and a sword of steel: None.
+    REQUIRE(holds(PredicateKind::WeaponBoundNone));
+    REQUIRE_FALSE(holds(PredicateKind::WeaponBoundActive));
+    s.rightWeapon = {true, false};
+    REQUIRE(holds(PredicateKind::WeaponBoundNone));
+    // A bound sword in the right hand, or a bound dagger in the left beside
+    // a steel sword: Active. The rule that recasts it waits on None.
+    s.rightWeapon.bound = true;
+    REQUIRE_FALSE(holds(PredicateKind::WeaponBoundNone));
+    REQUIRE(holds(PredicateKind::WeaponBoundActive));
+    s.rightWeapon.bound = false;
+    s.leftWeapon.bound = true;
+    REQUIRE(holds(PredicateKind::WeaponBoundActive));
+
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::WeaponBoundNone));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::WeaponBoundActive));
+}
+
 TEST_CASE("the gem for a charge: the largest that fits, else the smallest carried", "[evaluator]")
 {
     // Petty 250, lesser 500, common 1000, as the game's settings have them.

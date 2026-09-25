@@ -933,6 +933,8 @@ bool DrawsHeading(ft::PredicateKind p)
     case ft::PredicateKind::LevelLowest:
     case ft::PredicateKind::WeaponPoisonNone:
     case ft::PredicateKind::WeaponPoisonActive:
+    case ft::PredicateKind::WeaponBoundNone:
+    case ft::PredicateKind::WeaponBoundActive:
         return false;
     default:
         return !ft::IsAbove(p) && !ft::IsExtreme(p);
@@ -1143,6 +1145,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 pick(Tr("Charge needed"), ft::PredicateKind::WeaponChargeNeeded);
                 submenu(Tr("Poison"), {{ft::PredicateKind::WeaponPoisonNone, Tr("None")},
                                        {ft::PredicateKind::WeaponPoisonActive, Tr("Active")}});
+                submenu(Tr("Bound"), {{ft::PredicateKind::WeaponBoundNone, Tr("None")},
+                                      {ft::PredicateKind::WeaponBoundActive, Tr("Active")}});
                 Im::EndMenu();
                 continue;
             }
