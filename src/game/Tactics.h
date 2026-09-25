@@ -192,11 +192,10 @@ void RefreshShownPage();
 // it is a follower's view with `player` set (dev/PLAYER.md).
 [[nodiscard]] SharedView ObservePlayer();
 
-// Everything in flight stepped now -- the power attack records, the
-// bashes, the player's cast -- as the fast tick steps them and under the
-// same gate: for an event a step waits on, so the step follows the event
-// rather than the next tick (game/PlayerCast.cpp, game/Blows.cpp). Game
-// thread.
+// Everything in flight stepped now -- the blows, the player's cast -- as
+// the fast tick steps them and under the same gate: for an event a step
+// waits on, so the step follows the event rather than the next tick
+// (game/PlayerCast.cpp, game/Blows.cpp). Game thread.
 void StepInFlightNow();
 
 // Start ticking. Safe to call once, after kDataLoaded.

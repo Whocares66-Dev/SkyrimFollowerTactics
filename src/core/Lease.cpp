@@ -3,14 +3,13 @@
 namespace ft
 {
 
-LeaseState ArmLease(double now, double window, bool sustained, float sustain, bool weapon) noexcept
+LeaseState ArmLease(double now, double window, bool sustained, float sustain) noexcept
 {
     LeaseState state;
     state.armedAt = now;
     state.until = now + window;
     state.sustained = sustained;
     state.sustain = sustain;
-    state.weapon = weapon;
     return state;
 }
 
@@ -75,60 +74,18 @@ LeaseStep AdvanceCast(LeaseState &state, const LeaseSeen &seen, LeaseKind kind, 
     return step;
 }
 
-LeaseStep AdvanceWeapon(LeaseState &state, const LeaseSeen &seen, double now) noexcept
-{
-    LeaseStep step;
-    if (!seen.holder)
-    {
-        step.finish = "holder vanished";
-        return step;
-    }
-    if (seen.running && !state.seenRunning)
-    {
-        state.seenRunning = true;
-        step.pickedUp = true;
-    }
-    // Our swing, once the package is theirs: the deadline steps back to
-    // let it land, never forward.
-    if (!state.swinging && state.seenRunning && seen.attacking && seen.ourPowerSwing)
-    {
-        state.swinging = true;
-        state.until = (std::max)(state.until, now + kWeaponSwingSeconds);
-        step.swingSeen = true;
-    }
-    // Facing is ours until the swing, unless combat owns it.
-    step.turnToward = !state.swinging && !seen.inOverrideList;
-
-    if (state.swinging && !seen.attacking)
-        step.finish = "power attack made";
-    else if (state.seenRunning && !seen.running)
-        step.finish = state.swinging ? "package ended mid-swing" : "package ended";
-    else if (now >= state.until)
-    {
-        if (!state.seenRunning)
-            step.finish = "deadline, AI never picked it up";
-        else if (state.swinging)
-            step.finish = "deadline, still swinging";
-        else
-            step.finish = "deadline, no power attack";
-    }
-    return step;
-}
-
 } // namespace ft
 
 namespace ft
 {
 
-std::optional<std::size_t> ChooseStack(std::span<const StackSeen> places, bool overrideLists) noexcept
+std::optional<std::size_t> ChooseStack(std::span<const StackSeen> places) noexcept
 {
     std::optional<std::size_t> fullest;
     std::size_t most = 0;
     for (std::size_t i = 0; i < places.size(); ++i)
     {
         const StackSeen &place = places[i];
-        if (place.overrideList)
-            continue;
         if (place.holdsRunning)
             return i;
         if (place.size > most)
@@ -137,10 +94,6 @@ std::optional<std::size_t> ChooseStack(std::span<const StackSeen> places, bool o
             fullest = i;
         }
     }
-    if (overrideLists)
-        for (std::size_t i = 0; i < places.size(); ++i)
-            if (places[i].overrideList && places[i].holdsRunning)
-                return i;
     return fullest;
 }
 

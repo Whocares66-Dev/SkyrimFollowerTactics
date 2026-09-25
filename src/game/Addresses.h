@@ -39,12 +39,6 @@ inline constexpr REL::RelocationID kEquipShout{37941, 38897};
 inline constexpr REL::RelocationID kUnequipSpell{37947, 38903};
 inline constexpr REL::RelocationID kUnequipShout{37948, 38904};
 
-// Turn an actor toward a point through its movement controller, and take
-// the point back: the UseWeapon procedure's own calls out of combat
-// (dev/ATTACK.md "Facing"). (actor, point, tolerance in radians, 1, 1).
-inline constexpr REL::RelocationID kTurnToward{36818, 37834};
-inline constexpr REL::RelocationID kStopTurning{36823, 37839};
-
 // BSInputDeviceManager's per-frame hand-off of the input queue to its
 // sinks, and the offset inside it of the one call that does the handing:
 // the call SKSE Menu Framework rewrites to read the keys, and that the
@@ -52,11 +46,6 @@ inline constexpr REL::RelocationID kStopTurning{36823, 37839};
 // (UI.cpp, dev/VERSIONS.md).
 inline constexpr REL::RelocationID kInputQueueDispatch{67315, 68617};
 inline constexpr std::ptrdiff_t kInputQueueDispatchCall = 0x7B;
-
-// The global map from a quest alias to its BGSOverridePackCollection: this
-// is its capacity field, 0x0C into a BSTScatterTable whose layout
-// Packages.cpp copies (CommonLib maps the container but not this global).
-inline constexpr REL::RelocationID kAliasOverrideMapCapacity{502247, 369298};
 
 // CombatInventoryItem's score call: the slot replaced in each entry
 // class's vtable so the AI's choice defers to the pins (dev/UNIQUE.md).

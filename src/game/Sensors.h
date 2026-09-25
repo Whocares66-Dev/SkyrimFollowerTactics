@@ -22,6 +22,7 @@ namespace RE
 {
 class Actor;
 class AlchemyItem;
+class BGSAttackData;
 struct Effect;
 class InventoryEntryData;
 class MagicItem;
@@ -88,6 +89,10 @@ struct SkillGate
 // keeps this per actor, NPCs too; negative or nonsense (an hour or more)
 // reads as "can shout".
 [[nodiscard]] float VoiceRecoveryOf(RE::Actor *actor);
+
+// The attack data an event names for this actor: their own record's, else
+// their race's, as the engine finds it. Null where neither has it.
+[[nodiscard]] const RE::BGSAttackData *AttackDataFor(RE::Actor *actor, const char *event);
 
 // One form's copies in the bag, read once: the core's view of them
 // (core/BagView.h) with each row's list beside it, so a row the core
@@ -285,8 +290,7 @@ struct BlowPlan
     // Whether the follower has the perk the Settings page asks for this
     // blow, where it asks one (game/Settings.h). True when it asks none.
     bool perk{true};
-    // A power attack's hand: the UseWeapon record attacks with the right
-    // alone, so the other swings go by the event.
+    // A power attack's hands, which pick the player's attack action.
     ft::Swing swing{ft::Swing::None};
     [[nodiscard]] bool Possible() const noexcept
     {

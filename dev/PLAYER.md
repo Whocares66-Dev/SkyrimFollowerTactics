@@ -92,6 +92,15 @@ What that costs the player, to be seen in play: a sheathed character draws and s
 
 When not to start one, beyond the gates under Out of combat: mid-swing, blocking, a bow drawn, a spell of the player's own charging in either hand, sprinting.
 
+### Why the cast keeps a 50 ms tick
+
+Everything else in flight steps on the actor's animation-graph events (a follower's bash and power attack, since 2026-09-24): a step keyed to an event cannot race the thing it waits for, as the lent hand's press once did. The player's cast keeps the fast tick, every 50 ms while it is in flight and not otherwise, because two of its steps have no event:
+
+- **The release at Ready.** The caster reaches Ready in its own update when the spell's charge time runs out (34143). Nothing announces it. The engine's table of animation handlers (read in SKSE's source, `Hooks_Handlers.cpp` and the handler RTTI names) has handlers for a cast's start, its fire, an interrupt and a weapon draw, and none for a spell ready; SKSE's action events are those same handlers, so they add nothing. The graph names `MLh_SpellReady_Event` and `MRh_SpellReady_Event`, but raised nothing at Ready in any dual cast with every event logged (2026-09-25), and whatever it raises is the animation's, not the caster's. The one way to an event would be a hook where 34143 sets the state to Ready: a new address pair and an engine hook, to gain at most 50 ms. Not taken.
+- **The held-button repeats.** A single press with a spell in each hand is held back by the handler's pairing window, and a shout charges its words while the control is held; both need held-button events sent while they wait, as the keyboard's key repeat sends them. Those are periodic by nature.
+
+What the tick does is read state -- the caster's, the hands', the player's own swing, block and button -- which cannot race anything, only answer up to 50 ms late; a handful of reads for the two seconds a cast lasts. The lend's end still steps it at once, from its `InterruptCast`.
+
 ## Out of combat
 
 **Decided 2026-09-18: a second list, not a field on the rule.** The per-rule In combat / Out of combat / Always recommended below was built and taken out the same day: a rule's moment is not a property of the rule but of the list it sits in. Out-of-combat tactics are to be a list of their own beside the combat one -- a tab, or a section that folds -- the same editor over it, evaluated out of a fight as the combat list is in one. The rest of this section is what that needs of the tick and the gates, and stands.

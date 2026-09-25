@@ -46,10 +46,8 @@
 // For each follower: a UseMagic package (a copy of Mercer's cast-at-player
 // record); a Shout package (a copy of Tsun's Clear Skies record), which is how
 // a POWER is performed -- the UseMagic procedure never fires one
-// (dev/ACTIONS.md 7); a one-word wrapper shout and its word; and a UseWeapon
-// package (a copy of Edorfin's attack-a-target record), which is how a POWER
-// ATTACK is made (dev/ATTACK.md). Each package's condition is
-// GetIsReference(holder).
+// (dev/ACTIONS.md 7); and a one-word wrapper shout and its word. Each
+// package's condition is GetIsReference(holder).
 //
 // ONE SET PER FOLLOWER
 // A follower's records are made the first time the tick sees them and kept,
@@ -89,8 +87,6 @@ class Actor;
 
 namespace ft::game
 {
-
-struct BlowPlan;
 
 // The spell a fresh record is pointed at, and the check that the layout
 // found on vanilla records holds on the copies. Fast Healing.
@@ -167,28 +163,6 @@ enum class CastRequest : std::uint8_t
 // shout, or at the deadline.
 [[nodiscard]] CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t targetId, int ruleIndex,
                                        std::string_view ruleName);
-
-// Ask a follower for one power attack at an enemy, through their UseWeapon
-// record: power attacks only, one attack, damage done, the location near
-// themself, the rule's target. The procedure draws the attack from the race's
-// power attacks, waits for the follower's own swing to end, and retries until
-// the graph takes it (dev/ATTACK.md). The lease ends once the swing has
-// ended, when the AI drops the package, or at the deadline. NoPackages when
-// the follower has no such record: the checks at load failed, or the copy did.
-// `plan` is the blow as the sensors priced it; its cost and reach go into
-// rule.resolved beside the follower's stamina and distance, so a power attack
-// not made says whether they could pay and reach.
-[[nodiscard]] CastRequest RequestPowerAttack(RE::Actor *actor, std::uint32_t targetId, const BlowPlan &plan,
-                                             int ruleIndex, std::string_view ruleName);
-
-// Is a power attack's record held by anyone? Any thread: the pacing thread
-// asks it to decide whether the fast tick is wanted.
-[[nodiscard]] bool AnyWeaponLease() noexcept;
-
-// TickPackages for the power attack records alone, for the fast tick: the
-// record goes back as soon as the swing has ended, before the procedure can
-// start a second one. Game thread.
-void TickWeaponLeases(double now);
 
 // Called every tick from the game thread. Watches held records: reports when
 // the AI picks our package up, and releases the record once the cast has

@@ -33,32 +33,38 @@ class Actor;
 namespace ft::game
 {
 
-enum class BashRequest : std::uint8_t
+enum class BlowRequest : std::uint8_t
 {
-    Started,       // the first step has run; rule.resolved says what came of it
-    AlreadyBashing // this follower has one in flight
+    Started,        // the first step has run; rule.resolved says what came of it
+    AlreadyInFlight // this follower has a blow in flight
 };
 
 // Start a bash, or a power bash, at the target, for the rule named, which
 // rule.resolved names again when it is over. The caller has judged that
 // what is in the hands bashes. Game thread.
-[[nodiscard]] BashRequest RequestBash(RE::Actor *actor, std::uint32_t targetId, bool power, int ruleIndex,
+[[nodiscard]] BlowRequest RequestBash(RE::Actor *actor, std::uint32_t targetId, bool power, int ruleIndex,
                                       std::string_view ruleName);
 
-// Is this follower in the middle of one? Their rules wait meanwhile: a pin
-// or a potion mid-bash would cut it off. Game thread.
-[[nodiscard]] bool IsMidBash(const RE::Actor *actor);
+// Start a follower's power attack at the target, as their combat AI makes
+// one: the right attack action carrying `event`, the attack their hands
+// make (core/Blows.h, PowerAttackEvent), taken once their own swing is over
+// and the target is inside the attack's strike angle, and followed by
+// their graph's events to its hit and its end (core/Strike.h). Game
+// thread.
+[[nodiscard]] BlowRequest RequestStrike(RE::Actor *actor, std::uint32_t targetId, const char *event, int ruleIndex,
+                                        std::string_view ruleName);
 
-// Is any in flight? Any thread.
-[[nodiscard]] bool AnyBashInFlight() noexcept;
+// Is this follower in the middle of a blow? Their rules wait meanwhile: a
+// pin or a potion mid-blow would cut it off. Game thread.
+[[nodiscard]] bool IsMidBlow(const RE::Actor *actor);
 
 // Advance every request by a step where it can go on. Game thread.
-void TickBashes(double now);
+void TickBlows(double now);
 
 // End every request now, lowering a block one raised. For the save message.
-void EndAllBashes(const char *why);
+void EndAllBlows(const char *why);
 
 // Forget every request. For a game load: the handles mean nothing now.
-void ResetBashes();
+void ResetBlows();
 
 } // namespace ft::game

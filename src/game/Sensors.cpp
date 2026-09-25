@@ -319,6 +319,22 @@ bool AboveSkillForAI(RE::Actor *actor, const RE::MagicItem *spell)
     return FirstSkillGate(actor, spell).has_value();
 }
 
+const RE::BGSAttackData *AttackDataFor(RE::Actor *actor, const char *event)
+{
+    if (!actor || !event)
+        return nullptr;
+    const RE::BSFixedString key(event);
+    const auto lookup = [&key](const RE::BGSAttackDataForm *form) -> const RE::BGSAttackData * {
+        const auto *map = form ? form->attackDataMap.get() : nullptr;
+        if (!map)
+            return nullptr;
+        const auto it = map->attackDataMap.find(key);
+        return it != map->attackDataMap.end() ? it->second.get() : nullptr;
+    };
+    const RE::BGSAttackData *attack = lookup(actor->GetActorBase());
+    return attack ? attack : lookup(actor->GetRace());
+}
+
 float VoiceRecoveryOf(RE::Actor *actor)
 {
     const float recovery = actor ? actor->GetVoiceRecoveryTime() : 0.0f;
@@ -1318,19 +1334,7 @@ constexpr RE::FormID kUnarmedWeapon = 0x000001F4;
 // neither names the event.
 float StaminaMultOf(RE::Actor *actor, const char *event)
 {
-    if (!actor || !event)
-        return 1.0f;
-    const RE::BSFixedString key(event);
-    const auto lookup = [&key](const RE::BGSAttackDataForm *form) -> const RE::BGSAttackData * {
-        const auto *map = form ? form->attackDataMap.get() : nullptr;
-        if (!map)
-            return nullptr;
-        const auto it = map->attackDataMap.find(key);
-        return it != map->attackDataMap.end() ? it->second.get() : nullptr;
-    };
-    const RE::BGSAttackData *attack = lookup(actor->GetActorBase());
-    if (!attack)
-        attack = lookup(actor->GetRace());
+    const RE::BGSAttackData *attack = AttackDataFor(actor, event);
     return attack ? attack->data.staminaMult : 1.0f;
 }
 } // namespace

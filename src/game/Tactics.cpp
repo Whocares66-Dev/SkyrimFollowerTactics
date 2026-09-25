@@ -257,9 +257,9 @@ ft::Capabilities RuntimeCapabilities(const RE::Actor *actor)
     // Flames" put Flames in the hand half a second into the cast. A list in
     // progress waits on the next tick; a fresh rule yields for this one.
     // Ours only: the AI's own casting, a pinned Flames streaming all fight,
-    // holds nothing up. A power attack's record is held the same way, and a
-    // bash in flight holds its block: a pin or a potion would cut either off.
-    if (IsMidCast(actor) || IsMidBash(actor))
+    // holds nothing up. A blow in flight is held the same way, a power
+    // attack or a bash from its block: a pin or a potion would cut either off.
+    if (IsMidCast(actor) || IsMidBlow(actor))
         caps.busy.fill(true);
     return caps;
 }
@@ -655,7 +655,7 @@ void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool hel
     ft::TickFacts facts;
     facts.now = ReadTick(id, lists, actor->IsInCombat(), held);
     facts.caps = RuntimeCapabilities(actor);
-    facts.busy = player ? IsPlayerMidCast() : (IsMidCast(actor) || IsMidBash(actor));
+    facts.busy = player ? IsPlayerMidCast() : (IsMidCast(actor) || IsMidBlow(actor));
 
     // The cost measured is the snapshot and the evaluation -- the rules'
     // own. The panel's pages are not in it: they are built when someone is
@@ -883,9 +883,9 @@ void Tick()
     if (!RE::PlayerCharacter::GetSingleton())
         return;
 
-    // A bash steps on its actor's graph events (game/Blows.h); the turn is
+    // A blow steps on its actor's graph events (game/Blows.h); the turn is
     // the backstop, for a deadline, or a step whose event never came.
-    TickBashes(now);
+    TickBlows(now);
 
     const auto followers = CollectManagedFollowers();
     RefreshRoster(followers);
@@ -1214,12 +1214,19 @@ SharedView ObserveFollower(ft::ActorId id)
 
 namespace
 {
-// The fast tick: every 50 ms while a power attack's record is held or a
-// cast on the player is in flight, and not otherwise. The record has to go
-// back the moment its swing ends, before the procedure starts a second
-// power attack, and the cast's release has to land the moment the caster
-// is ready. A bash steps on its actor's graph events instead
-// (game/Blows.h), with the half-second turn the backstop.
+// The fast tick: every 50 ms while a cast on the player is in flight, and
+// not otherwise. A bash and a power attack step on their actor's graph
+// events instead (game/Blows.h), with the half-second turn the backstop;
+// the player's cast keeps this, on purpose (dev/PLAYER.md, "Why the cast
+// keeps a 50 ms tick"). Its release has to
+// land when the caster is Ready, and nothing says so: the caster reaches
+// Ready in its own update when the charge time runs out (34143), the
+// engine's table of animation handlers has none for it, SKSE's action
+// events are those handlers, and the graph raised nothing then in any
+// dual cast (2026-09-25). The tick also sends the held-button repeats a
+// one-hand press and a shout's words need, which are periodic by nature.
+// A state read here cannot race what it waits for, only answer up to 50 ms
+// late, and it is a handful of reads for the two seconds a cast lasts.
 constexpr double kFastInterval = 0.05;
 std::atomic_bool g_fastQueued{false};
 
@@ -1232,8 +1239,7 @@ void StepInFlightNow()
     if (EvaluationHeld() || !RE::PlayerCharacter::GetSingleton())
         return;
     const double now = TacticsSeconds();
-    TickWeaponLeases(now);
-    TickBashes(now);
+    TickBlows(now);
     TickPlayerCasts(now);
 }
 
@@ -1242,8 +1248,9 @@ void Install()
     if (g_installed.exchange(true))
         return;
 
-    log::tactics.info("tick {:.0f} ms, rules in a fight and on its farewell; {:.0f} ms while a blow is in flight",
-                      kTickInterval * 1000.0, kFastInterval * 1000.0);
+    log::tactics.info(
+        "tick {:.0f} ms, rules in a fight and on its farewell; {:.0f} ms while the player's cast is in flight",
+        kTickInterval * 1000.0, kFastInterval * 1000.0);
     log::tactics.info("a follower starts with no rules; tactics are kept in the save (SKSE co-save)");
 
     // Detached on purpose: Skyrim never unloads SKSE plugins, and joining a
@@ -1269,7 +1276,7 @@ void Install()
                 else
                     g_tickQueued.store(false);
             }
-            else if ((AnyWeaponLease() || AnyPlayerCastInFlight()) && !g_fastQueued.exchange(true))
+            else if (AnyPlayerCastInFlight() && !g_fastQueued.exchange(true))
             {
                 if (task)
                     task->AddTask([] {

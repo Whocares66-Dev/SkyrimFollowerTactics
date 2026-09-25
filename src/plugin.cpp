@@ -119,7 +119,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
                 ft::game::ResetPackages();
                 ft::game::ResetAiScores();
                 ft::fix::ResetDispelHold();
-                ft::game::ResetBashes();
+                ft::game::ResetBlows();
                 ft::game::ResetPlayerCasts();
                 fp::game::OnGameStarted();
             }
@@ -135,7 +135,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse)
             if (message->type == SKSE::MessagingInterface::kSaveGame)
             {
                 ft::game::ReleaseAllLeases("saving");
-                ft::game::EndAllBashes("saving");
+                ft::game::EndAllBlows("saving");
                 ft::game::EndAllPlayerCasts("saving");
                 // And the abilities of perks bought here, whose mark on a
                 // value the save would keep; a task puts them back as soon

@@ -612,7 +612,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
         // attack, so the sequence is theirs too, aimed by nobody.
         if (action.kind != ft::ActionKind::PowerAttack)
             return RequestBash(actor, player ? 0 : target, action.kind == ft::ActionKind::PowerBash, ruleIndex,
-                               ruleName) == BashRequest::Started
+                               ruleName) == BlowRequest::Started
                        ? ActionResult::Requested
                        : ActionResult::Busy;
 
@@ -629,36 +629,18 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
             return sent ? ActionResult::Performed : ActionResult::GraphRefused;
         }
 
-        // A power attack with the right hand's weapon goes through the
-        // follower's UseWeapon record, which waits for their own swing to end
-        // instead of being turned away mid-swing: sent as an event, 3 of 11
-        // blows landed in play (2026-09-09, dev/ACTIONS.md 6). The procedure
-        // attacks with the right hand alone, so the left's blade and the fists
-        // stay events.
-        if (blow.swing == ft::Swing::Right || blow.swing == ft::Swing::Both)
-        {
-            const auto request = RequestPowerAttack(actor, elsewhere ? target : currentId, blow, ruleIndex, ruleName);
-            if (request != CastRequest::NoPackages)
-            {
-                log::actions.debug("power attack: {}", ToString(request));
-                return ResultOf(request);
-            }
-        }
-
-        // The left's blade, the fists, or no record for this follower: the
-        // animation event the race's attack data names for what is in the hands. The follower's own combat AI
-        // runs the same graph, so it is refused while a swing, a block or a
-        // stagger is in progress, and the refusal spends the cooldown the
-        // core stamped when it decided.
-        auto *state = actor->AsActorState();
-        if (!state || !state->IsWeaponDrawn())
-            return ActionResult::WeaponSheathed;
-        if (state->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone)
-            return ActionResult::MidSwing;
-        const bool sent = actor->NotifyAnimationGraph(blow.event);
-        log::actions.debug("blow: {} {} ({:.0f} stamina){}", Describe(actor), blow.event, blow.stamina,
-                           sent ? "" : " -- the graph refused it");
-        return sent ? ActionResult::Performed : ActionResult::GraphRefused;
+        // A follower's power attack as their combat AI makes one: the right
+        // attack action carrying the attack their hands make, taken once
+        // their own swing is over and the target is in front (game/Blows.h,
+        // RequestStrike). Not the UseWeapon record, which drew the attack
+        // from the race's list without looking at the hands: a follower with
+        // a sword and a shield was given the dual-wield one, once aborted,
+        // once played (2026-09-24, 09-25). Not a bare event either, which
+        // the graph turned away mid-swing: 3 of 11 landed (2026-09-09).
+        return RequestStrike(actor, elsewhere ? target : currentId, blow.event, ruleIndex, ruleName) ==
+                       BlowRequest::Started
+                   ? ActionResult::Requested
+                   : ActionResult::Busy;
     }
 
     default:

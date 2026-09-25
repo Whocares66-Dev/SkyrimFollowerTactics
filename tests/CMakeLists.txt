@@ -24,6 +24,7 @@ add_executable(
     test_attackscore.cpp
     test_bag.cpp
     test_bash.cpp
+    test_strike.cpp
     test_blows.cpp
     test_breakdown.cpp
     test_clock.cpp

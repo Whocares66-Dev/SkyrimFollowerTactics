@@ -149,6 +149,7 @@ add_library(
     src/core/AttackScore.cpp
     src/core/BagView.cpp
     src/core/Bash.cpp
+    src/core/Strike.cpp
     src/core/Blows.cpp
     src/core/Breakdown.cpp
     src/core/Clock.cpp
