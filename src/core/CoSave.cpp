@@ -3,35 +3,10 @@
 #include "core/Profile.h"
 
 #include <cstring>
+#include <format>
 
 namespace ft
 {
-namespace
-{
-
-// "50524F46": eight hex digits, for a record type in a note. Not
-// std::format: clang-tidy's analyser falls over inside the MSVC 14.42
-// <format> internals on any call from here, and the linter is one of the
-// checks (CLAUDE.md).
-std::string Hex8(std::uint32_t value)
-{
-    static constexpr char kDigits[] = "0123456789ABCDEF";
-    std::string out(8, '0');
-    for (int i = 7; i >= 0; --i, value >>= 4)
-        out[static_cast<std::size_t>(i)] = kDigits[value & 0xF];
-    return out;
-}
-
-// The same with no leading zeros, "A2C94", as a plugin's own id is
-// written; "0" for zero.
-std::string Hex(std::uint32_t value)
-{
-    std::string out = Hex8(value);
-    const auto first = out.find_first_not_of('0');
-    return first == std::string::npos ? "0" : out.substr(first);
-}
-
-} // namespace
 
 KeyedBy ChooseKeyRecord(bool baseInPlugin, bool referenceInPlugin) noexcept
 {
@@ -42,12 +17,13 @@ KeyedBy ChooseKeyRecord(bool baseInPlugin, bool referenceInPlugin) noexcept
 
 std::string FollowerKey(std::string_view plugin, std::uint32_t localId)
 {
-    return std::string(plugin) + "-" + Hex(localId);
+    // No leading zeros, "A2C94", as a plugin's own id is written.
+    return std::format("{}-{:X}", plugin, localId);
 }
 
 std::string DynamicKey(std::uint32_t referenceId)
 {
-    return "dynamic-" + Hex8(referenceId);
+    return std::format("dynamic-{:08X}", referenceId);
 }
 
 void PutString(std::string &out, std::string_view s)
@@ -108,8 +84,9 @@ CoSaveContents UnpackCoSave(std::span<const CoSaveRecord> records)
         }
         if (record.type != kFollowerRecord)
         {
-            contents.notes.emplace_back(log::Level::Warn, "co-save record " + Hex8(record.type) +
-                                                              " is not one this build knows -- skipped");
+            contents.notes.emplace_back(
+                log::Level::Warn,
+                std::format("co-save record {:08X} is not one this build knows -- skipped", record.type));
             continue;
         }
         const auto key = TakeString(rest);

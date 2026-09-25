@@ -2,6 +2,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <format>
+
 namespace fp
 {
 namespace
@@ -270,7 +272,7 @@ CoSaveContents UnpackCoSave(std::span<const CoSaveRecord> records)
                 out.notes.push_back("a companion could not be read: " + why);
         }
         else
-            out.notes.push_back("a record of unknown type " + Hex(r.type, 8) + "; skipped");
+            out.notes.push_back(std::format("a record of unknown type {:08X}; skipped", r.type));
     }
     return out;
 }

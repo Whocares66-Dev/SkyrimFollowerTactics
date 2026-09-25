@@ -33,12 +33,6 @@ struct FormKey
 // "Skyrim.esm|0A2C8E": the plugin, a bar (a character no plugin name holds),
 // six hex digits.
 [[nodiscard]] std::string ToString(const FormKey &key);
-
-// "0A2C8E": upper-case hex, zero-padded to `width` digits (more when the
-// value needs them). Not std::format: clang-tidy's analyser falls over
-// inside MSVC 14.42's <format> on calls from the core (Tactics'
-// core/CoSave.cpp says the same), and the linter is one of the checks.
-[[nodiscard]] std::string Hex(std::uint32_t value, int width);
 // The reverse; none for anything that is not that shape.
 [[nodiscard]] std::optional<FormKey> ParseFormKey(std::string_view text);
 
