@@ -38,6 +38,7 @@ void OnDataLoaded()
     // than failing the whole plugin. Each follower's records are made when
     // the tick first sees them.
     ft::game::InitPackages();
+    ft::game::ChargeOurCasts();
 
     ft::game::Install();
     // Before the panel's entries are added: their names are translated.

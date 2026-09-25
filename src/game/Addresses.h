@@ -57,6 +57,13 @@ inline constexpr std::size_t kCalculateScoreSlot = 0x0C;
 // script caster's 45633) and 1.5.97 (44758).
 inline constexpr std::size_t kCheckShouldEquipSlot = 0x0F;
 
+// ActorMagicCaster's SetSkipCheckCast (34160 on 1.6.1170, 33379 on 1.5.97,
+// the same one instruction), which the UseMagic procedure calls through the
+// vtable as it starts a one-hand cast and on every update while one is under
+// way: replaced so a cast through a follower's record pays its cost
+// (Packages.cpp, ChargeOurCasts; dev/MAGIC.md "What a cast costs").
+inline constexpr std::size_t kSetSkipCheckCastSlot = 0x13;
+
 // --- Progression: the perk and spell views, and learning by doing -----------
 // (dev/ENGINE_PERKS.md, dev/ENGINE_SPELLS.md, dev/ENGINE_SKILLS.md, read on
 // 1.5.97, 1.6.1170 and 1.7.104)

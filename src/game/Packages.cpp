@@ -1559,4 +1559,45 @@ void ProvideCastForms(RE::Actor *actor)
     g_kits.emplace(id, std::move(kit));
 }
 
+namespace
+{
+
+// ActorMagicCaster::SetSkipCheckCast, as the vtable held it before ours.
+using SetSkipCheckCastFn = void (*)(RE::ActorMagicCaster *);
+SetSkipCheckCastFn g_setSkipCheckCast = nullptr;
+
+// The UseMagic procedure calls this as it starts a one-hand cast and on
+// every update while one is under way (dev/MAGIC.md "What a cast costs").
+// Asked of one hand of one actor, about that actor's own record and the
+// spell in that hand, so followers casting at once each pay for their own.
+// Any thread: the procedure runs wherever the AI does.
+void SetSkipCheckCastHook(RE::ActorMagicCaster *caster)
+{
+    const Kit *kit = g_available && caster->actor ? SharedKitOf(caster->actor->GetFormID()) : nullptr;
+    const RE::MagicItem *spell = caster->currentSpell;
+    // A hand with no spell is one the record's cast is about to start in:
+    // the procedure asks before it starts the cast, and a hand's spell is
+    // cleared as each cast fires. Once one is under way, the hand's spell
+    // is what the caster charges for, and it must be the record's.
+    if (kit && kit->spell.Busy() && (!spell || spell->GetFormID() == kit->spell.spell))
+    {
+        // Cleared rather than left: a set from before the lease would skip
+        // the cost as surely as the procedure's own.
+        caster->flags.reset(RE::ActorMagicCaster::Flags::kSkipCheckCast);
+        return;
+    }
+    g_setSkipCheckCast(caster);
+}
+
+} // namespace
+
+void ChargeOurCasts()
+{
+    REL::Relocation<std::uintptr_t> table{RE::VTABLE_ActorMagicCaster[0]};
+    g_setSkipCheckCast = reinterpret_cast<SetSkipCheckCastFn>(*reinterpret_cast<const std::uintptr_t *>(
+        table.address() + addr::kSetSkipCheckCastSlot * sizeof(std::uintptr_t)));
+    table.write_vfunc(addr::kSetSkipCheckCastSlot, SetSkipCheckCastHook);
+    log::packages.info("a follower's cast through their record pays its magicka");
+}
+
 } // namespace ft::game

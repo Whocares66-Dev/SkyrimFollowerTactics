@@ -27,7 +27,8 @@
 //                 the follower's running package array (PutOnStack), point
 //                 its condition at the follower, ask the AI to re-evaluate
 //     the AI      finds the first entry whose condition passes -- ours --
-//                 and runs the UseMagic procedure: animation, cost, interrupts
+//                 and runs the UseMagic procedure: animation, interrupts;
+//                 the cost only because ChargeOurCasts refuses its skip
 //     afterwards  the tick takes the record out of the array and clears the
 //                 condition, so the follower's stack is exactly as it was
 //
@@ -96,6 +97,15 @@ inline constexpr std::uint32_t kCanarySpellID = 0x0002F3B8;
 // reports unavailable and cast rules stay unsupported; the log says which
 // step.
 void InitPackages();
+
+// Once, at data load: a cast through a follower's record pays for itself.
+// The UseMagic procedure has the caster skip its checks, and with them the
+// magicka the cast costs, which suits the staged casts it was made for; for
+// the spell a follower's record is casting, the skip is refused, and the
+// engine charges and checks that cast as it does any other. Every other
+// cast, every other actor's, and our powers and shouts are left as they
+// were (dev/MAGIC.md "What a cast costs").
+void ChargeOurCasts();
 
 // Make a follower's records if they have none: a UseMagic package for a
 // spell, and a Shout package with its wrapper for a power or a shout. The
