@@ -192,6 +192,11 @@ void RefreshShownPage();
 // it is a follower's view with `player` set (dev/PLAYER.md).
 [[nodiscard]] SharedView ObservePlayer();
 
+// The player's cast stepped now, as the fast tick steps it and under the
+// same gate: for an event the cast waits on, so the step follows the event
+// rather than the next tick (game/PlayerCast.cpp). Game thread.
+void StepPlayerCastNow();
+
 // Start ticking. Safe to call once, after kDataLoaded.
 void Install();
 

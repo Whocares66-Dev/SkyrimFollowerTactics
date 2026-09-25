@@ -92,6 +92,23 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
             return late(kLendSeconds)
                        ? (run.voice ? "the voice would not take it" : "the hand would not take the spell")
                        : nullptr;
+        // A lend is an equip, and the equip plays in the animation graph
+        // after the spell already shows in the hand, sending an
+        // InterruptCast as it starts: 5 ms after the lend where the hand held
+        // a spell, 70 to 90 ms where it held bare fists, and a press in
+        // between was cut short by it (2026-09-24). So hands we lent are
+        // pressed once it is heard; a hand that already held the spell had
+        // no equip. Not at the equip's end: nothing after the InterruptCast
+        // cuts a charge short, and the engine holds the press and begins the
+        // cast as the equip animation ends whichever it follows. Where it is
+        // never heard, the press goes at the lend's deadline, as before.
+        if (run.lendAsked && !run.voice)
+        {
+            if (seen.equipSettled)
+                run.settledAt = now;
+            else if (!late(kLendSeconds))
+                return nullptr;
+        }
         Begin(run, CastStep::Drawing, now);
     }
 

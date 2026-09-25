@@ -6,6 +6,7 @@
 #include "game/Magic.h"
 #include "game/Pins.h"
 #include "game/Sensors.h"
+#include "game/Tactics.h"
 #include "game/Util.h"
 
 #include <atomic>
@@ -72,6 +73,10 @@ std::atomic<bool> g_inFlight{false};
 std::atomic<std::uint32_t> g_firedLeft{0};
 std::atomic<std::uint32_t> g_firedRight{0};
 std::atomic<bool> g_firedVoice{false};
+// The lent hands' equip can no longer cut a charge short: its InterruptCast,
+// heard since Lend cleared this before equipping (core/PlayerCast.h,
+// equipSettled).
+std::atomic<bool> g_equipSettled{false};
 
 class PlayerFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
 {
@@ -89,10 +94,25 @@ class PlayerFireSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
             g_firedVoice.store(true, std::memory_order_relaxed);
             return RE::BSEventNotifyControl::kContinue;
         }
-        // What the voice's animation says while a power or shout of ours is
-        // in flight: which events a tap of the shout control raises.
-        if (g_inFlight.load(std::memory_order_relaxed) &&
-            (strstr(tag, "Cast") || strstr(tag, "cast") || strstr(tag, "Voice") || strstr(tag, "Shout")))
+        if (_stricmp(tag, "InterruptCast") == 0)
+        {
+            g_equipSettled.store(true, std::memory_order_relaxed);
+            // The step it lets go of, taken on the game thread as soon as
+            // the task queue drains rather than at the next fast tick: one
+            // task for the event, which queues nothing further (CLAUDE.md,
+            // "A task must never re-arm itself"). Only while the run still
+            // waits on it; the tick stays the backstop.
+            if (g_inFlight.load(std::memory_order_relaxed))
+                if (auto *tasks = SKSE::GetTaskInterface())
+                    tasks->AddTask([] {
+                        if (g_run && g_run->state.step == ft::CastStep::Lending)
+                            StepPlayerCastNow();
+                    });
+        }
+        // Everything the graph says while a cast of ours is in flight, while
+        // the cast's other steps are made to follow events rather than the
+        // fast tick (the wip-events branch).
+        if (g_inFlight.load(std::memory_order_relaxed))
             log::player.debug("anim: {}", tag);
         if (!right && !left)
             return RE::BSEventNotifyControl::kContinue;
@@ -327,6 +347,7 @@ void Lend(RE::Actor *player, Run &run)
                       : run.hand == ft::Hand::Left ? "left"
                                                    : "right",
                       heldText(0), heldText(1));
+    g_equipSettled.store(false, std::memory_order_relaxed);
     // A scroll goes into the hand as the item it is, one copy, now.
     if (spell->Is(RE::FormType::Scroll))
     {
@@ -557,6 +578,7 @@ void Report(const Run &run, RE::Actor *player, double now)
     fields.emplace_back("drew", run.state.drew);
     fields.emplace_back("pressedS", since(run.state.pressedAt));
     fields.emplace_back("readyS", since(run.state.readyAt));
+    fields.emplace_back("settledS", since(run.state.settledAt));
     fields.emplace_back("releasedS", since(run.state.releasedAt));
     fields.emplace_back("firedS", since(run.state.firedAt));
     fields.emplace_back("highestState", run.state.highestState);
@@ -568,16 +590,16 @@ void Report(const Run &run, RE::Actor *player, double now)
     fields.emplace_back("magickaAtRequest", static_cast<double>(run.magickaAtRequest));
     fields.emplace_back("magickaAtEnd", static_cast<double>(magickaNow));
     log::player.event(log::Level::Info, "rule.resolved", player, fields,
-                      "{} rule {} \"{}\": {} {} -- {}, after {:.2f} s ({} hand{}{}; pressed at {:.2f} s, ready at "
-                      "{:.2f} s, released at {:.2f} s, fired at {:.2f} s; caster state reached {}; magicka {:.0f} -> "
-                      "{:.0f})",
+                      "{} rule {} \"{}\": {} {} -- {}, after {:.2f} s ({} hand{}{}; settled at {:.2f} s, pressed at "
+                      "{:.2f} s, ready at {:.2f} s, released at {:.2f} s, fired at {:.2f} s; caster state reached {}; "
+                      "magicka {:.0f} -> {:.0f})",
                       player ? log::NameOf(player) : "the player", run.ruleIndex, run.ruleName,
                       run.state.voice ? "power or shout" : "cast", run.state.fired ? "cast" : "not cast",
                       run.state.reason, now - run.state.requestedAt, HandName(run),
                       run.state.drew ? ", drawn for it" : "",
-                      (run.lent[0] || run.lent[1] || run.voiceLent) ? ", lent" : "", since(run.state.pressedAt),
-                      since(run.state.readyAt), since(run.state.releasedAt), since(run.state.firedAt),
-                      run.state.highestState, run.magickaAtRequest, magickaNow);
+                      (run.lent[0] || run.lent[1] || run.voiceLent) ? ", lent" : "", since(run.state.settledAt),
+                      since(run.state.pressedAt), since(run.state.readyAt), since(run.state.releasedAt),
+                      since(run.state.firedAt), run.state.highestState, run.magickaAtRequest, magickaNow);
 }
 
 // Let go of a press not yet released -- at Ready that fires, earlier it
@@ -635,6 +657,7 @@ const char *Advance(Run &run, RE::Actor *player, double now)
     {
         const auto &runtime = player->GetActorRuntimeData();
         seen.placed = run.state.voice ? runtime.selectedPower == run.voiceForm : SpellPlaced(player, run);
+        seen.equipSettled = g_equipSettled.load(std::memory_order_relaxed);
         const auto weapon = state->GetWeaponState();
         seen.weapon = weapon == RE::WEAPON_STATE::kDrawn      ? ft::CastSeen::Weapon::Drawn
                       : weapon == RE::WEAPON_STATE::kSheathed ? ft::CastSeen::Weapon::Sheathed

@@ -149,12 +149,37 @@ TEST_CASE("the spell is lent once and waited for; the voice the same", "[playerc
     REQUIRE(sentVoice.commands == std::vector<CastCommand>{CastCommand::LendVoice});
     REQUIRE(Over(AdvancePlayerCast(voice, empty, 101.0, sentVoice.Fn())) == "the voice would not take it");
 
-    // Placed on a later tick: on to the press, in the same tick.
+    // Placed on a later tick, and the equip's InterruptCast heard: on to
+    // the press, in the same tick. Placed but not yet heard, it waits: that
+    // InterruptCast would cut a press short.
     CastState placed = Spell();
     Sent sentPlaced;
     REQUIRE_FALSE(AdvancePlayerCast(placed, empty, 100.0, sentPlaced.Fn()));
-    REQUIRE_FALSE(AdvancePlayerCast(placed, Free(), 100.1, sentPlaced.Fn()));
+    REQUIRE_FALSE(AdvancePlayerCast(placed, Free(), 100.05, sentPlaced.Fn()));
+    REQUIRE(sentPlaced.Last() == CastCommand::LendHands);
+    REQUIRE(placed.step == CastStep::Lending);
+    CastSeen settled = Free();
+    settled.equipSettled = true;
+    REQUIRE_FALSE(AdvancePlayerCast(placed, settled, 100.1, sentPlaced.Fn()));
     REQUIRE(sentPlaced.Last() == CastCommand::Press);
+    REQUIRE(placed.settledAt == 100.1);
+
+    // Never heard: pressed at the lend's deadline, as before the wait.
+    CastState unheard = Spell();
+    Sent sentUnheard;
+    REQUIRE_FALSE(AdvancePlayerCast(unheard, empty, 100.0, sentUnheard.Fn()));
+    REQUIRE_FALSE(AdvancePlayerCast(unheard, Free(), 100.9, sentUnheard.Fn()));
+    REQUIRE(sentUnheard.Last() == CastCommand::LendHands);
+    REQUIRE_FALSE(AdvancePlayerCast(unheard, Free(), 101.0, sentUnheard.Fn()));
+    REQUIRE(sentUnheard.Last() == CastCommand::Press);
+    REQUIRE(unheard.settledAt < 0.0);
+
+    // The voice has no hands to settle: placed, it goes on.
+    CastState power = Power();
+    Sent sentPower;
+    REQUIRE_FALSE(AdvancePlayerCast(power, empty, 100.0, sentPower.Fn()));
+    REQUIRE_FALSE(AdvancePlayerCast(power, Free(), 100.05, sentPower.Fn()));
+    REQUIRE(sentPower.Last() == CastCommand::Press);
 }
 
 TEST_CASE("sheathed hands are drawn once and waited for; a shout needs no hands", "[playercast]")

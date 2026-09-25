@@ -79,6 +79,7 @@ struct CastState
     CastStep step{CastStep::Lending};
     double requestedAt{0.0};
     double stepAt{0.0};
+    double settledAt{-1.0}; // the lent hands' equip heard past cutting a charge short
     double pressedAt{-1.0};
     double readyAt{-1.0};
     double releasedAt{-1.0};
@@ -97,6 +98,10 @@ struct CastSeen
 {
     bool player{true};  // resolves, with an actor state
     bool placed{false}; // the spell in every hand the run takes, or the form in the voice
+    // The lent hands' equip can no longer cut a charge short: its
+    // InterruptCast heard since the lend. A press before it is cut short by
+    // it; one after it is held until the equip animation ends.
+    bool equipSettled{false};
     enum class Weapon : std::uint8_t
     {
         Drawn,

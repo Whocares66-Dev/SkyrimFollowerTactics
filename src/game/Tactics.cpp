@@ -1220,9 +1220,16 @@ namespace
 constexpr double kFastInterval = 0.05;
 std::atomic_bool g_fastQueued{false};
 
+// Steps are taken only while time runs and the player is there: the fast
+// tick's, and those an event asks for (StepPlayerCastNow).
+bool StepsHeld()
+{
+    return EvaluationHeld() || !RE::PlayerCharacter::GetSingleton();
+}
+
 void FastTick()
 {
-    if (EvaluationHeld() || !RE::PlayerCharacter::GetSingleton())
+    if (StepsHeld())
         return;
     const double now = TacticsSeconds();
     TickWeaponLeases(now);
@@ -1230,6 +1237,12 @@ void FastTick()
     TickPlayerCasts(now);
 }
 } // namespace
+
+void StepPlayerCastNow()
+{
+    if (!StepsHeld())
+        TickPlayerCasts(TacticsSeconds());
+}
 
 void Install()
 {
