@@ -51,6 +51,9 @@ using ft::i18n::TrFormat;
 namespace ft::game
 {
 
+namespace
+{
+
 // Is `worn`, the enchantment an item carries, the one an effect came from?
 // The same form, or one made at a table from the other as its template:
 // a player's enchantment is a form of its own with the template as its
@@ -67,6 +70,8 @@ bool SameEnchantment(const RE::MagicItem *worn, const RE::MagicItem *magic)
     const auto *b = magic->As<RE::EnchantmentItem>();
     return (a && a->data.baseEnchantment == magic) || (b && b->data.baseEnchantment == worn);
 }
+
+} // namespace
 
 WornSource WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic, const RE::TESBoundObject *from)
 {
@@ -88,6 +93,9 @@ WornSource WornSourceOf(RE::Actor *actor, const RE::MagicItem *magic, const RE::
     return {};
 }
 
+namespace
+{
+
 // What a running effect is called by on the sheets: the worn item carrying
 // an enchantment, else the spell or potion.
 std::string SourceName(RE::Actor *actor, const RE::ActiveEffect *ae)
@@ -101,8 +109,6 @@ std::string SourceName(RE::Actor *actor, const RE::ActiveEffect *ae)
         source = ae->spell->GetName();
     return source;
 }
-namespace
-{
 
 bool HeldPerkGrants(RE::Actor *actor, const RE::MagicItem *spell); // below, with the perks
 
@@ -197,7 +203,12 @@ std::vector<Contribution> Contributions(RE::Actor *actor, RE::ActorValue value)
 
 float DamageReduction(RE::Actor *actor); // below, with the armour readings
 float HiddenArmor(RE::Actor *actor);
+namespace
+{
+
 float ArmorValue(RE::Actor *actor);
+
+} // namespace
 float EffectiveArmor(RE::Actor *actor);
 
 ft::Breakdown ArmorBreakdown(RE::Actor *actor)
@@ -251,6 +262,9 @@ ft::Breakdown ArmorBreakdown(RE::Actor *actor)
     return b;
 }
 
+namespace
+{
+
 // fArmorScalingFactor over 100: what a point of armour rating turns away.
 float ArmorScale()
 {
@@ -258,17 +272,24 @@ float ArmorScale()
     return scale;
 }
 
+} // namespace
+
 float HiddenArmor(RE::Actor *actor)
 {
     const float scale = ArmorScale();
     return actor && scale > 0.0f ? actor->GetArmorBaseFactorSum() / scale : 0.0f;
 }
 
+namespace
+{
+
 float ArmorValue(RE::Actor *actor)
 {
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     return owner ? owner->GetActorValue(RE::ActorValue::kDamageResist) : 0.0f;
 }
+
+} // namespace
 
 float EffectiveArmor(RE::Actor *actor)
 {

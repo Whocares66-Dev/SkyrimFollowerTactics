@@ -52,6 +52,9 @@ using ft::i18n::TrFormat;
 namespace ft::game
 {
 
+namespace
+{
+
 // "3 min 24 s", "1 h 5 min", "12 s"; nothing for an effect with no
 // duration, an ability's or an enchantment's.
 std::string RemainingText(float seconds)
@@ -99,6 +102,8 @@ std::string EffectDescription(const RE::EffectSetting *base, float magnitude, fl
 
 bool MovesValue(const RE::EffectSetting *base); // below, with the effect rows
 
+} // namespace
+
 bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
 {
     using Archetype = RE::EffectArchetypes::ArchetypeID;
@@ -112,6 +117,9 @@ bool ModifiesValue(const RE::ActiveEffect &ae, RE::ActorValue value)
     return primary || secondary;
 }
 
+namespace
+{
+
 // Does the effect move an actor value: the kinds the Character sheet's
 // notes list by source.
 bool MovesValue(const RE::EffectSetting *base)
@@ -124,6 +132,8 @@ bool MovesValue(const RE::EffectSetting *base)
     return archetype == Archetype::kValueModifier || archetype == Archetype::kPeakValueModifier ||
            archetype == Archetype::kDualValueModifier || archetype == Archetype::kEnhanceWeapon;
 }
+
+} // namespace
 
 // One effect of a spell, an enchantment or a potion as a row, as a perk's
 // entry is (EntryRow): the value it moves on the left, else the kind of
@@ -408,6 +418,9 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
 // in the Creation Kit's words: "Mod Attack Damage", "Mod Spell Cost".
 #include "game/ConditionNames.inc"
 
+namespace
+{
+
 std::string HexId(std::uint32_t id)
 {
     char text[16];
@@ -611,6 +624,8 @@ std::string PartyName(RE::TESObjectREFR *ref)
     const char *name = ref->GetDisplayFullName();
     return name && *name ? name : HexId(ref->GetFormID());
 }
+
+} // namespace
 
 // A condition list as rows: the call, the comparison ("== 1", "OR" after
 // it where the list reads so), and a tick where the parties meet it now.

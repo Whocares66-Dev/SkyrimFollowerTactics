@@ -332,8 +332,6 @@ Binding EvaluatePlayer(const Snapshot &s, const Rule &r)
     return player && MemberSatisfies(*player, r, s) ? Match(kPlayerFormID) : NoMatch();
 }
 
-} // namespace
-
 // Who the condition matches, the rule's Not included.
 Binding MatchSubject(const Rule &r, const Snapshot &s)
 {
@@ -373,6 +371,8 @@ Binding MatchSubject(const Rule &r, const Snapshot &s)
         return NoMatch();
     }
 }
+
+} // namespace
 
 Binding EvaluateCondition(const Rule &r, const Snapshot &s)
 {

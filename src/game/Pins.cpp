@@ -223,12 +223,17 @@ Holdable DescribeHoldable(RE::Actor *actor, RE::TESForm *form, const std::option
 
 // Is this form readied in the voice slot: a power or a shout the actor has
 // selected? Voice things have no hand; this is their "equipped".
+namespace
+{
+
 bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand);
 
 bool InVoice(RE::Actor *actor, RE::TESForm *form)
 {
     return actor && actor->GetActorRuntimeData().selectedPower == form;
 }
+
+} // namespace
 
 std::vector<Pin> PinsOf(ft::ActorId id)
 {
@@ -1345,6 +1350,9 @@ void MarkPins(RE::Actor *actor, std::vector<InventoryItem> &items, std::vector<M
     }
 }
 
+namespace
+{
+
 // Put a spell in a hand -- Left, Right, or None for the engine's choice --
 // unless it is there already. The engine's item equip is a no-op for an
 // item already worn; its spell equip is not, and each call plays the equip
@@ -1364,6 +1372,8 @@ bool EquipSpellIn(RE::Actor *actor, RE::SpellItem *spell, Hand hand)
     manager->EquipSpell(actor, spell, hand == Hand::None ? nullptr : HandSlot(hand));
     return true;
 }
+
+} // namespace
 
 void WatchCombatScores()
 {

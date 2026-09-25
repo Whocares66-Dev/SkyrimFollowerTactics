@@ -444,6 +444,9 @@ constexpr std::array<const char *, 92> kEntryPointNames{{
     "Allow Mount Actor",
 }};
 
+namespace
+{
+
 // One entry of a perk as a row: the entry point in the Creation Kit's
 // words with what the function does to it, an ability by name, a quest
 // by name and stage.
@@ -530,8 +533,6 @@ SheetRow EntryRow(const RE::BGSPerkEntry *entry)
         return Row(Tr("Entry"), "?");
     }
 }
-namespace
-{
 
 // A perk held that the skill trees' walk does not find, with its rank.
 struct HeldPerk

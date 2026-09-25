@@ -23,12 +23,7 @@ constexpr double kWindow = 3.0;
 std::mutex g_mutex;
 ft::HitTable g_hits;
 
-} // namespace
-
 ft::Resist ResistOf(const RE::EffectSetting *base);
-
-namespace
-{
 
 void Note(ft::ActorId target, DamageKind kind, ft::ActorId attacker)
 {
@@ -47,6 +42,7 @@ ft::ActorId IdOf(const RE::NiPointer<RE::TESObjectREFR> &ref)
 // spell is both.
 class HitSink : public RE::BSTEventSink<RE::TESHitEvent>
 {
+  public:
     RE::BSEventNotifyControl ProcessEvent(const RE::TESHitEvent *ev, RE::BSTEventSource<RE::TESHitEvent> *) override
     {
         if (!ev || !ev->target)
@@ -76,6 +72,7 @@ class HitSink : public RE::BSTEventSink<RE::TESHitEvent>
 // frost, a poisoned blade's poison.
 class ApplySink : public RE::BSTEventSink<RE::TESMagicEffectApplyEvent>
 {
+  public:
     RE::BSEventNotifyControl ProcessEvent(const RE::TESMagicEffectApplyEvent *ev,
                                           RE::BSTEventSource<RE::TESMagicEffectApplyEvent> *) override
     {
@@ -119,6 +116,9 @@ RE::ActorValue ResistValueOf(DamageKind kind)
     }
 }
 
+namespace
+{
+
 ft::Resist ResistOf(const RE::EffectSetting *base)
 {
     switch (base->data.resistVariable)
@@ -135,6 +135,8 @@ ft::Resist ResistOf(const RE::EffectSetting *base)
         return ft::Resist::Other;
     }
 }
+
+} // namespace
 
 DamageKind KindOfEffect(const RE::EffectSetting *base)
 {

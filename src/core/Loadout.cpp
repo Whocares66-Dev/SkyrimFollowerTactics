@@ -373,6 +373,9 @@ std::vector<Displaced> ApplyRequest(std::vector<Pin> &pins, PinRequest request, 
     return {};
 }
 
+namespace
+{
+
 // A pin with no hand holding the place a thing would take: a body slot
 // they share, the quiver, or the voice.
 bool HoldsPlaceOf(const Pin &pin, const Holdable &thing) noexcept
@@ -382,6 +385,8 @@ bool HoldsPlaceOf(const Pin &pin, const Holdable &thing) noexcept
     return (pin.thing.slots & thing.slots) != 0 || (pin.thing.IsAmmo() && thing.IsAmmo()) ||
            (pin.thing.IsVoice() && thing.IsVoice());
 }
+
+} // namespace
 
 bool SetAside(const std::vector<Pin> &pins, const Holdable &thing) noexcept
 {

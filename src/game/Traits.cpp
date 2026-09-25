@@ -47,11 +47,14 @@
 
 namespace ft::game
 {
+namespace
+{
 
 // For the log, once per actor per session: the engine's armour numbers
 // beside the actor value and our old slot count, so a wrong reading of
 // either accessor shows up as a disagreement rather than a wrong percent.
 std::unordered_set<std::uint32_t> g_armorLogged;
+
 void LogArmorReadings(RE::Actor *actor)
 {
     if (!actor || !log::Enabled(log::Level::Debug) || !g_armorLogged.insert(actor->GetFormID()).second)
@@ -211,8 +214,6 @@ void ReadKinds(RE::Actor *actor, ft::ActorTraits &traits)
         if (in(people.token))
             traits.SetType(people.kind);
 }
-namespace
-{
 
 // Every base effect of the effect's name: the load order's records of one
 // name, indexed once, on first use, after the data has loaded. A nameless

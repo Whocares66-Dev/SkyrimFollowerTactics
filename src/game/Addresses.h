@@ -142,7 +142,7 @@ inline constexpr REL::RelocationID kEquippedShield{37624, 38577};
 // says (1.5.97, 1.6.1170, 1.7.104).
 inline constexpr std::size_t kCharacterValueOwnerTable = 5;
 inline constexpr std::size_t kGetBaseActorValueSlot = 3;
-[[nodiscard]] inline std::ptrdiff_t ActorValueOwnerOffset() noexcept
+[[nodiscard]] inline std::ptrdiff_t ActorValueOwnerOffset()
 {
     return REL::Module::get().version() < SKSE::RUNTIME_SSE_1_6_629 ? 0xB0 : 0xB8;
 }

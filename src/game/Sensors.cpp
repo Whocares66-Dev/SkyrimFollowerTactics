@@ -114,8 +114,6 @@ std::vector<ft::RunningEffect> RunningEffects(RE::Actor *actor)
     return out;
 }
 
-} // namespace
-
 // Whom an actor is fighting, as the engine sees it, if they are still
 // alive: the dead are nobody's target.
 ft::ActorId LiveTargetOf(RE::Actor *actor)
@@ -123,6 +121,8 @@ ft::ActorId LiveTargetOf(RE::Actor *actor)
     auto target = actor ? actor->GetActorRuntimeData().currentCombatTarget.get() : nullptr;
     return target && !target->IsDead() ? target->GetFormID() : 0;
 }
+
+} // namespace
 
 ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
 {
@@ -140,6 +140,9 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
     const float temporary = actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, av);
     return ft::Stat{owner->GetActorValue(av), owner->GetPermanentActorValue(av) + temporary};
 }
+
+namespace
+{
 
 // One random number for one evaluation: what every "any" action indexes
 // with (Snapshot::roll). Drawn here, on the game side, so that the rule
@@ -266,6 +269,8 @@ std::vector<ft::RunningEffect> LastingEffectsOf(RE::TESForm *form)
     }
     return out;
 }
+
+} // namespace
 
 ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::uint32_t> &priced)
 {

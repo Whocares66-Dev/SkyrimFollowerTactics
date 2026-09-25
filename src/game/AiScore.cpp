@@ -361,6 +361,7 @@ void LogLoadoutIfNew(RE::CombatInventoryItem *entry, RE::CombatController *contr
 
 class CastSink : public RE::BSTEventSink<RE::TESSpellCastEvent>
 {
+  public:
     RE::BSEventNotifyControl ProcessEvent(const RE::TESSpellCastEvent *ev,
                                           RE::BSTEventSource<RE::TESSpellCastEvent> *) override
     {

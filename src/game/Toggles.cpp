@@ -12,6 +12,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -105,7 +106,9 @@ void FindToggles()
     // a script effect. Those script effects, each by the plugin that last
     // defines it, and who casts it.
     std::unordered_map<const RE::EffectSetting *, std::vector<const RE::SpellItem *>> users;
-    std::unordered_map<const RE::TESFile *, std::vector<const RE::EffectSetting *>> byFile;
+    // The plugins by name, so they are read, and logged, in one order every run.
+    const auto byName = [](const RE::TESFile *a, const RE::TESFile *b) { return a->GetFilename() < b->GetFilename(); };
+    std::map<const RE::TESFile *, std::vector<const RE::EffectSetting *>, decltype(byName)> byFile(byName);
     for (const auto *spell : data->GetFormArray<RE::SpellItem>())
     {
         if (!spell)

@@ -443,6 +443,9 @@ const RE::BGSAttackData *AttackDataFor(RE::Actor *actor, const char *event)
     return attack ? attack : lookup(actor->GetRace());
 }
 
+namespace
+{
+
 // What each hand holds, in core's words, for the blow rules. A
 // two-hander, a bow or a crossbow is the right hand's with the left
 // described as empty: the engine reports it from both hands.
@@ -489,8 +492,6 @@ ft::Hands DescribeHands(RE::Actor *actor)
                      : held(leftHeld);
     return hands;
 }
-namespace
-{
 
 // A body's radius as the engine's melee test takes it (47276, and 37868,
 // whose cached result 37443 reads, on 1.6.1170): the bound max Y times the

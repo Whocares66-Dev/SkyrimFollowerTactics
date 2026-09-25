@@ -363,6 +363,9 @@ const char *ToString(ActionResult r) noexcept
     return "?";
 }
 
+namespace
+{
+
 // Point the combat AI at an enemy: the target the controller holds and the
 // actor's own mirror of it. Everything else -- weapon, spell, spacing --
 // stays the AI's, re-scored for the new target. Whether the standard target
@@ -393,9 +396,6 @@ ActionResult PointAt(RE::Actor *actor, std::uint32_t target)
     runtime.currentCombatTarget = handle;
     return ActionResult::Performed;
 }
-
-namespace
-{
 
 // A potion or a food is an AlchemyItem, an ingredient an IngredientItem.
 // The evaluator only fires this when the snapshot says they carry it, so a
