@@ -282,9 +282,19 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
     }
 }
 
+namespace
+{
+// Whose spells a skill keeps out: an NPC's, whose combat AI lists none
+// above it (dev/COMBAT_AI.md 0). The player casts whatever they know.
+bool SkillGated(RE::Actor *actor)
+{
+    return actor && !actor->IsPlayerRef();
+}
+} // namespace
+
 std::optional<SkillGate> FirstSkillGate(RE::Actor *actor, const RE::MagicItem *spell)
 {
-    auto *owner = actor && spell ? actor->AsActorValueOwner() : nullptr;
+    auto *owner = SkillGated(actor) && spell ? actor->AsActorValueOwner() : nullptr;
     if (!owner)
         return std::nullopt;
     // An effect of no school (a power's, an ability's) has no skill to ask
@@ -998,7 +1008,7 @@ SheetSection EffectsOf(RE::Actor *actor, const RE::MagicItem *magic,
     // above their skill (AboveSkillForAI). The player casts at any skill,
     // and a scroll, a potion or an enchantment asks none.
     const auto *spell = magic->As<RE::SpellItem>();
-    auto *gated = actor && !actor->IsPlayerRef() && spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell
+    auto *gated = SkillGated(actor) && spell && spell->GetSpellType() == RE::MagicSystem::SpellType::kSpell
                       ? actor->AsActorValueOwner()
                       : nullptr;
     for (const auto *effect : ResolvedEffects(*magic))

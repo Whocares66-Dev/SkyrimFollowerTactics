@@ -300,9 +300,8 @@ bool DescribeSpell(RE::Actor *actor, RE::SpellItem *spell, MagicEntry &entry)
             {
                 entry.skill = static_cast<int>(owner->GetActorValue(skill));
                 // The combat AI's gate, asked of every effect as the engine
-                // asks it: the player casts any spell they know, at any
-                // skill.
-                if (const auto gate = actor->IsPlayerRef() ? std::nullopt : FirstSkillGate(actor, spell))
+                // asks it; never of the player.
+                if (const auto gate = FirstSkillGate(actor, spell))
                 {
                     entry.aboveSkill = true;
                     entry.needsSchool = DisplayName(SchoolOf(gate->school));

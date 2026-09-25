@@ -128,11 +128,13 @@ Under `Settings` → `Combat`, two switches control whether followers need perks
 
 Both switches are **off by default**, so followers can use these actions without the corresponding perks. Turning a requirement on hides the action for followers who lack the perk and makes existing actions that require it [unavailable](#unavailable).
 
+A follower is never offered a spell above their skill in its school: their own AI would never cast it, so a rule or a pin on it would leave them doing nothing.
+
 ![Combat settings]({{ "/assets/img/panel/settings_combat.png" | relative_url }}){: .screenshot loading="lazy"}
 
 These switches apply to all followers and are [saved with the game]({{ '/getting-started/' | relative_url }}#saving-your-changes).
 
-The player always needs the corresponding perks for `Dual Cast` and `Power Bash`, regardless of these switches.
+The player always needs the corresponding perks for `Dual Cast` and `Power Bash`, regardless of these switches, and can cast any spell they know at any skill.
 
 ### Multiple Actions
 

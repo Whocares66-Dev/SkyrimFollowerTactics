@@ -67,13 +67,15 @@ void ForEachActiveEffect(RE::Actor *actor, const std::function<void(RE::ActiveEf
 // short keeps the whole spell out (45328, dev/COMBAT_AI.md "Which spells get
 // into the list"): Adamant's Permafrost, at 75 on Ice Storm, kept Serana's
 // out at Destruction 50-odd (2026-09-22), where the costliest effect alone
-// said 50. The AI's gate, not a casting limit: a rule's cast and the
-// player cast it regardless.
+// said 50. The AI's gate, not a casting limit: the UseMagic package would
+// cast it regardless, and a rule is kept to what the AI would choose, so
+// that cast and pin agree. Never so for the player, who has no such list
+// and casts whatever they know.
 [[nodiscard]] bool AboveSkillForAI(RE::Actor *actor, const RE::MagicItem *spell);
 
 // The first effect that keeps it out, as AboveSkillForAI reads it: the
 // effect's school, its level, and their skill in that school. Empty for a
-// spell they may use.
+// spell they may use, and always for the player.
 struct SkillGate
 {
     RE::ActorValue school{RE::ActorValue::kNone};
