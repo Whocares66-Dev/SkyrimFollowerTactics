@@ -32,7 +32,8 @@
     desktop with it; pass a number to override, or 0 for that default.
     Also exported as CMAKE_BUILD_PARALLEL_LEVEL, so a `cmake --build`
     run afterwards in the same shell -- the `tidy` and `format` targets --
-    takes the same limit without being told again.
+    takes the same limit without being told again. Every build runs below
+    normal priority, and leaves the shell there, for the same reason.
 
 .PARAMETER Coverage
     After building, run the tests once and report line coverage of src/core
@@ -162,7 +163,13 @@ $parallel = if ($Jobs -gt 0) { $Jobs } else { [Math]::Max(1, $cores - 2) }
 # with nothing while a build runs. Exported as well as passed, so the tidy
 # and format targets run from the same shell inherit it.
 $env:CMAKE_BUILD_PARALLEL_LEVEL = $parallel
-Show-Line "  jobs   $parallel of $cores cores"
+# Below normal, so a game running beside the build wins every core it
+# wants. Windows hands below normal down to what this starts -- cmake,
+# ninja, the compilers, clang-tidy -- and the session keeps it, as it keeps
+# the job limit, so a `cmake --build` afterwards in it runs the same way:
+# launch the game from somewhere else, or it starts below normal too.
+(Get-Process -Id $PID).PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal
+Show-Line "  jobs   $parallel of $cores cores, below normal priority"
 
 Push-Location $repo
 try {
