@@ -539,3 +539,52 @@ TEST_CASE("the player's tactics are held for the first reason that holds", "[pla
         REQUIRE_FALSE(std::string(ToString(reason)).empty());
     }
 }
+
+TEST_CASE("an InterruptCast from before the lend is not the lent hands' equip", "[playercast]")
+{
+    // One heard before the lend: its baseline, not the equip's.
+    CastState run = Spell();
+    Sent sent;
+    CastSeen empty = Free();
+    empty.placed = false;
+    empty.interrupts = 1;
+    REQUIRE_FALSE(AdvancePlayerCast(run, empty, 100.0, sent.Fn()));
+    REQUIRE(sent.Last() == CastCommand::LendHands);
+    REQUIRE(run.interruptsAtLend == 1);
+    CastSeen placed = Free();
+    placed.interrupts = 1;
+    REQUIRE_FALSE(AdvancePlayerCast(run, placed, 100.05, sent.Fn()));
+    REQUIRE(run.step == CastStep::Lending);
+    REQUIRE(run.settledAt < 0.0);
+    // The equip's own.
+    placed.interrupts = 2;
+    REQUIRE_FALSE(AdvancePlayerCast(run, placed, 100.1, sent.Fn()));
+    REQUIRE(run.settledAt == 100.1);
+    REQUIRE(sent.Last() == CastCommand::Press);
+}
+
+TEST_CASE("a fire of the spell from before the press is not this press's", "[playercast]")
+{
+    // The same spell went off just before, by the player's own hand.
+    CastState run = Spell();
+    Sent sent;
+    CastSeen before = Free();
+    before.ownFires = 1;
+    REQUIRE_FALSE(AdvancePlayerCast(run, before, 100.0, sent.Fn()));
+    REQUIRE(sent.Last() == CastCommand::Press);
+    REQUIRE(run.firesAtPress == 1);
+    CastSeen ready = Ready();
+    ready.ownFires = 1;
+    REQUIRE_FALSE(AdvancePlayerCast(run, ready, 100.5, sent.Fn()));
+    REQUIRE(run.step == CastStep::Firing);
+    CastSeen charging = Charging(5);
+    charging.ownFires = 1;
+    REQUIRE_FALSE(AdvancePlayerCast(run, charging, 100.6, sent.Fn()));
+    REQUIRE_FALSE(run.fired);
+    REQUIRE(run.step == CastStep::Firing);
+    // This press's.
+    charging.ownFires = 2;
+    REQUIRE_FALSE(AdvancePlayerCast(run, charging, 100.7, sent.Fn()));
+    REQUIRE(run.fired);
+    REQUIRE(run.firedAt == 100.7);
+}
