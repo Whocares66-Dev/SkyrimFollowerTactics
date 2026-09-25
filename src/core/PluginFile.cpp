@@ -136,9 +136,12 @@ std::vector<PluginRecord> RecordsIn(std::span<const std::uint8_t> group)
         return records;
     const std::size_t end = (std::min<std::size_t>)(group.size(), head->size);
     std::size_t at = kPluginHeaderSize;
-    while (end - at >= kPluginHeaderSize)
+    // A group whose size is less than its own header ends before `at`.
+    while (at <= end)
     {
-        const auto h = ReadPluginHeader(group.subspan(at));
+        const auto h = ReadPluginHeader(group.subspan(at, end - at));
+        if (!h)
+            break;
         if (h->IsGroup())
         {
             if (h->size < kPluginHeaderSize || end - at < h->size)

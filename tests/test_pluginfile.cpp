@@ -127,6 +127,11 @@ TEST_CASE("a group's records are read in order, a group within skipped", "[plugi
     // Cut short: what fits is read, and no more.
     REQUIRE(RecordsIn(top.span().first(top.b.size() - 3)).size() == 1);
     REQUIRE(RecordsIn(one.span()).empty());
+
+    // A group claiming less than its own header holds nothing, whatever follows.
+    Bytes corrupt;
+    corrupt.tag("GRUP").u32(10).tag("MGEF").u32(0).u32(0).u32(0).raw(contents);
+    REQUIRE(RecordsIn(corrupt.span()).empty());
 }
 
 TEST_CASE("a subrecord is found by type, an XXXX giving its size", "[pluginfile]")
