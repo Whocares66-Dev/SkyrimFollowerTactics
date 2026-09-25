@@ -2,7 +2,7 @@
 layout: "default"
 title: "Equip states"
 permalink: "/equip-states/"
-nav_order: 11
+nav_order: 5
 has_toc: false
 ---
 
@@ -52,6 +52,14 @@ Banned objects can be equipped by [tactics]({{ '/tactics/' | relative_url }}#act
 
 The AI won't use banned objects. This is useful for preventing a follower from using a particular [weapon]({{ '/inventory/' | relative_url }}#weapons), casting a certain [spell]({{ '/magic/' | relative_url }}), etc.
 
+### Ban / unban all
+
+Click the ban button beside `Filter` to ban all items or spells in the filtered list. When all are already banned, click it again to unban them. Clear the filter to apply it to the whole list.
+
+This control is available on a follower's Weapons, Armor, and Arrows lists, and on each school's list in the Magic tab.
+
+![Ban or unban all filtered weapons]({{ "/assets/img/panel/weapon_ban_all.png" | relative_url }}){: .screenshot loading="lazy"}
+
 ## Unavailable
 
 An object the follower cannot equip is **unavailable**.
@@ -63,6 +71,6 @@ Many NPC spells are restricted to a particular hand. Below, `Raise Zombie` can o
 
 ![Spell unavailable hand]({{ "/assets/img/panel/spell_unavailable_hand.png" | relative_url }}){: .screenshot loading="lazy"}
 
-Some spells require a certain [skill level]({{ '/skills/' | relative_url }}) to use. Below, `Blood Javelin` requires Destruction of 75, while the follower only has 51. Therefore, both hands are unavailable.
+Some spells require a certain [skill level]({{ '/skills/' | relative_url }}) to use. Below, `Blood Javelin` requires Destruction of 75, while the follower only has 51. Therefore, both hands are unavailable. Every effect's skill requirement counts, as it does for the game's AI. Hover over the spell to see the level it needs; its details page greys the effect that requires it.
 
 ![Spell unavailable level]({{ "/assets/img/panel/spell_unavailable_level.png" | relative_url }}){: .screenshot loading="lazy"}

@@ -2,7 +2,7 @@
 layout: "default"
 title: "Follower training"
 permalink: "/training/"
-nav_order: 9
+nav_order: 10
 has_toc: false
 ---
 
@@ -25,6 +25,8 @@ The follower's [Character tab]({{ '/character/' | relative_url }}) shows their l
 Open a skill on the follower's [Skills tab]({{ '/skills/' | relative_url }}) to see its perk tree. The controls beside the skill level move one level or as far as available. Taking a skill level back returns its experience value to a pool that you can spend on another skill. A skill cannot go below its starting value, and a perk that still needs its current skill level must be returned before you can lower it.
 
 Click a perk circle to learn its next rank; right-click to return the highest held rank. The page shows available perk points. **Reset perks** returns all held perks in that skill's tree for reassignment. Perks the follower started with can also be returned and restored; their original record stays intact.
+
+[Custom Skills Framework]({{ '/skills/' | relative_url }}) trees spend the same perk points and work the same way, but have no skill level to move.
 
 ![Skill tree and perk controls]({{ "/assets/img/panel/skill_tree.png" | relative_url }}){: .screenshot loading="lazy"}
 

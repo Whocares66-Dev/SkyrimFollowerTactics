@@ -2,7 +2,7 @@
 layout: "default"
 title: "Skills"
 permalink: "/skills/"
-nav_order: 8
+nav_order: 9
 has_toc: false
 ---
 
@@ -14,7 +14,9 @@ For a trained follower, click a skill to [reassign its levels and perks]({{ '/tr
 
 ![Skills]({{ "/assets/img/panel/skills.png" | relative_url }}){: .screenshot loading="lazy"}
 
-Custom skills added by [Custom Skills Framework](https://www.nexusmods.com/skyrimspecialedition/mods/41780) are supported.
+Hovering over a skill's level shows its breakdown: the base value, levels gained through [training]({{ '/training/' | relative_url }}), and each effect on it.
+
+Custom skills added by [Custom Skills Framework](https://www.nexusmods.com/skyrimspecialedition/mods/41780) are supported. Click one to open its perk tree.
 
 ![Skills custom]({{ "/assets/img/panel/skills_custom.png" | relative_url }}){: .screenshot loading="lazy"}
 

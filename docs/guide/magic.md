@@ -2,7 +2,7 @@
 layout: "default"
 title: "Magic"
 permalink: "/magic/"
-nav_order: 5
+nav_order: 6
 has_toc: false
 ---
 

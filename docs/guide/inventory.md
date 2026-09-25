@@ -30,6 +30,8 @@ Effect details, including conditions, are available, so you can see exactly what
 
 ![Weapon effects]({{ "/assets/img/panel/weapon_effects.png" | relative_url }}){: .screenshot loading="lazy"}
 
+An enchanted weapon's details page has a `Charge` button, which recharges that weapon with the weakest filled soul gem carried.
+
 ### Dual-wielding
 
 If a follower cannot [dual-wield]({{ '/combat-style/' | relative_url }}#dual-wielding), putting a weapon into their left hand will remove the one in their right hand, and vice versa.

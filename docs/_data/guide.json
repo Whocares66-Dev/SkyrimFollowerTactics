@@ -129,6 +129,11 @@
         "title": "Unavailable",
         "anchor": "unavailable",
         "level": 3
+      },
+      {
+        "title": "Reordering rules",
+        "anchor": "reordering-rules",
+        "level": 2
       }
     ]
   },
@@ -190,6 +195,37 @@
       {
         "title": "Scrolls",
         "anchor": "scrolls",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "title": "Equip states",
+    "url": "/equip-states/",
+    "headings": [
+      {
+        "title": "Pinned",
+        "anchor": "pinned",
+        "level": 2
+      },
+      {
+        "title": "Shadowed",
+        "anchor": "shadowed",
+        "level": 3
+      },
+      {
+        "title": "Banned",
+        "anchor": "banned",
+        "level": 2
+      },
+      {
+        "title": "Ban / unban all",
+        "anchor": "ban--unban-all",
+        "level": 3
+      },
+      {
+        "title": "Unavailable",
+        "anchor": "unavailable",
         "level": 2
       }
     ]
@@ -258,27 +294,37 @@
     ]
   },
   {
-    "title": "Equip states",
-    "url": "/equip-states/",
+    "title": "Combat AI",
+    "url": "/combat-ai/",
     "headings": [
       {
-        "title": "Pinned",
-        "anchor": "pinned",
+        "title": "Varied AI choices",
+        "anchor": "varied-ai-choices",
         "level": 2
       },
       {
-        "title": "Shadowed",
-        "anchor": "shadowed",
+        "title": "Example",
+        "anchor": "example",
         "level": 3
       },
       {
-        "title": "Banned",
-        "anchor": "banned",
+        "title": "Before",
+        "anchor": "before",
+        "level": 4
+      },
+      {
+        "title": "After",
+        "anchor": "after",
+        "level": 4
+      },
+      {
+        "title": "Self-targeting damage spells",
+        "anchor": "self-targeting-damage-spells",
         "level": 2
       },
       {
-        "title": "Unavailable",
-        "anchor": "unavailable",
+        "title": "Always on",
+        "anchor": "always-on",
         "level": 2
       }
     ]

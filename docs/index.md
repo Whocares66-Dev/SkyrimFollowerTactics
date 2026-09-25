@@ -14,6 +14,7 @@ has_toc: false
 
 ## Features
 
+- More varied follower [combat AI]({{ '/combat-ai/' | relative_url }}) that accounts for perks, enemy immunities, and magicka
 - [Tactics]({{ '/tactics/' | relative_url }}) for the player and followers, with separate combat and idle rules
 - Inspection of player and follower [inventory]({{ '/inventory/' | relative_url }}), [magic]({{ '/magic/' | relative_url }}), [skills]({{ '/skills/' | relative_url }}), and more
 - Follower [equipment management]({{ '/equip-states/' | relative_url }})
@@ -27,6 +28,6 @@ This mod focuses on understanding followers, setting their tactics, and training
 - Follower management framework
   - See options like [Simple Followers Framework](https://www.nexusmods.com/skyrimspecialedition/mods/174017)
 - Combat AI overhaul
-  - Underlying AI behavior is preserved, only occasionally overridden by tactics
+  - Underlying AI behavior is preserved. Tactics override it when a rule fires, and [optional changes]({{ '/combat-ai/' | relative_url }}) only affect how followers choose weapons and attack spells
 - Gameplay rebalancer
   - Some followers are over or underpowered. This is not addressed.

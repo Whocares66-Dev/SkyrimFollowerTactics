@@ -2,7 +2,7 @@
 layout: "default"
 title: "Combat Style"
 permalink: "/combat-style/"
-nav_order: 10
+nav_order: 11
 has_toc: false
 ---
 
@@ -15,7 +15,7 @@ The player is not AI-controlled, and therefore has no combat style.
 
 ![Combat style]({{ "/assets/img/panel/combat_style.png" | relative_url }}){: .screenshot loading="lazy"}
 
-Combat style determines how the AI picks attacks. In the example, `Magic` is set to 10 / 10, while Ranged is set to 0.55 / 10. The AI will therefore heavily prefer magic over ranged attacks.
+Combat style determines how the AI picks attacks. In the example, `Magic` is set to 10 / 10, while Ranged is set to 0.55 / 10. The AI will therefore heavily prefer magic over ranged attacks. [Combat AI]({{ '/combat-ai/' | relative_url }}) describes what else goes into the choice.
 
 ## Dual-wielding
 
@@ -26,6 +26,6 @@ Combat style also determines whether a follower can dual-wield.
 Dual-wielding only applies to melee weapons. Having a sword in one hand and a staff in the other does not qualify as dual-wielding.
 {: .note }
 
-In `Settings`, the requirement to have the right combat style to dual-wield can be removed.
+To allow dual-wielding regardless of combat style, turn off `Settings` → `Requirements` → `Require dual wield combat style`.
 
-![Combat settings]({{ "/assets/img/panel/settings_combat.png" | relative_url }}){: .screenshot loading="lazy"}
+![Requirements settings]({{ "/assets/img/panel/settings_requirements.png" | relative_url }}){: .screenshot loading="lazy"}

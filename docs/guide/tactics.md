@@ -14,8 +14,6 @@ Tactics are condition-action rules, evaluated every 0.5s (a "tick") for the play
 
 The list is evaluated top-down. When a [**condition**](#conditions) is met, the corresponding [**actions**](#actions) are tried. If none can be executed, evaluation moves to the next rule in the same tick. See [Unavailable](#unavailable).
 
-To move a rule, drag it by its number to where you want it; a line shows where it will land. The arrows in the **Order** column move it one place.
-
 The **Tactics** tab runs in combat, including `Combat start` and `Combat end` rules. **Idle Tactics** runs out of combat. Each character has both lists; add a rule to both if you want it in both.
 
 ## Player tactics
@@ -69,6 +67,18 @@ Most conditions are self-explanatory. A few are worth highlighting.
 
 `Armor` is shown as percent of damage reduction, rather than absolute values.
 
+`Effect` is met while the named effect is active on the target, whatever applied it. The list offers the lasting effects of the character's potions, food, spells, scrolls, powers, and shouts, including toggle powers. Negate it to act while the effect is absent.
+
+`Location` checks where the target is: home, interior or exterior, a hold, or a type of building, dungeon, ruin, or settlement. It works in combat and idle tactics; for example, use `Self: Location → Home` to change equipment at home. Place types follow the game's location tags, including parent locations.
+
+`Weapon` → `Bound` → `Active` means a conjured weapon is in either hand; `None` means neither hand holds one.
+
+`Arrows` → `None` / `Available` checks whether the character carries arrows or bolts, whether equipped or not. It is offered for `Self`.
+
+`Bleeding` means an active bleeding damage effect; `Bleeding out` means the character is down. `Burning`, `Frostbitten`, and `Shocked` detect damage affecting the target, not a cloak they wear.
+
+`Weapon` → `Charge needed` is met when an enchanted weapon in hand has three or fewer uses left.
+
 ### Negation
 
 A condition can be negated by checking the `NOT` column.
@@ -119,6 +129,8 @@ The `Charge` action for enchanted weapons has two policies. `Strongest` picks th
 
 ![Action charge soul gem]({{ "/assets/img/panel/action_charge_soul_gem.png" | relative_url }}){: .screenshot loading="lazy"}
 
+`Unequip` takes off what is currently worn in the chosen slot, whether pinned or not. The follower's AI can equip something there again afterward.
+
 ### Dual casting and power bashing
 
 Under `Settings` → `Requirements`, two switches control whether followers need perks for these actions:
@@ -130,7 +142,7 @@ Both switches are **off by default**, so followers can use these actions without
 
 A follower is never offered a spell above their skill in its school: their own AI would never cast it, so a rule or a pin on it would leave them doing nothing.
 
-![Combat settings]({{ "/assets/img/panel/settings_combat.png" | relative_url }}){: .screenshot loading="lazy"}
+![Requirements settings]({{ "/assets/img/panel/settings_requirements.png" | relative_url }}){: .screenshot loading="lazy"}
 
 These switches apply to all followers and are [saved with the game]({{ '/getting-started/' | relative_url }}#saving-your-changes).
 
@@ -183,3 +195,9 @@ A rule whose [condition](#conditions) or [action](#actions) is invalid is unavai
 If there are multiple actions for a rule, the rule is unavailable if **all** actions are invalid. If only some actions are invalid, the invalid ones are skipped.
 
 An action that cannot be done at the moment is also greyed, and its hover says why: not enough magicka for the spell, a shout still recovering, a greater power already used today, an action used too recently. This is read when the page is built, so it shows the state at the moment the panel was opened. An action that is simply already in effect, a buff still running or nothing to unequip, is not greyed: that is what the rule waits on.
+
+## Reordering rules
+
+Rules run from top to bottom, so put higher-priority rules first. Drag a rule by its number and drop it at the insertion line, or use the arrows in the **Order** column to move it one place.
+
+![Dragging a tactic to a new position]({{ "/assets/img/panel/tactic_drag_and_drop.png" | relative_url }}){: .screenshot loading="lazy"}
