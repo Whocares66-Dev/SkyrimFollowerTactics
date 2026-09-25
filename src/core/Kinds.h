@@ -28,6 +28,9 @@ enum class StatusKind : std::uint8_t
     // A disease running: an effect whose spell is of the Disease type.
     // About anyone; the idle list's cure rule is what it is for.
     Diseased,
+    // Losing health to a wound: the axe perks' bleeding, a mod's. Not
+    // Bleeding out, which is being down.
+    Bleeding,
 
     COUNT
 };

@@ -3058,6 +3058,9 @@ TEST_CASE("a status no action could answer is not asked about the follower thems
     REQUIRE(IsStatusValidFor(SubjectKind::Player, StatusKind::Casting));
     REQUIRE(IsStatusValidFor(SubjectKind::Self, StatusKind::Poisoned));
     REQUIRE(IsStatusValidFor(SubjectKind::Self, StatusKind::Burning));
+    // Bleeding is a wound, not bleeding out: whoever bleeds can still drink.
+    REQUIRE(IsStatusValidFor(SubjectKind::Self, StatusKind::Bleeding));
+    REQUIRE(IsStatusValidFor(SubjectKind::Player, StatusKind::Bleeding));
 }
 
 TEST_CASE("the enemy an action goes to, read from the condition", "[binding]")

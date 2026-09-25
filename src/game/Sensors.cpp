@@ -1597,6 +1597,44 @@ std::span<const RE::FormID> SameNamedEffects(const RE::EffectSetting *effect, co
     return {&own, 1};
 }
 
+// Skyrim.esm's Bleeding Damage, what the axe perks apply.
+constexpr RE::FormID kPerkBleedingDamage = 0x000C367A;
+// Skyrim.esm's Targe of the Blooded bash (dunTargeOfTheBloodedME): named
+// Damage Health, as hundreds of effects are, and described as bleeding
+// damage, so it is a bleed by this record alone.
+constexpr RE::FormID kTargeOfTheBloodedBleed = 0x0010582C;
+
+// Is this a bleed? The engine has no bleed of its own: vanilla's is an
+// unresisted Damage Health, as are a hundred effects that are not, so the
+// record is all that tells one apart. Vanilla's, then any of its name --
+// the Redguard CC's and most mods' own take it -- then the Targe's, then
+// any carrying the keyword Simonrim's mods share, which marks Adamant's axe
+// wound, named Damage Health. A bleed that is none of these is not one.
+// Indexed once, on first use, after the data has loaded.
+bool IsBleed(const RE::EffectSetting *effect)
+{
+    static const auto bleeds = [] {
+        std::unordered_set<RE::FormID> ids;
+        if (const auto *vanilla = RE::TESForm::LookupByID<RE::EffectSetting>(kPerkBleedingDamage))
+            for (const RE::FormID id : SameNamedEffects(vanilla, vanilla->GetFormID()))
+                ids.insert(id);
+        const std::size_t named = ids.size();
+        ids.insert(kTargeOfTheBloodedBleed);
+        const std::size_t listed = ids.size();
+        const auto *keyword = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("MAG_MagicDamageBleed");
+        if (auto *data = RE::TESDataHandler::GetSingleton(); data && keyword)
+            for (const auto *each : data->GetFormArray<RE::EffectSetting>())
+                if (each && each->HasKeyword(keyword))
+                    ids.insert(each->GetFormID());
+        log::sensors.debug("bleeding: {} effect(s), {} by vanilla's name, the Targe of the Blooded's, {} more by "
+                           "keyword{}",
+                           ids.size(), named, ids.size() - listed,
+                           keyword ? "" : " (the keyword is not in the load order)");
+        return ids;
+    }();
+    return bleeds.contains(effect->GetFormID());
+}
+
 } // namespace
 
 ft::ActorTraits ReadTraits(RE::Actor *actor)
@@ -1660,6 +1698,8 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
                 }
                 if (ae->spell && ae->spell->GetSpellType() == RE::MagicSystem::SpellType::kDisease)
                     traits.Set(ft::StatusKind::Diseased);
+                if (IsBleed(base))
+                    traits.Set(ft::StatusKind::Bleeding);
                 if (ae->spell && ae->spell->IsPoison())
                     traits.Set(ft::StatusKind::Poisoned);
                 switch (base->GetArchetype())

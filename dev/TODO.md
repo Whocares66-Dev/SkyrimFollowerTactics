@@ -86,6 +86,7 @@ in `dev/PLAN.md`.
   `kParalyzed` and the archetype flips first; how long `staggered` holds;
   whether the hit event fires for cloaks, hazards and concentration ticks;
   logged armour figures for a fight's enemies against the estimated tiers.
+- **Bleeding, in play** (built 2026-09-25 on `wip-bleeding`, `dev/CONDITIONS.md` 2). Seen the same day for the Targe of the Blooded: the player's bash, read by a follower's `Enemy: Bleeding`. Still to see: in Nordic Souls, the `bleeding: N effect(s)` line at debug (about twenty-five, most by name) and Adamant's axe wound by keyword; a war axe with Hack and Slash, by vanilla's record; the `now bleeding` and `no longer bleeding` lines at the wound's start and end.
 - **Attack, in play** (dev/ACTIONS.md 6). Whether the standard target
   selector lets a written `targetHandle` stand: `Ally: Attacked by Ranged ->
   Attacker: Attack` against a bandit archer, and read the log for
