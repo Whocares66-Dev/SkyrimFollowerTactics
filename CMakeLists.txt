@@ -317,12 +317,26 @@ if(FT_BUILD_PLUGIN)
             src/game/Tactics.cpp
             src/game/Toggles.cpp
             src/game/Util.cpp
-            src/game/UI.cpp
             src/game/Packages.cpp
             src/game/Forms.cpp
             src/game/Profiles.cpp
             src/game/Settings.cpp
             src/game/CustomSkillsFramework.cpp
+            # The in-game panel (game/ui/UI.h)
+            src/game/ui/Widgets.cpp
+            src/game/ui/Panel.cpp
+            src/game/ui/Conditions.cpp
+            src/game/ui/Actions.cpp
+            src/game/ui/RuleTable.cpp
+            src/game/ui/Sections.cpp
+            src/game/ui/Inventory.cpp
+            src/game/ui/Magic.cpp
+            src/game/ui/Effects.cpp
+            src/game/ui/Summons.cpp
+            src/game/ui/Character.cpp
+            src/game/ui/Skills.cpp
+            src/game/ui/Pages.cpp
+            src/game/ui/Menu.cpp
             # Progression (dev/PROGRESSION.md)
             src/progression/game/Actors.cpp
             src/progression/game/Events.cpp

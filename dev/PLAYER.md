@@ -137,7 +137,7 @@ Tactics were a combat system by construction, in three places:
 
 ## The player in the rule model (as built)
 
-- **Self is the player.** The Player subject and target are the same person, so neither is offered in the player's list (`view.player` in `UI.cpp`); Ally is the followers, a named Follower is one of them.
+- **Self is the player.** The Player subject and target are the same person, so neither is offered in the player's list (`view.player` in `game/ui/Conditions.cpp` and `Actions.cpp`); Ally is the followers, a named Follower is one of them.
 - **The snapshot's ally list** puts the player first for a follower; built for the player it leaves them out (`BuildSnapshot`, `Sensors.cpp`), so the party is the followers.
 - **What the player cannot do**, and which way each action goes for them, is `RouteOf` (`core/Routes.h`), one table for the player and a follower: the tick marks what has no route off in `Capabilities::unsupported`, and the menus leave it out. No dual cast: the snapshot marks nothing dualable for the player.
 - **The tick** finds the player by hand after the followers (`Tactics.cpp`), with the same state a follower has, and skips what is follower-only: no cast records, no pin pass, no packages. Held, and said once each way as `player.held` / `player.free`, by `PlayerHeld`.

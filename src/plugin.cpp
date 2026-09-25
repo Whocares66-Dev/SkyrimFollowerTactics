@@ -20,7 +20,7 @@
 #include "game/Tactics.h"
 #include "game/Toggles.h"
 #include "game/Traits.h"
-#include "game/UI.h"
+#include "game/ui/UI.h"
 #include "progression/game/Events.h"
 #include "progression/game/Learning.h"
 #include "progression/game/Log.h"

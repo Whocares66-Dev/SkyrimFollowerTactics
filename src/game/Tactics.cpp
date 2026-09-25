@@ -16,9 +16,9 @@
 #include "game/Profiles.h"
 #include "game/Sensors.h"
 #include "game/Sheet.h"
-#include "game/UI.h"
 #include "game/Util.h"
 #include "game/Values.h"
+#include "game/ui/UI.h"
 #include "progression/game/Service.h"
 
 #include <algorithm>

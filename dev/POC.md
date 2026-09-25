@@ -12,7 +12,7 @@ Built 2026-09-21, overnight, from [PROGRESSION.md](PROGRESSION.md). The short ve
 | The rules | `src/progression/core/` (`fp_core`) — no Skyrim, as Tactics' core | Built; `tests/progression/` (`fp_tests`) passes |
 | The vanilla perk trees | `tests/progression/data/vanilla-perks.json`, from [research/extract_perk_trees.py](research/extract_perk_trees.py) | 180 nodes, 251 ranks, read from Skyrim.esm through houseCARL (read-only) |
 | The engine layer | `src/progression/game/`, started from Tactics' `src/plugin.cpp` | Written against CommonLibSSE-NG 7.5.1; see "Build" below |
-| The pages | Follower Tactics' own: the skill page (`src/game/UI.cpp`, `DrawPerkTree`), the experience bar, the Settings switch | Progression's own pages were written and taken out on 2026-09-21, never seen |
+| The pages | Follower Tactics' own: the skill page (`src/game/ui/Skills.cpp`, `DrawPerkTree`), the experience bar, the Settings switch | Progression's own pages were written and taken out on 2026-09-21, never seen |
 | A clickable mock-up of the panel | the stand-alone repository's `prototype/` | Not brought over: it predates learning by doing |
 | Console scripts for the first session | `bat/fpsetup.txt`, `bat/fpcheck.txt` | Written; tome ids read from Skyrim.esm |
 

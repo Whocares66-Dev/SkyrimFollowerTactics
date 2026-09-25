@@ -1,6 +1,17 @@
 #pragma once
-// The in-game panel. Registered with SKSE Menu Framework if it is present, and
-// silently skipped if it is not -- the mod does not depend on it.
+// The in-game panel, drawn with ImGui via SKSE Menu Framework: the rule
+// editor and the character sheet -- inventory, magic, effects, summons,
+// character, skills -- of a follower and of the player. Registered with the
+// framework if it is present, and silently skipped if it is not -- the mod
+// does not depend on it. Why a rule did or did not act is not a column here:
+// a verdict lasted one tick and blanked when the fight ended, so it goes to
+// the events log (dev/EVENTS.md).
+//
+// Everything in game/ui runs on the render thread. It never touches an
+// RE::Actor and never reaches into live engine state -- the Observe* calls
+// hand back a published view, shared and never edited after
+// (game/Tactics.h). Reading a follower's inventory from the render thread
+// would be a good way to crash the game.
 
 #include "core/Snapshot.h"
 
