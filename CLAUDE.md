@@ -99,7 +99,7 @@ cmake --build --preset core --target format # 2. formatters, rewrite in place: C
 
 ## Before a merge or a push
 
-The linters and the sanitizer run once, before the branch lands on master or is pushed, not at each commit: a full pass of the plugin's lint is ten to fifteen minutes. What they find is fixed and folded into the branch commit it belongs to (a fixup commit and an autosquash rebase), before master moves.
+The linters and the sanitizer run once, before the branch lands on master or is pushed, not at each commit: a full pass of the plugin's lint is about three minutes. What they find is fixed and folded into the branch commit it belongs to (a fixup commit and an autosquash rebase), before master moves.
 
 ```powershell
 cmake --build --preset core --target tidy   # linters: src/core and tests, Python, PowerShell
