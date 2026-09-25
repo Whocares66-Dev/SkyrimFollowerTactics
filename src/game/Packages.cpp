@@ -1568,17 +1568,19 @@ SetSkipCheckCastFn g_setSkipCheckCast = nullptr;
 
 // The UseMagic procedure calls this as it starts a one-hand cast and on
 // every update while one is under way (dev/MAGIC.md "What a cast costs").
-// Asked of one hand of one actor, about that actor's own record and the
-// spell in that hand, so followers casting at once each pay for their own.
-// Any thread: the procedure runs wherever the AI does.
+// Asked of one hand's caster of one actor, about that actor's own record and
+// the spell that caster is casting, so followers casting at once each pay
+// for their own. Any thread: the procedure runs wherever the AI does.
 void SetSkipCheckCastHook(RE::ActorMagicCaster *caster)
 {
     const Kit *kit = g_available && caster->actor ? SharedKitOf(caster->actor->GetFormID()) : nullptr;
+    // What the caster is casting, not what the hand has equipped. Empty is
+    // the record's cast about to start: the procedure asks just before the
+    // start, which refuses a caster whose current spell is set and then
+    // sets it (34401); the engine empties it again as each cast fires. Once
+    // a cast is under way it is what the caster charges for, and it must be
+    // the record's.
     const RE::MagicItem *spell = caster->currentSpell;
-    // A hand with no spell is one the record's cast is about to start in:
-    // the procedure asks before it starts the cast, and a hand's spell is
-    // cleared as each cast fires. Once one is under way, the hand's spell
-    // is what the caster charges for, and it must be the record's.
     if (kit && kit->spell.Busy() && (!spell || spell->GetFormID() == kit->spell.spell))
     {
         // Cleared rather than left: a set from before the lease would skip
