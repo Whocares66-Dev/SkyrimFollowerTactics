@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(FollowerTactics VERSION 0.3.0 LANGUAGES CXX)
+project(FollowerTactics VERSION 0.4.0 LANGUAGES CXX)
 
 option(
     FT_BUILD_PLUGIN
