@@ -75,10 +75,7 @@ line coverage of `src/core`, with the line-by-line HTML in `build\core-cov\cover
 
 `core` / `core-asan` / `core-cov` need no vcpkg and no Skyrim at all -- that is the fast
 feedback loop. `debug` / `release` build the plugin and pull CommonLibSSE-NG through vcpkg.
-Every tool here ships inside the VS install: `clang-cl`, `llvm-cov`, `clang-tidy` and the
-sanitizer runtimes are the "C++ Clang tools for Windows" component. ASan on MSVC finds
-memory misuse, not leaks (LeakSanitizer has no Windows build); UBSan is clang-only and
-its runtime is present, unused so far.
+The compiler and its ASan come with the VS install; `clang-cl`, `clang-tidy`, `clang-format`, `llvm-cov` and `llvm-profdata` are LLVM's own release, 22 or later (`winget install LLVM.LLVM`), found in `Program Files\LLVM` or where `LLVM_ROOT` says -- never the older LLVM that VS bundles as its "C++ Clang tools" component, which nothing here looks for (`cmake/Quality.cmake` says why). ASan on MSVC finds memory misuse, not leaks (LeakSanitizer has no Windows build); UBSan is clang-only and its runtime ships with LLVM, unused so far.
 
 `.\tools\package.ps1` builds the release plugin once and writes TWO mod roots to `dist/` (a DLL, an ini, the repository's own README.md and the LICENSE each, installable from the archive in Mod Organizer; the test zip adds a TEST-BUILD.txt): `follower-tactics-<version>.zip` with `level = info`, what a player installs, and `follower-tactics-<version>-test.zip` with `level = debug`, ours to install here and never published. The DLL in them is the same file -- the log level is a runtime setting, and an MSVC debug build is not shippable at all, since it links a debug CRT nobody has -- and the test zip's ini is the player's with its level line rewritten, so the two cannot drift. The log's banner names the level it read, so an installed copy says which zip it came from. Packaging refuses if `assets/FollowerTactics.ini` is not on `info`. `dist/` is ignored.
 
@@ -88,7 +85,7 @@ For a version already set in CMake, run `.\tools\release.ps1 none`; the script p
 
 **A build copies the DLL nowhere.** To try a change in game, run `.\tools\package.ps1` and install `dist\follower-tactics-<version>-test.zip` in Mod Organizer as any other mod -- the same archive a tester gets. Until 2026-09-18 a build landed the DLL straight in a mod folder named by `SKYRIM_MODS_FOLDER`, which put one machine's layout in the build, made every plugin build refuse to run while the game was up (it holds that DLL open), and tested something no player installs. New mods appear **unticked** in MO2 -- tick it or the DLL never loads. (`tools\deploy-tests.ps1`, which copies the console `bat/` scripts into the game folders, is a different thing and stays.)
 
-Last verified green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 18 (`core-cov`), 2026-09-09. Counts -- how many cases, what percentage covered -- are deliberately not kept here: they move with every test added, and a number that goes stale in a week teaches you to distrust the page. Run the presets and read the numbers off them.
+Last verified green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 22.1 (`core-cov`), 2026-09-25. Counts -- how many cases, what percentage covered -- are deliberately not kept here: they move with every test added, and a number that goes stale in a week teaches you to distrust the page. Run the presets and read the numbers off them.
 
 ## Before every commit
 

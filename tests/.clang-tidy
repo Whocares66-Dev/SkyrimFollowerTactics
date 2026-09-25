@@ -1,5 +1,15 @@
-# The root's checks, with two relaxed for the tests.
+# The root's checks, with four relaxed for the tests.
 #
+#   bugprone-exception-escape              a helper's destructor puts back what
+#                                          a case changed -- a temporary
+#                                          folder, the catalog in force -- and
+#                                          can throw only on an allocation; a
+#                                          throw there ends the test run, which
+#                                          is loud enough
+#   bugprone-unchecked-optional-access     a case REQUIREs the optional before
+#                                          it reads it, and the check cannot
+#                                          see through Catch2's macro; an empty
+#                                          one fails the case there
 #   clang-diagnostic-missing-field-initializers   a test builds a fixture with
 #                                          designated initializers and names
 #                                          only the fields the case is about;
@@ -10,5 +20,7 @@
 #                                          the same with a reserve first
 InheritParentConfig: true
 Checks: >
+  -bugprone-exception-escape,
+  -bugprone-unchecked-optional-access,
   -clang-diagnostic-missing-field-initializers,
   -performance-inefficient-vector-operation

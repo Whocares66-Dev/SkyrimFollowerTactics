@@ -138,11 +138,22 @@ if ($userVcpkgRoot) {
     $env:VCPKG_ROOT = $userVcpkgRoot
 }
 
+# LLVM's own release first on PATH, not the older one Visual Studio bundles:
+# core-cov's clang-cl comes from here, and its coverage data must be read by
+# the llvm-cov of the same version, which cmake/Quality.cmake finds in the
+# same bin. Only format, lint and coverage need it; the rest builds without.
+$llvmBin = if ($env:LLVM_ROOT) { Join-Path $env:LLVM_ROOT 'bin' } else { Join-Path $env:ProgramFiles 'LLVM\bin' }
+if (Test-Path (Join-Path $llvmBin 'clang-cl.exe')) {
+    $env:PATH = "$llvmBin;$env:PATH"
+}
+
 foreach ($tool in 'cl', 'cmake', 'ninja') {
     $found = Get-Command $tool -ErrorAction SilentlyContinue
     if (-not $found) { throw "'$tool' is still not on PATH after importing vcvars64." }
     Show-Line ("  {0,-6} {1}" -f $tool, $found.Source) -Colour DarkGray
 }
+$clang = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
+Show-Line ("  {0,-6} {1}" -f 'llvm', $(if ($clang) { $clang.Source } else { "not found -- install LLVM 22 for format, lint and coverage" })) -Colour DarkGray
 
 if ($Preset -in 'debug', 'release') {
     if (-not $env:VCPKG_ROOT) { throw "VCPKG_ROOT is not set; the '$Preset' preset needs vcpkg." }

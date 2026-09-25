@@ -7,21 +7,12 @@
 # or a real cost, not a matter of taste.
 #
 # Run:  cmake --build --preset core --target tidy   (see cmake/Quality.cmake)
-#
-# Known false positive, left in place: clang-analyzer-cplusplus.NewDelete
-# reports "use of memory after it is freed" or "attempt to free released
-# memory" inside CommonLibSSE's headers (MemoryManager.h,
-# BSIntrusiveRefCounted.h, InventoryEntryData.h) whenever a trace passes
-# through the destructor of a BSTSmartPointer or of an object the game heap
-# owns. `delete` on such an object calls the class's own operator delete,
-# which forwards to the game heap; the analyzer models the memory as freed
-# before entering that operator. The check stays because it is the only
-# static use-after-free check src/game gets.
 Checks: >
   bugprone-*,
   -bugprone-easily-swappable-parameters,
-  -bugprone-unchecked-optional-access,
+  -bugprone-throwing-static-initialization,
   clang-analyzer-*,
+  -clang-analyzer-core.FixedAddressDereference,
   -clang-analyzer-optin.core.EnumCastOutOfRange,
   concurrency-*,
   cppcoreguidelines-pro-type-member-init,
@@ -39,20 +30,28 @@ Checks: >
   performance-*,
   -performance-no-int-to-ptr,
   -performance-enum-size,
-  portability-*
+  portability-*,
+  -portability-avoid-pragma-once
 
 # Excluded, and why:
 #   bugprone-easily-swappable-parameters   a design lint, fires on (int, int)
-#   bugprone-unchecked-optional-access     cannot see through a predicate
-#                                          (Slot::Busy) or an indexed re-read,
-#                                          so every use in Packages.cpp is a
-#                                          false positive; the debug STL
-#                                          asserts the same thing at run time
+#   bugprone-throwing-static-initialization   every static here that can
+#                                          throw is a standard container,
+#                                          which MSVC's allocates for even
+#                                          empty, or Catch2's test
+#                                          registration; an allocation failure
+#                                          while the DLL loads has nothing to
+#                                          recover to
+#   clang-analyzer-core.FixedAddressDereference   reading a slot of the game's
+#                                          own vtable, at its Address Library
+#                                          address, is what a hook is; six
+#                                          hits, all of that kind
 #   clang-analyzer-optin.core.EnumCastOutOfRange   an opt-in check that fires
 #                                          inside MSVC's own <filesystem>
 #                                          (xfilesystem_abi.h: a stats-flags
 #                                          bitmask OR'd to 33) on any status
-#                                          query, where no NOLINT of ours
+#                                          query, and inside Catch2 on every
+#                                          REQUIRE, where no NOLINT of ours
 #                                          reaches; a flags enum combined is
 #                                          what a flags enum is for
 #   performance-no-int-to-ptr              an address cast is what a hook or
@@ -66,8 +65,14 @@ Checks: >
 #   misc-use-anonymous-namespace           style (static vs anonymous namespace)
 #   misc-no-recursion                      recursion is fine; the evaluator uses it
 #   misc-unused-parameters                 the compiler already warns (C4100)
+#   portability-avoid-pragma-once          every header here uses #pragma once,
+#                                          and every compiler this builds with
+#                                          (MSVC, clang-cl) keeps it
 
-HeaderFilterRegex: 'src.(core|game)'
+# Our headers anywhere under src. The lint targets pass this checkout's src
+# as an absolute path instead (cmake/Quality.cmake), which is stricter; this
+# is for clang-tidy run from this file alone, an editor's.
+HeaderFilterRegex: 'src[/\\]'
 FormatStyle: file
 
 # A finding fails the run. Without this clang-tidy exits 0 on warnings, the
@@ -75,12 +80,7 @@ FormatStyle: file
 # the findings are still there: a clean-looking pass with work outstanding,
 # the same blind spot as the .pch one in CLAUDE.md. (The stamp also depends
 # on this file, so a check switched on here re-lints everything.)
-#
-# All but the one check with the known false positive above: its finding
-# sits in CommonLibSSE's header, where no NOLINT of ours can reach, so it
-# stays a warning -- reported whenever the file it fires in is re-linted,
-# never failing the run.
-WarningsAsErrors: '*,-clang-analyzer-cplusplus.NewDelete'
+WarningsAsErrors: '*'
 
 CheckOptions:
   # int -> float loses nothing below 2^24, and the game's numbers are floats

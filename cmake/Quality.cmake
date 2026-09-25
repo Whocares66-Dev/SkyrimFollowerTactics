@@ -19,26 +19,42 @@
 # bugs and costs, nothing stylistic: .clang-format, .clang-tidy, ruff.toml and
 # .gersemirc say which; PSScriptAnalyzer runs its defaults.
 #
-# clang-format and clang-tidy ship inside Visual Studio (VC\Tools\Llvm\x64\bin)
-# as the "C++ Clang tools for Windows" component, so they are not an extra
-# dependency on an MSVC box. ruff and gersemi are `pip install --user`, and
-# PSScriptAnalyzer `Install-Module PSScriptAnalyzer -Scope CurrentUser`. A tool
-# that is missing is said at configure time, and its language skipped.
+# clang-format, clang-tidy and the coverage tools are LLVM's own release,
+# 22 or later (`winget install LLVM.LLVM`, into Program Files\LLVM, or where
+# LLVM_ROOT says), and only that: not the older LLVM Visual Studio bundles as
+# its "C++ Clang tools" component, which is searched nowhere. clang-tidy 22
+# walks none of a system header's declarations -- the STL's, and vcpkg's
+# libraries' under /external:I -- which took a src/game file from 45.9 s
+# under the bundled 18 to 15.0 s (2026-09-25). CommonLibSSE is not a system
+# header to clang, which ignores /external:anglebrackets, and making it one
+# changed nothing: 16.8 s and the same 389 warnings either way.
+# tools/build.ps1 puts the same bin first on PATH, for core-cov's clang-cl.
+# ruff and gersemi are `pip install --user`, and PSScriptAnalyzer
+# `Install-Module PSScriptAnalyzer -Scope CurrentUser`. A tool that is
+# missing is said at configure time, and its language skipped.
 
-set(_llvm_hints
-    "$ENV{VCINSTALLDIR}/Tools/Llvm/x64/bin"
-    "$ENV{VCToolsInstallDir}/../Llvm/x64/bin"
-    "$ENV{ProgramFiles}/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin"
-    "$ENV{ProgramFiles}/Microsoft Visual Studio/2022/Professional/VC/Tools/Llvm/x64/bin"
-    "$ENV{ProgramFiles}/Microsoft Visual Studio/2022/Enterprise/VC/Tools/Llvm/x64/bin"
-    "$ENV{ProgramFiles}/LLVM/bin"
+set(_llvm_hints "$ENV{LLVM_ROOT}/bin" "$ENV{ProgramFiles}/LLVM/bin")
+
+find_program(
+    FT_CLANG_FORMAT
+    NAMES clang-format
+    HINTS ${_llvm_hints}
+    NO_DEFAULT_PATH
 )
-
-find_program(FT_CLANG_FORMAT NAMES clang-format HINTS ${_llvm_hints})
-find_program(FT_CLANG_TIDY NAMES clang-tidy HINTS ${_llvm_hints})
+find_program(
+    FT_CLANG_TIDY
+    NAMES clang-tidy
+    HINTS ${_llvm_hints}
+    NO_DEFAULT_PATH
+)
 # For the `coverage` target (tests/CMakeLists.txt); same LLVM, same place.
-find_program(FT_LLVM_PROFDATA NAMES llvm-profdata HINTS ${_llvm_hints})
-find_program(FT_LLVM_COV NAMES llvm-cov HINTS ${_llvm_hints})
+find_program(
+    FT_LLVM_PROFDATA
+    NAMES llvm-profdata
+    HINTS ${_llvm_hints}
+    NO_DEFAULT_PATH
+)
+find_program(FT_LLVM_COV NAMES llvm-cov HINTS ${_llvm_hints} NO_DEFAULT_PATH)
 
 # ruff by `python -m`: pip's --user install puts ruff.exe in a Scripts folder
 # that is not on PATH, so find_program would miss it.
@@ -301,21 +317,21 @@ if(FT_CLANG_TIDY)
 
     # One custom command per file, not one command over all of them.
     #
-    # The cost is per file and cannot be reduced. Measured 2026-09-09 on one
-    # src/game translation unit:
+    # The cost is per file. Measured 2026-09-25 under clang-tidy 22 on
+    # src/game/Traits.cpp:
     #
-    #     parse only, no checks                    8.1 s
-    #     + the AST-matcher checks                42.9 s
-    #     + clang-analyzer-*                      71.6 s
+    #     parse only                               9.7 s
+    #     + the AST-matcher checks                11.1 s
+    #     + clang-analyzer-*                      16.8 s
     #
-    # Only 8 s of that is parsing CommonLibSSE without a PCH. The other 63 s is
-    # the checks walking its inlined header bodies, and no filter avoids it --
-    # the checks run over the translation unit's AST, and a header-only library
-    # IS most of that AST. --header-filter only drops the findings afterwards,
-    # about 82,000 per src/game file, which is where a serial run's "Suppressed
-    # 1373265 warnings" line came from. Marking the include dirs /external:I was
-    # tried alongside the -imsvc and SYSTEM attempts: 82,707 findings instead of
-    # 82,709, and 68.5 s instead of 71.6.
+    # Most of it is parsing CommonLibSSE and the STL, which clang cannot take
+    # from MSVC's .pch. (Under 18 the checks walked every system header too:
+    # 8.1, 42.9 and 71.6 s on a file in 2026-09-09.) A file far slower than
+    # that is the analyzer, and the file's compile command run through
+    # clang-cl with `--analyze -Xclang -analyzer-display-progress` prints its
+    # time per function: in UI.cpp on 2026-09-25, 106 of its 149 s went to
+    # the 64 instances of one trampoline, each analysed into the whole page
+    # it draws.
     #
     # So spread it, and then stop repeating it. A command per file gets two
     # things from Ninja that one command cannot: the files run in parallel
@@ -367,22 +383,16 @@ if(FT_CLANG_TIDY)
         file(RELATIVE_PATH _rel "${CMAKE_SOURCE_DIR}" "${_src}")
         string(REPLACE "/" "_" _stampname "${_rel}")
         set(_stamp "${CMAKE_BINARY_DIR}/tidy/${_stampname}.stamp")
-        # clang-tidy 18's analyzer dies with an access violation inside MSVC's
-        # <format> wherever TrFormat (core/I18n.h) is instantiated with
-        # arguments to follow, which the i18n tests do. The other checks
-        # still run on the file.
-        set(_extra "")
-        if(_rel STREQUAL "tests/test_i18n.cpp")
-            set(_extra "--checks=-clang-analyzer-*")
-        endif()
+        # The compile database is MSVC's, and clang takes /Zc:preprocessor
+        # (which CommonLibSSE propagates) and /external:anglebrackets without
+        # using them; under WarningsAsErrors that note would fail every file.
         add_custom_command(
             OUTPUT "${_stamp}"
             COMMAND
                 "${FT_CLANG_TIDY}" -p "${CMAKE_BINARY_DIR}"
                 "--header-filter=${FT_TIDY_HEADER_FILTER}"
                 --extra-arg-before=/Y-
-                --extra-arg=-Wno-unused-command-line-argument ${_extra}
-                "${_src}"
+                --extra-arg=-Wno-unused-command-line-argument "${_src}"
             COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
             DEPENDS
                 "${_src}"
@@ -398,7 +408,6 @@ if(FT_CLANG_TIDY)
     unset(_rel)
     unset(_stampname)
     unset(_stamp)
-    unset(_extra)
 
     # The scope is named once, at configure time, because the target itself now
     # prints a line per file: "clang-tidy over src/core" with nothing following
