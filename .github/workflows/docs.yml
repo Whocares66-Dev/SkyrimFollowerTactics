@@ -5,7 +5,7 @@ on:
     branches: [master]
     tags: ['v*']
   pull_request:
-    paths: ['docs/**', 'tools/build-docs.py', '.github/workflows/docs.yml']
+    paths: ['CHANGELOG.md', 'docs/**', 'tools/build-docs.py', '.github/workflows/docs.yml']
   workflow_dispatch:
 
 permissions:

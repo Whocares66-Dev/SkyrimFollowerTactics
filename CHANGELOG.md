@@ -1,3 +1,11 @@
+---
+layout: "default"
+title: "Changelog"
+permalink: "/changelog/"
+nav_order: 12
+has_toc: false
+---
+
 # Changelog
 
 ## 0.3.0

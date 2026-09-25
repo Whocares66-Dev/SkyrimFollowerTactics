@@ -10,7 +10,7 @@ bundle install
 bundle exec jekyll serve
 ```
 
-Open the address printed by Jekyll. The first build downloads the pinned Just the Docs v0.12.0 theme from GitHub.
+Open the address printed by Jekyll. The first build downloads the pinned Just the Docs v0.12.0 theme from GitHub. This preview has no Changelog page: the `github-pages` gem forces Jekyll's safe mode, which skips symlinks.
 
 To preview the version selector and all releases, run from the repository root (Python 3.11+ and the same Ruby dependencies):
 
@@ -20,7 +20,7 @@ python tools/build-docs.py
 python -m http.server 4000 --bind 127.0.0.1 --directory build/docs-site
 ```
 
-Open http://127.0.0.1:4000/SkyrimFollowerTactics/. Re-run the build after editing; this preview does not live-reload. The build replaces only `build/docs-site/`.
+Open http://127.0.0.1:4000/SkyrimFollowerTactics/. Re-run the build after editing; this preview does not live-reload. The build replaces only `build/docs-site/`. It copies each version's guide first with symlinks replaced by their targets, so the Changelog is included.
 
 ## Editing
 
@@ -30,7 +30,7 @@ Open http://127.0.0.1:4000/SkyrimFollowerTactics/. Re-run the build after editin
 
 Screenshots live in `assets/img/panel/`. `settings.png` shows the full Settings page; `settings_combat.png` shows the Combat section. The new training screenshots appear in `guide/training.md`.
 
-`guide/changelog.md` appears before Thanks in the sidebar. Keep its content aligned with the repository's `CHANGELOG.md` when adding release notes.
+`guide/changelog.md` is a symlink to the repository's `CHANGELOG.md` and appears before Thanks in the sidebar. Edit the root file when adding release notes. On Windows, a checkout needs `git config core.symlinks true` and Developer Mode to get a real link.
 
 The Nordic color scheme is in `_sass/color_schemes/nordic.scss`, with typography and layout adjustments in `_sass/custom/custom.scss`. The theme owns the page layout and search. `_includes/components/sidebar.html` supplies the persistent table of contents.
 

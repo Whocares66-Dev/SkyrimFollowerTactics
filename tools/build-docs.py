@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import shutil
 import subprocess
@@ -25,10 +26,22 @@ CHROME = (
     "_sass/custom/custom.scss",
     "assets/js/guide.js",
 )
+# What a local `jekyll serve` or `bundle install` leaves in docs/.
+LOCAL_OUTPUT = shutil.ignore_patterns(
+    "_site", ".jekyll-cache", ".jekyll-metadata", ".bundle", "vendor"
+)
 
 
 def git(*args):
     return subprocess.check_output(["git", *args], cwd=ROOT)
+
+
+def linked(tag, name, target):
+    # An archived symlink's content is its target, relative to the link.
+    path = posixpath.normpath(posixpath.join(posixpath.dirname(name), target.decode()))
+    if path.startswith("../"):
+        raise ValueError(f"{tag}:{name} links outside the repository")
+    return git("show", f"{tag}:{path}")
 
 
 def setting(name):
@@ -78,7 +91,12 @@ def main():
     env = {**os.environ, "BUNDLE_GEMFILE": str(DOCS / "Gemfile")}
     with tempfile.TemporaryDirectory(prefix="docs-sources-", dir=BUILD) as temporary:
         staging = Path(temporary)
-        sources = [(setting("docs_version"), DOCS, baseurl)]
+        # The github-pages gem forces Jekyll's safe mode, which skips symlinks
+        # (guide/changelog.md is one), so every source is staged with each
+        # link replaced by what it points at.
+        working = staging / "working"
+        shutil.copytree(DOCS, working, ignore=LOCAL_OUTPUT)
+        sources = [(setting("docs_version"), working, baseurl)]
         for _, tag in tags:
             source = staging / tag
             archive = git("archive", "--format=zip", tag, "docs")
@@ -91,7 +109,10 @@ def main():
                         target.mkdir(parents=True, exist_ok=True)
                     else:
                         target.parent.mkdir(parents=True, exist_ok=True)
-                        target.write_bytes(zipped.read(entry))
+                        content = zipped.read(entry)
+                        if entry.external_attr >> 16 & 0o170000 == 0o120000:
+                            content = linked(tag, entry.filename, content)
+                        target.write_bytes(content)
             source /= "docs"
             for relative in CHROME:
                 target = source / relative
