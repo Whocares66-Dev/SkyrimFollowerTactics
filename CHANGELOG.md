@@ -8,6 +8,19 @@ has_toc: false
 
 # Changelog
 
+## 0.4.0
+
+Major changes since `v0.3.0`:
+
+- **More varied follower combat AI:** attack spells are chosen with weighted randomness, with recent casts less likely to repeat. Scores account for perks, enemy resistances and immunities, cast time, and remaining magicka; weapons also benefit from perk-aware scoring. `Varied AI choices` is on by default under `Settings` → `Combat AI`.
+- **Self-targeting damage spells:** followers can choose area attacks such as Fire Storm when enemies are in reach, with crowds making them more attractive. `Use self-targeting damage spells` is a separate option, also on by default.
+- **More tactic conditions:** check named effects, location (including homes, interiors, holds, and dungeon types), bound weapons, carried arrows or bolts, and bleeding. Burning, frostbitten, and shocked now detect damage affecting the character, rather than a cloak they wear.
+- **Custom skill trees:** browse Custom Skills Framework trees on the Skills tab and spend follower training perk points in them. Perk changes update follower armour rating and carry weight immediately.
+- **More reliable actions:** follower power attacks match their weapons, bashes start when the block is ready, and tactic casts take priority over the follower's own spells. Player casts wait for equip animations and allow any known spell regardless of skill. `Unequip` removes worn equipment whether pinned or not.
+- **Fewer wasted casts and items:** named consumables and self-cast abilities wait while all their lasting effects are already active at equal or greater strength. For every NPC, mutually dispelling cloaks stop replacing each other, and staves remain usable while they have enough charge for a cast.
+- **Weapon charging:** a `Charge` button on an enchanted weapon's page uses the weakest filled soul gem carried. `Charge needed` triggers with three or fewer uses left.
+- **Easier panel controls:** drag rules by their number to reorder them; ban or unban all filtered equipment or spells at once; hover a skill level for its breakdown or a shortened condition for its full text. Lists and menus use consistent name ordering. Spell details identify the effect whose skill requirement blocks use, and the Effects tab switches between `Active` effects and `All`, including inactive effects and those that make no change.
+
 ## 0.3.0
 
 Major changes since `v0.2.0`:
