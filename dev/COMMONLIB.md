@@ -100,3 +100,17 @@ Both wrappers load the equip manager singleton from a global and `jmp` to the me
 **What we do instead.** `SetOf` in `src/game/AiScore.cpp` reads the items and the score by offset (0x1C), not by CommonLib's names, and names the two sets by what they are.
 
 **Upstream.** A PR would rename `CombatEquipment`'s fields after `slot` (and `slot` to a mask) and name `unk118`/`unk148`; the SE offsets are unread. Not reported yet.
+
+## Missing: an inventory's weight reset, and the event a perk's rank change sends (found 2026-09-24)
+
+**What is missing.**
+- **`InventoryChanges` has no way to mark its weight stale.** The engine's own routine (15897 on SE, 16137 on AE, the same ID on 1.7.104) copies `totalWeight` (0x10) into the field at 0x14, sets `totalWeight` to -1, and, when the owner is a character, sets the owner's cached weight to -1 too (the actor at `+0x1F8` on SE, `+0x200` on AE). The player's `AddPerk` (40770 on AE) and its removal (40771) call it after a perk changes, since a perk can change what things weigh. CommonLib names the field at 0x14 `armorWeight`; this writer uses it as the total from before the reset. INFERRED from this one writer, so the name may be wrong or may serve both.
+- **The event a perk's rank change sends once it has landed has no type.** The queued change is carried out by 23353 on SE and 23822 on AE, which apply or remove each of the perk's entries and then send `{Actor* actor; BGSPerk* perk; std::uint8_t rank}`, the new rank and 0 for taken off, through a function-local static `BSTEventSource`. Its getter is 23404 on SE and 23866 on AE, with the source's add, remove and send wrappers beside it (23317-23319 on SE, 23783-23785 on AE; the add is the same ID on 1.7.104). Nothing in vanilla adds a sink.
+
+**What we do instead.** `kResetInventoryWeight` and `kAddPerkRankChangedSink` in `src/game/Addresses.h`, and a local `PerkRankChanged` struct and sink in `src/progression/game/PerkView.cpp`, which marks a follower's armour and weight stale as a perk lands (`dev/ENGINE_PERKS.md`).
+
+**Upstream.** A PR would add `InventoryChanges::ResetWeight()` as `RELOCATION_ID(15897, 16137)`, and an event in CommonLib's usual shape for a static source (as `ActorKill`): a struct with the three fields in an `Event`, `static_assert(sizeof(Event) == 0x18)`, and `static BSTEventSource<Event>* GetEventSource()` as `RELOCATION_ID(23404, 23866)`. The name is ours to propose, `PerkRankChanged` or similar. Both should run in play here first. Not reported yet.
+
+## Not a bug: `RelocateVirtual`'s second index is VR's (checked 2026-09-24)
+
+`Actor::OnArmorActorValueChanged` is `RelocateVirtual(0x0CA, 0x0CC, ...)` and `Actor::CalcArmorRating` `RelocateVirtual(0x0E6, 0x0E8, ...)`. The first number is the slot on **SE and AE alike**, the second VR's (`include/REL/Relocation.h`: `a_seAndAEVtableIndex`, `a_vrVtableIndex`); read as (SE, AE), the pair looks two slots off on AE, which it is not. The executables agree with CommonLib: on 1.5.97, 1.6.1170 and 1.7.104 Character's slot 0xCA is the armour invalidation (39180 on SE, 40254 on AE: the cached armour sum and base factor sum set to -1, Damage Resist queued to be worked out again) and 0xE6 the walk that fills them (39174, 40248), and the engine's own `GetArmorBaseFactorSum` calls them at `[vtable + 0x650]` and `[vtable + 0x730]` on both lines. Call CommonLib's, as `src/progression/game/PerkView.cpp` does.

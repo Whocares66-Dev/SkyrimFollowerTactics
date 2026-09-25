@@ -192,6 +192,8 @@ in `dev/PLAN.md`.
 
 - **Version-bound addresses, before shipping** (`dev/VERSIONS.md`). Every Address Library ID, vtable slot and engine layout read from 1.6.1170 alone: each gets its Special Edition (and VR) counterpart read and checked, or the feature it serves says plainly that it is AE-only.
 
+- **Upstream to CommonLibSSE-NG** what `dev/COMMONLIB.md` has not reported: the `GetTargetActor` bug (its draft is `dev/bugs/commonlibsse-ng-gettargetactor.md`), the missing spell and shout unequips, the combat inventory's field order, and (2026-09-24) the inventory weight reset and the perk rank change event. Each entry there says what the PR would add, with both halves of every ID.
+
 - **CommonLibSSE-NG migration** to alandtse `ng` (`dev/COMMONLIB.md`): brings
   `ForceRefTo`, and re-check the `Skyrim.INI` log-directory quirk.
 
