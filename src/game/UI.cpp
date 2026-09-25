@@ -960,16 +960,19 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     // colour is pushed round the cell alone, so the menu reads as usual;
     // `setAside` greys it with the rest of a row set aside for its action.
     const bool available = ConditionAvailable(rule, view);
+    const std::string text = ConditionText(rule, view);
     Im::ImVec2 below;
+    bool elided = false;
     {
         const DimText grey(!setAside.empty() || !available);
-        below = CellButtonOpensPopup(id, ConditionText(rule, view));
+        below = CellButtonOpensPopup(id, text, &elided);
     }
-    // Only the named follower being gone, which is about the condition
-    // itself. Why the ROW is set aside belongs on the action cell, which
-    // is where the thing that is missing is named.
-    if (!available && Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Tooltip(Tr(kFollowerAway));
+    // The named follower being gone, which is about the condition itself,
+    // else the whole of the condition where the cell had to cut it. Why the
+    // ROW is set aside belongs on the action cell, which is where the thing
+    // that is missing is named.
+    if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+        Tooltip(!available ? std::string(Tr(kFollowerAway)) : (elided ? text : std::string{}));
 
     PushPopupChrome();
     Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
