@@ -6881,17 +6881,13 @@ constexpr std::array<Tab, 10> kBarOrder{Tab::Character, Tab::Inventory,  Tab::Ma
 // player's page has not got.
 Tab StepTab(Tab from, int step, bool player)
 {
-    std::array<Tab, kBarOrder.size()> bar{};
-    std::size_t count = 0;
-    for (const Tab tab : kBarOrder)
-        if (!(player && tab == Tab::CombatStyle))
-            bar[count++] = tab;
-
-    std::size_t at = 0;
-    for (std::size_t i = 0; i < count; ++i)
-        if (bar[i] == from)
-            at = i;
-    return bar[(at + static_cast<std::size_t>(static_cast<int>(count) + step)) % count];
+    constexpr auto size = static_cast<int>(kBarOrder.size());
+    const auto found = std::find(kBarOrder.begin(), kBarOrder.end(), from);
+    int at = found == kBarOrder.end() ? 0 : static_cast<int>(found - kBarOrder.begin());
+    do
+        at = (at + step % size + size) % size;
+    while (player && kBarOrder[static_cast<std::size_t>(at)] == Tab::CombatStyle);
+    return kBarOrder[static_cast<std::size_t>(at)];
 }
 
 // A page's answer to the movement keys, read once before its bar is drawn:
