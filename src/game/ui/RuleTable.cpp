@@ -811,18 +811,13 @@ void DrawTactics(const ft::RuleSet &rules, const FollowerView &view)
     // The same tick as the rule rows, and like theirs absent when off --
     // not a ghost of one -- with the word beside it: one glyph for "on"
     // everywhere on this tab, not ImGui's boxed tick next to ours.
-    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-    const bool toggled = GlyphButton("enabled", Im::GetFrameHeight(), Glyph::Tick, followerEnabled);
-    Im::PopStyleVar(1);
-    // On the switch, not the word, as on the Settings page. A disabled item
-    // reports no hover unless asked, and the greyed switch is exactly when
-    // the hover has something to say.
+    // The hover on the switch, not the word, as on the Settings page.
     const bool idle = rules.moment == ft::Moment::Idle;
-    if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
-        Im::SetTooltip("%s", !all ? Tr("Tactics are turned off for the party in Settings")
-                             : followerEnabled
-                                 ? (idle ? Tr("Click to turn off idle tactics") : Tr("Click to turn off tactics"))
-                                 : (idle ? Tr("Click to turn on idle tactics") : Tr("Click to turn on tactics")));
+    const bool toggled =
+        TickSwitch("enabled", followerEnabled,
+                   !all              ? Tr("Tactics are turned off for the party in Settings")
+                   : followerEnabled ? (idle ? Tr("Click to turn off idle tactics") : Tr("Click to turn off tactics"))
+                                     : (idle ? Tr("Click to turn on idle tactics") : Tr("Click to turn on tactics")));
     if (toggled && all)
         SetFollowerEnabled(view.id, rules.moment, !followerEnabled);
     Im::SameLine(0.0f, kCellPadX);

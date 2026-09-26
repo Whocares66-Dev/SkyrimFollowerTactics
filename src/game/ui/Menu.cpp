@@ -98,11 +98,7 @@ void DrawSettings()
     // switch, not the word, and says what a click does; it is read before
     // the click is answered, so the text matches the tick shown this frame.
     const auto toggle = [](const char *id, bool on, const char *label, const char *toTurnOn, const char *toTurnOff) {
-        Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
-        const bool clicked = GlyphButton(id, Im::GetFrameHeight(), Glyph::Tick, on);
-        Im::PopStyleVar(1);
-        if (Im::IsItemHovered(0))
-            Tooltip(on ? toTurnOff : toTurnOn);
+        const bool clicked = TickSwitch(id, on, on ? toTurnOff : toTurnOn);
         Im::SameLine(0.0f, kCellPadX);
         Im::AlignTextToFramePadding();
         Im::Text("%s", label);

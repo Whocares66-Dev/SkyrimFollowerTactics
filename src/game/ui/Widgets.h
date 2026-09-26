@@ -255,6 +255,14 @@ void DrawGlyph(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 lo, Im::ImVec2 hi, 
 // tick, as the rule rows' On cells do, rather than a ghost of one.
 bool GlyphButton(const std::string &id, float size, Glyph glyph, bool painted = true, float scale = 1.0f);
 
+// The panel's switch, the one checkbox drawn on every page that has one --
+// Settings, a list's Enabled: a borderless square with the tick in it while
+// on and nothing while off, `hover` said on it, greyed or not. A frame high, the tick the font's size; `size` makes
+// it smaller, a table row's text line say, with the tick scaled to match
+// so it sits in the square as it does in the others. True the frame it is
+// clicked.
+bool TickSwitch(const char *id, bool on, std::string_view hover, float size = 0.0f);
+
 bool DeleteButton(const std::string &id, float size);
 
 // Chrome for the cascade popups, shared by the condition and action menus.

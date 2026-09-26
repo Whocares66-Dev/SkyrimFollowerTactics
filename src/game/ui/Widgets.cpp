@@ -446,6 +446,20 @@ bool GlyphButton(const std::string &id, float size, Glyph glyph, bool painted, f
     return clicked;
 }
 
+bool TickSwitch(const char *id, bool on, std::string_view hover, float size)
+{
+    const float frame = Im::GetFrameHeight();
+    const float side = size > 0.0f ? size : frame;
+    Im::PushStyleVar(Im::ImGuiStyleVar_FrameBorderSize, 0.0f);
+    const bool clicked = GlyphButton(id, side, Glyph::Tick, on, frame > 0.0f ? side / frame : 1.0f);
+    Im::PopStyleVar(1);
+    // A disabled item reports no hover unless asked, and a greyed switch
+    // is when the hover has something to say.
+    if (Im::IsItemHovered(Im::ImGuiHoveredFlags_AllowWhenDisabled))
+        Tooltip(hover);
+    return clicked;
+}
+
 bool DeleteButton(const std::string &id, float size)
 {
     return GlyphButton(id, size, Glyph::Cross);
