@@ -32,26 +32,29 @@ namespace
 // the effect's page, as on the Inventory and Magic tabs.
 bool EffectListed(const EffectRow &row)
 {
-    return ft::EffectListed(row, g_showHiddenEffects);
+    return ft::EffectListed(row, g_showAllEffects);
 }
 
 // Is the row listed, and does it hold the filter's text in a cell the
 // table shows?
 bool EffectShown(const EffectRow &row)
 {
-    return ft::EffectShown(row, g_showHiddenEffects, g_effectsFilter);
+    return ft::EffectShown(row, g_showAllEffects, g_effectsFilter);
 }
 
-// The switch beside the filter: the eye while hidden effects are listed,
-// struck through while they are not.
-void HiddenEffectsButton()
+// The switch beside the filter, naming the list shown: Active or All. As
+// wide as the wider word, so it does not move the count beside it when
+// clicked.
+void ActiveEffectsButton()
 {
-    if (GlyphButton("effectshidden", Im::GetFrameHeight(), g_showHiddenEffects ? Glyph::Eye : Glyph::EyeSlash, true,
-                    kWideGlyphScale))
-        g_showHiddenEffects = !g_showHiddenEffects;
+    const char *active = Tr("Active");
+    const char *all = Tr("All");
+    const float width = WidestLabel({active, all}) + Im::GetStyle()->FramePadding.x * 2.0f;
+    const std::string label = std::string(g_showAllEffects ? all : active) + "##effectsactive";
+    if (Im::Button(label.c_str(), Im::ImVec2(width, 0.0f)))
+        g_showAllEffects = !g_showAllEffects;
     if (Im::IsItemHovered(0))
-        Im::SetTooltip("%s",
-                       g_showHiddenEffects ? Tr("Click to hide hidden effects") : Tr("Click to show hidden effects"));
+        Im::SetTooltip("%s", g_showAllEffects ? Tr("Click to show active effects") : Tr("Click to show all effects"));
 }
 
 // The rows that pass the filter, in the order the header asks for.
@@ -171,7 +174,7 @@ void DrawEffects(const CharacterView &view)
     FilterRow(
         "##effectsfilter", g_effectsFilter, sizeof(g_effectsFilter),
         [&] { return static_cast<std::size_t>(std::count_if(view.effects.begin(), view.effects.end(), EffectShown)); },
-        listed, Tr("effects"), HiddenEffectsButton);
+        listed, Tr("effects"), ActiveEffectsButton);
     Im::Spacing();
 
     if (listed == 0)
@@ -220,9 +223,9 @@ void DrawEffects(const CharacterView &view)
         Im::TableNextRow(0, 0.0f);
         // Running but changing nothing for this follower, or running but
         // not acting, its conditions unmet: the row is drawn in the
-        // disabled colour, and its name hovers as which. One the game's
-        // own list hides is running and applied all the same, and reads as
-        // any other; its page says it is hidden.
+        // disabled colour, and its name hovers as which; only All lists
+        // them. One the game's own list hides is running and applied all
+        // the same, and reads as any other; its page says it is hidden.
         const DimText grey(!row->applied || !row->active);
         Im::TableSetColumnIndex(0);
         const Im::ImVec2 pos = Im::GetCursorScreenPos();

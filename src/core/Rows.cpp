@@ -79,14 +79,14 @@ bool MagicShown(const MagicEntry &entry, int category, bool voice, std::string_v
     return AnyContains(MagicCells(entry, category, voice), filter);
 }
 
-bool EffectListed(const EffectRow &row, bool showHidden) noexcept
+bool EffectListed(const EffectRow &row, bool showAll) noexcept
 {
-    return showHidden || !row.hidden;
+    return showAll || (row.applied && row.active);
 }
 
-bool EffectShown(const EffectRow &row, bool showHidden, std::string_view filter)
+bool EffectShown(const EffectRow &row, bool showAll, std::string_view filter)
 {
-    return EffectListed(row, showHidden) && AnyContains(EffectCells(row), filter);
+    return EffectListed(row, showAll) && AnyContains(EffectCells(row), filter);
 }
 
 bool Dimmed(const InventoryItem &item) noexcept

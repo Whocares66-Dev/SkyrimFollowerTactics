@@ -315,9 +315,9 @@ std::vector<EffectRow> ScanActiveEffects(RE::Actor *actor)
         // As the game's own Active Effects list: hidden ones stay hidden,
         // and one that has run out is gone -- except a hidden effect that
         // moves a value, which the Character sheet's notes name by source
-        // and which therefore wants a page: kept, marked hidden, for the
-        // tab to list when the player asks for hidden effects, running and
-        // applied as it is, its page saying it is hidden. A hidden
+        // and which therefore wants a page: kept, marked hidden, listed as
+        // any other, running and applied as it is, its page saying it is
+        // hidden. A hidden
         // effect that moves nothing -- a script's, a race monitor's, a
         // cloak's -- stays off the list, as there would be many and
         // nothing to show for them.

@@ -171,24 +171,33 @@ TEST_CASE("an effect row is searched by its name, its time left and its source",
     REQUIRE_FALSE(EffectShown(row, false, "25"));
 }
 
-TEST_CASE("a hidden effect is listed only when hidden effects are asked for", "[rows]")
+TEST_CASE("an effect not acting is listed only when all effects are asked for", "[rows]")
 {
-    EffectRow shown;
-    shown.name = "Fortify Health";
-    EffectRow hidden = shown;
-    hidden.hidden = true;
+    EffectRow acting;
+    acting.name = "Fortify Health";
+    EffectRow inactive = acting;
+    inactive.active = false;
+    EffectRow unapplied = acting;
+    unapplied.applied = false;
 
-    REQUIRE(EffectListed(shown, false));
-    REQUIRE(EffectListed(shown, true));
-    REQUIRE_FALSE(EffectListed(hidden, false));
-    REQUIRE(EffectListed(hidden, true));
+    REQUIRE(EffectListed(acting, false));
+    REQUIRE(EffectListed(acting, true));
+    REQUIRE_FALSE(EffectListed(inactive, false));
+    REQUIRE(EffectListed(inactive, true));
+    REQUIRE_FALSE(EffectListed(unapplied, false));
+    REQUIRE(EffectListed(unapplied, true));
+
+    // One the game's own list hides is listed as any other.
+    EffectRow hidden = acting;
+    hidden.hidden = true;
+    REQUIRE(EffectListed(hidden, false));
 
     // Asked for, it is searched as any other row; not asked for, no text
     // brings it back.
-    REQUIRE(EffectShown(hidden, true, "fortify"));
-    REQUIRE_FALSE(EffectShown(hidden, true, "magicka"));
-    REQUIRE_FALSE(EffectShown(hidden, false, "fortify"));
-    REQUIRE_FALSE(EffectShown(hidden, false, ""));
+    REQUIRE(EffectShown(inactive, true, "fortify"));
+    REQUIRE_FALSE(EffectShown(inactive, true, "magicka"));
+    REQUIRE_FALSE(EffectShown(inactive, false, "fortify"));
+    REQUIRE_FALSE(EffectShown(inactive, false, ""));
 }
 
 TEST_CASE("an item's cells: which hand can take it, what is in it, and what the book says", "[rows]")

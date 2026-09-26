@@ -237,19 +237,12 @@ enum class Glyph
     CaretRight,
     Up,
     Down,
-    Back,
-    Eye,
-    EyeSlash
+    Back
 };
 
 // A codepoint as UTF-8. Every Font Awesome icon sits in the U+F000 block, so
 // the three-byte form is the only case.
 std::string Utf8(unsigned codepoint);
-
-// The eye and the struck-through eye are wider than their em (1.125 and
-// 1.25 of it), so at full size they fill a square button that the cross
-// and the arrows sit inside with room to spare.
-inline constexpr float kWideGlyphScale = 0.8f;
 
 void DrawGlyph(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 lo, Im::ImVec2 hi, Im::ImU32 ink, float scale = 1.0f);
 
@@ -361,7 +354,7 @@ struct BanAll
 void BanAllButton(const char *id, const BanAll &banAll);
 
 // A list's filter box, the list's own buttons beside it -- the ban-all,
-// the hidden effects' switch -- and on its line against the right edge how
+// the Effects tab's Active and All -- and on its line against the right edge how
 // many of the list's rows the filter leaves: "12 items", "3 of 12 items" --
 // `noun` translated by the caller. Above the table, not under it, where a
 // long list pushed the count out of sight; counted after the box, so the

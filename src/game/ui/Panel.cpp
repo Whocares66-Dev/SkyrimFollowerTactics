@@ -26,7 +26,7 @@ ListView g_shoutList;
 char g_effectsFilter[kFilterLen]{};
 char g_perksFilter[kFilterLen]{};
 
-bool g_showHiddenEffects = false;
+bool g_showAllEffects = false;
 
 void ClearFilters()
 {

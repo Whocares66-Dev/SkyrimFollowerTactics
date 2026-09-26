@@ -52,10 +52,10 @@ extern ListView g_shoutList;
 // And the two that only filter.
 extern char g_effectsFilter[kFilterLen];
 extern char g_perksFilter[kFilterLen];
-// Whether the Effects tab lists what the game's own list hides. A way of
-// looking at the list, as a chip is, not a search: kept when the panel
+// Whether the Effects tab lists every effect or only the active ones. A way
+// of looking at the list, as a chip is, not a search: kept when the panel
 // reopens, and one for every page.
-extern bool g_showHiddenEffects;
+extern bool g_showAllEffects;
 
 // Every filter box, emptied at once. A filter is what the player is looking
 // for now, not a setting: a page reopened shows the whole list again. The

@@ -42,11 +42,12 @@ struct ItemColumns
 // them.
 [[nodiscard]] bool VoiceEntry(const MagicEntry &entry) noexcept;
 [[nodiscard]] bool MagicShown(const MagicEntry &entry, int category, bool voice, std::string_view filter);
-// An effect is listed when the game's own list shows it, or when it is a
-// hidden one and hidden effects are asked for; the filter's text is then
-// looked for in its cells.
-[[nodiscard]] bool EffectListed(const EffectRow &row, bool showHidden) noexcept;
-[[nodiscard]] bool EffectShown(const EffectRow &row, bool showHidden, std::string_view filter);
+// An effect is listed when it is acting -- applied, and not inactive: the
+// rows not greyed -- or when all effects are asked for; the filter's text is
+// then looked for in its cells. Whether the game's own list hides it is
+// not asked.
+[[nodiscard]] bool EffectListed(const EffectRow &row, bool showAll) noexcept;
+[[nodiscard]] bool EffectShown(const EffectRow &row, bool showAll, std::string_view filter);
 
 // A column of one of the panel's tables. The number is the id the table
 // gives its header, so a click says which column to order by.

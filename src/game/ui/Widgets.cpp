@@ -101,10 +101,6 @@ unsigned Codepoint(Glyph glyph)
         return 0xF062; // arrow-up: a move, not a sort direction
     case Glyph::Down:
         return 0xF063; // arrow-down
-    case Glyph::Eye:
-        return 0xF06E; // eye
-    case Glyph::EyeSlash:
-        return 0xF070; // eye-slash
     case Glyph::Back:
     default:
         return 0xF060; // arrow-left
