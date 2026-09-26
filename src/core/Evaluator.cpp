@@ -612,9 +612,12 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
         // it -- first-match-wins makes that a monopoly, not a nuisance.
         // Pinned, not merely equipped: the rule's promise is the pin, and a
         // thing the AI happens to be holding is not yet kept. "None" is done
-        // when there is nothing of its kind to let go of.
+        // when there is nothing of its kind to let go of or take off.
         if (LetsGo(a))
-            return !AnyPinOf(s.pins, KindOf(a.kind), TakesHand(a.kind) ? HandsWanted(a) : Hand::None);
+        {
+            const Hand hands = TakesHand(a.kind) ? HandsWanted(a) : Hand::None;
+            return !AnyPinOf(s.pins, KindOf(a.kind), hands) && !AnyPinOf(s.worn, KindOf(a.kind), hands);
+        }
         // An arrow policy is done while the arrows it would choose are the
         // ones pinned: with those gone, the next kind is a new pin.
         const std::uint32_t form = IsArrowsPolicy(a.kind) ? ChosenForm(a, s) : a.form;
@@ -1129,7 +1132,7 @@ const char *Explain(Verdict v, ActionKind action) noexcept
 
     case Verdict::EffectActive:
         if (IsEquip(action))
-            return N_("already pinned, or nothing of that kind pinned to let go");
+            return N_("already pinned, or nothing of that kind on to take off");
         if (action == ActionKind::Attack)
             return N_("already fighting them");
         if (action == ActionKind::UsePower)

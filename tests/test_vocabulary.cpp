@@ -418,7 +418,7 @@ TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
     // the rule. Same verdict, different action, different sentence.
     REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkStrongest)) == "previous dose still active");
     REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::EquipSpell)) ==
-            "already pinned, or nothing of that kind pinned to let go");
+            "already pinned, or nothing of that kind on to take off");
 
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkStrongest)) == "none in inventory");
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EquipSpell)) == "does not know that spell");

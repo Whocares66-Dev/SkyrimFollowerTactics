@@ -241,7 +241,8 @@ void FillBag(RE::Actor *actor, ft::Snapshot &s)
     // The player's "pins" are what they have on: an equip rule of theirs is
     // done when the thing is worn, and nothing chooses for them to pin
     // against (game/Pins.h, WornAsPins).
-    s.pins = actor->IsPlayerRef() ? WornAsPins(actor) : PinsOf(s.self);
+    s.worn = WornAsPins(actor);
+    s.pins = actor->IsPlayerRef() ? s.worn : PinsOf(s.self);
 }
 
 // What casting a spell, a scroll or a shout on oneself would put up (core's

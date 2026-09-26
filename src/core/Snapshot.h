@@ -776,6 +776,12 @@ struct Snapshot
     // in the hands asked for is done, so the rule falls through.
     std::vector<Holdable> loadout;
     std::vector<Pin> pins;
+    // What is on and in hand, pinned or not, worded as pins: an Unequip
+    // takes all of it off, so it is done only when neither this nor the
+    // book holds anything of its kind. The worn armour of a follower is
+    // the AI's, never pinned, and a check of the book alone never let the
+    // rule fire.
+    std::vector<Pin> worn;
 
     // Any ammunition carried, arrows or bolts, as the arrow policies count
     // it: the Arrows condition.

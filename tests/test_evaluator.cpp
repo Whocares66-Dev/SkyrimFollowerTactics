@@ -2091,6 +2091,37 @@ TEST_CASE("none lets go of every pin of its kind, unless a rule above holds one"
     REQUIRE(trace.at(1) == Verdict::Outranked);
 }
 
+TEST_CASE("none takes off what is worn of its kind, pinned or not", "[equip]")
+{
+    // The follower's own armour is the AI's and in no book: a none that
+    // asked the book alone was done before it began (2026-09-25, Jenassa's
+    // Leather Armor).
+    RuleSet rs;
+    rs.rules.push_back(Equip(ActionKind::EquipArmor, 0));
+    Snapshot s = Armed();
+    EvalContext ctx;
+    Trace trace;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+
+    AddPin(s.worn, *FindHoldable(s.loadout, kHelmet), Hand::None, false);
+    const Decision d = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(d.ruleIndex == 0);
+    REQUIRE(d.action() == ActionKind::EquipArmor);
+    REQUIRE(d.actionForm() == 0);
+
+    // A weapon's none asks the hand it names: a sword in the right is
+    // nothing for the left to take off.
+    s.worn.clear();
+    AddPin(s.worn, *FindHoldable(s.loadout, kSword), Hand::Right, false);
+    rs.rules[0] = Equip(ActionKind::EquipWeapon, 0, Hand::Left);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+    rs.rules[0] = Equip(ActionKind::EquipWeapon, 0, Hand::Right);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+}
+
 TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI would use", "[equip]")
 {
     Snapshot s = Armed();
