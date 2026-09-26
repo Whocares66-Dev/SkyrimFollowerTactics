@@ -52,7 +52,8 @@ Nothing is written on a panel close or by the tick. Close the game without savin
     { "form": "0x13989~Skyrim.esm", "variant": {}, "hand": "both" },
     { "form": "0x12E49~Skyrim.esm", "variant": { "enchant": [ { "effect": "0x581F7~Skyrim.esm", "mag": 25 } ], "label": "Warden" } }
   ],
-  "bans": [ { "form": "0x12EB7~Skyrim.esm", "variant": { "tempering": 1.2 } }, { "form": "0x2F3B8~Skyrim.esm" } ]
+  "bans": [ { "form": "0x12EB7~Skyrim.esm", "variant": { "tempering": 1.2 } }, { "form": "0x2F3B8~Skyrim.esm" } ],
+  "combatStyle": { "magic-score": 1.5, "offensive": -0.1, "dual-wield": true, "flanking": false }
 }
 ```
 
@@ -88,6 +89,7 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 | `variant.label` | the name the player gave the copy |
 | `pins[].hand` | `left`, `right`, `both`; absent for armour and ammunition, which have no hand |
 | `bans[].form`, `bans[].variant` | the player's bans: forms the follower must never use, and which row, as a pin's `variant`; absent bans every row of the form. A ban is off and kept off, whichever hand |
+| `combatStyle` | the Combat Style tab's tuning: each field moved, by its wire name (`src/core/CombatStyle.cpp`), and the plus or minus on the record's number, to its step; `dual-wield` and `flanking`, when there, the player's word on Allow Dual Wielding and on Flanking over the record's. Absent, and a field absent, is no change (`dev/COMBAT_AI.md` "Combat styles") |
 
 The record carries only the fields a rule reads, so a status is written only under the `status` predicate and a hand only under the equips that take one. Absent fields read as the defaults.
 
@@ -108,6 +110,7 @@ Beside the follower records the co-save holds one `SETT` record: the player's ow
 | `requireDualWieldStyle` | a follower must have a combat style that allows dual wielding before a weapon is put in the second hand. On by default, which is what the mod did before the setting existed |
 | `requireDualCastPerks` | a follower must have the school's Dual Casting perk before a spell of that school is offered, or fired, as a dual cast. Off by default: the game asks this of the player, not of an NPC |
 | `requirePowerBashPerk` | a follower must have the Block tree's Power Bash perk before a power bash is offered or fired. Off by default, for the same reason: the idle tree asks it of the player alone (`dev/ATTACK.md`) |
+| `manageCombatStyle` | each follower's combat style tuning (`combatStyle` above) is put on them. On by default, which changes nothing until a style is tuned; off, every follower fights by their record's style and the tuning is kept |
 
 A missing key keeps its default, an unknown one is ignored, and a save with no record at all -- one made before the settings existed -- loads the defaults rather than whatever the last session had.
 
@@ -132,6 +135,7 @@ Reading is lenient by design, so a record from another version of the mod, older
 - An action of unknown **kind**, or naming a **form whose plugin is not loaded**, is dropped alone and its rule kept.
 - A pin naming a **form whose plugin is not loaded**, or an unknown hand, is dropped alone. A record with no `pins` key has none. A `variant` of the wrong shape reads as absent, and so does a part of the wrong shape inside it; a variant with an effect whose form is not in this load order drops the pin, ban or rule alone.
 - A ban that is not an object, or names a form whose plugin is not loaded, is dropped alone. A record with no `bans` key has none.
+- A `combatStyle` field of an unknown name is dropped alone, with a warning; a value that is not a number reads as absent, and one between steps is snapped to its step.
 - A field of the wrong shape (`"arg": "half"`) reads as absent.
 - A record that is not JSON, or not an object, reads as no record, and the log says so.
 - A `schema` newer than this build's is read anyway, with a warning. So is a co-save record of a type this build does not know: skipped, with a warning.

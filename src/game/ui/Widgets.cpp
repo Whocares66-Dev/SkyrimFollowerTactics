@@ -784,6 +784,24 @@ bool CellClicked(const char *id, float height)
     return clicked;
 }
 
+bool ClickableText(const char *id, const std::string &text, const char *hover)
+{
+    const Im::ImVec2 at = Im::GetCursorScreenPos();
+    const Im::ImVec2 size(TextWidth(text), Im::GetTextLineHeight());
+    const bool clicked = Im::InvisibleButton(id, size, 0);
+    if (Im::IsItemHovered(0))
+    {
+        if (auto *draw = Im::GetWindowDrawList())
+            Im::ImDrawListManager::AddRectFilled(draw, Im::ImVec2(at.x - 3.0f, at.y),
+                                                 Im::ImVec2(at.x + size.x + 3.0f, at.y + size.y),
+                                                 Im::GetColorU32(Im::ImGuiCol_ButtonHovered, 1.0f), 3.0f, 0);
+        Tooltip(hover);
+    }
+    Im::SetCursorScreenPos(at);
+    Im::Text("%s", text.c_str());
+    return clicked;
+}
+
 void CentredHeading(const char *title)
 {
     Im::PushStyleVar(Im::ImGuiStyleVar_SeparatorTextAlign, Im::ImVec2(0.5f, 0.5f));

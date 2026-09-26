@@ -1,5 +1,6 @@
 #include "game/Settings.h"
 
+#include "game/CombatStyles.h"
 #include "game/Log.h"
 
 #include <atomic>
@@ -18,6 +19,7 @@ std::atomic_bool g_requirePowerBashPerk{false};
 // Read by the AI's score, on its own threads.
 std::atomic_bool g_variedAiChoices{true};
 std::atomic_bool g_selfDamageSpells{true};
+std::atomic_bool g_manageCombatStyle{true};
 
 } // namespace
 
@@ -29,6 +31,7 @@ ft::Settings CurrentSettings()
     settings.requirePowerBashPerk = g_requirePowerBashPerk.load(std::memory_order_relaxed);
     settings.variedAiChoices = g_variedAiChoices.load(std::memory_order_relaxed);
     settings.selfDamageSpells = g_selfDamageSpells.load(std::memory_order_relaxed);
+    settings.manageCombatStyle = g_manageCombatStyle.load(std::memory_order_relaxed);
     return settings;
 }
 
@@ -40,23 +43,29 @@ void SetSettings(const ft::Settings &settings)
     g_requirePowerBashPerk.store(settings.requirePowerBashPerk, std::memory_order_relaxed);
     g_variedAiChoices.store(settings.variedAiChoices, std::memory_order_relaxed);
     g_selfDamageSpells.store(settings.selfDamageSpells, std::memory_order_relaxed);
+    g_manageCombatStyle.store(settings.manageCombatStyle, std::memory_order_relaxed);
+    if (before.manageCombatStyle != settings.manageCombatStyle)
+        RequestCombatStylesSynced();
     if (before.requireDualWieldStyle == settings.requireDualWieldStyle &&
         before.requireDualCastPerks == settings.requireDualCastPerks &&
         before.requirePowerBashPerk == settings.requirePowerBashPerk &&
-        before.variedAiChoices == settings.variedAiChoices && before.selfDamageSpells == settings.selfDamageSpells)
+        before.variedAiChoices == settings.variedAiChoices && before.selfDamageSpells == settings.selfDamageSpells &&
+        before.manageCombatStyle == settings.manageCombatStyle)
         return;
     log::tactics.event(log::Level::Info, "settings.changed",
                        {{"requireDualWieldStyle", settings.requireDualWieldStyle},
                         {"requireDualCastPerks", settings.requireDualCastPerks},
                         {"requirePowerBashPerk", settings.requirePowerBashPerk},
                         {"variedAiChoices", settings.variedAiChoices},
-                        {"selfDamageSpells", settings.selfDamageSpells}},
+                        {"selfDamageSpells", settings.selfDamageSpells},
+                        {"manageCombatStyle", settings.manageCombatStyle}},
                        "settings: dual wield combat style {}, dual casting perks {}, power bash perk {}, "
-                       "varied AI choices {}, self-targeting damage spells {}",
+                       "varied AI choices {}, self-targeting damage spells {}, combat style tuning {}",
                        settings.requireDualWieldStyle ? "required" : "not required",
                        settings.requireDualCastPerks ? "required" : "not required",
                        settings.requirePowerBashPerk ? "required" : "not required",
-                       settings.variedAiChoices ? "on" : "off", settings.selfDamageSpells ? "on" : "off");
+                       settings.variedAiChoices ? "on" : "off", settings.selfDamageSpells ? "on" : "off",
+                       settings.manageCombatStyle ? "on" : "off");
 }
 
 } // namespace ft::game

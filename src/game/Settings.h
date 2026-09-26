@@ -8,9 +8,10 @@
 // a hint to the AI, not a law -- so each is the player's choice, and what
 // they choose is saved with the game (game/Profiles.h, dev/PROFILES.md).
 //
-// And one that is no gate: varied AI choices, which has the AI's
+// And those that are no gate: varied AI choices, which has the AI's
 // score for a follower's weapons and attack spells answered by ours
-// (game/AiScore.h).
+// (game/AiScore.h), and managing the combat style, which puts each
+// follower's tuning of their style on them (game/CombatStyles.h).
 //
 // Read by the tick building a snapshot, by the panel drawing a menu and by
 // the AI's score; written by the panel and by a load. Atomics, so a read

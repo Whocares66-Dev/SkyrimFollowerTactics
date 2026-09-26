@@ -8,6 +8,7 @@
 #include "game/ui/Widgets.h"
 
 #include "game/Addresses.h"
+#include "game/CombatStyles.h"
 #include "game/Log.h"
 #include "game/Tactics.h"
 #include <SKSEMenuFramework.h>
@@ -223,6 +224,116 @@ bool BeginSheetTab(const char *label, Tab tab, Tab select)
     return true;
 }
 
+// One field's plus or minus on the record's style, from the record's value
+// down to 0 and up to the top of its scale, by its step. No frame padding
+// above and below, so the row is as tall as the rows of text around it.
+void DrawStyleSlider(ft::ActorId id, const ft::StyleTuning &tuning, ft::StyleField field)
+{
+    const auto i = static_cast<std::size_t>(field);
+    const auto [lo, hi] = ft::StyleDeltaRange(field, tuning.base[i]);
+    float delta = tuning.adjustments.deltas[i];
+    Im::SetNextItemWidth(Im::GetFontSize() * 12.0f);
+    Im::PushStyleVar(Im::ImGuiStyleVar_FramePadding, Im::ImVec2(Im::GetStyle()->FramePadding.x, 0.0f));
+    const bool moved =
+        Im::SliderFloat(("##style/" + std::string(ft::WireName(field))).c_str(), &delta, lo, hi,
+                        ft::StyleMax(field) > 1.0f ? "%+.1f" : "%+.2f", Im::ImGuiSliderFlags_AlwaysClamp);
+    delta = ft::SnapStyleDelta(field, delta);
+    if (moved && delta != tuning.adjustments.deltas[i])
+        RequestStyleDelta(id, field, delta);
+    // The field alone back to the record's, greyed while it is there.
+    Im::SameLine(0.0f, kCellPadX);
+    Im::BeginDisabled(tuning.adjustments.deltas[i] == 0.0f);
+    if (Im::Button((std::string(Tr("Reset")) + "##style/" + std::string(ft::WireName(field))).c_str(),
+                   Im::ImVec2(0.0f, 0.0f)))
+        RequestStyleDelta(id, field, 0.0f);
+    Im::EndDisabled();
+    Im::PopStyleVar(1);
+}
+
+// The Combat Style tab: Reset at the top right while something is tuned,
+// then the style, each field's description on its label. While the
+// setting is on, a field's value opens its slider and closes it again.
+void DrawCombatStyle(const FollowerView &view)
+{
+    PanelState &panel = Panel(view.id);
+    Im::Spacing();
+    const bool tuned = view.styleTuning && ft::AnyStyleAdjustment(view.styleTuning->adjustments);
+    if (!tuned)
+        panel.confirmStyleReset = false;
+
+    // Reset's line comes and goes with the tuning, and takes no room while
+    // there is none. So the table does not move from under the cursor, it
+    // changes only while nothing is held -- a slider dragged, a button
+    // pressed -- and the page scrolls by the line as it does: what was
+    // under the cursor stays there, save at the top of a page too short to
+    // scroll. A page just come to is drawn as it is.
+    const int frame = Im::GetFrameCount();
+    const bool continuing = panel.styleDrawnFrame == frame - 1;
+    panel.styleDrawnFrame = frame;
+    if (!continuing)
+    {
+        panel.styleResetShown = tuned;
+    }
+    else if (panel.styleResetShown != tuned && !Im::IsAnyItemActive())
+    {
+        const float line = Im::GetFrameHeightWithSpacing();
+        Im::SetScrollY(Im::GetScrollY() + (tuned ? line : -line));
+        panel.styleResetShown = tuned;
+    }
+    if (panel.styleResetShown)
+    {
+        const float lineRight = Im::GetCursorPosX() + Im::GetContentRegionAvail().x;
+        Im::SetCursorPosX((std::max)(Im::GetCursorPosX(),
+                                     lineRight - AskedActionWidth(Tr("Reset"), panel.confirmStyleReset && tuned)));
+        // Everything back as it was, the open slider closed with it.
+        if (AskedAction(Tr("Reset"), tuned, Tr("Click to reset combat style"), panel.confirmStyleReset))
+        {
+            RequestStyleReset(view.id);
+            panel.styleControl = -1;
+        }
+    }
+
+    SheetControls controls;
+    controls.noteOnLabel = true;
+    controls.hover = Tr("Click to adjust value");
+    // The widest a field's value can read, a score at the top of its scale.
+    controls.widest = "10.00 / 10";
+    if (view.styleTuning)
+    {
+        const ft::StyleTuning &tuning = *view.styleTuning;
+        // One slider open at a time: a value clicked opens its own and
+        // closes any other. A switch is itself, in its value's place.
+        controls.state = [&panel](const SheetRow &row) {
+            if (SwitchOfControl(row.control))
+                return ControlState::InPlace;
+            if (static_cast<std::size_t>(row.control) >= ft::kStyleFields)
+                return ControlState::None;
+            return row.control == panel.styleControl ? ControlState::Open : ControlState::Closed;
+        };
+        controls.toggle = [&panel](const SheetRow &row) {
+            panel.styleControl = row.control == panel.styleControl ? -1 : row.control;
+        };
+        controls.draw = [&view, &tuning](const SheetRow &row) {
+            const auto which = SwitchOfControl(row.control);
+            if (!which)
+            {
+                DrawStyleSlider(view.id, tuning, static_cast<ft::StyleField>(row.control));
+                return;
+            }
+            // A text line high, to keep the row's height.
+            const bool on =
+                ft::SwitchOn(tuning.adjustments, *which, tuning.baseSwitches[static_cast<std::size_t>(*which)]);
+            const bool flanking = *which == ft::StyleSwitch::Flanking;
+            const char *hover = flanking
+                                    ? (on ? Tr("Click to disable flanking") : Tr("Click to enable flanking"))
+                                    : (on ? Tr("Click to disable dual-wielding") : Tr("Click to enable dual-wielding"));
+            if (TickSwitch(flanking ? "flanking" : "dualwield", on, hover, Im::GetTextLineHeight()))
+                RequestStyleSwitch(view.id, *which);
+        };
+    }
+    DrawSections(view.combatStyle, false, {}, nullptr, {}, "", "", {}, {}, controls);
+}
+
 } // namespace
 
 void ShowingPage(ft::ActorId actor, Tab tab)
@@ -388,10 +499,7 @@ void DrawFollower(const FollowerView &view)
     // with, or against, these numbers.
     if (BeginSheetTab(Tr("Combat Style"), Tab::CombatStyle, select))
     {
-        TabBody(Tab::CombatStyle, view.id, [&] {
-            Im::Spacing();
-            DrawSections(view.combatStyle, false);
-        });
+        TabBody(Tab::CombatStyle, view.id, [&] { DrawCombatStyle(view); });
         Im::EndTabItem();
     }
     DrawTacticsTabs(view, select);

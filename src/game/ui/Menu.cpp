@@ -140,6 +140,12 @@ void DrawSettings()
     // (dev/COMBAT_AI.md "What we change"); the player's choices are theirs.
     Im::Spacing();
     CentredHeading(Tr("Combat AI"));
+    // Off, every follower fights by their record's style at once, and the
+    // tuning waits in their record (game/CombatStyles.h).
+    if (toggle("manageCombatStyle", settings.manageCombatStyle, Tr("Manage combat style"),
+               Tr("Click to enable adjusting combat style (follower only)"),
+               Tr("Click to disable adjusting combat style (follower only)")))
+        settings.manageCombatStyle = !settings.manageCombatStyle;
     if (toggle("variedAiChoices", settings.variedAiChoices, Tr("Varied AI choices"),
                Tr("Click for more variation in weapon use, spellcasting, etc. (follower only)"),
                Tr("Click for less variation in weapon use, spellcasting, etc. (follower only)")))
@@ -151,7 +157,7 @@ void DrawSettings()
     if (settings.requireDualWieldStyle != was.requireDualWieldStyle ||
         settings.requireDualCastPerks != was.requireDualCastPerks ||
         settings.requirePowerBashPerk != was.requirePowerBashPerk || settings.variedAiChoices != was.variedAiChoices ||
-        settings.selfDamageSpells != was.selfDamageSpells)
+        settings.selfDamageSpells != was.selfDamageSpells || settings.manageCombatStyle != was.manageCombatStyle)
         SetSettings(settings);
 
     // Progression's switch, kept with the save. Off, every follower is as

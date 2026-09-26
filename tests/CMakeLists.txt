@@ -28,6 +28,7 @@ add_executable(
     test_blows.cpp
     test_breakdown.cpp
     test_clock.cpp
+    test_combatstyle.cpp
     test_conditions.cpp
     test_coordinator.cpp
     test_cosave.cpp

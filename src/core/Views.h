@@ -67,6 +67,10 @@ struct SheetRow
     // The inventory item this row names, if any: a click on it opens the
     // item's page on the Inventory tab. 0 for a row that names nothing.
     std::uint32_t form{0};
+    // Which of the page's controls the row carries, which its name opens
+    // (DrawSections' controls): a combat style field's slider, by the
+    // field's index. -1 for none.
+    int control{-1};
     // Why the row is set aside -- a perk whose conditions fail for this
     // actor -- shown on the name; empty for a row that counts.
     std::string aside;

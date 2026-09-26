@@ -66,6 +66,8 @@ void CloseDetails()
         panel.effects = {};
         panel.skills = {};
         panel.attributeControls = false;
+        panel.styleControl = -1;
+        panel.confirmStyleReset = false;
     }
 }
 

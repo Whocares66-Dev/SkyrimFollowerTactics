@@ -153,6 +153,7 @@ add_library(
     src/core/Blows.cpp
     src/core/Breakdown.cpp
     src/core/Clock.cpp
+    src/core/CombatStyle.cpp
     src/core/CoSave.cpp
     src/core/Coordinator.cpp
     src/core/CustomSkills.cpp
@@ -298,6 +299,7 @@ if(FT_BUILD_PLUGIN)
             src/game/Sensors.cpp
             src/game/Bag.cpp
             src/game/CharacterSheet.cpp
+            src/game/CombatStyles.cpp
             src/game/EffectRows.cpp
             src/game/Effects.cpp
             src/game/PerkSheet.cpp

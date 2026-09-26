@@ -217,6 +217,7 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     REQUIRE_FALSE(s.requirePowerBashPerk);
     REQUIRE(s.variedAiChoices); // on unless the player wants vanilla's choice
     REQUIRE(s.selfDamageSpells);
+    REQUIRE(s.manageCombatStyle); // no tuning is no change
 
     s.tacticsEnabled = false;
     s.requireDualWieldStyle = false;
@@ -224,6 +225,7 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     s.requirePowerBashPerk = true;
     s.variedAiChoices = false;
     s.selfDamageSpells = false;
+    s.manageCombatStyle = false;
     const auto back = ReadSettings(WriteSettings(s));
     REQUIRE(back);
     REQUIRE_FALSE(back->tacticsEnabled);
@@ -232,6 +234,7 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     REQUIRE(back->requirePowerBashPerk);
     REQUIRE_FALSE(back->variedAiChoices);
     REQUIRE_FALSE(back->selfDamageSpells);
+    REQUIRE_FALSE(back->manageCombatStyle);
 
     // A key this build does not know is ignored, and one it knows but the
     // document does not carry keeps its default.
@@ -243,6 +246,7 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     REQUIRE(partial->requirePowerBashPerk);
     REQUIRE(partial->variedAiChoices);
     REQUIRE(partial->selfDamageSpells);
+    REQUIRE(partial->manageCombatStyle);
 
     // Not a document at all: nothing read, and the caller keeps what it has.
     REQUIRE_FALSE(ReadSettings("{").has_value());
@@ -425,6 +429,50 @@ TEST_CASE("bans are a form and a variant, written and read back, a stranger drop
     REQUIRE(read.warnings[0].find("ban 1") != std::string::npos);
     REQUIRE(read.warnings[0].find("0x7~Gone.esp") != std::string::npos);
     REQUIRE(read.warnings[3].find("0x9~Gone.esp") != std::string::npos);
+}
+
+TEST_CASE("a combat style's tuning rides the file as the fields moved, each to its step, and the dual wield word",
+          "[profile]")
+{
+    const auto at = [](StyleField field) { return static_cast<std::size_t>(field); };
+    Profile profile;
+    REQUIRE_FALSE(nlohmann::json::parse(WriteProfile(profile, kHex)).contains("combatStyle"));
+
+    profile.combatStyle.deltas[at(StyleField::Offensive)] = 0.3f;
+    profile.combatStyle.deltas[at(StyleField::MagicScore)] = -1.2f;
+    profile.combatStyle.switches[static_cast<std::size_t>(StyleSwitch::DualWield)] = false;
+    profile.combatStyle.switches[static_cast<std::size_t>(StyleSwitch::Flanking)] = true;
+    const auto j = nlohmann::json::parse(WriteProfile(profile, kHex));
+    REQUIRE(j["combatStyle"].size() == 4);
+    // The step's decimal, not the float nearest it.
+    REQUIRE(j["combatStyle"]["offensive"].get<double>() == 0.3);
+    REQUIRE(j["combatStyle"]["magic-score"].get<double>() == -1.2);
+    REQUIRE(j["combatStyle"]["dual-wield"] == false);
+    REQUIRE(j["combatStyle"]["flanking"] == true);
+    const auto back = ReadProfile(j.dump(), kHex);
+    REQUIRE(back.warnings.empty());
+    REQUIRE(back.profile->combatStyle == profile.combatStyle);
+
+    // The word alone is a tuning to write.
+    Profile word;
+    word.combatStyle.switches[static_cast<std::size_t>(StyleSwitch::DualWield)] = true;
+    REQUIRE(nlohmann::json::parse(WriteProfile(word, kHex))["combatStyle"]["dual-wield"] == true);
+
+    // A field this build does not know is dropped alone, a value of the
+    // wrong shape reads as absent, and one between steps is snapped.
+    const auto odd = ReadProfile(R"({ "schema": 1, "rules": [], "combatStyle":
+        { "avoid-threat": 0.5, "defensive": "more", "strafe": 0.123, "bash": 1.26, "dual-wield": "yes" } })",
+                                 kHex);
+    REQUIRE(odd.warnings.size() == 1);
+    REQUIRE(odd.warnings[0].find("avoid-threat") != std::string::npos);
+    REQUIRE(odd.profile->combatStyle.deltas[at(StyleField::Defensive)] == 0.0f);
+    REQUIRE(odd.profile->combatStyle.deltas[at(StyleField::Strafe)] == 0.12f);
+    REQUIRE(odd.profile->combatStyle.deltas[at(StyleField::Bash)] == 1.3f);
+    REQUIRE_FALSE(odd.profile->combatStyle.switches[static_cast<std::size_t>(StyleSwitch::DualWield)].has_value());
+
+    const auto shape = ReadProfile(R"({ "schema": 1, "rules": [], "combatStyle": 7 })", kHex);
+    REQUIRE_FALSE(AnyStyleAdjustment(shape.profile->combatStyle));
+    REQUIRE(shape.warnings.empty());
 }
 
 TEST_CASE("an action names its variant on the wire only when it has one, and its thing's last name", "[profile]")

@@ -158,7 +158,7 @@ std::vector<ExtraColumn> WithDescription()
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                   const std::function<void(std::uint32_t)> &onLink, const char *third, const RowDrawer &drawer,
                   const char *first, const char *second, const std::vector<ExtraColumn> &wanted,
-                  const std::function<void(const SheetRow &)> &onTree)
+                  const std::function<void(const SheetRow &)> &onTree, const SheetControls &controls)
 {
     first = Tr(first);
     second = Tr(second);
@@ -194,10 +194,19 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
     // is measured with it; a row without starts its name where the marker
     // would be, so the two kinds line up on their left edge.
     const float marker = modifiers ? DisclosureWidth() : 0.0f;
+    // A row's controls this frame, and where those its value opens start in
+    // its value cell.
+    const auto stateOf = [&controls](const SheetRow &row) {
+        return row.control >= 0 && controls.state ? controls.state(row) : ControlState::None;
+    };
+    const auto opens = [](ControlState state) { return state == ControlState::Closed || state == ControlState::Open; };
+    float controlsAt = TextWidth(controls.widest);
     for (const auto &section : sections)
     {
         for (const auto &row : section.rows)
         {
+            if (opens(stateOf(row)))
+                controlsAt = (std::max)(controlsAt, TextWidth(row.value));
             const float lead = row.detail.empty() || levelOpens ? 0.0f : marker;
             nameWidth = (std::max)(nameWidth, lead + TextWidth(row.label));
             valueWidth = (std::max)(valueWidth, (levelOpens ? marker : 0.0f) + TextWidth(row.value));
@@ -207,6 +216,7 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
         }
     }
     const float pad = kTablePad;
+    controlsAt += pad;
     const int columns = modifiers ? 2 + (hasThird ? 1 : 0) + static_cast<int>(extras.size()) : 2;
     // Where a column carries the link -- an effect's source -- the name
     // does not: one link per row, on the cell that names where it goes.
@@ -422,8 +432,13 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     Tooltip(row.aside);
                 }
             }
+            else if (controls.noteOnLabel && !row.note.empty() && Im::IsItemHovered(0))
+            {
+                NoteTooltip(row.note);
+            }
 
             Im::TableSetColumnIndex(1);
+            const float valueX = Im::GetCursorPosX();
             if (levelOpens)
             {
                 // The level's cell opens the perks it holds, the caret before
@@ -457,7 +472,12 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                     onLink(row.form);
                 Im::SetCursorScreenPos(pos);
             }
-            if (row.icon != 0)
+            const ControlState control = stateOf(row);
+            if (control == ControlState::InPlace)
+            {
+                controls.draw(row);
+            }
+            else if (row.icon != 0)
             {
                 // A glyph in the value's place, laid as text so it starts
                 // where the value would and keeps its own width: centred in
@@ -472,6 +492,11 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                 }
                 FontAwesome::Pop();
             }
+            else if (opens(control))
+            {
+                if (ClickableText(("##controls" + section.title + "/" + row.label).c_str(), row.value, controls.hover))
+                    controls.toggle(row);
+            }
             else
             {
                 Im::Text("%s", row.value.c_str());
@@ -480,19 +505,27 @@ void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
             // the number it explains; on the Modifiers cell where that cell
             // holds one plain figure, since that is the number it explains
             // there. Where the figures hover apart, or there is none, the
-            // row's is the value's: a skill's level beside its bonuses.
+            // row's is the value's: a skill's level beside its bonuses. A
+            // value that opens controls says so instead, and a note on the
+            // label is not said twice.
             const auto explain = [&] {
-                if (!Im::IsItemHovered(0))
+                if (!Im::IsItemHovered(0) || control != ControlState::None)
                     return;
                 if (!row.breakdown.empty())
                     BreakdownTooltip(row.breakdown);
-                else if (!row.note.empty())
+                else if (!row.note.empty() && !controls.noteOnLabel)
                     NoteTooltip(row.note);
             };
             const bool modifierExplains =
                 hasThird && row.mark == 0 && row.modifierParts.empty() && !row.modifiers.empty();
             if (!modifiers || (hasThird && !modifierExplains))
                 explain();
+            if (control == ControlState::Open)
+            {
+                Im::SameLine(0.0f, 0.0f);
+                Im::SetCursorPosX(valueX + controlsAt);
+                controls.draw(row);
+            }
             if (modifiers)
             {
                 int index = 2;

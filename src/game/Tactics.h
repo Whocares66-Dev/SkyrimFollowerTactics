@@ -6,6 +6,7 @@
 // retire one risk -- whether an NPC can be made to reliably consume a
 // potion.
 
+#include "core/CombatStyle.h"
 #include "core/Editor.h"
 #include "core/Evaluator.h"
 #include "game/CharacterSheet.h"
@@ -120,8 +121,11 @@ struct FollowerView : CharacterView
     std::vector<ConsumableOption> consumables;
     // The Effect condition's picks (core/Effects.h), from the two above.
     std::vector<ft::EffectPick> effectPicks;
-    // The Tactics tab's Combat Style section.
+    // The Combat Style tab, and each field's value on their record's style
+    // with the player's plus or minus, for its sliders; none while the
+    // setting is off (game/CombatStyles.h).
     std::vector<SheetSection> combatStyle;
+    std::optional<ft::StyleTuning> styleTuning;
     // What the editor greys a rule by (core/Editor.h), from the same scans
     // as the menus above.
     ft::Holdings holdings;

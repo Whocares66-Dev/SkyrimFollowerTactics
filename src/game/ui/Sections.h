@@ -76,17 +76,47 @@ inline const std::vector<ExtraColumn> kEffectColumns{
 
 std::vector<ExtraColumn> WithDescription();
 
+// What a row's controls (SheetRow::control) are this frame. Closed and Open:
+// its value's text is a click target that opens and closes them, saying
+// `hover`, and while open they are drawn on the value's line past `widest`,
+// the widest value such a row can show, so they stay put as values change
+// -- past the widest value on the page, they moved the first time Base ID
+// grew "(modified)". InPlace: they are drawn in the value's place, a
+// switch that is its own value.
+enum class ControlState
+{
+    None,
+    Closed,
+    Open,
+    InPlace
+};
+
+// A page's controls on its sheet's rows; the page keeps which are open.
+// None without `state`.
+//
+// `noteOnLabel`: a row's note is hover text on its label rather than its
+// value, whether or not the rows have controls this time.
+struct SheetControls
+{
+    std::function<ControlState(const SheetRow &)> state;
+    std::function<void(const SheetRow &)> toggle;
+    std::function<void(const SheetRow &)> draw;
+    const char *hover{""};
+    std::string widest;
+    bool noteOnLabel{false};
+};
+
 // `modifiers`: a third column, headed `third`, carrying each row's
 // modifiers text or its mark glyph -- none at all when `third` is null;
 // `first` and `second` head the name and value columns then, where the
 // table has a header row at all; and `wanted` are the columns after it,
 // of which those with anything in them are drawn, the last column taking
 // the rest of the table. Every heading comes in English and is translated
-// here.
+// here. `controls`: what a row's controls are, where rows carry them.
 void DrawSections(const std::vector<SheetSection> &sections, bool modifiers,
                   const std::function<void(std::uint32_t)> &onLink = {}, const char *third = N_("Modifiers"),
                   const RowDrawer &drawer = {}, const char *first = "", const char *second = "",
-                  const std::vector<ExtraColumn> &wanted = {},
-                  const std::function<void(const SheetRow &)> &onTree = {});
+                  const std::vector<ExtraColumn> &wanted = {}, const std::function<void(const SheetRow &)> &onTree = {},
+                  const SheetControls &controls = {});
 
 } // namespace ft::game::ui

@@ -14,6 +14,7 @@
 #include "core/Vocabulary.h"
 
 #include "game/Bag.h"
+#include "game/CombatStyles.h"
 #include "game/CustomSkillsFramework.h"
 #include "game/Effects.h"
 #include "game/Hits.h"
@@ -388,112 +389,104 @@ std::vector<SheetSection> BuildCombatStyleSheet(RE::Actor *actor)
     // Two scales, read off every style in the load order (163 of them):
     // the chances and movement multipliers run 0 to 1, and the score and
     // attack multipliers run 0 to 10, with 1 as the neutral value.
-    const auto chance = [](float x) { return Fmt("%.2f", x) + " / 1"; };
-    const auto score = [](float x) { return Fmt("%.2f", x) + " / 10"; };
-    // Hover text: the Creation Kit wiki's word on each field, as bullets.
-    // dev/COMBAT_AI.md "Combat styles" has the page.
-    const auto note = [](SheetRow row, const char *text) {
+    // Hover text: what the engine does with each field, as read from the
+    // executable (dev/COMBAT_AI.md "What reads each field"), in a line, or
+    // a bullet each where there are two. Each field's row carries its
+    // slider (core/CombatStyle.h), which its value opens.
+    const auto field = [live](const char *label, ft::StyleField which, const char *text) {
+        const float value = StyleValue(*live, which);
+        SheetRow row =
+            Row(label, Fmt("%.2f", value) + (ft::StyleMax(which) > 1.0f ? std::string(" / 10") : std::string(" / 1")));
         row.note = text;
+        row.control = static_cast<int>(which);
         return row;
     };
-
     using Flag = RE::TESCombatStyle::FLAG;
+    // A flag the page makes a switch (game/CombatStyles.h): always there, a
+    // tick when on.
+    const auto flag = [live](const char *label, ft::StyleSwitch which, Flag bit, const char *text) {
+        SheetRow row = Row(label, "");
+        row.note = text;
+        if (live->flags.all(bit))
+            row.icon = kGlyphTick;
+        row.control = SwitchControl(which);
+        return row;
+    };
+    using F = ft::StyleField;
     const bool flanking = live->flags.all(Flag::kFlankingStyle);
     {
-        SheetSection s{Tr("Style"), {}, {}};
-        // A runtime copy has a 0xFF FormID; a record's is its plugin's.
-        const bool ours = (live->GetFormID() & 0xFF000000U) == 0xFF000000U;
+        // Not Group Offensive: the engine applies it only to an actor
+        // fighting the player, which a follower never is.
+        SheetSection s{Tr("General"), {}, {}};
+        // Which style first: a tuned follower's is a copy of ours carrying
+        // the record's FormID (game/CombatStyles.h), and a fight by another
+        // style -- a package's -- says the record's beside it.
         char id[16];
         std::snprintf(id, sizeof(id), "%08X", live->GetFormID());
-        s.rows.push_back(Row(Tr("Base ID"), ours ? TrFormat("{}  (our copy)", std::string(id)) : std::string(id)));
+        s.rows.push_back(
+            Row(Tr("Base ID"), IsTunedCopy(live) ? TrFormat("{}  (modified)", std::string(id)) : std::string(id)));
         if (controller && controller->combatStyle && record && controller->combatStyle != record)
         {
             char recordId[16];
             std::snprintf(recordId, sizeof(recordId), "%08X", record->GetFormID());
             s.rows.push_back(Row(Tr("On Record"), recordId));
         }
-        s.rows.push_back(note(Row(Tr("Close Range"), flanking ? Tr("Flanking") : Tr("Dueling")),
-                              Tr("- Dueling: circles, falls back\n"
-                                 "- Flanking: keeps a distance, stalks")));
-        // A tick when allowed, as the equipped state is shown; no row at all
-        // when not.
-        if (live->flags.all(Flag::kAllowDualWielding))
-        {
-            SheetRow row = note(Row(Tr("Dual Wield"), ""), Tr("- Can hold a weapon in each hand\n"
-                                                              "- Staves do not count"));
-            row.icon = kGlyphTick;
-            s.rows.push_back(std::move(row));
-        }
-        out.push_back(std::move(s));
-    }
-    {
-        const auto &g = live->generalData;
-        SheetSection s{Tr("General"), {}, {}};
-        s.rows.push_back(note(Row(Tr("Offensive"), chance(g.offensiveMult)), Tr("- Higher: attacks more often\n"
-                                                                                "- More power attacks")));
-        s.rows.push_back(
-            note(Row(Tr("Defensive"), chance(g.defensiveMult)), Tr("- Higher: blocks more, holds it longer\n"
-                                                                   "- Bashes more, given a shield or a weapon")));
-        s.rows.push_back(note(Row(Tr("Group Offensive"), chance(g.groupOffensiveMult)),
-                              Tr("- Replaces Offensive when several attack one target\n"
-                                 "- Higher: stays offensive in a crowd")));
+        s.rows.push_back(field(Tr("Offensive"), F::Offensive, Tr("Higher: attacks and casts spells more often")));
+        s.rows.push_back(field(Tr("Defensive"), F::Defensive, Tr("Higher: blocks and bashes more, heals sooner")));
+        s.rows.push_back(flag(Tr("Dual Wield"), ft::StyleSwitch::DualWield, Flag::kAllowDualWielding,
+                              Tr("- Can hold a weapon in each hand\n"
+                                 "- Staves do not count")));
         out.push_back(std::move(s));
     }
     {
         // The six that decide what they prefer to hold.
-        const auto &g = live->generalData;
-        SheetSection s{Tr("Equipment Scores"), {}, {}};
-        const char *kScore = Tr("- Multiplies the damage of attacks of this kind\n"
-                                "- The highest score is what gets used\n"
-                                "- A weak weapon needs a high score to beat a strong spell");
-        s.rows.push_back(note(Row(Tr("Melee"), score(g.meleeScoreMult)), kScore));
-        s.rows.push_back(note(Row(Tr("Magic"), score(g.magicScoreMult)), kScore));
-        s.rows.push_back(note(Row(Tr("Ranged"), score(g.rangedScoreMult)), kScore));
-        s.rows.push_back(note(Row(Tr("Staff"), score(g.staffScoreMult)), kScore));
-        s.rows.push_back(note(Row(Tr("Shout"), score(g.shoutScoreMult)), kScore));
-        s.rows.push_back(note(Row(Tr("Unarmed"), score(g.unarmedScoreMult)), kScore));
+        SheetSection s{Tr("Attack Type"), {}, {}};
+        const char *kScore = Tr("Higher score favors this kind of attack");
+        s.rows.push_back(field(Tr("Melee"), F::MeleeScore, kScore));
+        s.rows.push_back(field(Tr("Magic"), F::MagicScore, kScore));
+        s.rows.push_back(field(Tr("Ranged"), F::RangedScore, kScore));
+        s.rows.push_back(field(Tr("Staff"), F::StaffScore, kScore));
+        s.rows.push_back(field(Tr("Shout"), F::ShoutScore, kScore));
+        s.rows.push_back(field(Tr("Unarmed"), F::UnarmedScore, kScore));
         out.push_back(std::move(s));
     }
     {
-        const auto &m = live->meleeData;
         SheetSection s{Tr("Melee"), {}, {}};
-        s.rows.push_back(note(Row(Tr("Attack, Staggered"), score(m.attackIncapacitatedMult)),
-                              Tr("- Higher: attacks a staggered target more")));
-        s.rows.push_back(note(Row(Tr("Power Attack, Staggered"), score(m.powerAttackIncapacitatedMult)),
-                              Tr("- Higher: power-attacks a staggered target more")));
-        s.rows.push_back(note(Row(Tr("Power Attack, Blocking"), score(m.powerAttackBlockingMult)),
-                              Tr("- Higher: power-attacks a blocking target more\n"
-                                 "- Breaks the block")));
         s.rows.push_back(
-            note(Row(Tr("Bash"), score(m.bashMult)), Tr("- Higher: bashes more, with a shield or a bash attack\n"
-                                                        "- A bash can stagger")));
-        s.rows.push_back(note(Row(Tr("Bash, Recoiled"), score(m.bashRecoilMult)),
-                              Tr("- Higher: bashes a target recoiling from its blocked attack")));
+            field(Tr("Attack: Staggered"), F::AttackStaggered, Tr("Higher: more attacks against staggered enemies")));
+        s.rows.push_back(field(Tr("Power Attack: Staggered"), F::PowerAttackStaggered,
+                               Tr("Higher: more power attacks against staggered enemies")));
+        s.rows.push_back(field(Tr("Power Attack: Blocking"), F::PowerAttackBlocking,
+                               Tr("Higher: more power attacks against blocking enemies")));
+        s.rows.push_back(field(Tr("Bash"), F::Bash, Tr("Higher: bashes more")));
         s.rows.push_back(
-            note(Row(Tr("Bash, Attacking"), score(m.bashAttackMult)), Tr("- Higher: bashes a target mid-attack")));
-        s.rows.push_back(note(Row(Tr("Bash, Power Attacking"), score(m.bashPowerAttackMult)),
-                              Tr("- Higher: bashes a target mid-power-attack")));
+            field(Tr("Bash: Recoiled"), F::BashRecoiled, Tr("Higher: more bashes against recoiling enemies")));
+        s.rows.push_back(
+            field(Tr("Bash: Attacking"), F::BashAttacking, Tr("Higher: more bashes against attacking enemies")));
+        s.rows.push_back(field(Tr("Bash: Power Attacking"), F::BashPowerAttacking,
+                               Tr("Higher: more bashes against power-attacking enemies")));
         out.push_back(std::move(s));
     }
     {
-        // Only the active pair: dueling circles and falls back, flanking
-        // keeps a distance and stalks. The other pair is dead data.
-        const auto &c = live->closeRangeData;
-        SheetSection s{Tr("Range"), {}, {}};
+        // How they move in a fight: Flanking picks the close-range pair,
+        // and only that pair is shown -- off, circle and fall back; on,
+        // keep a distance and stalk; the other pair is dead data -- then
+        // Strafe, for fighting at range.
+        SheetSection s{Tr("Movement"), {}, {}};
+        s.rows.push_back(flag(Tr("Flanking"), ft::StyleSwitch::Flanking, Flag::kFlankingStyle,
+                              Tr("- Flanking: maintain distance and stalk\n"
+                                 "- Not flanking: circle and fall back")));
         if (flanking)
         {
-            s.rows.push_back(
-                note(Row(Tr("Flank Distance"), chance(c.flankDistanceMult)), Tr("- Distance kept while flanking")));
-            s.rows.push_back(
-                note(Row(Tr("Stalk Time"), chance(c.stalkTimeMult)), Tr("- Time spent flanking before attacking")));
+            s.rows.push_back(field(Tr("Flank Distance"), F::FlankDistance, Tr("Higher: flanks from farther away")));
+            s.rows.push_back(field(Tr("Stalk Time"), F::StalkTime, Tr("Higher: stalks longer before attacking")));
         }
         else
         {
-            s.rows.push_back(note(Row(Tr("Circle"), chance(c.circleMult)), Tr("- Higher: circles the target more")));
-            s.rows.push_back(note(Row(Tr("Fallback"), chance(c.fallbackMult)), Tr("- Chance to back off")));
+            s.rows.push_back(field(Tr("Circle"), F::Circle, Tr("Higher: circles the enemy more")));
+            s.rows.push_back(field(Tr("Fallback"), F::Fallback, Tr("Higher: falls back more often, and farther")));
         }
-        s.rows.push_back(note(Row(Tr("Strafe"), chance(live->longRangeData.strafeMult)),
-                              Tr("- Higher: strafes more to dodge projectiles at range")));
+        s.rows.push_back(field(Tr("Strafe"), F::Strafe, Tr("Higher: strafes more at range")));
         out.push_back(std::move(s));
     }
     return out;

@@ -18,6 +18,7 @@
 // game supplies (dev/PROFILES.md says what the game writes), and the tests
 // use one that passes ids through as hex.
 
+#include "CombatStyle.h"
 #include "Rule.h"
 
 #include <cstdint>
@@ -92,6 +93,9 @@ struct Profile
     // it promises what is NOT worn, and a load can keep that promise for
     // anything that exists.
     Bans bans;
+    // What the player changed of their combat style (core/CombatStyle.h);
+    // nothing is the record's style as it is.
+    StyleAdjustments combatStyle;
 };
 
 [[nodiscard]] std::string WriteProfile(const Profile &profile, const FormCodec &codec);
@@ -130,6 +134,10 @@ struct Settings
     // scores them nothing and never casts them (dev/COMBAT_AI.md). On by
     // default; off is vanilla's. A spell not wanted is banned.
     bool selfDamageSpells{true};
+    // Each follower's tuning of their combat style put on them (Profile's
+    // combatStyle). Off, every follower fights by their record's style and
+    // the tuning is kept.
+    bool manageCombatStyle{true};
 };
 
 [[nodiscard]] std::string WriteSettings(const Settings &settings);

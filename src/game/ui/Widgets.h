@@ -256,8 +256,9 @@ void DrawGlyph(Im::ImDrawList *draw, Glyph glyph, Im::ImVec2 lo, Im::ImVec2 hi, 
 bool GlyphButton(const std::string &id, float size, Glyph glyph, bool painted = true, float scale = 1.0f);
 
 // The panel's switch, the one checkbox drawn on every page that has one --
-// Settings, a list's Enabled: a borderless square with the tick in it while
-// on and nothing while off, `hover` said on it, greyed or not. A frame high, the tick the font's size; `size` makes
+// Settings, a list's Enabled, the Combat Style tab's flags: a borderless
+// square with the tick in it while on and nothing while off, `hover` said on
+// it, greyed or not. A frame high, the tick the font's size; `size` makes
 // it smaller, a table row's text line say, with the tick scaled to match
 // so it sits in the square as it does in the others. True the frame it is
 // clicked.
@@ -390,6 +391,11 @@ void BreakdownTooltip(const ft::Breakdown &b);
 // while hovered for the reason DrawSections gives. Draws nothing itself: the
 // caller puts the cursor back and draws the cell's content over it.
 bool CellClicked(const char *id, float height = 0.0f);
+
+// A text that is a click target, and no more of its cell: lit under the
+// cursor as an attribute's label is, `hover` said while it is. True the
+// frame it is clicked.
+bool ClickableText(const char *id, const std::string &text, const char *hover);
 
 void CentredHeading(const char *title);
 

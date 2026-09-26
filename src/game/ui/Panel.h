@@ -155,6 +155,16 @@ struct PanelState
     // The character sheet's attribute controls, opened by an attribute's
     // label and closed by it again, or by the panel closing.
     bool attributeControls{false};
+    // The Combat Style tab's one open slider, by its field's index, -1 for
+    // none: opened by the field's value, closed by it again, by another's
+    // opening or by the panel closing. And its Reset asking to be
+    // confirmed.
+    int styleControl{-1};
+    bool confirmStyleReset{false};
+    // Whether the tab's Reset line is drawn, and the frame it was last
+    // drawn on, which says whether the page is still the one on screen.
+    bool styleResetShown{false};
+    int styleDrawnFrame{-2};
     // The tab to show on the next frame, asked for by a link on a sheet or
     // by a detail page's back arrow. The page's own and not any one tab's --
     // four of them write it -- though it lived in the Inventory tab's state

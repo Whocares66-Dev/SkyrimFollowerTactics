@@ -4,6 +4,7 @@
 
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <format>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -508,6 +509,7 @@ std::string WriteSettings(const Settings &settings)
     j["requirePowerBashPerk"] = settings.requirePowerBashPerk;
     j["variedAiChoices"] = settings.variedAiChoices;
     j["selfDamageSpells"] = settings.selfDamageSpells;
+    j["manageCombatStyle"] = settings.manageCombatStyle;
     return j.dump(2);
 }
 
@@ -523,6 +525,7 @@ std::optional<Settings> ReadSettings(std::string_view text)
     s.requirePowerBashPerk = Bool(j, "requirePowerBashPerk").value_or(s.requirePowerBashPerk);
     s.variedAiChoices = Bool(j, "variedAiChoices").value_or(s.variedAiChoices);
     s.selfDamageSpells = Bool(j, "selfDamageSpells").value_or(s.selfDamageSpells);
+    s.manageCombatStyle = Bool(j, "manageCombatStyle").value_or(s.manageCombatStyle);
     return s;
 }
 
@@ -564,6 +567,23 @@ std::string WriteProfile(const Profile &profile, const FormCodec &codec)
         bans.push_back(std::move(b));
     }
     j["bans"] = std::move(bans);
+    // Only the fields moved, each by its wire name, rounded to its step so
+    // the file reads 0.3 and not the float nearest it.
+    json style = json::object();
+    for (std::size_t i = 0; i < kStyleFields; ++i)
+    {
+        const auto field = static_cast<StyleField>(i);
+        if (const float delta = profile.combatStyle.deltas[i]; delta != 0.0f)
+        {
+            const double perUnit = std::round(1.0 / static_cast<double>(StyleStep(field)));
+            style[std::string(WireName(field))] = std::round(static_cast<double>(delta) * perUnit) / perUnit;
+        }
+    }
+    for (std::size_t i = 0; i < kStyleSwitches; ++i)
+        if (const auto &word = profile.combatStyle.switches[i])
+            style[std::string(WireName(static_cast<StyleSwitch>(i)))] = *word;
+    if (!style.empty())
+        j["combatStyle"] = std::move(style);
     return j.dump(2) + "\n";
 }
 
@@ -715,6 +735,29 @@ ReadResult ReadProfile(std::string_view text, const FormCodec &codec)
                 continue;
             }
             p.bans.push_back({*form, named.variant});
+        }
+    }
+
+    // The combat style's tuning: absent is none. A field this build does not
+    // know is dropped alone; a value of the wrong shape reads as absent.
+    if (const json *style = Obj(j, "combatStyle"))
+    {
+        for (const auto &[name, value] : style->items())
+        {
+            if (const auto which = StyleSwitchFromWireName(name))
+            {
+                if (value.is_boolean())
+                    p.combatStyle.switches[static_cast<std::size_t>(*which)] = value.get<bool>();
+                continue;
+            }
+            const auto field = StyleFieldFromWireName(name);
+            if (!field)
+            {
+                result.warnings.push_back("combat style field \"" + name + "\" is unknown -- dropped");
+                continue;
+            }
+            if (value.is_number())
+                p.combatStyle.deltas[static_cast<std::size_t>(*field)] = SnapStyleDelta(*field, value.get<float>());
         }
     }
 

@@ -8,6 +8,7 @@
 #include "game/Actions.h"
 #include "game/AiScore.h"
 #include "game/Blows.h"
+#include "game/CombatStyles.h"
 #include "game/EffectRows.h"
 #include "game/Log.h"
 #include "game/Packages.h"
@@ -159,6 +160,7 @@ void LoadIfNew(RE::Actor *follower)
     SetFollowerEnabled(id, ft::Moment::Idle, profile->idleEnabled);
     AdoptPins(follower, profile->pins);
     AdoptBans(follower, profile->bans);
+    AdoptCombatStyle(follower, profile->combatStyle);
 }
 
 } // namespace
@@ -179,6 +181,7 @@ std::vector<Filed> ProfilesToSave()
         f.profile.idleRules = std::move(rules.idle);
         f.profile.pins = PlayerPinsOf(id);
         f.profile.bans = BansOf(id);
+        f.profile.combatStyle = StyleAdjustmentsOf(id);
         filed.push_back(std::move(f));
     }
     return filed;
@@ -562,6 +565,7 @@ void FillPage(RE::Actor *actor, FollowerView &v, ui::Tab tab)
     {
     case ui::Tab::CombatStyle:
         v.combatStyle = BuildCombatStyleSheet(actor);
+        v.styleTuning = StyleTuningOf(actor);
         break;
     case ui::Tab::Tactics:
         FillTactics(actor, v, ft::Moment::Combat);
@@ -931,7 +935,10 @@ void Tick()
     // for after the fight: pins adopted after that would be let go when it
     // ended, as if the fight had made them.
     for (auto *follower : followers)
+    {
         LoadIfNew(follower);
+        KeepCombatStyle(follower);
+    }
     // Before the rules too: a cast rule may fire on a follower's first tick.
     for (auto *follower : followers)
         ProvideCastForms(follower);
@@ -1190,6 +1197,7 @@ void ForgetSession()
     g_followers.clear();
     g_bleedingOut.clear();
     ForgetPins();
+    ForgetCombatStyles();
     {
         std::scoped_lock lock(g_rulesMutex);
         for (auto &sets : g_ruleSets)

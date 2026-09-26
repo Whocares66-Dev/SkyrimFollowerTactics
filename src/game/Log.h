@@ -177,6 +177,7 @@ inline constexpr Module player{"player"};
 inline constexpr Module plugin{"plugin"};
 inline constexpr Module profiles{"profiles"};
 inline constexpr Module sensors{"sensors"};
+inline constexpr Module styles{"styles"};
 inline constexpr Module tactics{"tactics"};
 inline constexpr Module ui{"ui"};
 
