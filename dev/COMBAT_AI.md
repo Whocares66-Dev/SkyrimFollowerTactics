@@ -141,7 +141,7 @@ Categories, from the caster's slot 0x0B:
 - 4 and 5 the other buffs, split at `fCombatMagicTacticalDuration` (30 s of effect duration, `item+0x38`). Disarm and light are always 4. Script is 4 at 30 s or more, otherwise 0.
 - 6 one-handed block.
 
-Set A's ranges win over set B's only if set A's score is greater than set B's x a multiplier (1.5 to 10) set by the combat style (50694; INFERRED).
+Set A's ranges win over set B's only if set A's score is greater than set B's x `3pt(defensive - offensive; 1.5, 2, 10)` (50694; "Combat styles" below).
 
 ## 4. The gates (`CheckShouldEquip`, slot 0x0F; the cast checks, slots 06-0C)
 
@@ -283,11 +283,40 @@ A scroll is a spell record and takes the spell path whole. A staff is a weapon r
 
 A `CSTY` record is the combat AI's tuning, not its logic: the engine code above reads its numbers and flags. An actor uses the style on their base record (`TESNPC::combatStyle`), and in a fight their `CombatController` holds a pointer to it too. The field descriptions are the Creation Kit wiki's ("Combat Style"), kept here because that page refuses automated fetches. The ranges are measured: every style in this load order, 163 of them, read through houseCARL (2026-09-03).
 
-**Where the code above reads it:**
-- The **equipment score multipliers** multiply each entry's score at every rescore, once a second (section 2), so a change takes effect within a second, not at the next fight: Magic, Shout and Staff on magic entries (45084), Melee, Ranged and Unarmed on weapons (26416).
-- The **offensive multiplier** sets the AI's hold before releasing an attack spell (45354) and its cast chance, and through that the dual-cast chance (section 6).
-- The **defensive multiplier** sets the health a heal waits for (section 4, Restore).
-- The **Allow Dual Wielding** flag: an actor whose style forbids it takes a left-hand weapon straight off again.
+**Where the engine gets a style (read 2026-09-26, 1.6.1170).** Two ways, and which a field is read through decides what changing it takes:
+
+- `Actor::GetCombatStyle` (38536), asked again on every read: the reference's ExtraCombatStyle if it has one (set only by the console's `SetCombatStyle`, 38537, which also marks the reference changed with kGameOnlyExtra), else the current package's CNAM style (`process->currentPackage.package+0x68`), else the base record's (`TESNPC+0x1D8`, a tail `jmp [rax+0x2A0]`). `TESNPC::InitItem` (24719) gives a record with none the default style (17296), so there is always one.
+- `CombatController::combatStyle` (+0x38), written only by 33239, which sets it to 38536's answer and, when it changed, flags the combat inventory for a rebuild (`inventory+0x1C4`, read by `CombatInventory::Update` 44858 before `RebuildInventory` 44879). 33239 runs when the controller is built (the constructor 33214, from `Actor::StartCombat`; every fight gets a new controller, since `StopCombat` 38566 and `Revert` 37653 destroy it), when the running package changes (39207 → 33240), on a save's load (`FinishLoadGame` 37652 → 418635), and from the console command. Nothing re-reads it on a beat, and `CombatController::SaveGame` (33243) does not write it.
+
+Through the controller: the six equipment scores (45084 and 45085; 26416 through 45015, 45016, 45033), Allow Dual Wielding (44889) and Flanking (49448). Every other field goes through 38536, so for those the base record's pointer is what counts, mid-fight included, and a package with a CNAM style overrides the record for both.
+
+**What reads each field.** The helpers: lerp (50639) `a + t(b - a)`; the three-point curve (50641) `t > 0 ? mid + t(hi - mid) : lo + (t + 1)(mid - lo)`; rand[a, b] (14206); a roll (26618) `rand01 <= p`. `off` is the effective offensive (50637), `def` the defensive (50638). GMST values are the executable's defaults, not checked against Skyrim.esm. All READ unless marked.
+
+| field | read by | what it does |
+|---|---|---|
+| offensive (0x20) | 50637, then fifteen readers | melee attack chance (50674) `lerp(off, 0.05, 1)`; ranged attack chance (50700) `lerp(off, 0.05, 1)`; spell cast chance (50667) `lerp(off, 0.05, 0.75)`, concentration (50669) `lerp(off, 0.25, 1)`; hold before a spell's release (50668) `rand[0.1, lerp(off, 1.5, 0.5)]`; concentration cast and wait (50670, 50671); ranged hold (50701, partly read); the offensive bash (below); advance radii, cover and range choice with defensive (below); a dragon's orbit time (50658) |
+| group offensive (0x28) | 50637 | `off *= max(group^(n-1), fCombatGroupOffensiveMultMin 0.1)`, only when `group < 1`, the actor's target is the player, and `n`, the actors fighting the player (player+0xAC8, counted by 41261), is 2 or more. **It does nothing for an actor fighting anyone else, followers included** |
+| defensive (0x24) | 50638, then fourteen readers | block chance (50677, 50678) `lerp(def, 0, 1)`, x0.25 without a shield (fCombatBlockChanceWeaponMult); block time (50681) `3pt(2def - 1; 4, 8, 10000)`; block distances (50679, 50680); bash chance (below); heal threshold (50672) health `lerp(def, 0, 0.5)`, magicka `lerp(def, 0.25, 0.4)`; cover search distance (50655) `lerp(def, 1536, 3072)`; melee attack chance while blocking `x lerp(def, 0.67, 0.2)` |
+| defensive - offensive | 50643, 50656, 50657, 50694, 50704 | advance radii (50643) inner `3pt(t; 0, 0, 512)`, outer `3pt(t; 256, 512, 1024)`, `t = def - off` (def 0 against a staggered target); cover wait and attack times; the longest optimal range (50704) `3pt(def - off; 1024, 1280, 1536)`; section 3's range choice (50694): set A's ranges win if `A.score > B.score x 3pt(def - off; 1.5, 2, 10)` |
+| six equipment scores (0x2C to 0x40) | 26416, 45084, 45085 | multiply each entry's score (section 2); a magic entry's also x2 past fCombatRangedDistance 1024 |
+| avoid threat (0x44) | 50706 → 47801 | the dodge chance, `lerp(x, 0, 1)`, rolled once per threat in the DodgeThreat tree (47807) under the Movement tree; whether a vanilla actor has the animations to dodge is not read |
+| attack staggered, power attack staggered (0x48, 0x4C) | 50674, 50675 | against a staggered target, the attack chance x `max(both)`, and each attack's weight x the one for its kind |
+| power attack blocking (0x50) | 50675 | a power attack's weight against a blocking target facing them (47297, INFERRED) |
+| bash, recoiled, attacking, power attacking (0x54 to 0x60) | 50684 → 50682, 50683 | `m = bash`, x recoiled if the target recoils, else x power attacking, else x attacking, else x0 if blocking; bash chance `lerp(def, 0.025, 0.2) x m`, the offensive bash `lerp(off, 0, 0.05) x m` |
+| special attack (0x64) | 50676 | the special attack chance `lerp(x, 0, 1)`, tried before a plain attack (49182); it plays combat animation type 2 and falls back to an attack; what that animation is was not read |
+| circle (0x68) | 50647, 50650, 50648 | the circle weight against fallback `lerp(x, 0, 0.75)`; circling while out of range `lerp(x, 0.25, 0.75)`; the circle angle, 30 to 90 degrees |
+| fallback (0x6C) | 50644, 50645, 50646 | the fallback weight `lerp(x, 0, 0.5)`; its distance `lerp(x, 96, 256)`; its wait `lerp(x, 0.75, 1.5)` s |
+| flank distance (0x70) | 50651 | `lerp(x, 0, 1024)` units |
+| stalk time (0x74) | 50652 | `lerp(x, 0.01, 10)` s |
+| strafe (0x78) | 50703 | the strafe chance at range `lerp(x, 0, 0.75)`; not its distance |
+| flight (0x7C to 0x98) | 50659 to 50666 | a dragon's hover, dive, ground, perch and flying attack chances, and hover, ground and perch times `rand[7.5, lerp(x, 7.5, 15)]` |
+| Flanking (0x9C bit 2) | 49453 → 49448 | the Movement tree runs Flanking instead of CloseMovement (circle and fallback), and never CloseMovement while it is set (below) |
+| Dueling (0x9C bit 1) | none in play | read only by the debug dump (17300); Dueling is the flanking bit clear |
+| Allow Dual Wielding (0x9C bit 4) | 44889 | with it (and a race that can dual wield), a right-hand weapon is filed for either hand when the combat inventory is built; without, no one-hander is ever the left hand's |
+
+**Flanking against CloseMovement (read 2026-09-26).** The Movement tree's top selector (49436) is a priority selector: it picks the first child whose value is non-zero (47421; CloseMovement's is the constant 1) and asks again every 0.25 s (49016), switching when the answer changes; a child that fails is not followed by the next one, and the selector sits under a Repeat (flags 3, 33178 and 47440) that enters it again 1 ms later. So with the flag set CloseMovement is never chosen, and Circle's weight and Fallback do nothing; the branch is left only for a higher child (Essential Down, Flight, Flee, Hide, ReturnToCombatArea, ExitWater, Search, Ranged) or the flag found clear on the controller's style, within 0.25 s. The Flanking tree (48379) is a repeating sequence of Stalk (while the target is within the inventory's maximum range, `inventory+0x19C`, + fCombatFlankingStalkRange 256, for the stalk time, capped at fCombatFlankingStalkTimeMax 10 s) then a fallback selector of Flank (a location at flank distance + `inventory+0x1A0`, the optimal range INFERRED), Chase, Flank Distant and Watch Target; nothing in it ends the branch. Flank distance and stalk time are read only there (48363, 48371, 48375, all built by 48379); the circle and fallback weights, circle distant and fallback only in CloseMovement (47928); but the circle behaviour itself (47916, and with it the circle angle) is built by the Ranged tree too (49468 through 49470), where the strafe selector rolls the strafe chance and then strafes if the actor can (90924, INFERRED) and circles if not. An actor is Ranged when `inventory+0x19C` less its extents exceeds fCombatRangedDistance 1024 (49446, 49454), the maximum range of the equipment set BuildEquipmentSets (44899) chose. Not read: when Flank's or Chase's path request fails (state 5).
+
+Not read: what DodgeThreat's threat and the special attack's animation are, and whether vanilla actors have either; the helpers 47297, 47304, 47336, 47276, 47279; inventory+0x1A0 and +0x1A8; the tail of 50701; how the bash nodes sit in the block tree. The scans follow rel32 references, so a reader handed the style from an untracked source could be missed. The scratch scripts are in `build/csty/`, not kept.
 
 **Two scales:**
 
@@ -303,13 +332,13 @@ The panel shows each value as `x / 1` or `x / 10` accordingly. Reference points:
 - General
   - **Offensive Mult**: works with Defensive. The higher, the more likely a character attacks, the more often, and the more often with a power attack.
   - **Defensive Mult**: the higher, the more a character blocks, the longer the block is held, and the more they bash if they can.
-  - **Group Offensive Mult**: overrides Offensive in a group: the more actors attacking one target, the less offensive each is, by this mult. Higher keeps them offensive in groups.
-  - **Avoid Threat Chance**: not used, or use unknown to the wiki's author.
+  - **Group Offensive Mult**: overrides Offensive in a group: the more actors attacking one target, the less offensive each is, by this mult. Higher keeps them offensive in groups. Only when the target is the player (above).
+  - **Avoid Threat Chance**: not used, or use unknown to the wiki's author. It is the dodge chance ("What reads each field" above).
   - **Equipment Score Mults**: the higher, the more likely the actor uses that kind of equipment. Multiplied into the damage output of the attack, so a weak melee attack against strong spells needs a very high melee mult before the actor prefers melee: a comparison of weighted damage, not a share of the time (section 2 has the formulas).
 - Melee
   - **Attack Staggered** / **Power Attack Staggered**: the higher, the more likely an attack, or a power attack, on a staggered target.
   - **Power Attack Blocking**: the more likely a power attack on a blocking target, to break the block.
-  - **Special Attack**: not used, or use unknown.
+  - **Special Attack**: not used, or use unknown. It is the special attack chance (above).
   - **Bash**: the more likely a bash (a shield's, or an attack flagged as a bash), which can stagger and interrupt. **Bash Recoiled**, **Bash Attack**, **Bash Power Attack**: against a target recoiling from its own blocked attack, mid-attack, mid-power-attack.
   - **Allow Dual Wielding** (flag): lets an NPC dual wield; works only on NPCs with dual-wielding animations, humanoids.
 - Close range, one of two modes by flag
@@ -319,7 +348,7 @@ The panel shows each value as `x / 1` or `x / 10` accordingly. Reference points:
 - Flight: dragons only; not shown.
 
 **What the panel does with it:**
-- The Combat Style tab, before Tactics, shows the live style with these descriptions as hover text and only the active close-range pair; the two unused fields and the flight fields are left off.
+- The Combat Style tab, before Tactics, shows the live style with these descriptions as hover text and only the active close-range pair; avoid threat, special attack and the flight fields are left off.
 - A left-hand weapon pin gives the follower a **runtime copy** of the style with dual wielding allowed (`AllowDualWield` in `Tactics.cpp`), assigned to their record and their live controller. Vanilla styles are shared by every actor of a kind (csHumanMagic by every mage), so a style is never edited in place. The copy (`CreateDuplicateForm`, a 0xFF FormID) is not written to the save: created forms are saved only for weapons, armour, potions, enchantments and references, and the NPC change form does not carry the combat style. So it, and anything pointing at it, is gone on reload, which is what makes it safe to uninstall over.
 - Next, perhaps: a dropdown of named styles (wizard, spellsword, berserker, archer) as tuned copies, the `SetCombatStyle` palette `PLAN.md` 3.8 anticipates. Since the score multipliers are read at every rescore, such a change would take effect within a second.
 
