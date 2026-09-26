@@ -82,11 +82,11 @@ struct CastState
     CastStep step{CastStep::Lending};
     double requestedAt{0.0};
     double stepAt{0.0};
-    double settledAt{-1.0}; // the lent hands' equip heard past cutting a charge short
+    double settledAt{-1.0}; // the lent hands' equip heard finished
     // The run's watch's counts when the hands were lent and when the press
-    // went: an InterruptCast since the one is the lent hands' equip, a fire
-    // of ours since the other is this press's.
-    int interruptsAtLend{0};
+    // went: an equip's end since the one is the lent hands', a fire of ours
+    // since the other is this press's.
+    int equipOutsAtLend{0};
     int firesAtPress{0};
     double pressedAt{-1.0};
     double readyAt{-1.0};
@@ -106,11 +106,11 @@ struct CastSeen
 {
     bool player{true};  // resolves, with an actor state
     bool placed{false}; // the spell in every hand the run takes, or the form in the voice
-    // The InterruptCasts the run's watch has heard: one since the lend is
-    // the lent hands' equip, which can no longer cut a charge short. A
-    // press before it is cut short by it; one after it is held until the
-    // equip animation ends.
-    int interrupts{0};
+    // The equip animations' ends (Magic_Equip_Out) the run's watch has
+    // heard: one since the lend is the lent hands' equip finished, past
+    // every InterruptCast it sends, which cuts short a charge begun before
+    // it.
+    int equipOuts{0};
     enum class Weapon : std::uint8_t
     {
         Drawn,
@@ -144,7 +144,7 @@ struct CastSeen
 
 // The run's watch on the player's graph: the fires that are its own -- the
 // spell leaving a hand the run takes, or the voice going off, whatever it
-// was -- and what steps it: the lent hands' InterruptCast, while it waits
+// was -- and what steps it: the lent hands' equip's end, while it waits
 // for one.
 [[nodiscard]] std::vector<OwnFire> CastOwnFires(bool voice, Hand hand, std::uint32_t form);
 [[nodiscard]] GraphTags CastWakes(CastStep step) noexcept;

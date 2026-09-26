@@ -31,12 +31,12 @@ std::vector<OwnFire> CastOwnFires(bool voice, Hand hand, std::uint32_t form)
 
 GraphTags CastWakes(CastStep step) noexcept
 {
-    return step == CastStep::Lending ? GraphTags{GraphTag::InterruptCast} : GraphTags{};
+    return step == CastStep::Lending ? GraphTags{GraphTag::EquipOut} : GraphTags{};
 }
 
 void Hear(CastSeen &seen, const Heard &heard) noexcept
 {
-    seen.interrupts = heard.Count(GraphTag::InterruptCast);
+    seen.equipOuts = heard.Count(GraphTag::EquipOut);
     seen.ownFires = heard.ownFires;
 }
 
@@ -111,7 +111,7 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
         if (!seen.placed && !run.lendAsked)
         {
             run.lendAsked = true;
-            run.interruptsAtLend = seen.interrupts;
+            run.equipOutsAtLend = seen.equipOuts;
             perform(run.voice ? CastCommand::LendVoice : CastCommand::LendHands);
             return nullptr;
         }
@@ -121,17 +121,20 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
                        : nullptr;
         // A lend is an equip, and the equip plays in the animation graph
         // after the spell already shows in the hand, sending an
-        // InterruptCast as it starts: 5 ms after the lend where the hand held
-        // a spell, 70 to 90 ms where it held bare fists, and a press in
-        // between was cut short by it (2026-09-24). So hands we lent are
-        // pressed once it is heard; a hand that already held the spell had
-        // no equip. Not at the equip's end: nothing after the InterruptCast
-        // cuts a charge short, and the engine holds the press and begins the
-        // cast as the equip animation ends whichever it follows. Where it is
+        // InterruptCast as it starts that cuts short a charge begun before
+        // it: 5 ms after the lend where the hand held a spell, 70 to 90 ms
+        // where it held bare fists (2026-09-24). A dual lend's two equips can
+        // go apart: with a spell in one hand and a staff in the other, a
+        // second InterruptCast came 30 ms after the first, and a press made
+        // on the first never charged, nine times of nine (2026-09-26, issue
+        // #8). So hands we lent are pressed once the equip animation's end
+        // is heard, Magic_Equip_Out, which came once per lend after every
+        // InterruptCast of it; the engine begins the cast within 10 ms. A
+        // hand that already held the spell had no equip. Where the end is
         // never heard, the press goes at the lend's deadline, as before.
         if (run.lendAsked && !run.voice)
         {
-            if (seen.interrupts > run.interruptsAtLend)
+            if (seen.equipOuts > run.equipOutsAtLend)
                 run.settledAt = now;
             else if (!late(kLendSeconds))
                 return nullptr;

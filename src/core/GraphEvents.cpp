@@ -28,7 +28,7 @@ constexpr std::array<std::string_view, kGraphTagCount> kNames{
     "Voice_SpellFire_Event",
     "CastStop",
     "shoutStop",
-    "InterruptCast",
+    "Magic_Equip_Out",
 };
 
 constexpr char Fold(char c) noexcept

@@ -73,7 +73,7 @@ TEST_CASE("every tag reads back from its name, in any case", "[graph]")
 TEST_CASE("what the graph says and is not recorded reads as nothing", "[graph]")
 {
     for (const char *name : {"FootLeft", "", "HitFram", "HitFrameX", "Hit Frame", "BeginCast", "tailCombatIdle",
-                             "Magic_Equip_Out", "MLh_SpellFire", "attackStop "})
+                             "Magic_Equip_OutMoving", "InterruptCast", "MLh_SpellFire", "attackStop "})
         REQUIRE_FALSE(GraphTagOf(name).has_value());
     REQUIRE(GraphTagName(GraphTag::Count).empty());
 }
@@ -92,16 +92,16 @@ TEST_CASE("a set of tags holds what it was made of and nothing else", "[graph]")
 {
     constexpr GraphTags none;
     STATIC_REQUIRE(none.Empty());
-    constexpr GraphTags some{GraphTag::HitFrame, GraphTag::InterruptCast};
+    constexpr GraphTags some{GraphTag::HitFrame, GraphTag::EquipOut};
     STATIC_REQUIRE_FALSE(some.Empty());
     for (const GraphTag tag : AllTags())
     {
         REQUIRE_FALSE(none.Has(tag));
-        REQUIRE(some.Has(tag) == (tag == GraphTag::HitFrame || tag == GraphTag::InterruptCast));
+        REQUIRE(some.Has(tag) == (tag == GraphTag::HitFrame || tag == GraphTag::EquipOut));
     }
     // The last tag, the top of the word.
-    constexpr GraphTags last{GraphTag::InterruptCast};
-    STATIC_REQUIRE(last.Has(GraphTag::InterruptCast));
+    constexpr GraphTags last{GraphTag::EquipOut};
+    STATIC_REQUIRE(last.Has(GraphTag::EquipOut));
     STATIC_REQUIRE_FALSE(last.Has(GraphTag::AttackStop));
 }
 
@@ -259,18 +259,18 @@ TEST_CASE("a CastStop counts as a stream's end only after the watch's own fire",
 TEST_CASE("an event wakes where a watch on its actor waits on it, and the wait can change", "[graph]")
 {
     GraphWatches watches;
-    const GraphWatch watch = watches.Open(kActor, {GraphTag::InterruptCast});
+    const GraphWatch watch = watches.Open(kActor, {GraphTag::EquipOut});
     const GraphWatch quiet = watches.Open(kOther);
-    REQUIRE(watches.Record(kActor, GraphTag::InterruptCast).wakes);
+    REQUIRE(watches.Record(kActor, GraphTag::EquipOut).wakes);
     REQUIRE_FALSE(watches.Record(kActor, GraphTag::HitFrame).wakes);
-    // Another actor's InterruptCast wakes nothing: no watch on them waits.
-    REQUIRE_FALSE(watches.Record(kOther, GraphTag::InterruptCast).wakes);
+    // Another actor's equip's end wakes nothing: no watch on them waits.
+    REQUIRE_FALSE(watches.Record(kOther, GraphTag::EquipOut).wakes);
     watch.SetWakes({});
-    REQUIRE_FALSE(watches.Record(kActor, GraphTag::InterruptCast).wakes);
+    REQUIRE_FALSE(watches.Record(kActor, GraphTag::EquipOut).wakes);
     watch.SetWakes({GraphTag::HitFrame});
     REQUIRE(watches.Record(kActor, GraphTag::HitFrame).wakes);
     // Still counted, woken or not.
-    REQUIRE(watch.HeardSoFar().Count(GraphTag::InterruptCast) == 2);
+    REQUIRE(watch.HeardSoFar().Count(GraphTag::EquipOut) == 2);
 }
 
 TEST_CASE("the blows wake on the events their steps wait on, and those only", "[graph]")
@@ -288,10 +288,10 @@ TEST_CASE("the blows wake on the events their steps wait on, and those only", "[
     }
 }
 
-TEST_CASE("the player's cast wakes on the equip's InterruptCast while it lends, and on nothing after", "[graph]")
+TEST_CASE("the player's cast wakes on the equip's end while it lends, and on nothing after", "[graph]")
 {
     for (const GraphTag tag : AllTags())
-        REQUIRE(CastWakes(CastStep::Lending).Has(tag) == (tag == GraphTag::InterruptCast));
+        REQUIRE(CastWakes(CastStep::Lending).Has(tag) == (tag == GraphTag::EquipOut));
     for (const CastStep step : {CastStep::Drawing, CastStep::Pressing, CastStep::Charging, CastStep::Holding,
                                 CastStep::Firing, CastStep::Restoring})
         REQUIRE(CastWakes(step).Empty());
@@ -341,7 +341,7 @@ TEST_CASE("what each step reads of a watch", "[graph]")
     const GraphWatch watch = watches.Open(kActor, {}, {{GraphTag::SpellFireLeft, 7u}});
     for (const GraphTag tag : {GraphTag::BlockStartOut, GraphTag::BlockStartOut, GraphTag::BashStop, GraphTag::HitFrame,
                                GraphTag::HitFrame, GraphTag::HitFrame, GraphTag::PowerAttackStop, GraphTag::AttackStop,
-                               GraphTag::AttackStop, GraphTag::InterruptCast})
+                               GraphTag::AttackStop, GraphTag::EquipOut})
         watches.Record(kActor, tag);
     watches.Record(kActor, GraphTag::SpellFireLeft, 7);
     watches.Record(kActor, GraphTag::CastStop);
@@ -358,7 +358,7 @@ TEST_CASE("what each step reads of a watch", "[graph]")
     REQUIRE(strike.attackStops == 2);
     CastSeen cast;
     Hear(cast, heard);
-    REQUIRE(cast.interrupts == 1);
+    REQUIRE(cast.equipOuts == 1);
     REQUIRE(cast.ownFires == 1);
 
     LeaseSeen lease;

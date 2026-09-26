@@ -149,9 +149,9 @@ TEST_CASE("the spell is lent once and waited for; the voice the same", "[playerc
     REQUIRE(sentVoice.commands == std::vector<CastCommand>{CastCommand::LendVoice});
     REQUIRE(Over(AdvancePlayerCast(voice, empty, 101.0, sentVoice.Fn())) == "the voice would not take it");
 
-    // Placed on a later tick, and the equip's InterruptCast heard: on to
-    // the press, in the same tick. Placed but not yet heard, it waits: that
-    // InterruptCast would cut a press short.
+    // Placed on a later tick, and the equip's end heard: on to the press,
+    // in the same tick. Placed but not yet finished, it waits: an
+    // InterruptCast of the equip's would cut a press short.
     CastState placed = Spell();
     Sent sentPlaced;
     REQUIRE_FALSE(AdvancePlayerCast(placed, empty, 100.0, sentPlaced.Fn()));
@@ -159,7 +159,7 @@ TEST_CASE("the spell is lent once and waited for; the voice the same", "[playerc
     REQUIRE(sentPlaced.Last() == CastCommand::LendHands);
     REQUIRE(placed.step == CastStep::Lending);
     CastSeen settled = Free();
-    settled.interrupts = 1;
+    settled.equipOuts = 1;
     REQUIRE_FALSE(AdvancePlayerCast(placed, settled, 100.1, sentPlaced.Fn()));
     REQUIRE(sentPlaced.Last() == CastCommand::Press);
     REQUIRE(placed.settledAt == 100.1);
@@ -540,24 +540,24 @@ TEST_CASE("the player's tactics are held for the first reason that holds", "[pla
     }
 }
 
-TEST_CASE("an InterruptCast from before the lend is not the lent hands' equip", "[playercast]")
+TEST_CASE("an equip's end from before the lend is not the lent hands' equip", "[playercast]")
 {
     // One heard before the lend: its baseline, not the equip's.
     CastState run = Spell();
     Sent sent;
     CastSeen empty = Free();
     empty.placed = false;
-    empty.interrupts = 1;
+    empty.equipOuts = 1;
     REQUIRE_FALSE(AdvancePlayerCast(run, empty, 100.0, sent.Fn()));
     REQUIRE(sent.Last() == CastCommand::LendHands);
-    REQUIRE(run.interruptsAtLend == 1);
+    REQUIRE(run.equipOutsAtLend == 1);
     CastSeen placed = Free();
-    placed.interrupts = 1;
+    placed.equipOuts = 1;
     REQUIRE_FALSE(AdvancePlayerCast(run, placed, 100.05, sent.Fn()));
     REQUIRE(run.step == CastStep::Lending);
     REQUIRE(run.settledAt < 0.0);
     // The equip's own.
-    placed.interrupts = 2;
+    placed.equipOuts = 2;
     REQUIRE_FALSE(AdvancePlayerCast(run, placed, 100.1, sent.Fn()));
     REQUIRE(run.settledAt == 100.1);
     REQUIRE(sent.Last() == CastCommand::Press);

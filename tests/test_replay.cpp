@@ -263,7 +263,7 @@ constexpr std::string_view kTakenAtOnce = R"(
 TEST_CASE("replayed: a power attack taken at once is made at its hit and over at its attackStop", "[replay]")
 {
     const auto events = EventsOf(kTakenAtOnce);
-    REQUIRE(events.size() == 8);
+    REQUIRE(events.size() == 6);
     const double request = SecondsOf("00:32:12.764");
     // Reconstructed: drawn, free and in front at the request (it was
     // taken on that step, 1 degree off); the attack state from the power
@@ -498,7 +498,7 @@ struct CastOutcome
 };
 
 // The player's cast as the game steps it: the request's step, the equip's
-// InterruptCast while it lends, and the fast tick every 50 ms. Reconstructed
+// end while it lends, and the fast tick every 50 ms. Reconstructed
 // reads: the hands drawn and free; the spell in the hands from `placedAt`;
 // after the press, the caster charging until `readyAt`, Ready until the
 // release, casting until the fire, idle after.
@@ -596,53 +596,102 @@ constexpr std::string_view kFromBareHands = R"(
 [23:43:50.041] [43092] [I] [player]   Goldilocks rule 0 "": cast cast -- spell fired, after 2.00 s (both hand; settled at 0.08 s, pressed at 0.08 s, ready at 1.63 s, released at 1.63 s, fired at 2.00 s; caster state reached 4; magicka 580 -> 390)
 )";
 
-TEST_CASE("replayed: the dual cast is pressed on the equip's InterruptCast, and fired on the left hand's fire",
-          "[replay]")
+TEST_CASE("replayed: the dual cast is pressed on the equip's end, and fired on the left hand's fire", "[replay]")
 {
     const auto spells = EventsOf(kFromSpells);
     // The raw MLh_SpellFire_Event is skipped; its fire line is the event.
     REQUIRE(spells.size() == 3);
+    REQUIRE(spells[0].tag == GraphTag::EquipOut);
     REQUIRE(spells[2].tag == GraphTag::SpellFireLeft);
     REQUIRE(spells[2].form == 0x3A10D265u);
 
     const double request = SecondsOf("23:43:05.156");
-    const double interrupt = SecondsOf("23:43:05.161");
+    const double end = SecondsOf("23:43:05.642");
     const double fire = SecondsOf("23:43:07.077");
     const CastOutcome out = ReplayDualCast(spells, request, request + 0.004, request + 1.57, fire);
     REQUIRE(out.reason == "spell fired");
     REQUIRE(out.state.fired);
-    // Settled, and pressed, on the InterruptCast's own step.
-    REQUIRE(out.state.settledAt == Approx(interrupt));
-    REQUIRE(out.state.pressedAt == Approx(interrupt));
+    // Settled, and pressed, on the equip's end's own step.
+    REQUIRE(out.state.settledAt == Approx(end));
+    REQUIRE(out.state.pressedAt == Approx(end));
     // Fired on the first fast tick after the left hand's fire.
     REQUIRE(out.state.firedAt >= fire);
     REQUIRE(out.state.firedAt - fire < 0.05 + 1e-9);
 }
 
-TEST_CASE("replayed: from bare hands the press waits the 70 ms for the equip's InterruptCast", "[replay]")
+TEST_CASE("replayed: from bare hands the press waits for the equip's end, past its InterruptCast at 70 ms", "[replay]")
 {
     const auto events = EventsOf(kFromBareHands);
     const double request = SecondsOf("23:43:48.057");
-    const double interrupt = SecondsOf("23:43:48.127");
+    const double end = SecondsOf("23:43:48.611");
     const double fire = SecondsOf("23:43:50.028");
     // The spell shows in the hands on the next update, well before the
     // equip's animation starts.
     const CastOutcome out = ReplayDualCast(events, request, request + 0.01, request + 1.63, fire);
     REQUIRE(out.reason == "spell fired");
-    // The fast ticks at +50 ms saw the spell placed and did not press.
-    REQUIRE(out.state.settledAt == Approx(interrupt));
-    REQUIRE(out.state.pressedAt == Approx(interrupt));
-    REQUIRE(out.state.pressedAt - request == Approx(0.07).margin(0.001));
+    // The fast ticks from +50 ms saw the spell placed and did not press.
+    REQUIRE(out.state.settledAt == Approx(end));
+    REQUIRE(out.state.pressedAt == Approx(end));
+    REQUIRE(out.state.pressedAt - request == Approx(0.554).margin(0.001));
 }
 
-TEST_CASE("replayed: the bare-hands sequence without its InterruptCast presses only at the lend's deadline", "[replay]")
+TEST_CASE("replayed: the bare-hands sequence without its equip's end presses only at the lend's deadline", "[replay]")
 {
     auto events = EventsOf(kFromBareHands);
-    std::erase_if(events, [](const Event &event) { return event.tag == GraphTag::InterruptCast; });
+    std::erase_if(events, [](const Event &event) { return event.tag == GraphTag::EquipOut; });
     const double request = SecondsOf("23:43:48.057");
     const CastOutcome out = ReplayDualCast(events, request, request + 0.01, request + 1.63 + 1.0, request + 2.9);
     REQUIRE(out.state.settledAt < 0.0);
     REQUIRE(out.state.pressedAt - request == Approx(kLendSeconds).margin(0.051));
+}
+
+// ---- The player's dual cast over a staff, 2026-09-26 01:13 (issue #8)
+
+// Augur of Aetherius in the left hand, Halldir's Staff in the right: two
+// equips, an InterruptCast each, 36 ms apart. The build that logged this
+// pressed on the first, between them, and the cast never charged; nine
+// tries of nine.
+constexpr std::string_view kOverAStaff = R"(
+[01:13:28.435] [10260] [D] [player]   Goldilocks (00000014): Earth Shield requested from the both hand
+[01:13:28.435] [10260] [D] [player]   Goldilocks (00000014): lending Earth Shield the both hand (left held Augur of Aetherius, right held Halldir's Staff)
+[01:13:28.441] [18424] [D] [graph]    anim 00000014: DisableBumper
+[01:13:28.441] [18424] [D] [graph]    anim 00000014: tailEquip
+[01:13:28.441] [18424] [D] [graph]    anim 00000014: weaponDraw
+[01:13:28.441] [18424] [D] [graph]    anim 00000014: InterruptCast
+[01:13:28.441] [18424] [D] [graph]    anim 00000014: arrowDetach
+[01:13:28.450] [18388] [D] [player]   Goldilocks (00000014): pressed for Earth Shield (both hand, dual)
+[01:13:28.477] [18424] [D] [graph]    anim 00000014: tailEquip
+[01:13:28.477] [18424] [D] [graph]    anim 00000014: weaponDraw
+[01:13:28.477] [18424] [D] [graph]    anim 00000014: InterruptCast
+[01:13:28.477] [18424] [D] [graph]    anim 00000014: arrowDetach
+[01:13:28.791] [53956] [D] [graph]    anim 00000014: weaponDraw
+[01:13:28.958] [18424] [D] [graph]    anim 00000014: Magic_Equip_Out
+[01:13:28.958] [18424] [D] [graph]    anim 00000014: EnableBumper
+[01:13:28.958] [18424] [D] [graph]    anim 00000014: tailCombatIdle
+[01:13:29.709] [56660] [D] [graph]    anim 00000014: tailCombatLocomotion
+[01:13:30.293] [58436] [D] [graph]    anim 00000014: tailCombatIdle
+[01:13:31.501] [56660] [D] [player]   Goldilocks (00000014): over while charging -- deadline, never ready
+[01:13:31.501] [56660] [D] [player]   Goldilocks (00000014): the left hand back to Augur of Aetherius
+[01:13:31.502] [56660] [D] [player]   Goldilocks (00000014): the right hand back to Halldir's Staff
+[01:13:31.503] [56660] [I] [player]   Goldilocks rule 1 "": cast not cast -- deadline, never ready, after 3.10 s (both hand; settled at 0.02 s, pressed at 0.02 s, ready at -1.00 s, released at 3.10 s, fired at -1.00 s; caster state reached 0; magicka 590 -> 590)
+)";
+
+TEST_CASE("replayed: over a staff the press waits past both equips' InterruptCasts, for the equip's end", "[replay]")
+{
+    const auto events = EventsOf(kOverAStaff);
+    REQUIRE(events.size() == 1);
+    REQUIRE(events[0].tag == GraphTag::EquipOut);
+    const double request = SecondsOf("01:13:28.435");
+    const double secondInterrupt = SecondsOf("01:13:28.477");
+    const double end = SecondsOf("01:13:28.958");
+    // Pressed there in play the same day, over the same staff, the cast
+    // began within 10 ms. Here the caster is read as charging from the
+    // press on, and the replay stops before any deadline.
+    const CastOutcome out = ReplayDualCast(events, request, request + 0.004, request + 10.0, request + 10.0);
+    REQUIRE(out.reason.empty());
+    REQUIRE(out.state.pressedAt > secondInterrupt);
+    REQUIRE(out.state.settledAt == Approx(end));
+    REQUIRE(out.state.pressedAt == Approx(end));
 }
 
 // ---- Serana's Drain Life, a follower's stream, 2026-09-25 20:37

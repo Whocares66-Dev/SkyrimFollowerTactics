@@ -51,7 +51,7 @@ enum class GraphTag : std::uint8_t
     SpellFireVoice,      // Voice_SpellFire_Event: a shout or a power went off
     CastStop,            // CastStop: a cast's end, a stream's included
     ShoutStop,           // shoutStop
-    InterruptCast,       // InterruptCast: an equip starting, among others
+    EquipOut,            // Magic_Equip_Out: a magic equip animation's end
     Count
 };
 inline constexpr std::size_t kGraphTagCount = static_cast<std::size_t>(GraphTag::Count);
