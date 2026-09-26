@@ -278,7 +278,7 @@ bool IsSubjectValidIn(Moment moment, SubjectKind subject) noexcept
 bool IsPredicateValidIn(Moment moment, PredicateKind predicate) noexcept
 {
     if (moment == Moment::Combat)
-        return predicate != PredicateKind::Location;
+        return predicate != PredicateKind::Location && predicate != PredicateKind::Weather;
     switch (predicate)
     {
     case PredicateKind::CombatBegins:
@@ -487,6 +487,7 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
         case PredicateKind::ArrowsNone:
         case PredicateKind::ArrowsAvailable:
         case PredicateKind::Location:
+        case PredicateKind::Weather:
             return true;
         default:
             return false;

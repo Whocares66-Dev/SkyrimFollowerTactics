@@ -186,6 +186,7 @@ void RequireSame(const Rule &a, const Rule &b)
     REQUIRE(a.typeKind == b.typeKind);
     REQUIRE(a.damageKind == b.damageKind);
     REQUIRE(a.locationKind == b.locationKind);
+    REQUIRE(a.weatherKind == b.weatherKind);
     REQUIRE(a.actionTarget == b.actionTarget);
     REQUIRE(a.actionTargetForm == b.actionTargetForm);
     REQUIRE(a.actions.size() == b.actions.size());
@@ -725,6 +726,35 @@ TEST_CASE("a location condition writes its place and reads it back", "[profile]"
     REQUIRE(unknown.profile->rules.rules.empty());
     REQUIRE(unknown.warnings.size() == 1);
     REQUIRE(unknown.warnings[0].find("tavern") != std::string::npos);
+}
+
+TEST_CASE("a weather condition writes its weather and reads it back", "[profile]")
+{
+    Profile p;
+    Rule r;
+    r.predicate = PredicateKind::Weather;
+    r.weatherKind = WeatherKind::Snow;
+    r.FirstAction().kind = ActionKind::DrinkAny;
+    p.rules.rules.push_back(r);
+    const auto j = nlohmann::json::parse(WriteProfile(p, kHex));
+    REQUIRE(j["rules"][0]["if"]["predicate"] == "weather");
+    REQUIRE(j["rules"][0]["if"]["weather"] == "snow");
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules.size() == 1);
+    REQUIRE(read.profile->rules.rules[0].weatherKind == WeatherKind::Snow);
+    // No other condition carries one.
+    p.rules.rules[0].predicate = PredicateKind::Location;
+    REQUIRE_FALSE(nlohmann::json::parse(WriteProfile(p, kHex))["rules"][0]["if"].contains("weather"));
+
+    const std::string rule = R"({
+        "if": { "subject": "self", "predicate": "weather", "weather": "hail" },
+        "then": { "target": "self", "do": [ { "action": "drink-any" } ] }
+    })";
+    const auto unknown = ReadProfile(OneRuleFile(rule), kHex);
+    REQUIRE(unknown.profile->rules.rules.empty());
+    REQUIRE(unknown.warnings.size() == 1);
+    REQUIRE(unknown.warnings[0].find("hail") != std::string::npos);
 }
 
 TEST_CASE("an unknown action is dropped alone and its rule kept", "[profile]")

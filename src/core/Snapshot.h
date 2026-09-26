@@ -628,6 +628,13 @@ struct Snapshot
     {
         return kind == LocationKind::Hold ? hold != 0 && hold == form : (places & Bit(kind)) != 0;
     }
+    // The weather over the actor, for the Weather condition: a bit per
+    // WeatherKind, none indoors.
+    std::uint8_t weather{0};
+    [[nodiscard]] constexpr bool Under(WeatherKind kind) const noexcept
+    {
+        return (weather & Bit(kind)) != 0;
+    }
     // A blow the actor could strike with what is in the hands, priced on
     // the game side: whether it is possible at all, the stamina it costs,
     // and how far it reaches, held against an enemy's reachDistance. A

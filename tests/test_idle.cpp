@@ -128,6 +128,25 @@ TEST_CASE("Location is the idle list's alone", "[idle][validity]")
     REQUIRE(trace.at(0) == Verdict::InvalidCondition);
 }
 
+TEST_CASE("Weather is the idle list's alone, as Location is", "[idle][validity]")
+{
+    REQUIRE(IsPredicateValidIn(Moment::Idle, PredicateKind::Weather));
+    REQUIRE_FALSE(IsPredicateValidIn(Moment::Combat, PredicateKind::Weather));
+
+    // A hand-edited profile's, in the combat list: reported, never asked.
+    Rule r = Always("Restore Health");
+    r.predicate = PredicateKind::Weather;
+    r.weatherKind = WeatherKind::Rain;
+    RuleSet combat;
+    combat.rules.push_back(r);
+    Snapshot s = Healthy();
+    s.weather = Bit(WeatherKind::Rain);
+    EvalContext ctx;
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(combat, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::InvalidCondition);
+}
+
 TEST_CASE("what the idle list has no use for is invalid in it, and only in it", "[idle][validity]")
 {
     for (const auto subject :

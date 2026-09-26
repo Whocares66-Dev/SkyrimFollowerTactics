@@ -3111,6 +3111,46 @@ TEST_CASE("a location holds where the follower is: inside or out, and at home", 
     REQUIRE(CanNegate(PredicateKind::Location));
 }
 
+TEST_CASE("the weather holds under that weather, and never where there is none", "[evaluator]")
+{
+    Snapshot s = Healthy();
+    s.inCombat = false;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Weather;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction() = DrinkMagicka();
+    RuleSet rs;
+    rs.moment = Moment::Idle;
+    rs.rules.push_back(r);
+    const auto holds = [&](WeatherKind kind, bool negated = false) {
+        EvalContext ctx;
+        rs.rules[0].weatherKind = kind;
+        rs.rules[0].negated = negated;
+        return Evaluate(rs, s, ctx).Fired();
+    };
+
+    // Indoors, whatever the sky outside: no weather, either way round.
+    for (std::size_t k = 0; k < static_cast<std::size_t>(WeatherKind::COUNT); ++k)
+    {
+        REQUIRE_FALSE(holds(static_cast<WeatherKind>(k)));
+        REQUIRE(holds(static_cast<WeatherKind>(k), true));
+    }
+    // Rain from an overcast sky: both hold, and nothing else.
+    s.weather = Bit(WeatherKind::Cloudy) | Bit(WeatherKind::Rain);
+    REQUIRE(holds(WeatherKind::Rain));
+    REQUIRE(holds(WeatherKind::Cloudy));
+    REQUIRE_FALSE(holds(WeatherKind::Pleasant));
+    REQUIRE_FALSE(holds(WeatherKind::Snow));
+    REQUIRE(holds(WeatherKind::Snow, true));
+
+    // Of the follower alone, as the place is.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Weather));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Weather));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Weather));
+    REQUIRE(CanNegate(PredicateKind::Weather));
+}
+
 TEST_CASE("the places fall into the menu's groups, each Any first", "[evaluator]")
 {
     REQUIRE(GroupOf(LocationKind::Home) == LocationGroup::None);

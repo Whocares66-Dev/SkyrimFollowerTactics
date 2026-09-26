@@ -246,6 +246,27 @@ enum class LocationGroup : std::uint8_t
            kind == K::Settlement;
 }
 
+// The weather over an actor out of doors, for the Weather condition
+// (dev/CONDITIONS.md 2d): the four classes a weather record carries, by
+// the game's names -- Rainy is Rain here, as it reads after "Weather".
+// Pleasant takes in the fair, partly cloudy days (Skyrim.esm's
+// SkyrimCloudy); Cloudy is fog and overcast; Snow takes in Solstheim's ash
+// storm. One bit each in Snapshot::weather, none indoors.
+enum class WeatherKind : std::uint8_t
+{
+    Pleasant,
+    Cloudy,
+    Rain,
+    Snow,
+
+    COUNT
+};
+
+[[nodiscard]] constexpr std::uint8_t Bit(WeatherKind kind) noexcept
+{
+    return static_cast<std::uint8_t>(1u << static_cast<unsigned>(kind));
+}
+
 // Which consumable a consume action names, and which each carried one is.
 // The snapshot tags every carried consumable with one, so a hand-edited
 // profile cannot drink a cabbage: the form has to be carried AS that kind.

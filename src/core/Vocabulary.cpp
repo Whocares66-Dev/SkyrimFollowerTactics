@@ -68,7 +68,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", N_("Corpse")},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 43> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 44> kPredicates{{
     {PredicateKind::Any, "any", N_("Any")}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::CombatBegins, "combat-begins", N_("Combat start")},
     {PredicateKind::CombatEnds, "combat-ends", N_("Combat end")},
@@ -101,6 +101,7 @@ constexpr std::array<Entry<PredicateKind>, 43> kPredicates{{
     {PredicateKind::SummonNone, "summon-none", N_("Summon: none")},
     {PredicateKind::SummonActive, "summon-active", N_("Summon: active")},
     {PredicateKind::Location, "location", N_("Location")},
+    {PredicateKind::Weather, "weather", N_("Weather")},
     {PredicateKind::CorpseNone, "corpse-none", N_("None")},
     {PredicateKind::LevelHighest, "level-highest", N_("Highest level")},
     {PredicateKind::LevelLowest, "level-lowest", N_("Lowest level")},
@@ -277,6 +278,15 @@ constexpr std::array<std::pair<LocationGroup, std::string_view>, 8> kLocationGro
     {LocationGroup::Settlement, N_("Settlement")},
 }};
 
+// A weather, as the rule names it and as the menu shows it. Each name
+// reads after "Weather", as the condition does: "Self: Weather Rain".
+constexpr std::array<Entry<WeatherKind>, 4> kWeathers{{
+    {WeatherKind::Pleasant, "pleasant", N_("Pleasant")},
+    {WeatherKind::Cloudy, "cloudy", N_("Cloudy")},
+    {WeatherKind::Rain, "rain", N_("Rain")},
+    {WeatherKind::Snow, "snow", N_("Snow")},
+}};
+
 constexpr std::array<Entry<DamageKind>, 8> kDamageKinds{{
     {DamageKind::Melee, "melee", N_("Melee")},
     {DamageKind::Ranged, "ranged", N_("Ranged")},
@@ -299,6 +309,7 @@ static_assert(kTypes.size() == static_cast<std::size_t>(TypeKind::COUNT));
 static_assert(kDamageKinds.size() == static_cast<std::size_t>(DamageKind::COUNT));
 static_assert(kLocations.size() == static_cast<std::size_t>(LocationKind::COUNT));
 static_assert(kLocationGroups.size() == static_cast<std::size_t>(LocationGroup::COUNT));
+static_assert(kWeathers.size() == static_cast<std::size_t>(WeatherKind::COUNT));
 
 } // namespace
 
@@ -338,6 +349,10 @@ std::string_view WireName(LocationKind v) noexcept
 {
     return LookupWire(kLocations, v);
 }
+std::string_view WireName(WeatherKind v) noexcept
+{
+    return LookupWire(kWeathers, v);
+}
 
 std::optional<SubjectKind> SubjectFromWireName(std::string_view s) noexcept
 {
@@ -374,6 +389,10 @@ std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept
 std::optional<LocationKind> LocationFromWireName(std::string_view s) noexcept
 {
     return Parse(kLocations, s);
+}
+std::optional<WeatherKind> WeatherFromWireName(std::string_view s) noexcept
+{
+    return Parse(kWeathers, s);
 }
 
 bool IsWireName(std::string_view s) noexcept
@@ -446,6 +465,10 @@ std::string_view DisplayName(LocationKind v) noexcept
 {
     return LookupDisplay(kLocations, v);
 }
+std::string_view DisplayName(WeatherKind v) noexcept
+{
+    return LookupDisplay(kWeathers, v);
+}
 std::string_view DisplayName(LocationGroup v) noexcept
 {
     for (const auto &[group, name] : kLocationGroups)
@@ -487,6 +510,8 @@ std::string_view Describe(PredicateKind v) noexcept
         return Tr("A summon or a raised corpse.");
     case PredicateKind::EffectRunning:
         return Tr("Its effect is running now.");
+    case PredicateKind::Weather:
+        return Tr("Outdoors only.");
     case PredicateKind::WeaponChargeNeeded:
         return Tr("An enchanted weapon in hand has three hits of charge or fewer left.");
     case PredicateKind::CorpseNone:

@@ -1,11 +1,14 @@
 #include "game/Places.h"
 
 #include "core/Vocabulary.h"
+#include "core/Weather.h"
 #include "game/Log.h"
 #include "game/Util.h"
 
 #include <cctype>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -127,28 +130,66 @@ const Keywords &Resolved()
     return k;
 }
 
-std::mutex g_placesMutex;
-std::unordered_map<RE::FormID, std::pair<std::uint64_t, std::uint32_t>> g_places;
+// A weather record as the sky blends it. Its precipitation bytes are read
+// unsigned and scaled as the engine's IsRaining and IsSnowing conditions
+// scale them (1.6.1170, 2026-09-26); CommonLib types them int8_t.
+std::optional<ft::SkyWeather> Blended(const RE::TESWeather *weather)
+{
+    if (!weather)
+        return std::nullopt;
+    using F = RE::TESWeather::WeatherDataFlag;
+    using W = ft::WeatherKind;
+    const auto &data = weather->data;
+    ft::SkyWeather out;
+    for (const auto &[flag, kind] :
+         {std::pair{F::kPleasant, W::Pleasant}, {F::kCloudy, W::Cloudy}, {F::kRainy, W::Rain}, {F::kSnow, W::Snow}})
+        if (data.flags.any(flag))
+            out.classes |= ft::Bit(kind);
+    out.precipitationBegins =
+        static_cast<float>(static_cast<std::uint8_t>(data.precipitationBeginFadeIn)) * 0.0039176475f;
+    out.precipitationEnds =
+        static_cast<float>(static_cast<std::uint8_t>(data.precipitationEndFadeOut)) * 0.003917647f + 0.001f;
+    return out;
+}
 
-// With the log at debug, each change of where an actor is, as the
-// statuses' changes are: without it a Location rule that never holds
-// cannot tell a place not marked from one never reached.
-void LogPlaceChanges(RE::Actor *actor, std::uint64_t places, std::uint32_t hold)
+struct Seen
+{
+    std::uint64_t places{0};
+    std::uint32_t hold{0};
+    std::uint8_t weather{0};
+    bool operator==(const Seen &) const = default;
+};
+
+std::mutex g_placesMutex;
+std::unordered_map<RE::FormID, Seen> g_places;
+
+template <typename Kind, typename Bits> std::string Listed(Bits bits)
+{
+    std::string out;
+    for (unsigned i = 0; i < static_cast<unsigned>(Kind::COUNT); ++i)
+        if ((bits & ft::Bit(static_cast<Kind>(i))) != 0)
+            out += (out.empty() ? "" : ", ") + std::string(ft::WireName(static_cast<Kind>(i)));
+    return out;
+}
+
+// With the log at debug, each change of where an actor is and of the
+// weather over them, as the statuses' changes are: without it a Location
+// or Weather rule that never holds cannot tell a place not marked from one
+// never reached.
+void LogPlaceChanges(RE::Actor *actor, const Seen &seen)
 {
     {
         std::scoped_lock lock(g_placesMutex);
         auto &last = g_places[actor->GetFormID()];
-        if (last == std::pair{places, hold})
+        if (last == seen)
             return;
-        last = {places, hold};
+        last = seen;
     }
-    std::string at;
-    for (unsigned i = 0; i < static_cast<unsigned>(K::COUNT); ++i)
-        if ((places & ft::Bit(static_cast<K>(i))) != 0)
-            at += (at.empty() ? "" : ", ") + std::string(ft::WireName(static_cast<K>(i)));
-    const auto *holdForm = hold ? RE::TESForm::LookupByID(hold) : nullptr;
-    log::sensors.debug("{}: now at {}; hold {}", Describe(actor), at.empty() ? "nowhere known" : at,
-                       holdForm ? log::NameOf(holdForm) : "none");
+    const std::string at = Listed<K>(seen.places);
+    const std::string weather = Listed<ft::WeatherKind>(seen.weather);
+    const auto *holdForm = seen.hold ? RE::TESForm::LookupByID(seen.hold) : nullptr;
+    log::sensors.debug("{}: now at {}; hold {}; weather {}", Describe(actor), at.empty() ? "nowhere known" : at,
+                       holdForm ? log::NameOf(holdForm) : "none", weather.empty() ? "none" : weather);
 }
 
 } // namespace
@@ -171,7 +212,19 @@ void ReadPlaces(RE::Actor *actor, ft::Snapshot &s)
         if (s.hold == 0 && k.hold && at->HasKeyword(k.hold))
             s.hold = at->GetFormID();
     }
-    LogPlaceChanges(actor, s.places, s.hold);
+    // The weather out of doors only. Indoors the sky keeps the weather
+    // outside, and a cell flagged to show the sky -- Breezehome, the inns,
+    // many caves -- is under a roof all the same.
+    s.weather = 0;
+    if (const auto *sky = RE::Sky::GetSingleton(); sky && s.At(K::Exterior))
+    {
+        ft::Sky read;
+        read.current = Blended(sky->currentWeather);
+        read.last = Blended(sky->lastWeather);
+        read.progress = sky->currentWeatherPct;
+        s.weather = ft::WeatherOf(read);
+    }
+    LogPlaceChanges(actor, {s.places, s.hold, s.weather});
 }
 
 const std::vector<HoldPick> &Holds()

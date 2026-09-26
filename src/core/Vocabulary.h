@@ -45,6 +45,7 @@ namespace ft
 [[nodiscard]] std::string_view WireName(TypeKind v) noexcept;
 [[nodiscard]] std::string_view WireName(DamageKind v) noexcept;
 [[nodiscard]] std::string_view WireName(LocationKind v) noexcept;
+[[nodiscard]] std::string_view WireName(WeatherKind v) noexcept;
 
 // Parsing is fallible on purpose. A profile written by a NEWER version of the
 // mod will name things this build has never heard of, and the right response is
@@ -59,6 +60,7 @@ namespace ft
 [[nodiscard]] std::optional<TypeKind> TypeFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<LocationKind> LocationFromWireName(std::string_view s) noexcept;
+[[nodiscard]] std::optional<WeatherKind> WeatherFromWireName(std::string_view s) noexcept;
 
 // A slug: lowercase ASCII letters and digits, hyphen-separated, no leading,
 // trailing or doubled hyphen. Nothing else round-trips safely through a JSON
@@ -79,6 +81,7 @@ namespace ft
 [[nodiscard]] std::string_view DisplayName(DamageKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(LocationKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(LocationGroup v) noexcept;
+[[nodiscard]] std::string_view DisplayName(WeatherKind v) noexcept;
 
 // One line of help, for a tooltip. Kept beside the names so a new predicate
 // cannot be added without someone deciding what it means to a player.

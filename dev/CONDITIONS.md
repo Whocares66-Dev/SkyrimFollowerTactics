@@ -133,11 +133,41 @@ The three first in that order; the headings after the divider, and each heading'
 - **Building**: `LocTypeCastle`, `Guild`, `House` (anyone's, the player's included), `Inn` (27), `Store`, `Temple`. Its Any is any of those, or `LocTypeDwelling`, `LocTypeBarracks` or `LocTypeJail`, which are not listed on their own; no one keyword covers every building.
 - **Hold** is a location record, not a keyword: the nearest location up the chain marked `LocTypeHold` is the follower's (`Snapshot::hold`), and the rule names one (`Rule::conditionForm`, `"hold"` in the profile, as a form, so another load order's Whiterun reads back as its own). Listed from the load order at first use (`Holds`), by the game's own name, in the game's language: the nine, Solstheim, and a mod's own (Beyond Skyrim's County Bruma and Heartlands, Wyrmstooth, Hjorkvild Isles).
 
-Read on the tick into `Snapshot::places`, a bit per kind, and `Snapshot::hold` (`ReadPlaces`, `src/game/Places.cpp`). With the log at debug each change is a line: `Jenassa (000E1BA9): now at home, interior, house, settlement, city; hold Whiterun`.
+Read on the tick into `Snapshot::places`, a bit per kind, and `Snapshot::hold` (`ReadPlaces`, `src/game/Places.cpp`). With the log at debug each change is a line: `Jenassa (000E1BA9): now at home, interior, house, settlement, city; hold Whiterun; weather none`.
 
 **Left out**, each one more kind and one keyword if wanted: Farm, Mine, Lumber mill, Jail, Barracks, Cemetery, Ship, Shipwreck, Stables (USSEP), Military camp, Outdoor, the hold ranks (`LocTypeHoldCapital`, `Major`, `Minor`), Ash spawn (Dragonborn), and Cleared -- the engine keeps whether a clearable location has been cleared (`BGSLocation::IsCleared`), which is state rather than a keyword. A mod's dungeon without the vanilla keywords is not recognised; outside Skyrim.esm and the DLC the families are thin (Beyond Skyrim's `CYRLocType*`, Saints and Seducers', one Creation Club Ayleid ruin).
 
 **To see in play:** the places logged at debug against where the follower stands; whether the ground outside a dungeon's door already counts as the dungeon (its exterior cells may belong to its location); the hold list's names in a translated game.
+
+## 2d. Weather: the sky over the follower, out of doors (built 2026-09-26 on `wip-weather`, not yet seen in play)
+
+`Weather`, right after Location (`PredicateKind::Weather`, the kind in `Rule::weatherKind`, `"weather": "rain"` in the profile). Self only and the idle list's alone, as Location is: the combat list does not offer it, and reports one a hand-edited profile carries as an invalid condition. Negatable. It reads "Self: Weather Rain", and the heading's hover text says "Outdoors only." (`Describe`). Asked on Nexus, issue #10.
+
+```
+Weather
+  Pleasant
+  Cloudy
+  Rain
+  Snow
+```
+
+**What there is to ask.** A weather record has no keywords. It carries a classification, four flags in its DATA (`TESWeather::WeatherDataFlag`): Pleasant, Cloudy, Rainy, Snow -- the CK's words, and what the engine's own `IsPleasant`, `IsCloudy`, `IsRaining` and `IsSnowing` conditions read, so every weather mod sets them. The four are the menu, in the game's order; Rainy is "Rain" to read after "Weather". Read with houseCARL in Nordic Souls (2026-09-26), the classes do not all mean what their names suggest:
+
+- **Pleasant** is the fair days, and takes in the partly cloudy ones: Skyrim.esm's `SkyrimClear*` and `SkyrimCloudy*` both, Dawnguard's Forgotten Vale, Sovngarde's clear sky, Beyond Skyrim's clear and cloudy Cyrodiil.
+- **Cloudy** is fog and overcast with nothing falling: `SkyrimFog*`, `SkyrimOvercastWar`, the Blue Palace and Riften fogs, Solstheim's ash weathers (`DLC02VolcanicAsh*`), Apocrypha, the Soul Cairn.
+- **Rainy**: `SkyrimOvercastRain*`, `SkyrimStormRain*`, the Soul Cairn's rain.
+- **Snow**: `SkyrimOvercastSnow`, `SkyrimStormSnow`, Skuldafn, Blackreach (its falling spores), and Solstheim's ash storm (`DLC02VolcanicAshStorm01`). Obsidian Weathers moves some mountain `SkyrimCloudy*_A` weathers and `DLC02VolcanicAsh02` to Snow.
+- **None of the four**: the lighting weathers (`FXWthr*`, `DefaultWeather`, `HelgenAttackWeather`, the world map's), 23 in that load order. Under one, no Weather rule holds.
+
+Left out: thunder (a frequency every weather carries, storms or not), wind speed, the aurora flags, and a record named by a rule (as Effect names one), which would tie a rule to one weather mod.
+
+**Out of doors only.** The sky is one, the player's, and it does not clear when the player goes in: its mode setter (26222 on 1.6.1170, read 2026-09-26) leaves `currentWeather` and `lastWeather` as they were when it switches to interior, and the engine's `IsRaining` and the rest read them without asking where anyone is. So indoors the sky still says what it last said outside. Nor does the cell's Show Sky flag mean out of doors: 271 interiors in Skyrim.esm and the DLC carry it, Breezehome, the inns and many caves among them (the mode is set from it in 13326: an interior without it is Interior, with it Sky Dome Only, or Full with Use Sky Lighting too). So Weather holds only where the actor's cell is an exterior (`TESObjectCELL::IsInteriorCell`, the Location condition's Exterior); inside, none of the four holds, and "it is raining outside" cannot be asked from indoors.
+
+**Through a change of weather** (`WeatherOf`, `src/core/Weather.h`, tested): the sky blends the outgoing weather into the incoming one, `currentWeatherPct` going from 0 to 1. Pleasant and Cloudy are the class of the weather at least half in -- the engine's `IsPleasant` and `IsCloudy` answer the blend's share instead, and this is that share at a half. Rain and Snow are whether it falls, as the engine's `IsRaining` and `IsSnowing` have it (decompiled on 1.6.1170, 2026-09-26): the incoming weather's once the change passes its Precipitation Begin Fade In, the outgoing weather's until it reaches its End Fade Out, each a byte of DATA read unsigned and scaled by 0.0039176 (the end plus 0.001). So rain can fall under a sky still mostly overcast (Cloudy and Rain both hold), and a change from rain to snow can hold both for a while. CommonLib's `Sky::IsRaining` reads the bytes signed, and so would say no rain for a begin under 128; it is not used.
+
+Read on the tick into `Snapshot::weather`, a bit per kind, in `ReadPlaces` after the places, from `Sky::GetSingleton()` (CommonLib's layout, no address of ours); the debug line for a change of place names the weather too: `Jenassa (000E1BA9): now at exterior, settlement, town; hold Whiterun; weather cloudy, rain`.
+
+**To see in play:** the weather logged at debug against the sky; a Rain rule firing as the rain starts and stopping at a door; whether a weather mod's classes read as its author means them.
 
 ## 3. Armor
 
@@ -280,7 +310,7 @@ Self only: the snapshot reads the follower's own hands. The wire names are `weap
 
 ## 9. The cascade as it reads (2026-09-08)
 
-Under every subject the conditions come in groups with a divider between: Any; Combat; Health, Stamina, Magicka; (for Enemy) Attacking, Attacked by; Attacks with, Hit by; Status; Weapon, Armor, Resistance; Summon; (for Self, in the idle list) Location. Corpse, a subject of its own, has None and Level -> Highest, Lowest. Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. There is no Count of a group any more: an ally's changes too rarely to be a condition and the enemy's was not wanted (it went on 2026-09-08; a save carrying `count-at-least` drops the rule with a warning).
+Under every subject the conditions come in groups with a divider between: Any; Combat; Health, Stamina, Magicka; (for Enemy) Attacking, Attacked by; Attacks with, Hit by; Status; Weapon, Armor, Resistance; Summon; (for Self, in the idle list) Location, Weather. Corpse, a subject of its own, has None and Level -> Highest, Lowest. Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. There is no Count of a group any more: an ally's changes too rarely to be a condition and the enemy's was not wanted (it went on 2026-09-08; a save carrying `count-at-least` drops the rule with a warning).
 
 **Attacks with** (Using until 2026-09-09, then Hit type until 2026-09-17; the wire name is and stays `hit-type`) is what the subject hits with, asked with the same kinds as Hit by but one: Melee (a blade, an axe, a mace), Ranged (a bow or crossbow), Magic (a spell or a staff), then Fire, Frost, Shock, Poison for whatever in hand does that kind of damage -- a weapon's enchantment, a staff's or a spell's effects, a poison on the blade -- read by what resists the effect, as a hit is. Hands with no weapon and no spell in them are Melee: the fists, and a creature's claws, teeth and horns, whose hands hold nothing (a bear read as nothing until 2026-09-09). Any subject, from the snapshot's traits; the wire name is `hit-type`, the kind under `"damage"` as for Hit by (which the writer left out until 2026-09-09, so every saved Hit type rule came back as the field's default, Fire).
 
@@ -292,7 +322,7 @@ The player is "Player" everywhere in the panel, never by name: a long name break
 
 **Statuses** that no action could answer are not asked about the follower themself: bleeding out, casting, fleeing and staggered. The player neither bleeds out nor flees. About anyone else every status is a fair question (`IsStatusValidFor`).
 
-**The idle list** (2026-09-18, `dev/PLAYER.md` "Out of combat") offers less, since there is no enemy out of a fight: no Enemy, and no Attacking or Attacked by with it; no Combat start or end; no Hit by; no Enemy or Attacker target; no Attack or blow; no Fleeing. The combat list, the other way round, has no Location (2c). The `IsXValidIn(moment, ...)` five in `core/Rule.h` say so, the menus read them, and the evaluator reports a rule of one as an invalid condition.
+**The idle list** (2026-09-18, `dev/PLAYER.md` "Out of combat") offers less, since there is no enemy out of a fight: no Enemy, and no Attacking or Attacked by with it; no Combat start or end; no Hit by; no Enemy or Attacker target; no Attack or blow; no Fleeing. The combat list, the other way round, has no Location or Weather (2c, 2d). The `IsXValidIn(moment, ...)` five in `core/Rule.h` say so, the menus read them, and the evaluator reports a rule of one as an invalid condition.
 
 **Attacking and Attacked by** (Targeting and Target of until 2026-09-09) replace the old "attacking player" and "target of player": each opens on the members of the party -- Self, Player, the other followers by name -- so `Enemy: Attacked by Player` is the one the player is fighting and `Enemy: Attacking <Lydia>` the one going for Lydia. The member goes on the wire as `"member": "player"` or the follower's form; the wire names are `attacking` and `attacked-by`. `Enemy: Attacked by <this follower>` is the follower's own target, which was a subject of its own ("Target") until 2026-09-08; one place for one question.
 

@@ -320,6 +320,9 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::Location:
         held = s.At(r.locationKind, r.conditionForm);
         break;
+    case PredicateKind::Weather:
+        held = s.Under(r.weatherKind);
+        break;
     default:
         held = Common(r, FactsOf(s)).value_or(false);
         break;

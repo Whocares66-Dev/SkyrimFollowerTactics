@@ -99,8 +99,9 @@ std::string SubjectText(const ft::Rule &r, const FollowerView &view)
 // The condition cascade in groups, a divider between them: Any; the
 // fight's edges; the three stats; the enemy's relation to the party
 // (Attacking, Attacked by); the hits (Hit type, Hit by); Status; the
-// equipment -- weapon, armour, resistance; the summon; where one is. (The corpse
-// questions are a subject of their own and fall in one group.)
+// equipment -- weapon, armour, resistance; the summon; where one is and the
+// weather there. (The corpse questions are a subject of their own and fall
+// in one group.)
 int ConditionGroup(ft::PredicateKind p)
 {
     switch (p)
@@ -129,6 +130,7 @@ int ConditionGroup(ft::PredicateKind p)
     case ft::PredicateKind::SummonActive:
         return 8;
     case ft::PredicateKind::Location:
+    case ft::PredicateKind::Weather:
         return 9;
     default:
         return 7;
@@ -175,6 +177,10 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view)
         return TrFormat("{}: {}", subject, TrFormat("In {}", HoldName(r.conditionForm)));
     if (r.predicate == ft::PredicateKind::Location)
         return TrFormat("{}: {}", subject, TrFormat("In {}", ft::DisplayName(r.locationKind)));
+    // A weather after the word, as a resistance's kind is: "Self: Weather
+    // Rain".
+    if (r.predicate == ft::PredicateKind::Weather)
+        return TrFormat("{}: {}", subject, TrFormat("Weather {}", ft::DisplayName(r.weatherKind)));
     // An effect reads by its name, as a status does: "Self: Oakflesh".
     if (r.predicate == ft::PredicateKind::EffectRunning)
         return TrFormat("{}: {}", subject, FormName(r.conditionForm));
@@ -303,6 +309,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             std::optional<ft::StatusKind> status;
             std::optional<ft::TypeKind> type;
             std::optional<ft::LocationKind> location;
+            std::optional<ft::WeatherKind> weather;
             std::optional<std::uint32_t> member;
             std::optional<std::uint32_t> conditionForm; // a family's keyword, an effect's source
         };
@@ -312,6 +319,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 rule.subject == subject && rule.subjectForm == subjectForm && rule.predicate == which &&
                 (!x.damage || rule.damageKind == *x.damage) && (!x.status || rule.statusKind == *x.status) &&
                 (!x.type || rule.typeKind == *x.type) && (!x.location || rule.locationKind == *x.location) &&
+                (!x.weather || rule.weatherKind == *x.weather) &&
                 (!x.conditionForm || rule.conditionForm == *x.conditionForm) &&
                 (!x.arg || std::abs(rule.conditionArg - *x.arg) < 0.001f);
             if (CascadeItem(label, selected))
@@ -327,6 +335,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     rule.typeKind = *x.type;
                 if (x.location)
                     rule.locationKind = *x.location;
+                if (x.weather)
+                    rule.weatherKind = *x.weather;
                 if (x.conditionForm)
                     rule.conditionForm = *x.conditionForm;
                 if (x.arg)
@@ -671,6 +681,23 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     for (const ft::LocationKind kind : kinds)
                         place(name(kind).c_str(), kind);
                     Im::EndMenu();
+                }
+                Im::EndMenu();
+                continue;
+            }
+
+            // The weather: its four in the game's order, not by name. That it
+            // holds out of doors only is said on the heading, once, as Hit
+            // by's help is.
+            if (predicate == ft::PredicateKind::Weather)
+            {
+                if (!BeginCascade(predicateName.c_str(), std::string(ft::Describe(predicate)).c_str()))
+                    continue;
+                for (std::size_t wi = 0; wi < static_cast<std::size_t>(ft::WeatherKind::COUNT); ++wi)
+                {
+                    Extras x;
+                    x.weather = static_cast<ft::WeatherKind>(wi);
+                    pick(std::string(ft::DisplayName(*x.weather)).c_str(), predicate, x, false);
                 }
                 Im::EndMenu();
                 continue;

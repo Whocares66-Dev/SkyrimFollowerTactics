@@ -68,6 +68,7 @@ add_executable(
     test_variety.cpp
     test_vocabulary.cpp
     test_watchdog.cpp
+    test_weather.cpp
 )
 # nlohmann_json is found or fetched by the top-level CMakeLists, beside ft_core;
 # the profile tests parse the serialiser's output back to check its shape.

@@ -161,6 +161,11 @@ enum class PredicateKind : std::uint8_t
     // in a cave, a city, a hold (Rule::conditionForm) ... Self only: the
     // party stands in one place. The idle list's alone (IsPredicateValidIn).
     Location,
+    // The weather over the follower: Rule::weatherKind -- pleasant, cloudy,
+    // rain, snow. Self only and the idle list's alone, as Location is; out
+    // of doors only, so it never holds inside, whatever the sky outside is
+    // doing.
+    Weather,
     // The corpses: none about, or the one of the highest or lowest level.
     // Corpse only. Not IsExtreme: they have no below-predicate to hang
     // under, and their measure is a level, not a fraction.
@@ -455,6 +460,9 @@ struct Rule
     // Which place, for PredicateKind::Location. Ignored by every other
     // predicate.
     LocationKind locationKind{LocationKind::Exterior};
+    // Which weather, for PredicateKind::Weather. Ignored by every other
+    // predicate.
+    WeatherKind weatherKind{WeatherKind::Rain};
     // Which base effect, for PredicateKind::EffectRunning; which hold's
     // location record, for Location's Hold. As opaque here as an action's
     // form is. Ignored by every other predicate.
@@ -520,8 +528,8 @@ struct RuleSet
 // and answers false -- so it is a menu question as much as an evaluator
 // one: the editor leaves them out, and the evaluator reports a rule of one
 // InvalidCondition, as it does a pair the subject cannot answer. The
-// combat list has one of its own: Location, which was asked for the idle
-// list alone.
+// combat list has two of its own: Location and Weather, each asked for the
+// idle list alone.
 [[nodiscard]] bool IsSubjectValidIn(Moment moment, SubjectKind subject) noexcept;
 [[nodiscard]] bool IsPredicateValidIn(Moment moment, PredicateKind predicate) noexcept;
 [[nodiscard]] bool IsStatusValidIn(Moment moment, StatusKind status) noexcept;

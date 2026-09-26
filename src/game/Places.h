@@ -1,7 +1,8 @@
 #pragma once
 // Where an actor is, for the Location condition (dev/CONDITIONS.md 2c):
 // inside or out by the cell, the rest by the keywords of the location they
-// are in and the ones it lies in, and the hold.
+// are in and the ones it lies in, and the hold. And the weather over them
+// out of doors, for the Weather condition (2d).
 
 #include "core/Snapshot.h"
 
@@ -17,7 +18,7 @@ class Actor;
 namespace ft::game
 {
 
-// The actor's places and hold, into the snapshot.
+// The actor's places, hold and weather, into the snapshot.
 void ReadPlaces(RE::Actor *actor, ft::Snapshot &s);
 
 // The holds of the load order, as the Hold heading lists them: every
