@@ -1,6 +1,7 @@
 // The weather out of doors from the sky: the class of the weather mostly
 // blended in, and the rain or snow that falls through a change of weather
-// as the engine's IsRaining and IsSnowing have it.
+// as the engine's IsRaining and IsSnowing have it. And the part of the day
+// by the climate's sun.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -81,6 +82,36 @@ TEST_CASE("rain or snow stops once the change reaches the outgoing weather's end
     REQUIRE(WeatherOf(sky) == (Bit(WeatherKind::Pleasant) | Bit(WeatherKind::Snow)));
     sky.progress = 0.6f;
     REQUIRE(WeatherOf(sky) == Bit(WeatherKind::Pleasant));
+}
+
+TEST_CASE("the day in four by Skyrim's climate: sunrise 5:30, sunset 16:00 to 20:30", "[weather][time]")
+{
+    const SunTimes skyrim;
+    REQUIRE(TimeOfDay(0.0f, skyrim) == TimeKind::Night);
+    REQUIRE(TimeOfDay(5.4f, skyrim) == TimeKind::Night);
+    // Daytime from the start of sunrise to the end of sunset, both in.
+    REQUIRE(TimeOfDay(5.5f, skyrim) == TimeKind::Morning);
+    REQUIRE(TimeOfDay(11.9f, skyrim) == TimeKind::Morning);
+    REQUIRE(TimeOfDay(12.0f, skyrim) == TimeKind::Afternoon);
+    REQUIRE(TimeOfDay(15.9f, skyrim) == TimeKind::Afternoon);
+    REQUIRE(TimeOfDay(16.0f, skyrim) == TimeKind::Evening);
+    REQUIRE(TimeOfDay(20.5f, skyrim) == TimeKind::Evening);
+    REQUIRE(TimeOfDay(20.6f, skyrim) == TimeKind::Night);
+    REQUIRE(TimeOfDay(23.9f, skyrim) == TimeKind::Night);
+}
+
+TEST_CASE("a climate moves the day's edges, noon aside", "[weather][time]")
+{
+    // Obsidian Weathers' Skyrim: sunset from 15:30.
+    const SunTimes obsidian{5.5f, 15.5f, 20.5f};
+    REQUIRE(TimeOfDay(15.6f, obsidian) == TimeKind::Evening);
+    REQUIRE(TimeOfDay(12.5f, obsidian) == TimeKind::Afternoon);
+    // Apocrypha's: sunrise at midnight, sunset from 22:30 to 23:50.
+    const SunTimes apocrypha{0.0f, 22.5f, 23.0f + 50.0f / 60.0f};
+    REQUIRE(TimeOfDay(0.0f, apocrypha) == TimeKind::Morning);
+    REQUIRE(TimeOfDay(13.0f, apocrypha) == TimeKind::Afternoon);
+    REQUIRE(TimeOfDay(23.0f, apocrypha) == TimeKind::Evening);
+    REQUIRE(TimeOfDay(23.9f, apocrypha) == TimeKind::Night);
 }
 
 TEST_CASE("rain turning to snow can fall as both for a while", "[weather]")

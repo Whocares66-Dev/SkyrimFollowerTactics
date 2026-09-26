@@ -302,6 +302,27 @@ TEST_CASE("every wire name round-trips", "[vocabulary]")
         REQUIRE(WeatherFromWireName(WireName(v)) == v);
         REQUIRE(DisplayName(v).size() > 0);
     }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(TimeKind::COUNT); ++i)
+    {
+        const auto v = static_cast<TimeKind>(i);
+        REQUIRE(Str(WireName(v)) != "Unknown");
+        REQUIRE(IsWireName(WireName(v)));
+        REQUIRE(TimeFromWireName(WireName(v)) == v);
+        REQUIRE(DisplayName(v).size() > 0);
+    }
+}
+
+TEST_CASE("a part of the day's hours read on a twelve-hour clock", "[vocabulary][time]")
+{
+    const SunTimes skyrim;
+    REQUIRE(HoursText(TimeKind::Morning, skyrim) == "5:30 AM - 12:00 PM");
+    REQUIRE(HoursText(TimeKind::Afternoon, skyrim) == "12:00 PM - 4:00 PM");
+    REQUIRE(HoursText(TimeKind::Evening, skyrim) == "4:00 PM - 8:30 PM");
+    REQUIRE(HoursText(TimeKind::Night, skyrim) == "8:30 PM - 5:30 AM");
+    // Apocrypha's sun: sunrise at midnight, sunset ending ten to midnight.
+    const SunTimes apocrypha{0.0f, 22.5f, 23.0f + 50.0f / 60.0f};
+    REQUIRE(HoursText(TimeKind::Morning, apocrypha) == "12:00 AM - 12:00 PM");
+    REQUIRE(HoursText(TimeKind::Night, apocrypha) == "11:50 PM - 12:00 AM");
 }
 
 TEST_CASE("every wire name is a slug, and no display name is", "[vocabulary]")

@@ -3,6 +3,7 @@
 #include "core/I18n.h"
 
 #include <array>
+#include <cmath>
 #include <utility>
 
 namespace ft
@@ -68,7 +69,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", N_("Corpse")},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 44> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 45> kPredicates{{
     {PredicateKind::Any, "any", N_("Any")}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::CombatBegins, "combat-begins", N_("Combat start")},
     {PredicateKind::CombatEnds, "combat-ends", N_("Combat end")},
@@ -100,6 +101,7 @@ constexpr std::array<Entry<PredicateKind>, 44> kPredicates{{
     {PredicateKind::ResistancePctAbove, "resistance-pct-above", N_("Resistance")},
     {PredicateKind::SummonNone, "summon-none", N_("Summon: none")},
     {PredicateKind::SummonActive, "summon-active", N_("Summon: active")},
+    {PredicateKind::Time, "time", N_("Time")},
     {PredicateKind::Location, "location", N_("Location")},
     {PredicateKind::Weather, "weather", N_("Weather")},
     {PredicateKind::CorpseNone, "corpse-none", N_("None")},
@@ -278,6 +280,15 @@ constexpr std::array<std::pair<LocationGroup, std::string_view>, 8> kLocationGro
     {LocationGroup::Settlement, N_("Settlement")},
 }};
 
+// A part of the day, as the rule names it and as the menu shows it. Each
+// name reads after "Time", as the condition does: "Self: Time Night".
+constexpr std::array<Entry<TimeKind>, 4> kTimes{{
+    {TimeKind::Morning, "morning", N_("Morning")},
+    {TimeKind::Afternoon, "afternoon", N_("Afternoon")},
+    {TimeKind::Evening, "evening", N_("Evening")},
+    {TimeKind::Night, "night", N_("Night")},
+}};
+
 // A weather, as the rule names it and as the menu shows it. Each name
 // reads after "Weather", as the condition does: "Self: Weather Rain".
 constexpr std::array<Entry<WeatherKind>, 4> kWeathers{{
@@ -310,6 +321,7 @@ static_assert(kDamageKinds.size() == static_cast<std::size_t>(DamageKind::COUNT)
 static_assert(kLocations.size() == static_cast<std::size_t>(LocationKind::COUNT));
 static_assert(kLocationGroups.size() == static_cast<std::size_t>(LocationGroup::COUNT));
 static_assert(kWeathers.size() == static_cast<std::size_t>(WeatherKind::COUNT));
+static_assert(kTimes.size() == static_cast<std::size_t>(TimeKind::COUNT));
 
 } // namespace
 
@@ -353,6 +365,10 @@ std::string_view WireName(WeatherKind v) noexcept
 {
     return LookupWire(kWeathers, v);
 }
+std::string_view WireName(TimeKind v) noexcept
+{
+    return LookupWire(kTimes, v);
+}
 
 std::optional<SubjectKind> SubjectFromWireName(std::string_view s) noexcept
 {
@@ -393,6 +409,10 @@ std::optional<LocationKind> LocationFromWireName(std::string_view s) noexcept
 std::optional<WeatherKind> WeatherFromWireName(std::string_view s) noexcept
 {
     return Parse(kWeathers, s);
+}
+std::optional<TimeKind> TimeFromWireName(std::string_view s) noexcept
+{
+    return Parse(kTimes, s);
 }
 
 bool IsWireName(std::string_view s) noexcept
@@ -469,6 +489,10 @@ std::string_view DisplayName(WeatherKind v) noexcept
 {
     return LookupDisplay(kWeathers, v);
 }
+std::string_view DisplayName(TimeKind v) noexcept
+{
+    return LookupDisplay(kTimes, v);
+}
 std::string_view DisplayName(LocationGroup v) noexcept
 {
     for (const auto &[group, name] : kLocationGroups)
@@ -521,6 +545,28 @@ std::string_view Describe(PredicateKind v) noexcept
     default:
         return "";
     }
+}
+
+namespace
+{
+
+// An hour of the day on a twelve-hour clock, to the minute: "12:00 AM" is
+// midnight, "12:00 PM" noon.
+std::string ClockText(float hour)
+{
+    const long minutes = std::lround(hour * 60.0f) % (24 * 60);
+    const long h = minutes / 60;
+    const long m = minutes % 60;
+    const long h12 = h % 12 == 0 ? 12 : h % 12;
+    return h < 12 ? i18n::TrFormat("{}:{:02} AM", h12, m) : i18n::TrFormat("{}:{:02} PM", h12, m);
+}
+
+} // namespace
+
+std::string HoursText(TimeKind kind, const SunTimes &sun)
+{
+    const Hours hours = HoursOf(kind, sun);
+    return i18n::TrFormat("{} - {}", ClockText(hours.from), ClockText(hours.to));
 }
 
 std::string_view Noun(ActionKind v) noexcept

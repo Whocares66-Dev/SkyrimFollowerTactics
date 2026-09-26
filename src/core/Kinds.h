@@ -246,6 +246,64 @@ enum class LocationGroup : std::uint8_t
            kind == K::Settlement;
 }
 
+// The time of day, for the Time condition (dev/CONDITIONS.md 2e): the day
+// in four by the sun as the climate times it, noon the one fixed hour --
+// morning from the start of sunrise to noon, afternoon to the start of
+// sunset, evening through it, night from its end to the next sunrise.
+// Night is the engine's !Sky::IsDaytime.
+enum class TimeKind : std::uint8_t
+{
+    Morning,
+    Afternoon,
+    Evening,
+    Night,
+
+    COUNT
+};
+
+// The climate's sun, in hours of the day; Skyrim.esm's own climate by
+// default.
+struct SunTimes
+{
+    float sunriseBegins{5.5f};
+    float sunsetBegins{16.0f};
+    float sunsetEnds{20.5f};
+};
+
+// Daytime runs from the start of sunrise to the end of sunset, both
+// included, as Sky::IsDaytime has it (1.6.1170, 2026-09-26).
+[[nodiscard]] constexpr TimeKind TimeOfDay(float hour, const SunTimes &sun) noexcept
+{
+    if (hour < sun.sunriseBegins || hour > sun.sunsetEnds)
+        return TimeKind::Night;
+    if (hour >= sun.sunsetBegins)
+        return TimeKind::Evening;
+    return hour >= 12.0f ? TimeKind::Afternoon : TimeKind::Morning;
+}
+
+// Where a part of the day begins and ends, in hours; Night's end is the
+// next morning's.
+struct Hours
+{
+    float from{0.0f};
+    float to{0.0f};
+};
+
+[[nodiscard]] constexpr Hours HoursOf(TimeKind kind, const SunTimes &sun) noexcept
+{
+    switch (kind)
+    {
+    case TimeKind::Morning:
+        return {sun.sunriseBegins, 12.0f};
+    case TimeKind::Afternoon:
+        return {12.0f, sun.sunsetBegins};
+    case TimeKind::Evening:
+        return {sun.sunsetBegins, sun.sunsetEnds};
+    default:
+        return {sun.sunsetEnds, sun.sunriseBegins};
+    }
+}
+
 // The weather over an actor out of doors, for the Weather condition
 // (dev/CONDITIONS.md 2d): the four classes a weather record carries, by
 // the game's names -- Rainy is Rain here, as it reads after "Weather".

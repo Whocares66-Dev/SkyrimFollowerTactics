@@ -2,7 +2,8 @@
 // Where an actor is, for the Location condition (dev/CONDITIONS.md 2c):
 // inside or out by the cell, the rest by the keywords of the location they
 // are in and the ones it lies in, and the hold. And the weather over them
-// out of doors, for the Weather condition (2d).
+// out of doors, for the Weather condition (2d), and the part of the day,
+// for the Time condition (2e).
 
 #include "core/Snapshot.h"
 
@@ -18,8 +19,13 @@ class Actor;
 namespace ft::game
 {
 
-// The actor's places, hold and weather, into the snapshot.
+// The actor's places, hold, weather and part of the day, into the
+// snapshot.
 void ReadPlaces(RE::Actor *actor, ft::Snapshot &s);
+
+// The sun as the sky times it now: its climate's, or the last climate's
+// when it has none; Skyrim's own before there is a sky.
+[[nodiscard]] ft::SunTimes SunNow();
 
 // The holds of the load order, as the Hold heading lists them: every
 // location marked a hold, by the game's name for it.

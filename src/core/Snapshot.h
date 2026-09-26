@@ -628,6 +628,8 @@ struct Snapshot
     {
         return kind == LocationKind::Hold ? hold != 0 && hold == form : (places & Bit(kind)) != 0;
     }
+    // The part of the day, for the Time condition.
+    TimeKind timeOfDay{TimeKind::Morning};
     // The weather over the actor, for the Weather condition: a bit per
     // WeatherKind, none indoors.
     std::uint8_t weather{0};

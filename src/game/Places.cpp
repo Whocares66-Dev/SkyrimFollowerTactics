@@ -157,6 +157,7 @@ struct Seen
     std::uint64_t places{0};
     std::uint32_t hold{0};
     std::uint8_t weather{0};
+    ft::TimeKind time{ft::TimeKind::Morning};
     bool operator==(const Seen &) const = default;
 };
 
@@ -172,10 +173,11 @@ template <typename Kind, typename Bits> std::string Listed(Bits bits)
     return out;
 }
 
-// With the log at debug, each change of where an actor is and of the
-// weather over them, as the statuses' changes are: without it a Location
-// or Weather rule that never holds cannot tell a place not marked from one
-// never reached.
+// With the log at debug, each change of where an actor is, of the weather
+// over them and of the part of the day, as the statuses' changes are:
+// without it a Location, Weather or Time rule that never holds cannot tell
+// a place not marked from one never reached, or the climate's sunset from
+// the one expected.
 void LogPlaceChanges(RE::Actor *actor, const Seen &seen)
 {
     {
@@ -188,8 +190,9 @@ void LogPlaceChanges(RE::Actor *actor, const Seen &seen)
     const std::string at = Listed<K>(seen.places);
     const std::string weather = Listed<ft::WeatherKind>(seen.weather);
     const auto *holdForm = seen.hold ? RE::TESForm::LookupByID(seen.hold) : nullptr;
-    log::sensors.debug("{}: now at {}; hold {}; weather {}", Describe(actor), at.empty() ? "nowhere known" : at,
-                       holdForm ? log::NameOf(holdForm) : "none", weather.empty() ? "none" : weather);
+    log::sensors.debug("{}: now at {}; hold {}; weather {}; {}", Describe(actor), at.empty() ? "nowhere known" : at,
+                       holdForm ? log::NameOf(holdForm) : "none", weather.empty() ? "none" : weather,
+                       ft::WireName(seen.time));
 }
 
 } // namespace
@@ -224,7 +227,20 @@ void ReadPlaces(RE::Actor *actor, ft::Snapshot &s)
         read.progress = sky->currentWeatherPct;
         s.weather = ft::WeatherOf(read);
     }
-    LogPlaceChanges(actor, {s.places, s.hold, s.weather});
+    // The part of the day by the climate's sun, indoors too.
+    if (const auto *calendar = RE::Calendar::GetSingleton())
+        s.timeOfDay = ft::TimeOfDay(calendar->GetHour(), SunNow());
+    LogPlaceChanges(actor, {s.places, s.hold, s.weather, s.timeOfDay});
+}
+
+ft::SunTimes SunNow()
+{
+    // The getters Sky::IsDaytime reads, cached from the last climate the
+    // sky had when it has none.
+    auto *sky = RE::Sky::GetSingleton();
+    if (!sky)
+        return {};
+    return {sky->GetSunriseBegin(), sky->GetSunsetBegin(), sky->GetSunsetEnd()};
 }
 
 const std::vector<HoldPick> &Holds()

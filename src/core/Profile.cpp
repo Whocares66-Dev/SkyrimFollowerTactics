@@ -136,6 +136,8 @@ json WriteRule(const Rule &r, const FormCodec &codec)
         cond["location"] = WireName(r.locationKind);
     if (r.predicate == PredicateKind::Weather)
         cond["weather"] = WireName(r.weatherKind);
+    if (r.predicate == PredicateKind::Time)
+        cond["time"] = WireName(r.timeKind);
     // A hold as a form, as the effect is: another load order's Whiterun
     // reads back as its own.
     if (UsesLocation(r.predicate) && r.locationKind == LocationKind::Hold)
@@ -437,6 +439,13 @@ struct FormField
             r.weatherKind = *w;
         else
             return drop("unknown weather \"" + *weather + "\"");
+    }
+    if (const auto time = Str(*cond, "time"))
+    {
+        if (const auto t = TimeFromWireName(*time))
+            r.timeKind = *t;
+        else
+            return drop("unknown time of day \"" + *time + "\"");
     }
     if (UsesLocation(r.predicate) && r.locationKind == LocationKind::Hold)
     {

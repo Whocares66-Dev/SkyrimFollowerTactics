@@ -317,6 +317,9 @@ Binding EvaluateSelf(const Snapshot &s, const Rule &r)
     case PredicateKind::ArrowsAvailable:
         held = s.CarriesAmmo();
         break;
+    case PredicateKind::Time:
+        held = s.timeOfDay == r.timeKind;
+        break;
     case PredicateKind::Location:
         held = s.At(r.locationKind, r.conditionForm);
         break;

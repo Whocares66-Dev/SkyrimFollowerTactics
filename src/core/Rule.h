@@ -157,6 +157,10 @@ enum class PredicateKind : std::uint8_t
     // commanded-actor list per actor. Listed under one "Summon" heading.
     SummonNone,
     SummonActive,
+    // The time of day: Rule::timeKind -- morning, afternoon, evening, night,
+    // by the climate's sun. Self only and the idle list's alone, as Location
+    // is.
+    Time,
     // Where the follower is: Rule::locationKind -- in a player home, inside,
     // in a cave, a city, a hold (Rule::conditionForm) ... Self only: the
     // party stands in one place. The idle list's alone (IsPredicateValidIn).
@@ -457,6 +461,9 @@ struct Rule
     // Which kind of damage, for the Resistance predicates, Hit type and
     // Hit by. Ignored by every other predicate.
     DamageKind damageKind{DamageKind::Fire};
+    // Which part of the day, for PredicateKind::Time. Ignored by every other
+    // predicate.
+    TimeKind timeKind{TimeKind::Night};
     // Which place, for PredicateKind::Location. Ignored by every other
     // predicate.
     LocationKind locationKind{LocationKind::Exterior};
@@ -528,8 +535,8 @@ struct RuleSet
 // and answers false -- so it is a menu question as much as an evaluator
 // one: the editor leaves them out, and the evaluator reports a rule of one
 // InvalidCondition, as it does a pair the subject cannot answer. The
-// combat list has two of its own: Location and Weather, each asked for the
-// idle list alone.
+// combat list has three of its own: Time, Location and Weather, each asked
+// for the idle list alone.
 [[nodiscard]] bool IsSubjectValidIn(Moment moment, SubjectKind subject) noexcept;
 [[nodiscard]] bool IsPredicateValidIn(Moment moment, PredicateKind predicate) noexcept;
 [[nodiscard]] bool IsStatusValidIn(Moment moment, StatusKind status) noexcept;

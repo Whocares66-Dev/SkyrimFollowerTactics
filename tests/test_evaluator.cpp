@@ -3111,6 +3111,39 @@ TEST_CASE("a location holds where the follower is: inside or out, and at home", 
     REQUIRE(CanNegate(PredicateKind::Location));
 }
 
+TEST_CASE("the time of day holds in its part of the day alone", "[evaluator]")
+{
+    Snapshot s = Healthy();
+    s.inCombat = false;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Time;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction() = DrinkMagicka();
+    RuleSet rs;
+    rs.moment = Moment::Idle;
+    rs.rules.push_back(r);
+    const auto holds = [&](TimeKind kind, bool negated = false) {
+        EvalContext ctx;
+        rs.rules[0].timeKind = kind;
+        rs.rules[0].negated = negated;
+        return Evaluate(rs, s, ctx).Fired();
+    };
+
+    s.timeOfDay = TimeKind::Evening;
+    REQUIRE(holds(TimeKind::Evening));
+    REQUIRE_FALSE(holds(TimeKind::Night));
+    REQUIRE_FALSE(holds(TimeKind::Morning));
+    REQUIRE(holds(TimeKind::Night, true));
+    s.timeOfDay = TimeKind::Night;
+    REQUIRE(holds(TimeKind::Night));
+    REQUIRE_FALSE(holds(TimeKind::Evening));
+
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Time));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Time));
+    REQUIRE(CanNegate(PredicateKind::Time));
+}
+
 TEST_CASE("the weather holds under that weather, and never where there is none", "[evaluator]")
 {
     Snapshot s = Healthy();

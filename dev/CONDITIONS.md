@@ -133,7 +133,7 @@ The three first in that order; the headings after the divider, and each heading'
 - **Building**: `LocTypeCastle`, `Guild`, `House` (anyone's, the player's included), `Inn` (27), `Store`, `Temple`. Its Any is any of those, or `LocTypeDwelling`, `LocTypeBarracks` or `LocTypeJail`, which are not listed on their own; no one keyword covers every building.
 - **Hold** is a location record, not a keyword: the nearest location up the chain marked `LocTypeHold` is the follower's (`Snapshot::hold`), and the rule names one (`Rule::conditionForm`, `"hold"` in the profile, as a form, so another load order's Whiterun reads back as its own). Listed from the load order at first use (`Holds`), by the game's own name, in the game's language: the nine, Solstheim, and a mod's own (Beyond Skyrim's County Bruma and Heartlands, Wyrmstooth, Hjorkvild Isles).
 
-Read on the tick into `Snapshot::places`, a bit per kind, and `Snapshot::hold` (`ReadPlaces`, `src/game/Places.cpp`). With the log at debug each change is a line: `Jenassa (000E1BA9): now at home, interior, house, settlement, city; hold Whiterun; weather none`.
+Read on the tick into `Snapshot::places`, a bit per kind, and `Snapshot::hold` (`ReadPlaces`, `src/game/Places.cpp`). With the log at debug each change is a line: `Jenassa (000E1BA9): now at home, interior, house, settlement, city; hold Whiterun; weather none; evening`.
 
 **Left out**, each one more kind and one keyword if wanted: Farm, Mine, Lumber mill, Jail, Barracks, Cemetery, Ship, Shipwreck, Stables (USSEP), Military camp, Outdoor, the hold ranks (`LocTypeHoldCapital`, `Major`, `Minor`), Ash spawn (Dragonborn), and Cleared -- the engine keeps whether a clearable location has been cleared (`BGSLocation::IsCleared`), which is state rather than a keyword. A mod's dungeon without the vanilla keywords is not recognised; outside Skyrim.esm and the DLC the families are thin (Beyond Skyrim's `CYRLocType*`, Saints and Seducers', one Creation Club Ayleid ruin).
 
@@ -165,9 +165,36 @@ Left out: thunder (a frequency every weather carries, storms or not), wind speed
 
 **Through a change of weather** (`WeatherOf`, `src/core/Weather.h`, tested): the sky blends the outgoing weather into the incoming one, `currentWeatherPct` going from 0 to 1. Pleasant and Cloudy are the class of the weather at least half in -- the engine's `IsPleasant` and `IsCloudy` answer the blend's share instead, and this is that share at a half. Rain and Snow are whether it falls, as the engine's `IsRaining` and `IsSnowing` have it (decompiled on 1.6.1170, 2026-09-26): the incoming weather's once the change passes its Precipitation Begin Fade In, the outgoing weather's until it reaches its End Fade Out, each a byte of DATA read unsigned and scaled by 0.0039176 (the end plus 0.001). So rain can fall under a sky still mostly overcast (Cloudy and Rain both hold), and a change from rain to snow can hold both for a while. CommonLib's `Sky::IsRaining` reads the bytes signed, and so would say no rain for a begin under 128; it is not used.
 
-Read on the tick into `Snapshot::weather`, a bit per kind, in `ReadPlaces` after the places, from `Sky::GetSingleton()` (CommonLib's layout, no address of ours); the debug line for a change of place names the weather too: `Jenassa (000E1BA9): now at exterior, settlement, town; hold Whiterun; weather cloudy, rain`.
+Read on the tick into `Snapshot::weather`, a bit per kind, in `ReadPlaces` after the places, from `Sky::GetSingleton()` (CommonLib's layout, no address of ours); the debug line for a change of place names the weather too: `Jenassa (000E1BA9): now at exterior, settlement, town; hold Whiterun; weather cloudy, rain; morning`.
 
 **To see in play:** the weather logged at debug against the sky; a Rain rule firing as the rain starts and stopping at a door; whether a weather mod's classes read as its author means them.
+
+## 2e. Time: the part of the day (built 2026-09-26 on `wip-weather`, not yet seen in play)
+
+`Time`, first of the three after Summon -- Time, Location, Weather, with no divider between them (`PredicateKind::Time`, the kind in `Rule::timeKind`, `"time": "night"` in the profile). Self only and the idle list's alone, as Location is. Negatable. It reads "Self: Time Night". Indoors as out: the clock runs everywhere.
+
+```
+Time
+  Morning
+  Afternoon
+  Evening
+  Night
+```
+
+**What the game divides the day by** (read 2026-09-26 in Nordic Souls, with houseCARL and Ghidra). No one division; four, which disagree:
+
+- **The climate** (`TESClimate` TNAM, in ten-minute steps): when sunrise begins and ends and sunset begins and ends. Skyrim.esm's `SkyrimClimate`: sunrise 5:30 to 10:00, sunset 16:00 to 20:30, and so every vanilla climate but Blackreach's (3:50 to 10:30, 15:40 to 21:40) and Apocrypha's (0:00 to 1:30, 22:30 to 23:50). Obsidian Weathers moves Skyrim's to 5:30-10:30 and 15:30-20:30. These drive the sky's four colour times (`TESWeather::ColorTime`: Sunrise, Day, Sunset, Night), and `Sky::IsDaytime` (26221 on 1.6.1170) is the hour between the start of sunrise and the end of sunset, both included.
+- **Vampirism**: `VampireSunDamage01`, as Update.esm has it, holds its Weakness to Sunlight while `GameHour` is 5 to 19, both included, out of doors and outside `SunDamageExceptionWorldSpaces`: fixed hours, not the climate.
+- **Greetings**: "Good morning." is `GameHour` 6 to under 12, "Good afternoon." 12 to under 17. "Good evening." asks 17 or later AND under 6 -- never true -- and USSEP's 18 or later AND under 4 is no better.
+- **NPC schedules** have no periods, only each package's start hour and length, which the editor IDs spell (`Sleep23x7`). In Skyrim.esm's 5,961 packages the common ones: work 8 to 20, meals at 6 to 8, 12 and 18 to 19, the inn 20 to 24, sleep from 22, 23 or 0 until 6 to 8.
+
+**Ours is the climate's** (`TimeOfDay` in `core/Kinds.h`, tested), with noon the one fixed hour, since nothing in the climate marks it and the greetings split there too: Morning from the start of sunrise to noon, Afternoon to the start of sunset, Evening through the sunset, Night from its end to the start of the next sunrise -- the engine's own not-daytime. In vanilla: 5:30, 12:00, 16:00, 20:30. It follows a weather mod's climate and whichever climate the sky has (Solstheim's, Apocrypha's), and matches what the sky shows rather than a clock the player cannot see. A climate whose sunset begins before noon has no Afternoon.
+
+Read on the tick into `Snapshot::timeOfDay`, in `ReadPlaces`: `Calendar::GetHour()` against `Sky::GetSunriseBegin`, `GetSunsetBegin` and `GetSunsetEnd`, the getters `IsDaytime` reads (CommonLib's, caching the last climate's when the sky has none; `SunNow`). The places' debug line ends with it. Each of the four in the menu shows its hours under that same sun on hover, on a twelve-hour clock (`HoursText`, tested): "5:30 AM - 12:00 PM" in vanilla, "3:30 PM - 8:30 PM" for Evening under Obsidian -- so a weather mod's moving them is seen where the rule is written.
+
+Left out: the vampire's 5-to-19 day as a kind of its own; Day as one kind (Morning, Afternoon and Evening together, the negation of Night covers it); dawn apart from morning.
+
+**To see in play:** the part of the day logged at debug against the clock; that a Night rule fires once 20:30 is past, in vanilla and under Obsidian alike.
 
 ## 3. Armor
 
@@ -310,7 +337,7 @@ Self only: the snapshot reads the follower's own hands. The wire names are `weap
 
 ## 9. The cascade as it reads (2026-09-08)
 
-Under every subject the conditions come in groups with a divider between: Any; Combat; Health, Stamina, Magicka; (for Enemy) Attacking, Attacked by; Attacks with, Hit by; Status; Weapon, Armor, Resistance; Summon; (for Self, in the idle list) Location, Weather. Corpse, a subject of its own, has None and Level -> Highest, Lowest. Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. There is no Count of a group any more: an ally's changes too rarely to be a condition and the enemy's was not wanted (it went on 2026-09-08; a save carrying `count-at-least` drops the rule with a warning).
+Under every subject the conditions come in groups with a divider between: Any; Combat; Health, Stamina, Magicka; (for Enemy) Attacking, Attacked by; Attacks with, Hit by; Status; Weapon, Armor, Resistance; Summon; (for Self, in the idle list) Time, Location, Weather. Corpse, a subject of its own, has None and Level -> Highest, Lowest. Any is offered for everyone, the player and an ally included: always true of them, and there so a rule can aim at them under the heading a reader looks for it. There is no Count of a group any more: an ally's changes too rarely to be a condition and the enemy's was not wanted (it went on 2026-09-08; a save carrying `count-at-least` drops the rule with a warning).
 
 **Attacks with** (Using until 2026-09-09, then Hit type until 2026-09-17; the wire name is and stays `hit-type`) is what the subject hits with, asked with the same kinds as Hit by but one: Melee (a blade, an axe, a mace), Ranged (a bow or crossbow), Magic (a spell or a staff), then Fire, Frost, Shock, Poison for whatever in hand does that kind of damage -- a weapon's enchantment, a staff's or a spell's effects, a poison on the blade -- read by what resists the effect, as a hit is. Hands with no weapon and no spell in them are Melee: the fists, and a creature's claws, teeth and horns, whose hands hold nothing (a bear read as nothing until 2026-09-09). Any subject, from the snapshot's traits; the wire name is `hit-type`, the kind under `"damage"` as for Hit by (which the writer left out until 2026-09-09, so every saved Hit type rule came back as the field's default, Fire).
 
@@ -322,7 +349,7 @@ The player is "Player" everywhere in the panel, never by name: a long name break
 
 **Statuses** that no action could answer are not asked about the follower themself: bleeding out, casting, fleeing and staggered. The player neither bleeds out nor flees. About anyone else every status is a fair question (`IsStatusValidFor`).
 
-**The idle list** (2026-09-18, `dev/PLAYER.md` "Out of combat") offers less, since there is no enemy out of a fight: no Enemy, and no Attacking or Attacked by with it; no Combat start or end; no Hit by; no Enemy or Attacker target; no Attack or blow; no Fleeing. The combat list, the other way round, has no Location or Weather (2c, 2d). The `IsXValidIn(moment, ...)` five in `core/Rule.h` say so, the menus read them, and the evaluator reports a rule of one as an invalid condition.
+**The idle list** (2026-09-18, `dev/PLAYER.md` "Out of combat") offers less, since there is no enemy out of a fight: no Enemy, and no Attacking or Attacked by with it; no Combat start or end; no Hit by; no Enemy or Attacker target; no Attack or blow; no Fleeing. The combat list, the other way round, has no Time, Location or Weather (2e, 2c, 2d). The `IsXValidIn(moment, ...)` five in `core/Rule.h` say so, the menus read them, and the evaluator reports a rule of one as an invalid condition.
 
 **Attacking and Attacked by** (Targeting and Target of until 2026-09-09) replace the old "attacking player" and "target of player": each opens on the members of the party -- Self, Player, the other followers by name -- so `Enemy: Attacked by Player` is the one the player is fighting and `Enemy: Attacking <Lydia>` the one going for Lydia. The member goes on the wire as `"member": "player"` or the follower's form; the wire names are `attacking` and `attacked-by`. `Enemy: Attacked by <this follower>` is the follower's own target, which was a subject of its own ("Target") until 2026-09-08; one place for one question.
 

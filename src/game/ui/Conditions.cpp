@@ -99,8 +99,8 @@ std::string SubjectText(const ft::Rule &r, const FollowerView &view)
 // The condition cascade in groups, a divider between them: Any; the
 // fight's edges; the three stats; the enemy's relation to the party
 // (Attacking, Attacked by); the hits (Hit type, Hit by); Status; the
-// equipment -- weapon, armour, resistance; the summon; where one is and the
-// weather there. (The corpse questions are a subject of their own and fall
+// equipment -- weapon, armour, resistance; the summon; the time of day,
+// where one is and the weather there. (The corpse questions are a subject of their own and fall
 // in one group.)
 int ConditionGroup(ft::PredicateKind p)
 {
@@ -129,6 +129,7 @@ int ConditionGroup(ft::PredicateKind p)
     case ft::PredicateKind::SummonNone:
     case ft::PredicateKind::SummonActive:
         return 8;
+    case ft::PredicateKind::Time:
     case ft::PredicateKind::Location:
     case ft::PredicateKind::Weather:
         return 9;
@@ -177,8 +178,10 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view)
         return TrFormat("{}: {}", subject, TrFormat("In {}", HoldName(r.conditionForm)));
     if (r.predicate == ft::PredicateKind::Location)
         return TrFormat("{}: {}", subject, TrFormat("In {}", ft::DisplayName(r.locationKind)));
-    // A weather after the word, as a resistance's kind is: "Self: Weather
-    // Rain".
+    // A part of the day or a weather after the word, as a resistance's kind
+    // is: "Self: Time Night", "Self: Weather Rain".
+    if (r.predicate == ft::PredicateKind::Time)
+        return TrFormat("{}: {}", subject, TrFormat("Time {}", ft::DisplayName(r.timeKind)));
     if (r.predicate == ft::PredicateKind::Weather)
         return TrFormat("{}: {}", subject, TrFormat("Weather {}", ft::DisplayName(r.weatherKind)));
     // An effect reads by its name, as a status does: "Self: Oakflesh".
@@ -310,6 +313,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             std::optional<ft::TypeKind> type;
             std::optional<ft::LocationKind> location;
             std::optional<ft::WeatherKind> weather;
+            std::optional<ft::TimeKind> time;
             std::optional<std::uint32_t> member;
             std::optional<std::uint32_t> conditionForm; // a family's keyword, an effect's source
         };
@@ -319,7 +323,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 rule.subject == subject && rule.subjectForm == subjectForm && rule.predicate == which &&
                 (!x.damage || rule.damageKind == *x.damage) && (!x.status || rule.statusKind == *x.status) &&
                 (!x.type || rule.typeKind == *x.type) && (!x.location || rule.locationKind == *x.location) &&
-                (!x.weather || rule.weatherKind == *x.weather) &&
+                (!x.weather || rule.weatherKind == *x.weather) && (!x.time || rule.timeKind == *x.time) &&
                 (!x.conditionForm || rule.conditionForm == *x.conditionForm) &&
                 (!x.arg || std::abs(rule.conditionArg - *x.arg) < 0.001f);
             if (CascadeItem(label, selected))
@@ -337,6 +341,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     rule.locationKind = *x.location;
                 if (x.weather)
                     rule.weatherKind = *x.weather;
+                if (x.time)
+                    rule.timeKind = *x.time;
                 if (x.conditionForm)
                     rule.conditionForm = *x.conditionForm;
                 if (x.arg)
@@ -681,6 +687,26 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     for (const ft::LocationKind kind : kinds)
                         place(name(kind).c_str(), kind);
                     Im::EndMenu();
+                }
+                Im::EndMenu();
+                continue;
+            }
+
+            // The time of day: its four in the day's order, not by name, each
+            // with its hours under the sun the sky has now, which a weather
+            // mod's climate may move.
+            if (predicate == ft::PredicateKind::Time)
+            {
+                if (!BeginCascade(predicateName.c_str()))
+                    continue;
+                const ft::SunTimes sun = SunNow();
+                for (std::size_t ti = 0; ti < static_cast<std::size_t>(ft::TimeKind::COUNT); ++ti)
+                {
+                    Extras x;
+                    x.time = static_cast<ft::TimeKind>(ti);
+                    pick(std::string(ft::DisplayName(*x.time)).c_str(), predicate, x, false);
+                    if (Im::IsItemHovered(0))
+                        Tooltip(ft::HoursText(*x.time, sun));
                 }
                 Im::EndMenu();
                 continue;

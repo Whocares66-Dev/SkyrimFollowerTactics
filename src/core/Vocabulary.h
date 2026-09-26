@@ -29,6 +29,7 @@
 #include "Rule.h"
 
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace ft
@@ -46,6 +47,7 @@ namespace ft
 [[nodiscard]] std::string_view WireName(DamageKind v) noexcept;
 [[nodiscard]] std::string_view WireName(LocationKind v) noexcept;
 [[nodiscard]] std::string_view WireName(WeatherKind v) noexcept;
+[[nodiscard]] std::string_view WireName(TimeKind v) noexcept;
 
 // Parsing is fallible on purpose. A profile written by a NEWER version of the
 // mod will name things this build has never heard of, and the right response is
@@ -61,6 +63,7 @@ namespace ft
 [[nodiscard]] std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<LocationKind> LocationFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<WeatherKind> WeatherFromWireName(std::string_view s) noexcept;
+[[nodiscard]] std::optional<TimeKind> TimeFromWireName(std::string_view s) noexcept;
 
 // A slug: lowercase ASCII letters and digits, hyphen-separated, no leading,
 // trailing or doubled hyphen. Nothing else round-trips safely through a JSON
@@ -82,11 +85,16 @@ namespace ft
 [[nodiscard]] std::string_view DisplayName(LocationKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(LocationGroup v) noexcept;
 [[nodiscard]] std::string_view DisplayName(WeatherKind v) noexcept;
+[[nodiscard]] std::string_view DisplayName(TimeKind v) noexcept;
 
 // One line of help, for a tooltip. Kept beside the names so a new predicate
 // cannot be added without someone deciding what it means to a player.
 [[nodiscard]] std::string_view Describe(PredicateKind v) noexcept;
 [[nodiscard]] std::string_view Describe(ActionKind v) noexcept;
+
+// A part of the day's hours under this sun, on a twelve-hour clock, for its
+// tooltip: "5:30 AM - 12:00 PM".
+[[nodiscard]] std::string HoursText(TimeKind kind, const SunTimes &sun);
 
 // The thing an action names, as the menu heads it once the verb is the
 // heading's: the equips' kind of thing ("weapon", "spell"), the charge

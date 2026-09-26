@@ -69,6 +69,8 @@ Most conditions are self-explanatory. A few are worth highlighting.
 
 `Effect` is met while the named effect is active on the target, whatever applied it. The list offers the lasting effects of the character's potions, food, spells, scrolls, powers, and shouts, including toggle powers. Negate it to act while the effect is absent.
 
+`Time` checks the part of the day: `Morning`, `Afternoon`, `Evening`, or `Night`. It is offered in idle tactics. The day is divided by the sun as the game's climate times it: morning from sunrise to noon, afternoon until sunset begins, evening through sunset, and night after it. In the unmodified game that is 5:30, 12:00, 16:00, and 20:30; weather mods may move sunrise and sunset. Hover over a part of the day to see its hours in your game.
+
 `Location` checks where the target is: home, interior or exterior, a hold, or a type of building, dungeon, ruin, or settlement. It is offered in idle tactics; for example, use `Self: Location → Home` to change equipment at home. Place types follow the game's location tags, including parent locations.
 
 `Weather` checks the weather over the target: `Pleasant`, `Cloudy`, `Rain`, or `Snow`, the game's own weather classes. It is offered in idle tactics, and only outdoors: indoors none of them is met, whatever the weather outside. `Pleasant` includes partly cloudy days; `Cloudy` is fog and overcast; `Rain` and `Snow` are met while it is falling, and `Snow` includes Solstheim's ash storms.

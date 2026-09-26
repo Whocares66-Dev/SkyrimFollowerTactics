@@ -187,6 +187,7 @@ void RequireSame(const Rule &a, const Rule &b)
     REQUIRE(a.damageKind == b.damageKind);
     REQUIRE(a.locationKind == b.locationKind);
     REQUIRE(a.weatherKind == b.weatherKind);
+    REQUIRE(a.timeKind == b.timeKind);
     REQUIRE(a.actionTarget == b.actionTarget);
     REQUIRE(a.actionTargetForm == b.actionTargetForm);
     REQUIRE(a.actions.size() == b.actions.size());
@@ -755,6 +756,33 @@ TEST_CASE("a weather condition writes its weather and reads it back", "[profile]
     REQUIRE(unknown.profile->rules.rules.empty());
     REQUIRE(unknown.warnings.size() == 1);
     REQUIRE(unknown.warnings[0].find("hail") != std::string::npos);
+}
+
+TEST_CASE("a time condition writes its part of the day and reads it back", "[profile]")
+{
+    Profile p;
+    Rule r;
+    r.predicate = PredicateKind::Time;
+    r.timeKind = TimeKind::Evening;
+    r.FirstAction().kind = ActionKind::DrinkAny;
+    p.rules.rules.push_back(r);
+    const auto j = nlohmann::json::parse(WriteProfile(p, kHex));
+    REQUIRE(j["rules"][0]["if"]["predicate"] == "time");
+    REQUIRE(j["rules"][0]["if"]["time"] == "evening");
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules[0].timeKind == TimeKind::Evening);
+    p.rules.rules[0].predicate = PredicateKind::Weather;
+    REQUIRE_FALSE(nlohmann::json::parse(WriteProfile(p, kHex))["rules"][0]["if"].contains("time"));
+
+    const std::string rule = R"({
+        "if": { "subject": "self", "predicate": "time", "time": "teatime" },
+        "then": { "target": "self", "do": [ { "action": "drink-any" } ] }
+    })";
+    const auto unknown = ReadProfile(OneRuleFile(rule), kHex);
+    REQUIRE(unknown.profile->rules.rules.empty());
+    REQUIRE(unknown.warnings.size() == 1);
+    REQUIRE(unknown.warnings[0].find("teatime") != std::string::npos);
 }
 
 TEST_CASE("an unknown action is dropped alone and its rule kept", "[profile]")
