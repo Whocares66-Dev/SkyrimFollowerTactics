@@ -3328,6 +3328,17 @@ TEST_CASE("a status no action could answer is not asked about the follower thems
     REQUIRE(IsStatusValidFor(SubjectKind::Player, StatusKind::Bleeding));
 }
 
+TEST_CASE("the illusion influences are asked of anyone, in either list", "[vocabulary]")
+{
+    for (const auto status : {StatusKind::Rallied, StatusKind::Calmed, StatusKind::Feared, StatusKind::Frenzied})
+    {
+        for (const auto subject : {SubjectKind::Self, SubjectKind::Player, SubjectKind::Ally, SubjectKind::Enemy})
+            REQUIRE(IsStatusValidFor(subject, status));
+        REQUIRE(IsStatusValidIn(Moment::Combat, status));
+        REQUIRE(IsStatusValidIn(Moment::Idle, status));
+    }
+}
+
 TEST_CASE("the enemy an action goes to, read from the condition", "[binding]")
 {
     Snapshot s = Healthy();

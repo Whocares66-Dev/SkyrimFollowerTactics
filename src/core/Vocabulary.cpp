@@ -177,7 +177,7 @@ constexpr std::array<Entry<Hand>, 4> kHands{{
 }};
 
 // A status, as the rule names it and as the menu shows it.
-constexpr std::array<Entry<StatusKind>, 15> kStatuses{{
+constexpr std::array<Entry<StatusKind>, 19> kStatuses{{
     {StatusKind::Poisoned, "poisoned", N_("Poisoned")},
     {StatusKind::Burning, "burning", N_("Burning")},
     {StatusKind::Frostbitten, "frostbitten", N_("Frostbitten")},
@@ -193,6 +193,10 @@ constexpr std::array<Entry<StatusKind>, 15> kStatuses{{
     {StatusKind::Sneaking, "sneaking", N_("Sneaking")},
     {StatusKind::Diseased, "diseased", N_("Diseased")},
     {StatusKind::Bleeding, "bleeding", N_("Bleeding")},
+    {StatusKind::Rallied, "rallied", N_("Rallied")},
+    {StatusKind::Calmed, "calmed", N_("Calmed")},
+    {StatusKind::Feared, "feared", N_("Feared")},
+    {StatusKind::Frenzied, "frenzied", N_("Frenzied")},
 }};
 
 // A kind of being, as the rule names it and as the menu shows it. A group's

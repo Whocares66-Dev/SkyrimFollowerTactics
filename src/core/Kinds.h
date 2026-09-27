@@ -31,6 +31,13 @@ enum class StatusKind : std::uint8_t
     // Losing health to a wound: the axe perks' bleeding, a mod's. Not
     // Bleeding out, which is being down.
     Bleeding,
+    // The illusion influences, by the engine's own effect types
+    // (dev/CONDITIONS.md 2): Courage, Rally; Calm, Pacify; Fear, Dismay,
+    // Turn Undead; Frenzy, Fury.
+    Rallied,
+    Calmed,
+    Feared,
+    Frenzied,
 
     COUNT
 };

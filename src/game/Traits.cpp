@@ -289,6 +289,31 @@ bool IsBleed(const RE::EffectSetting *effect)
     return bleeds.contains(effect->GetFormID());
 }
 
+// Is this Rally effect a courage the actor was given? The Rally type raises
+// Confidence so its target does not flee, which is why other spells carry
+// one too: vanilla's Frenzy holds one so the frenzied do not run, and
+// Simonrim's mods make it the carrier of Paralyze, Silence, Command, a Calm
+// poison. Each of those has a harm in the spell beside it; Courage, Rally
+// and Call to Arms have none, vanilla's or Mysticism's.
+bool IsCourage(const RE::ActiveEffect &effect)
+{
+    const auto harms = [](const RE::EffectSetting *base) { return base->IsHostile() || base->IsDetrimental(); };
+    if (harms(effect.effect->baseEffect))
+        return false;
+    return !effect.spell || std::ranges::none_of(ResolvedEffects(*effect.spell),
+                                                 [&](const RE::Effect *each) { return harms(each->baseEffect); });
+}
+
+// Skyrim.esm's Call to Arms and its scroll. The Master rally spell has no
+// Rally effect in vanilla -- skills, health and stamina, and its target may
+// still flee -- but it is one of the three, so it rallies by its record.
+// Mysticism's has one, and counts either way.
+bool IsCallToArms(const RE::MagicItem *spell)
+{
+    constexpr std::array<RE::FormID, 2> kCallToArms{0x0007E8DD, 0x000A44BE};
+    return spell && std::ranges::find(kCallToArms, spell->GetFormID()) != kCallToArms.end();
+}
+
 // Each actor's statuses as last read, so the log can say when they change:
 // otherwise a Status rule that never holds cannot tell "not detected" from
 // "never happened". Read by the tick and by the panel's pages.
@@ -397,6 +422,8 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
                     traits.Set(ft::StatusKind::Bleeding);
                 if (ae->spell && ae->spell->IsPoison())
                     traits.Set(ft::StatusKind::Poisoned);
+                if (IsCallToArms(ae->spell))
+                    traits.Set(ft::StatusKind::Rallied);
                 switch (base->GetArchetype())
                 {
                 case Archetype::kParalysis:
@@ -407,6 +434,27 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
                     break;
                 case Archetype::kEtherealize:
                     traits.Set(ft::StatusKind::Ethereal);
+                    break;
+                // A hidden one counts: Master of the Mind's, for the undead,
+                // daedra and automatons, are hidden. One that fails the
+                // target's level is refused before it is added (CommonLib's
+                // CheckTargetArgs, kLevelTooHigh), so a calm that did not
+                // take is not read.
+                case Archetype::kRally:
+                    if (IsCourage(*ae))
+                        traits.Set(ft::StatusKind::Rallied);
+                    break;
+                case Archetype::kCalm:
+                    traits.Set(ft::StatusKind::Calmed);
+                    break;
+                // Turn Undead is the engine's fear for the undead: its
+                // effect class derives from Demoralize's.
+                case Archetype::kDemoralize:
+                case Archetype::kTurnUndead:
+                    traits.Set(ft::StatusKind::Feared);
+                    break;
+                case Archetype::kFrenzy:
+                    traits.Set(ft::StatusKind::Frenzied);
                     break;
                 default:
                     break;
