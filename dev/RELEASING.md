@@ -5,9 +5,11 @@ The standard release command is `tools/release.ps1`. It runs from `master`, buil
 ## Prepare on a work branch
 
 1. Set `project(FollowerTactics VERSION x.y.z)` in `CMakeLists.txt`. Set the same `docs_version` in `docs/_config.yml`.
-2. Add `## x.y.z` at the top of `CHANGELOG.md` and mirror its text in `docs/guide/changelog.md`. The script uses that section verbatim as the GitHub release notes.
+2. Add `## x.y.z` at the top of `CHANGELOG.md`: about five user-facing entries, most important first. `docs/guide/changelog.md` is a symlink to it; edit only the root file. The script uses that section verbatim as the GitHub release notes.
 3. Finish the guide and package contents, including any new screenshots and translations. Run the relevant build, tests, formatter, and lint checks for the changes. Preview the versioned docs with `python tools/build-docs.py`.
-4. Commit the release work on the work branch. Keep unrelated local edits out of the release commit.
+4. Serve `build/docs-site` locally with `python -m http.server 4000 --bind 127.0.0.1 --directory build/docs-site` and give the user `http://127.0.0.1:4000/SkyrimFollowerTactics/` for review. Incorporate their new screenshots and review edits, rebuilding the preview after changes. On Windows, launch a background server hidden or reuse the existing server.
+5. Wait for explicit user affirmation before tagging, pushing the release, or publishing on GitHub. An approval already given for this release counts; do not ask again. The full review workflow is in [CLAUDE.md](../CLAUDE.md#release-workflow).
+6. Commit the release work on the work branch after the required checks pass. Keep unrelated local edits out of the release commit. Rebuild the packages if their contents changed during review.
 
 ## Cut the release
 

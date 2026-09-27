@@ -87,6 +87,22 @@ For a version already set in CMake, run `.\tools\release.ps1 none`; the script p
 
 Last verified green under MSVC 19.42 (`core`, `core-asan`) and clang-cl 22.1 (`core-cov`), 2026-09-25. Counts -- how many cases, what percentage covered -- are deliberately not kept here: they move with every test added, and a number that goes stale in a week teaches you to distrust the page. Run the presets and read the numbers off them.
 
+## Release workflow
+
+Prepare releases on a work branch. A request to prepare a release does not authorize publishing it.
+
+1. **Update the version** in `CMakeLists.txt` and `docs/_config.yml`.
+2. **Build both zips** with `tools/package.ps1`, so the user can try the release. The player zip uses info logging; the test zip uses debug logging and stays local.
+3. **Wait for the user's new documentation images** when they are providing them. Continue independent preparation while waiting, then incorporate the supplied images.
+4. **Update the changelog and docs.** Keep the new changelog section to about five user-facing entries, most important first. Update the guide, screenshots, navigation, and README where needed. `docs/guide/changelog.md` links to the root changelog; edit the root file only.
+5. **Build and serve the docs locally for review.** Run `python tools/build-docs.py`, then serve `build/docs-site` with `python -m http.server 4000 --bind 127.0.0.1 --directory build/docs-site`. On Windows, launch a background server with `Start-Process -WindowStyle Hidden`, or reuse the existing server. Give the user `http://127.0.0.1:4000/SkyrimFollowerTactics/`. Rebuild after review edits and verify the generated pages.
+6. **Wait for explicit user affirmation to release.** Finish the reviewable docs and packages first. Do not tag, push the release, or publish on GitHub until the user approves. An approval already given for this release counts; do not ask again.
+7. **Verify, commit, and merge.** Run the per-commit and pre-merge checks below, fix failures, commit the release preparation, and fast-forward `master`. Keep unrelated local files out of the commit. Rebuild the zips if their contents changed during review.
+8. **Tag and release on GitHub.** From `master`, run `tools/release.ps1 none -DryRun`, then `tools/release.ps1 none`. This runs tests, rebuilds both zips, tags `v<version>`, pushes, and publishes the changelog notes with only the player zip attached. Releases below 1.0 are marked prerelease.
+9. **Verify publication.** Check the tag, release notes, prerelease flag, and single uploaded player zip against the local archive. Check the documentation deployment and the new version in its selector. Report the release link.
+
+See [dev/RELEASING.md](dev/RELEASING.md) for command details and recovery if publishing fails after the tag is pushed.
+
 ## Before every commit
 
 Run these before each commit, not after every edit: while a change is in progress, run only what tells you whether it works. Build and package first, optimistically, when the user is waiting to try a change; the checks come after. Each one has already caught something real in this project:
