@@ -270,6 +270,14 @@ TEST_CASE("every wire name round-trips", "[vocabulary]")
         REQUIRE(HandFromWireName(WireName(v)) == v);
         REQUIRE(DisplayName(v).size() > 0);
     }
+    for (const BodyPart v : {BodyPart::All, BodyPart::Head, BodyPart::Body, BodyPart::Hands, BodyPart::Feet,
+                             BodyPart::Amulet, BodyPart::Ring, BodyPart::Cloak, BodyPart::Backpack})
+    {
+        REQUIRE(Str(WireName(v)) != "Unknown");
+        REQUIRE(IsWireName(WireName(v)));
+        REQUIRE(BodyPartFromWireName(WireName(v)) == v);
+        REQUIRE(Str(DisplayName(v)) != "Unknown");
+    }
     for (std::size_t i = 0; i < static_cast<std::size_t>(StatusKind::COUNT); ++i)
     {
         const auto v = static_cast<StatusKind>(i);

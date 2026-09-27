@@ -70,6 +70,10 @@ Profile Everything()
         arrows.kind = ActionKind::EquipArrows;
         arrows.form = 0x1397D;
         r.actions.push_back(arrows);
+        Action bare;
+        bare.kind = ActionKind::EquipArmor;
+        bare.part = BodyPart::Head;
+        r.actions.push_back(bare);
         p.rules.rules.push_back(r);
     }
     {
@@ -167,6 +171,7 @@ void RequireSame(const Action &a, const Action &b)
     REQUIRE(a.kind == b.kind);
     REQUIRE(a.form == b.form);
     REQUIRE(a.hand == b.hand);
+    REQUIRE(a.part == b.part);
     REQUIRE(a.arg == b.arg);
     REQUIRE(a.dual == b.dual);
     REQUIRE(a.effect == b.effect);
@@ -347,6 +352,9 @@ TEST_CASE("the file is the schema number, the follower, the switch and the rules
     REQUIRE(frost["if"]["damage"] == "frost");
     REQUIRE(frost["then"]["do"][0]["form"] == "0x13989");
     REQUIRE(frost["then"]["do"][0]["hand"] == "both");
+    // And a part too, on an armour Unequip alone.
+    REQUIRE_FALSE(frost["then"]["do"][0].contains("part"));
+    REQUIRE(frost["then"]["do"][2]["part"] == "head");
 
     // A pin is a form and, when it has one, a hand.
     REQUIRE(j["pins"].size() == 3);
@@ -792,7 +800,8 @@ TEST_CASE("an unknown action is dropped alone and its rule kept", "[profile]")
         "then": { "target": "self", "do": [
             { "action": "sing" },
             { "action": "drink-strongest", "effect": "Restore Health" },
-            { "action": "equip-weapon", "hand": "tail" }
+            { "action": "equip-weapon", "hand": "tail" },
+            { "action": "equip-armor", "part": "tail" }
         ] }
     })";
     const auto read = ReadProfile(OneRuleFile(rule), kHex);
@@ -802,9 +811,10 @@ TEST_CASE("an unknown action is dropped alone and its rule kept", "[profile]")
     REQUIRE(r.actions.size() == 1);
     REQUIRE(r.actions[0].kind == ActionKind::DrinkStrongest);
     REQUIRE(r.actions[0].effect == "Restore Health");
-    REQUIRE(read.warnings.size() == 2);
+    REQUIRE(read.warnings.size() == 3);
     REQUIRE(read.warnings[0].find("sing") != std::string::npos);
     REQUIRE(read.warnings[1].find("tail") != std::string::npos);
+    REQUIRE(read.warnings[2].find("part") != std::string::npos);
 }
 
 TEST_CASE("a form the codec cannot resolve drops what names it", "[profile]")

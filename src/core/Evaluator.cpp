@@ -361,13 +361,17 @@ bool LetsGo(const Action &a)
     return IsEquip(a.kind) && !IsArrowsPolicy(a.kind) && a.form == 0;
 }
 
-// A pin of the kind, in those hands when hands are named: a none for the
-// right hand is done when no weapon pin holds the right.
-bool AnyPinOf(const std::vector<Pin> &pins, Kind kind, Hand hands = Hand::None)
+// Does this none reach this pin: a none for the right hand no weapon pin
+// but one holding the right, a none for the head no armour but a piece on
+// it.
+bool Reaches(const Action &a, const Pin &p)
 {
-    return std::any_of(pins.begin(), pins.end(), [kind, hands](const Pin &p) {
-        return p.thing.kind == kind && (hands == Hand::None || Overlap(p.hands, hands));
-    });
+    return UnequipReaches(KindOf(a.kind), HandsWanted(a), PartOf(a), p);
+}
+
+bool AnyReached(const Action &a, const std::vector<Pin> &pins)
+{
+    return std::any_of(pins.begin(), pins.end(), [&a](const Pin &p) { return Reaches(a, p); });
 }
 
 // The arrows a policy takes: of the ammunition carried, the hardest-hitting
@@ -728,10 +732,7 @@ Outcome WouldHaveEffect(const Action &a, const Snapshot &s, ActorId target)
         // thing the AI happens to be holding is not yet kept. "None" is done
         // when there is nothing of its kind to let go of or take off.
         if (LetsGo(a))
-        {
-            const Hand hands = TakesHand(a.kind) ? HandsWanted(a) : Hand::None;
-            return ActsUnless(!AnyPinOf(s.pins, KindOf(a.kind), hands) && !AnyPinOf(s.worn, KindOf(a.kind), hands));
-        }
+            return ActsUnless(!AnyReached(a, s.pins) && !AnyReached(a, s.worn));
         // An arrow policy is done while the arrows it would choose are the
         // ones pinned: with those gone, the next kind is a new pin.
         const std::uint32_t form = IsArrowsPolicy(a.kind) ? ChosenForm(a, s) : a.form;
@@ -754,7 +755,7 @@ Verdict EquipAvailability(const Action &a, const Snapshot &snap, const std::vect
         return Verdict::AboveSkill;
     const Hand hands = HandsWanted(a);
     const bool outranked = std::any_of(heldAbove.begin(), heldAbove.end(), [&](const Pin &held) {
-        return thing ? Conflicts(*thing, hands, held.thing, held.hands) : held.thing.kind == KindOf(a.kind);
+        return thing ? Conflicts(*thing, hands, held.thing, held.hands) : Reaches(a, held);
     });
     return outranked ? Verdict::Outranked : Verdict::Fired;
 }

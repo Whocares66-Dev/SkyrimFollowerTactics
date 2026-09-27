@@ -410,6 +410,11 @@ struct Action // NOLINT(clang-analyzer-core.uninitialized.Assign)
     // hand at once. Ignored by every other action.
     Hand hand{Hand::None};
 
+    // Which part of the body, for an EquipArmor that names nothing: what
+    // of the armour worn it takes off, as the hand narrows a weapon's.
+    // Ignored by every other action.
+    BodyPart part{BodyPart::All};
+
     // A number the action takes, when it does: the sustain time of a
     // concentration spell, for CastSpell.
     float arg{0.0f};
@@ -601,6 +606,9 @@ struct RuleSet
 [[nodiscard]] Kind KindOf(ActionKind action) noexcept;
 // The two equips that name a hand: a weapon's, a spell's.
 [[nodiscard]] bool TakesHand(ActionKind action) noexcept;
+// The part an armour Unequip takes off; All for anything else, a named
+// piece of armour included.
+[[nodiscard]] BodyPart PartOf(const Action &a) noexcept;
 
 // Not every predicate means anything about every subject: the fight's
 // edges and the weapons in hand are the follower's own, the extremes a

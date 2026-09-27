@@ -367,29 +367,56 @@ bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const
 // The Equip weapon / Equip spell / Equip arrows / Equip armor cascades.
 //
 // Unequip first: let go of every pin of this kind, and the AI chooses
-// again. For the two that take a hand it heads each hand's menu instead,
-// Right, Left and Both -- the weapon hand first, as a player thinks of them
-// -- each listing what fits that hand; for arrows and armour, the things
-// themselves. Every list is theirs, so a rule cannot name a
-// thing they do not have.
+// again. Then the things themselves: for the two that take a hand, under
+// Right, Left and Both -- the weapon hand first, as a player thinks of
+// them -- each listing what fits that hand. Every list is theirs, so a
+// rule cannot name a thing they do not have.
 bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 {
     bool changed = false;
 
     // Unequip: let go of every pin of the kind and take those things off,
     // and the AI decides again -- not "None", which would promise a hand
-    // kept empty, and nothing does that. For a weapon or a spell it is the
-    // first leaf of each hand's menu, the hand being the thing let go of;
-    // for arrows and armour it heads the menu.
-    const auto none = [&](Hand hand) {
-        const bool selected = act.kind == action && act.form == 0 && act.hand == hand;
-        if (CascadeItem(Tr("Unequip"), selected))
+    // kept empty, and nothing does that. Arrows' is one leaf; a weapon's
+    // and a spell's are a menu of the hands, armour's of the parts of the
+    // body, All above the rest, since that is what an Unequip narrows to.
+    const bool unequipped = act.kind == action && act.form == 0;
+    const auto leaf = [&](const char *label, bool selected, const auto &narrow) {
+        if (!CascadeItem(label, selected))
+            return;
+        act.kind = action;
+        act.form = 0;
+        narrow();
+        changed = true;
+    };
+    const auto hands = [&] {
+        if (!BeginCascade(Tr("Unequip")))
+            return;
+        // All is Both: the two hands are all a weapon or a spell has.
+        // None, which no menu writes, reads as All too.
+        for (const Hand hand : {Hand::Both, Hand::Right, Hand::Left})
         {
-            act.kind = action;
-            act.form = 0;
-            act.hand = hand;
-            changed = true;
+            const bool all = hand == Hand::Both;
+            const std::string label = all ? std::string(Tr("All")) : std::string(ft::DisplayName(hand));
+            leaf(label.c_str(), unequipped && (act.hand == hand || (all && act.hand == Hand::None)),
+                 [&] { act.hand = hand; });
+            if (all)
+                Im::Separator();
         }
+        Im::EndMenu();
+    };
+    const auto parts = [&] {
+        if (!BeginCascade(Tr("Unequip")))
+            return;
+        for (const auto part :
+             {ft::BodyPart::All, ft::BodyPart::Head, ft::BodyPart::Body, ft::BodyPart::Hands, ft::BodyPart::Feet,
+              ft::BodyPart::Amulet, ft::BodyPart::Ring, ft::BodyPart::Cloak, ft::BodyPart::Backpack})
+        {
+            leaf(std::string(ft::DisplayName(part)).c_str(), unequipped && act.part == part, [&] { act.part = part; });
+            if (part == ft::BodyPart::All)
+                Im::Separator();
+        }
+        Im::EndMenu();
     };
 
     // What is not there is not listed: no greyed "(carries none)" lines,
@@ -398,7 +425,10 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
     const bool handed = spell || action == ft::ActionKind::EquipWeapon;
     if (!handed)
     {
-        none(Hand::None);
+        if (action == ft::ActionKind::EquipArmor)
+            parts();
+        else
+            leaf(Tr("Unequip"), unequipped, [&] { act.hand = Hand::None; });
         const ItemCategory category =
             action == ft::ActionKind::EquipArrows ? ItemCategory::Arrows : ItemCategory::Armor;
         // The Inventory tab's rows, a leaf each, the plain stack among
@@ -438,45 +468,48 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         return changed;
     }
 
+    hands();
+    // A hand with nothing that fits it is not drawn, as an empty kind is not.
+    bool divided = false;
     for (const Hand hand : {Hand::Right, Hand::Left, Hand::Both})
     {
-        const std::string label(ft::DisplayName(hand));
-        if (!BeginCascade(label.c_str()))
-            continue;
-        // Unequip first: let go of that hand's pin. Both lets go of both.
-        none(hand);
+        // Offered has already left out the shouts and powers, so what is
+        // left of the spells is the schools and Other.
+        std::vector<const MagicEntry *> offered;
+        std::vector<const InventoryItem *> rows;
         if (spell)
         {
-            // Grouped by school, as the casts are: this is the same list of
-            // spells and runs as long. Offered has already left out the
-            // shouts and powers, so what is left is the schools and Other.
-            std::vector<const MagicEntry *> offered;
             for (const auto &entry : view.magic)
                 if (Offered(entry, hand))
                     offered.push_back(&entry);
-            if (!offered.empty())
-                Im::Separator();
+        }
+        else
+        {
+            for (const auto &item : view.inventory)
+                if (item.category == ItemCategory::Weapons && Fits(item.grip, hand, false))
+                    rows.push_back(&item);
+        }
+        if (offered.empty() && rows.empty())
+            continue;
+        if (!std::exchange(divided, true))
+            Im::Separator();
+        const std::string label(ft::DisplayName(hand));
+        if (!BeginCascade(label.c_str()))
+            continue;
+        // Grouped by school, as the casts are: this is the same list of
+        // spells and runs as long.
+        if (spell)
             DrawBySchool(
                 offered, [](const MagicEntry *entry) { return entry->category; },
                 [&](const MagicEntry *entry) {
                     if (EquipLeaf(act, action, entry->form, entry->name, hand, {}, entry->name, entry->banned))
                         changed = true;
                 });
-        }
-        else
+        for (const InventoryItem *item : rows)
         {
-            std::vector<const InventoryItem *> rows;
-            for (const auto &item : view.inventory)
-                if (item.category == ItemCategory::Weapons && Fits(item.grip, hand, false))
-                    rows.push_back(&item);
-            if (!rows.empty())
-                Im::Separator();
-            for (const InventoryItem *item : rows)
-            {
-                if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, item->banned,
-                              NameTint(*item), item))
-                    changed = true;
-            }
+            if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, item->banned,
+                          NameTint(*item), item))
+                changed = true;
         }
         Im::EndMenu();
     }
@@ -954,9 +987,14 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     if (ft::IsEquip(act.kind))
     {
         if (act.form == 0)
-            return ft::TakesHand(act.kind) && act.hand != Hand::None
-                       ? TrFormat("Unequip {} ({})", ft::Noun(act.kind), Lower(ft::DisplayName(act.hand)))
-                       : TrFormat("Unequip {}", ft::Noun(act.kind));
+        {
+            // Both hands are All, and read as armour's All does.
+            if (ft::TakesHand(act.kind) && (act.hand == Hand::Left || act.hand == Hand::Right))
+                return TrFormat("Unequip {} ({})", ft::Noun(act.kind), Lower(ft::DisplayName(act.hand)));
+            if (ft::PartOf(act) != ft::BodyPart::All)
+                return TrFormat("Unequip {} ({})", ft::Noun(act.kind), Lower(ft::DisplayName(act.part)));
+            return TrFormat("Unequip {}", ft::Noun(act.kind));
+        }
         // Carried or known, else the name it was last seen with: the row
         // set aside.
         std::string name = EquipTargetName(act, view);

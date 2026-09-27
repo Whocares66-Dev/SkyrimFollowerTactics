@@ -176,6 +176,19 @@ constexpr std::array<Entry<Hand>, 4> kHands{{
     {Hand::Both, "both", N_("Both")},
 }};
 
+// The part of the body an armour Unequip names.
+constexpr std::array<Entry<BodyPart>, 9> kBodyParts{{
+    {BodyPart::All, "all", N_("All")},
+    {BodyPart::Head, "head", N_("Head")},
+    {BodyPart::Body, "body", N_("Body")},
+    {BodyPart::Hands, "hands", N_("Hands")},
+    {BodyPart::Feet, "feet", N_("Feet")},
+    {BodyPart::Amulet, "amulet", N_("Amulet")},
+    {BodyPart::Ring, "ring", N_("Ring")},
+    {BodyPart::Cloak, "cloak", N_("Cloak")},
+    {BodyPart::Backpack, "backpack", N_("Backpack")},
+}};
+
 // A status, as the rule names it and as the menu shows it.
 constexpr std::array<Entry<StatusKind>, 19> kStatuses{{
     {StatusKind::Poisoned, "poisoned", N_("Poisoned")},
@@ -349,6 +362,10 @@ std::string_view WireName(Hand v) noexcept
 {
     return LookupWire(kHands, v);
 }
+std::string_view WireName(BodyPart v) noexcept
+{
+    return LookupWire(kBodyParts, v);
+}
 std::string_view WireName(StatusKind v) noexcept
 {
     return LookupWire(kStatuses, v);
@@ -393,6 +410,10 @@ std::optional<ActionKind> ActionFromWireName(std::string_view s) noexcept
 std::optional<Hand> HandFromWireName(std::string_view s) noexcept
 {
     return Parse(kHands, s);
+}
+std::optional<BodyPart> BodyPartFromWireName(std::string_view s) noexcept
+{
+    return Parse(kBodyParts, s);
 }
 std::optional<StatusKind> StatusFromWireName(std::string_view s) noexcept
 {
@@ -472,6 +493,10 @@ std::string_view DisplayName(ActionKind v) noexcept
 std::string_view DisplayName(Hand v) noexcept
 {
     return LookupDisplay(kHands, v);
+}
+std::string_view DisplayName(BodyPart v) noexcept
+{
+    return LookupDisplay(kBodyParts, v);
 }
 std::string_view DisplayName(StatusKind v) noexcept
 {

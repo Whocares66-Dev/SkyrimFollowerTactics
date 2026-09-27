@@ -133,7 +133,7 @@ The `Charge` action for enchanted weapons has two policies. `Strongest` picks th
 
 ![Action charge soul gem]({{ "/assets/img/panel/action_charge_soul_gem.png" | relative_url }}){: .screenshot loading="lazy"}
 
-`Unequip` takes off what is currently worn in the chosen slot, whether pinned or not. The follower's AI can equip something there again afterward.
+`Unequip` takes off what is currently worn in the chosen hand, or for armor the chosen part of the body, whether pinned or not. The follower's AI can equip something there again afterward. For weapons and spells, `Unequip` offers `All`, `Right` and `Left`, `All` being both hands. Armor's parts are `All`, `Head`, `Body`, `Hands`, `Feet`, `Amulet`, `Ring`, `Cloak` and `Backpack`; `Head` covers helmets, hoods, masks and circlets alike. `Cloak` is slot 46 and `Backpack` slot 47, the slots the Anniversary Edition's cloaks and backpacks use, and most cloak mods use 46 too. `All` leaves a shield on: it is unequipped from the left hand under `Weapon`. Armor on a slot a mod adds comes off only with `All`.
 
 ### Dual casting and power bashing
 

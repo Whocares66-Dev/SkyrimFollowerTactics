@@ -92,6 +92,62 @@ enum class Grip : std::uint8_t
     }
 }
 
+// Which part of the body an armour Unequip takes off: All, or one of the
+// parts vanilla armour is made for, each the biped slots its pieces take
+// (slot N is bit N - 30 of the record's mask). A part is a set because the
+// head is: helmets sit on hair and circlet, masks on head and circlet, the
+// Falmer Helmet on hair alone, the Shellbug Helmet on long hair too; and
+// two gauntlets take the forearms, one pair of boots the calves. Read from
+// the five masters' playable armour, 2026-09-27. Cloak and Backpack are the
+// two mod-range slots the Creation Club content bundled with Anniversary
+// Edition wears, and cloak mods keep to 46 too (Cloaks & Capes on 40 and
+// 46). Any other slot of a mod's belongs to no part and comes off only
+// with All.
+enum class BodyPart : std::uint8_t
+{
+    All,
+    Head,
+    Body,
+    Hands,
+    Feet,
+    Amulet,
+    Ring,
+    Cloak,
+    Backpack
+};
+
+[[nodiscard]] constexpr std::uint32_t BipedSlot(int slot) noexcept
+{
+    return 1u << (slot - 30);
+}
+
+// The slots a part covers; 0 for All, which is every slot.
+[[nodiscard]] constexpr std::uint32_t SlotsOf(BodyPart part) noexcept
+{
+    switch (part)
+    {
+    case BodyPart::Head:
+        return BipedSlot(30) | BipedSlot(31) | BipedSlot(41) | BipedSlot(42) | BipedSlot(43);
+    case BodyPart::Body:
+        return BipedSlot(32);
+    case BodyPart::Hands:
+        return BipedSlot(33) | BipedSlot(34);
+    case BodyPart::Feet:
+        return BipedSlot(37) | BipedSlot(38);
+    case BodyPart::Amulet:
+        return BipedSlot(35);
+    case BodyPart::Ring:
+        return BipedSlot(36);
+    case BodyPart::Cloak:
+        return BipedSlot(46);
+    case BodyPart::Backpack:
+        return BipedSlot(47);
+    case BodyPart::All:
+    default:
+        return 0;
+    }
+}
+
 // What a thing is to a rule: the four kinds an equip rule names, and Voice.
 // A shield or a torch is a Weapon here, as the panel lists it, because it is
 // chosen with the sword and takes a hand; Armor is what is worn. Voice is a
@@ -271,6 +327,17 @@ struct Pin
     Holdable thing;
     Hand hands{Hand::None};
 };
+
+// Does an Unequip of this kind reach this pin, or this thing worn: in the
+// hands it names for a weapon or a spell, on the part it names for armour
+// -- None and All being every hand and every slot? The rule's "done" and
+// the game's taking off both ask it, so the two cannot disagree.
+[[nodiscard]] constexpr bool UnequipReaches(Kind kind, Hand hands, BodyPart part, const Pin &pin) noexcept
+{
+    const std::uint32_t slots = SlotsOf(part);
+    return pin.thing.kind == kind && (hands == Hand::None || Overlap(pin.hands, hands)) &&
+           (slots == 0 || (pin.thing.slots & slots) != 0);
+}
 
 // The things the follower must never use (the bans, below): a form and a
 // variant; no variant for every copy of the form.

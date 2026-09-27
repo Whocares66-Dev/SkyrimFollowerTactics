@@ -2133,6 +2133,78 @@ TEST_CASE("none takes off what is worn of its kind, pinned or not", "[equip]")
     REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
 }
 
+TEST_CASE("an armour none takes off the part it names, and never the shield", "[equip]")
+{
+    constexpr std::uint32_t kCuirass = 0x00012E46;
+    RuleSet rs;
+    rs.rules.push_back(Equip(ActionKind::EquipArmor, 0));
+    rs.rules[0].FirstAction().part = BodyPart::Head;
+    Snapshot s = Armed();
+    s.loadout.push_back(Held(kCuirass, Kind::Armor, Grip::None, BipedSlot(32)));
+    EvalContext ctx;
+    Trace trace;
+
+    // A cuirass is nothing for the head to take off.
+    AddPin(s.worn, *FindHoldable(s.loadout, kCuirass), Hand::None, false);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+
+    // The helmet is on the hair, one of the head's slots.
+    AddPin(s.worn, *FindHoldable(s.loadout, kHelmet), Hand::None, false);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+
+    // A cape on the tail and the cloak slot, as Cloaks & Capes makes them,
+    // is the cloak's to take off.
+    rs.rules[0].FirstAction().part = BodyPart::Cloak;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    constexpr std::uint32_t kCape = 0x050012C7;
+    s.loadout.push_back(Held(kCape, Kind::Armor, Grip::None, BipedSlot(40) | BipedSlot(46)));
+    AddPin(s.worn, *FindHoldable(s.loadout, kCape), Hand::None, false);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+    rs.rules[0].FirstAction().part = BodyPart::Head;
+
+    // A rule above that pins the helmet outranks the head's none; the
+    // body's it leaves alone.
+    rs.rules.insert(rs.rules.begin(), Equip(ActionKind::EquipArmor, kHelmet));
+    AddPin(s.pins, *FindHoldable(s.loadout, kHelmet), Hand::None, false);
+    s.now += 5.0;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(1) == Verdict::Outranked);
+    rs.rules[1].FirstAction().part = BodyPart::Body;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 1);
+
+    // A shield is worn armour to the engine and a weapon to the rules: All
+    // has nothing to take off while it is all there is.
+    rs.rules.erase(rs.rules.begin());
+    rs.rules[0].FirstAction().part = BodyPart::All;
+    s.pins.clear();
+    s.worn.clear();
+    AddPin(s.worn, *FindHoldable(s.loadout, kShield), Hand::Left, false);
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(0) == Verdict::EffectActive);
+}
+
+TEST_CASE("a weapon none is outranked only by a rule above that holds its hand", "[equip]")
+{
+    RuleSet rs;
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, kSword, Hand::Right));
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, 0, Hand::Left));
+    Snapshot s = Armed();
+    AddPin(s.pins, *FindHoldable(s.loadout, kSword), Hand::Right, false);
+    AddPin(s.worn, *FindHoldable(s.loadout, kShield), Hand::Left, false);
+    EvalContext ctx;
+    Trace trace;
+
+    // The sword in the right is nothing the left's none lets go of, so the
+    // two cannot take turns; the shield comes off.
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 1);
+
+    rs.rules[1].FirstAction().hand = Hand::Right;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex < 0);
+    REQUIRE(trace.at(1) == Verdict::Outranked);
+}
+
 TEST_CASE("an equip rule needs the thing, of the kind it says, and one the AI would use", "[equip]")
 {
     Snapshot s = Armed();

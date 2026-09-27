@@ -131,10 +131,11 @@ bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand,
             const std::optional<ft::ItemVariant> &variant = std::nullopt);
 // Let go of every pin of the kind, and take off whatever of the kind is on,
 // pinned or not -- a weapon or spell in the hands named, the arrows in the
-// quiver, every piece of armour worn -- so the AI decides again from empty;
-// `hands` narrows a weapon's or a spell's release to one hand (None: every
-// hand).
-void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands = Hand::None);
+// quiver, the armour worn on the part named -- so the AI decides again from
+// empty; `hands` narrows a weapon's or a spell's release to one hand (None:
+// every hand), `part` armour's to one part of the body (All: every piece
+// but a shield, which is a weapon here).
+void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands = Hand::None, BodyPart part = BodyPart::All);
 
 // One request against the book now, on the game thread, for the rules: the
 // panel's RequestWear without the queue. A plain Equip is what the player's

@@ -503,7 +503,8 @@ ActionResult Equip(RE::Actor *actor, const ft::Action &action, bool pin)
 {
     if (action.form == 0)
     {
-        ReleaseKind(actor, ft::KindOf(action.kind), ft::TakesHand(action.kind) ? action.hand : Hand::None);
+        ReleaseKind(actor, ft::KindOf(action.kind), ft::TakesHand(action.kind) ? action.hand : Hand::None,
+                    ft::PartOf(action));
         return ActionResult::Performed;
     }
     const bool worn = pin ? PinNow(actor, action.form, action.hand, action.variant)

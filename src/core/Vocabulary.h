@@ -42,6 +42,7 @@ namespace ft
 [[nodiscard]] std::string_view WireName(ActionTargetKind v) noexcept;
 [[nodiscard]] std::string_view WireName(ActionKind v) noexcept;
 [[nodiscard]] std::string_view WireName(Hand v) noexcept;
+[[nodiscard]] std::string_view WireName(BodyPart v) noexcept;
 [[nodiscard]] std::string_view WireName(StatusKind v) noexcept;
 [[nodiscard]] std::string_view WireName(TypeKind v) noexcept;
 [[nodiscard]] std::string_view WireName(DamageKind v) noexcept;
@@ -58,6 +59,7 @@ namespace ft
 [[nodiscard]] std::optional<ActionTargetKind> ActionTargetFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<ActionKind> ActionFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<Hand> HandFromWireName(std::string_view s) noexcept;
+[[nodiscard]] std::optional<BodyPart> BodyPartFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<StatusKind> StatusFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<TypeKind> TypeFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept;
@@ -79,6 +81,7 @@ namespace ft
 [[nodiscard]] std::string_view DisplayName(ActionTargetKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(ActionKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(Hand v) noexcept;
+[[nodiscard]] std::string_view DisplayName(BodyPart v) noexcept;
 [[nodiscard]] std::string_view DisplayName(StatusKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(TypeKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(DamageKind v) noexcept;

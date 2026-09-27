@@ -58,6 +58,11 @@ bool TakesHand(ActionKind action) noexcept
     return action == ActionKind::EquipWeapon || action == ActionKind::EquipSpell;
 }
 
+BodyPart PartOf(const Action &a) noexcept
+{
+    return a.kind == ActionKind::EquipArmor && a.form == 0 ? a.part : BodyPart::All;
+}
+
 bool IsConsume(ActionKind action) noexcept
 {
     switch (action)

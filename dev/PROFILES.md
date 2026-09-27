@@ -80,6 +80,7 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 | `do[].variant` | only under the equips: the row the rule means, as a pin's `variant` (below). Absent is the form, whichever row |
 | `do[].name` | the thing's name as the panel last saw it, for any action that names a form: what the rule reads while the thing is away, and refreshed while it is there. Display only; nothing is matched by it |
 | `do[].hand` | only for `equip-weapon` and `equip-spell`: `left`, `right`, `both` |
+| `do[].part` | only for an `equip-armor` with no form, and only when not `all`: `head`, `body`, `hands`, `feet`, `amulet`, `ring`, `cloak`, `backpack`, the armour it takes off (`core/Loadout.h`, `BodyPart`). Absent is all of it but a shield |
 | `do[].arg` | only for `cast-spell`, and only when set: the sustain time of a concentration spell, in seconds |
 | `pins[]` | the player's pins, as the panel left them: in a fight, the book remembered for after it, not the rules' fight-time pins |
 | `pins[].form` | the thing pinned |

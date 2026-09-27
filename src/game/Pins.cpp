@@ -1655,6 +1655,12 @@ std::vector<Pin> WornAsPins(RE::Actor *actor)
         {
             if (!entry || !entry->object || !entry->object->IsArmor() || !entry->IsWorn())
                 continue;
+            // A shield is worn armour to the engine and already in the left
+            // hand above; taken again here, the two-hander's merge made it
+            // held in both, and a right hand's Unequip fired on it forever.
+            const RE::FormID id = entry->object->GetFormID();
+            if (std::any_of(pins.begin(), pins.end(), [id](const Pin &pin) { return pin.thing.form == id; }))
+                continue;
             add(entry->object, VariantOf(WornList(actor, entry->object, Hand::None)), Hand::None);
         }
     }
@@ -1818,11 +1824,11 @@ bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand, const std::optional
     return Wear(actor, thing, WearRequest::Pin, hand, By::Rule, variant);
 }
 
-void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
+void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands, BodyPart part)
 {
     if (!actor)
         return;
-    // The pins of that kind -- in those hands, when hands are named --
+    // The pins of that kind -- in those hands, on that part, when named --
     // taken out of the book first so the watchdog and the score hook see
     // them gone, then taken off. A two-hander's pin holds both hands and
     // goes with either.
@@ -1838,7 +1844,7 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
         if (const auto it = g_pins.find(actor->GetFormID()); it != g_pins.end())
         {
             std::erase_if(it->second, [&](const Pin &pin) {
-                if (pin.thing.kind != kind || (hands != Hand::None && !Overlap(pin.hands, hands)))
+                if (!ft::UnequipReaches(kind, hands, part, pin))
                     return false;
                 released.push_back(pin);
                 return true;
@@ -1877,7 +1883,7 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
     // And whatever of the kind is on, pinned or not: an unequip is an
     // unequip. The AI decides again from empty, as it does after the pins.
     // A weapon or a spell by the hands named; the arrows in the quiver;
-    // every piece of armour worn.
+    // the armour worn on the part named.
     bool bared = false;
     const auto off = [&](RE::TESForm *thing, Hand hand) {
         if (!thing)
@@ -1904,9 +1910,12 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands)
     case Kind::Armor:
         if (auto *changes = actor->GetInventoryChanges(); changes && changes->entryList)
         {
+            // Described as the book describes it, so a shield is the weapon
+            // it is to the rules and stays for the left hand's own unequip.
             std::vector<RE::TESForm *> worn;
             for (auto *entry : *changes->entryList)
-                if (entry && entry->object && entry->object->IsArmor() && entry->IsWorn())
+                if (entry && entry->object && entry->object->IsArmor() && entry->IsWorn() &&
+                    ft::UnequipReaches(kind, Hand::None, part, {DescribeHoldable(actor, entry->object), Hand::None}))
                     worn.push_back(entry->object);
             for (RE::TESForm *piece : worn)
                 off(piece, Hand::None);

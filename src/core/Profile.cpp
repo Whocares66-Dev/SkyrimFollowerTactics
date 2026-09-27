@@ -95,6 +95,8 @@ json WriteAction(const Action &a, const FormCodec &codec)
         j["name"] = a.name;
     if (TakesHand(a.kind))
         j["hand"] = WireName(a.hand);
+    if (PartOf(a) != BodyPart::All)
+        j["part"] = WireName(a.part);
     if (UsesArg(a.kind) && a.arg != 0.0f)
         j["arg"] = a.arg;
     if (a.kind == ActionKind::CastSpell && a.dual)
@@ -331,6 +333,16 @@ struct FormField
             return std::nullopt;
         }
         a.hand = *h;
+    }
+    if (const auto part = Str(j, "part"))
+    {
+        const auto p = BodyPartFromWireName(*part);
+        if (!p)
+        {
+            why = "unknown part \"" + *part + "\"";
+            return std::nullopt;
+        }
+        a.part = *p;
     }
     if (const auto arg = Num(j, "arg"))
         a.arg = static_cast<float>(*arg);
