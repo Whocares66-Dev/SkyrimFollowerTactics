@@ -948,8 +948,9 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
     // in the base game sets them, so on a vanilla install they stay at zero
     // and the row stays plain.
     //
-    // Brackets appear only when a value is off zero, which for a follower is
-    // rare. The tooltip says where the number came from.
+    // Brackets appear only when a value is off zero or something acts on
+    // it, which for a follower is rare. The tooltip says where the number
+    // came from.
     struct Modifier
     {
         RE::ActorValue value;
@@ -972,24 +973,30 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         // Only what applies. A follower has Fortify One-handed +35 on the
         // value and no perk to turn it into damage; a bonus that changes
         // nothing is not shown.
-        const float m = k.mod.effect && ReadsSkillMods(actor) ? av(k.mod.value) : 0.0f;
-        const float p = k.power.effect && ReadsSkillPowerMods(actor) ? av(k.power.value) : 0.0f;
+        const bool mRead = k.mod.effect && ReadsSkillMods(actor);
+        const bool pRead = k.power.effect && ReadsSkillPowerMods(actor);
+        const float m = mRead ? av(k.mod.value) : 0.0f;
+        const float p = pRead ? av(k.power.value) : 0.0f;
+        // Shown where it moves the quantity or where something acts on it,
+        // as every value in a breakdown (ActedOn): a Fortify against a
+        // Damage is +0%, with both beneath it.
+        const bool mShown = m != 0.0f || (mRead && ActedOn(actor, k.mod.value));
+        const bool pShown = p != 0.0f || (pRead && ActedOn(actor, k.power.value));
 
         // Every modifier is a signed change from normal: "+90% damage",
         // "-17% cost", each its own figure with its own breakdown: the
         // sources by name -- the gauntlets, the potion -- and what no
         // effect explains as Other. Power first, then the other, as the
         // two read best.
-        const auto part = [&](const std::string &text, std::initializer_list<std::pair<const Modifier *, float>> from,
+        const auto part = [&](const std::string &text, std::initializer_list<std::pair<const Modifier *, bool>> from,
                               double total) {
             SheetRow::ModifierPart piece;
             piece.text = text;
             piece.breakdown.unit = "%";
-            for (const auto &[mod, amount] : from)
+            for (const auto &[mod, shown] : from)
             {
-                if (amount == 0.0f)
-                    continue;
-                AddValueLines(piece.breakdown, PartsOf(actor, mod->value), static_cast<float>(mod->sign));
+                if (shown)
+                    AddValueLines(piece.breakdown, PartsOf(actor, mod->value), static_cast<float>(mod->sign));
             }
             piece.breakdown.total = total;
             ft::Close(piece.breakdown);
@@ -1001,19 +1008,21 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
             // One quantity, two factors: multiply them and show the change.
             // The sources' sum misses the product by their cross term, an
             // Other line.
-            if (m != 0.0f || p != 0.0f)
+            if (mShown || pShown)
             {
                 const double change = ((1.0 + k.mod.sign * m / 100.0) * (1.0 + k.power.sign * p / 100.0) - 1.0) * 100.0;
-                part(TrFormat("{}% {}", Fmt("%+.0f", change), Tr(k.mod.effect)), {{&k.power, p}, {&k.mod, m}}, change);
+                part(TrFormat("{}% {}", Fmt("%+.0f", change), Tr(k.mod.effect)), {{&k.power, pShown}, {&k.mod, mShown}},
+                     change);
             }
         }
         else
         {
-            if (p != 0.0f)
-                part(TrFormat("{}% {}", Fmt("%+.0f", k.power.sign * p), Tr(k.power.effect)), {{&k.power, p}},
+            if (pShown)
+                part(TrFormat("{}% {}", Fmt("%+.0f", k.power.sign * p), Tr(k.power.effect)), {{&k.power, true}},
                      k.power.sign * p);
-            if (m != 0.0f)
-                part(TrFormat("{}% {}", Fmt("%+.0f", k.mod.sign * m), Tr(k.mod.effect)), {{&k.mod, m}}, k.mod.sign * m);
+            if (mShown)
+                part(TrFormat("{}% {}", Fmt("%+.0f", k.mod.sign * m), Tr(k.mod.effect)), {{&k.mod, true}},
+                     k.mod.sign * m);
         }
 
         // The Armor Perks value, which the engine adds to either armour
@@ -1021,7 +1030,7 @@ std::vector<SheetSection> BuildSkillSheet(RE::Actor *actor)
         // both rows, with what set it on hover.
         if (k.value == AV::kHeavyArmor || k.value == AV::kLightArmor)
         {
-            if (const float perks = av(AV::kArmorPerks); perks != 0.0f)
+            if (const float perks = av(AV::kArmorPerks); perks != 0.0f || ActedOn(actor, AV::kArmorPerks))
             {
                 SheetRow::ModifierPart piece;
                 piece.text = TrFormat("{} skill multiplier", Fmt("%+.2f", perks));

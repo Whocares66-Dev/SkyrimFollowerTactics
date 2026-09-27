@@ -310,6 +310,11 @@ ValueParts PartsOf(RE::Actor *actor, RE::ActorValue value)
     return {owner ? owner->GetBaseActorValue(value) : 0.0f, Contributions(actor, value)};
 }
 
+bool ActedOn(RE::Actor *actor, RE::ActorValue value)
+{
+    return !Contributions(actor, value).empty();
+}
+
 void AddValueLines(ft::Breakdown &b, const ValueParts &parts, float scale)
 {
     if (parts.base != 0.0f)
@@ -808,14 +813,16 @@ float WeaponDamage(RE::Actor *actor, RE::TESObjectWEAP *weapon, RE::InventoryEnt
     // the executable (dev/MODIFIERS.md).
     if (auto *owner = actor->AsActorValueOwner())
     {
-        if (const float mult = owner->GetActorValue(AV::kAttackDamageMult); mult > 0.0f && mult != 1.0f)
+        if (const float mult = owner->GetActorValue(AV::kAttackDamageMult);
+            mult > 0.0f && (mult != 1.0f || (out && ActedOn(actor, AV::kAttackDamageMult))))
         {
             damage *= mult;
             auto &line = ft::Multiply(b, Tr("Attack Damage Mult"), mult);
             if (out)
                 line.detail = ValueLines(actor, AV::kAttackDamageMult, mult);
         }
-        if (const float flat = owner->GetActorValue(AV::kMeleeDamage); flat != 0.0f)
+        if (const float flat = owner->GetActorValue(AV::kMeleeDamage);
+            flat != 0.0f || (out && ActedOn(actor, AV::kMeleeDamage)))
         {
             damage += flat;
             auto &line = ft::Add(b, Tr("Melee Damage"), flat);
@@ -877,7 +884,8 @@ float WeaponSpeed(RE::Actor *actor, RE::TESObjectWEAP *weapon, bool left, ft::Br
     }
     const auto value = left ? RE::ActorValue::kLeftWeaponSpeedMultiply : RE::ActorValue::kWeaponSpeedMult;
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
-    if (const float mult = owner ? owner->GetActorValue(value) : 0.0f; mult > 0.0f && mult != 1.0f)
+    if (const float mult = owner ? owner->GetActorValue(value) : 0.0f;
+        mult > 0.0f && (mult != 1.0f || ActedOn(actor, value)))
     {
         speed *= mult;
         ft::Multiply(b, ValueName(value), mult).detail = ValueLines(actor, value, mult);
@@ -896,7 +904,7 @@ float WordRecovery(RE::Actor *actor, float recovery, ft::Breakdown *out)
     ft::Start(b, Tr("Base"), recovery);
     auto *owner = actor ? actor->AsActorValueOwner() : nullptr;
     if (const float mult = owner ? owner->GetActorValue(RE::ActorValue::kShoutRecoveryMult) : 1.0f;
-        mult > 0.0f && mult != 1.0f)
+        mult > 0.0f && (mult != 1.0f || ActedOn(actor, RE::ActorValue::kShoutRecoveryMult)))
     {
         recovery *= mult;
         ft::Multiply(b, Tr("Shout Recovery Mult"), mult).detail =

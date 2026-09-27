@@ -69,6 +69,13 @@ struct ValueParts
 };
 [[nodiscard]] ValueParts PartsOf(RE::Actor *actor, RE::ActorValue value);
 
+// Whether anything acts on a value: a running effect among its sources. A
+// breakdown shows a value's line where it moves the figure or where this is
+// so, so that effects which cancel are each seen, not neither: Dragon
+// Binding's +0.5 against Windcaller's two -0.25 left Shout Recovery Mult at
+// 1, and the word's hover read its base alone (2026-09-26).
+[[nodiscard]] bool ActedOn(RE::Actor *actor, RE::ActorValue value);
+
 // The parts as lines, each amount times `scale`: "Base" where the base is
 // not zero, starting the calculation when it is the first line, then each
 // source.

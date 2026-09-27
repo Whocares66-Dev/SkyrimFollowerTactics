@@ -336,7 +336,7 @@ std::vector<SheetSection> BuildCharacterSheet(RE::Actor *actor)
             b.decimals = 2;
             b.unit = "%";
             ft::Start(b, ValueName(rate), current).detail = ValueLines(actor, rate, current);
-            if (factor != 1.0f)
+            if (factor != 1.0f || ActedOn(actor, mult))
                 ft::Multiply(b, ValueName(mult), factor).detail = ValueLines(actor, mult, factor, 0.01f);
             b.total = total;
             ft::Close(b);
