@@ -88,9 +88,9 @@ struct ConsumableEffectSeen
                                                                    ConsumableKind kind, bool readsSkillMods,
                                                                    bool readsSkillPowerMods);
 
-// The Effect condition's picks: the effects what the page's actor carries or
-// knows leaves running, by name, as one list -- how an effect is applied is
-// not the question. A rule stores one record of the effect (Rule::
+// The Effect condition's picks: the effects anyone in the party can put up,
+// on themselves or on someone else, by name, as one list -- how an effect is
+// applied, and by whom, is not the question. A rule stores one record of the effect (Rule::
 // conditionForm) and is answered by any record of its name (ActorTraits::
 // effects): a scroll of Oakflesh is Oakflesh, and a food's Fortify Health
 // Regeneration is a potion's.

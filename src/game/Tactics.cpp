@@ -438,13 +438,24 @@ void FillTactics(RE::Actor *actor, FollowerView &v, ft::Moment moment)
     FillMagic(actor, v);
     v.spells = ScanCastableSpells(actor);
     v.consumables = ScanCarriedConsumables(actor);
-    v.effectPicks = ScanEffectPicks(v.spells, v.consumables);
     v.peers.clear();
+    // The party but this page's actor: the player, and the followers near.
+    std::vector<RE::Actor *> others;
+    if (auto *player = RE::PlayerCharacter::GetSingleton(); player && player != actor)
+        others.push_back(player);
     for (auto *other : CollectManagedFollowers())
     {
         if (other && other != actor)
+        {
             v.peers.push_back({other->GetFormID(), DisplayNameOf(other)});
+            others.push_back(other);
+        }
     }
+    // The party's effects, not the page's alone: a rule asks one of anyone,
+    // and what runs on them is what anyone here can put up -- the player's
+    // Battle Fury on this follower, a follower's Courage on the player. Read
+    // with the page, so a spell learned since shows the next time it opens.
+    v.effectPicks = ScanEffectPicks(v.spells, v.consumables, others);
 
     v.holdings = {};
     v.holdings.self = v.id;

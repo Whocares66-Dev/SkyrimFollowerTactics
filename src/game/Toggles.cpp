@@ -23,7 +23,8 @@ namespace ft::game
 namespace
 {
 
-// Power or spell -> the ability it toggles. Written once at load.
+// Spell, power or shout word -> the spell its script puts up. Written once at
+// load.
 std::unordered_map<RE::FormID, RE::FormID> g_links;
 
 // One top group of a plugin and the file's masters. The other groups are
@@ -102,9 +103,9 @@ void FindToggles()
         return;
     using Type = RE::MagicSystem::SpellType;
 
-    // A toggle's shape: a spell or a power that leaves nothing lasting, with
-    // a script effect. Those script effects, each by the plugin that last
-    // defines it, and who casts it.
+    // The shape: a spell, a power or a shout word that leaves nothing
+    // lasting, with a script effect. Those script effects, each by the plugin
+    // that last defines it, and who casts it.
     std::unordered_map<const RE::EffectSetting *, std::vector<const RE::SpellItem *>> users;
     // The plugins by name, so they are read, and logged, in one order every run.
     const auto byName = [](const RE::TESFile *a, const RE::TESFile *b) { return a->GetFilename() < b->GetFilename(); };
@@ -114,7 +115,8 @@ void FindToggles()
         if (!spell)
             continue;
         const Type type = spell->GetSpellType();
-        if ((type != Type::kSpell && type != Type::kPower && type != Type::kLesserPower) || LastingEffect(spell))
+        if ((type != Type::kSpell && type != Type::kPower && type != Type::kLesserPower && type != Type::kVoicePower) ||
+            LastingEffect(spell))
             continue;
         for (const RE::Effect *effect : ResolvedEffects(*spell))
         {
@@ -137,7 +139,7 @@ void FindToggles()
         if (!group)
         {
             ++unreadable;
-            log::sensors.warn("toggles: {} could not be read from {}", file->GetFilename(), PathOf(*file).string());
+            log::sensors.warn("scripts: {} could not be read from {}", file->GetFilename(), PathOf(*file).string());
             continue;
         }
         for (const PluginRecord &record : RecordsIn(group->bytes))
@@ -152,29 +154,33 @@ void FindToggles()
                 ++compressed;
                 continue;
             }
+            // The first property naming an ability, which the script adds (a
+            // toggle), or a buff that lasts, which it casts (Battle Fury's
+            // DLC2VoiceElementalFury, on each ally near the shouter).
             for (const auto &property : ScriptObjectProperties(Subrecord(record.data, "VMAD")))
             {
-                const auto *ability =
+                const auto *target =
                     RE::TESForm::LookupByID<RE::SpellItem>(InLoadOrder(property.formID, group->masters, *file));
-                if (!ability || ability->GetSpellType() != Type::kAbility)
+                const bool ability = target && target->GetSpellType() == Type::kAbility;
+                if (!target || (!ability && (!LastingEffect(target) || HasHarm(*target))))
                     continue;
                 for (const auto *spell : users[*it])
-                    if (g_links.emplace(spell->GetFormID(), ability->GetFormID()).second)
-                        log::sensors.info("toggle: {} ({:08X}) turns on {} ({:08X}), by {}'s {} in {}", NameOf(spell),
-                                          spell->GetFormID(), NameOf(ability), ability->GetFormID(), property.script,
-                                          property.property, file->GetFilename());
+                    if (g_links.emplace(spell->GetFormID(), target->GetFormID()).second)
+                        log::sensors.info("script: {} ({:08X}) {} {} ({:08X}), by {}'s {} in {}", NameOf(spell),
+                                          spell->GetFormID(), ability ? "turns on" : "casts", NameOf(target),
+                                          target->GetFormID(), property.script, property.property, file->GetFilename());
                 break;
             }
         }
     }
-    log::sensors.info("toggles: {} found in {} plugin(s) read, {:.0f} ms; {} compressed effect record(s) skipped, "
-                      "{} plugin(s) unreadable",
+    log::sensors.info("scripts: {} link(s) found in {} plugin(s) read, {:.0f} ms; {} compressed effect record(s) "
+                      "skipped, {} plugin(s) unreadable",
                       g_links.size(), byFile.size() - unreadable,
                       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count(),
                       compressed, unreadable);
 }
 
-const RE::SpellItem *ToggledAbility(const RE::SpellItem *source)
+const RE::SpellItem *ScriptedSpell(const RE::SpellItem *source)
 {
     const auto it = source ? g_links.find(source->GetFormID()) : g_links.end();
     return it != g_links.end() ? RE::TESForm::LookupByID<RE::SpellItem>(it->second) : nullptr;

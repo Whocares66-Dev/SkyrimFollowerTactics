@@ -297,11 +297,10 @@ bool IsBleed(const RE::EffectSetting *effect)
 // and Call to Arms have none, vanilla's or Mysticism's.
 bool IsCourage(const RE::ActiveEffect &effect)
 {
-    const auto harms = [](const RE::EffectSetting *base) { return base->IsHostile() || base->IsDetrimental(); };
-    if (harms(effect.effect->baseEffect))
+    const auto *base = effect.effect->baseEffect;
+    if (base->IsHostile() || base->IsDetrimental())
         return false;
-    return !effect.spell || std::ranges::none_of(ResolvedEffects(*effect.spell),
-                                                 [&](const RE::Effect *each) { return harms(each->baseEffect); });
+    return !effect.spell || !HasHarm(*effect.spell);
 }
 
 // Skyrim.esm's Call to Arms and its scroll. The Master rally spell has no

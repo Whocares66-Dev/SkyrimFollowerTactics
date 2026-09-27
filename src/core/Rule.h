@@ -100,9 +100,9 @@ enum class PredicateKind : std::uint8_t
     // An effect runs on the subject: one of the name of the base effect
     // Rule::conditionForm names, whatever applied it -- the spell or its
     // scroll, a potion or a food. Any subject. Listed right under Status,
-    // as the effects what the page's actor carries or knows leaves (core/
-    // Effects.h, EffectPick): "Self: Oakflesh"; a toggle's power, Blood
-    // Sacrifice, by the ability it turns on (game/Toggles.h).
+    // as the effects anyone in the party can put up (core/Effects.h,
+    // EffectPick): "Self: Oakflesh"; a toggle's power, Blood Sacrifice, by
+    // the ability it turns on (game/Toggles.h).
     EffectRunning,
     // The follower's own weapons, each hand asked, Self only, under one
     // "Weapon" heading above Armor as the editor walks this enum. Charge

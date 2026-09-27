@@ -261,13 +261,57 @@ bool Lasts(const RE::MagicItem &item, const RE::Effect &effect)
 }
 
 // What a pick of this item stands for: the item, where it leaves something
-// lasting; else the ability it has been seen to turn on, a toggle's.
-const RE::MagicItem *LastingOrToggled(const RE::MagicItem *item)
+// lasting; else the spell its script puts up, a toggle's ability or a
+// shout's cast on each ally.
+const RE::MagicItem *LastingOrScripted(const RE::MagicItem *item)
 {
     if (!item || LastingEffect(item))
         return item;
     const auto *spell = item->As<RE::SpellItem>();
-    return spell ? ToggledAbility(spell) : nullptr;
+    return spell ? ScriptedSpell(spell) : nullptr;
+}
+
+// One character's picks, into `into`: what their scans say they can put up.
+void AddEffectPicks(std::vector<ft::EffectPick> &into, const std::vector<SpellOption> &spells,
+                    const std::vector<ConsumableOption> &consumables)
+{
+    const auto add = [&](const RE::MagicItem *item) {
+        const RE::Effect *effect = LastingEffect(LastingOrScripted(item));
+        // A summon is the Summon condition's: Black Market's merchant,
+        // Conjure Familiar. A hidden effect never counts (ReadTraits).
+        if (!effect || effect->baseEffect->HasArchetype(RE::EffectSetting::Archetype::kSummonCreature) ||
+            effect->baseEffect->data.flags.any(EffectFlag::kHideInUI))
+            return;
+        into.push_back({NameOf(effect->baseEffect), effect->baseEffect->GetFormID()});
+    };
+    // An aimed one only where it is a buff: a spell cast at an enemy is
+    // mostly a Status, and a drain's share on the caster is not what it is
+    // cast for.
+    const auto addAs = [&](const RE::MagicItem *item, bool self) {
+        if (item && (self || !HasHarm(*item)))
+            add(item);
+    };
+    for (const auto &option : consumables)
+    {
+        if (option.kind == ft::ConsumableKind::Potion || option.kind == ft::ConsumableKind::Food)
+            add(RE::TESForm::LookupByID<RE::AlchemyItem>(option.form));
+    }
+    // A scroll is its spell's pick.
+    for (const auto &option : spells)
+    {
+        if (option.kind == SpellOption::Kind::Spell || option.kind == SpellOption::Kind::Scroll)
+            addAs(RE::TESForm::LookupByID<RE::MagicItem>(option.form), option.selfOnly);
+        else if (option.kind == SpellOption::Kind::Power)
+            add(RE::TESForm::LookupByID<RE::SpellItem>(option.form));
+        else if (option.kind == SpellOption::Kind::Shout)
+        {
+            // The word a Shout action shouts: the highest unlocked.
+            const auto *shout = RE::TESForm::LookupByID<RE::TESShout>(option.form);
+            const int word = shout ? HighestUnlockedWord(shout) : -1;
+            if (word >= 0)
+                addAs(shout->variations[word].spell, option.selfOnly);
+        }
+    }
 }
 
 } // namespace
@@ -286,42 +330,21 @@ const RE::Effect *LastingEffect(const RE::MagicItem *item)
     return best;
 }
 
+bool HasHarm(const RE::MagicItem &item)
+{
+    return std::ranges::any_of(ResolvedEffects(item), [](const RE::Effect *effect) {
+        return effect->baseEffect->IsHostile() || effect->baseEffect->IsDetrimental();
+    });
+}
+
 std::vector<ft::EffectPick> ScanEffectPicks(const std::vector<SpellOption> &spells,
-                                            const std::vector<ConsumableOption> &consumables)
+                                            const std::vector<ConsumableOption> &consumables,
+                                            const std::vector<RE::Actor *> &others)
 {
     std::vector<ft::EffectPick> candidates;
-    const auto add = [&](const RE::MagicItem *item) {
-        const RE::Effect *effect = LastingEffect(LastingOrToggled(item));
-        // A summon is the Summon condition's: Black Market's merchant,
-        // Conjure Familiar. A hidden effect never counts (ReadTraits).
-        if (!effect || effect->baseEffect->HasArchetype(RE::EffectSetting::Archetype::kSummonCreature) ||
-            effect->baseEffect->data.flags.any(EffectFlag::kHideInUI))
-            return;
-        candidates.push_back({NameOf(effect->baseEffect), effect->baseEffect->GetFormID()});
-    };
-    for (const auto &option : consumables)
-    {
-        if (option.kind == ft::ConsumableKind::Potion || option.kind == ft::ConsumableKind::Food)
-            add(RE::TESForm::LookupByID<RE::AlchemyItem>(option.form));
-    }
-    // A spell, a scroll or a shout cast on oneself: an aimed one leaves its
-    // effect on the target, and a drain's share on the caster is not what
-    // it is cast for. A scroll is its spell's pick.
-    for (const auto &option : spells)
-    {
-        if ((option.kind == SpellOption::Kind::Spell || option.kind == SpellOption::Kind::Scroll) && option.selfOnly)
-            add(RE::TESForm::LookupByID<RE::MagicItem>(option.form));
-        else if (option.kind == SpellOption::Kind::Power)
-            add(RE::TESForm::LookupByID<RE::SpellItem>(option.form));
-        else if (option.kind == SpellOption::Kind::Shout && option.selfOnly)
-        {
-            // The word a Shout action shouts: the highest unlocked.
-            const auto *shout = RE::TESForm::LookupByID<RE::TESShout>(option.form);
-            const int word = shout ? HighestUnlockedWord(shout) : -1;
-            if (word >= 0)
-                add(shout->variations[word].spell);
-        }
-    }
+    AddEffectPicks(candidates, spells, consumables);
+    for (RE::Actor *other : others)
+        AddEffectPicks(candidates, ScanCastableSpells(other), ScanCarriedConsumables(other));
     return ft::ArrangeEffectPicks(std::move(candidates));
 }
 

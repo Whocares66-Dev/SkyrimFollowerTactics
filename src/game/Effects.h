@@ -70,12 +70,19 @@ struct ConsumableOption
 // teleport's momentary script, a toggle's power.
 [[nodiscard]] const RE::Effect *LastingEffect(const RE::MagicItem *item);
 
-// The Effect condition's picks (core/Effects.h), from the scans the
-// editor's menus already make: the potions and food carried, the spells
-// known and the scrolls carried, the shouts and the powers -- a toggle's
-// power by the ability its script turns on (game/Toggles.h).
+// Whether any effect of the item is hostile or detrimental: what tells a
+// buff put on someone else from a spell cast at them.
+[[nodiscard]] bool HasHarm(const RE::MagicItem &item);
+
+// The Effect condition's picks (core/Effects.h): what anyone in the party
+// can put up, on themselves or on someone else. The page's own from the
+// scans the editor's menus already make, `spells` and `consumables`; each of
+// `others`' scanned here. The potions and food carried, the spells known and
+// the scrolls carried, the shouts and the powers -- one whose script puts up
+// another spell by that spell (game/Toggles.h).
 [[nodiscard]] std::vector<ft::EffectPick> ScanEffectPicks(const std::vector<SpellOption> &spells,
-                                                          const std::vector<ConsumableOption> &consumables);
+                                                          const std::vector<ConsumableOption> &consumables,
+                                                          const std::vector<RE::Actor *> &others);
 
 // Which consumable kind an inventory object is, or nothing for what is
 // neither eaten nor applied.
