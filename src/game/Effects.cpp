@@ -485,21 +485,35 @@ void AddLandings(RE::Actor *caster, std::uint32_t id, ft::Snapshot &s)
             if (dual && !dualable)
                 continue;
             ft::SpellState::Landing landing{id, who, dual, false, {}};
+            // A hidden instant is the spell's plumbing, not its work:
+            // Stormcrown gives each Dragon Aspect word a hidden Dispel script
+            // of no duration beside the aspect itself, and counted as acting
+            // it had a Self: Any rule shout Dragon Aspect again with the
+            // aspect up (2026-09-26). It acts only where nothing else of
+            // the cast would land.
+            bool plumbing = false;
             for (RE::Effect *effect : ResolvedEffects(*item))
             {
                 if (!LandsOn(*effect, item, caster, target, dual))
                     continue;
                 const auto *base = effect->baseEffect;
+                const bool hidden = base->data.flags.any(Flag::kHideInUI);
                 if (effect->effectItem.duration <= 0 || base->data.flags.any(Flag::kNoDuration))
                 {
+                    if (hidden)
+                    {
+                        plumbing = true;
+                        continue;
+                    }
                     landing.acts = true;
                     break;
                 }
                 const char *name = base->GetFullName();
-                const bool hidden = base->data.flags.any(Flag::kHideInUI);
                 landing.lasting.push_back({hidden || !name ? std::string() : std::string(name),
                                            effect->effectItem.magnitude, item->GetFormID(), base->GetFormID(), dual});
             }
+            if (plumbing && landing.lasting.empty())
+                landing.acts = true;
             s.spells.landings.push_back(std::move(landing));
         }
     };
