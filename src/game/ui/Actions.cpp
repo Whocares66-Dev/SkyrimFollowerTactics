@@ -1070,11 +1070,11 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::M
                                : !ActionAvailable(act, view) ? kNotAvailable
                                                              : now;
     const std::string text = TargetText(rule, view) + ": " + ActionText(act, view);
-    Im::ImVec2 below;
+    Im::ImRect cell;
     bool elided = false;
     {
         const DimText grey(!setAside.empty() || !reason.empty());
-        below = CellButtonOpensPopup(id, text, &elided);
+        cell = CellButtonOpensPopup(id, text, &elided);
     }
     // The action's own reason first, else why the whole row is set aside,
     // else the whole of the phrase where the cell had to cut it.
@@ -1085,7 +1085,7 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::M
     }
 
     PushPopupChrome();
-    Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
+    PlaceCellPopup(id, cell);
     if (!Im::BeginPopup(id, 0))
     {
         Im::PopStyleVar(kPopupChromeVars);

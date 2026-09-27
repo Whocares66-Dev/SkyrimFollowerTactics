@@ -249,11 +249,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     // `setAside` greys it with the rest of a row set aside for its action.
     const bool available = ConditionAvailable(rule, view);
     const std::string text = ConditionText(rule, view);
-    Im::ImVec2 below;
+    Im::ImRect cell;
     bool elided = false;
     {
         const DimText grey(!setAside.empty() || !available);
-        below = CellButtonOpensPopup(id, text, &elided);
+        cell = CellButtonOpensPopup(id, text, &elided);
     }
     // The named follower being gone, which is about the condition itself,
     // else the whole of the condition where the cell had to cut it. Why the
@@ -263,7 +263,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
         Tooltip(!available ? std::string(Tr(kFollowerAway)) : (elided ? text : std::string{}));
 
     PushPopupChrome();
-    Im::SetNextWindowPos(below, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
+    PlaceCellPopup(id, cell);
     if (!Im::BeginPopup(id, 0))
     {
         Im::PopStyleVar(kPopupChromeVars);

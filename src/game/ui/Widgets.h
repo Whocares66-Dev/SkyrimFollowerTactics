@@ -289,10 +289,15 @@ void PushPopupChrome();
 
 inline constexpr int kPopupChromeVars = 4;
 
-// Returns where the popup opens, the cell's bottom-left, for the caller to
-// set just before BeginPopup: set here, it would place whatever window opens
-// next instead, and a tooltip raised on the cell is one.
-Im::ImVec2 CellButtonOpensPopup(const char *id, const std::string &label, bool *elided = nullptr);
+// Returns the cell's rect, for the caller to place the popup by with
+// PlaceCellPopup just before BeginPopup: placed here, it would place whatever
+// window opens next instead, and a tooltip raised on the cell is one.
+Im::ImRect CellButtonOpensPopup(const char *id, const std::string &label, bool *elided = nullptr);
+
+// The popup hangs beneath its cell, unless that runs it off the foot of the
+// screen and there is room above, where it stands on the cell's top instead
+// (issue #18). ImGui keeps a popup where it is told to be, on the screen or not.
+void PlaceCellPopup(const char *id, const Im::ImRect &cell);
 
 // `tooltip` belongs to the HEADING, and is read here rather than by the
 // caller: with the submenu open the last item is the popup's, not this

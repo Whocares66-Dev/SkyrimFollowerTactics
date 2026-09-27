@@ -476,7 +476,7 @@ void PushPopupChrome()
     Im::PushStyleVar(Im::ImGuiStyleVar_ItemSpacing, Im::ImVec2(6.0f, 4.0f));
 }
 
-Im::ImVec2 CellButtonOpensPopup(const char *id, const std::string &label, bool *elided)
+Im::ImRect CellButtonOpensPopup(const char *id, const std::string &label, bool *elided)
 {
     // The highlight is the TABLE's, not the button's.
     //
@@ -526,7 +526,7 @@ Im::ImVec2 CellButtonOpensPopup(const char *id, const std::string &label, bool *
     Im::PopStyleColor(3);
 
     // Taken from the button just drawn, before anything moves the cursor.
-    const Im::ImVec2 below{Im::GetItemRectMin().x, Im::GetItemRectMax().y};
+    const Im::ImRect cell{Im::GetItemRectMin(), Im::GetItemRectMax()};
 
     if (hovered)
         Im::TableSetBgColor(Im::ImGuiTableBgTarget_CellBg, Im::GetColorU32(Im::ImGuiCol_ButtonHovered, 1.0f), -1);
@@ -534,7 +534,33 @@ Im::ImVec2 CellButtonOpensPopup(const char *id, const std::string &label, bool *
     if (clicked)
         Im::OpenPopup(id, 0);
 
-    return below;
+    return cell;
+}
+
+void PlaceCellPopup(const char *id, const Im::ImRect &cell)
+{
+    // The popup's height is wanted before it is drawn, and read as ImGui's
+    // own combo reads it: from what the window held the frame before. A
+    // popup is hidden the frame it opens, while it measures itself, so by
+    // the frame it is first seen the height is its own. The window is found
+    // by the name BeginPopup gives it.
+    char name[24];
+    std::snprintf(name, sizeof(name), "##Popup_%08x", Im::GetID(id));
+    Im::ImGuiWindow *popup = Im::FindWindowByName(name);
+    bool above = false;
+    if (popup)
+    {
+        const float height = Im::CalcWindowNextAutoFitSize(popup).y;
+        const Im::ImRect screen = Im::GetPopupAllowedExtentRect(popup);
+        above = cell.Max.y + height > screen.Max.y && cell.Min.y - height >= screen.Min.y;
+    }
+    // Above, by the pivot rather than by the height subtracted: the pivot is
+    // applied to the size the window takes this frame, so the menu's foot
+    // stays on the cell even where the reckoning was off.
+    if (above)
+        Im::SetNextWindowPos(cell.Min, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 1.0f));
+    else
+        Im::SetNextWindowPos({cell.Min.x, cell.Max.y}, Im::ImGuiCond_Always, Im::ImVec2(0.0f, 0.0f));
 }
 
 bool BeginCascade(const char *label, const char *tooltip)
