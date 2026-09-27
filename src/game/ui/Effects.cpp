@@ -147,6 +147,21 @@ void DrawEffectDetail(const EffectRow &row, EffectsTabState &state, const Charac
     }
 }
 
+// A magnitude to two decimals at most, and only those it has: 50, 12.5,
+// -0.25. Whole numbers alone read Windcaller's -0.25 on Shout Recovery Mult
+// as "-0" (2026-09-26). Empty for one that rounds to nothing, as for none.
+std::string MagnitudeText(float magnitude)
+{
+    char num[32];
+    std::snprintf(num, sizeof(num), "%.2f", magnitude);
+    std::string text = num;
+    while (text.back() == '0')
+        text.pop_back();
+    if (text.back() == '.')
+        text.pop_back();
+    return text == "0" || text == "-0" ? std::string{} : text;
+}
+
 } // namespace
 
 std::uint64_t ItemPageOf(const CharacterView &view, std::uint32_t form)
@@ -191,9 +206,7 @@ void DrawEffects(const CharacterView &view)
     float remainingWidth = TextWidth(Tr("Remaining")) + arrow;
     for (const auto &row : view.effects)
     {
-        char num[32];
-        std::snprintf(num, sizeof(num), "%.0f", row.magnitude);
-        magnitudeWidth = (std::max)(magnitudeWidth, TextWidth(num));
+        magnitudeWidth = (std::max)(magnitudeWidth, TextWidth(MagnitudeText(row.magnitude)));
         remainingWidth = (std::max)(remainingWidth, TextWidth(row.remainingText));
     }
 
@@ -239,12 +252,8 @@ void DrawEffects(const CharacterView &view)
         Im::Text("%s", row->name.c_str());
 
         Im::TableSetColumnIndex(1);
-        if (row->magnitude != 0.0f)
-        {
-            char num[32];
-            std::snprintf(num, sizeof(num), "%.0f", row->magnitude);
-            TextRightInCell(num);
-        }
+        if (const std::string magnitude = MagnitudeText(row->magnitude); !magnitude.empty())
+            TextRightInCell(magnitude);
         Im::TableSetColumnIndex(2);
         // Right-aligned, as a number: the minutes line up down the column.
         if (!row->remainingText.empty())
