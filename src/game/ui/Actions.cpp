@@ -207,8 +207,7 @@ std::string UnavailableText(ft::Verdict verdict, ft::ActionKind kind)
     case ft::Verdict::PowerUsed:
         return Tr("Greater power can only be used once per day");
     case ft::Verdict::Recovering:
-        return kind == ft::ActionKind::Shout ? Tr("Still recovering from the last shout")
-                                             : Tr("Voice still recovering from the last shout");
+        return Tr("Still recovering from the last shout");
     case ft::Verdict::ActionCooldown:
         return Tr("Used too recently");
     case ft::Verdict::Casting:

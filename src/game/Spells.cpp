@@ -83,6 +83,13 @@ float VoiceRecoveryOf(RE::Actor *actor)
     const float recovery = actor ? actor->GetVoiceRecoveryTime() : 0.0f;
     return recovery > 0.0f && recovery < 3600.0f ? recovery : 0.0f;
 }
+
+void SetVoiceRecovery(RE::Actor *actor, float seconds)
+{
+    auto *process = actor ? actor->GetActorRuntimeData().currentProcess : nullptr;
+    if (process && process->high)
+        process->high->voiceRecoveryTime = seconds;
+}
 namespace
 {
 

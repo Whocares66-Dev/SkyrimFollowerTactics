@@ -770,8 +770,9 @@ Verdict EquipAvailability(const Action &a, const Snapshot &snap, const std::vect
 // reported Busy before this. A power goes through a package too, and
 // would interrupt as well.) The voice recovers between shouts, NPCs
 // included; a shout asked for inside that is one the AI will not make, so
-// the rule waits; a power's wrapper has a one-second recovery of its own
-// and is gated by the same number.
+// the rule waits. A power does not: the engine's cast check refuses only a
+// shout's word inside it (issue #12), and the game side keeps a follower's
+// wrapped power clear of it.
 Verdict CastAvailability(const Action &a, const Snapshot &snap)
 {
     if (a.kind == ActionKind::CastSpell)
@@ -787,7 +788,7 @@ Verdict CastAvailability(const Action &a, const Snapshot &snap)
         return Verdict::PowerUsed;
     if (snap.traits.Has(StatusKind::Casting))
         return Verdict::Casting;
-    if ((a.kind == ActionKind::Shout || a.kind == ActionKind::UsePower) && snap.voiceRecovery > 0.0f)
+    if (a.kind == ActionKind::Shout && snap.voiceRecovery > 0.0f)
         return Verdict::Recovering;
     return Verdict::Fired;
 }

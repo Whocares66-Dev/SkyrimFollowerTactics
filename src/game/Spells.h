@@ -59,6 +59,11 @@ struct SkillGate
 // reads as "can shout".
 [[nodiscard]] float VoiceRecoveryOf(RE::Actor *actor);
 
+// Sets that countdown. CommonLib has no setter; its getter reads the same
+// field on every runtime. An actor out of high process keeps no countdown,
+// and this does nothing to them.
+void SetVoiceRecovery(RE::Actor *actor, float seconds);
+
 // One castable spell a follower knows, for the editor's menu.
 //
 // Name and id together because the menu shows one and stores the other: the

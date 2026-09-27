@@ -1833,6 +1833,15 @@ TEST_CASE("a power is used like a cast: known, not running, not mid-cast, free o
     REQUIRE_FALSE(WaitsOnOwnCast(actions));
     s.traits.status |= Bit(StatusKind::Casting);
 
+    // The voice recovering from a shout does not hold a power back: only a
+    // shout's word waits on it (issue #12).
+    s.traits.status = 0;
+    s.now += 10.0;
+    s.voiceRecovery = 12.5f;
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+    s.voiceRecovery = 0.0f;
+    s.traits.status |= Bit(StatusKind::Casting);
+
     // Aimed anywhere, like a cast: the menu sorts powers by delivery.
     REQUIRE(IsActionValidFor(ActionTargetKind::Enemy, ActionKind::UsePower));
     REQUIRE(IsCast(ActionKind::UsePower));

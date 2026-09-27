@@ -7,6 +7,7 @@
 #include "game/Log.h"
 #include "game/Magic.h"
 #include "game/Sheet.h"
+#include "game/Spells.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
 
@@ -140,6 +141,10 @@ struct Slot
     // release; null when nothing is leased, and for a shout.
     RE::SpellItem *power = nullptr;
     RE::MagicSystem::SpellType powerType = RE::MagicSystem::SpellType::kSpell;
+    // The voice's recovery from the follower's last shout, cleared for a
+    // power's lease (see RequestShout) and put back on release; 0 when none
+    // is held.
+    float heldRecovery = 0.0f;
     // A shout whose words above the last unlocked one were taken off the
     // record for the lease, and what they were (see RequestShout). The
     // engine shouts the highest FILLED word, so this is what keeps a
@@ -836,6 +841,19 @@ void Release(Slot &slot)
         if (auto actor = slot.lease->Actor())
             TakeWrapper(actor.get(), slot.wrapper);
     }
+    // A power's lease gives back the voice recovery it cleared, less the
+    // time it held it. The voice's fire handler (42818) sets the recovery to
+    // the fired word's own, so once the wrapper fires it reads the wrapper's
+    // second; the larger of the two stands.
+    if (slot.heldRecovery > 0.0f && slot.lease)
+    {
+        if (auto actor = slot.lease->Actor())
+        {
+            const float left = slot.heldRecovery - static_cast<float>(TacticsSeconds() - slot.run.armedAt);
+            SetVoiceRecovery(actor.get(), (std::max)(actor->GetVoiceRecoveryTime(), left));
+        }
+    }
+    slot.heldRecovery = 0.0f;
     ReturnShoutVoice(slot);
     if (slot.power)
     {
@@ -1187,10 +1205,26 @@ CastRequest RequestShout(RE::Actor *actor, std::uint32_t formID, std::uint32_t t
     // The procedure fires only a shout the actor has: the wrapper is given
     // for the lease; a shout of their own they have already. A shout speaks
     // its words in a voice that has them.
+    //
+    // A power is not held back by the voice recovering from a shout, but
+    // made a Voice spell it would be: the engine's cast check refuses a
+    // Voice spell, and only one, while the recovery runs (CheckCast, 34145;
+    // 33364 on SE; issue #12). So the recovery is cleared for the lease,
+    // and Release puts it back.
     if (power)
+    {
         GiveWrapper(actor, slot.wrapper);
+        if (const float recovery = actor->GetVoiceRecoveryTime(); recovery > 0.0f)
+        {
+            slot.heldRecovery = recovery;
+            SetVoiceRecovery(actor, 0.0f);
+            log::packages.debug("{:08X} holds {:.1f} s of voice recovery for the power", PackageId(slot), recovery);
+        }
+    }
     else
+    {
         LendShoutVoice(slot, actor);
+    }
 
     return Arm(slot, actor, 0.0f, kVoiceArmWindowSeconds, ruleIndex, ruleName);
 }
@@ -1203,6 +1237,8 @@ void ResetPackages()
             slot.power->data.spellType = slot.powerType;
             slot.power = nullptr;
         }
+        // The actor's recovery is the loaded save's now.
+        slot.heldRecovery = 0.0f;
         ReturnShoutVoice(slot);
         // The shout record outlives a load; a lease ended by one would
         // otherwise leave it short of its words for the rest of the session.
