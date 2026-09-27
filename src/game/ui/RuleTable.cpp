@@ -460,7 +460,11 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // the switch and on the cell concerned. It keeps its text, its
         // place and its delete; the switch's own state is untouched, so the
         // rule comes back as it was when the thing, or the follower, does.
-        const std::string setAside = SetAsideReason(rule, view, i);
+        // One none of whose actions could be done this moment -- the voice
+        // recovering, the magicka short -- is dimmed with its reason and
+        // stays live, the switch too (WhyGreyed).
+        const Greyed greyed = WhyGreyed(rule, view, i);
+        const std::string &setAside = greyed.why;
         const bool available = setAside.empty();
         Im::TableNextRow(0, 0.0f);
         if (i % 2 == 1)
@@ -472,7 +476,8 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // Off is no tick at all, as an unequipped item's cell on the
         // Inventory tab; the row's dimming says the rest. A rule set aside
         // shows no tick either: its switch's state is not what decides it.
-        if (SwitchCell("on" + rowId, rule.enabled, setAside, false, Tr("Click to disable"), Tr("Click to enable")))
+        if (SwitchCell("on" + rowId, rule.enabled, greyed.setAside ? setAside : std::string{}, false,
+                       Tr("Click to disable"), Tr("Click to enable")))
         {
             rule.enabled = !rule.enabled;
             changed = true;
@@ -502,10 +507,11 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // A rule's condition is negated by ticking it, and the row then
             // reads "not <condition>". Some conditions cannot be negated
             // (ft::CanNegate), and their cell is dead and says why. On a
-            // rule set aside the tick stays, grey with the condition it
-            // negates, which such a rule greys though its row is not dimmed.
+            // greyed rule the tick greys with the condition it negates and
+            // stays live, as the condition does.
             const bool can = ft::CanNegate(rule.predicate);
-            const std::string why = can ? setAside : std::string(Tr("Condition cannot be negated"));
+            const std::string why = can ? std::string{} : std::string(Tr("Condition cannot be negated"));
+            const DimText grey(!available);
             if (SwitchCell("not" + rowId, rule.negated, why, can, Tr("Click to remove the NOT"),
                            Tr("Click to negate condition")))
             {
@@ -655,7 +661,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
         // the rule is set aside; the NOT cell's says this condition is not
         // one that can be negated -- a dead cell reads as an empty one
         // otherwise, since an unticked switch is also empty.
-        if (!available)
+        if (greyed.setAside)
         {
             Im::TableSetColumnIndex(0);
             SlashCell();

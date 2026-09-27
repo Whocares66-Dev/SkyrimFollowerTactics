@@ -34,11 +34,19 @@ bool ConditionAvailable(const ft::Rule &rule, const FollowerView &view);
 // available where the page has none for it.
 ft::Verdict VerdictAt(const FollowerView &view, std::size_t rule, std::size_t action);
 
-// Why a rule is set aside, for its switch; empty when it is not. A rule
-// whose things are missing or whose follower is away (core/Editor.h), and
-// one none of whose actions could be done this moment (UnavailableText):
-// its one action's reason, or a word for several.
-std::string SetAsideReason(const ft::Rule &rule, const FollowerView &view, std::size_t ruleIndex);
+// Why a rule's row is greyed; `why` empty when it is not. Set aside for what
+// it names -- a thing the follower no longer has, a follower away
+// (core/Editor.h) -- its switch is stilled too, its state not being what
+// decides it. Or none of its actions could be done this moment
+// (UnavailableText: its one action's reason, or a word for several), which
+// greys and says why but leaves every cell live: a shout recovering is no
+// reason not to edit the rule, or turn it off.
+struct Greyed
+{
+    std::string why;
+    bool setAside{false};
+};
+Greyed WhyGreyed(const ft::Rule &rule, const FollowerView &view, std::size_t ruleIndex);
 
 std::string ActionText(const ft::Action &act, const FollowerView &view);
 

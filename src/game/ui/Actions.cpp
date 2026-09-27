@@ -865,14 +865,14 @@ ft::Verdict VerdictAt(const FollowerView &view, std::size_t rule, std::size_t ac
     return ft::Verdict::Fired;
 }
 
-std::string SetAsideReason(const ft::Rule &rule, const FollowerView &view, std::size_t ruleIndex)
+Greyed WhyGreyed(const ft::Rule &rule, const FollowerView &view, std::size_t ruleIndex)
 {
     switch (ft::RuleSetAside(rule, view.holdings))
     {
     case ft::Aside::FollowerAway:
-        return Tr(kFollowerAway);
+        return {Tr(kFollowerAway), true};
     case ft::Aside::NotHad:
-        return Tr(kNotAvailable);
+        return {Tr(kNotAvailable), true};
     case ft::Aside::None:
         break;
     }
@@ -887,7 +887,7 @@ std::string SetAsideReason(const ft::Rule &rule, const FollowerView &view, std::
         if (first.empty())
             first = why;
     }
-    return rule.actions.size() == 1 ? first : std::string(Tr("No action can be done right now"));
+    return {rule.actions.size() == 1 ? first : std::string(Tr("No action can be done right now")), false};
 }
 
 std::string ActionText(const ft::Action &act, const FollowerView &view)
