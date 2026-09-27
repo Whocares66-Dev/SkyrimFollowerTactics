@@ -395,13 +395,6 @@ class CastSink : public RE::BSTEventSink<RE::TESSpellCastEvent>
 
 CastSink g_castSink;
 
-// What an effect's area, in feet as the record gives it, reaches in game
-// units. 64/3 is the engine's foot where it converts one: a cloak's
-// magnitude, in feet, is its radius at that many units (34243, the only
-// reader of the constant on 1.6.1170). That an area takes the same foot is
-// INFERRED; the log says each distance and radius, to be read against a cast.
-constexpr float kUnitsPerFoot = 64.0f / 3.0f;
-
 // A hostile spell cast on oneself -- Fire Storm and its kind -- the engine
 // scores nothing: its registry has no hostile entry for a self-delivered
 // spell (dev/MAGIC.md, "Which spells the combat AI can use at all"). Scored
@@ -435,7 +428,7 @@ float DamageWeight(const RE::Effect &effect)
 {
     const auto *base = effect.baseEffect;
     using Archetype = RE::EffectSetting::Archetype;
-    if (!base->IsHostile() || effect.effectItem.area == 0 ||
+    if (!base->IsHostile() || AreaRadius(effect) <= 0.0f ||
         !(base->HasArchetype(Archetype::kValueModifier) || base->HasArchetype(Archetype::kPeakValueModifier) ||
           base->HasArchetype(Archetype::kDualValueModifier)))
         return 0.0f;
@@ -497,7 +490,7 @@ SelfArea SelfAreaScore(RE::Actor *caster, RE::MagicItem *spell, RE::Actor *targe
         const float weight = DamageWeight(*effect);
         if (!(weight > 0.0f))
             continue;
-        const float radius = static_cast<float>(effect->effectItem.area) * kUnitsPerFoot;
+        const float radius = AreaRadius(*effect);
         out.reach = (std::max)(out.reach, radius);
         int reached = 0;
         for (std::size_t i = 0; i < enemies.size(); ++i)

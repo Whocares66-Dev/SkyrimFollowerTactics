@@ -148,40 +148,46 @@ constexpr Outcome ActsUnless(bool inEffect) noexcept
     return inEffect ? Outcome::InEffect : Outcome::Acts;
 }
 
-// What the cast would do to `who`. It would act, unless that can be shown
-// not: nothing of it would take there, or all of it that would is in force
-// there already at least as strongly (Covers). One the game side did not
-// judge -- an actor it has no word for, a spell it could not read -- acts.
-Outcome OutcomeOn(const Snapshot &s, const Action &a, ActorId who)
+// What the cast would do to `who`: nothing, where none of it would take
+// there; nothing new, where anything from this spell is running there
+// already; else it acts. The second is the combat AI's own test of a spell
+// it would cast -- "active" (45344) of the caster, "affected" (45349) of
+// its target, each walking what runs there for an effect whose spell is
+// this one, neither asked of a stream -- extended to whoever the cast
+// reaches. One the game side did not judge -- an actor it has no word for,
+// a spell it could not read -- acts. `about`: `who` is about the cast's
+// centre, not at it.
+Outcome OutcomeOn(const Snapshot &s, const Action &a, ActorId who, bool about = false)
 {
-    const SpellState::Landing *landing = s.spells.LandingOn(a.form, who, a.dual);
-    if (!landing || landing->acts)
+    const SpellState::Landing *landing = s.spells.LandingOn(a.form, who, a.dual, about);
+    if (!landing)
         return Outcome::Acts;
-    if (landing->lasting.empty())
+    if (!landing->takes)
         return Outcome::None;
-    const std::vector<RunningEffect> &inForce = SpellsInForceOn(s, who);
-    return ActsUnless(std::all_of(landing->lasting.begin(), landing->lasting.end(), [&](const RunningEffect &effect) {
-        return std::any_of(inForce.begin(), inForce.end(),
-                           [&](const RunningEffect &running) { return Covers(running, effect); });
-    }));
+    const SpellState::Cast *cast = s.spells.CastOf(a.form);
+    if (!cast || cast->concentration)
+        return Outcome::Acts;
+    const std::vector<RunningEffect> &running = SpellsInForceOn(s, who);
+    return ActsUnless(
+        std::any_of(running.begin(), running.end(), [&](const RunningEffect &e) { return cast->Owns(e.source); }));
 }
 
-// What the cast aimed at `target` would do to anyone it reaches: the caster
-// alone for one on oneself, the one aimed at, and for an area everyone here
-// besides -- the snapshot knows how far each is, not where, so anyone could
-// be in it. A rune may catch anyone.
+// What the cast aimed at `target` would do to anyone it reaches: at its
+// centre, the caster for one on oneself or the one aimed at; and for an
+// area, everyone here besides, about the centre -- the snapshot knows how
+// far each is, not where, so anyone could be in it. A rune may catch anyone.
 Outcome CastOutcome(const Snapshot &s, const Action &a, ActorId target)
 {
     const SpellState::Cast *cast = s.spells.CastOf(a.form);
     if (!cast || cast->reach == SpellState::Reach::Place)
         return Outcome::Acts;
-    const ActorId first = cast->reach == SpellState::Reach::Self ? s.self : target;
-    Outcome outcome = OutcomeOn(s, a, first);
-    if (cast->reach != SpellState::Reach::Area)
+    const ActorId centre = cast->reach == SpellState::Reach::Self ? s.self : target;
+    Outcome outcome = OutcomeOn(s, a, centre);
+    if (!cast->area)
         return outcome;
     const auto reach = [&](ActorId who) {
-        if (who != first)
-            outcome = Most(outcome, OutcomeOn(s, a, who));
+        if (who != centre)
+            outcome = Most(outcome, OutcomeOn(s, a, who, true));
     };
     reach(s.self);
     for (const auto &group : {&s.allies, &s.enemies})
@@ -215,8 +221,8 @@ bool CastWouldAct(const Rule &r, const Snapshot &s, ActorId who)
         (r.subject == SubjectKind::Enemy && r.actionTarget == ActionTargetKind::Enemy))
         return CastOutcome(s, *cast, who) == Outcome::Acts;
     const SpellState::Cast *shape = s.spells.CastOf(cast->form);
-    if (shape && shape->reach == SpellState::Reach::Area && r.actionTarget == ActionTargetKind::Self)
-        return OutcomeOn(s, *cast, who) == Outcome::Acts;
+    if (shape && shape->area && r.actionTarget == ActionTargetKind::Self)
+        return OutcomeOn(s, *cast, who, true) == Outcome::Acts;
     return true;
 }
 
@@ -706,11 +712,10 @@ Outcome WouldHaveEffect(const Action &a, const Snapshot &s, ActorId target)
     if (a.kind == ActionKind::Attack)
         return ActsUnless(target != 0 && target == s.currentTarget);
     // A spell, a scroll, a power or a shout: something of it would take on
-    // someone it reaches and is not in force there already at least as
-    // strongly (CastOutcome) -- Oakflesh not while a scroll's is up, Courage
-    // not on the ally who has it; and nothing at all where none of it would
-    // take -- Rally at the undead ally it never takes on, a Calm at an enemy
-    // above its level.
+    // someone it reaches who has nothing from it running (CastOutcome) --
+    // Oakflesh not while the caster's is up, Courage not on the ally who
+    // has it; and nothing at all where none of it would take -- Rally at
+    // the undead ally it never takes on, a Calm at an enemy above its level.
     if (IsCast(a.kind))
         return a.form == 0 ? Outcome::Acts : CastOutcome(s, a, target);
     if (IsEquip(a.kind))

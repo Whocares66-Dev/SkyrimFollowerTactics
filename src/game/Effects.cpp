@@ -446,87 +446,83 @@ RE::MagicItem *CastItemOf(RE::TESForm *form)
 } // namespace
 
 // A cast of the form, as core's WouldHaveEffect weighs it (SpellState's
-// casts and landings): whom it reaches, and what it would put on each of
-// them -- the follower, and for one aimed or with an area each ally and
-// each enemy, and for one that raises each corpse; singly, and dual cast
-// where they can. Each effect as the engine lands it (LandsOn), which for
-// a Reanimate is the corpse's fitness and its level against the magnitude;
-// of those that would take, the lasting ones to be held against what is in
-// force there, and `acts` for one that nothing in force can answer for, an
-// instant. Nothing for a form that is not a spell, a scroll, a power or a
-// shout: core then takes it to act.
+// casts and landings): whom it reaches, and whether anything of it would
+// take on each of them -- at its centre, the follower, and for one aimed
+// each ally, each enemy and, for one that raises, each corpse; about the
+// centre, for one with an area, each of those again with its area effects
+// alone; singly, and dual cast where they can. Each effect as the engine
+// lands it (LandsOn), which for a Reanimate is the corpse's fitness and its
+// level against the magnitude. Nothing for a form that is not a spell, a
+// scroll, a power or a shout: core then takes it to act.
 void AddLandings(RE::Actor *caster, std::uint32_t id, ft::Snapshot &s)
 {
-    RE::MagicItem *item = CastItemOf(RE::TESForm::LookupByID(id));
+    auto *form = RE::TESForm::LookupByID(id);
+    RE::MagicItem *item = CastItemOf(form);
     if (!item)
         return;
     using Delivery = RE::MagicSystem::Delivery;
     using Reach = ft::SpellState::Reach;
-    using Flag = RE::EffectSetting::EffectSettingData::Flag;
     const bool area = std::ranges::any_of(ResolvedEffects(*item),
-                                          [](const RE::Effect *effect) { return effect->effectItem.area > 0; });
+                                          [](const RE::Effect *effect) { return AreaRadius(*effect) > 0.0f; });
     const Delivery delivery = item->GetDelivery();
     const Reach reach = delivery == Delivery::kTargetLocation ? Reach::Place
-                        : area                                ? Reach::Area
                         : delivery == Delivery::kSelf         ? Reach::Self
                                                               : Reach::Target;
     const bool raises = std::ranges::any_of(ResolvedEffects(*item), IsReanimate);
-    s.spells.casts.push_back({id, reach, raises});
+    const bool concentration = item->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
+    // What running there is this cast's: a shout's, from any of its words,
+    // an aspect shouted at word one being up all the same.
+    std::vector<std::uint32_t> from;
+    if (auto *shout = form->As<RE::TESShout>())
+        for (const auto &variation : shout->variations)
+            if (variation.spell)
+                from.push_back(variation.spell->GetFormID());
+    s.spells.casts.push_back({id, reach, raises, area, concentration, std::move(from)});
     if (reach == Reach::Place)
         return;
     auto *spell = item->As<RE::SpellItem>();
     const bool dualable = spell && IsCastable(spell) && CanDualCast(caster, spell);
-    const auto judge = [&](ft::ActorId who) {
+    const auto judge = [&](ft::ActorId who, bool about) {
         auto *target = who == s.self ? caster : RE::TESForm::LookupByID<RE::Actor>(who);
         if (!target)
             return;
+        // About a cast on oneself, the centre is the caster, and how far
+        // away they stand says whether an effect's ring reaches them. About
+        // an aimed one it is wherever the cast lands, which is not known.
+        const float away =
+            about && reach == Reach::Self ? caster->GetPosition().GetDistance(target->GetPosition()) : 0.0f;
         for (const bool dual : {false, true})
         {
             if (dual && !dualable)
                 continue;
-            ft::SpellState::Landing landing{id, who, dual, false, {}};
-            // A hidden instant is the spell's plumbing, not its work:
-            // Stormcrown gives each Dragon Aspect word a hidden Dispel script
-            // of no duration beside the aspect itself, and counted as acting
-            // it had a Self: Any rule shout Dragon Aspect again with the
-            // aspect up (2026-09-26). It acts only where nothing else of
-            // the cast would land.
-            bool plumbing = false;
-            for (RE::Effect *effect : ResolvedEffects(*item))
-            {
-                if (!LandsOn(*effect, item, caster, target, dual))
-                    continue;
-                const auto *base = effect->baseEffect;
-                const bool hidden = base->data.flags.any(Flag::kHideInUI);
-                if (effect->effectItem.duration <= 0 || base->data.flags.any(Flag::kNoDuration))
-                {
-                    if (hidden)
-                    {
-                        plumbing = true;
-                        continue;
-                    }
-                    landing.acts = true;
-                    break;
-                }
-                const char *name = base->GetFullName();
-                landing.lasting.push_back({hidden || !name ? std::string() : std::string(name),
-                                           effect->effectItem.magnitude, item->GetFormID(), base->GetFormID(), dual});
-            }
-            if (plumbing && landing.lasting.empty())
-                landing.acts = true;
-            s.spells.landings.push_back(std::move(landing));
+            // About the centre, only what spreads reaches, and only as far
+            // as it spreads.
+            const bool takes = std::ranges::any_of(ResolvedEffects(*item), [&](RE::Effect *effect) {
+                return !(about && AreaRadius(*effect) < (std::max)(away, 1.0f)) &&
+                       LandsOn(*effect, item, caster, target, dual);
+            });
+            s.spells.landings.push_back({id, who, dual, takes, about});
         }
     };
-    judge(s.self);
-    if (reach == Reach::Self)
+    const auto others = [&](bool about) {
+        for (const auto &ally : s.allies)
+            judge(ally.id, about);
+        for (const auto &enemy : s.enemies)
+            judge(enemy.id, about);
+        if (raises)
+            for (const auto &corpse : s.corpses)
+                judge(corpse.id, about);
+    };
+    judge(s.self, false);
+    if (reach == Reach::Target)
+        others(false);
+    if (!area)
         return;
-    for (const auto &ally : s.allies)
-        judge(ally.id);
-    for (const auto &enemy : s.enemies)
-        judge(enemy.id);
-    if (raises)
-        for (const auto &corpse : s.corpses)
-            judge(corpse.id);
+    // The caster is about the centre of an aimed area, and at the centre
+    // of their own.
+    if (reach == Reach::Target)
+        judge(s.self, true);
+    others(true);
 }
 
 std::vector<ft::EffectPick> ScanEffectPicks(const std::vector<SpellOption> &spells,

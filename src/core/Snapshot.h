@@ -498,11 +498,12 @@ struct PotionStock
 // of those would do to whom it reaches.
 //
 // FormIDs, opaque to core -- it never resolves them, it only asks whether
-// one is in a list. What a cast would put where is the game side's reading
-// of the engine; whether that is anything, against what is in force there,
-// is core's (Evaluator.cpp, WouldHaveEffect). A buff like Oakflesh runs for
-// sixty seconds, far longer than any cooldown worth choosing, so spacing
-// cannot solve re-casting and only what is in force can.
+// one is in a list. Whom a cast would reach and whether anything of it
+// would take there is the game side's reading of the engine; whether that
+// is anything new, against what is running there, is core's (Evaluator.cpp,
+// WouldHaveEffect). A buff like Oakflesh runs for sixty seconds, far longer
+// than any cooldown worth choosing, so spacing cannot solve re-casting and
+// only what is in force can.
 struct SpellState
 {
     std::vector<std::uint32_t> known;
@@ -566,25 +567,38 @@ struct SpellState
         return std::find(known.begin(), known.end(), form) != known.end();
     }
 
-    // Whom a cast of a spell a rule names reaches: the caster alone, the one
-    // it is aimed at, everyone about as well (an area), or whoever steps on
-    // a place (a rune), which cannot be known.
+    // Where a cast of a spell a rule names is centred: on the caster, on the
+    // one it is aimed at, or on a place whoever steps on (a rune), which
+    // cannot be known.
     enum class Reach : std::uint8_t
     {
         Self,
         Target,
-        Area,
         Place,
     };
     // `raises`: it carries a Reanimate effect, the only kind a corpse takes,
     // and its landings are asked of each corpse here too -- the engine's
     // own test holds the corpse's level against the magnitude the caster's
     // perks make of it (Reanimate Corpse 13, Revenant 21, Dread Zombie 30).
+    // `area`: an effect of it has an area, and reaches everyone about the
+    // centre as well, with those effects alone. `concentration`: a stream,
+    // which the combat AI's gates never hold back for its own effect
+    // running. `from`: the spells whose effects are this cast's own besides
+    // the form itself -- each word's spell, for a shout.
     struct Cast
     {
         std::uint32_t form{0};
         Reach reach{Reach::Target};
         bool raises{false};
+        bool area{false};
+        bool concentration{false};
+        std::vector<std::uint32_t> from;
+
+        // Did an effect running with this source come from this cast?
+        [[nodiscard]] bool Owns(std::uint32_t source) const
+        {
+            return source != 0 && (source == form || std::find(from.begin(), from.end(), source) != from.end());
+        }
     };
     std::vector<Cast> casts;
 
@@ -594,20 +608,23 @@ struct SpellState
         return cast && cast->raises;
     }
 
-    // What a cast would put on one actor, singly or dual cast, as the engine
-    // judges each effect landing there (game/Effects.cpp, LandsOn): the
-    // lasting effects that would take, each to be held against what is in
-    // force there (Covers), and `acts` for one that would take and that
-    // nothing in force can answer for -- an instant, a restore, a script's
-    // momentary effect. Nothing that would take: neither. Asked of the
-    // caster, each ally and each enemy the cast can reach.
+    // Whether anything of a cast would take on one actor, singly or dual
+    // cast, as the engine lands each effect there (game/Effects.cpp,
+    // LandsOn). Asked of the caster, each ally and each enemy the cast can
+    // reach: at its centre with every effect, and, for a cast with an area,
+    // about the centre (`about`) with only the effects that have an area of
+    // their own and reach that far -- MagicCaster::FindTargets' rule.
+    // Dragonhide's Fortify Armor goes on the caster alone and Adamant's
+    // Bastion on those about them; held against every ally with both, the
+    // rule cast it again and again over Bastion already on them
+    // (2026-09-26).
     struct Landing
     {
         std::uint32_t form{0};
         ActorId target{0};
         bool dual{false};
-        bool acts{false};
-        std::vector<RunningEffect> lasting;
+        bool takes{false};
+        bool about{false};
     };
     std::vector<Landing> landings;
 
@@ -620,10 +637,10 @@ struct SpellState
     }
 
     // Nothing for a pair the game side did not judge.
-    [[nodiscard]] const Landing *LandingOn(std::uint32_t form, ActorId target, bool dual) const
+    [[nodiscard]] const Landing *LandingOn(std::uint32_t form, ActorId target, bool dual, bool about = false) const
     {
         for (const auto &l : landings)
-            if (l.form == form && l.target == target && l.dual == dual)
+            if (l.form == form && l.target == target && l.dual == dual && l.about == about)
                 return &l;
         return nullptr;
     }

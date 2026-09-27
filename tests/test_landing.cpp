@@ -162,38 +162,74 @@ TEST_CASE("an instant thing is not judged by what is in force, and a bane counts
     REQUIRE(VerdictOf(drink, s) == Verdict::Fired);
 }
 
-TEST_CASE("a cast on oneself is not repeated while what it puts up is in force", "[landing]")
+TEST_CASE("a cast on oneself is not repeated while anything from it is in force", "[landing]")
 {
+    // The combat AI's own test (45344): an effect running whose spell is
+    // this one, whatever its strength.
     Snapshot s = Healthy();
     s.spells.known.push_back(kOakflesh);
-    Lands(s, kOakflesh, s.self, {{"Oakflesh", 40.0f, kOakflesh, kOakfleshEffect}});
+    Lands(s, kOakflesh, s.self, true);
     const Rule cast = Do(Named(ActionKind::CastSpell, kOakflesh));
 
     REQUIRE(VerdictOf(cast, s) == Verdict::Fired);
-    // A scroll's Oakflesh running: the spell would add nothing.
-    s.traits.running = {{"Oakflesh", 40.0f, kOakfleshScroll, kOakfleshEffect}};
+    s.traits.running = {{"Oakflesh", 40.0f, kOakflesh, kOakfleshEffect}};
     REQUIRE(VerdictOf(cast, s) == Verdict::EffectActive);
-    // A weaker armour of the name: the spell is an upgrade.
-    s.traits.running = {{"Oakflesh", 20.0f}};
+    s.traits.running = {{"Oakflesh", 20.0f, kOakflesh, kOakfleshEffect}};
+    REQUIRE(VerdictOf(cast, s) == Verdict::EffectActive);
+    // Another spell's Oakflesh is not this one's, as the engine's AI has it:
+    // a scroll's does not keep the spell back.
+    s.traits.running = {{"Oakflesh", 40.0f, kOakfleshScroll, kOakfleshEffect}};
     REQUIRE(VerdictOf(cast, s) == Verdict::Fired);
 }
 
-TEST_CASE("a hidden effect is covered by its own record only", "[landing]")
+TEST_CASE("what runs is asked for the spell it came from, hidden or not", "[landing]")
 {
-    // A power whose one lasting effect is hidden: no name to go by, so only
-    // the same effect of the same power in force covers it -- a refresh.
+    // A power whose one lasting effect is hidden: the same effect from
+    // another power is not this one.
     constexpr std::uint32_t kPower = 0x000E40C4;
     constexpr std::uint32_t kHidden = 0x000E40C5;
     Snapshot s = Healthy();
     s.spells.known.push_back(kPower);
-    Lands(s, kPower, s.self, {{"", 0.0f, kPower, kHidden}});
+    Lands(s, kPower, s.self, true);
     const Rule use = Do(Named(ActionKind::UsePower, kPower));
 
     REQUIRE(VerdictOf(use, s) == Verdict::Fired);
-    s.traits.running = {{"", 0.0f, 0x00012345, kHidden}}; // the effect, from another power
+    s.traits.running = {{"", 0.0f, 0x00012345, kHidden}};
     REQUIRE(VerdictOf(use, s) == Verdict::Fired);
     s.traits.running = {{"", 0.0f, kPower, kHidden}};
     REQUIRE(VerdictOf(use, s) == Verdict::EffectActive);
+}
+
+TEST_CASE("a shout is in effect while anything from any of its words runs", "[landing]")
+{
+    // Dragon Aspect: the aspect running from word one, the rule shouting
+    // word three. Stormcrown's hidden Dispel on each word, which lands and
+    // runs no time, no longer has a say (2026-09-26).
+    constexpr std::uint32_t kAspect = 0x0201DF92;
+    constexpr std::uint32_t kWordOne = 0x0201DF91;
+    constexpr std::uint32_t kWordThree = 0x0201DF99;
+    Snapshot s = Healthy();
+    s.spells.known.push_back(kAspect);
+    Lands(s, kAspect, s.self, true);
+    s.spells.casts.back().from = {kWordOne, 0x0201DF96, kWordThree};
+    const Rule shout = Do(Named(ActionKind::Shout, kAspect));
+
+    REQUIRE(VerdictOf(shout, s) == Verdict::Fired);
+    s.traits.running = {{"Dragon Aspect", 100.0f, kWordOne, 0x02021731}};
+    REQUIRE(VerdictOf(shout, s) == Verdict::EffectActive);
+}
+
+TEST_CASE("a stream is never held back by its own effect running", "[landing]")
+{
+    // The AI's gates skip a concentration spell: its effect runs only while
+    // it is being cast.
+    constexpr std::uint32_t kHealing = 0x00012FCC;
+    Snapshot s = Healthy();
+    s.spells.known.push_back(kHealing);
+    Lands(s, kHealing, s.self, true);
+    s.spells.casts.back().concentration = true;
+    s.traits.running = {{"Restore Health", 10.0f, kHealing, 0x0004D3F0}};
+    REQUIRE(VerdictOf(Do(Named(ActionKind::CastSpell, kHealing)), s) == Verdict::Fired);
 }
 
 TEST_CASE("alchemy and spells are each asked of their own", "[landing]")
@@ -202,7 +238,7 @@ TEST_CASE("alchemy and spells are each asked of their own", "[landing]")
     // spell's does not cover the potion: each family stacks with the other.
     Snapshot s = Healthy();
     s.spells.known.push_back(kOakflesh);
-    Lands(s, kOakflesh, s.self, {{"Oakflesh", 40.0f, kOakflesh, kOakfleshEffect}});
+    Lands(s, kOakflesh, s.self, true);
     s.potions.running = {{"Oakflesh", 40.0f}};
     REQUIRE(VerdictOf(Do(Named(ActionKind::CastSpell, kOakflesh)), s) == Verdict::Fired);
 
@@ -217,7 +253,7 @@ TEST_CASE("a cast on another is judged by what is in force on them, not on the c
     Snapshot s = Healthy();
     ActorView &player = Player(s);
     s.spells.known.push_back(kCourage);
-    Lands(s, kCourage, kPlayerFormID, {{"Courage", 100.0f, kCourage, kCourageEffect}}, SpellState::Reach::Target);
+    Lands(s, kCourage, kPlayerFormID, true, SpellState::Reach::Target);
     const Rule cast = Do(Named(ActionKind::CastSpell, kCourage), ActionTargetKind::Player);
 
     // The caster's own Courage is no reason to keep it from the player.
@@ -235,15 +271,16 @@ TEST_CASE("a cast nothing of which would take is not made, and one the engine ju
     s.spells.known.push_back(kCourage);
     // Every effect refused there -- an undead ally without Master of the
     // Mind, an enemy above a Calm's level: nothing would take.
-    SpellState::Landing &landing = Lands(s, kCourage, kPlayerFormID, {}, SpellState::Reach::Target);
+    SpellState::Landing &landing = Lands(s, kCourage, kPlayerFormID, false, SpellState::Reach::Target);
     const Rule cast = Do(Named(ActionKind::CastSpell, kCourage), ActionTargetKind::Player);
     REQUIRE(VerdictOf(cast, s) == Verdict::NoEffect);
 
-    // An instant that would take -- a heal, a script's moment -- is always
-    // worth it: nothing in force answers for it.
-    landing.acts = true;
-    player.traits.running = {{"Courage", 100.0f, kCourage, kCourageEffect}};
+    // Something of it would take, and nothing from it runs there: an
+    // instant as much as a buff.
+    landing.takes = true;
     REQUIRE(VerdictOf(cast, s) == Verdict::Fired);
+    player.traits.running = {{"Courage", 100.0f, kCourage, kCourageEffect}};
+    REQUIRE(VerdictOf(cast, s) == Verdict::EffectActive);
 
     // Someone the game side did not judge, and a spell it could not read:
     // it would.
@@ -260,29 +297,76 @@ TEST_CASE("an area cast is made while anyone it reaches would gain", "[landing]"
     s.allies.push_back({kLydia, {100.0f, 100.0f}, 300.0f});
     s.spells.known.push_back(kRally);
     const RunningEffect rally{"Rally", 100.0f, kRally, kRallyEffect};
-    Lands(s, kRally, s.self, {rally}, SpellState::Reach::Area);
-    Lands(s, kRally, kLydia, {rally});
     const Rule cast = Do(Named(ActionKind::CastSpell, kRally));
 
-    s.traits.running = {rally};
-    REQUIRE(VerdictOf(cast, s) == Verdict::Fired); // Lydia would gain
-    s.allies[0].traits.running = {rally};
-    REQUIRE(VerdictOf(cast, s) == Verdict::EffectActive);
+    SECTION("on the caster as well")
+    {
+        Lands(s, kRally, s.self, true);
+        LandsAbout(s, kRally, kLydia, true);
+        s.traits.running = {rally};
+        REQUIRE(VerdictOf(cast, s) == Verdict::Fired); // Lydia would gain
+        s.allies[0].traits.running = {rally};
+        REQUIRE(VerdictOf(cast, s) == Verdict::EffectActive);
+    }
+
+    SECTION("on those about the caster alone")
+    {
+        // Nothing of it takes on the caster: the allies are why it is cast.
+        Lands(s, kRally, s.self, false);
+        LandsAbout(s, kRally, kLydia, true);
+        REQUIRE(VerdictOf(cast, s) == Verdict::Fired);
+        s.allies[0].traits.running = {rally};
+        REQUIRE(VerdictOf(cast, s) == Verdict::EffectActive);
+    }
 }
 
-TEST_CASE("a dual cast is weighed as one", "[landing]")
+TEST_CASE("about the centre of a cast, only its area effects are weighed", "[landing]")
 {
+    // Dragonhide under Adamant: Fortify Armor on the caster, and Bastion,
+    // with an area, on those about them when dual cast. An ally is judged by
+    // Bastion alone: held to the caster's armour as well, a rule cast it over
+    // and over with Bastion already on everyone (2026-09-26).
+    constexpr ActorId kLydia = 0x202;
+    constexpr std::uint32_t kDragonhide = 0x000CDB70;
+    Snapshot s = Healthy();
+    s.allies.push_back({kLydia, {100.0f, 100.0f}, 300.0f});
+    s.spells.known.push_back(kDragonhide);
+    s.spells.costs.push_back({kDragonhide, 50.0f, true, 60.0f});
+    const RunningEffect armor{"Fortify Armor Rating", 200.0f, kDragonhide, 0x000CDB75, true};
+    const RunningEffect bastion{"Armor - Bastion", 200.0f, kDragonhide, 0x0409862F, true};
+    Lands(s, kDragonhide, s.self, true, SpellState::Reach::Self, true);
+    // At the centre too, as it would be were the cast aimed at Lydia: not
+    // consulted, since a spell on oneself is centred on the caster.
+    Lands(s, kDragonhide, kLydia, true, SpellState::Reach::Self, true);
+    SpellState::Landing &about = LandsAbout(s, kDragonhide, kLydia, true, true);
+    Action dual = Named(ActionKind::CastSpell, kDragonhide);
+    dual.dual = true;
+
+    s.traits.running = {armor};
+    REQUIRE(VerdictOf(Do(dual), s) == Verdict::Fired); // Lydia would gain Bastion
+    s.allies[0].traits.running = {bastion};
+    REQUIRE(VerdictOf(Do(dual), s) == Verdict::EffectActive);
+
+    // Beyond Bastion's ring: nothing of it reaches Lydia, and nothing about
+    // Lydia keeps the rule firing.
+    s.allies[0].traits.running.clear();
+    about.takes = false;
+    REQUIRE(VerdictOf(Do(dual), s) == Verdict::EffectActive);
+}
+
+TEST_CASE("a dual cast is no upgrade over the spell's own single cast", "[landing]")
+{
+    // The engine's AI asks whether the spell is running, not how strongly:
+    // a single cast's Oakflesh up keeps the dual cast back too.
     Snapshot s = Healthy();
     s.spells.known.push_back(kOakflesh);
     s.spells.costs.push_back({kOakflesh, 10.0f, true, 28.0f});
-    Lands(s, kOakflesh, s.self, {{"Oakflesh", 40.0f, kOakflesh, kOakfleshEffect, true}}, SpellState::Reach::Self, true);
+    Lands(s, kOakflesh, s.self, true, SpellState::Reach::Self, true);
     Action dual = Named(ActionKind::CastSpell, kOakflesh);
     dual.dual = true;
 
-    // A single cast's in force: the dual cast's is stronger.
-    s.traits.running = {{"Oakflesh", 40.0f, kOakflesh, kOakfleshEffect}};
     REQUIRE(VerdictOf(Do(dual), s) == Verdict::Fired);
-    s.traits.running.back().dual = true;
+    s.traits.running = {{"Oakflesh", 40.0f, kOakflesh, kOakfleshEffect}};
     REQUIRE(VerdictOf(Do(dual), s) == Verdict::EffectActive);
 }
 

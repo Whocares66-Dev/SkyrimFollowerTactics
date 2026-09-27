@@ -54,6 +54,19 @@ namespace ft::game
     return item.effects | std::views::filter([](const RE::Effect *effect) { return effect && effect->baseEffect; });
 }
 
+// How far an effect reaches about the centre of its cast, in game units:
+// the record's area in feet at 22 units a foot, and nothing for one whose
+// base says No Area. So MagicCaster::FindTargets reads it (34410; 33632 on
+// SE, read on both 2026-09-26): an effect with no area goes on the cast's
+// target alone, one with an area on each actor within this of the centre.
+[[nodiscard]] inline float AreaRadius(const RE::Effect &effect)
+{
+    constexpr float kUnitsPerFoot = 22.0f;
+    if (!effect.baseEffect || effect.baseEffect->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kNoArea))
+        return 0.0f;
+    return static_cast<float>(effect.effectItem.area) * kUnitsPerFoot;
+}
+
 // A game setting by name, looked up on every call (a mod may change one
 // mid-session), or `vanilla` where the game has no such setting.
 [[nodiscard]] float GameSetting(const char *name, float vanilla);

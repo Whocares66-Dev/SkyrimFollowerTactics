@@ -4,6 +4,8 @@
 #include "core/Rule.h"
 #include "core/Snapshot.h"
 
+#include <algorithm>
+
 namespace ft::test
 {
 
@@ -60,14 +62,30 @@ inline ActorView &Player(Snapshot &s)
 }
 
 // A cast a rule names as the game side would judge it (SpellState's casts
-// and landings): reaching as `reach` says, and putting `lasting` on
-// `target`, singly or dual cast. The cast's reach is set by its first call.
-inline SpellState::Landing &Lands(Snapshot &s, std::uint32_t form, ActorId target, std::vector<RunningEffect> lasting,
+// and landings): reaching as `reach` says, and something of it taking on
+// `target` or not, singly or dual cast. The cast's reach is set by its first
+// call.
+inline SpellState::Landing &Lands(Snapshot &s, std::uint32_t form, ActorId target, bool takes,
                                   SpellState::Reach reach = SpellState::Reach::Self, bool dual = false)
 {
     if (!s.spells.CastOf(form))
         s.spells.casts.push_back({form, reach});
-    s.spells.landings.push_back({form, target, dual, false, std::move(lasting)});
+    s.spells.landings.push_back({form, target, dual, takes});
+    return s.spells.landings.back();
+}
+
+// The same cast reaching `target` about its centre, where only its area
+// effects go: whether any of those would take there. Makes the cast one
+// with an area.
+inline SpellState::Landing &LandsAbout(Snapshot &s, std::uint32_t form, ActorId target, bool takes, bool dual = false)
+{
+    auto cast = std::find_if(s.spells.casts.begin(), s.spells.casts.end(),
+                             [&](const SpellState::Cast &c) { return c.form == form; });
+    if (cast == s.spells.casts.end())
+        s.spells.casts.push_back({form, SpellState::Reach::Self, false, true});
+    else
+        cast->area = true;
+    s.spells.landings.push_back({form, target, dual, takes, true});
     return s.spells.landings.back();
 }
 

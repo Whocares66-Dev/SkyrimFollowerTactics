@@ -1812,7 +1812,7 @@ TEST_CASE("a power is used like a cast: known, not running, not mid-cast, free o
     // used again, whatever the cooldown says.
     s.now += 10.0;
     const RunningEffect shadows{"Embrace of Shadows", 0.0f, kEmbraceOfShadows, 0x000E40C5};
-    Lands(s, kEmbraceOfShadows, s.self, {shadows});
+    Lands(s, kEmbraceOfShadows, s.self, true);
     s.traits.running = {shadows};
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::EffectActive);
@@ -2535,7 +2535,7 @@ TEST_CASE("a decision names whom its condition bound", "[sequence]")
     s.enemies.push_back({kWolf, {30.0f, 100.0f}, 300.0f});
     s.spells.known.push_back(kReanimate);
     s.spells.casts.push_back({kReanimate, SpellState::Reach::Target, true});
-    Lands(s, kReanimate, kBandit, {{"Reanimate", 13.0f, kReanimate, 0x0003A1B1}});
+    Lands(s, kReanimate, kBandit, true);
 
     const auto bound = [&](const Rule &r) {
         RuleSet rs;
@@ -2822,11 +2822,10 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     s.spells.known.push_back(kReanimate);
     // As the engine judges each corpse: the rat and the bandit it would
     // raise, the giant, above its level, it would not.
-    const RunningEffect reanimate{"Reanimate", 13.0f, kReanimate, 0x0003A1B1};
     s.spells.casts.push_back({kReanimate, SpellState::Reach::Target, true});
-    Lands(s, kReanimate, kRat, {reanimate});
-    Lands(s, kReanimate, kBandit, {reanimate});
-    Lands(s, kReanimate, kGiant, {});
+    Lands(s, kReanimate, kRat, true);
+    Lands(s, kReanimate, kBandit, true);
+    Lands(s, kReanimate, kGiant, false);
     EvalContext ctx;
 
     // No corpses: nothing to bind; None holds instead.
@@ -3374,8 +3373,8 @@ TEST_CASE("a group binds one its rule's cast would act on", "[landing][binding]"
     // Serana, whom only Master of the Mind's hidden versions would reach.
     const RunningEffect rally{"Rally", 100.0f, kRally, 0x0001EA76};
     for (const ActorId who : {kLydia, kPlayerFormID, s.self})
-        Lands(s, kRally, who, {rally}, SpellState::Reach::Target);
-    Lands(s, kRally, kSerana, {});
+        Lands(s, kRally, who, true, SpellState::Reach::Target);
+    Lands(s, kRally, kSerana, false);
 
     Rule r;
     r.subject = SubjectKind::Ally;
@@ -3393,7 +3392,7 @@ TEST_CASE("a group binds one its rule's cast would act on", "[landing][binding]"
 
     SECTION("dual cast, as the larger magnitude lands")
     {
-        Lands(s, kRally, kSerana, {rally}, SpellState::Reach::Target, true);
+        Lands(s, kRally, kSerana, true, SpellState::Reach::Target, true);
         r.FirstAction().dual = true;
         CHECK(EvaluateCondition(r, s).id == kSerana);
         r.FirstAction().dual = false;
@@ -3424,10 +3423,10 @@ TEST_CASE("a group binds one its rule's cast would act on", "[landing][binding]"
 
     SECTION("an area about the caster, by whom it would reach")
     {
-        const RunningEffect area{"Rally", 100.0f, kAreaRally, 0x0001EA76};
-        for (const ActorId who : {kLydia, kPlayerFormID, s.self})
-            Lands(s, kAreaRally, who, {area}, SpellState::Reach::Area);
-        Lands(s, kAreaRally, kSerana, {});
+        Lands(s, kAreaRally, s.self, true);
+        for (const ActorId who : {kLydia, kPlayerFormID})
+            LandsAbout(s, kAreaRally, who, true);
+        LandsAbout(s, kAreaRally, kSerana, false);
         r.actionTarget = ActionTargetKind::Self;
         r.FirstAction().form = kAreaRally;
         CHECK(EvaluateCondition(r, s).id == kLydia);

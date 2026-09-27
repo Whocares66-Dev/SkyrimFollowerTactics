@@ -90,8 +90,9 @@ struct ConsumableOption
 [[nodiscard]] bool LandsOn(RE::Effect &effect, RE::MagicItem *spell, RE::Actor *caster, RE::Actor *target, bool dual);
 
 // A cast of `form` by `caster`, into the snapshot as core's WouldHaveEffect
-// weighs it (SpellState's casts and landings): whom it reaches, and what it
-// would put on each actor the snapshot holds that it can reach. After the
+// weighs it (SpellState's casts and landings): whom it reaches, and whether
+// anything of it would take on each actor the snapshot holds that it can
+// reach. After the
 // party, the enemies and the corpses are in the snapshot. Game thread.
 void AddLandings(RE::Actor *caster, std::uint32_t form, ft::Snapshot &s);
 
