@@ -46,11 +46,13 @@ The player and followers start with no [tactics]({{ '/tactics/' | relative_url }
 
 ## Saving your changes
 
-Both tactics lists, their enable / disable switches, pins, bans, Settings choices, and follower training records are saved when you save the game, including quicksaves and autosaves. There is no separate save button for the mod.
+Both tactics lists, their enable / disable switches, pins, bans, Settings choices, combat-style adjustments, and follower training records are saved when you save the game, including quicksaves and autosaves. There is no separate save button for the mod.
 
 Loading an earlier save restores the choices saved with it. Closing the panel does not save changes, and quitting without saving loses them. These choices belong to each game save; they are not shared across characters or new games.
 
 ## Reporting problems
+
+Please [open an issue on GitHub](https://github.com/Whocares66-Dev/SkyrimFollowerTactics/issues) or [file a bug on Nexus Mods](https://www.nexusmods.com/skyrimspecialedition/mods/192531?tab=bugs). Describe what happened, what you expected, and how to reproduce it. Include your Skyrim and Follower Tactics versions and the relevant logs.
 
 The log is `Documents\My Games\Skyrim Special Edition\SKSE\FollowerTactics.log`. `FollowerTactics.events.jsonl` beside it records what tactics did, one event per line. Earlier sessions are kept in `SKSE\FollowerTactics\`.
 

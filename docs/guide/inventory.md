@@ -2,7 +2,7 @@
 layout: "default"
 title: "Inventory"
 permalink: "/inventory/"
-nav_order: 4
+nav_order: 3
 has_toc: false
 ---
 

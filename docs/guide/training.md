@@ -2,7 +2,7 @@
 layout: "default"
 title: "Follower training"
 permalink: "/training/"
-nav_order: 10
+nav_order: 12
 has_toc: false
 ---
 

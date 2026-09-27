@@ -17,3 +17,5 @@ This project was inspired and made possible by the work of:
 - [iRonoa](https://www.nexusmods.com/profile/iRonoa) for [Follower Equip Control](https://www.nexusmods.com/skyrimspecialedition/mods/175124)
 - [Aaronavich](https://www.nexusmods.com/profile/Aaronavich) for [houseCARL](https://www.nexusmods.com/skyrimspecialedition/mods/181738)
 - [Noggog](https://github.com/Noggog) for [Mutagen](https://github.com/Mutagen-Modding/Mutagen)
+
+Thanks also to [resharr](https://www.nexusmods.com/profile/resharr) on Nexus Mods for bug reports and suggestions.

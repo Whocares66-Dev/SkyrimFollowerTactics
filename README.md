@@ -9,6 +9,7 @@
 - Set condition-action [tactics](https://whocares66-dev.github.io/SkyrimFollowerTactics/tactics/) for the player and followers, with separate combat and idle rules.
 - Inspect player and follower inventory, magic, skills, active effects, and more.
 - Manage follower equipment with [pins and bans](https://whocares66-dev.github.io/SkyrimFollowerTactics/equip-states/).
+- Adjust each follower's [combat style](https://whocares66-dev.github.io/SkyrimFollowerTactics/combat-style/), including attack preferences, movement, and dual-wielding.
 - [Train followers](https://whocares66-dev.github.io/SkyrimFollowerTactics/training/) through skill use, reassign attributes and perks, and teach or forget spells without permanently changing their original abilities.
 - Install as an SKSE plugin, with no ESP.
 

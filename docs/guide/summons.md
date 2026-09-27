@@ -2,7 +2,7 @@
 layout: "default"
 title: "Summons"
 permalink: "/summons/"
-nav_order: 7
+nav_order: 6
 has_toc: false
 ---
 

@@ -2,7 +2,7 @@
 layout: "default"
 title: "Equip states"
 permalink: "/equip-states/"
-nav_order: 5
+nav_order: 4
 has_toc: false
 ---
 

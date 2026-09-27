@@ -8,6 +8,16 @@ has_toc: false
 
 # Changelog
 
+## 0.5.0
+
+Major changes since `v0.4.0`:
+
+- **Editable follower combat styles:** tune weapon and spell preferences, aggression, defense, bashing, and movement on the Combat Style tab. Toggle flanking and dual-wielding, reset individual values or the whole style, and keep adjustments with your save.
+- **More expressive conditions:** use time of day and outdoor weather in idle tactics, and detect Rallied, Calmed, Feared, and Frenzied targets. The `Effect` condition now offers effects available across the whole party.
+- **Smarter spell and item use:** tactics check whether an action can affect its target, including immunities, effect requirements, and which corpses can be raised. Buffs and area spells wait while already active on the targets they can reach, avoiding repeated casts of abilities such as Dragon Aspect and Dragonhide.
+- **More precise equipment rules:** unequip one hand or a selected armor part, such as a helmet, cloak, or backpack. Long weapon and armor menus are grouped by weapon type and body part.
+- **Easier rule editing:** temporarily unavailable rules stay editable, and menus open above their cells when there is no room below. Powers no longer wait for shout recovery, and automatic player casts more reliably wait for equipment to finish changing.
+
 ## 0.4.0
 
 Major changes since `v0.3.0`:

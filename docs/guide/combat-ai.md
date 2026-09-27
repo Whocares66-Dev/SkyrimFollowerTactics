@@ -2,7 +2,7 @@
 layout: "default"
 title: "Combat AI"
 permalink: "/combat-ai/"
-nav_order: 12
+nav_order: 11
 has_toc: false
 math: true
 ---
@@ -11,7 +11,9 @@ math: true
 
 Followers fight with Skyrim's own combat AI, and [tactics]({{ '/tactics/' | relative_url }}) override it only when a rule fires. Two switches under `Settings` → `Combat AI` change how the AI picks a follower's weapon and attack spell. Both are on by default, apply only to followers, and are [saved with the game]({{ '/getting-started/' | relative_url }}#saving-your-changes).
 
-![Combat AI settings]({{ "/assets/img/panel/settings_combat_ai.png" | relative_url }}){: .screenshot loading="lazy"}
+The same section also contains `Manage combat style`, which enables each follower's [combat-style adjustments]({{ '/combat-style/' | relative_url }}#adjusting-a-style). It is on by default; turn it off to restore their original styles while keeping your adjustments.
+
+![Settings showing Manage combat style, Varied AI choices, and Use self-targeting damage spells]({{ "/assets/img/panel/settings.png" | relative_url }}){: .screenshot loading="lazy"}
 
 ## Varied AI choices
 

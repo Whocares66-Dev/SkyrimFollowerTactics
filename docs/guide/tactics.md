@@ -2,7 +2,7 @@
 layout: "default"
 title: "Tactics"
 permalink: "/tactics/"
-nav_order: 2
+nav_order: 10
 has_toc: false
 ---
 
@@ -67,7 +67,9 @@ Most conditions are self-explanatory. A few are worth highlighting.
 
 `Armor` is shown as percent of damage reduction, rather than absolute values.
 
-`Effect` is met while the named effect is active on the target, whatever applied it. The list offers the lasting effects of the character's potions, food, spells, scrolls, powers, and shouts, including toggle powers. Negate it to act while the effect is absent.
+`Effect` is met while the named effect is active on the target, whatever applied it. The list offers lasting effects available from the whole party's potions, food, spells, scrolls, powers, and shouts, including toggle powers. Negate it to act while the effect is absent.
+
+`Rallied`, `Calmed`, `Feared`, and `Frenzied` detect active illusion influences on the target. For example, use a negated `Calmed` condition to avoid trying to calm an already calmed enemy.
 
 `Time` checks the part of the day: `Morning`, `Afternoon`, `Evening`, or `Night`. It is offered in idle tactics. The day is divided by the sun as the game's climate times it: morning from sunrise to noon, afternoon until sunset begins, evening through sunset, and night after it. In the unmodified game that is 5:30, 12:00, 16:00, and 20:30; weather mods may move sunrise and sunset. Hover over a part of the day to see its hours in your game.
 
@@ -123,7 +125,9 @@ Most actions are self-explanatory. A few are worth highlighting.
 
 The `Any buff` action for `Potion` picks a random potion that adds or improves a buff, e.g. Fortify Conjuration. An alchemy effect already active at equal or greater magnitude does not count as an improvement.
 
-A named potion, food, spell, scroll, power or shout used on the character themself is skipped while every lasting effect it gives is already active at equal or greater magnitude. Potions and food are compared with other alchemy; spells, scrolls, powers and shouts with each other.
+A named potion or food is skipped while its effects would add nothing, including when its lasting effects are already covered by alchemy of equal or greater strength. Items whose effects cannot apply to the character are skipped too.
+
+Spells, scrolls, powers, and shouts check whether their effects can apply to the target. A lasting cast waits while that spell is already active there; dual casting does not replace its own single cast, and a scroll and a spell are checked separately. Area effects consider only targets within each effect's reach. Reanimation checks whether the particular corpse can be raised, including its level and the caster's perks.
 
 For potions, food, and ingredients, `Strongest` and `Weakest` choose by effect. `Weakest` keeps stronger items in reserve: if the weakest item's effect is already covered, it waits instead of consuming a stronger one. `Strongest` can replace a weaker active effect.
 
@@ -199,6 +203,8 @@ A rule whose [condition](#conditions) or [action](#actions) is invalid is unavai
 If there are multiple actions for a rule, the rule is unavailable if **all** actions are invalid. If only some actions are invalid, the invalid ones are skipped.
 
 An action that cannot be done at the moment is also greyed, and its hover says why: not enough magicka for the spell, a shout still recovering, a greater power already used today, an action used too recently. This is read when the page is built, so it shows the state at the moment the panel was opened. An action that is simply already in effect, a buff still running or nothing to unequip, is not greyed: that is what the rule waits on.
+
+Temporarily unavailable rules remain editable. You can change their conditions and actions without waiting for magicka or cooldowns to recover. Powers have their own availability checks and do not wait for shout recovery.
 
 ## Reordering rules
 

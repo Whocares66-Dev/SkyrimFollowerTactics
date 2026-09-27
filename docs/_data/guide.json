@@ -52,92 +52,6 @@
     ]
   },
   {
-    "title": "Tactics",
-    "url": "/tactics/",
-    "headings": [
-      {
-        "title": "Player tactics",
-        "anchor": "player-tactics",
-        "level": 2
-      },
-      {
-        "title": "Idle Tactics",
-        "anchor": "idle-tactics",
-        "level": 2
-      },
-      {
-        "title": "Conditions",
-        "anchor": "conditions",
-        "level": 2
-      },
-      {
-        "title": "Conditions explained",
-        "anchor": "conditions-explained",
-        "level": 3
-      },
-      {
-        "title": "Negation",
-        "anchor": "negation",
-        "level": 3
-      },
-      {
-        "title": "Actions",
-        "anchor": "actions",
-        "level": 2
-      },
-      {
-        "title": "Actions explained",
-        "anchor": "actions-explained",
-        "level": 2
-      },
-      {
-        "title": "Dual casting and power bashing",
-        "anchor": "dual-casting-and-power-bashing",
-        "level": 3
-      },
-      {
-        "title": "Multiple Actions",
-        "anchor": "multiple-actions",
-        "level": 3
-      },
-      {
-        "title": "Cooldowns",
-        "anchor": "cooldowns",
-        "level": 3
-      },
-      {
-        "title": "Enabling / Disabling",
-        "anchor": "enabling--disabling",
-        "level": 2
-      },
-      {
-        "title": "Whole party",
-        "anchor": "whole-party",
-        "level": 3
-      },
-      {
-        "title": "Per character",
-        "anchor": "per-character",
-        "level": 3
-      },
-      {
-        "title": "Per tactic",
-        "anchor": "per-tactic",
-        "level": 3
-      },
-      {
-        "title": "Unavailable",
-        "anchor": "unavailable",
-        "level": 3
-      },
-      {
-        "title": "Reordering rules",
-        "anchor": "reordering-rules",
-        "level": 2
-      }
-    ]
-  },
-  {
     "title": "Character",
     "url": "/character/",
     "headings": [
@@ -257,38 +171,103 @@
     ]
   },
   {
-    "title": "Follower training",
-    "url": "/training/",
+    "title": "Combat Style",
+    "url": "/combat-style/",
     "headings": [
       {
-        "title": "Levels and attributes",
-        "anchor": "levels-and-attributes",
+        "title": "Adjusting a style",
+        "anchor": "adjusting-a-style",
         "level": 2
       },
       {
-        "title": "Skills and perks",
-        "anchor": "skills-and-perks",
-        "level": 2
-      },
-      {
-        "title": "Teach and forget spells",
-        "anchor": "teach-and-forget-spells",
-        "level": 2
-      },
-      {
-        "title": "Turn training off or remove the mod",
-        "anchor": "turn-training-off-or-remove-the-mod",
+        "title": "Dual-wielding",
+        "anchor": "dual-wielding",
         "level": 2
       }
     ]
   },
   {
-    "title": "Combat Style",
-    "url": "/combat-style/",
+    "title": "Tactics",
+    "url": "/tactics/",
     "headings": [
       {
-        "title": "Dual-wielding",
-        "anchor": "dual-wielding",
+        "title": "Player tactics",
+        "anchor": "player-tactics",
+        "level": 2
+      },
+      {
+        "title": "Idle Tactics",
+        "anchor": "idle-tactics",
+        "level": 2
+      },
+      {
+        "title": "Conditions",
+        "anchor": "conditions",
+        "level": 2
+      },
+      {
+        "title": "Conditions explained",
+        "anchor": "conditions-explained",
+        "level": 3
+      },
+      {
+        "title": "Negation",
+        "anchor": "negation",
+        "level": 3
+      },
+      {
+        "title": "Actions",
+        "anchor": "actions",
+        "level": 2
+      },
+      {
+        "title": "Actions explained",
+        "anchor": "actions-explained",
+        "level": 2
+      },
+      {
+        "title": "Dual casting and power bashing",
+        "anchor": "dual-casting-and-power-bashing",
+        "level": 3
+      },
+      {
+        "title": "Multiple Actions",
+        "anchor": "multiple-actions",
+        "level": 3
+      },
+      {
+        "title": "Cooldowns",
+        "anchor": "cooldowns",
+        "level": 3
+      },
+      {
+        "title": "Enabling / Disabling",
+        "anchor": "enabling--disabling",
+        "level": 2
+      },
+      {
+        "title": "Whole party",
+        "anchor": "whole-party",
+        "level": 3
+      },
+      {
+        "title": "Per character",
+        "anchor": "per-character",
+        "level": 3
+      },
+      {
+        "title": "Per tactic",
+        "anchor": "per-tactic",
+        "level": 3
+      },
+      {
+        "title": "Unavailable",
+        "anchor": "unavailable",
+        "level": 3
+      },
+      {
+        "title": "Reordering rules",
+        "anchor": "reordering-rules",
         "level": 2
       }
     ]
@@ -325,6 +304,32 @@
       {
         "title": "Always on",
         "anchor": "always-on",
+        "level": 2
+      }
+    ]
+  },
+  {
+    "title": "Follower training",
+    "url": "/training/",
+    "headings": [
+      {
+        "title": "Levels and attributes",
+        "anchor": "levels-and-attributes",
+        "level": 2
+      },
+      {
+        "title": "Skills and perks",
+        "anchor": "skills-and-perks",
+        "level": 2
+      },
+      {
+        "title": "Teach and forget spells",
+        "anchor": "teach-and-forget-spells",
+        "level": 2
+      },
+      {
+        "title": "Turn training off or remove the mod",
+        "anchor": "turn-training-off-or-remove-the-mod",
         "level": 2
       }
     ]

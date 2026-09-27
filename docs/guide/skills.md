@@ -2,7 +2,7 @@
 layout: "default"
 title: "Skills"
 permalink: "/skills/"
-nav_order: 9
+nav_order: 8
 has_toc: false
 ---
 
