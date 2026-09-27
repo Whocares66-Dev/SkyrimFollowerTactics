@@ -26,6 +26,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <vector>
@@ -146,6 +147,22 @@ enum class BodyPart : std::uint8_t
     default:
         return 0;
     }
+}
+
+// The part a rule's equip menu lists a piece under, the heading a long
+// list of armour is divided by: the first part whose slots it takes, the
+// body before the rest -- a hooded robe is a robe, a suit with its gloves
+// a suit, as the Type column names them -- then the Unequip menu's order.
+// All for a piece on no part's slots, which only All takes off.
+[[nodiscard]] constexpr BodyPart ListedPart(std::uint32_t slots) noexcept
+{
+    for (const BodyPart part : {BodyPart::Body, BodyPart::Head, BodyPart::Hands, BodyPart::Feet, BodyPart::Amulet,
+                                BodyPart::Ring, BodyPart::Cloak, BodyPart::Backpack})
+    {
+        if ((slots & SlotsOf(part)) != 0)
+            return part;
+    }
+    return BodyPart::All;
 }
 
 // What a thing is to a rule: the four kinds an equip rule names, and Voice.

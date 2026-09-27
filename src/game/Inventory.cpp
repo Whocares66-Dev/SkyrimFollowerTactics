@@ -59,32 +59,32 @@ template <typename T> std::string DescriptionOf(T *item)
     return text.c_str() ? text.c_str() : "";
 }
 
-const char *WeaponTypeName(const RE::TESObjectWEAP *weapon)
+WeaponClass ClassOf(const RE::TESObjectWEAP *weapon)
 {
     using Type = RE::WEAPON_TYPE;
     switch (weapon->GetWeaponType())
     {
     case Type::kOneHandSword:
-        return Tr("Sword");
+        return WeaponClass::Sword;
     case Type::kOneHandDagger:
-        return Tr("Dagger");
+        return WeaponClass::Dagger;
     case Type::kOneHandAxe:
-        return Tr("War Axe");
+        return WeaponClass::WarAxe;
     case Type::kOneHandMace:
-        return Tr("Mace");
+        return WeaponClass::Mace;
     case Type::kTwoHandSword:
-        return Tr("Greatsword");
+        return WeaponClass::Greatsword;
     case Type::kTwoHandAxe:
         // The record does not distinguish them; the keyword does.
-        return weapon->HasKeywordString("WeapTypeWarhammer") ? Tr("Warhammer") : Tr("Battleaxe");
+        return weapon->HasKeywordString("WeapTypeWarhammer") ? WeaponClass::Warhammer : WeaponClass::Battleaxe;
     case Type::kBow:
-        return Tr("Bow");
+        return WeaponClass::Bow;
     case Type::kStaff:
-        return Tr("Staff");
+        return WeaponClass::Staff;
     case Type::kCrossbow:
-        return Tr("Crossbow");
+        return WeaponClass::Crossbow;
     default:
-        return Tr("Weapon");
+        return WeaponClass::Other;
     }
 }
 
@@ -241,7 +241,9 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
 
     if (auto *weapon = object->As<RE::TESObjectWEAP>())
     {
-        item.type = WeaponTypeName(weapon);
+        item.weaponClass = ClassOf(weapon);
+        // Other is a heading, not a type: a fist weapon's Type reads Weapon.
+        item.type = item.weaponClass == WeaponClass::Other ? Tr("Weapon") : DisplayName(item.weaponClass);
         item.category = ItemCategory::Weapons;
         item.equipable = true;
         item.handItem = true;
@@ -298,12 +300,15 @@ void Classify(RE::Actor *actor, RE::TESBoundObject *object, RE::InventoryEntryDa
         // the sword, and a shield bashes. That leaves armour with no hand
         // and a single Equipped column.
         item.grip = ArmorGrip(armor);
+        item.slots = static_cast<std::uint32_t>(armor->GetSlotMask().underlying());
         if (item.grip != ft::Grip::None)
         {
             item.category = ItemCategory::Weapons;
             item.handItem = true;
             item.leftOnly = item.grip == ft::Grip::LeftOnly;
             item.rightOnly = item.grip == ft::Grip::RightOnly;
+            item.weaponClass = armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield) ? WeaponClass::Shield
+                                                                                                  : WeaponClass::Other;
         }
         if (armor->GetArmorType() != RE::BGSBipedObjectForm::ArmorType::kClothing)
         {
@@ -524,6 +529,38 @@ const char *DisplayName(ItemCategory category)
     case ItemCategory::Misc:
     default:
         return Tr("Misc");
+    }
+}
+
+const char *DisplayName(WeaponClass type)
+{
+    switch (type)
+    {
+    case WeaponClass::Sword:
+        return Tr("Sword");
+    case WeaponClass::Dagger:
+        return Tr("Dagger");
+    case WeaponClass::WarAxe:
+        return Tr("War Axe");
+    case WeaponClass::Mace:
+        return Tr("Mace");
+    case WeaponClass::Greatsword:
+        return Tr("Greatsword");
+    case WeaponClass::Battleaxe:
+        return Tr("Battleaxe");
+    case WeaponClass::Warhammer:
+        return Tr("Warhammer");
+    case WeaponClass::Bow:
+        return Tr("Bow");
+    case WeaponClass::Crossbow:
+        return Tr("Crossbow");
+    case WeaponClass::Staff:
+        return Tr("Staff");
+    case WeaponClass::Shield:
+        return Tr("Shield");
+    case WeaponClass::Other:
+    default:
+        return Tr("Other");
     }
 }
 

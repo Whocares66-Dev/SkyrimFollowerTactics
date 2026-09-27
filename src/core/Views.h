@@ -123,6 +123,26 @@ enum class ItemCategory : std::uint8_t
     COUNT
 };
 
+// What a hand holds, as the Type column names it: the heading a rule's
+// equip menu divides a long list of weapons by. A shield is one, since the
+// rules treat it as a weapon; a torch, a mod's hand-held armour and a fist
+// weapon are Other.
+enum class WeaponClass : std::uint8_t
+{
+    Sword,
+    Dagger,
+    WarAxe,
+    Mace,
+    Greatsword,
+    Battleaxe,
+    Warhammer,
+    Bow,
+    Crossbow,
+    Staff,
+    Shield,
+    Other
+};
+
 struct InventoryItem
 {
     std::uint32_t form{0};
@@ -166,6 +186,9 @@ struct InventoryItem
     int value{0};       // of one, enchantment included
     float damage{0.0f}; // a weapon's damage in their hands, or ammunition's; 0 for the rest
     float armor{0.0f};  // a piece of armour's rating on them; 0 for the rest
+    // A piece of armour's biped slots, the record's mask: the part the
+    // equip menu lists it under (ListedPart). 0 for the rest.
+    std::uint32_t slots{0};
     bool worn{false};
     bool enchanted{false};
     // A Daedric artifact (the DaedricArtifact keyword, or the vendor one a
@@ -189,6 +212,8 @@ struct InventoryItem
     bool rightOnly{false};
     // Which hands its record lets it take, for the equip menu's hand lists.
     ft::Grip grip{ft::Grip::None};
+    // For a thing in the hand, its heading in the equip menu.
+    WeaponClass weaponClass{WeaponClass::Other};
     // For a weapon, shield or torch: which hand holds it.
     bool equippedLeft{false};
     bool equippedRight{false};

@@ -1,13 +1,18 @@
 #pragma once
 // What the panel's lists decide about a row before anything is drawn:
 // whether the filter and the category leave it on the list, which of its
-// cells the filter searches, and what each equip cell of it says. The
-// panel holds the filter text and the category and draws the answers
-// (game/UI.cpp). No Skyrim, no ImGui.
+// cells the filter searches, and what each equip cell of it says; and
+// whether a rule's menu of them is divided under headings. The panel holds
+// the filter text and the category and draws the answers (game/ui). No
+// Skyrim, no ImGui.
 
 #include "Marks.h"
 #include "Views.h"
 
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -95,5 +100,40 @@ enum class Column : unsigned
 [[nodiscard]] EquipCell LeftCell(const MagicEntry &entry) noexcept;
 [[nodiscard]] EquipCell RightCell(const MagicEntry &entry) noexcept;
 [[nodiscard]] EquipCell VoiceCell(const MagicEntry &entry) noexcept;
+
+// A follower who has read every tome, or looted every barrow, has a menu
+// nobody can find anything in, so a rule's long lists are divided under
+// headings: a spell's school, a weapon's type, the part of the body armour
+// is worn on. Under this many, the headings cost more than they save: a
+// follower with four spells should not have to guess which heading one is
+// under and open it to find out.
+//
+// Counted over what the menu is ABOUT to offer, not over everything the
+// follower has: the lists are already cut to the target and the hand, so a
+// follower with thirty spells of which four are Self gets a flat list under
+// Self and the schools under an enemy.
+inline constexpr std::size_t kGroupAtLeast = 10;
+
+// The headings of `order` a menu of `items` is divided under, those with
+// something under them, in that order; none for a list that stays flat.
+// `headingOf` says which heading an item is under. Divided only where it
+// pays: enough items that a flat list is hard to read, AND more than one
+// heading to divide them into. Twelve Destruction spells under a lone
+// Destruction heading is a layer that tells the player nothing they did not
+// know before opening it.
+template <typename Items, typename Heading, std::size_t N, typename HeadingOf>
+[[nodiscard]] std::vector<Heading> MenuHeadings(const Items &items, const std::array<Heading, N> &order,
+                                                HeadingOf headingOf)
+{
+    std::vector<Heading> used;
+    for (const Heading &heading : order)
+    {
+        if (std::any_of(items.begin(), items.end(), [&](const auto &item) { return headingOf(item) == heading; }))
+            used.push_back(heading);
+    }
+    if (std::size(items) < kGroupAtLeast || used.size() < 2)
+        used.clear();
+    return used;
+}
 
 } // namespace ft

@@ -233,53 +233,64 @@ std::string UnavailableText(ft::Verdict verdict, ft::ActionKind kind)
     }
 }
 
-// A follower who has read every tome has a spell menu nobody can find
-// anything in, so the casts and the equips are grouped by school. The
-// order the Magic tab lists them in, with Other last for a spell that has
+// The headings a long menu is divided under (core's MenuHeadings), each in
+// the order its own tab or menu lists them, Other last.
+//
+// A spell's school, as the Magic tab lists them, Other for a spell with
 // none -- a vampire's Drain Life, a race's ability cast as a spell.
 constexpr std::array<MagicCategory, 6> kSchools{MagicCategory::Alteration,  MagicCategory::Conjuration,
                                                 MagicCategory::Destruction, MagicCategory::Illusion,
                                                 MagicCategory::Restoration, MagicCategory::Other};
+// A weapon's type, the one-handed before the two-handed and the ranged;
+// Other for a torch, a mod's hand-held armour, a fist weapon.
+constexpr std::array<ft::WeaponClass, 12> kWeaponClasses{
+    ft::WeaponClass::Sword,      ft::WeaponClass::Dagger,    ft::WeaponClass::WarAxe,    ft::WeaponClass::Mace,
+    ft::WeaponClass::Greatsword, ft::WeaponClass::Battleaxe, ft::WeaponClass::Warhammer, ft::WeaponClass::Bow,
+    ft::WeaponClass::Crossbow,   ft::WeaponClass::Staff,     ft::WeaponClass::Shield,    ft::WeaponClass::Other};
+// Armour's parts, as its Unequip menu lists them, All above the rest; and
+// as headings, All last: the one Unequip that reaches a piece on no part's
+// slots (ListedPart), headed Other, since "All" would read as everything.
+constexpr std::array<ft::BodyPart, 9> kParts{ft::BodyPart::All,   ft::BodyPart::Head,  ft::BodyPart::Body,
+                                             ft::BodyPart::Hands, ft::BodyPart::Feet,  ft::BodyPart::Amulet,
+                                             ft::BodyPart::Ring,  ft::BodyPart::Cloak, ft::BodyPart::Backpack};
+constexpr std::array<ft::BodyPart, 9> kPartHeadings{ft::BodyPart::Head,  ft::BodyPart::Body,     ft::BodyPart::Hands,
+                                                    ft::BodyPart::Feet,  ft::BodyPart::Amulet,   ft::BodyPart::Ring,
+                                                    ft::BodyPart::Cloak, ft::BodyPart::Backpack, ft::BodyPart::All};
 
-// Under this many, the schools cost more than they save: a follower with
-// four spells should not have to guess which heading one is under and open
-// it to find out. A short list stays flat.
-//
-// Counted over what the menu is ABOUT to offer, not over everything the
-// follower knows: the lists reaching DrawBySchool are already cut to the
-// target and the hand, so a follower with thirty spells of which four are
-// Self gets a flat list under Self and the schools under an enemy.
-constexpr std::size_t kGroupSchoolsAtLeast = 10;
-
-// One submenu per school over `items`, `schoolOf` saying which school an
-// item is in and `leaf` drawing one. A school nothing is in is not drawn:
-// a follower with only Restoration spells gets Restoration and no five
-// empty headings to open before finding it.
-template <typename Items, typename SchoolOf, typename Leaf>
-void DrawBySchool(const Items &items, SchoolOf schoolOf, Leaf leaf)
+std::string HeadingName(MagicCategory school)
 {
-    const auto anyOf = [&](MagicCategory school) {
-        return std::any_of(items.begin(), items.end(), [&](const auto &item) { return schoolOf(item) == school; });
-    };
-    // Grouped only where it pays: enough of them that a flat list is hard
-    // to read, AND more than one school to divide them into. Twelve
-    // Destruction spells under a lone Destruction heading is a layer that
-    // tells the player nothing they did not know before opening it.
-    const auto schools = static_cast<std::size_t>(std::count_if(kSchools.begin(), kSchools.end(), anyOf));
-    if (items.size() < kGroupSchoolsAtLeast || schools < 2)
+    return DisplayName(school);
+}
+std::string HeadingName(ft::WeaponClass type)
+{
+    return DisplayName(type);
+}
+std::string HeadingName(ft::BodyPart part)
+{
+    return part == ft::BodyPart::All ? std::string(Tr("Other")) : std::string(ft::DisplayName(part));
+}
+
+// `items` as `leaf` draws each, under a submenu per heading of `order`
+// where the list is long enough to divide, `headingOf` saying which heading
+// an item is under; else flat. A heading nothing is under is not drawn: a
+// follower with only Restoration spells gets Restoration and no five empty
+// headings to open before finding it.
+template <typename Items, typename Heading, std::size_t N, typename HeadingOf, typename Leaf>
+void DrawGrouped(const Items &items, const std::array<Heading, N> &order, HeadingOf headingOf, Leaf leaf)
+{
+    const std::vector<Heading> headings = ft::MenuHeadings(items, order, headingOf);
+    if (headings.empty())
     {
         for (const auto &item : items)
             leaf(item);
         return;
     }
-    for (const MagicCategory school : kSchools)
+    for (const Heading &heading : headings)
     {
-        if (!anyOf(school))
-            continue;
-        if (!BeginCascade(DisplayName(school)))
+        if (!BeginCascade(HeadingName(heading).c_str()))
             continue;
         for (const auto &item : items)
-            if (schoolOf(item) == school)
+            if (headingOf(item) == heading)
                 leaf(item);
         Im::EndMenu();
     }
@@ -369,8 +380,9 @@ bool EquipLeaf(ft::Action &act, ft::ActionKind action, std::uint32_t form, const
 // Unequip first: let go of every pin of this kind, and the AI chooses
 // again. Then the things themselves: for the two that take a hand, under
 // Right, Left and Both -- the weapon hand first, as a player thinks of
-// them -- each listing what fits that hand. Every list is theirs, so a
-// rule cannot name a thing they do not have.
+// them -- each listing what fits that hand. A long list is divided under
+// headings (DrawGrouped). Every list is theirs, so a rule cannot name a
+// thing they do not have.
 bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
 {
     bool changed = false;
@@ -408,9 +420,7 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
     const auto parts = [&] {
         if (!BeginCascade(Tr("Unequip")))
             return;
-        for (const auto part :
-             {ft::BodyPart::All, ft::BodyPart::Head, ft::BodyPart::Body, ft::BodyPart::Hands, ft::BodyPart::Feet,
-              ft::BodyPart::Amulet, ft::BodyPart::Ring, ft::BodyPart::Cloak, ft::BodyPart::Backpack})
+        for (const auto part : kParts)
         {
             leaf(std::string(ft::DisplayName(part)).c_str(), unequipped && act.part == part, [&] { act.part = part; });
             if (part == ft::BodyPart::All)
@@ -459,12 +469,19 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         }
         if (!rows.empty())
             Im::Separator();
-        for (const InventoryItem *item : rows)
-        {
+        const auto leaf = [&](const InventoryItem *item) {
             if (EquipLeaf(act, action, item->form, item->name, Hand::None, item->variant, item->name, item->banned,
                           NameTint(*item), item))
                 changed = true;
-        }
+        };
+        // Armour by the part it is worn on, as its Unequip names them;
+        // arrows have no parts and stay a flat list.
+        if (action == ft::ActionKind::EquipArmor)
+            DrawGrouped(
+                rows, kPartHeadings, [](const InventoryItem *item) { return ft::ListedPart(item->slots); }, leaf);
+        else
+            for (const InventoryItem *item : rows)
+                leaf(item);
         return changed;
     }
 
@@ -496,21 +513,23 @@ bool EquipMenu(ft::Action &act, ft::ActionKind action, const FollowerView &view)
         const std::string label(ft::DisplayName(hand));
         if (!BeginCascade(label.c_str()))
             continue;
-        // Grouped by school, as the casts are: this is the same list of
-        // spells and runs as long.
+        // Spells by school, as the casts are: this is the same list of
+        // spells and runs as long. Weapons by type.
         if (spell)
-            DrawBySchool(
-                offered, [](const MagicEntry *entry) { return entry->category; },
+            DrawGrouped(
+                offered, kSchools, [](const MagicEntry *entry) { return entry->category; },
                 [&](const MagicEntry *entry) {
                     if (EquipLeaf(act, action, entry->form, entry->name, hand, {}, entry->name, entry->banned))
                         changed = true;
                 });
-        for (const InventoryItem *item : rows)
-        {
-            if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, item->banned,
-                          NameTint(*item), item))
-                changed = true;
-        }
+        else
+            DrawGrouped(
+                rows, kWeaponClasses, [](const InventoryItem *item) { return item->weaponClass; },
+                [&](const InventoryItem *item) {
+                    if (EquipLeaf(act, action, item->form, item->name, hand, item->variant, item->name, item->banned,
+                                  NameTint(*item), item))
+                        changed = true;
+                });
         Im::EndMenu();
     }
     return changed;
@@ -811,7 +830,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
                 Im::SetTooltip("%s", Tr("Banned"));
         };
         if (SchoolGrouped(kind))
-            DrawBySchool(suited, [](const SpellOption *option) { return option->school; }, leaf);
+            DrawGrouped(suited, kSchools, [](const SpellOption *option) { return option->school; }, leaf);
         else
             for (const auto *option : suited)
                 leaf(option);

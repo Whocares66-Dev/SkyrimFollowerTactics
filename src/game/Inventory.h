@@ -27,6 +27,8 @@ namespace ft::game
 
 // The tab's name for a category.
 [[nodiscard]] const char *DisplayName(ItemCategory category);
+// A weapon's type, as the Type column and the equip menu's headings name it.
+[[nodiscard]] const char *DisplayName(WeaponClass type);
 
 // An effect's magnitude and duration as this actor casts it. The record's
 // number, put through the perk entry points the engine applies when the

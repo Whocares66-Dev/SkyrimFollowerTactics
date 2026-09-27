@@ -107,7 +107,7 @@ Then an action:
 
 **Actions are contextual**. A follower without [potions]({{ '/inventory/' | relative_url }}#potions) in their inventory will not see a `Potion` action. A [spell]({{ '/magic/' | relative_url }}) that targets `Self` will not show up under `Cast` for `Enemy`.
 
-Long spell and scroll menus are grouped by magic school. Short lists, powers, and shouts remain flat lists.
+Long menus are grouped: spells and scrolls by magic school, weapons by type, with shields among them, and armor by the part of the body its `Unequip` names. Anything that fits no group is under `Other`. Short lists, lists that would all fall under one group, powers, shouts, and arrows remain flat lists.
 
 **Actions respect gameplay rules**. A follower who doesn't meet the skill requirement to cast a spell cannot equip it. Per the base game, this limitation does not apply to the player.
 

@@ -5,7 +5,9 @@
 
 #include "core/Rows.h"
 
+#include <array>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace ft;
@@ -364,4 +366,29 @@ TEST_CASE("an effect with no duration sorts after every one that runs out", "[ro
     long_.magnitude = 50.0f;
     REQUIRE(CompareEffects(short_, long_, Column::Magnitude) == -1);
     REQUIRE(CompareEffects(short_, long_, Column::Name) < 0);
+}
+
+TEST_CASE("a rule's long menu is divided under the headings that have something, short or single ones stay flat",
+          "[rows]")
+{
+    constexpr std::array<WeaponClass, 3> order{WeaponClass::Sword, WeaponClass::Dagger, WeaponClass::Bow};
+    const auto classOf = [](WeaponClass c) { return c; };
+    const auto headings = [&](const std::vector<WeaponClass> &items) { return MenuHeadings(items, order, classOf); };
+
+    // Nine: flat, however many headings they would fill.
+    std::vector<WeaponClass> items(kGroupAtLeast - 1, WeaponClass::Sword);
+    items.back() = WeaponClass::Bow;
+    REQUIRE(headings(items).empty());
+    // Ten under one heading: flat, a lone heading tells nothing.
+    items.assign(kGroupAtLeast, WeaponClass::Sword);
+    REQUIRE(headings(items).empty());
+    // Ten under two: divided, in the order's order and not the items', the
+    // empty Dagger left out.
+    items.back() = WeaponClass::Bow;
+    std::swap(items.front(), items.back());
+    REQUIRE(headings(items) == std::vector{WeaponClass::Sword, WeaponClass::Bow});
+    // A heading the order does not name is not drawn, and does not count.
+    items.back() = WeaponClass::Shield;
+    items.front() = WeaponClass::Shield;
+    REQUIRE(headings(items).empty());
 }

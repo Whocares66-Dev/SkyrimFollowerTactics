@@ -1251,3 +1251,21 @@ TEST_CASE("the engine's spell and shout equips are refused as an item's are; our
     CHECK(RefusesEngineEquip(voicePin, {}, unrelentingForce, Hand::None, true).why == Refusal::Why::Conflict);
     CHECK_FALSE(RefusesEngineEquip(voicePin, {}, battleCry, Hand::None, true));
 }
+
+TEST_CASE("a piece of armour is listed under the first part it takes, the body first, else All", "[pins]")
+{
+    // A helmet on hair and circlet; a hooded robe on hair and body; a pair
+    // of gauntlets on hands and forearms.
+    REQUIRE(ListedPart(BipedSlot(31) | BipedSlot(42)) == BodyPart::Head);
+    REQUIRE(ListedPart(BipedSlot(31) | BipedSlot(32)) == BodyPart::Body);
+    REQUIRE(ListedPart(BipedSlot(33) | BipedSlot(34)) == BodyPart::Hands);
+    REQUIRE(ListedPart(BipedSlot(38)) == BodyPart::Feet);
+    REQUIRE(ListedPart(BipedSlot(35)) == BodyPart::Amulet);
+    REQUIRE(ListedPart(BipedSlot(36)) == BodyPart::Ring);
+    REQUIRE(ListedPart(BipedSlot(46) | BipedSlot(40)) == BodyPart::Cloak);
+    REQUIRE(ListedPart(BipedSlot(47)) == BodyPart::Backpack);
+    // A mod's slot alone is on no part; beside a part's, it is that part's.
+    REQUIRE(ListedPart(BipedSlot(52)) == BodyPart::All);
+    REQUIRE(ListedPart(BipedSlot(52) | BipedSlot(32)) == BodyPart::Body);
+    REQUIRE(ListedPart(0) == BodyPart::All);
+}
