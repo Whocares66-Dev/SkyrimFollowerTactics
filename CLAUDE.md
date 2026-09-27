@@ -152,7 +152,15 @@ Until 2026-09-09 `tidy` reached across presets instead, pointing `-p` at `build/
 
 Work on a feature branch, never master, and commit as you go, one coherent change per commit.
 
-A branch lands on master as logical commits, one per feature or fix it carries: a later fix to a feature, an attempt the branch replaced and a docs follow-up are folded into the commit they belong to, and what the branch did separately stays separate. Never one squash of the whole branch, and never every work-in-progress commit as it stood. Before master moves, run the checks under "Before a merge or a push" and fold their fixes in, then check that the rebuilt history ends on the branch's own tree (`git diff <branch> <rebuilt>` is empty). Rewriting a master already pushed is a force push, with `--force-with-lease`.
+Finishing a branch ("squash, merge", "finish it") is these steps, in order:
+
+1. **Squash into logical commits**, one per feature or fix the branch carries: a later fix to a feature, an attempt the branch replaced and a docs follow-up are folded into the commit they belong to, and what the branch did separately stays separate. "Squash" means this: never one commit for the whole branch, and never every work-in-progress commit as it stood. Rebase on master first if another session has landed since. Git here is 2.30, which autosquashes only under `-i`, and no editor can be driven, so a fold is `git commit --fixup=<sha>` then `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash master`. Note the tip before, and check `git diff <old tip> HEAD` is empty after.
+2. **Close its issues in the messages**: `Closes #N` on a line of its own at the end of the body, above the trailers, in the commit that resolves it. GitHub closes the issue when that commit reaches master on origin; `(issue #N)` in the prose only mentions it.
+3. **Run the checks** under "Before a merge or a push", and the per-commit ones again if a rebase changed the tree they ran on. Each fix is folded into the commit it belongs to (step 1), and the checks run again.
+4. **Merge to master** with `git merge --ff-only <branch>`, never a merge commit. Rewriting a master already pushed is a force push, with `--force-with-lease`.
+5. **Push** master to origin, and check each issue now reads closed (`gh issue view <n> --json state`).
+6. **Delete its worktree**, if it has one, before the branch: git will not delete a branch a worktree has checked out. `git worktree remove --force <path>`, run from outside it: `--force` because its submodule is initialised, so check its `git status --short` is empty first. A "Permission denied" leaves an empty folder that the shell's working directory held; `rmdir` it and `git worktree prune`.
+7. **Delete the branch**: `git branch -d <branch>`, and `git push origin --delete <branch>` if it was ever pushed.
 
 ## Toolchain gotchas already hit
 
