@@ -2,6 +2,8 @@
 
 **Follower Tactics** is a Skyrim mod for player and follower tactics, follower equipment management, and follower training. It is inspired by [Dragon Age: Origins](https://dragonage.fandom.com/wiki/Tactics_(Origins)) and [Pillars of Eternity II](https://www.gamepressure.com/pillars-of-eternity-2/partys-ai/z1ae65).
 
+See [demo](https://www.youtube.com/watch?v=J3b-TgK9-iI) on YouTube.
+
 ![Follower Tactics interface](docs/assets/img/panel/main.png)
 
 ## Features
