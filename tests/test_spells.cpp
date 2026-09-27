@@ -66,22 +66,6 @@ TEST_CASE("known: a shout with a word, a scroll carried, a power, a castable spe
     REQUIRE(ClassifySpells({}).known.empty());
 }
 
-TEST_CASE("active: an effect with time left names its spell, and its shout when the spell is a word's", "[spells]")
-{
-    const std::vector<ShoutWords> shouts{{0x13E07, {0x13E0A, 0x13E0B, 0x13E0C}}, {0x13E08, {0x13E0D}}};
-    std::vector<EffectSeen> effects;
-    effects.push_back({0x12FCD, 60.0f, 10.0f}); // Oakflesh, running
-    effects.push_back({0x13E0B, 8.0f, 2.0f});   // Become Ethereal's second word
-    effects.push_back({0x3EADE, 0.0f, 0.0f});   // an instant heal: already happened
-    effects.push_back({0x12FCE, 5.0f, 5.0f});   // expired
-    effects.push_back({0, 5.0f, 1.0f});         // no spell
-    effects.push_back({0x13E0D, 3.0f, 0.5f});   // the other shout's word
-    const auto active = ActiveSpells(effects, shouts);
-    REQUIRE(active == std::vector<std::uint32_t>{0x12FCD, 0x13E0B, 0x13E07, 0x13E0D, 0x13E08});
-    REQUIRE(ActiveSpells({}, shouts).empty());
-    REQUIRE(ActiveSpells(effects, {}) == std::vector<std::uint32_t>{0x12FCD, 0x13E0B, 0x13E0D});
-}
-
 TEST_CASE("the time left on a source's effect: the longest, none for an unrelated or instant one", "[spells]")
 {
     std::vector<EffectSeen> effects;

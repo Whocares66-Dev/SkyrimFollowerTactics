@@ -127,7 +127,7 @@ Tactics were a combat system by construction, in three places:
 
 ### What it needs
 
-**Upkeep itself is already there.** `EffectAlreadyActive` makes a cast unavailable while its spell's effect runs, so `IF Self: Any THEN Cast Oakflesh` is a maintained buff the moment it is evaluated out of a fight: it fires when the effect is gone, reports "that spell is still running" while it is not, and the next rule gets the turn. The gap between expiry and the recast is one turn, at most half a second. Refreshing before expiry is not wanted yet.
+**Upkeep itself is already there.** `WouldHaveEffect` makes a cast unavailable while what it puts up runs (ACTIONS.md, "Would the action have an effect"), so `IF Self: Any THEN Cast Oakflesh` is a maintained buff the moment it is evaluated out of a fight: it fires when the effect is gone, reports "already in effect" while it is not, and the next rule gets the turn. The gap between expiry and the recast is one turn, at most half a second. Refreshing before expiry is not wanted yet.
 
 **What a rule needs is to say when it runs** -- and the answer is the list it is in (decided above). A rule wanted in both lists is written twice, which is the cost accepted; an "Out of combat" predicate would take the rule's one condition, so `Out of combat and sneaking -> Muffle` could not be written, and a field on the rule puts a second axis on every row. The existing edges keep their meaning: Combat begins and Combat ends are the combat list's, and their moment is the edge.
 

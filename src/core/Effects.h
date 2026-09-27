@@ -74,13 +74,19 @@ struct ConsumableEffectSeen
     float magnitude{0.0f};
     float duration{0.0f};
     EffectShape shape;
+    // Would it take on whoever consumes it, by the engine's own landing
+    // test (game/Effects.cpp, LandsOn): false for one its conditions or a
+    // resistance refuse. A poison's lands on whoever is struck, and is not
+    // judged here.
+    bool lands{true};
 };
 
 // Every effect a consumable gives, by the name the game shows, marked
 // harmful or not and judged a buff or not. EVERY one, the bane beside the
 // boon: which of them a rule may choose the item by is policy, and lives
-// in PotionStock::ChoosableBy. A nameless effect, and one no follower can
-// use, are left out. An ingredient eaten gives its FIRST effect and no
+// in PotionStock::ChoosableBy. A nameless effect, one no follower can use,
+// and one that would not take on them are left out. An ingredient eaten
+// gives its FIRST effect and no
 // other -- the rest are for the alchemy table -- so only that one is
 // looked at, and an ingredient whose first effect is left out gives
 // nothing rather than falling through to the second.

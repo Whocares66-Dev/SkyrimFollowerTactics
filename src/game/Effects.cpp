@@ -14,6 +14,7 @@
 #include "core/Spells.h"
 #include "core/Vocabulary.h"
 
+#include "game/Addresses.h"
 #include "game/CustomSkillsFramework.h"
 #include "game/Hits.h"
 #include "game/Inventory.h"
@@ -100,9 +101,11 @@ ft::EffectShape ShapeOf(const RE::EffectSetting *base, float duration);
 
 } // namespace
 
-std::vector<ft::PotionStock::Effect> ConsumableEffects(const RE::Actor *actor, RE::MagicItem *item,
-                                                       ft::ConsumableKind kind)
+std::vector<ft::PotionStock::Effect> ConsumableEffects(RE::Actor *actor, RE::MagicItem *item, ft::ConsumableKind kind,
+                                                       bool *anyLands)
 {
+    if (anyLands)
+        *anyLands = false;
     if (!item)
         return {};
     std::vector<ft::ConsumableEffectSeen> seen;
@@ -110,8 +113,13 @@ std::vector<ft::PotionStock::Effect> ConsumableEffects(const RE::Actor *actor, R
     {
         const auto *base = effect->baseEffect;
         const char *name = base->GetFullName();
+        // Taken by the one consuming it, as the engine would land it on them;
+        // a poison's lands on whoever is struck, and is not judged here.
+        const bool lands = kind == ft::ConsumableKind::Poison || LandsOn(*effect, item, actor, actor, false);
+        if (anyLands)
+            *anyLands = *anyLands || lands;
         seen.push_back({name ? name : "", effect->effectItem.magnitude, static_cast<float>(effect->effectItem.duration),
-                        ShapeOf(base, static_cast<float>(effect->effectItem.duration))});
+                        ShapeOf(base, static_cast<float>(effect->effectItem.duration)), lands});
     }
     // Which of them the rules see, and an ingredient's first effect alone,
     // are core's (core/Effects.h, ConsumableEffectsOf, tested).
@@ -335,6 +343,176 @@ bool HasHarm(const RE::MagicItem &item)
     return std::ranges::any_of(ResolvedEffects(item), [](const RE::Effect *effect) {
         return effect->baseEffect->IsHostile() || effect->baseEffect->IsDetrimental();
     });
+}
+
+namespace
+{
+
+// Skyrim.esm's Call to Arms and its scroll. The Master rally spell has no
+// Rally effect in vanilla -- skills, health and stamina, and its target may
+// still flee -- but it is one of the three, so it rallies by its record.
+// Mysticism's has one, and counts either way.
+bool IsCallToArms(const RE::MagicItem *spell)
+{
+    constexpr std::array<RE::FormID, 2> kCallToArms{0x0007E8DD, 0x000A44BE};
+    return spell && std::ranges::find(kCallToArms, spell->GetFormID()) != kCallToArms.end();
+}
+
+} // namespace
+
+// Is a Rally effect a courage? The Rally type raises Confidence so its
+// target does not flee, which is why other spells carry one too: vanilla's
+// Frenzy holds one so the frenzied do not run, and Simonrim's mods make it
+// the carrier of Paralyze, Silence, Command, a Calm poison. Each of those
+// has a harm in the spell beside it; Courage, Rally and Call to Arms have
+// none, vanilla's or Mysticism's.
+std::optional<ft::StatusKind> InfluenceOf(const RE::EffectSetting &base, const RE::MagicItem *spell)
+{
+    if (IsCallToArms(spell))
+        return ft::StatusKind::Rallied;
+    using Archetype = RE::EffectArchetypes::ArchetypeID;
+    switch (base.GetArchetype())
+    {
+    case Archetype::kRally:
+        if (base.IsHostile() || base.IsDetrimental() || (spell && HasHarm(*spell)))
+            return std::nullopt;
+        return ft::StatusKind::Rallied;
+    case Archetype::kCalm:
+        return ft::StatusKind::Calmed;
+    // Turn Undead is the engine's fear for the undead: its effect class
+    // derives from Demoralize's.
+    case Archetype::kDemoralize:
+    case Archetype::kTurnUndead:
+        return ft::StatusKind::Feared;
+    case Archetype::kFrenzy:
+        return ft::StatusKind::Frenzied;
+    default:
+        return std::nullopt;
+    }
+}
+
+bool LandsOn(RE::Effect &effect, RE::MagicItem *spell, RE::Actor *caster, RE::Actor *target, bool dual)
+{
+    auto *magicTarget = target ? target->AsMagicTarget() : nullptr;
+    if (!magicTarget || !spell || !effect.baseEffect)
+        return false;
+    // The entry's conditions are not the landing's: false, the effect lands
+    // and waits inactive (34062 asks them of it running), and nothing it puts
+    // up holds (ForEachActiveEffect skips it).
+    if (effect.conditions.head && !effect.conditions.IsTrue(target, caster))
+        return false;
+    // The resistance AddTarget hands the check: the target's, but for an
+    // ability or a spell that ignores it.
+    const float resistance = spell->GetSpellType() == RE::MagicSystem::SpellType::kAbility || spell->IgnoresResistance()
+                                 ? 1.0f
+                                 : magicTarget->CheckResistance(spell, &effect, nullptr);
+    // The rest is the engine's own, whatever a mod has made of it. The
+    // record's magnitude, as a cast's AddTargetData carries it: the check
+    // puts the caster's perks and a dual cast on it itself. It sets the
+    // caster's dual-cast flag around the record's conditions and clears it,
+    // as every landing does.
+    RE::MagicTarget::AddTargetData data{};
+    data.caster = caster;
+    data.magicItem = spell;
+    data.effect = &effect;
+    data.magnitude = effect.effectItem.magnitude;
+    data.dualCasted = dual;
+    RE::ActiveEffectFactory::CheckTargetArgs args{};
+    args.target = magicTarget;
+    args.caster = caster;
+    args.magnitude = effect.effectItem.magnitude;
+    args.effectSetting = effect.baseEffect;
+    args.spell = spell;
+    args.dualCast = dual;
+    using Check = bool(RE::MagicTarget::AddTargetData *, RE::ActiveEffectFactory::CheckTargetArgs *, float);
+    static REL::Relocation<Check *> check{addr::kCheckAddEffect};
+    return check(&data, &args, resistance);
+}
+
+namespace
+{
+
+// What a rule's cast of the form casts: a spell or a scroll itself, a shout
+// by the word its action shouts, the highest unlocked.
+RE::MagicItem *CastItemOf(RE::TESForm *form)
+{
+    RE::MagicItem *item = form ? form->As<RE::MagicItem>() : nullptr;
+    if (auto *shout = form ? form->As<RE::TESShout>() : nullptr)
+        if (const int word = HighestUnlockedWord(shout); word >= 0)
+            item = shout->variations[word].spell;
+    return item;
+}
+
+} // namespace
+
+// A cast of the form, as core's WouldHaveEffect weighs it (SpellState's
+// casts and landings): whom it reaches, and what it would put on each of
+// them -- the follower, and for one aimed or with an area each ally and
+// each enemy, and for one that raises each corpse; singly, and dual cast
+// where they can. Each effect as the engine lands it (LandsOn), which for
+// a Reanimate is the corpse's fitness and its level against the magnitude;
+// of those that would take, the lasting ones to be held against what is in
+// force there, and `acts` for one that nothing in force can answer for, an
+// instant. Nothing for a form that is not a spell, a scroll, a power or a
+// shout: core then takes it to act.
+void AddLandings(RE::Actor *caster, std::uint32_t id, ft::Snapshot &s)
+{
+    RE::MagicItem *item = CastItemOf(RE::TESForm::LookupByID(id));
+    if (!item)
+        return;
+    using Delivery = RE::MagicSystem::Delivery;
+    using Reach = ft::SpellState::Reach;
+    using Flag = RE::EffectSetting::EffectSettingData::Flag;
+    const bool area = std::ranges::any_of(ResolvedEffects(*item),
+                                          [](const RE::Effect *effect) { return effect->effectItem.area > 0; });
+    const Delivery delivery = item->GetDelivery();
+    const Reach reach = delivery == Delivery::kTargetLocation ? Reach::Place
+                        : area                                ? Reach::Area
+                        : delivery == Delivery::kSelf         ? Reach::Self
+                                                              : Reach::Target;
+    const bool raises = std::ranges::any_of(ResolvedEffects(*item), IsReanimate);
+    s.spells.casts.push_back({id, reach, raises});
+    if (reach == Reach::Place)
+        return;
+    auto *spell = item->As<RE::SpellItem>();
+    const bool dualable = spell && IsCastable(spell) && CanDualCast(caster, spell);
+    const auto judge = [&](ft::ActorId who) {
+        auto *target = who == s.self ? caster : RE::TESForm::LookupByID<RE::Actor>(who);
+        if (!target)
+            return;
+        for (const bool dual : {false, true})
+        {
+            if (dual && !dualable)
+                continue;
+            ft::SpellState::Landing landing{id, who, dual, false, {}};
+            for (RE::Effect *effect : ResolvedEffects(*item))
+            {
+                if (!LandsOn(*effect, item, caster, target, dual))
+                    continue;
+                const auto *base = effect->baseEffect;
+                if (effect->effectItem.duration <= 0 || base->data.flags.any(Flag::kNoDuration))
+                {
+                    landing.acts = true;
+                    break;
+                }
+                const char *name = base->GetFullName();
+                const bool hidden = base->data.flags.any(Flag::kHideInUI);
+                landing.lasting.push_back({hidden || !name ? std::string() : std::string(name),
+                                           effect->effectItem.magnitude, item->GetFormID(), base->GetFormID(), dual});
+            }
+            s.spells.landings.push_back(std::move(landing));
+        }
+    };
+    judge(s.self);
+    if (reach == Reach::Self)
+        return;
+    for (const auto &ally : s.allies)
+        judge(ally.id);
+    for (const auto &enemy : s.enemies)
+        judge(enemy.id);
+    if (raises)
+        for (const auto &corpse : s.corpses)
+            judge(corpse.id);
 }
 
 std::vector<ft::EffectPick> ScanEffectPicks(const std::vector<SpellOption> &spells,

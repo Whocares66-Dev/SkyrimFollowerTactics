@@ -1811,14 +1811,16 @@ TEST_CASE("a power is used like a cast: known, not running, not mid-cast, free o
     // Running -- the follower is invisible for three minutes -- it is not
     // used again, whatever the cooldown says.
     s.now += 10.0;
-    s.spells.active.push_back(kEmbraceOfShadows);
+    const RunningEffect shadows{"Embrace of Shadows", 0.0f, kEmbraceOfShadows, 0x000E40C5};
+    Lands(s, kEmbraceOfShadows, s.self, {shadows});
+    s.traits.running = {shadows};
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::EffectActive);
-    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::UsePower)) == "that power is still running");
+    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::UsePower)) == "already in effect");
 
     // A follower mid-cast on their own spell is left to finish, as for a
     // cast: the power's package would interrupt it the same way.
-    s.spells.active.clear();
+    s.traits.running.clear();
     s.now += 10.0;
     s.traits.status |= Bit(StatusKind::Casting);
     ActionTrace actions;
@@ -2514,7 +2516,7 @@ TEST_CASE("a list keeps the target and the actions it began with", "[sequence]")
 
 TEST_CASE("a decision names whom its condition bound", "[sequence]")
 {
-    constexpr std::uint32_t kReanimate = 0x00065BD7; // cap 13
+    constexpr std::uint32_t kReanimate = 0x00065BD7;
     constexpr ActorId kWolf = 0x201;
     constexpr ActorId kBandit = 0x1002;
 
@@ -2523,7 +2525,8 @@ TEST_CASE("a decision names whom its condition bound", "[sequence]")
     s.health = {40.0f, 100.0f};
     s.enemies.push_back({kWolf, {30.0f, 100.0f}, 300.0f});
     s.spells.known.push_back(kReanimate);
-    s.spells.caps.push_back({kReanimate, 13});
+    s.spells.casts.push_back({kReanimate, SpellState::Reach::Target, true});
+    Lands(s, kReanimate, kBandit, {{"Reanimate", 13.0f, kReanimate, 0x0003A1B1}});
 
     const auto bound = [&](const Rule &r) {
         RuleSet rs;
@@ -2808,7 +2811,13 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     Snapshot s = Healthy();
     s.inCombat = true;
     s.spells.known.push_back(kReanimate);
-    s.spells.caps.push_back({kReanimate, 13});
+    // As the engine judges each corpse: the rat and the bandit it would
+    // raise, the giant, above its level, it would not.
+    const RunningEffect reanimate{"Reanimate", 13.0f, kReanimate, 0x0003A1B1};
+    s.spells.casts.push_back({kReanimate, SpellState::Reach::Target, true});
+    Lands(s, kReanimate, kRat, {reanimate});
+    Lands(s, kReanimate, kBandit, {reanimate});
+    Lands(s, kReanimate, kGiant, {});
     EvalContext ctx;
 
     // No corpses: nothing to bind; None holds instead.
@@ -2816,8 +2825,9 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::ConditionFalse);
 
-    // A rat, a bandit and a giant: the giant is above the cap and is passed
-    // over; the bandit outranks the rat. The cast is aimed at the bandit.
+    // A rat, a bandit and a giant: the giant the spell would not raise is
+    // passed over; the bandit outranks the rat. The cast is aimed at the
+    // bandit.
     s.corpses.push_back({kRat, 1, 100.0f});
     s.corpses.push_back({kBandit, 9, 300.0f});
     s.corpses.push_back({kGiant, 32, 200.0f});
@@ -2832,8 +2842,8 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     REQUIRE(decision.ruleIndex == 0);
     REQUIRE(decision.step->target == kRat);
 
-    // A rule with no cap on its spell sees the giant: with only the giant
-    // about, a conjuration on Self fires where a capped Reanimate would not.
+    // A rule whose spell raises nothing sees the giant: with only the giant
+    // about, a conjuration on Self fires where the Reanimate would not.
     s.now += 10.0;
     s.corpses.clear();
     s.corpses.push_back({kGiant, 32, 200.0f});
@@ -2850,8 +2860,8 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     s.corpses.push_back({kRat, 1, 100.0f});
     s.corpses.push_back({kBandit, 9, 300.0f});
 
-    // None: only when nothing raisable is about. With only the giant and a
-    // capped spell, none holds and the action goes on the follower.
+    // None: only when nothing the spell would raise is about. With only the
+    // giant, none holds and the action goes on the follower.
     s.now += 10.0;
     s.corpses.clear();
     s.corpses.push_back({kGiant, 32, 200.0f});
@@ -2862,7 +2872,7 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     REQUIRE(decision.ruleIndex == 0);
     REQUIRE(decision.step->target == s.self);
 
-    // Only a Reanimate -- a spell with a cap -- goes at a corpse: Firebolt
+    // Only a Reanimate -- a spell that raises -- goes at a corpse: Firebolt
     // aimed at one is unsupported, as the menu never offers it.
     s.now += 10.0;
     s.corpses.push_back({kBandit, 9, 300.0f});
@@ -3336,6 +3346,82 @@ TEST_CASE("the illusion influences are asked of anyone, in either list", "[vocab
             REQUIRE(IsStatusValidFor(subject, status));
         REQUIRE(IsStatusValidIn(Moment::Combat, status));
         REQUIRE(IsStatusValidIn(Moment::Idle, status));
+    }
+}
+
+TEST_CASE("a group binds one its rule's cast would act on", "[landing][binding]")
+{
+    constexpr std::uint32_t kRally = 0x0004DEEC;
+    constexpr std::uint32_t kAreaRally = 0x0004DEED;
+    constexpr std::uint32_t kUnread = 0x0004DEEE;
+    constexpr ActorId kSerana = 0x201; // undead, nearer
+    constexpr ActorId kLydia = 0x202;
+
+    Snapshot s = Healthy();
+    Player(s).distance = 800.0f;
+    s.allies.push_back({kSerana, {100.0f, 100.0f}, 200.0f});
+    s.allies.push_back({kLydia, {100.0f, 100.0f}, 500.0f});
+    // Rally takes on Lydia, the player and the follower; nothing of it on
+    // Serana, whom only Master of the Mind's hidden versions would reach.
+    const RunningEffect rally{"Rally", 100.0f, kRally, 0x0001EA76};
+    for (const ActorId who : {kLydia, kPlayerFormID, s.self})
+        Lands(s, kRally, who, {rally}, SpellState::Reach::Target);
+    Lands(s, kRally, kSerana, {});
+
+    Rule r;
+    r.subject = SubjectKind::Ally;
+    r.predicate = PredicateKind::Status;
+    r.statusKind = StatusKind::Rallied;
+    r.negated = true;
+    r.actionTarget = ActionTargetKind::Ally;
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = kRally;
+
+    SECTION("the one it would act on, though another is nearer")
+    {
+        CHECK(EvaluateCondition(r, s).id == kLydia);
+    }
+
+    SECTION("dual cast, as the larger magnitude lands")
+    {
+        Lands(s, kRally, kSerana, {rally}, SpellState::Reach::Target, true);
+        r.FirstAction().dual = true;
+        CHECK(EvaluateCondition(r, s).id == kSerana);
+        r.FirstAction().dual = false;
+        CHECK(EvaluateCondition(r, s).id == kLydia);
+    }
+
+    SECTION("no one, once all it would act on have what it puts up")
+    {
+        s.allies[2].traits.running = {rally};
+        Player(s).traits.running = {rally};
+        CHECK_FALSE(EvaluateCondition(r, s).ok);
+    }
+
+    SECTION("anyone, for a rule casting nothing, or a spell not judged")
+    {
+        r.FirstAction().kind = ActionKind::None;
+        CHECK(EvaluateCondition(r, s).id == kSerana);
+        r.FirstAction().kind = ActionKind::CastSpell;
+        r.FirstAction().form = kUnread;
+        CHECK(EvaluateCondition(r, s).id == kSerana);
+    }
+
+    SECTION("anyone, for a cast not aimed at whom it binds")
+    {
+        r.actionTarget = ActionTargetKind::Enemy;
+        CHECK(EvaluateCondition(r, s).id == kSerana);
+    }
+
+    SECTION("an area about the caster, by whom it would reach")
+    {
+        const RunningEffect area{"Rally", 100.0f, kAreaRally, 0x0001EA76};
+        for (const ActorId who : {kLydia, kPlayerFormID, s.self})
+            Lands(s, kAreaRally, who, {area}, SpellState::Reach::Area);
+        Lands(s, kAreaRally, kSerana, {});
+        r.actionTarget = ActionTargetKind::Self;
+        r.FirstAction().form = kAreaRally;
+        CHECK(EvaluateCondition(r, s).id == kLydia);
     }
 }
 

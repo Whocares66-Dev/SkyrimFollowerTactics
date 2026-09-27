@@ -154,7 +154,7 @@ std::vector<PotionStock::Effect> ConsumableEffectsOf(std::span<const ConsumableE
     const bool firstOnly = kind == ConsumableKind::Ingredient;
     for (const ConsumableEffectSeen &effect : effects)
     {
-        if (!effect.name.empty() && !EffectUseless(effect.name))
+        if (effect.lands && !effect.name.empty() && !EffectUseless(effect.name))
             out.push_back({effect.name, effect.magnitude, effect.duration,
                            IsBuff(effect.shape, readsSkillMods, readsSkillPowerMods), effect.shape.harmful});
         if (firstOnly)

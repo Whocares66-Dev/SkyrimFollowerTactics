@@ -34,7 +34,8 @@ enum class Verdict : std::uint8_t
     NoPerk,           // a blow the Settings page asks a perk for, which this follower has not got
     NoStamina,        // a blow the follower cannot pay for right now
     OutOfReach,       // a blow at an enemy further than it reaches
-    EffectActive,     // a previous dose is still running; or the thing is already pinned
+    EffectActive,     // what it would do is in effect already: a dose, a buff, a pin, a poisoned blade
+    NoEffect,         // nothing of it would take on anyone it reaches: the engine refuses every effect
     AboveSkill,       // a spell above the follower's skill: neither cast nor pinned, so cast and equip agree
     Outranked,        // a rule above holds the hand or slot this would take
     Unsupported,      // the action cannot be performed on this runtime

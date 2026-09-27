@@ -59,4 +59,16 @@ inline ActorView &Player(Snapshot &s)
     return player;
 }
 
+// A cast a rule names as the game side would judge it (SpellState's casts
+// and landings): reaching as `reach` says, and putting `lasting` on
+// `target`, singly or dual cast. The cast's reach is set by its first call.
+inline SpellState::Landing &Lands(Snapshot &s, std::uint32_t form, ActorId target, std::vector<RunningEffect> lasting,
+                                  SpellState::Reach reach = SpellState::Reach::Self, bool dual = false)
+{
+    if (!s.spells.CastOf(form))
+        s.spells.casts.push_back({form, reach});
+    s.spells.landings.push_back({form, target, dual, false, std::move(lasting)});
+    return s.spells.landings.back();
+}
+
 } // namespace ft::test

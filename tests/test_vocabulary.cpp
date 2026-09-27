@@ -453,9 +453,15 @@ TEST_CASE("a verdict is worded for the action it happened to", "[vocabulary]")
     // The log said "previous dose still active" about an EQUIP rule, which is
     // true of nothing and sent a reader looking for a potion that was never in
     // the rule. Same verdict, different action, different sentence.
-    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkStrongest)) == "previous dose still active");
+    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::DrinkStrongest)) == "already in effect");
+    REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::CastSpell)) == "already in effect");
     REQUIRE(std::string(Explain(Verdict::EffectActive, ActionKind::EquipSpell)) ==
             "already pinned, or nothing of that kind on to take off");
+    // In effect already, and of no effect at all, are not one: Rally at the
+    // undead ally it never takes on is not "still running".
+    REQUIRE(std::string(Explain(Verdict::NoEffect, ActionKind::CastSpell)) == "would have no effect");
+    REQUIRE(std::string(Explain(Verdict::NoEffect, ActionKind::DrinkPotion)) == "would have no effect");
+    REQUIRE(std::string(WireName(Verdict::NoEffect)) == "no-effect");
 
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::DrinkStrongest)) == "none in inventory");
     REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::EquipSpell)) == "does not know that spell");

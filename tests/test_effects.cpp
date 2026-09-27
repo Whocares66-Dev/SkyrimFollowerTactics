@@ -108,6 +108,21 @@ TEST_CASE("an ingredient gives its first effect and no other, even when that one
     REQUIRE(ConsumableEffectsOf(firstUseless, ConsumableKind::Potion, false, false).size() == 1);
 }
 
+TEST_CASE("an effect that would not take on the one consuming it is left out", "[effects][landing]")
+{
+    // As the engine's landing test says: a condition or a resistance
+    // refuses it on them, and it is nothing they would get.
+    using Seen = ConsumableEffectSeen;
+    EffectShape plain;
+    const std::vector<Seen> refused{{"Restore Health", 5.0f, 0.0f, plain, false},
+                                    {"Fortify Health", 20.0f, 60.0f, plain}};
+    const auto drunk = ConsumableEffectsOf(refused, ConsumableKind::Potion, false, false);
+    REQUIRE(drunk.size() == 1);
+    REQUIRE(drunk[0].name == "Fortify Health");
+    // An ingredient's refused first effect: nothing, as for a useless one.
+    REQUIRE(ConsumableEffectsOf(refused, ConsumableKind::Ingredient, false, false).empty());
+}
+
 TEST_CASE("a skill fortify counts as a buff only where a perk reads it", "[effects]")
 {
     using Seen = ConsumableEffectSeen;

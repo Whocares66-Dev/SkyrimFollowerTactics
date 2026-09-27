@@ -47,6 +47,19 @@ inline constexpr REL::RelocationID kUnequipShout{37948, 38904};
 inline constexpr REL::RelocationID kInputQueueDispatch{67315, 68617};
 inline constexpr std::ptrdiff_t kInputQueueDispatchCall = 0x7B;
 
+// MagicTarget::AddTargetData::CheckAddEffect(data, args, resistance): the
+// engine's test as an effect lands, which MagicTarget::AddTarget (34547 on
+// AE, 33763 on SE) asks before it makes the active effect -- the effect
+// record's conditions, of the target with the caster, the caster's
+// dual-cast flag set around them; then, resistance above 0, the check the
+// effect's archetype registers at startup: for Calm, Fear, Frenzy, Rally,
+// Turn Undead and Banish a living target no higher in level than the
+// magnitude the caster's perks and a dual cast make of it. CommonLib
+// declares it and maps no address. Asked by the Influence snapshot
+// (Effects.cpp, LandsOn); SE's is the same body with the actor's flags at
+// 0x1FC for 0x204.
+inline constexpr REL::RelocationID kCheckAddEffect{33741, 34525};
+
 // CombatInventoryItem's score call: the slot replaced in each entry
 // class's vtable so the AI's choice defers to the pins (dev/UNIQUE.md).
 inline constexpr std::size_t kCalculateScoreSlot = 0x0C;

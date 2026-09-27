@@ -40,6 +40,56 @@ struct Stat
     }
 };
 
+// An effect in force on someone right now, or one a thing would put there,
+// by the name the game shows, and how strongly. The strength is the point:
+// alchemy effects do not add to one another -- only the strongest of a name
+// is in force (UESP, Skyrim:Alchemy_Effects) -- so a second bottle is worth
+// taking only when it would beat what is already there. Different effects
+// stack freely: a Fortify Health up is no reason not to drink a Resist Fire.
+// A spell's carry what applied them too, `source` the spell, scroll, power
+// or shout word and `effect` the base effect, and whether it was dual cast;
+// a hidden one has no name, so only its record answers for it.
+struct RunningEffect
+{
+    std::string name;
+    float magnitude{0.0f};
+    std::uint32_t source{0};
+    std::uint32_t effect{0};
+    bool dual{false};
+};
+
+// Does an effect in force leave one that would land nothing to do: at least
+// as strong, dual cast where that one would be, and either the same record
+// from the same thing -- which the engine only refreshes -- or of its name,
+// which this snapshot holds does not stack with it within a family: alchemy
+// with alchemy, spells with spells. Records against records: a mod that
+// rescales an effect once it lands (Gourmet's food, run at 10 of a record's
+// 25) cannot make the same dose read as weaker than itself.
+[[nodiscard]] inline bool Covers(const RunningEffect &running, const RunningEffect &landing)
+{
+    if (running.magnitude < landing.magnitude || (landing.dual && !running.dual))
+        return false;
+    if (landing.effect != 0 && running.effect == landing.effect && running.source == landing.source)
+        return true;
+    return !landing.name.empty() && running.name == landing.name;
+}
+
+// Would taking or casting a thing add anything: one of its lasting effects
+// not already covered by one in force (Covers). `lasting` is the thing's
+// effects that last, as its record has them; `inForce` what runs on the
+// actor from things of its family. A thing with nothing lasting -- a
+// restore, an attack -- is not judged here (true): its cooldown spaces it.
+[[nodiscard]] inline bool AnyWouldLand(const std::vector<RunningEffect> &lasting,
+                                       const std::vector<RunningEffect> &inForce)
+{
+    if (lasting.empty())
+        return true;
+    return std::any_of(lasting.begin(), lasting.end(), [&](const RunningEffect &effect) {
+        return std::none_of(inForce.begin(), inForce.end(),
+                            [&](const RunningEffect &running) { return Covers(running, effect); });
+    });
+}
+
 // What is true of an actor beyond the numbers, read off the actor each
 // tick: the statuses it is in, as one bit each. The same for the follower,
 // the player, an ally and an enemy, so a Status condition asks the same
@@ -76,6 +126,14 @@ struct ActorTraits
     {
         return effect != 0 && std::find(effects.begin(), effects.end(), effect) != effects.end();
     }
+
+    // What spells, scrolls, powers and shouts have in force on the actor,
+    // live and acting, hidden ones by their record alone: what a cast at
+    // them is held against (Evaluator.cpp, OutcomeOn). Not abilities or
+    // enchantments, which stack with a spell of the same name as they do
+    // with a potion, and not alchemy (PotionStock::running): each family is
+    // asked of its own.
+    std::vector<RunningEffect> running;
 
     // What is in the actor's hands, a bit per DamageKind: Melee for a
     // blade, Ranged for a bow or crossbow, Magic for a spell or a staff,
@@ -159,39 +217,6 @@ struct ActorView
     float reachDistance{0.0f};
 };
 
-// An effect in force on someone right now, by the name the game shows, and
-// how strongly. The strength is the point: alchemy effects do not add to
-// one another -- only the strongest of a name is in force (UESP,
-// Skyrim:Alchemy_Effects) -- so a second bottle is worth taking only when it
-// would beat what is already there. Different effects stack freely: a
-// Fortify Health up is no reason not to drink a Resist Fire.
-struct RunningEffect
-{
-    std::string name;
-    float magnitude{0.0f};
-};
-
-// Would taking or casting a thing add anything: one of its lasting effects
-// not already in force at least as strongly under its name. `lasting` is the
-// thing's effects that last, as its record has them; `inForce` what runs on
-// the actor from things that do not stack with it -- alchemy with alchemy,
-// spells with spells -- as the records that applied them have them. Records
-// against records: a mod that rescales an effect once it lands (Gourmet's
-// food, run at 10 of a record's 25) cannot make the same dose read as
-// weaker than itself. A thing with nothing lasting -- a restore, an attack
-// -- is not judged here (true): its cooldown spaces it.
-[[nodiscard]] inline bool AnyWouldLand(const std::vector<RunningEffect> &lasting,
-                                       const std::vector<RunningEffect> &inForce)
-{
-    if (lasting.empty())
-        return true;
-    return std::any_of(lasting.begin(), lasting.end(), [&](const RunningEffect &effect) {
-        return std::none_of(inForce.begin(), inForce.end(), [&](const RunningEffect &running) {
-            return running.name == effect.name && running.magnitude >= effect.magnitude;
-        });
-    });
-}
-
 // A corpse nearby: dead, not already raised or summoned, loaded. Its level
 // is what a Reanimate's cap is measured against.
 struct CorpseView
@@ -268,8 +293,20 @@ struct PotionStock
         int count{0};
         ConsumableKind kind{ConsumableKind::Potion};
         std::vector<Effect> effects;
+        // Nothing of it would take on the one consuming it, by the engine's
+        // own landing test (game/Effects.cpp, LandsOn): its conditions or a
+        // resistance refuse every effect. It would do nothing.
+        bool refused{false};
     };
     std::vector<Carried> carried;
+
+    [[nodiscard]] bool Refused(std::uint32_t form, ConsumableKind kind) const
+    {
+        for (const auto &c : carried)
+            if (c.form == form && c.kind == kind)
+                return c.refused;
+        return false;
+    }
 
     // The effects in force on the follower right now: a bottle that would
     // not beat one of them is not drunk, as a buff is not re-cast.
@@ -457,20 +494,18 @@ struct PotionStock
     }
 };
 
-// Spells the follower knows, and the ones whose effects are running right now.
+// Spells the follower knows, what the ones a rule names cost, and what each
+// of those would do to whom it reaches.
 //
-// Both are FormIDs and both are opaque to core -- it never resolves them, it
-// only asks whether one is in a list. That keeps the "is this buff already up"
-// question answerable without core knowing what a spell is.
-//
-// The same question PotionStock::running answers for a dose. A buff like
-// Oakflesh runs for sixty seconds, far longer than any cooldown worth
-// choosing, so spacing cannot solve re-casting and only the effect list
-// can: ask whether it is still running.
+// FormIDs, opaque to core -- it never resolves them, it only asks whether
+// one is in a list. What a cast would put where is the game side's reading
+// of the engine; whether that is anything, against what is in force there,
+// is core's (Evaluator.cpp, WouldHaveEffect). A buff like Oakflesh runs for
+// sixty seconds, far longer than any cooldown worth choosing, so spacing
+// cannot solve re-casting and only what is in force can.
 struct SpellState
 {
     std::vector<std::uint32_t> known;
-    std::vector<std::uint32_t> active;
     // The greater powers used today: the engine keeps them on the actor and
     // refuses one until the day turns, so a rule for one reports it rather
     // than firing into the refusal every cooldown.
@@ -526,58 +561,71 @@ struct SpellState
         return 0.0f;
     }
 
-    // The level cap of a Reanimate spell: the highest level of corpse it
-    // raises, read off its effect's magnitude on the game side. Absent for
-    // every other spell. The Corpse subject filters by the rule's spell.
-    struct Cap
-    {
-        std::uint32_t form{0};
-        int maxLevel{0};
-    };
-    std::vector<Cap> caps;
-
-    [[nodiscard]] int CapOf(std::uint32_t form) const
-    {
-        for (const auto &c : caps)
-            if (c.form == form)
-                return c.maxLevel;
-        return 0;
-    }
-
     [[nodiscard]] bool Knows(std::uint32_t form) const
     {
         return std::find(known.begin(), known.end(), form) != known.end();
     }
 
-    [[nodiscard]] bool IsActive(std::uint32_t form) const
+    // Whom a cast of a spell a rule names reaches: the caster alone, the one
+    // it is aimed at, everyone about as well (an area), or whoever steps on
+    // a place (a rune), which cannot be known.
+    enum class Reach : std::uint8_t
     {
-        return std::find(active.begin(), active.end(), form) != active.end();
-    }
-
-    // What spells, scrolls, powers and shouts have in force on the actor,
-    // as the records that applied it have it. Not abilities or enchantments,
-    // which stack with a spell of the same name as they do with a potion,
-    // and not alchemy (PotionStock::running): each family is asked of its
-    // own. A scroll of Oakflesh is here for the spell's cast.
-    std::vector<RunningEffect> running;
-
-    // The lasting effects of each spell, scroll or shout a rule names --
-    // shown, not hostile, as its record has them: what casting it on
-    // oneself would put up. A shout's are its highest word's.
-    struct Lasting
+        Self,
+        Target,
+        Area,
+        Place,
+    };
+    // `raises`: it carries a Reanimate effect, the only kind a corpse takes,
+    // and its landings are asked of each corpse here too -- the engine's
+    // own test holds the corpse's level against the magnitude the caster's
+    // perks make of it (Reanimate Corpse 13, Revenant 21, Dread Zombie 30).
+    struct Cast
     {
         std::uint32_t form{0};
-        std::vector<RunningEffect> effects;
+        Reach reach{Reach::Target};
+        bool raises{false};
     };
-    std::vector<Lasting> lasting;
+    std::vector<Cast> casts;
 
-    // Nothing for a form not named by a rule, or with nothing lasting.
-    [[nodiscard]] std::vector<RunningEffect> LastingOf(std::uint32_t form) const
+    [[nodiscard]] bool Raises(std::uint32_t form) const
     {
-        for (const auto &l : lasting)
-            if (l.form == form)
-                return l.effects;
-        return {};
+        const Cast *cast = CastOf(form);
+        return cast && cast->raises;
+    }
+
+    // What a cast would put on one actor, singly or dual cast, as the engine
+    // judges each effect landing there (game/Effects.cpp, LandsOn): the
+    // lasting effects that would take, each to be held against what is in
+    // force there (Covers), and `acts` for one that would take and that
+    // nothing in force can answer for -- an instant, a restore, a script's
+    // momentary effect. Nothing that would take: neither. Asked of the
+    // caster, each ally and each enemy the cast can reach.
+    struct Landing
+    {
+        std::uint32_t form{0};
+        ActorId target{0};
+        bool dual{false};
+        bool acts{false};
+        std::vector<RunningEffect> lasting;
+    };
+    std::vector<Landing> landings;
+
+    [[nodiscard]] const Cast *CastOf(std::uint32_t form) const
+    {
+        for (const auto &c : casts)
+            if (c.form == form)
+                return &c;
+        return nullptr;
+    }
+
+    // Nothing for a pair the game side did not judge.
+    [[nodiscard]] const Landing *LandingOn(std::uint32_t form, ActorId target, bool dual) const
+    {
+        for (const auto &l : landings)
+            if (l.form == form && l.target == target && l.dual == dual)
+                return &l;
+        return nullptr;
     }
 };
 

@@ -56,21 +56,6 @@ struct EffectSeen
     float elapsed{0.0f};
 };
 
-// A shout's words' spells, for a running effect to be the shout's.
-struct ShoutWords
-{
-    std::uint32_t shout{0};
-    std::vector<std::uint32_t> words;
-};
-
-// The spells active by the effects running: an effect with a spell, a
-// duration and time left, each its spell's id; and where the spell is a
-// shout's word, the shout's too, so a Become Ethereal rule waits while it
-// holds. Instant effects have already happened and never lapse, so
-// treating them as still up would block a rule forever.
-[[nodiscard]] std::vector<std::uint32_t> ActiveSpells(std::span<const EffectSeen> effects,
-                                                      std::span<const ShoutWords> shouts);
-
 // The seconds left on the longest effect one of `sources` is running, or
 // 0 for none. A power's source is itself; a shout's are its words' spells.
 [[nodiscard]] float RemainingOn(std::span<const EffectSeen> effects, std::span<const std::uint32_t> sources) noexcept;

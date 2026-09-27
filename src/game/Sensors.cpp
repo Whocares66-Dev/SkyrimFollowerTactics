@@ -70,8 +70,9 @@ void ScanPotions(RE::Actor *actor, ft::PotionStock &stock)
         const auto kind = ConsumableKindOf(object);
         if (!kind)
             continue;
-        stock.carried.push_back({object->GetFormID(), static_cast<int>(count), *kind,
-                                 ConsumableEffects(actor, object->As<RE::MagicItem>(), *kind)});
+        bool anyLands = true;
+        auto effects = ConsumableEffects(actor, object->As<RE::MagicItem>(), *kind, &anyLands);
+        stock.carried.push_back({object->GetFormID(), static_cast<int>(count), *kind, std::move(effects), !anyLands});
     }
 }
 
@@ -246,32 +247,6 @@ void FillBag(RE::Actor *actor, ft::Snapshot &s)
     s.pins = actor->IsPlayerRef() ? s.worn : PinsOf(s.self);
 }
 
-// What casting a spell, a scroll or a shout on oneself would put up (core's
-// SpellState::lasting): its effects that last -- a duration, or a constant
-// effect -- shown and not hostile, as its record has them. A shout by the
-// word its action shouts, the highest unlocked.
-std::vector<ft::RunningEffect> LastingEffectsOf(RE::TESForm *form)
-{
-    RE::MagicItem *item = form ? form->As<RE::MagicItem>() : nullptr;
-    if (auto *shout = form ? form->As<RE::TESShout>() : nullptr)
-        if (const int word = HighestUnlockedWord(shout); word >= 0)
-            item = shout->variations[word].spell;
-    std::vector<ft::RunningEffect> out;
-    if (!item)
-        return out;
-    using Flag = RE::EffectSetting::EffectSettingData::Flag;
-    const bool constant = item->GetCastingType() == RE::MagicSystem::CastingType::kConstantEffect;
-    for (const RE::Effect *effect : ResolvedEffects(*item))
-    {
-        const auto *base = effect->baseEffect;
-        const char *name = base->GetFullName();
-        const bool lasts = constant || (effect->effectItem.duration > 0 && !base->data.flags.any(Flag::kNoDuration));
-        if (lasts && name && *name && !base->IsHostile() && !base->data.flags.any(Flag::kHideInUI))
-            out.push_back({name, effect->effectItem.magnitude});
-    }
-    return out;
-}
-
 } // namespace
 
 ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::uint32_t> &priced)
@@ -407,13 +382,11 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
         s.targetRunning = RunningEffects(mark);
 
     lap(Step::Hands);
-    // Spells: what they know, what is running, what is in hand. All three
-    // are ids only -- Snapshot never sees an RE:: type -- and which of the
-    // records read is known, used today, castable or active is core's
-    // (core/Spells.h, ClassifySpells and ActiveSpells, tested); this reads
-    // the records, and prices the castable spells a rule names.
+    // Spells: what they know and what is in hand, ids only -- Snapshot never
+    // sees an RE:: type -- and which of the records read is known, used
+    // today or castable is core's (core/Spells.h, ClassifySpells, tested);
+    // this reads the records, and prices the castable spells a rule names.
     std::vector<ft::SpellSeen> seen;
-    std::vector<ft::ShoutWords> shoutWords;
     if (auto *npc = actor->GetActorBase())
     {
         if (auto *list = npc->GetSpellList())
@@ -429,13 +402,6 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
                 fact.wrapper = IsWrapperShout(fact.id);
                 fact.highestWord = HighestUnlockedWord(shout);
                 seen.push_back(fact);
-                if (fact.wrapper)
-                    continue;
-                ft::ShoutWords words;
-                words.shout = fact.id;
-                for (const auto &variation : shout->variations)
-                    words.words.push_back(variation.spell ? variation.spell->GetFormID() : 0);
-                shoutWords.push_back(std::move(words));
             }
         }
     }
@@ -484,47 +450,15 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
         const bool dualable = CanDualCast(actor, spell);
         s.spells.costs.push_back(
             {id, spell->CalculateMagickaCost(actor), dualable, dualable ? DualCastCost(actor, spell) : 0.0f});
-        // A Reanimate's cap: the level of corpse it can raise is its
-        // effect's magnitude (Reanimate Corpse 13, Revenant 21, Dread
-        // Zombie 30) -- as they cast it, perks and Fortify effects in, the
-        // same way the engine judges the corpse. The Corpse subject
-        // measures the dead against it.
-        for (const auto *effect : ResolvedEffects(*spell))
-        {
-            if (IsReanimate(effect))
-            {
-                s.spells.caps.push_back({id, static_cast<int>(ActualMagnitude(actor, spell, effect))});
-                break;
-            }
-        }
     }
 
-    // What each cast a rule names would put up, and what spells have in
-    // force: whether a cast on oneself would add anything (core's
-    // AnyWouldLand), by the records on both sides.
-    for (const std::uint32_t id : priced)
-        if (auto effects = LastingEffectsOf(RE::TESForm::LookupByID(id)); !effects.empty())
-            s.spells.lasting.push_back({id, std::move(effects)});
-
     lap(Step::Spells);
-    std::vector<ft::EffectSeen> effects;
-    ForEachActiveEffect(actor, [&effects, &s](RE::ActiveEffect &ae) {
-        effects.push_back({ae.spell ? ae.spell->GetFormID() : 0, ae.duration, ae.elapsedSeconds});
-        // A spell's, a scroll's, a power's or a shout's, live and shown: not
-        // an ability's or an enchantment's, which stack with a cast of the
-        // name, and not alchemy's, which the bag asks of its own.
-        using Type = RE::MagicSystem::SpellType;
-        const auto type = ae.spell ? ae.spell->GetSpellType() : Type::kAbility;
-        const auto *base = ae.effect->baseEffect;
-        const char *name = base->GetFullName();
-        if ((type == Type::kSpell || type == Type::kScroll || type == Type::kPower || type == Type::kLesserPower ||
-             type == Type::kVoicePower) &&
-            ae.duration > 0.0f && ae.elapsedSeconds < ae.duration && name && *name &&
-            !base->data.flags.any(RE::EffectSetting::EffectSettingData::Flag::kHideInUI))
-            s.spells.running.push_back({name, ae.effect->effectItem.magnitude});
-    });
-    const auto active = ft::ActiveSpells(effects, shoutWords);
-    s.spells.active.insert(s.spells.active.end(), active.begin(), active.end());
+    // What each cast a rule names would put on whom it reaches, as the
+    // engine lands it (AddLandings); what is in force on each of them is
+    // their traits' (ReadTraits). Timed as its own step: the engine's test,
+    // once per effect, actor and way of casting.
+    for (const std::uint32_t id : priced)
+        AddLandings(actor, id, s);
 
     lap(Step::Effects);
     FillBag(actor, s);

@@ -113,6 +113,113 @@ ActorId MemberTarget(const Rule &r, const Snapshot &s)
     return member ? member->target : 0;
 }
 
+const std::vector<RunningEffect> kNoSpellsInForce;
+
+// What spells have in force on someone here: the follower, an ally or an
+// enemy (ActorTraits::running).
+const std::vector<RunningEffect> &SpellsInForceOn(const Snapshot &s, ActorId who)
+{
+    if (who == s.self)
+        return s.traits.running;
+    if (const ActorView *ally = s.Ally(who))
+        return ally->traits.running;
+    if (const ActorView *enemy = s.Enemy(who))
+        return enemy->traits.running;
+    return kNoSpellsInForce;
+}
+
+// What an action would do now: nothing, none of it taking (NoEffect);
+// nothing new, what it would do being in effect already (EffectActive); or
+// act. In that order, so the most of two is what doing both would do.
+enum class Outcome : std::uint8_t
+{
+    None,
+    InEffect,
+    Acts,
+};
+
+constexpr Outcome Most(Outcome a, Outcome b) noexcept
+{
+    return a > b ? a : b;
+}
+
+constexpr Outcome ActsUnless(bool inEffect) noexcept
+{
+    return inEffect ? Outcome::InEffect : Outcome::Acts;
+}
+
+// What the cast would do to `who`. It would act, unless that can be shown
+// not: nothing of it would take there, or all of it that would is in force
+// there already at least as strongly (Covers). One the game side did not
+// judge -- an actor it has no word for, a spell it could not read -- acts.
+Outcome OutcomeOn(const Snapshot &s, const Action &a, ActorId who)
+{
+    const SpellState::Landing *landing = s.spells.LandingOn(a.form, who, a.dual);
+    if (!landing || landing->acts)
+        return Outcome::Acts;
+    if (landing->lasting.empty())
+        return Outcome::None;
+    const std::vector<RunningEffect> &inForce = SpellsInForceOn(s, who);
+    return ActsUnless(std::all_of(landing->lasting.begin(), landing->lasting.end(), [&](const RunningEffect &effect) {
+        return std::any_of(inForce.begin(), inForce.end(),
+                           [&](const RunningEffect &running) { return Covers(running, effect); });
+    }));
+}
+
+// What the cast aimed at `target` would do to anyone it reaches: the caster
+// alone for one on oneself, the one aimed at, and for an area everyone here
+// besides -- the snapshot knows how far each is, not where, so anyone could
+// be in it. A rune may catch anyone.
+Outcome CastOutcome(const Snapshot &s, const Action &a, ActorId target)
+{
+    const SpellState::Cast *cast = s.spells.CastOf(a.form);
+    if (!cast || cast->reach == SpellState::Reach::Place)
+        return Outcome::Acts;
+    const ActorId first = cast->reach == SpellState::Reach::Self ? s.self : target;
+    Outcome outcome = OutcomeOn(s, a, first);
+    if (cast->reach != SpellState::Reach::Area)
+        return outcome;
+    const auto reach = [&](ActorId who) {
+        if (who != first)
+            outcome = Most(outcome, OutcomeOn(s, a, who));
+    };
+    reach(s.self);
+    for (const auto &group : {&s.allies, &s.enemies})
+        for (const auto &v : *group)
+            reach(v.id);
+    return outcome;
+}
+
+const Action *FirstCast(const Rule &r)
+{
+    for (const auto &a : r.actions)
+        if (IsCast(a.kind) && a.form != 0)
+            return &a;
+    return nullptr;
+}
+
+// Would the rule's cast do anything to this member of its group? Of several
+// who match, the rule binds one its spell would act on: "Ally: not Rallied,
+// cast Rally" not the undead ally Rally never takes on, "Enemy: lowest
+// health, cast Paralyze" not an automaton. Asked where the cast reaches the
+// member -- aimed at whom the condition binds, or an area about the caster --
+// and of the first cast, as a corpse rule's Reanimate caps the corpses. Only
+// a cast: an enemy already being fought is Attack's done state, not a
+// reason to turn to another.
+bool CastWouldAct(const Rule &r, const Snapshot &s, ActorId who)
+{
+    const Action *cast = FirstCast(r);
+    if (!cast)
+        return true;
+    if ((r.subject == SubjectKind::Ally && r.actionTarget == ActionTargetKind::Ally) ||
+        (r.subject == SubjectKind::Enemy && r.actionTarget == ActionTargetKind::Enemy))
+        return CastOutcome(s, *cast, who) == Outcome::Acts;
+    const SpellState::Cast *shape = s.spells.CastOf(cast->form);
+    if (shape && shape->reach == SpellState::Reach::Area && r.actionTarget == ActionTargetKind::Self)
+        return OutcomeOn(s, *cast, who) == Outcome::Acts;
+    return true;
+}
+
 // Does one member of a group -- an ally, the player among them, or an
 // enemy -- satisfy the rule's condition? The common questions, and the
 // enemy's own two; IsPredicateValidFor keeps an ally from being asked
@@ -170,7 +277,7 @@ const ActorView *Select(const std::vector<ActorView> &group, const Rule &r, cons
     const ActorView *best = nullptr;
     for (const auto &v : group)
     {
-        if (!MemberSatisfies(v, r, s))
+        if (!MemberSatisfies(v, r, s) || !CastWouldAct(r, s, v.id))
             continue;
         if (!best || Better(r, v, *best))
             best = &v;
@@ -178,36 +285,27 @@ const ActorView *Select(const std::vector<ActorView> &group, const Rule &r, cons
     return best;
 }
 
-// The corpses the rule's spell can raise: the first cast action naming a
-// spell with a level cap sets the cap; a rule with no such spell -- one
-// that conjures, say -- sees every corpse.
-int CapFor(const Rule &r, const Snapshot &s)
+// The rule's first cast of a spell that raises (SpellState::Cast::raises):
+// the corpses are those it would raise, as the engine judges each -- its
+// level against the magnitude, its fitness to rise (OutcomeOn). A
+// rule with none -- one that conjures, say -- sees every corpse.
+const Action *FirstRaise(const Rule &r, const Snapshot &s)
 {
     for (const auto &a : r.actions)
-    {
-        if (a.kind == ActionKind::CastSpell && a.form != 0)
-        {
-            if (const int cap = s.spells.CapOf(a.form); cap > 0)
-                return cap;
-        }
-    }
-    return 0;
+        if (a.kind == ActionKind::CastSpell && a.form != 0 && s.spells.Raises(a.form))
+            return &a;
+    return nullptr;
 }
 
-bool Raisable(const CorpseView &c, int cap)
-{
-    return cap == 0 || c.level <= cap;
-}
-
-// The corpse the rule binds: the highest or lowest level the spell can
+// The corpse the rule binds: the highest or lowest level the spell would
 // raise, the nearer of two at the same level.
 const CorpseView *SelectCorpse(const Snapshot &s, const Rule &r)
 {
-    const int cap = CapFor(r, s);
+    const Action *raise = FirstRaise(r, s);
     const CorpseView *best = nullptr;
     for (const auto &c : s.corpses)
     {
-        if (!Raisable(c, cap))
+        if (raise && OutcomeOn(s, *raise, c.id) != Outcome::Acts)
             continue;
         if (!best)
         {
@@ -561,12 +659,18 @@ bool HasResource(const Action &a, const Snapshot &s)
     return true; // Attack and the blows cost nothing from inventory
 }
 
-// Is the action already in effect, so that the rule falls through to the
-// next: the availability every state-setting action owes (Rule.h). One
-// place for every "already done": a dose still running, a buff still up,
-// the thing already pinned, every weapon in hand already poisoned, none
-// needing a charge, the enemy already the target.
-bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
+// Would the action do anything now, to `target`? If not, the rule falls
+// through to the next: the availability every state-setting action owes
+// (Rule.h). The one place the question is asked, for every action. Nothing
+// new, its work being in effect already (EffectActive): a dose still
+// running, a buff already on whom it would reach, the thing already pinned,
+// every weapon in hand already poisoned, none needing a charge, the enemy
+// already the target. Nothing at all (NoEffect): a spell whose every effect
+// everyone it reaches would refuse, a potion whose every effect the drinker
+// would. Where it cannot be shown to do nothing, it acts: a script's work, a
+// restore, a rune. Whether it CAN be done -- the magicka, the skill, the
+// day's power -- is the gates' (CastAvailability and the rest), asked first.
+Outcome WouldHaveEffect(const Action &a, const Snapshot &s, ActorId target)
 {
     // Reported separately from "no potion" because the fix is different:
     // the follower has plenty, and is simply still absorbing the last one.
@@ -579,40 +683,36 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
     // strongly. A stronger bottle over a weaker dose is a gain and is not
     // this. HasResource has already said the bag is not empty.
     if (IsConsume(a.kind) && ChoosesForm(a.kind))
-        return ChosenForm(a, s) == 0;
-    // A named thing to eat or drink: nothing of it would land -- every
-    // lasting boon it gives already in force from alchemy at least as
-    // strongly. One that would add even one is taken; one with nothing
-    // lasting (a restore) is spaced by its cooldown alone.
+        return ActsUnless(ChosenForm(a, s) == 0);
+    // A named thing to eat or drink: nothing at all if the engine would
+    // refuse every effect of it on them; else something of it would land, a
+    // lasting boon it gives not already in force from alchemy at least as
+    // strongly. One with nothing lasting (a restore) is spaced by its
+    // cooldown alone.
     if (IsConsume(a.kind) && NamesConsumable(a.kind))
-        return !AnyWouldLand(s.potions.LastingOf(a.form, ConsumableOf(a.kind)), s.potions.running);
+    {
+        if (s.potions.Refused(a.form, ConsumableOf(a.kind)))
+            return Outcome::None;
+        return ActsUnless(!AnyWouldLand(s.potions.LastingOf(a.form, ConsumableOf(a.kind)), s.potions.running));
+    }
     // A poison goes on a clean weapon; a gem into one that cannot pay for
     // its next hit. None such in hand, and the rule waits, as a buff rule
     // waits on the buff.
     if (IsApply(a.kind))
-        return !s.AnyWeaponClean();
+        return ActsUnless(!s.AnyWeaponClean());
     if (IsCharge(a.kind))
-        return !s.AnyWeaponChargeNeeded();
+        return ActsUnless(!s.AnyWeaponChargeNeeded());
     // Already fighting them is the done state.
     if (a.kind == ActionKind::Attack)
-        return target != 0 && target == s.currentTarget;
-    // The sustained-buff case. Oakflesh runs sixty seconds and no cooldown
-    // worth picking is that long, so re-casting can only be stopped by
-    // seeing the effect still running. Embrace of Shadows runs three
-    // minutes, and a greater power is once a day besides.
-    // A cast on oneself is also done when nothing it would put up would
-    // land: each lasting effect already in force from a spell, a scroll, a
-    // power or a shout at least as strongly -- a scroll's Oakflesh for the
-    // spell's. On anyone else, only its own effects running on the caster
-    // say so: the snapshot has no one else's in force.
+        return ActsUnless(target != 0 && target == s.currentTarget);
+    // A spell, a scroll, a power or a shout: something of it would take on
+    // someone it reaches and is not in force there already at least as
+    // strongly (CastOutcome) -- Oakflesh not while a scroll's is up, Courage
+    // not on the ally who has it; and nothing at all where none of it would
+    // take -- Rally at the undead ally it never takes on, a Calm at an enemy
+    // above its level.
     if (IsCast(a.kind))
-    {
-        if (a.form == 0)
-            return false;
-        if (s.spells.IsActive(a.form))
-            return true;
-        return target == s.self && !AnyWouldLand(s.spells.LastingOf(a.form), s.spells.running);
-    }
+        return a.form == 0 ? Outcome::Acts : CastOutcome(s, a, target);
     if (IsEquip(a.kind))
     {
         // Availability, the mechanism the note in Rule.h says every
@@ -625,15 +725,15 @@ bool EffectAlreadyActive(const Action &a, const Snapshot &s, ActorId target)
         if (LetsGo(a))
         {
             const Hand hands = TakesHand(a.kind) ? HandsWanted(a) : Hand::None;
-            return !AnyPinOf(s.pins, KindOf(a.kind), hands) && !AnyPinOf(s.worn, KindOf(a.kind), hands);
+            return ActsUnless(!AnyPinOf(s.pins, KindOf(a.kind), hands) && !AnyPinOf(s.worn, KindOf(a.kind), hands));
         }
         // An arrow policy is done while the arrows it would choose are the
         // ones pinned: with those gone, the next kind is a new pin.
         const std::uint32_t form = IsArrowsPolicy(a.kind) ? ChosenForm(a, s) : a.form;
         const Pin *pin = FindPin(s.pins, form, a.variant);
-        return pin && Covers(pin->hands, HandsWanted(a));
+        return ActsUnless(pin && Covers(pin->hands, HandsWanted(a)));
     }
-    return false;
+    return Outcome::Acts;
 }
 
 // The equips' own gates: a thing above the follower's skill, and a hand
@@ -753,11 +853,11 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
     // is as unfireable as an action this runtime cannot do.
     if (a.kind == ActionKind::None || !ctx.caps.Supports(a.kind) || !IsActionValidFor(aimedAt, a.kind))
         return Verdict::Unsupported;
-    // Only a Reanimate goes at a corpse: the spells with a level cap are
-    // exactly those with the Reanimate archetype, which is the record
-    // property the engine raises by. The menu offers nothing else there; a
-    // hand-edited profile that aims Firebolt at a corpse is as unfireable.
-    if (aimedAt == ActionTargetKind::Corpse && a.kind == ActionKind::CastSpell && snap.spells.CapOf(a.form) == 0)
+    // Only a Reanimate goes at a corpse: a spell with the Reanimate
+    // archetype, the record property the engine raises by. The menu offers
+    // nothing else there; a hand-edited profile that aims Firebolt at a
+    // corpse is as unfireable.
+    if (aimedAt == ActionTargetKind::Corpse && a.kind == ActionKind::CastSpell && !snap.spells.Raises(a.form))
         return Verdict::Unsupported;
     if (ctx.caps.Busy(a.kind))
         return Verdict::Busy;
@@ -783,16 +883,18 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
     if (gate != Verdict::Fired)
         return gate;
 
-    // Already in effect: the rule falls through. Exact where the settle
-    // time is a guess -- on a game whose potions restore over time, the
-    // previous dose may still have seconds to run -- and for an equip, the
-    // pin it holds outranks a conflicting equip beneath it.
-    if (EffectAlreadyActive(a, snap, target))
+    // Nothing it would do: the rule falls through, saying whether that is
+    // because its work is in effect already or because none of it would take.
+    // Exact where the settle time is a guess -- on a game whose potions
+    // restore over time, the previous dose may still have seconds to run --
+    // and for an equip, the pin it holds outranks a conflicting equip
+    // beneath it.
+    if (const Outcome outcome = WouldHaveEffect(a, snap, target); outcome != Outcome::Acts)
     {
         if (IsEquip(a.kind) && !LetsGo(a))
             if (const Pin *pin = FindPin(snap.pins, a.form, a.variant))
                 heldAbove.push_back(*pin);
-        return Verdict::EffectActive;
+        return outcome == Outcome::None ? Verdict::NoEffect : Verdict::EffectActive;
     }
 
     if (snap.now < ctx.BlockedUntil(CooldownKey(a, target)))
@@ -1144,10 +1246,6 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return N_("already pinned, or nothing of that kind on to take off");
         if (action == ActionKind::Attack)
             return N_("already fighting them");
-        if (action == ActionKind::UsePower)
-            return N_("that power is still running");
-        if (action == ActionKind::Shout)
-            return N_("that shout is still running");
         if (IsApply(action))
             return N_("every weapon in hand is already poisoned");
         if (IsCharge(action))
@@ -1157,7 +1255,7 @@ const char *Explain(Verdict v, ActionKind action) noexcept
         // none carried would.
         if (IsAny(action))
             return N_("every buff carried is already up");
-        return action == ActionKind::CastSpell ? N_("that spell is still running") : N_("previous dose still active");
+        return ToString(v);
 
     default:
         return ToString(v);
@@ -1199,7 +1297,9 @@ const char *ToString(Verdict v) noexcept
     case Verdict::OutOfReach:
         return N_("out of reach");
     case Verdict::EffectActive:
-        return N_("previous dose still active");
+        return N_("already in effect");
+    case Verdict::NoEffect:
+        return N_("would have no effect");
     case Verdict::AboveSkill:
         return N_("above the follower's skill");
     case Verdict::Outranked:
@@ -1260,6 +1360,8 @@ const char *WireName(Verdict v) noexcept
         return "out-of-reach";
     case Verdict::EffectActive:
         return "effect-active";
+    case Verdict::NoEffect:
+        return "no-effect";
     case Verdict::AboveSkill:
         return "above-skill";
     case Verdict::Outranked:

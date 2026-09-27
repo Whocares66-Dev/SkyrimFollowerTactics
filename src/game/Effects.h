@@ -14,6 +14,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -74,6 +75,26 @@ struct ConsumableOption
 // buff put on someone else from a spell cast at them.
 [[nodiscard]] bool HasHarm(const RE::MagicItem &item);
 
+// The illusion influence an effect of `spell` puts up, by the engine's
+// effect types (dev/CONDITIONS.md 2): Calm, Fear and Turn Undead, Frenzy,
+// and Rally in a spell with no harm in it; any effect of Skyrim.esm's Call
+// to Arms. Nothing for any other.
+[[nodiscard]] std::optional<ft::StatusKind> InfluenceOf(const RE::EffectSetting &base, const RE::MagicItem *spell);
+
+// Would this effect of `spell`, cast by `caster`, take on `target` and act:
+// the entry's conditions, of the target with the caster, then the engine's
+// own test as an effect lands (addr::kCheckAddEffect, dev/CONDITIONS.md 2),
+// asked with the resistance the engine would hand it -- the record's
+// conditions, and for an influence the level its magnitude reaches with the
+// caster's perks and, `dual`, a dual cast. Game thread.
+[[nodiscard]] bool LandsOn(RE::Effect &effect, RE::MagicItem *spell, RE::Actor *caster, RE::Actor *target, bool dual);
+
+// A cast of `form` by `caster`, into the snapshot as core's WouldHaveEffect
+// weighs it (SpellState's casts and landings): whom it reaches, and what it
+// would put on each actor the snapshot holds that it can reach. After the
+// party, the enemies and the corpses are in the snapshot. Game thread.
+void AddLandings(RE::Actor *caster, std::uint32_t form, ft::Snapshot &s);
+
 // The Effect condition's picks (core/Effects.h): what anyone in the party
 // can put up, on themselves or on someone else. The page's own from the
 // scans the editor's menus already make, `spells` and `consumables`; each of
@@ -96,9 +117,12 @@ struct ConsumableOption
 // Tree Sap, the regeneration damage in a wine -- is no reason to drink it,
 // and a poison is chosen for what it does to the enemy; core says so, not
 // this. An ingredient eaten gives its FIRST effect and no other (the rest
-// are for the alchemy table), so that one is the ingredient's effect.
-[[nodiscard]] std::vector<ft::PotionStock::Effect> ConsumableEffects(const RE::Actor *actor, RE::MagicItem *item,
-                                                                     ft::ConsumableKind kind);
+// are for the alchemy table), so that one is the ingredient's effect. One
+// the engine would not land on the actor consuming it (LandsOn) is left
+// out, and `anyLands` says whether any of them, listed or not, would land.
+// Game thread.
+[[nodiscard]] std::vector<ft::PotionStock::Effect> ConsumableEffects(RE::Actor *actor, RE::MagicItem *item,
+                                                                     ft::ConsumableKind kind, bool *anyLands = nullptr);
 
 // The two hidden perks that turn the Fortify skill values into anything:
 // PerkSkillBoosts reads the enchantment values (OneHandedModifier and its
