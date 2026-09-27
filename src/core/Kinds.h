@@ -4,6 +4,7 @@
 // the actor and sets them, the evaluator only compares them.
 
 #include <cstdint>
+#include <span>
 
 namespace ft
 {
@@ -251,6 +252,42 @@ enum class LocationGroup : std::uint8_t
     using K = LocationKind;
     return kind == K::Building || kind == K::Cave || kind == K::Dungeon || kind == K::Fort || kind == K::Ruin ||
            kind == K::Settlement;
+}
+
+// One location of the chain an actor is in, nearest first: the kinds its
+// own keywords mark, whether it is dug -- a dungeon, a mine -- and whether
+// it is walled in a worldspace of its own that the actor is out of doors
+// outside.
+struct ChainLink
+{
+    std::uint64_t kinds{0};
+    bool dug{false};
+    bool outsideWalls{false};
+};
+
+// The kinds up a chain of locations. A location does not carry the
+// keywords of the one it lies in, so each adds its own, but a settlement
+// does not reach down past a dug one: Shroud Hearth Barrow is filed under
+// Ivarstead and the Quicksilver Mine under Dawnstar, and neither is in the
+// town. The dug location's own kinds stand, so the mining camp at Left Hand
+// Mine is a settlement and the mine is not. Nor is a walled city a
+// settlement outside its walls, where the game files the cells before its
+// gate under it: a farm filed under the city there is its own settlement,
+// and no more.
+[[nodiscard]] constexpr std::uint64_t PlacesUp(std::span<const ChainLink> chain) noexcept
+{
+    std::uint64_t settlements = 0;
+    for (unsigned k = 0; k < static_cast<unsigned>(LocationKind::COUNT); ++k)
+        if (GroupOf(static_cast<LocationKind>(k)) == LocationGroup::Settlement)
+            settlements |= Bit(static_cast<LocationKind>(k));
+    std::uint64_t out = 0;
+    bool below = false;
+    for (const ChainLink &at : chain)
+    {
+        out |= below || at.outsideWalls ? at.kinds & ~settlements : at.kinds;
+        below = below || at.dug;
+    }
+    return out;
 }
 
 // The time of day, for the Time condition (dev/CONDITIONS.md 2e): the day

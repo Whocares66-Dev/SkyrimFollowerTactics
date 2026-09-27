@@ -3311,6 +3311,54 @@ TEST_CASE("the places fall into the menu's groups, each Any first", "[evaluator]
     REQUIRE_FALSE(IsGroupAny(LocationKind::Castle));
 }
 
+TEST_CASE("a settlement reaches neither into a dungeon or mine filed under it nor past its walls", "[evaluator]")
+{
+    using K = LocationKind;
+    const std::uint64_t town = Bit(K::Settlement) | Bit(K::Town);
+
+    // Breezehome: the house, the city it lies in, and the hold, whose kind
+    // is not a keyword.
+    const ChainLink breezehome[] = {
+        {Bit(K::Building) | Bit(K::House) | Bit(K::Home)}, {Bit(K::Settlement) | Bit(K::City)}, {}};
+    REQUIRE(PlacesUp(breezehome) ==
+            (Bit(K::Building) | Bit(K::House) | Bit(K::Home) | Bit(K::Settlement) | Bit(K::City)));
+
+    // Shroud Hearth Barrow, filed under Ivarstead: the barrow, not the town.
+    const std::uint64_t barrow = Bit(K::Dungeon) | Bit(K::DraugrCrypt) | Bit(K::Ruin) | Bit(K::NordicRuin);
+    const ChainLink shroudHearth[] = {{barrow, true}, {town}, {}};
+    REQUIRE(PlacesUp(shroudHearth) == barrow);
+
+    // Deeper than the dug one, and past a place with no keywords: still out.
+    const ChainLink deeper[] = {{0}, {barrow, true}, {0}, {town}};
+    REQUIRE(PlacesUp(deeper) == barrow);
+
+    // A dug location's own kinds stand: Whistling Mine's camp is marked a
+    // mine and a settlement, and is one; the mine under it is not.
+    const ChainLink camp[] = {{Bit(K::Settlement), true}, {}};
+    REQUIRE(PlacesUp(camp) == Bit(K::Settlement));
+    const ChainLink mine[] = {{0, true}, {Bit(K::Settlement), true}, {}};
+    REQUIRE(PlacesUp(mine) == 0);
+
+    // Only the settlements stop: a crypt under a ruin is in the ruin.
+    const ChainLink crypt[] = {{Bit(K::DraugrCrypt), true}, {Bit(K::Ruin) | Bit(K::NordicRuin), true}, {town}};
+    REQUIRE(PlacesUp(crypt) == (Bit(K::DraugrCrypt) | Bit(K::Ruin) | Bit(K::NordicRuin)));
+
+    // Before Markarth's gate, where the game files the cells under the city
+    // whose town is a worldspace of its own: nowhere. A farm filed under the
+    // city there is a settlement, and not the city.
+    const std::uint64_t city = Bit(K::Settlement) | Bit(K::City);
+    const ChainLink gate[] = {{city, false, true}, {}};
+    REQUIRE(PlacesUp(gate) == 0);
+    const ChainLink farm[] = {{Bit(K::Settlement)}, {city, false, true}, {}};
+    REQUIRE(PlacesUp(farm) == Bit(K::Settlement));
+    // Within the walls, the city.
+    const ChainLink street[] = {{city}, {}};
+    REQUIRE(PlacesUp(street) == city);
+
+    // Nowhere.
+    REQUIRE(PlacesUp({}) == 0);
+}
+
 TEST_CASE("the gem for a charge: the largest that fits, else the smallest carried", "[evaluator]")
 {
     // Petty 250, lesser 500, common 1000, as the game's settings have them.

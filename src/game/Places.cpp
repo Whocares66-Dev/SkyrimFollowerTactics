@@ -5,6 +5,7 @@
 #include "game/Log.h"
 #include "game/Util.h"
 
+#include <algorithm>
 #include <cctype>
 #include <mutex>
 #include <optional>
@@ -77,7 +78,9 @@ constexpr Source kSources[] = {
     {K::DwarvenRuin, "LocSetDwarvenRuin"},
     {K::DwarvenRuin, "LocTypeDwarvenAutomatons"},
     {K::NordicRuin, "LocSetNordicRuin"},
-    {K::Settlement, "LocTypeHabitation"},
+    // Not LocTypeHabitation: it marks where anyone lives, Deekus Camp and
+    // the Hearthfire homesteads among them, and a town it marks is marked
+    // by one of these too, or lies in one that is.
     {K::Settlement, "LocTypeCity"},
     {K::Settlement, "LocTypeTown"},
     {K::Settlement, "LocTypeSettlement"},
@@ -103,18 +106,29 @@ constexpr bool EveryKindRead()
 }
 static_assert(EveryKindRead());
 
-struct Keywords
+// A location dug into the ground, which a settlement it is filed under does
+// not reach down into (ft::PlacesUp). The mines in towns carry the last
+// only; the Midden, Cidhna Mine and Esbern's Vault carry none of them and
+// read as their city.
+constexpr std::string_view kDug[] = {"LocTypeDungeon", "LocTypeClearable", "LocTypeMine"};
+
+struct Marks
 {
     std::vector<std::pair<K, const RE::BGSKeyword *>> kinds;
+    std::vector<const RE::BGSKeyword *> dug;
     const RE::BGSKeyword *hold{nullptr};
+    // Every location with a worldspace of its own. Of the settlements, the
+    // five walled cities: the worldspace is the town within the walls.
+    std::vector<const RE::BGSLocation *> walled;
 };
 
-// Looked up once: keywords are not made or unmade after the data loads. A
-// keyword not in the load order marks nothing, and says so once.
-const Keywords &Resolved()
+// Looked up once: keywords and worldspaces are not made or unmade after the
+// data loads. A keyword not in the load order marks nothing, and says so
+// once.
+const Marks &Resolved()
 {
-    static const Keywords k = [] {
-        Keywords out;
+    static const Marks k = [] {
+        Marks out;
         for (const Source &source : kSources)
         {
             const std::string id(source.keyword);
@@ -124,7 +138,21 @@ const Keywords &Resolved()
                 log::sensors.warn("location: no keyword {} in the load order; {} reads without it", id,
                                   ft::WireName(source.kind));
         }
+        for (const std::string_view dug : kDug)
+        {
+            const std::string id(dug);
+            if (const auto *keyword = RE::TESForm::LookupByEditorID<RE::BGSKeyword>(id))
+                out.dug.push_back(keyword);
+            else
+                log::sensors.warn("location: no keyword {} in the load order; a settlement reaches into what it marks",
+                                  id);
+        }
         out.hold = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeHold");
+        if (auto *data = RE::TESDataHandler::GetSingleton())
+            for (const auto *world : data->GetFormArray<RE::TESWorldSpace>())
+                if (world && world->location)
+                    out.walled.push_back(world->location);
+        log::sensors.debug("location: {} worldspace(s) with a location of their own", out.walled.size());
         return out;
     }();
     return k;
@@ -203,18 +231,34 @@ void ReadPlaces(RE::Actor *actor, ft::Snapshot &s)
     s.hold = 0;
     if (const auto *cell = actor->GetParentCell())
         s.places |= ft::Bit(cell->IsInteriorCell() ? K::Interior : K::Exterior);
-    // A location does not carry the keywords of the one it lies in, so the
-    // chain is walked: in Breezehome the actor is in a player house, in a
-    // city and in Whiterun Hold. The nearest hold is theirs.
-    const Keywords &k = Resolved();
+    // In Breezehome the actor is in a player house, in a city and in
+    // Whiterun Hold. The nearest hold is theirs, however deep they are.
+    const Marks &k = Resolved();
+    // Out of doors, where the worldspace lies: a walled city's own, or one
+    // within it (Dragonsreach's, Windhelm's Pit), is inside the walls.
+    // Tamriel has no location, so before a gate this is nothing.
+    const bool outdoors = s.At(K::Exterior);
+    const RE::TESWorldSpace *world = outdoors ? actor->GetWorldspace() : nullptr;
+    const RE::BGSLocation *worldAt = world ? world->location : nullptr;
+    const auto within = [worldAt](const RE::BGSLocation *city) {
+        for (const RE::BGSLocation *at = worldAt; at; at = at->parentLoc)
+            if (at == city)
+                return true;
+        return false;
+    };
+    std::vector<ft::ChainLink> chain;
     for (const RE::BGSLocation *at = actor->GetCurrentLocation(); at; at = at->parentLoc)
     {
+        ft::ChainLink &link = chain.emplace_back();
         for (const auto &[kind, keyword] : k.kinds)
             if (at->HasKeyword(keyword))
-                s.places |= ft::Bit(kind);
+                link.kinds |= ft::Bit(kind);
+        link.dug = std::ranges::any_of(k.dug, [at](const RE::BGSKeyword *dug) { return at->HasKeyword(dug); });
+        link.outsideWalls = outdoors && std::ranges::find(k.walled, at) != k.walled.end() && !within(at);
         if (s.hold == 0 && k.hold && at->HasKeyword(k.hold))
             s.hold = at->GetFormID();
     }
+    s.places |= ft::PlacesUp(chain);
     // The weather out of doors only. Indoors the sky keeps the weather
     // outside, and a cell flagged to show the sky -- Breezehome, the inns,
     // many caves -- is under a roof all the same.
