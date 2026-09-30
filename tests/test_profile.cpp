@@ -698,6 +698,29 @@ TEST_CASE("a type condition writes its kind and reads it back", "[profile]")
     REQUIRE(read.profile->rules.rules[0].typeKind == TypeKind::DarkElf);
 }
 
+TEST_CASE("boss rank round trips without settings or unused condition fields", "[profile][rank]")
+{
+    Profile p;
+    Rule r;
+    r.subject = SubjectKind::Enemy;
+    r.predicate = PredicateKind::Boss;
+    r.negated = true;
+    r.FirstAction().kind = ActionKind::DrinkAny;
+    p.rules.rules.push_back(r);
+    const auto text = WriteProfile(p, kHex);
+    const auto j = nlohmann::json::parse(text);
+    const auto &condition = j["rules"][0]["if"];
+    REQUIRE(condition["predicate"] == "rank-boss");
+    REQUIRE_FALSE(condition.contains("arg"));
+    REQUIRE_FALSE(condition.contains("type"));
+    const auto read = ReadProfile(text, kHex);
+    REQUIRE(read.profile.has_value());
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules.size() == 1);
+    REQUIRE(read.profile->rules.rules[0].predicate == PredicateKind::Boss);
+    REQUIRE(read.profile->rules.rules[0].negated);
+}
+
 TEST_CASE("a location condition writes its place and reads it back", "[profile]")
 {
     Profile p;

@@ -93,6 +93,9 @@ enum class PredicateKind : std::uint8_t
     // follower are each one being. Above Status, as the editor's menu has
     // it.
     Type,
+    // Rank > Boss, Enemy only. A fixed classification read by the game;
+    // Skyrim has no general ordered rank scale.
+    Boss,
     // The subject is in the status Rule::statusKind names: poisoned,
     // burning, fleeing ... Any subject; a few kinds are not asked about
     // the follower themself (IsStatusValidFor).

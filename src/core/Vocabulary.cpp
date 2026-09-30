@@ -69,7 +69,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", N_("Corpse")},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 45> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 46> kPredicates{{
     {PredicateKind::Any, "any", N_("Any")}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::CombatBegins, "combat-begins", N_("Combat start")},
     {PredicateKind::CombatEnds, "combat-ends", N_("Combat end")},
@@ -77,6 +77,7 @@ constexpr std::array<Entry<PredicateKind>, 45> kPredicates{{
     {PredicateKind::StaminaPctBelow, "stamina-pct-below", N_("Stamina")},
     {PredicateKind::MagickaPctBelow, "magicka-pct-below", N_("Magicka")},
     {PredicateKind::Type, "type", N_("Type")},
+    {PredicateKind::Boss, "rank-boss", N_("Boss")},
     {PredicateKind::Status, "status", N_("Status")},
     {PredicateKind::ArmorPctBelow, "armor-pct-below", N_("Armor")},
     {PredicateKind::ResistancePctBelow, "resistance-pct-below", N_("Resistance")},
@@ -555,6 +556,8 @@ std::string_view Describe(PredicateKind v) noexcept
         return Tr("Runs immediately after combat ends");
     case PredicateKind::HitBy:
         return Tr("In the last few seconds.");
+    case PredicateKind::Boss:
+        return Tr("Powerful enemies such as dragon priests");
     case PredicateKind::Attacking:
         return Tr("This enemy's target is that party member.");
     case PredicateKind::AttackedBy:

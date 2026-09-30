@@ -77,6 +77,8 @@ Most conditions are self-explanatory. A few are worth highlighting.
 
 `Weather` checks the weather over the target: `Pleasant`, `Cloudy`, `Rain`, `Snow`, or `Ash`. It is offered in idle tactics, and only outdoors: indoors none of them is met, whatever the weather outside. `Pleasant` includes partly cloudy days; `Cloudy` is fog and overcast; `Rain`, `Snow`, and `Ash` are met while precipitation is falling. `Ash` means Solstheim's ash storm (`DLC02VolcanicAshStorm01`), which counts as Ash instead of Snow. Solstheim's other hazy ash weathers remain Cloudy.
 
+`Enemy` → `Rank` → `Boss`, just after `Type`, selects powerful enemies such as dragons, dragon priests, Harkon, Miraak, and enemies the game marks as a location's boss. An action aimed at `Enemy` targets the matching boss. This classification is automatic and has no settings.
+
 `Weapon` → `Bound` → `Active` means a conjured weapon is in either hand; `None` means neither hand holds one.
 
 `Arrows` → `None` / `Available` checks whether the character carries arrows or bolts, whether equipped or not. It is offered for `Self`.

@@ -215,6 +215,79 @@ void ReadKinds(RE::Actor *actor, ft::ActorTraits &traits)
             traits.SetType(people.kind);
 }
 
+// Fixed boss recognition, independent of HUD mods and their settings.
+// Named bosses are recognized by base even when their original reference
+// has a Boss marker: spawned copies do not inherit it. Ordinary enemies
+// assigned the boss role are recognized by their own reference marker.
+// See dev/CONDITIONS.md, Rank, for the verified records.
+std::string_view BossReason(RE::Actor *actor, const ft::ActorTraits &traits)
+{
+    if (traits.Is(ft::TypeKind::Dragon))
+        return "dragon";
+    struct Forms
+    {
+        std::array<RE::TESRace *, 2> priests{};
+        std::array<RE::TESNPC *, 25> named{};
+        RE::BGSKeyword *dawnguardBoss{nullptr};
+        RE::BGSLocationRefType *boss{nullptr};
+    };
+    static const Forms forms = [] {
+        Forms found;
+        if (auto *data = RE::TESDataHandler::GetSingleton())
+        {
+            found.priests = {data->LookupForm<RE::TESRace>(0x131EF, "Skyrim.esm"),
+                             data->LookupForm<RE::TESRace>(0x3911A, "Dragonborn.esm")};
+            found.named = {data->LookupForm<RE::TESNPC>(0x1E7D7, "Skyrim.esm"),    // Ancano
+                           data->LookupForm<RE::TESNPC>(0x1B07C, "Skyrim.esm"),    // Mercer Frey
+                           data->LookupForm<RE::TESNPC>(0x1BB28, "Skyrim.esm"),    // Jyrik Gauldurson
+                           data->LookupForm<RE::TESNPC>(0xAB6FF, "Skyrim.esm"),    // Mikrul Gauldurson
+                           data->LookupForm<RE::TESNPC>(0xA6842, "Skyrim.esm"),    // Sigdis Gauldurson, not his doubles
+                           data->LookupForm<RE::TESNPC>(0xC1908, "Skyrim.esm"),    // Red Eagle
+                           data->LookupForm<RE::TESNPC>(0x9CB66, "Skyrim.esm"),    // Malkoran
+                           data->LookupForm<RE::TESNPC>(0xEBE2E, "Skyrim.esm"),    // Malkoran's shade
+                           data->LookupForm<RE::TESNPC>(0x45F78, "Skyrim.esm"),    // Orchendor
+                           data->LookupForm<RE::TESNPC>(0x28AD3, "Skyrim.esm"),    // Malyn Varen
+                           data->LookupForm<RE::TESNPC>(0x4D246, "Skyrim.esm"),    // the Caller
+                           data->LookupForm<RE::TESNPC>(0x3788, "Dawnguard.esm"),  // Vyrthur
+                           data->LookupForm<RE::TESNPC>(0x1A73E, "Dawnguard.esm"), // the Soul Cairn Reaper
+                           data->LookupForm<RE::TESNPC>(0x15401, "Dawnguard.esm"), // the Forgemaster and its tiers
+                           data->LookupForm<RE::TESNPC>(0x15C45, "Dawnguard.esm"),
+                           data->LookupForm<RE::TESNPC>(0x15C47, "Dawnguard.esm"),
+                           data->LookupForm<RE::TESNPC>(0x15C48, "Dawnguard.esm"),
+                           data->LookupForm<RE::TESNPC>(0x3BA7, "Dawnguard.esm"), // Harkon and his combat forms
+                           data->LookupForm<RE::TESNPC>(0xEC1C, "Dawnguard.esm"),
+                           data->LookupForm<RE::TESNPC>(0xEC8A, "Dawnguard.esm"),
+                           data->LookupForm<RE::TESNPC>(0x1A93D, "Dawnguard.esm"),
+                           data->LookupForm<RE::TESNPC>(0x1FB98, "Dragonborn.esm"),  // Miraak's final fight
+                           data->LookupForm<RE::TESNPC>(0x1A373, "Dragonborn.esm"),  // Haknir, including spawned copies
+                           data->LookupForm<RE::TESNPC>(0x285C3, "Dragonborn.esm"),  // the Ebony Warrior
+                           data->LookupForm<RE::TESNPC>(0x19665, "Dragonborn.esm")}; // Karstaag, not the summon
+            found.dawnguardBoss = data->LookupForm<RE::BGSKeyword>(0x1269F, "Dawnguard.esm");
+            found.boss = data->LookupForm<RE::BGSLocationRefType>(0x130F7, "Skyrim.esm");
+        }
+        return found;
+    }();
+    if (const auto *race = actor->GetRace(); race && std::ranges::find(forms.priests, race) != forms.priests.end())
+        return "dragon priest";
+    if (forms.dawnguardBoss && actor->HasKeyword(forms.dawnguardBoss))
+        return "Dawnguard boss keyword";
+    const auto named = [](const RE::TESActorBase *base) {
+        return base && std::ranges::find(forms.named, base) != forms.named.end();
+    };
+    if (named(actor->GetActorBase()))
+        return "named boss";
+    if (const auto *leveled = actor->extraList.GetByType<RE::ExtraLeveledCreature>();
+        leveled && named(leveled->originalBase))
+        return "named boss original base";
+    // HasRefType reads this extra and compares the type pointer (read on
+    // SE and AE, dev/CONDITIONS.md). The assignment belongs to the actor,
+    // even when it is away from the player's current location.
+    if (const auto *type = actor->extraList.GetByType<RE::ExtraLocationRefType>();
+        forms.boss && type && type->locRefType == forms.boss)
+        return "Boss location reference";
+    return {};
+}
+
 // Every base effect of the effect's name: the load order's records of one
 // name, indexed once, on first use, after the data has loaded. A nameless
 // effect is only itself, `own` its FormID.
@@ -294,6 +367,19 @@ bool IsBleed(const RE::EffectSetting *effect)
 // "never happened". Read by the tick and by the panel's pages.
 std::mutex g_statusesMutex;
 std::unordered_map<RE::FormID, std::uint32_t> g_statuses;
+std::unordered_map<RE::FormID, std::string_view> g_bossReasons;
+
+void LogBossChanges(RE::Actor *actor, std::string_view reason)
+{
+    {
+        std::scoped_lock lock(g_statusesMutex);
+        const auto [it, inserted] = g_bossReasons.try_emplace(actor->GetFormID(), reason);
+        if (!inserted && it->second == reason)
+            return;
+        it->second = reason;
+    }
+    log::sensors.debug("{}: rank {}", Describe(actor), reason.empty() ? "not boss" : reason);
+}
 
 void LogStatusChanges(RE::Actor *actor, std::uint32_t now)
 {
@@ -326,6 +412,7 @@ void ForgetStatuses()
 {
     std::scoped_lock lock(g_statusesMutex);
     g_statuses.clear();
+    g_bossReasons.clear();
 }
 
 ft::ActorTraits ReadTraits(RE::Actor *actor)
@@ -344,6 +431,9 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     traits.hitBy = attacked.kinds;
     traits.attacker = attacked.attacker;
     ReadKinds(actor, traits);
+    const std::string_view bossReason = BossReason(actor, traits);
+    traits.boss = !bossReason.empty();
+    LogBossChanges(actor, bossReason);
     if (auto *owner = actor->AsActorValueOwner())
     {
         for (const auto kind : {ft::DamageKind::Magic, ft::DamageKind::Fire, ft::DamageKind::Frost,

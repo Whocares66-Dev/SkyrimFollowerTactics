@@ -96,6 +96,7 @@ struct RunningEffect
 // question of any of them.
 struct ActorTraits
 {
+    bool boss{false};
     std::uint32_t status{0};
     // The share of physical damage the actor's armour turns away, 0 to
     // 0.8: the rating with the hidden per-piece bonus, scaled and capped as

@@ -464,6 +464,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     // true always or never.
     if (predicate == PredicateKind::Type)
         return subject == SubjectKind::Ally || subject == SubjectKind::Enemy;
+    if (predicate == PredicateKind::Boss)
+        return subject == SubjectKind::Enemy;
     // A status, the armour, the resistances, the hands, the hits and the
     // summons are read off every actor the snapshot carries, so they are
     // answerable about any of them. The extremes are of a group.

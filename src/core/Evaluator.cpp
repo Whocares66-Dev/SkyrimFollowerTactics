@@ -80,6 +80,8 @@ std::optional<bool> Common(const Rule &r, const Facts &f)
         return f.traits.HasEffect(r.conditionForm);
     case PredicateKind::Type:
         return f.traits.Is(r.typeKind);
+    case PredicateKind::Boss:
+        return f.traits.boss;
     case PredicateKind::SummonNone:
         return f.traits.summons == 0;
     case PredicateKind::SummonActive:

@@ -122,6 +122,7 @@ int ConditionGroup(ft::PredicateKind p)
     case ft::PredicateKind::HitBy:
         return 4;
     case ft::PredicateKind::Type:
+    case ft::PredicateKind::Boss:
         return 5;
     case ft::PredicateKind::Status:
     case ft::PredicateKind::EffectRunning:
@@ -560,6 +561,11 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 continue;
             }
 
+            if (predicate == ft::PredicateKind::Boss)
+            {
+                submenu(Tr("Rank"), {{ft::PredicateKind::Boss, Tr("Boss")}});
+                continue;
+            }
             // A kind of being: four groups under "Type", each a menu of Any
             // -- the group itself -- and its members by name. Groups and
             // members both by name, not by the enum.

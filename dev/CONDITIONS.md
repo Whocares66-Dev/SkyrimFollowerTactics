@@ -99,6 +99,113 @@ The engine has two layers, both on the race record (read with houseCARL, 2026-09
 
 Left out: Ghost folds into Undead; hagraven, wisp, ice wraith, gargoyle, riekling and chaurus are single races and one line each to add. Bound weapons are not actors; there is no keyword for a quest item.
 
+## Rank: Boss (2026-09-28, issue #20; not yet verified in play)
+
+`Enemy > Rank > Boss` sits immediately after Type in the same menu section.
+Its hover text is "Powerful enemies such as dragon priests". Enemy only,
+negatable, with no number or settings. `PredicateKind::Boss` writes
+`"rank-boss"`; `ActorTraits::boss` is read by the evaluator, so the spell or
+attack binds the matching boss rather than a nearer ordinary enemy.
+There is no ordered normal/lieutenant/elite rank scale in the actor base
+data inspected. Rank is the menu heading; Boss is its only choice.
+
+Fixed detection in `game/Traits.cpp`, first matching reason logged at
+debug on first observation and changes, cleared with the status history:
+
+- Dragon: the existing Type reading of `ActorTypeDragon` (Skyrim.esm
+  `035D59`), including the dragon variants that carry it.
+- Dragon priest: Skyrim.esm `0131EF` (`DragonPriestRace`) or Dragonborn.esm
+  `03911A` (`DLC2AcolyteDragonPriestRace`).
+- Dawnguard boss keyword: Dawnguard.esm `01269F` (`ActorTypeDLC1Boss`).
+- Harkon's bases in Dawnguard.esm: `003BA7` (Harkon), `00EC1C` (combat
+  melee), `00EC8A` (combat magic), `01A93D` (combat); Miraak's final-fight
+  base in Dragonborn.esm: `01FB98` (`DLC2MiraakMQ06`). Check both the live
+  actor base and `ExtraLeveledCreature::originalBase`, when present.
+- The actor's `ExtraLocationRefType::locRefType` is Skyrim.esm `0130F7`
+  (`Boss`). No dependency on which location the player occupies.
+
+Named bosses are recognized by NPC base whether or not the original
+placed reference carries Boss. The reference marker remains a separate
+route for ordinary enemies assigned the boss role in an encounter; it
+does not promote all copies of their base. Fixed base entries include
+resolved tiers and spawned phases:
+
+| NPC | Plugin | Local NPC base ID(s) |
+|---|---|---|
+| Ancano | Skyrim.esm | `01E7D7` |
+| Mercer Frey | Skyrim.esm | `01B07C` |
+| Jyrik Gauldurson | Skyrim.esm | `01BB28` |
+| Mikrul Gauldurson | Skyrim.esm | `0AB6FF` |
+| Sigdis Gauldurson | Skyrim.esm | `0A6842` (not his illusion doubles) |
+| Red Eagle | Skyrim.esm | `0C1908` |
+| Malkoran and his shade | Skyrim.esm | `09CB66`, `0EBE2E` |
+| Orchendor | Skyrim.esm | `045F78` |
+| Malyn Varen | Skyrim.esm | `028AD3` (not his corpse) |
+| The Caller | Skyrim.esm | `04D246` |
+| Arch-Curate Vyrthur | Dawnguard.esm | `003788` |
+| The Soul Cairn Reaper | Dawnguard.esm | `01A73E` |
+| The Forgemaster | Dawnguard.esm | `015401`, `015C45`, `015C47`, `015C48` |
+| The Ebony Warrior | Dragonborn.esm | `0285C3` |
+| Karstaag | Dragonborn.esm | `019665` (not the player summon `024811`) |
+
+Haknir Death-Brand also has a fixed base entry, Dragonborn.esm `01A373`.
+His original placed reference (`037FEA`) is marked Boss, but a newly
+spawned copy does not inherit that reference's `XLRT`. Observed in play
+2026-09-29: dynamically created Haknir `FF000A8F` logged `rank not boss`.
+The base entry covers both the original and copies. Moving the original
+reference is different from spawning a new one: recognition reads its
+own marker, not its current location. The correction is built but not
+yet verified in play.
+
+Malkoran's `FXChangeToNecroPriestScript` VMAD property
+`EncSkeletonNecroPriest` directly names `DA09ShadeUnique` (`0EBE2E`):
+the second phase needs its own entry. The Reaper's two placed references,
+Dawnguard.esm `0066EA` and `0144C1`, carry no `XLRT`.
+
+Verified Boss-marked references: Mercer Frey (`022651`), Jyrik (`01BB27`),
+Mikrul (`0AB700`), Sigdis (`0A5E68`), Red Eagle (`0C14B3`), White River
+Watch's bandit boss (`080B20`), all in Skyrim.esm; Haknir Death-Brand
+(`037FEA`) in Dragonborn.esm. The five named Skyrim bosses now also have
+explicit base entries, verified from each reference's `NAME` on
+2026-09-29, so copies no longer rely on the marker. Sigdis's illusion
+doubles (`0A6848`, `0ECF13`) and the ordinary templates behind the leveled
+bosses are not added. The reader checks `ExtraLeveledCreature::originalBase`
+for the named wrapper. Bandit chiefs in marked placements count; this
+does not infer a rank from every NPC's name or recognize every unmarked
+chief. The fixed named list is curated, not an exhaustive list of every
+named enemy or mod-added boss.
+
+All IDs above are plugin-local, resolved through `TESDataHandler`. No HUD
+dependency, INI lists, health/level thresholds, or Unique/Essential inference.
+New mod bosses are covered if they retain these races/keywords or the Boss
+reference assignment; unrelated custom races and unmarked NPCs are not.
+
+**Record verification:** read the installed Skyrim.esm, Dawnguard.esm and
+Dragonborn.esm records directly (including compressed records). Harkon's
+placed references `003BA8`, `00EC1B`, `00EC8B` and Miraak's final-fight
+reference `01FB99` have no `XLRT` Boss assignment and no corresponding
+`LCTN/LCSR` special-reference entry in their DLC masters. The main quest
+aliases in `DLC1VQ08` and `DLC2MQ06` do not assign them Boss either.
+Harkon's three combat bases carry ActorTypeDLC1Boss; his ordinary base does
+not. Miraak's final-fight race is `DLC2MiraakRace` (`03CA97`), not a dragon
+priest race. Thus location markers alone are insufficient for both.
+This is a vanilla-master inspection, not a claim about every load-order
+override or runtime script change.
+
+**Engine verification:** read HasRefType (condition 561) through the script
+command table on 1.5.97 and 1.6.1170. It compares its first parameter with
+the reference's extra location type. On SE: handler 21191 calls 19843,
+which reads extra 0x8B through 11622; on AE: 21648 calls 20248, through
+11768. Both return the pointer at extra +0x10, or null. Implementation
+uses CommonLib's typed `GetByType<ExtraLocationRefType>()`, not raw
+addresses or a synthetic condition. This follows the native HasRefType
+test and also handles an actor moved away from its original location.
+
+Core tests cover boss targeting, negation (including an empty enemy list),
+subject restrictions, tooltip text and profile round-trip. Still to verify
+in play: named/generic priests, a marked dungeon boss, dragons, Harkon's
+combat forms, Miraak, and an ordinary enemy; check the `rank` debug lines.
+
 ## 2b. Effect: what runs on the subject (built and reworked 2026-09-23, not yet seen in play)
 
 `Effect`, right below Status: an effect of that name runs on the subject (`PredicateKind::EffectRunning`, one base effect's form in `Rule::conditionForm`, `"effect"` in the profile), whatever applied it. Reads as a status does, `Self: Oakflesh`. Any subject; negatable.

@@ -544,6 +544,46 @@ TEST_CASE("a negated group condition binds one the plain one does not hold of", 
     REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
 }
 
+TEST_CASE("boss rank binds the boss enemy and negation binds an ordinary enemy", "[rank]")
+{
+    Snapshot s = Party();
+    s.spells.known.push_back(kFirebolt);
+    Rule r = About(SubjectKind::Enemy, PredicateKind::Boss);
+    r.actionTarget = ActionTargetKind::Enemy;
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = kFirebolt;
+    RuleSet rs;
+    rs.rules.push_back(r);
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+
+    // A nearby ordinary enemy must not steal the spell from the boss.
+    s.enemies[1].traits.boss = true;
+    Decision d;
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    REQUIRE(d.subjectId() == kFarEnemy);
+    REQUIRE(d.targetId() == kFarEnemy);
+
+    rs.rules[0].negated = true;
+    REQUIRE(FirstVerdict(rs, s, &d) == Verdict::Fired);
+    REQUIRE(d.subjectId() == kEnemy);
+    REQUIRE(d.targetId() == kEnemy);
+    s.enemies[0].traits.boss = true;
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+    s.enemies.clear();
+    REQUIRE(FirstVerdict(rs, s) == Verdict::ConditionFalse);
+}
+
+TEST_CASE("boss rank is an enemy condition with no numeric argument", "[rank]")
+{
+    for (std::size_t i = 0; i < static_cast<std::size_t>(SubjectKind::COUNT); ++i)
+    {
+        const auto subject = static_cast<SubjectKind>(i);
+        REQUIRE(IsPredicateValidFor(subject, PredicateKind::Boss) == (subject == SubjectKind::Enemy));
+    }
+    REQUIRE(ArgumentFor(PredicateKind::Boss) == ArgumentKind::None);
+    REQUIRE(std::string(Describe(PredicateKind::Boss)) == "Powerful enemies such as dragon priests");
+}
+
 TEST_CASE("an effect holds while that effect runs, whatever applied it", "[effect]")
 {
     // "If Blood Sacrifice is on, turn it off": the effect of the ability the
