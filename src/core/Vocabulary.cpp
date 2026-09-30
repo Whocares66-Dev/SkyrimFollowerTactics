@@ -308,11 +308,12 @@ constexpr std::array<Entry<TimeKind>, 4> kTimes{{
 
 // A weather, as the rule names it and as the menu shows it. Each name
 // reads after "Weather", as the condition does: "Self: Weather Rain".
-constexpr std::array<Entry<WeatherKind>, 4> kWeathers{{
+constexpr std::array<Entry<WeatherKind>, 5> kWeathers{{
     {WeatherKind::Pleasant, "pleasant", N_("Pleasant")},
     {WeatherKind::Cloudy, "cloudy", N_("Cloudy")},
     {WeatherKind::Rain, "rain", N_("Rain")},
     {WeatherKind::Snow, "snow", N_("Snow")},
+    {WeatherKind::Ash, "ash", N_("Ash")},
 }};
 
 constexpr std::array<Entry<DamageKind>, 8> kDamageKinds{{

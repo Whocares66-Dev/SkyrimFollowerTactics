@@ -712,17 +712,22 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 continue;
             }
 
-            // The weather: its four in the game's order, not by name. That it
+            // The weather, alphabetically by name. That it
             // holds out of doors only is said on the heading, once, as Hit
             // by's help is.
             if (predicate == ft::PredicateKind::Weather)
             {
                 if (!BeginCascade(predicateName.c_str(), std::string(ft::Describe(predicate)).c_str()))
                     continue;
+                std::vector<ft::WeatherKind> kinds;
+                kinds.reserve(static_cast<std::size_t>(ft::WeatherKind::COUNT));
                 for (std::size_t wi = 0; wi < static_cast<std::size_t>(ft::WeatherKind::COUNT); ++wi)
+                    kinds.push_back(static_cast<ft::WeatherKind>(wi));
+                ft::SortByName(kinds, [](ft::WeatherKind kind) { return ft::DisplayName(kind); });
+                for (const ft::WeatherKind kind : kinds)
                 {
                     Extras x;
-                    x.weather = static_cast<ft::WeatherKind>(wi);
+                    x.weather = kind;
                     pick(std::string(ft::DisplayName(*x.weather)).c_str(), predicate, x, false);
                 }
                 Im::EndMenu();

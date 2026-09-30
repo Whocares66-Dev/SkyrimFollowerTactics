@@ -173,6 +173,12 @@ std::optional<ft::SkyWeather> Blended(const RE::TESWeather *weather)
          {std::pair{F::kPleasant, W::Pleasant}, {F::kCloudy, W::Cloudy}, {F::kRainy, W::Rain}, {F::kSnow, W::Snow}})
         if (data.flags.any(flag))
             out.classes |= ft::Bit(kind);
+    // Only DLC02VolcanicAshStorm01 is Ash. The six hazy ash weathers
+    // remain Cloudy. Resolve the defining plugin, never its load-order index
+    // or an editor ID/particle-name heuristic (houseCARL; CONDITIONS.md 2d).
+    if (auto *dataHandler = RE::TESDataHandler::GetSingleton())
+        if (weather == dataHandler->LookupForm<RE::TESWeather>(0x032336, "Dragonborn.esm"))
+            out.classes = ft::Bit(W::Ash);
     out.precipitationBegins =
         static_cast<float>(static_cast<std::uint8_t>(data.precipitationBeginFadeIn)) * 0.0039176475f;
     out.precipitationEnds =

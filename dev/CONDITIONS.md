@@ -156,13 +156,14 @@ Read on the tick into `Snapshot::places`, a bit per kind, and `Snapshot::hold` (
 
 ```
 Weather
-  Pleasant
+  Ash
   Cloudy
+  Pleasant
   Rain
   Snow
 ```
 
-**What there is to ask.** A weather record has no keywords. It carries a classification, four flags in its DATA (`TESWeather::WeatherDataFlag`): Pleasant, Cloudy, Rainy, Snow -- the CK's words, and what the engine's own `IsPleasant`, `IsCloudy`, `IsRaining` and `IsSnowing` conditions read, so every weather mod sets them. The four are the menu, in the game's order; Rainy is "Rain" to read after "Weather". Read with houseCARL in Nordic Souls (2026-09-26), the classes do not all mean what their names suggest:
+**What there is to ask.** A weather record has no keywords. It carries a classification, four flags in its DATA (`TESWeather::WeatherDataFlag`): Pleasant, Cloudy, Rainy, Snow -- the CK's words, and what the engine's own `IsPleasant`, `IsCloudy`, `IsRaining` and `IsSnowing` conditions read, so every weather mod sets them. The menu offers those four plus Ash (below), alphabetically; Rainy is "Rain" to read after "Weather". Read with houseCARL in Nordic Souls (2026-09-26), the classes do not all mean what their names suggest:
 
 - **Pleasant** is the fair days, and takes in the partly cloudy ones: Skyrim.esm's `SkyrimClear*` and `SkyrimCloudy*` both, Dawnguard's Forgotten Vale, Sovngarde's clear sky, Beyond Skyrim's clear and cloudy Cyrodiil.
 - **Cloudy** is fog and overcast with nothing falling: `SkyrimFog*`, `SkyrimOvercastWar`, the Blue Palace and Riften fogs, Solstheim's ash weathers (`DLC02VolcanicAsh*`), Apocrypha, the Soul Cairn.
@@ -172,7 +173,9 @@ Weather
 
 Left out: thunder (a frequency every weather carries, storms or not), wind speed, the aurora flags, and a record named by a rule (as Effect names one), which would tie a rule to one weather mod.
 
-**Out of doors only.** The sky is one, the player's, and it does not clear when the player goes in: its mode setter (26222 on 1.6.1170, read 2026-09-26) leaves `currentWeather` and `lastWeather` as they were when it switches to interior, and the engine's `IsRaining` and the rest read them without asking where anyone is. So indoors the sky still says what it last said outside. Nor does the cell's Show Sky flag mean out of doors: 271 interiors in Skyrim.esm and the DLC carry it, Breezehome, the inns and many caves among them (the mode is set from it in 13326: an interior without it is Interior, with it Sky Dome Only, or Full with Use Sky Lighting too). So Weather holds only where the actor's cell is an exterior (`TESObjectCELL::IsInteriorCell`, the Location condition's Exterior); inside, none of the four holds, and "it is raining outside" cannot be asked from indoors.
+**Ash (2026-09-28, issue #10).** HouseCARL inspection against MO2's Default profile found seven `DLC02VolcanicAsh*` records, all won by Dragonborn.esm. Only `DLC02VolcanicAshStorm01` (`032336:Dragonborn.esm`) counts as Ash, replacing its engine Snow class in our snapshot. It uses `DLC02AshParticlesLite` (`032337:Dragonborn.esm`), with texture `DLC02\Effects\FXAshSoft01.dds`. The six others (`018471`, `031AC0`, `01D760`, `0374B8`, `0374B9`, `0374BA`, all Dragonborn.esm) are Cloudy with no precipitation link and receive no Ash classification. Resolve the storm by plugin-relative FormID, so overrides and load-order changes keep its identity; no matching on editor IDs, particles, or location. New weather records from mods do not automatically count as Ash. Ash follows the same precipitation transition thresholds as Rain and Snow, and the same exterior-only gate. The menu lists Ash, Cloudy, Pleasant, Rain, Snow; profiles store `"ash"`. Not yet verified in play.
+
+**Out of doors only.** The sky is one, the player's, and it does not clear when the player goes in: its mode setter (26222 on 1.6.1170, read 2026-09-26) leaves `currentWeather` and `lastWeather` as they were when it switches to interior, and the engine's `IsRaining` and the rest read them without asking where anyone is. So indoors the sky still says what it last said outside. Nor does the cell's Show Sky flag mean out of doors: 271 interiors in Skyrim.esm and the DLC carry it, Breezehome, the inns and many caves among them (the mode is set from it in 13326: an interior without it is Interior, with it Sky Dome Only, or Full with Use Sky Lighting too). So Weather holds only where the actor's cell is an exterior (`TESObjectCELL::IsInteriorCell`, the Location condition's Exterior); inside, none of the five holds, and "it is raining outside" cannot be asked from indoors.
 
 **Through a change of weather** (`WeatherOf`, `src/core/Weather.h`, tested): the sky blends the outgoing weather into the incoming one, `currentWeatherPct` going from 0 to 1. Pleasant and Cloudy are the class of the weather at least half in -- the engine's `IsPleasant` and `IsCloudy` answer the blend's share instead, and this is that share at a half. Rain and Snow are whether it falls, as the engine's `IsRaining` and `IsSnowing` have it (decompiled on 1.6.1170, 2026-09-26): the incoming weather's once the change passes its Precipitation Begin Fade In, the outgoing weather's until it reaches its End Fade Out, each a byte of DATA read unsigned and scaled by 0.0039176 (the end plus 0.001). So rain can fall under a sky still mostly overcast (Cloudy and Rain both hold), and a change from rain to snow can hold both for a while. CommonLib's `Sky::IsRaining` reads the bytes signed, and so would say no rain for a begin under 128; it is not used.
 

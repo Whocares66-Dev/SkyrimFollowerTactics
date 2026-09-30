@@ -3266,6 +3266,11 @@ TEST_CASE("the weather holds under that weather, and never where there is none",
     REQUIRE_FALSE(holds(WeatherKind::Pleasant));
     REQUIRE_FALSE(holds(WeatherKind::Snow));
     REQUIRE(holds(WeatherKind::Snow, true));
+    s.weather = Bit(WeatherKind::Ash);
+    REQUIRE(holds(WeatherKind::Ash));
+    REQUIRE_FALSE(holds(WeatherKind::Ash, true));
+    REQUIRE_FALSE(holds(WeatherKind::Snow));
+    REQUIRE_FALSE(holds(WeatherKind::Cloudy));
 
     // Of the follower alone, as the place is.
     REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Weather));

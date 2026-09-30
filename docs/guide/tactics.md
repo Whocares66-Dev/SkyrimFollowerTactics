@@ -75,7 +75,7 @@ Most conditions are self-explanatory. A few are worth highlighting.
 
 `Location` checks where the target is: home, interior or exterior, a hold, or a type of building, dungeon, ruin, or settlement. It is offered in idle tactics; for example, use `Self: Location → Home` to change equipment at home. Place types follow the game's location tags, including parent locations; a dungeon or mine filed under a town is not in the settlement.
 
-`Weather` checks the weather over the target: `Pleasant`, `Cloudy`, `Rain`, or `Snow`, the game's own weather classes. It is offered in idle tactics, and only outdoors: indoors none of them is met, whatever the weather outside. `Pleasant` includes partly cloudy days; `Cloudy` is fog and overcast; `Rain` and `Snow` are met while it is falling, and `Snow` includes Solstheim's ash storms.
+`Weather` checks the weather over the target: `Pleasant`, `Cloudy`, `Rain`, `Snow`, or `Ash`. It is offered in idle tactics, and only outdoors: indoors none of them is met, whatever the weather outside. `Pleasant` includes partly cloudy days; `Cloudy` is fog and overcast; `Rain`, `Snow`, and `Ash` are met while precipitation is falling. `Ash` means Solstheim's ash storm (`DLC02VolcanicAshStorm01`), which counts as Ash instead of Snow. Solstheim's other hazy ash weathers remain Cloudy.
 
 `Weapon` → `Bound` → `Active` means a conjured weapon is in either hand; `None` means neither hand holds one.
 

@@ -166,7 +166,7 @@ enum class PredicateKind : std::uint8_t
     // party stands in one place. The idle list's alone (IsPredicateValidIn).
     Location,
     // The weather over the follower: Rule::weatherKind -- pleasant, cloudy,
-    // rain, snow. Self only and the idle list's alone, as Location is; out
+    // rain, snow, ash. Self only and the idle list's alone, as Location is; out
     // of doors only, so it never holds inside, whatever the sky outside is
     // doing.
     Weather,

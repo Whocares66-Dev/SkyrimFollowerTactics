@@ -15,7 +15,7 @@ namespace ft
 {
 
 // One weather record as the sky blends it: the classes it carries, a bit
-// per WeatherKind, and where in a change of weather its rain or snow
+// per WeatherKind, and where in a change of weather its rain, snow or ash
 // begins to fall when it comes in and stops when it goes out, each a share
 // of the change.
 struct SkyWeather
@@ -34,7 +34,7 @@ struct Sky
 };
 
 // A bit per WeatherKind. Pleasant and Cloudy are the class of the weather
-// at least half blended in. Rain and Snow are whether it falls, as the
+// at least half blended in. Rain, Snow and Ash are whether it falls, as the
 // engine's IsRaining and IsSnowing conditions have it (1.6.1170,
 // 2026-09-26): from the incoming weather once the change passes its
 // begin, and from the outgoing one until the change reaches its end.

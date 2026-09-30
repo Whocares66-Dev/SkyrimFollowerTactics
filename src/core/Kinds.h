@@ -353,13 +353,15 @@ struct Hours
 // the game's names -- Rainy is Rain here, as it reads after "Weather".
 // Pleasant takes in the fair, partly cloudy days (Skyrim.esm's
 // SkyrimCloudy); Cloudy is fog and overcast; Snow takes in Solstheim's ash
-// storm. One bit each in Snapshot::weather, none indoors.
+// storm in the engine, but we identify that record separately as Ash.
+// One bit each in Snapshot::weather, none indoors.
 enum class WeatherKind : std::uint8_t
 {
     Pleasant,
     Cloudy,
     Rain,
     Snow,
+    Ash,
 
     COUNT
 };

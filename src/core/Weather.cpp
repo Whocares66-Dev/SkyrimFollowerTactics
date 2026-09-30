@@ -9,7 +9,7 @@ std::uint8_t WeatherOf(const Sky &sky) noexcept
         return 0;
     const SkyWeather &seen = sky.last && sky.progress < 0.5f ? *sky.last : *sky.current;
     std::uint8_t out = seen.classes & (Bit(WeatherKind::Pleasant) | Bit(WeatherKind::Cloudy));
-    for (const WeatherKind falling : {WeatherKind::Rain, WeatherKind::Snow})
+    for (const WeatherKind falling : {WeatherKind::Rain, WeatherKind::Snow, WeatherKind::Ash})
     {
         const bool coming =
             (sky.current->classes & Bit(falling)) != 0 && sky.progress > sky.current->precipitationBegins;

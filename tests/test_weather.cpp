@@ -126,3 +126,25 @@ TEST_CASE("rain turning to snow can fall as both for a while", "[weather]")
     sky.progress = 0.75f;
     REQUIRE(WeatherOf(sky) == Bit(WeatherKind::Snow));
 }
+
+TEST_CASE("ash falls through its precipitation window, separately from snow", "[weather]")
+{
+    Sky sky;
+    sky.last = Classed(WeatherKind::Cloudy);
+    sky.current = Classed(WeatherKind::Ash, 0.2f, 0.6f);
+    sky.progress = 0.2f;
+    REQUIRE(WeatherOf(sky) == Bit(WeatherKind::Cloudy));
+    sky.progress = 0.3f;
+    REQUIRE(WeatherOf(sky) == (Bit(WeatherKind::Cloudy) | Bit(WeatherKind::Ash)));
+    sky.progress = 1.0f;
+    REQUIRE(WeatherOf(sky) == Bit(WeatherKind::Ash));
+
+    sky.last = sky.current;
+    sky.current = Classed(WeatherKind::Snow, 0.4f);
+    sky.progress = 0.4f;
+    REQUIRE(WeatherOf(sky) == Bit(WeatherKind::Ash));
+    sky.progress = 0.5f;
+    REQUIRE(WeatherOf(sky) == (Bit(WeatherKind::Ash) | Bit(WeatherKind::Snow)));
+    sky.progress = 0.6f;
+    REQUIRE(WeatherOf(sky) == Bit(WeatherKind::Snow));
+}
