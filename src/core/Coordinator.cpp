@@ -20,13 +20,20 @@ TickResult DecideTurn(ActorRun &run, const ActorRules &rules, const TickFacts &f
 
     result.plan = run.tick.Plan(run.eval, facts.now);
     if (!result.plan)
+    {
+        if (!facts.now.held)
+            result.holds = ListHolds{facts.now.fighting ? Moment::Combat : Moment::Idle, {}};
         return result;
+    }
 
     run.eval.caps = facts.caps;
     result.snapshot = snapshot(*result.plan.list);
     result.snapshot.combatBegan = result.plan.began;
     result.snapshot.combatEnded = result.plan.ended;
-    result.decision = Evaluate(rules.Of(*result.plan.list), result.snapshot, run.eval, trace, actionTrace);
+    const RuleSet &list = rules.Of(*result.plan.list);
+    result.decision = Evaluate(list, result.snapshot, run.eval, trace, actionTrace);
+    if (list.moment == Moment::Idle && !result.snapshot.inCombat)
+        result.holds = ListHolds{list.moment, Standing(list, result.snapshot, run.eval)};
     return result;
 }
 

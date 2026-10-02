@@ -469,7 +469,7 @@ TEST_CASE("a fight that began with nothing pinned takes nothing off")
     const std::vector<Pin> before;
     const std::vector<Pin> now{{Thing(kHuntingBow, Grip::Both), Hand::Both}, {Armour(kIronArmor, 0x4), Hand::None}};
 
-    const AfterFight settle = SettleAfterFight(now, before);
+    const Settled settle = Settle(now, before);
     REQUIRE(settle.released.size() == 2);
     CHECK(settle.released[0].form == kHuntingBow);
     CHECK(settle.released[0].hands == Hand::Both);
@@ -491,7 +491,7 @@ TEST_CASE("what was pinned before the fight comes back, and only that")
                                {Armour(kIronArmor, 0x4), Hand::None},
                                {Armour(11, 0x2), Hand::None}};
 
-    const AfterFight settle = SettleAfterFight(now, before);
+    const Settled settle = Settle(now, before);
     REQUIRE(settle.released.size() == 3);
     CHECK(settle.released[0].form == kHuntingBow);
     CHECK(settle.released[0].takeOff);
@@ -513,7 +513,7 @@ TEST_CASE("a pin kept through the fight, or made in the panel during it, is unto
     const std::vector<Pin> before{{Armour(kIronArmor, 0x2), Hand::None}};
     const std::vector<Pin> now{{Armour(kIronArmor, 0x2), Hand::None}, {Thing(kSteelDagger, Grip::Either), Hand::Right}};
 
-    const AfterFight settle = SettleAfterFight(now, before);
+    const Settled settle = Settle(now, before);
     REQUIRE(settle.released.size() == 1);
     CHECK(settle.released[0].form == kSteelDagger);
     CHECK_FALSE(settle.released[0].takeOff);
@@ -526,7 +526,7 @@ TEST_CASE("a pin kept through the fight, or made in the panel during it, is unto
                                  {Thing(kSteelDagger, Grip::Either), Hand::Left}};
     const std::vector<Pin> wasRight{{Armour(kIronArmor, 0x2), Hand::None},
                                     {Thing(kSteelDagger, Grip::Either), Hand::Right}};
-    const AfterFight back = SettleAfterFight(moved, wasRight);
+    const Settled back = Settle(moved, wasRight);
     REQUIRE(back.released.size() == 1);
     CHECK_FALSE(back.released[0].takeOff);
     REQUIRE(back.restored.size() == 1);
@@ -1128,7 +1128,7 @@ TEST_CASE("two variants of one weapon are two pins, one in each hand", "[pins]")
     CHECK_FALSE(RefusesEngineEquip(pins, {}, whichever, Hand::Left, true));
 
     // After the fight, a pin on the other name is not the pin from before.
-    const AfterFight settle = SettleAfterFight({{tempered, Hand::Left}}, {{plain, Hand::Left}});
+    const Settled settle = Settle({{tempered, Hand::Left}}, {{plain, Hand::Left}});
     REQUIRE(settle.released.size() == 1);
     CHECK(settle.released[0].variant->tempering == 1.2f);
     CHECK(settle.released[0].takeOff);
@@ -1250,6 +1250,138 @@ TEST_CASE("the engine's spell and shout equips are refused as an item's are; our
     const std::vector<Pin> voicePin{{battleCry, Hand::None}};
     CHECK(RefusesEngineEquip(voicePin, {}, unrelentingForce, Hand::None, true).why == Refusal::Why::Conflict);
     CHECK_FALSE(RefusesEngineEquip(voicePin, {}, battleCry, Hand::None, true));
+}
+
+// ---- A rule's pin lasts while its rule holds.
+
+namespace
+{
+
+constexpr std::uint32_t kTorch = 20;
+
+Holdable Torch()
+{
+    Holdable t = Thing(kTorch, Grip::LeftOnly);
+    t.kind = Kind::Weapon;
+    return t;
+}
+
+Holdable Shield()
+{
+    Holdable t = Thing(kIronShield, Grip::LeftOnly);
+    t.kind = Kind::Weapon;
+    return t;
+}
+
+Holdable Dagger(int count)
+{
+    Holdable t = Thing(kSteelDagger, Grip::Either);
+    t.kind = Kind::Weapon;
+    t.count = count;
+    return t;
+}
+
+} // namespace
+
+TEST_CASE("a rule's pin that no rule holds any more is let go, and stays on", "[lapse]")
+{
+    // Issue #21: a night rule lit a torch and the day found it pinned.
+    // With nothing beneath it the pin is forgotten and the torch is left
+    // where it is: letting go is not taking off.
+    std::vector<Pin> pins{{Torch(), Hand::Left}};
+    const Settled day = Lapse(pins, {}, {}, true);
+    REQUIRE(day.released.size() == 1);
+    CHECK(day.released[0].form == kTorch);
+    CHECK_FALSE(day.released[0].takeOff);
+    CHECK(day.restored.empty());
+    CHECK(pins.empty());
+    // And again the next tick: nothing more to say.
+    CHECK_FALSE(Lapse(pins, {}, {}, true).Changed());
+}
+
+TEST_CASE("a rule's pin stays while a rule holds it, over what is beneath", "[lapse]")
+{
+    // The player pinned a shield; the night rule's torch lies over it.
+    const std::vector<Pin> own{{Shield(), Hand::Left}, {Armour(kIronArmor, 0x4), Hand::None}};
+    std::vector<Pin> pins{{Armour(kIronArmor, 0x4), Hand::None}, {Torch(), Hand::Left}};
+    Wants night;
+    night.pins.push_back({Torch(), Hand::Left});
+
+    CHECK_FALSE(Lapse(pins, own, night, true).Changed());
+    REQUIRE(pins.size() == 2);
+    CHECK(FindPin(pins, kTorch) != nullptr);
+    CHECK(FindPin(pins, kIronShield) == nullptr);
+
+    // Day: the torch makes way, the shield comes back, and the armour,
+    // the player's own throughout, is not touched.
+    const Settled day = Lapse(pins, own, {}, true);
+    REQUIRE(day.released.size() == 1);
+    CHECK(day.released[0].form == kTorch);
+    CHECK(day.released[0].takeOff);
+    REQUIRE(day.restored.size() == 1);
+    CHECK(day.restored[0].thing.form == kIronShield);
+    REQUIRE(pins.size() == 2);
+    CHECK(FindPin(pins, kIronShield) != nullptr);
+    CHECK(FindPin(pins, kIronArmor) != nullptr);
+}
+
+TEST_CASE("a pin a rule wants and has not made is not made by the lapse", "[lapse]")
+{
+    // The rule's own equip makes it, on its turn; until then what is
+    // beneath stands.
+    const std::vector<Pin> own{{Shield(), Hand::Left}};
+    std::vector<Pin> pins = own;
+    Wants night;
+    night.pins.push_back({Torch(), Hand::Left});
+    CHECK_FALSE(Lapse(pins, own, night, true).Changed());
+    REQUIRE(pins.size() == 1);
+    CHECK(pins[0].thing.form == kIronShield);
+}
+
+TEST_CASE("a rule's Unequip keeps the player's pin off while it holds", "[lapse]")
+{
+    // The rule let go of the right hand's weapon; the player's dagger is
+    // still theirs beneath it, and comes back when the rule stops holding.
+    const std::vector<Pin> own{{Dagger(1), Hand::Right}, {Shield(), Hand::Left}};
+    std::vector<Pin> pins{{Shield(), Hand::Left}};
+    Wants bare;
+    bare.holes.push_back({Kind::Weapon, Hand::Right, BodyPart::All});
+
+    CHECK_FALSE(Lapse(pins, own, bare, true).Changed());
+    CHECK(FindPin(pins, kSteelDagger) == nullptr);
+
+    const Settled after = Lapse(pins, own, {}, true);
+    CHECK(after.released.empty());
+    REQUIRE(after.restored.size() == 1);
+    CHECK(after.restored[0].thing.form == kSteelDagger);
+    CHECK(after.restored[0].hands == Hand::Right);
+}
+
+TEST_CASE("a rule's hand of a thing lapses and the player's hand of it stays", "[lapse]")
+{
+    // Two daggers: the player pinned one right, a rule the other left.
+    const std::vector<Pin> own{{Dagger(2), Hand::Right}};
+    std::vector<Pin> pins{{Dagger(2), Hand::Both}};
+    Wants left;
+    left.pins.push_back({Dagger(2), Hand::Left});
+    CHECK_FALSE(Lapse(pins, own, left, true).Changed());
+    CHECK(pins[0].hands == Hand::Both);
+
+    [[maybe_unused]] const Settled gone = Lapse(pins, own, {}, true);
+    REQUIRE(pins.size() == 1);
+    CHECK(pins[0].hands == Hand::Right);
+
+    // The only dagger, moved to the left by a rule: in the left while the
+    // rule holds, not in both, and back in the right after.
+    const std::vector<Pin> one{{Dagger(1), Hand::Right}};
+    std::vector<Pin> moved{{Dagger(1), Hand::Left}};
+    Wants across;
+    across.pins.push_back({Dagger(1), Hand::Left});
+    CHECK_FALSE(Lapse(moved, one, across, true).Changed());
+    CHECK(moved[0].hands == Hand::Left);
+    const Settled back = Lapse(moved, one, {}, true);
+    REQUIRE(back.restored.size() == 1);
+    CHECK(moved[0].hands == Hand::Right);
 }
 
 TEST_CASE("a piece of armour is listed under the first part it takes, the body first, else All", "[pins]")

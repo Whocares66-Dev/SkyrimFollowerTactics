@@ -308,6 +308,13 @@ bool IsActionTargetValidIn(Moment moment, ActionTargetKind target) noexcept
     return moment == Moment::Combat || (target != ActionTargetKind::Enemy && target != ActionTargetKind::Attacker);
 }
 
+Layer LayerOf(Moment list, PredicateKind predicate) noexcept
+{
+    if (list == Moment::Idle)
+        return Layer::Idle;
+    return predicate == PredicateKind::CombatEnds ? Layer::Normal : Layer::Fight;
+}
+
 bool IsActionValidIn(Moment moment, ActionKind action) noexcept
 {
     return moment == Moment::Combat || (action != ActionKind::Attack && !IsBlow(action));

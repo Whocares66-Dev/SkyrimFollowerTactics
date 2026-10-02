@@ -574,23 +574,25 @@ std::vector<log::Field> ItemFields(std::uint32_t form, const std::optional<ft::I
 // needed while pinned items carried the engine's prevent-removal flag,
 // which refused the engine's own swap; the flag went on 2026-09-04, and
 // this went with it. The one unequip that stays is the move of a
-// follower's only weapon to the other hand, in Wear. `before` is the book
-// remembered for after the fight, given when a rule pins in one: a pin
-// displaced from it is the player's, overridden for the fight rather than
-// released.
-void ApplyToBook(RE::Actor *actor, std::vector<Pin> &pins, PinRequest request, const Holdable &incoming, Hand hands,
-                 bool moving, bool dualWield, const char *by, const std::vector<Pin> *before)
+// follower's only weapon to the other hand, in Wear. Which books the
+// request goes into is the layer's (core/Watchdog.h, Layers). A pin
+// displaced that is still held in the book the layer lies over is
+// overridden while the rule's pin lasts rather than released.
+void ApplyToBook(RE::Actor *actor, ft::Layers &layers, std::vector<Pin> &pins, Layer layer, PinRequest request,
+                 const Holdable &incoming, Hand hands, bool moving, bool dualWield, const char *by)
 {
     const char *const why = request == PinRequest::Ban ? "banned" : "to make room";
-    for (const Displaced &gone : ApplyRequest(pins, request, incoming, hands, moving, dualWield))
+    const std::vector<Displaced> displaced = layers.Apply(pins, layer, request, incoming, hands, moving, dualWield);
+    const std::vector<Pin> *beneath = layers.Beneath(layer);
+    for (const Displaced &gone : displaced)
     {
         const std::string name = log::NameOf(RE::TESForm::LookupByID(gone.form));
         std::vector<log::Field> fields = ItemFields(gone.form, gone.variant, gone.hands, by);
-        if (before && FindPin(*before, gone.form, gone.variant))
+        if (beneath && FindPin(*beneath, gone.form, gone.variant))
         {
             log::AppendForm(fields, "overriddenByFormId", "overriddenByName", incoming.form);
             log::pins.event(log::Level::Info, "pin.overridden", actor, fields,
-                            "{} unpinning {}{} for the fight: a rule pins {} over it", Describe(actor), name,
+                            "{} unpinning {}{} while a rule pins {} over it", Describe(actor), name,
                             HandTag(gone.hands), log::NameOf(RE::TESForm::LookupByID(incoming.form)));
             continue;
         }
@@ -678,56 +680,64 @@ void ReportEnforced(RE::Actor *actor, const Pin &pin, RE::TESForm *form, bool fi
 // too, so it is what comes back. Keyed by follower; the transitions are
 // read on the watchdog's tick, which already asks IsInCombat every half
 // second.
-// Each actor's book across a fight (core/Watchdog.h): what was pinned
-// before it, given back after it.
-std::unordered_map<ft::ActorId, ft::FightBook> g_fights;
+// Each actor's books beneath the one in force (core/Watchdog.h, Layers):
+// the player's own, and across a fight what was pinned before it. Every
+// change to the book in force goes through these, which is where the
+// layers' order is kept.
+std::unordered_map<ft::ActorId, ft::Layers> g_layers;
 
-// The fight is over: what it pinned is let go, what it displaced is pinned
-// again, and the watchdog, running next in the same pass and now out of
-// combat, puts the restored pins back on. Which is which is the core's
-// SettleAfterFight, tested: a fight's pin is let go IN PLACE -- the bow
-// stays in hand, the cuirass stays on, the AI's to change as it likes --
-// unless something from before the fight is coming back to that hand or
-// slot, in which case it is taken off to make way. Taking everything off
-// left Jenassa stripped after a fight that began with an empty book
-// (21:02). Under g_pinMutex. Returns what it let go and pinned again, for
-// the rest of the watchdog's pass.
-void ReportAfterFight(RE::Actor *actor, const AfterFight &settle)
+// A layer's pins have gone: what it pinned is let go, what it displaced is
+// pinned again. Which is which is the core's Settle, tested: a pin is let
+// go IN PLACE -- the bow stays in hand, the cuirass stays on, the AI's to
+// change as it likes -- unless something from beneath is coming back to
+// that hand or slot, in which case it is taken off to make way. Taking
+// everything off left Jenassa stripped after a fight that began with an
+// empty book (21:02). At the end of a fight the watchdog, running next in
+// the same pass and now out of combat, puts the restored pins back on;
+// after a rule's lapse the caller does. Under g_pinMutex.
+enum class Lapsed : std::uint8_t
 {
+    Fight, // the fight is over
+    Rule   // the rule that pinned it no longer holds
+};
+
+void ReportSettled(RE::Actor *actor, const Settled &settle, Lapsed why)
+{
+    const bool fight = why == Lapsed::Fight;
+    const char *const by = fight ? "fight-end" : "rule-lapse";
+    const char *const lead = fight ? "fight over" : "its rule no longer holds";
     for (const Released &gone : settle.released)
     {
         auto *thing = RE::TESForm::LookupByID(gone.form);
         if (!thing)
             continue;
         const std::string name = NameOr(thing, "?");
+        std::vector<log::Field> fields = ItemFields(gone.form, gone.variant, gone.hands, by);
         if (gone.takeOff)
         {
-            std::vector<log::Field> fields = ItemFields(gone.form, gone.variant, gone.hands, "fight-end");
-            fields.emplace_back("reason", "pinned in the fight; what was there before comes back");
+            fields.emplace_back("reason", fight ? "pinned in the fight; what was there before comes back"
+                                                : "its rule no longer holds; what was pinned beneath comes back");
             log::pins.event(log::Level::Info, "pin.released", actor, fields,
-                            "{} fight over -- {}{} pinned during it comes off; what was there before comes "
-                            "back",
-                            Describe(actor), name, HandTag(gone.hands));
+                            "{} {} -- {}{} comes off; what was pinned beneath it comes back", Describe(actor), lead,
+                            name, HandTag(gone.hands));
             UnequipForm(actor, thing, gone.hands, true, gone.variant);
             continue;
         }
         // Forgetting the pin is the whole of it: nothing on the item marks
         // it pinned, so there is nothing to lift.
-        std::vector<log::Field> fields = ItemFields(gone.form, gone.variant, gone.hands, "fight-end");
-        fields.emplace_back("reason", "pinned in the fight; the item stays on");
-        log::pins.event(log::Level::Info, "pin.released", actor, fields,
-                        "{} fight over -- {}{} pinned during it stays on, unpinned", Describe(actor), name,
-                        HandTag(gone.hands));
+        fields.emplace_back("reason", fight ? "pinned in the fight; the item stays on"
+                                            : "its rule no longer holds; the item stays on");
+        log::pins.event(log::Level::Info, "pin.released", actor, fields, "{} {} -- {}{} stays on, unpinned",
+                        Describe(actor), lead, name, HandTag(gone.hands));
     }
     for (const Pin &pin : settle.restored)
     {
         const auto *thing = RE::TESForm::LookupByID(pin.thing.form);
         log::pins.event(log::Level::Info, "pin.restored", actor,
-                        ItemFields(pin.thing.form, pin.thing.variant, pin.hands, "fight-end"),
-                        "{} fight over -- {}{} pinned again, as before it", Describe(actor), log::NameOf(thing),
-                        HandTag(pin.hands));
+                        ItemFields(pin.thing.form, pin.thing.variant, pin.hands, by), "{} {} -- {}{} pinned again",
+                        Describe(actor), lead, log::NameOf(thing), HandTag(pin.hands));
     }
-    if (settle.released.empty() && settle.restored.empty())
+    if (!settle.Changed())
         return;
     // A fresh start for the refusal log: the book is what it was.
     g_refusedLogged.clear();
@@ -736,16 +746,16 @@ void ReportAfterFight(RE::Actor *actor, const AfterFight &settle)
 
 // Note a follower entering or leaving combat, and return what the end of a
 // fight let go and pinned again. Under g_pinMutex.
-AfterFight NoteFight(RE::Actor *actor, std::vector<Pin> &pins, bool fighting)
+Settled NoteFight(RE::Actor *actor, std::vector<Pin> &pins, bool fighting)
 {
-    ft::FightBook &book = g_fights[actor->GetFormID()];
-    const bool began = fighting && !book.fighting;
-    const auto settled = book.Note(pins, fighting);
+    ft::Layers &layers = g_layers[actor->GetFormID()];
+    const bool began = fighting && !layers.fight.fighting;
+    const auto settled = layers.Note(pins, fighting);
     if (began && !pins.empty())
         log::pins.debug("{} fight begins -- {} pin(s) remembered for after it", Describe(actor), pins.size());
     if (!settled)
         return {};
-    ReportAfterFight(actor, *settled);
+    ReportSettled(actor, *settled, Lapsed::Fight);
     return *settled;
 }
 
@@ -803,7 +813,7 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
         const ft::ActorId id = actor->GetFormID();
         auto &pins = g_pins[id];
         const bool fighting = actor->IsInCombat();
-        const AfterFight settled = NoteFight(actor, pins, fighting);
+        const Settled settled = NoteFight(actor, pins, fighting);
         // What the end of a fight pinned again goes back on in this same
         // pass, and was reported as pin.restored: counted as reported, so
         // putting it back is not reported again as a violation.
@@ -817,8 +827,11 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
         for (const Released &gone : settled.released)
             lapsed.push_back(gone.form);
 
-        // A pin whose form no plugin defines any more is nobody's.
-        std::erase_if(pins, [](const Pin &pin) { return RE::TESForm::LookupByID(pin.thing.form) == nullptr; });
+        // A pin whose form no plugin defines any more is nobody's, in the
+        // book in force and in those beneath it.
+        const auto undefined = [](const Pin &pin) { return RE::TESForm::LookupByID(pin.thing.form) == nullptr; };
+        std::erase_if(pins, undefined);
+        g_layers[id].ForgetIf(undefined);
 
         // What each pin's thing is, and how it reads: spells first, since a
         // SpellItem is a bound object too and the inventory branch dropped
@@ -960,6 +973,9 @@ void EnforcePins(const std::vector<RE::Actor *> &followers)
             log::pins.event(log::Level::Info, "pin.released", actor, fields, "{} no longer carries {} -- pin dropped",
                             Describe(actor), log::NameOf(read.form));
             ClearReport(g_pinsEnforced, {id, pin.thing.form, pin.hands});
+            // Out of the books beneath as well: one left there would come
+            // back with the next lapse and be dropped again each tick.
+            g_layers[id].Forget(pin.thing);
             pins.erase(pins.begin() + static_cast<std::ptrdiff_t>(*i));
         }
         for (auto i = plan.dropBans.rbegin(); i != plan.dropBans.rend(); ++i)
@@ -1440,7 +1456,7 @@ void PutOn(RE::Actor *actor, RE::TESForm *thing, Hand hands, const std::optional
     EquipPinned(actor, thing, hands, true, variant, row, by);
 }
 
-bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, By by,
+bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, By by, Layer layer,
           const std::optional<ft::ItemVariant> &variant = std::nullopt, const void *row = nullptr)
 {
     const bool fromPanel = by == By::Player;
@@ -1488,35 +1504,32 @@ bool Wear(RE::Actor *actor, RE::TESForm *thing, WearRequest request, Hand hand, 
     {
         std::scoped_lock lock(g_pinMutex);
         auto &pins = g_pins[id];
-        // A rule's pin in a fight goes over what the follower had before it:
-        // the pins remembered for after the fight, overridden while it lasts.
-        const std::vector<Pin> *before = !fromPanel ? g_fights[id].Remembered() : nullptr;
+        ft::Layers &layers = g_layers[id];
         if (!fromPanel && request == WearRequest::Pin)
         {
             const auto bans = g_bans.find(id);
             if (bans != g_bans.end() && IsBanned(bans->second, described))
             {
                 std::vector<log::Field> fields = ItemFields(described.form, variant, hands, who);
-                fields.emplace_back("inCombat", g_fights[id].fighting);
+                fields.emplace_back("inCombat", layers.fight.fighting);
                 log::pins.event(log::Level::Info, "ban.overridden", actor, fields,
                                 "{} a rule pins banned {} -- the pin holds while it lasts", Describe(actor),
                                 log::NameOf(thing));
             }
         }
-        // What the request does to the book is core's (ApplyRequest); the
-        // bans are the game side's own list. The panel's word mid-fight is
-        // the new normal: the same change goes into the book remembered for
-        // after the fight, so the player's pin is what comes back, not the
-        // one it replaced. A rule's pin is for the fight only and leaves the
-        // remembered book alone.
+        // What the request does to the books is core's (Layers::Apply);
+        // the bans are the game side's own list. The panel's word is the
+        // new normal: the same change goes into the player's own book and,
+        // mid-fight, into the ones remembered for after it, so the
+        // player's pin is what comes back, not the one it replaced. A
+        // rule's pin goes over what lies beneath its layer and lasts while
+        // its rule holds.
         const auto bookRequest = request == WearRequest::Pin     ? PinRequest::Pin
                                  : request == WearRequest::Equip ? PinRequest::Equip
                                                                  : PinRequest::Ban;
         if (request != WearRequest::Unban && request != WearRequest::Unequip)
         {
-            ApplyToBook(actor, pins, bookRequest, described, hands, moving, dualWield, who, before);
-            if (fromPanel)
-                g_fights[id].Mirror(bookRequest, described, hands, moving, dualWield);
+            ApplyToBook(actor, layers, pins, layer, bookRequest, described, hands, moving, dualWield, who);
         }
         if (request == WearRequest::Ban)
             Ban(g_bans[id], described.form, described.variant);
@@ -1618,7 +1631,7 @@ bool WearNow(RE::Actor *actor, std::uint32_t form, WearRequest request, Hand han
              const std::optional<ft::ItemVariant> &variant)
 {
     auto *thing = actor ? RE::TESForm::LookupByID(form) : nullptr;
-    return thing && Wear(actor, thing, request, hand, By::Rule, variant);
+    return thing && Wear(actor, thing, request, hand, By::Rule, Layer::Normal, variant);
 }
 
 std::vector<Pin> WornAsPins(RE::Actor *actor)
@@ -1684,7 +1697,7 @@ void RequestWear(ft::ActorId id, std::uint32_t form, WearRequest request, Hand h
         auto *thing = RE::TESForm::LookupByID(form);
         if (!actor || !thing)
             return;
-        Wear(actor, thing, request, hand, By::Player, variant, row);
+        Wear(actor, thing, request, hand, By::Player, Layer::Normal, variant, row);
         // The page the panel is on, at once: the clock is frozen while it is
         // open, so the tick's own refresh is held and the cell would
         // otherwise answer only when the panel closed.
@@ -1703,7 +1716,7 @@ void RequestWearAll(ft::ActorId id, std::vector<WearTarget> targets, WearRequest
             return;
         for (const WearTarget &target : targets)
             if (auto *thing = RE::TESForm::LookupByID(target.form))
-                Wear(actor, thing, request, Hand::None, By::Player, target.variant, nullptr);
+                Wear(actor, thing, request, Hand::None, By::Player, Layer::Normal, target.variant, nullptr);
         RefreshShownPage();
     });
 }
@@ -1712,14 +1725,8 @@ std::vector<ft::PinEntry> PlayerPinsOf(ft::ActorId id)
 {
     std::scoped_lock lock(g_pinMutex);
     std::vector<ft::PinEntry> entries;
-    const std::vector<Pin> *book = nullptr;
-    if (const auto fight = g_fights.find(id); fight != g_fights.end())
-        book = fight->second.Remembered();
-    if (!book)
-        if (const auto it = g_pins.find(id); it != g_pins.end())
-            book = &it->second;
-    if (book)
-        for (const Pin &pin : *book)
+    if (const auto it = g_layers.find(id); it != g_layers.end())
+        for (const Pin &pin : it->second.Saved())
             entries.push_back({pin.thing.form, pin.thing.variant, pin.hands});
     return entries;
 }
@@ -1730,6 +1737,7 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
         return;
     std::scoped_lock lock(g_pinMutex);
     auto &book = g_pins[actor->GetFormID()];
+    ft::Layers &layers = g_layers[actor->GetFormID()];
     for (const ft::PinEntry &entry : pins)
     {
         auto *thing = RE::TESForm::LookupByID(entry.form);
@@ -1752,7 +1760,9 @@ void AdoptPins(RE::Actor *actor, const std::vector<ft::PinEntry> &pins)
                            !has ? "no longer carried" : "cannot be pinned");
             continue;
         }
-        AddPin(book, described, entry.hands, false);
+        // The player's own, as saved: in force, and in the book the idle
+        // rules' pins lie over.
+        layers.Adopt(book, described, entry.hands);
         log::pins.event(log::Level::Info, "pin.applied", actor,
                         ItemFields(entry.form, entry.variant, entry.hands, "save"), "{} saved pin on {}{} taken back",
                         Describe(actor), name, HandTag(entry.hands));
@@ -1793,13 +1803,13 @@ void ForgetPins()
     std::scoped_lock lock(g_pinMutex);
     g_pins.clear();
     g_bans.clear();
-    g_fights.clear();
+    g_layers.clear();
     g_refusedLogged.clear();
     g_pinsEnforced.clear();
     g_bansEnforced.clear();
 }
 
-bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand, const std::optional<ft::ItemVariant> &variant)
+bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand, Layer layer, const std::optional<ft::ItemVariant> &variant)
 {
     auto *thing = RE::TESForm::LookupByID(form);
     if (!actor || !thing)
@@ -1817,14 +1827,14 @@ bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand, const std::optional
     // record gives it, whatever was asked.
     if (hand == Hand::Both && DescribeHoldable(actor, thing).grip == Grip::Either)
     {
-        const bool left = Wear(actor, thing, WearRequest::Pin, Hand::Left, By::Rule, variant);
-        const bool right = Wear(actor, thing, WearRequest::Pin, Hand::Right, By::Rule, variant);
+        const bool left = Wear(actor, thing, WearRequest::Pin, Hand::Left, By::Rule, layer, variant);
+        const bool right = Wear(actor, thing, WearRequest::Pin, Hand::Right, By::Rule, layer, variant);
         return left && right;
     }
-    return Wear(actor, thing, WearRequest::Pin, hand, By::Rule, variant);
+    return Wear(actor, thing, WearRequest::Pin, hand, By::Rule, layer, variant);
 }
 
-void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands, BodyPart part)
+void ReleaseKind(RE::Actor *actor, Kind kind, Layer layer, Hand hands, BodyPart part)
 {
     if (!actor)
         return;
@@ -1833,28 +1843,27 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands, BodyPart part)
     // them gone, then taken off. A two-hander's pin holds both hands and
     // goes with either.
     std::vector<Pin> released;
-    // Which of them the follower had before a fight this rule is in: the
-    // player's, overridden for the fight rather than let go.
+    // Which of them are still held beneath the rule's layer: the player's,
+    // overridden while the rule holds rather than let go.
     std::vector<bool> overridden;
     {
         std::scoped_lock lock(g_pinMutex);
+        const ft::ActorId id = actor->GetFormID();
         // No book is an empty one: the player has none, and their "none"
         // still takes the kind off below (2026-09-18: it returned here, and
         // a Combat end rule's unequip did nothing).
-        if (const auto it = g_pins.find(actor->GetFormID()); it != g_pins.end())
-        {
-            std::erase_if(it->second, [&](const Pin &pin) {
-                if (!ft::UnequipReaches(kind, hands, part, pin))
-                    return false;
-                released.push_back(pin);
-                return true;
-            });
-        }
-        const std::vector<Pin> *remembered = g_fights[actor->GetFormID()].Remembered();
+        std::vector<Pin> none;
+        const auto it = g_pins.find(id);
+        // A Normal unequip changes the player's own book, as a Normal pin
+        // does; a rule's leaves it, and what it let go comes back when the
+        // rule no longer holds (LapsePins).
+        ft::Layers &layers = g_layers[id];
+        released = layers.Release(it != g_pins.end() ? it->second : none, layer, kind, hands, part);
+        const std::vector<Pin> *beneath = layers.Beneath(layer);
         for (const Pin &pin : released)
-            overridden.push_back(remembered && FindPin(*remembered, pin.thing.form, pin.thing.variant));
+            overridden.push_back(beneath && FindPin(*beneath, pin.thing.form, pin.thing.variant));
         g_refusedLogged.clear();
-        ClearReports(g_pinsEnforced, actor->GetFormID());
+        ClearReports(g_pinsEnforced, id);
     }
     for (std::size_t r = 0; r < released.size(); ++r)
     {
@@ -1868,7 +1877,7 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands, BodyPart part)
             fields.emplace_back("overriddenByFormId", log::Id(0));
             fields.emplace_back("overriddenByName", "nothing: the AI decides");
             log::pins.event(log::Level::Info, "pin.overridden", actor, fields,
-                            "{} a rule lets go of {}{} for the fight -- the AI decides again", Describe(actor),
+                            "{} a rule lets go of {}{} while it holds -- the AI decides again", Describe(actor),
                             log::NameOf(thing), HandTag(pin.hands));
         }
         else
@@ -1926,6 +1935,40 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands, BodyPart part)
     }
     if (!released.empty() || bared)
         actor->Update3DModel();
+}
+
+void LapsePins(RE::Actor *actor, ft::Moment list, const ft::Wants &wants)
+{
+    if (!actor)
+        return;
+    const ft::ActorId id = actor->GetFormID();
+    const bool dualWield = DualWieldAllowed(actor);
+    bool fighting = false;
+    Settled settled;
+    {
+        std::scoped_lock lock(g_pinMutex);
+        // Whose pins are the list's to let go, and against which book, is
+        // core's (Layers::Lapse).
+        ft::Layers &layers = g_layers[id];
+        fighting = layers.fight.fighting;
+        const auto lapsed = layers.Lapse(g_pins[id], list == ft::Moment::Combat, wants, dualWield);
+        if (!lapsed || !lapsed->Changed())
+            return;
+        settled = *lapsed;
+        ClearReports(g_pinsEnforced, id);
+        // Put back below or by the watchdog, and said as pin.restored: not
+        // a promise broken.
+        for (const Pin &restored : settled.restored)
+            FirstReport(g_pinsEnforced, {id, restored.thing.form, restored.hands});
+        ReportSettled(actor, settled, Lapsed::Rule);
+    }
+    // When the watchdog would (core's PutBackNow): at once, but for a hand
+    // pin while one of our casts has the hand, which the watchdog puts
+    // back when the cast is over.
+    const bool casting = IsMidCast(actor);
+    for (const Pin &pin : settled.restored)
+        if (auto *thing = RE::TESForm::LookupByID(pin.thing.form); thing && PutBackNow(pin, false, fighting, casting))
+            EquipPinned(actor, thing, pin.hands, false, pin.thing.variant);
 }
 
 // --- refusing the engine's equips against the pins -------------------------

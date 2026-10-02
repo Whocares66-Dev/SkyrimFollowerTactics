@@ -82,7 +82,7 @@ Nothing is written on a panel close or by the tick. Close the game without savin
 | `do[].hand` | only for `equip-weapon` and `equip-spell`: `left`, `right`, `both` |
 | `do[].part` | only for an `equip-armor` with no form, and only when not `all`: `head`, `body`, `hands`, `feet`, `amulet`, `ring`, `cloak`, `backpack`, the armour it takes off (`core/Loadout.h`, `BodyPart`). Absent is all of it but a shield |
 | `do[].arg` | only for `cast-spell`, and only when set: the sustain time of a concentration spell, in seconds |
-| `pins[]` | the player's pins, as the panel left them: in a fight, the book remembered for after it, not the rules' fight-time pins |
+| `pins[]` | the player's own pins, the Normal layer (`core/Loadout.h`, `Layer`): what the panel pinned and a Combat end rule pinned. Never an idle or a combat rule's pin, which its rule makes again after a load |
 | `pins[].form` | the thing pinned |
 | `pins[].variant` | which row of the form (`dev/UNIQUE.md`, "The variant"): an object holding the parts the row has, each only when present, so the plain row is `{}`. Absent is the form, whichever row, which a rule's pin can be and the panel's never is |
 | `variant.enchant` | the enchantment as its effects, each `{ "effect": form, "mag": number, "dur": seconds, "area": feet }`, `dur` and `area` only when not zero. The effects, not the enchantment's form: one made at the enchanting table is a form the save mints, which no plugin can name |

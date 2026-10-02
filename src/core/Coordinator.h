@@ -47,12 +47,26 @@ struct TickFacts
     bool busy{false};
 };
 
+// What a list's rules hold on a turn, for the pins that are theirs to keep
+// or let go (core/Watchdog.h, Layers::Lapse).
+struct ListHolds
+{
+    Moment list{Moment::Combat};
+    Wants wants;
+};
+
 struct TickResult
 {
     TickPlan plan;         // the list evaluated and its edges; none when nothing ran
     bool completed{false}; // a request ended this turn and its cooldown restarted
     Snapshot snapshot;     // what the evaluation saw, for the log
     Decision decision;     // what it decided
+    // What the idle list's rules hold now (Standing), out of a fight. With
+    // no list to ask -- switched off, or without rules -- the moment's
+    // list holds nothing, and says so, so its pins go. None, and the pins
+    // stand as they are: the actor held, when nothing is asked and nothing
+    // changes, and the combat list, whose pins last the fight.
+    std::optional<ListHolds> holds;
     [[nodiscard]] bool Fired() const noexcept
     {
         return decision.Fired();

@@ -499,15 +499,15 @@ ActionResult CastByRecord(RE::Actor *actor, const ft::Action &action, ft::ActorI
 // again. An arrow policy arrives with the form it chose. The evaluator
 // only fires this when the snapshot says they have the thing, so a miss
 // here is a form that left them between snapshot and dispatch.
-ActionResult Equip(RE::Actor *actor, const ft::Action &action, bool pin)
+ActionResult Equip(RE::Actor *actor, const ft::Action &action, bool pin, ft::Layer layer)
 {
     if (action.form == 0)
     {
-        ReleaseKind(actor, ft::KindOf(action.kind), ft::TakesHand(action.kind) ? action.hand : Hand::None,
+        ReleaseKind(actor, ft::KindOf(action.kind), layer, ft::TakesHand(action.kind) ? action.hand : Hand::None,
                     ft::PartOf(action));
         return ActionResult::Performed;
     }
-    const bool worn = pin ? PinNow(actor, action.form, action.hand, action.variant)
+    const bool worn = pin ? PinNow(actor, action.form, action.hand, layer, action.variant)
                           : WearNow(actor, action.form, WearRequest::Equip, action.hand, action.variant);
     return worn ? ActionResult::Performed : ActionResult::MissingItem;
 }
@@ -544,7 +544,7 @@ ActionResult Blow(RE::Actor *actor, const ft::Action &action, ft::ActorId target
 } // namespace
 
 ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor, int ruleIndex,
-                     std::string_view ruleName)
+                     std::string_view ruleName, ft::Layer layer)
 {
     if (!actor)
         return ActionResult::MissingItem;
@@ -588,7 +588,7 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     }
     case ft::Route::Pin:
     case ft::Route::Wear:
-        return Equip(actor, action, route == ft::Route::Pin);
+        return Equip(actor, action, route == ft::Route::Pin, layer);
     case ft::Route::Target:
         return PointAt(actor, target);
     case ft::Route::Bash:

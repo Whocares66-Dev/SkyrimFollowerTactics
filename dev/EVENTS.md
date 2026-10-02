@@ -91,14 +91,14 @@ The timestamps are the session's start and end in UTC, in Crash Logger's own for
 | `scroll.spent` | a scroll read | the scroll, `by`, carried before and after |
 | `equip.applied` | the panel readies a thing without pinning it | the item, `hand`, the variant |
 | `pin.applied` / `pin.released` | a pin made or let go | the item, `hand`, the variant, `by`, `reason` |
-| `pin.overridden` | a rule's pin, or its None, in a fight displaces a pin the follower had before the fight | the displaced item, `hand`, the variant, `by: rule`, `overriddenByFormId` and `overriddenByName` (`0x00000000` and "nothing: the AI decides" for a None) |
+| `pin.overridden` | a rule's pin, or its None, displaces a pin still held beneath its layer: one the follower had before the fight, or the player's own under an idle rule | the displaced item, `hand`, the variant, `by: rule`, `overriddenByFormId` and `overriddenByName` (`0x00000000` and "nothing: the AI decides" for a None) |
 | `ban.overridden` | a rule pins a banned item | the item, `hand`, the variant, `by: rule`, `inCombat` |
-| `pin.restored` | the fight is over and a pin from before it is pinned again, and put back on | the item, `hand`, the variant, `by: fight-end` |
+| `pin.restored` | the fight is over, or an idle rule no longer holds, and a pin from beneath is pinned again, and put back on | the item, `hand`, the variant, `by: fight-end` or `by: rule-lapse` |
 | `pin.enforced` | a pinned thing was found off and is put back: once per violation | the item, `hand`, the variant, `displacedByFormId` and `displacedByName` (what the voice or the pinned hand held instead; nothing for armour), `reason` |
 | `ban.enforced` | a banned thing was found on and is taken off: once per violation | the item, the variant, the `hand` it was in, and `by: fight-end` when a rule's pin on it has just gone with the fight |
 | `ban.applied` / `ban.released` | a ban made or lifted | the item, the variant, `by` |
 
-**`by`** says who did it: `player` (the panel), `rule`, `fight-end` (the after-fight restore), `save` (taken back from the save), `game` (the thing is no longer carried).
+**`by`** says who did it: `player` (the panel), `rule`, `fight-end` (the after-fight restore), `rule-lapse` (the rule that pinned it no longer holds), `save` (taken back from the save), `game` (the thing is no longer carried).
 
 **`outcome`** on `rule.fired`: `performed` for what is done at once -- a drink, a poison, a soul gem, an equip, a power attack sent as an event -- and `requested` for a cast, scroll, shout, power, power attack or bash, whose own outcome follows in `rule.resolved`; anything else is the failure, and `rule.actionFailed` repeats it as a warning.
 
@@ -120,7 +120,9 @@ Prose in `FollowerTactics.log` only: the plugin loading; the tick installing and
 
 **A cast's outcome.** A cast, scroll, shout or power is a request: a package on the follower's stack, released later. When the request is armed, the rule's index and name are written onto the follower's cast record, and where the record is released -- the tick's release, a holder gone, a save -- `rule.resolved` is emitted with whether the spell was cast, whether the AI picked the package up, and the release reason. A load resets the records and emits nothing: the requests belonged to the game before it. There is no `interrupted` yet: the begin-cast flag is set by any cast the follower begins, theirs as well as ours, so a cast that began and never fired is not yet told from one that never began; that waits on tying the flag to our spell and checking it in play.
 
-**A rule overriding the player.** When a rule pins in a fight, what its pin displaces is checked against the pins the follower had when the fight began: a displaced pin found there is `pin.overridden`, anything else `pin.released`. A rule's None does the same. A rule pinning a banned item is `ban.overridden`. A ban made in the panel on a pinned item lets the pin go, and now says so.
+**A rule overriding the player.** When a rule pins, what its pin displaces is checked against the book beneath its layer (`core/Loadout.h`, `Layer`): in a fight the pins the follower had when it began, under an idle rule the player's own. A displaced pin found there is `pin.overridden`, anything else `pin.released`. A rule's None does the same.
+
+**A rule's pin lapsing.** An idle rule's pin lasts while its rule holds. When no idle rule holds it any more it is `pin.released` with `by: rule-lapse`, and the reason says whether the item stays on or comes off to make way; each pin from beneath that comes back is `pin.restored` with the same `by`. A lapse is not an unequip: the item comes off only where a pin beneath takes its hand or slot. A rule pinning a banned item is `ban.overridden`. A ban made in the panel on a pinned item lets the pin go, and now says so.
 
 **Enforcement once per violation.** The watchdog puts back a pinned thing found off, and takes off a banned thing found on, every half second while the violation lasts: if the engine does not let the equip take, the same put-back repeats. A latch per follower, item and hand makes it one event per violation, cleared when the pin is next seen on or the ban's item off, and when the pin or ban goes. The pins restored after a fight are handed to the watchdog in the same pass and latched, so putting them back on is reported as the restoration, not as a violation.
 
@@ -131,6 +133,7 @@ Prose in `FollowerTactics.log` only: the plugin loading; the tick installing and
 - An enemy rule's subject and target ids, and a leveled bandit's base against xEdit.
 - A reorder mid-list: `rule.fired` still names the rule that began.
 - The player's dagger pinned, a rule's bow mid-fight: `pin.overridden`; after the fight `pin.released` with `by: fight-end` and `pin.restored`, and no `pin.enforced`.
+- An idle rule that equips a torch at night (issue #21): `pin.applied` at dusk; at dawn `pin.released` with `by: rule-lapse` and the torch put away by the engine, with no `pin.enforced` after it. With the player's shield pinned in that hand: `pin.overridden` at dusk, `pin.restored` at dawn.
 - A pinned item taken off by the console: one `pin.enforced`. A banned item equipped from the inventory: one `ban.enforced`.
 - `level = warn`: the events file still has all of it.
 - Two launches: the first pair archived under the right stem; a held-open log copied instead of moved; the 21st session deleting the oldest.

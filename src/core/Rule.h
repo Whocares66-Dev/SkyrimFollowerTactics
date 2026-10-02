@@ -534,6 +534,11 @@ struct RuleSet
     [[nodiscard]] bool operator==(const RuleSet &) const = default;
 };
 
+// The layer a rule's pin is made in (core/Loadout.h, Layer): the list's
+// own, but for a Combat end rule, which is the combat list's and acts with
+// the fight over, so its pin is Normal: it stays as the player's own would.
+[[nodiscard]] Layer LayerOf(Moment list, PredicateKind predicate) noexcept;
+
 // What the idle list has no use for. Out of a fight there is no enemy:
 // not the Enemy subject, its two predicates with it, nor the Enemy and
 // Attacker targets, nor Attack and the blows that go at one. The fight's

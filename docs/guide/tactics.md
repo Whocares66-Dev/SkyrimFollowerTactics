@@ -119,7 +119,9 @@ Long menus are grouped: spells and scrolls by magic school, weapons by type, wit
 
 **Equip actions effectively [pin]({{ '/equip-states/' | relative_url }}#pinned) during combat**. An action that equips e.g. a Steel Sword in the right hand prevents the AI from equipping something else there. Only another rule can change the equipment.
 
-For followers, idle equip actions also create pins. Those pins become the equipment restored after the next fight. Player equip actions are ordinary equips and never create pins.
+**Idle equip actions pin while their rule's condition holds**. A rule that equips a torch at night pins it through the night. When the condition no longer holds, the pin is released: the item stays equipped until the AI or another rule replaces it, and anything you pinned in that hand or slot yourself is restored. An idle `Unequip` works the same way, keeping the hand or slot empty while its condition holds. Pins from idle rules that still apply are restored after a fight.
+
+Player equip actions are ordinary equips and never create pins.
 
 ## Actions explained
 

@@ -72,12 +72,12 @@ TEST_CASE("a fight remembers the book on the way in and gives it back on the way
 
 TEST_CASE("a pin made out of a fight is not the fight's, and survives one", "[watchdog]")
 {
-    // An idle rule equips while nothing is happening. A rule's pin is the
-    // FIGHT'S, and this one was made in no fight: there is no edge out of
-    // idle for it to be settled on, and a follower who was told to hold
-    // something while walking about must not be undressed by the end of
-    // the next skirmish. The book only ever lets go of what it did not
-    // have on the way in.
+    // An idle rule equips while nothing is happening. This pin was made in
+    // no fight and is not the fight's to let go: it lasts while its own
+    // rule holds (Lapse), and a follower who was told to hold something
+    // while walking about must not be undressed by the end of the next
+    // skirmish. The book only ever lets go of what it did not have on the
+    // way in.
     FightBook book;
     std::vector<Pin> pins{PinOf(Dagger(), Hand::Right)};
 
@@ -110,7 +110,7 @@ TEST_CASE("the panel's word mid-fight is the new normal; a rule's is for the fig
     // book in use (the game does that) and mirrored into the remembered
     // one, so it survives the fight's end.
     pins.push_back(PinOf(Dagger(), Hand::Right));
-    book.Mirror(PinRequest::Pin, Dagger(), Hand::Right, false, true);
+    book.Mirror(Layer::Normal, PinRequest::Pin, Dagger(), Hand::Right, false, true);
     REQUIRE(book.Remembered()->size() == 1);
     // A rule pins a cuirass: not mirrored.
     pins.push_back(PinOf(Cuirass(), Hand::None));
@@ -123,7 +123,76 @@ TEST_CASE("the panel's word mid-fight is the new normal; a rule's is for the fig
     REQUIRE(pins[0].thing.form == Dagger().form);
 
     // Out of a fight the mirror does nothing.
-    book.Mirror(PinRequest::Ban, Dagger(), Hand::Right, false, true);
+    book.Mirror(Layer::Normal, PinRequest::Ban, Dagger(), Hand::Right, false, true);
+    REQUIRE(book.before.empty());
+}
+
+TEST_CASE("the player's own book takes the Normal layer and nothing of a rule's", "[watchdog]")
+{
+    IdleBook own;
+    // The panel's pin, and a Combat end rule's: the player's own.
+    own.Mirror(Layer::Normal, PinRequest::Pin, Dagger(), Hand::Right, false, true);
+    REQUIRE(own.normal.size() == 1);
+    // An idle rule's and a fight rule's lie over it, in the book in force.
+    own.Mirror(Layer::Idle, PinRequest::Pin, Cuirass(), Hand::None, false, true);
+    own.Mirror(Layer::Fight, PinRequest::Pin, Cuirass(), Hand::None, false, true);
+    REQUIRE(own.normal.size() == 1);
+
+    // A rule's Unequip leaves it too; a Normal one changes it.
+    own.Release(Layer::Idle, Kind::Weapon, Hand::Right, BodyPart::All);
+    REQUIRE(own.normal.size() == 1);
+    own.Release(Layer::Normal, Kind::Weapon, Hand::Left, BodyPart::All);
+    REQUIRE(own.normal.size() == 1);
+    own.Release(Layer::Normal, Kind::Weapon, Hand::Right, BodyPart::All);
+    REQUIRE(own.normal.empty());
+
+    // A thing no longer carried is forgotten here as in the book in force.
+    own.Mirror(Layer::Normal, PinRequest::Pin, Cuirass(), Hand::None, false, true);
+    own.Forget(Cuirass());
+    REQUIRE(own.normal.empty());
+}
+
+TEST_CASE("an idle rule's pin over the player's lapses to it, through a fight and after", "[watchdog]")
+{
+    // The player's cuirass; a night rule pins a dagger over nothing.
+    IdleBook own;
+    FightBook fight;
+    std::vector<Pin> pins;
+    own.Mirror(Layer::Normal, PinRequest::Pin, Cuirass(), Hand::None, false, true);
+    pins.push_back(PinOf(Cuirass(), Hand::None));
+    pins.push_back(PinOf(Dagger(), Hand::Right));
+    Wants night;
+    night.pins.push_back(PinOf(Dagger(), Hand::Right));
+    REQUIRE_FALSE(Lapse(pins, own.normal, night, true).Changed());
+
+    // A fight comes and goes: the idle rules are not asked in it, and the
+    // dagger is there after it, as before.
+    REQUIRE_FALSE(fight.Note(pins, true));
+    const auto settled = fight.Note(pins, false);
+    REQUIRE(settled);
+    REQUIRE_FALSE(settled->Changed());
+    REQUIRE(pins.size() == 2);
+
+    // Day: the rule no longer holds, and only the player's own is left.
+    const Settled day = Lapse(pins, own.normal, {}, true);
+    REQUIRE(day.released.size() == 1);
+    REQUIRE(day.released[0].form == Dagger().form);
+    REQUIRE(pins.size() == 1);
+    REQUIRE(pins[0].thing.form == Cuirass().form);
+}
+
+TEST_CASE("the fight's remembered book takes the Normal layer alone", "[watchdog]")
+{
+    FightBook book;
+    std::vector<Pin> pins;
+    REQUIRE_FALSE(book.Note(pins, true));
+    book.Mirror(Layer::Fight, PinRequest::Pin, Dagger(), Hand::Right, false, true);
+    REQUIRE(book.before.empty());
+    book.Mirror(Layer::Normal, PinRequest::Pin, Dagger(), Hand::Right, false, true);
+    REQUIRE(book.before.size() == 1);
+    book.Release(Layer::Fight, Kind::Weapon, Hand::None, BodyPart::All);
+    REQUIRE(book.before.size() == 1);
+    book.Release(Layer::Normal, Kind::Weapon, Hand::None, BodyPart::All);
     REQUIRE(book.before.empty());
 }
 

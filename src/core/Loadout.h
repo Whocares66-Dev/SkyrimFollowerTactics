@@ -345,6 +345,22 @@ struct Pin
     Hand hands{Hand::None};
 };
 
+// Whose a pin is, lowest first. A layer's pin goes over the layers beneath
+// it, and what it displaces there is shadowed, not lost: when the pin goes
+// (Lapse), what is beneath applies again. Normal is the player's own word,
+// from the panel, and a Combat end rule's, which is no idle rule and whose
+// fight is over: it holds until it is changed, and it alone is saved. Idle
+// is an idle rule's and holds while that rule does (issue #21: a rule that
+// lit a torch at night pinned it through the day). Fight is a combat
+// rule's. In a fight the idle rules are not asked, so their pins stand as
+// the fight found them, under its own.
+enum class Layer : std::uint8_t
+{
+    Normal,
+    Idle,
+    Fight
+};
+
 // Does an Unequip of this kind reach this pin, or this thing worn: in the
 // hands it names for a weapon or a spell, on the part it names for armour
 // -- None and All being every hand and every slot? The rule's "done" and
@@ -606,12 +622,13 @@ struct VariantInBag
 // (2026-09-04, Marcurio's daggers and Lightning Bolt).
 [[nodiscard]] bool PutBackNow(const Pin &pin, bool on, bool fighting, bool castInProgress) noexcept;
 
-// ---- The fight is over. What the book held when it began comes back, and
-// what the fight pinned is let go.
+// ---- A layer's pins go. What they shadowed applies again: at the end of
+// a fight, the book from before it; when an idle rule stops holding, the
+// player's own.
 
-// A fight's pin let go: left on and unpinned, the AI's to change; or taken
-// off, because a pin from before the fight is coming back to that hand or
-// slot.
+// A pin let go: left on and unpinned, the AI's to change; or taken off,
+// because a pin from beneath is coming back to that hand or slot. Letting
+// go is not taking off: nothing comes off but to make way.
 struct Released
 {
     std::uint32_t form{0};
@@ -620,16 +637,50 @@ struct Released
     bool takeOff{false};
 };
 
-struct AfterFight
+struct Settled
 {
-    std::vector<Released> released; // the fight's pins, in `now` and not in `before`
-    std::vector<Pin> restored;      // the pins from before that the fight displaced
+    std::vector<Released> released; // the pins let go, in `now` and not in `next`
+    std::vector<Pin> restored;      // the pins beneath that they displaced
+
+    [[nodiscard]] bool Changed() const noexcept
+    {
+        return !released.empty() || !restored.empty();
+    }
 };
 
-// With `before` empty nothing is taken off: the fight's gear stays on,
-// unpinned. With pins in `before`, only those come back, and a fight's
-// pin comes off only to make way for one of them. A pin in both -- kept
-// through the fight, or made in the panel during it -- is untouched.
-[[nodiscard]] AfterFight SettleAfterFight(const std::vector<Pin> &now, const std::vector<Pin> &before);
+// What changes when the book in force goes from `now` to `next`. With
+// `next` empty nothing is taken off: the gear stays on, unpinned. With
+// pins in `next`, only those come back, and a pin let go comes off only to
+// make way for one of them. A pin in both is untouched.
+[[nodiscard]] Settled Settle(const std::vector<Pin> &now, const std::vector<Pin> &next);
+
+// What the rules of one list hold on an evaluation (the evaluator's
+// Standing): each thing a rule whose condition holds equips, in the hands
+// it asks, and each kind such a rule's Unequip keeps off.
+struct Wants
+{
+    struct Hole
+    {
+        Kind kind{Kind::Other};
+        Hand hands{Hand::None};
+        BodyPart part{BodyPart::All};
+    };
+    std::vector<Pin> pins;
+    std::vector<Hole> holes;
+};
+
+// A rule's pin lasts while its rule holds. `pins` is the book in force and
+// `beneath` the book under the list's pins: in force becomes `beneath`,
+// less what a held Unequip reaches, with the pins in force that a rule
+// still holds over it; the rest are the ones let go, and what they
+// displaced beneath comes back. A pin in force that a rule wants in some
+// of its hands keeps those and what `beneath` gives it. A rule's pin not
+// yet made is not made here: the rule's own equip makes it.
+[[nodiscard]] Settled Lapse(std::vector<Pin> &pins, const std::vector<Pin> &beneath, const Wants &wants,
+                            bool dualWield);
+
+// Every pin of the kind an Unequip reaches (UnequipReaches), taken out of
+// the book and returned.
+std::vector<Pin> TakeReached(std::vector<Pin> &pins, Kind kind, Hand hands, BodyPart part);
 
 } // namespace ft

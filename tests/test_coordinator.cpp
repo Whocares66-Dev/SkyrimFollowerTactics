@@ -252,3 +252,68 @@ TEST_CASE("the fight's edges through the whole turn, and a fresh session", "[coo
     lydia.run = ActorRun{};
     REQUIRE(lydia.Tick(rules, Facts(true, false), 200.0).Fired());
 }
+
+TEST_CASE("the idle list's turn says what its rules hold; a fight's does not", "[coordinator]")
+{
+    // What the game lets go of by (game/Pins.h, LapsePins): asked on every
+    // idle turn, whether or not a rule acted, and not in a fight, where the
+    // idle rules' pins stand as they are.
+    ActorRules rules = CombatOnly(CastHeal());
+    Rule shield;
+    shield.subject = SubjectKind::Self;
+    shield.predicate = PredicateKind::Any;
+    shield.actionTarget = ActionTargetKind::Self;
+    shield.FirstAction().kind = ActionKind::EquipWeapon;
+    shield.FirstAction().form = 0x12EB6;
+    shield.FirstAction().hand = Hand::Left;
+    rules.idle.moment = Moment::Idle;
+    rules.idle.rules.push_back(shield);
+
+    Turn lydia;
+    Holdable held;
+    held.form = 0x12EB6;
+    held.kind = Kind::Weapon;
+    held.grip = Grip::LeftOnly;
+    lydia.base.loadout.push_back(held);
+
+    const TickResult idle = lydia.Tick(rules, Facts(false, false, true), 100.0);
+    REQUIRE(idle.Fired());
+    REQUIRE(idle.holds);
+    REQUIRE(idle.holds->list == Moment::Idle);
+    REQUIRE(idle.holds->wants.pins.size() == 1);
+    REQUIRE(idle.holds->wants.pins[0].hands == Hand::Left);
+
+    const TickResult fight = lydia.Tick(rules, Facts(true, false, true), 100.5);
+    REQUIRE(fight);
+    REQUIRE_FALSE(fight.holds);
+}
+
+TEST_CASE("a list with nothing to ask holds nothing, and says so; held, nothing is said", "[coordinator]")
+{
+    // Switched off, or without rules, a list's rules hold nothing, so its
+    // pins are let go: an empty word, of the list the moment is. Held --
+    // bleeding out, or the switch over all lists off -- nothing is asked,
+    // and the pins stand until the actor is free.
+    const ActorRules rules = CombatOnly(CastHeal());
+    Turn lydia;
+
+    // Out of a fight with no idle rules: the idle list's, empty.
+    const TickResult quiet = lydia.Tick(rules, Facts(false, false), 100.0);
+    REQUIRE_FALSE(quiet);
+    REQUIRE(quiet.holds);
+    REQUIRE(quiet.holds->list == Moment::Idle);
+    REQUIRE(quiet.holds->wants.pins.empty());
+    REQUIRE(quiet.holds->wants.holes.empty());
+
+    // In a fight with the combat list switched off: the combat list's.
+    TickFacts off = Facts(true, false);
+    off.now.combatEnabled = false;
+    const TickResult silenced = lydia.Tick(rules, off, 100.5);
+    REQUIRE_FALSE(silenced);
+    REQUIRE(silenced.holds);
+    REQUIRE(silenced.holds->list == Moment::Combat);
+
+    // Held, in a fight or out of one: nothing.
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(true, false, false, true), 101.0).holds);
+    REQUIRE_FALSE(lydia.Tick(rules, Facts(false, false, true, true), 101.5).holds);
+}

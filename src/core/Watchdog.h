@@ -1,6 +1,7 @@
 #pragma once
 // The pin watchdog's book-keeping across a fight, and its judgement of each
-// pin and each ban on a tick. The game walks the followers, reads whether a
+// pin and each ban on a tick, and the player's own book beneath the idle
+// rules' pins. The game walks the followers, reads whether a
 // thing is on and whether a copy is still carried, and performs what is
 // decided (game/Pins.cpp, EnforcePins); what to remember when a fight
 // begins, what to give back when it ends, what a panel edit during it
@@ -19,10 +20,12 @@ namespace ft
 
 // One actor's book across a fight. On entering a fight the pins are
 // remembered; a rule's pin during the fight goes over them for the fight
-// only, and the panel's word during it is the new normal, so a panel
-// request goes into the remembered book as well; on leaving, what the
-// fight pinned is let go and what was there before comes back
-// (SettleAfterFight), and the book is what it was.
+// only, and a request of the Normal layer during it -- the panel's word,
+// the new normal -- goes into the remembered book as well; on leaving,
+// what the fight pinned is let go and what was there before comes back
+// (Settle), and the book is what it was. What was there before is the
+// player's own pins with the idle rules' over them: the idle rules are not
+// asked in a fight, and their pins stand as the fight found them.
 struct FightBook
 {
     bool fighting{false};
@@ -32,17 +35,103 @@ struct FightBook
     // a fight the pins are remembered and nothing is returned; on the edge
     // out, the book becomes the remembered one and what changed is
     // returned; between edges, nothing.
-    [[nodiscard]] std::optional<AfterFight> Note(std::vector<Pin> &pins, bool fightingNow);
+    [[nodiscard]] std::optional<Settled> Note(std::vector<Pin> &pins, bool fightingNow);
 
-    // The panel's request, mirrored into the remembered book while a fight
-    // is on; nothing otherwise.
-    void Mirror(PinRequest request, const Holdable &thing, Hand hands, bool moving, bool dualWield);
+    // A request of the Normal layer, mirrored into the remembered book
+    // while a fight is on; nothing otherwise, and nothing for a rule's.
+    void Mirror(Layer layer, PinRequest request, const Holdable &thing, Hand hands, bool moving, bool dualWield);
+    // A Normal Unequip, the same: what it reaches leaves the remembered
+    // book too.
+    void Release(Layer layer, Kind kind, Hand hands, BodyPart part);
+    // A thing no longer carried, or no longer a form: its pin has nothing
+    // to hold, here as in the book in force.
+    void Forget(const Holdable &thing);
 
     // The remembered book while a fight is on, null otherwise: what a
     // rule's pin goes over, and what the panel shows as the player's own.
     [[nodiscard]] const std::vector<Pin> *Remembered() const noexcept
     {
         return fighting ? &before : nullptr;
+    }
+};
+
+// One actor's own book, the Normal layer: what the panel pinned, and a
+// Combat end rule. The idle rules pin over it, in the book in force and
+// never in here, so when one of them stops holding (Lapse) what it
+// displaced is still here to come back. And this, not the book in force,
+// is what the save holds: a rule's pin is made again by its rule after a
+// load, and never taken back as the player's.
+struct IdleBook
+{
+    std::vector<Pin> normal;
+
+    void Mirror(Layer layer, PinRequest request, const Holdable &thing, Hand hands, bool moving, bool dualWield);
+    void Release(Layer layer, Kind kind, Hand hands, BodyPart part);
+    void Forget(const Holdable &thing);
+};
+
+// One actor's pins in layers: the books beneath the one in force, and what
+// each request does across all of them. The game keeps the book in force
+// -- what the watchdog, the score hook and the equip detour read -- and one
+// of these beside it, and asks here for every change to either (game/
+// Pins.cpp), so which books a request is written into, and which book a
+// lapse falls back to, are decided where they are tested. A fight's pins
+// lie over the idle rules', and those over the player's own (Layer,
+// core/Loadout.h).
+struct Layers
+{
+    IdleBook idle;
+    FightBook fight;
+
+    // The book a layer's pin lies over, where what it displaces is still
+    // held: the book from before the fight under a combat rule, the
+    // player's own under an idle rule. None for the Normal layer, which
+    // lies over nothing, and none for a fight's out of a fight.
+    [[nodiscard]] const std::vector<Pin> *Beneath(Layer layer) const noexcept;
+
+    // The tick's word on whether the actor is fighting (FightBook::Note).
+    [[nodiscard]] std::optional<Settled> Note(std::vector<Pin> &pins, bool fightingNow)
+    {
+        return fight.Note(pins, fightingNow);
+    }
+
+    // A request of a layer: applied to the book in force, where it acts at
+    // once whatever the layer, and to every book that holds the layer.
+    // Returns what gave way in the book in force.
+    std::vector<Displaced> Apply(std::vector<Pin> &pins, Layer layer, PinRequest request, const Holdable &thing,
+                                 Hand hands, bool moving, bool dualWield);
+
+    // An Unequip of a layer: every pin of the kind it reaches leaves the
+    // book in force and every book that holds the layer. Returns those let
+    // go in the book in force.
+    std::vector<Pin> Release(std::vector<Pin> &pins, Layer layer, Kind kind, Hand hands, BodyPart part);
+
+    // A list's turn: what its rules hold now (the evaluator's Standing),
+    // settled against the book beneath its pins. None when the pins are
+    // not the list's to let go: the idle list's in a fight, where they
+    // stand under the fight's, and the combat list's, which last the
+    // fight.
+    [[nodiscard]] std::optional<Settled> Lapse(std::vector<Pin> &pins, bool combatList, const Wants &wants,
+                                               bool dualWield);
+
+    // A pin taken back from the save: the player's own, in force and
+    // beneath.
+    void Adopt(std::vector<Pin> &pins, const Holdable &thing, Hand hands);
+
+    // What the save holds: the player's own, whatever the rules have over
+    // it and whether or not a fight is on.
+    [[nodiscard]] const std::vector<Pin> &Saved() const noexcept
+    {
+        return idle.normal;
+    }
+
+    // A pin with nothing left to hold, out of every book beneath: one left
+    // there would come back with the next lapse and be dropped again.
+    void Forget(const Holdable &thing);
+    template <class Gone> void ForgetIf(Gone gone)
+    {
+        std::erase_if(idle.normal, gone);
+        std::erase_if(fight.before, gone);
     }
 };
 

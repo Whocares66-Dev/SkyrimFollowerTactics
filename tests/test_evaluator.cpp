@@ -4663,3 +4663,152 @@ TEST_CASE("a verdict is worded for the first action reached", "[evaluator]")
     REQUIRE(ExplainedKind(two, {}) == ActionKind::DrinkStrongest);
     REQUIRE(ExplainedKind(Rule{}, {}) == ActionKind::None);
 }
+
+TEST_CASE("the idle list holds an equip while its rule's condition holds", "[equip][standing]")
+{
+    // Issue #21, the rule as the reporter wrote it: at night, the torch.
+    Rule night = Equip(ActionKind::EquipWeapon, kShield, Hand::Left);
+    night.predicate = PredicateKind::HealthPctBelow;
+    night.conditionArg = 2.0f; // holds
+    RuleSet rs;
+    rs.moment = Moment::Idle;
+    rs.rules.push_back(night);
+    Snapshot s = Armed();
+    s.inCombat = false;
+    EvalContext ctx;
+
+    // Held before it is pinned -- the rule's own equip is about to make it
+    // -- and after.
+    Wants wants = Standing(rs, s, ctx);
+    REQUIRE(wants.pins.size() == 1);
+    REQUIRE(wants.pins[0].thing.form == kShield);
+    REQUIRE(wants.pins[0].hands == Hand::Left);
+    REQUIRE(wants.holes.empty());
+    Pinned(s, Evaluate(rs, s, ctx));
+    s.now += 0.5;
+    REQUIRE(Standing(rs, s, ctx).pins.size() == 1);
+    // Nothing decided by the asking.
+    REQUIRE_FALSE(Evaluate(rs, s, ctx).Fired());
+
+    // Day: the condition is false, and nothing holds the shield.
+    rs.rules[0].conditionArg = 0.1f;
+    wants = Standing(rs, s, ctx);
+    REQUIRE(wants.pins.empty());
+    REQUIRE(wants.holes.empty());
+    // Nor does a rule switched off.
+    rs.rules[0].conditionArg = 2.0f;
+    rs.rules[0].enabled = false;
+    REQUIRE(Standing(rs, s, ctx).pins.empty());
+}
+
+TEST_CASE("what is held is in the hands the pin takes, and an Unequip is a hole", "[equip][standing]")
+{
+    RuleSet rs;
+    rs.moment = Moment::Idle;
+    rs.rules.push_back(Equip(ActionKind::EquipSpell, kFirebolt, Hand::Both)); // once in each hand
+    rs.rules.push_back(Equip(ActionKind::EquipArmor, kHelmet));
+    rs.rules.push_back(Equip(ActionKind::EquipArrows, 0)); // none: the quiver kept empty
+    Snapshot s = Armed();
+    s.inCombat = false;
+    EvalContext ctx;
+
+    const Wants wants = Standing(rs, s, ctx);
+    REQUIRE(wants.pins.size() == 2);
+    REQUIRE(wants.pins[0].thing.form == kFirebolt);
+    REQUIRE(wants.pins[0].hands == Hand::Both);
+    REQUIRE(wants.pins[1].thing.form == kHelmet);
+    REQUIRE(wants.pins[1].hands == Hand::None);
+    REQUIRE(wants.holes.size() == 1);
+    REQUIRE(wants.holes[0].kind == Kind::Ammo);
+
+    // A two-hander takes both whatever hand the rule names.
+    rs.rules.clear();
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, kBow, Hand::Left));
+    REQUIRE(Standing(rs, s, ctx).pins.at(0).hands == Hand::Both);
+}
+
+TEST_CASE("an equip a rule above outranks is not held, nor one they cannot use", "[equip][standing]")
+{
+    RuleSet rs;
+    rs.moment = Moment::Idle;
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, kSword, Hand::Right));
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, 0, Hand::Right));             // none, the same hand
+    rs.rules.push_back(Equip(ActionKind::EquipSpell, kChainLightning, Hand::Left)); // above their skill
+    Snapshot s = Armed();
+    s.inCombat = false;
+    AddPin(s.pins, *FindHoldable(s.loadout, kSword), Hand::Right, false);
+    EvalContext ctx;
+
+    const Wants wants = Standing(rs, s, ctx);
+    REQUIRE(wants.pins.size() == 1);
+    REQUIRE(wants.pins[0].thing.form == kSword);
+    REQUIRE(wants.holes.empty());
+}
+
+TEST_CASE("what a rule holds does not wait on a cast in the air or a cooldown", "[equip][standing]")
+{
+    // A cast of ours holds every action for its length (the capabilities'
+    // busy), and an equip just made is on cooldown: neither is the rule
+    // letting go, and a pin judged by them would lapse with every cast.
+    RuleSet rs;
+    rs.moment = Moment::Idle;
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, kSword, Hand::Right));
+    rs.rules.push_back(Equip(ActionKind::EquipWeapon, 0, Hand::Right)); // outranked by the sword above
+    Snapshot s = Armed();
+    s.inCombat = false;
+    EvalContext ctx;
+    Pinned(s, Evaluate(rs, s, ctx)); // the sword, and its equip on cooldown
+
+    ctx.caps.busy.fill(true);
+    const Wants wants = Standing(rs, s, ctx);
+    REQUIRE(wants.pins.size() == 1);
+    REQUIRE(wants.pins[0].thing.form == kSword);
+    // The none beneath is outranked mid-cast as it is out of one.
+    REQUIRE(wants.holes.empty());
+}
+
+TEST_CASE("only a rule's equips are held, and only of what they carry", "[equip][standing]")
+{
+    // Drink, then the helmet: the drink is no pin's business.
+    Rule both = Equip(ActionKind::EquipArmor, kHelmet);
+    both.actions.insert(both.actions.begin(), DrinkMagicka());
+    // The hardest-hitting arrows, of a copy no row of the quiver is: a
+    // hand-edited profile's, which chooses arrows and finds none of them.
+    Rule arrows = Equip(ActionKind::EquipStrongestArrows, 0);
+    ItemVariant named;
+    named.label = "Nobody's";
+    arrows.FirstAction().variant = named;
+    RuleSet rs;
+    rs.moment = Moment::Idle;
+    rs.rules.push_back(both);
+    rs.rules.push_back(arrows);
+    Snapshot s = Armed();
+    s.inCombat = false;
+    EvalContext ctx;
+
+    const Wants wants = Standing(rs, s, ctx);
+    REQUIRE(wants.pins.size() == 1);
+    REQUIRE(wants.pins[0].thing.form == kHelmet);
+    REQUIRE(wants.holes.empty());
+}
+
+TEST_CASE("a rule's pin is of its list's layer, and a Combat end rule's is the player's own", "[equip][standing]")
+{
+    REQUIRE(LayerOf(Moment::Idle, PredicateKind::Any) == Layer::Idle);
+    REQUIRE(LayerOf(Moment::Combat, PredicateKind::Any) == Layer::Fight);
+    REQUIRE(LayerOf(Moment::Combat, PredicateKind::HealthPctBelow) == Layer::Fight);
+    // No idle rule, and no longer in a fight.
+    REQUIRE(LayerOf(Moment::Combat, PredicateKind::CombatEnds) == Layer::Normal);
+
+    // So the combat list does not hold it as one of its own.
+    Rule after = Equip(ActionKind::EquipWeapon, kSword, Hand::Right);
+    after.predicate = PredicateKind::CombatEnds;
+    RuleSet rs;
+    rs.rules.push_back(after);
+    Snapshot s = Armed();
+    s.inCombat = false;
+    s.combatEnded = true;
+    EvalContext ctx;
+    REQUIRE(Evaluate(rs, s, ctx).Fired());
+    REQUIRE(Standing(rs, s, ctx).pins.empty());
+}

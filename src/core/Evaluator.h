@@ -257,6 +257,14 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
 // where it does not hold, which the target-keyed checks read as such.
 [[nodiscard]] ActionTrace ProbeAvailability(const RuleSet &rs, const Snapshot &snap, const EvalContext &ctx);
 
+// What the list's rules hold on this evaluation: every equip of a rule
+// whose condition holds, whether its thing is pinned already or still to
+// be, and every Unequip of one. A rule's pin lasts while it is among these
+// (core/Loadout.h, Lapse). Asked of the whole list, where Evaluate stops at
+// the first rule that acts, and of the list's own layer alone: a Combat end
+// rule's pin is not the combat list's to let go (LayerOf). Nothing changed.
+[[nodiscard]] Wants Standing(const RuleSet &rs, const Snapshot &snap, const EvalContext &ctx);
+
 // Start an action's cooldown again from `now`: the moment it is over. A
 // drink or an equip is over when it is dispatched, and Evaluate's own stamp
 // stands; a cast, a shout, a power attack or a bash is over when its lease

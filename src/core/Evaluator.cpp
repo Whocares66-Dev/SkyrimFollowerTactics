@@ -1058,6 +1058,56 @@ ActionTrace ProbeAvailability(const RuleSet &rs, const Snapshot &snap, const Eva
     return out;
 }
 
+Wants Standing(const RuleSet &rs, const Snapshot &snap, const EvalContext &ctx)
+{
+    Wants out;
+    const Layer own = rs.moment == Moment::Idle ? Layer::Idle : Layer::Fight;
+    std::vector<Pin> heldAbove;
+    for (const Rule &r : rs.rules)
+    {
+        // A pin of another layer is not this list's to keep or let go.
+        if (LayerOf(rs.moment, r.predicate) != own)
+            continue;
+        if (std::none_of(r.actions.begin(), r.actions.end(), [](const Action &a) { return IsEquip(a.kind); }))
+            continue;
+        ActorId subject = 0;
+        ActorId target = 0;
+        if (Admit(r, rs.moment, snap, ctx, subject, target) != Verdict::Fired)
+            continue;
+        for (const Action &a : r.actions)
+        {
+            if (!IsEquip(a.kind))
+                continue;
+            // Held: done, about to be, or waiting its turn. Not one a rule
+            // above outranks, or that names what they cannot have. What
+            // only delays it is not asked -- a cast of ours in the air, the
+            // action's cooldown -- or every pin would be let go for the
+            // length of a cast.
+            if (!ctx.caps.Supports(a.kind) || !IsActionValidFor(r.actionTarget, a.kind) || !HasResource(a, snap) ||
+                EquipAvailability(a, snap, heldAbove) != Verdict::Fired)
+                continue;
+            if (LetsGo(a))
+            {
+                out.holes.push_back({KindOf(a.kind), HandsWanted(a), PartOf(a)});
+                continue;
+            }
+            const std::uint32_t form = IsArrowsPolicy(a.kind) ? ChosenForm(a, snap) : a.form;
+            const Holdable *thing = FindHoldable(snap.loadout, form, a.variant);
+            if (!thing)
+                continue;
+            // An either-hand thing asked for both is pinned once in each.
+            const bool each = a.hand == Hand::Both && thing->grip == Grip::Either;
+            out.pins.push_back({*thing, each ? Hand::Both : HandsFor(thing->grip, HandsWanted(a))});
+            // Done, it holds its hand against the rules beneath, as in
+            // Availability.
+            if (WouldHaveEffect(a, snap, target) != Outcome::Acts)
+                if (const Pin *pin = FindPin(snap.pins, a.form, a.variant))
+                    heldAbove.push_back(*pin);
+        }
+    }
+    return out;
+}
+
 Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Trace *trace, ActionTrace *actionTrace)
 {
     if (trace)

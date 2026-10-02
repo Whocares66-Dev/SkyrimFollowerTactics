@@ -50,9 +50,10 @@ enum class ActionResult : std::uint8_t
 // the bottle it chose by the evaluator (ChosenForm), so a Strongest and a
 // named potion arrive the same way. `ruleIndex` and `ruleName` are the rule's,
 // for a request -- a cast, a power attack, a bash -- to name when it is over
-// (rule.resolved).
+// (rule.resolved). `layer` is the rule's, for a pin it makes or lets go
+// (core's LayerOf).
 ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *actor, int ruleIndex,
-                     std::string_view ruleName);
+                     std::string_view ruleName, ft::Layer layer);
 
 // The panel's Charge button: one copy of an enchanted weapon -- `row`, an
 // Inventory row's list, or null for the plain stack -- charged with the

@@ -5,7 +5,7 @@
 namespace ft
 {
 
-std::optional<AfterFight> FightBook::Note(std::vector<Pin> &pins, bool fightingNow)
+std::optional<Settled> FightBook::Note(std::vector<Pin> &pins, bool fightingNow)
 {
     if (fightingNow && !fighting)
     {
@@ -16,7 +16,7 @@ std::optional<AfterFight> FightBook::Note(std::vector<Pin> &pins, bool fightingN
     if (!fightingNow && fighting)
     {
         fighting = false;
-        AfterFight settled = SettleAfterFight(pins, before);
+        Settled settled = Settle(pins, before);
         pins = std::move(before);
         before.clear();
         return settled;
@@ -24,11 +24,100 @@ std::optional<AfterFight> FightBook::Note(std::vector<Pin> &pins, bool fightingN
     return std::nullopt;
 }
 
-void FightBook::Mirror(PinRequest request, const Holdable &thing, Hand hands, bool moving, bool dualWield)
+namespace
 {
-    if (!fighting)
+void ForgetIn(std::vector<Pin> &pins, const Holdable &thing)
+{
+    std::erase_if(pins, [&](const Pin &pin) { return SameThing(pin.thing, thing); });
+}
+} // namespace
+
+void FightBook::Mirror(Layer layer, PinRequest request, const Holdable &thing, Hand hands, bool moving, bool dualWield)
+{
+    if (!fighting || layer != Layer::Normal)
         return;
     [[maybe_unused]] const auto displaced = ApplyRequest(before, request, thing, hands, moving, dualWield);
+}
+
+void FightBook::Release(Layer layer, Kind kind, Hand hands, BodyPart part)
+{
+    if (!fighting || layer != Layer::Normal)
+        return;
+    [[maybe_unused]] const auto taken = TakeReached(before, kind, hands, part);
+}
+
+void FightBook::Forget(const Holdable &thing)
+{
+    ForgetIn(before, thing);
+}
+
+void IdleBook::Mirror(Layer layer, PinRequest request, const Holdable &thing, Hand hands, bool moving, bool dualWield)
+{
+    if (layer != Layer::Normal)
+        return;
+    [[maybe_unused]] const auto displaced = ApplyRequest(normal, request, thing, hands, moving, dualWield);
+}
+
+void IdleBook::Release(Layer layer, Kind kind, Hand hands, BodyPart part)
+{
+    if (layer != Layer::Normal)
+        return;
+    [[maybe_unused]] const auto taken = TakeReached(normal, kind, hands, part);
+}
+
+void IdleBook::Forget(const Holdable &thing)
+{
+    ForgetIn(normal, thing);
+}
+
+const std::vector<Pin> *Layers::Beneath(Layer layer) const noexcept
+{
+    switch (layer)
+    {
+    case Layer::Fight:
+        return fight.Remembered();
+    case Layer::Idle:
+        return &idle.normal;
+    case Layer::Normal:
+        break;
+    }
+    return nullptr;
+}
+
+std::vector<Displaced> Layers::Apply(std::vector<Pin> &pins, Layer layer, PinRequest request, const Holdable &thing,
+                                     Hand hands, bool moving, bool dualWield)
+{
+    std::vector<Displaced> displaced = ApplyRequest(pins, request, thing, hands, moving, dualWield);
+    fight.Mirror(layer, request, thing, hands, moving, dualWield);
+    idle.Mirror(layer, request, thing, hands, moving, dualWield);
+    return displaced;
+}
+
+std::vector<Pin> Layers::Release(std::vector<Pin> &pins, Layer layer, Kind kind, Hand hands, BodyPart part)
+{
+    std::vector<Pin> released = TakeReached(pins, kind, hands, part);
+    fight.Release(layer, kind, hands, part);
+    idle.Release(layer, kind, hands, part);
+    return released;
+}
+
+std::optional<Settled> Layers::Lapse(std::vector<Pin> &pins, bool combatList, const Wants &wants, bool dualWield)
+{
+    if (combatList || fight.fighting)
+        return std::nullopt;
+    return ft::Lapse(pins, idle.normal, wants, dualWield);
+}
+
+void Layers::Adopt(std::vector<Pin> &pins, const Holdable &thing, Hand hands)
+{
+    AddPin(pins, thing, hands, false);
+    AddPin(idle.normal, thing, hands, false);
+}
+
+void Layers::Forget(const Holdable &thing)
+{
+    fight.Forget(thing);
+    idle.Forget(thing);
 }
 
 PinVerdict JudgePin(const Pin &pin, const PinSeen &seen, bool fighting, bool castInProgress) noexcept

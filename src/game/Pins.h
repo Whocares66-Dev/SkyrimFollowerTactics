@@ -68,6 +68,13 @@ namespace ft::game
 // the player's pins are pinned again and put back on. A pin the player
 // makes in the panel mid-fight counts as the new normal and survives.
 //
+// Nor does an idle rule. Its pin lasts while the rule holds and is let go
+// the same way when it no longer does (core/Loadout.h, Layer and Lapse;
+// issue #21, the torch lit by a night rule and pinned through the day):
+// the player's own pins are kept beneath it and come back. Letting go is
+// not taking off. A Combat end rule's pin is the player's own in all but
+// who made it: it stays until changed.
+//
 // A pin or a ban names one VARIANT of an item where the bag holds several
 // rows of a form (Holdable::variant; dev/UNIQUE.md "The variant"), so the
 // enchanted armour is pinned and the outfit one is not; a rule's pin may
@@ -126,8 +133,9 @@ void RequestWearAll(ft::ActorId id, std::vector<WearTarget> targets, WearRequest
 // Both for an either-hand spell is once in each hand -- and returns whether
 // the form was found and the pin taken: a spell above the follower's skill
 // is refused. Release lets go of every pin of `kind` and takes
-// those things off, so the AI decides again.
-bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand,
+// those things off, so the AI decides again. `layer` is the rule's
+// (core's LayerOf): what its pin lies over and how long it lasts.
+bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand, Layer layer,
             const std::optional<ft::ItemVariant> &variant = std::nullopt);
 // Let go of every pin of the kind, and take off whatever of the kind is on,
 // pinned or not -- a weapon or spell in the hands named, the arrows in the
@@ -135,7 +143,14 @@ bool PinNow(RE::Actor *actor, std::uint32_t form, Hand hand,
 // empty; `hands` narrows a weapon's or a spell's release to one hand (None:
 // every hand), `part` armour's to one part of the body (All: every piece
 // but a shield, which is a weapon here).
-void ReleaseKind(RE::Actor *actor, Kind kind, Hand hands = Hand::None, BodyPart part = BodyPart::All);
+void ReleaseKind(RE::Actor *actor, Kind kind, Layer layer, Hand hands = Hand::None, BodyPart part = BodyPart::All);
+
+// What the list's rules hold this turn (core's Standing): a pin of theirs
+// that none holds any more is let go, and what it displaced beneath is
+// pinned again and put back on. Nothing while the pins are not the list's
+// to let go: the idle list's in a fight. Game thread, from the tick, after
+// the turn's action.
+void LapsePins(RE::Actor *actor, ft::Moment list, const ft::Wants &wants);
 
 // One request against the book now, on the game thread, for the rules: the
 // panel's RequestWear without the queue. A plain Equip is what the player's
@@ -153,9 +168,9 @@ bool WearNow(RE::Actor *actor, std::uint32_t form, WearRequest request, Hand han
 // This follower's pins, as the planner and the snapshot take them.
 [[nodiscard]] std::vector<Pin> PinsOf(ft::ActorId id);
 
-// The player's pins, for the save: the book as the panel left it, which
-// in a fight is the one remembered for after it, not the one the rules
-// are using. Game thread.
+// The player's pins, for the save: the book as the panel left it, the
+// Normal layer, not the one in force with the rules' pins over it. Game
+// thread.
 [[nodiscard]] std::vector<ft::PinEntry> PlayerPinsOf(ft::ActorId id);
 
 // This follower's bans, as the hooks and the save take them.

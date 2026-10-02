@@ -688,8 +688,18 @@ void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool hel
     ft::Trace trace;
     ft::ActionTrace actionTrace;
     const ft::TickResult turn = ft::DecideTurn(state.run, lists, facts, now, snapshot, &trace, &actionTrace);
+    // A rule's pin lasts while its rule holds (game/Pins.h, LapsePins);
+    // what the list holds this turn, and whether its pins are its to let
+    // go, are the core's (TickResult::holds).
+    const auto lapse = [&] {
+        if (!player && turn.holds)
+            LapsePins(actor, turn.holds->list, turn.holds->wants);
+    };
     if (!turn)
+    {
+        lapse();
         return;
+    }
     if (!player && ft::WaitsOnOwnCast(actionTrace))
         g_waitingOnOwnCast.push_back(id);
     g_cost.Add(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - started).count());
@@ -743,8 +753,14 @@ void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool hel
     if (!turn.plan.ended)
         ReportVerdicts(actor, rules, trace, actionTrace, state.reported);
 
+    // The lapse comes after the turn's action: the pin a rule makes this
+    // turn displaces what it must itself, and a pin let go first would put
+    // back for one tick what the new pin is about to cover.
     if (!turn.Fired())
+    {
+        lapse();
         return;
+    }
 
     // The one action of the tick; the rest of the rule's list follows,
     // one per tick. The rule as its list began: after a reorder or a
@@ -754,11 +770,13 @@ void RunTurn(RE::Actor *actor, double now, const ft::ActorRules &lists, bool hel
     const std::string &label = decision.rule.label;
     // A requested cast's, power attack's or bash's outcome follows when
     // it is over, as rule.resolved, naming the rule given here.
-    const ActionResult result = Execute(step.action, step.target, actor, decision.ruleIndex, label);
+    const ActionResult result = Execute(step.action, step.target, actor, decision.ruleIndex, label,
+                                        ft::LayerOf(moment, decision.rule.predicate));
     ft::NoteOutcome(state.run, decision,
                     result == ActionResult::Performed   ? ft::ActionOutcome::Performed
                     : result == ActionResult::Requested ? ft::ActionOutcome::Requested
                                                         : ft::ActionOutcome::Failed);
+    lapse();
 
     // Whom the condition bound and whom the action went at, by reference
     // and base, and the thing it used: the potion a policy chose, the

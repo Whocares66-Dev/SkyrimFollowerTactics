@@ -46,6 +46,7 @@ add_executable(
     test_i18n.cpp
     test_idle.cpp
     test_landing.cpp
+    test_layers.cpp
     test_lease.cpp
     test_loadout.cpp
     test_logevent.cpp

@@ -494,23 +494,66 @@ bool PutBackNow(const Pin &pin, bool on, bool fighting, bool castInProgress) noe
     return !(fighting && castInProgress);
 }
 
-AfterFight SettleAfterFight(const std::vector<Pin> &now, const std::vector<Pin> &before)
+Settled Settle(const std::vector<Pin> &now, const std::vector<Pin> &next)
 {
-    AfterFight out;
+    Settled out;
     for (const Pin &pin : now)
     {
-        if (Holds(before, pin))
+        if (Holds(next, pin))
             continue;
-        const bool displaced = std::any_of(before.begin(), before.end(), [&](const Pin &saved) {
+        const bool displaced = std::any_of(next.begin(), next.end(), [&](const Pin &saved) {
             return !SameThing(saved.thing, pin.thing) && Conflicts(pin.thing, pin.hands, saved.thing, saved.hands);
         });
         out.released.push_back({pin.thing.form, pin.thing.variant, pin.hands, displaced});
     }
-    for (const Pin &pin : before)
+    for (const Pin &pin : next)
     {
         if (!Holds(now, pin))
             out.restored.push_back(pin);
     }
+    return out;
+}
+
+std::vector<Pin> TakeReached(std::vector<Pin> &pins, Kind kind, Hand hands, BodyPart part)
+{
+    std::vector<Pin> taken;
+    std::erase_if(pins, [&](const Pin &pin) {
+        if (!UnequipReaches(kind, hands, part, pin))
+            return false;
+        taken.push_back(pin);
+        return true;
+    });
+    return taken;
+}
+
+Settled Lapse(std::vector<Pin> &pins, const std::vector<Pin> &beneath, const Wants &wants, bool dualWield)
+{
+    std::vector<Pin> next = beneath;
+    for (const Wants::Hole &hole : wants.holes) [[maybe_unused]]
+        const auto kept = TakeReached(next, hole.kind, hole.hands, hole.part);
+    for (const Pin &pin : pins)
+    {
+        bool wanted = false;
+        Hand asked = Hand::None;
+        for (const Pin &want : wants.pins)
+        {
+            if (!SameThing(want.thing, pin.thing))
+                continue;
+            wanted = true;
+            asked = asked | want.hands;
+        }
+        // Held in a hand no rule asks of it: that hand is beneath's to
+        // give, or nobody's.
+        const Hand hands = Common(pin.hands, asked);
+        if (!wanted || (pin.hands != Hand::None && hands == Hand::None))
+            continue;
+        [[maybe_unused]] const auto displaced = MakeRoom(next, pin.thing, hands, dualWield);
+        // The only copy is in the hands the book in force has it in, not
+        // in those and beneath's as well.
+        AddPin(next, pin.thing, hands, pin.thing.count < 2);
+    }
+    Settled out = Settle(pins, next);
+    pins = std::move(next);
     return out;
 }
 
