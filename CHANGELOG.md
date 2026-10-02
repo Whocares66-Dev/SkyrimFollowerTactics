@@ -8,6 +8,14 @@ has_toc: false
 
 # Changelog
 
+## 0.5.1
+
+Changes since `v0.5.0`:
+
+- **Equip rules release when they stop applying:** a follower's equip action now pins only while its rule's condition holds. Afterward the item stays on until something replaces it, and anything you pinned in that hand or slot is restored. `Combat start` equips last the whole fight; `Combat end` equips stay, like your own pins. An item an idle rule pinned in an earlier version is saved as your own pin: unpin it once on the Inventory tab.
+- **Boss condition:** `Enemy` → `Rank` → `Boss` selects dragons, dragon priests, named bosses, and enemies the game marks as a location's boss.
+- **Ash storms:** Solstheim ash storms are their own `Weather` choice, `Ash`.
+
 ## 0.5.0
 
 Major changes since `v0.4.0`:
