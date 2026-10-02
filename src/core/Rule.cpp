@@ -312,6 +312,8 @@ Layer LayerOf(Moment list, PredicateKind predicate) noexcept
 {
     if (list == Moment::Idle)
         return Layer::Idle;
+    if (predicate == PredicateKind::CombatBegins)
+        return Layer::Opening;
     return predicate == PredicateKind::CombatEnds ? Layer::Normal : Layer::Fight;
 }
 

@@ -32,7 +32,7 @@ TickResult DecideTurn(ActorRun &run, const ActorRules &rules, const TickFacts &f
     result.snapshot.combatEnded = result.plan.ended;
     const RuleSet &list = rules.Of(*result.plan.list);
     result.decision = Evaluate(list, result.snapshot, run.eval, trace, actionTrace);
-    if (list.moment == Moment::Idle && !result.snapshot.inCombat)
+    if ((list.moment == Moment::Combat) == result.snapshot.inCombat)
         result.holds = ListHolds{list.moment, Standing(list, result.snapshot, run.eval)};
     return result;
 }

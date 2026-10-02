@@ -181,19 +181,104 @@ TEST_CASE("an idle rule's pin over the player's lapses to it, through a fight an
     REQUIRE(pins[0].thing.form == Cuirass().form);
 }
 
-TEST_CASE("the fight's remembered book takes the Normal layer alone", "[watchdog]")
+TEST_CASE("the fight's books take the layers they hold: Normal both, Opening the opening, Fight neither", "[watchdog]")
 {
     FightBook book;
     std::vector<Pin> pins;
     REQUIRE_FALSE(book.Note(pins, true));
     book.Mirror(Layer::Fight, PinRequest::Pin, Dagger(), Hand::Right, false, true);
     REQUIRE(book.before.empty());
+    REQUIRE(book.opening.empty());
+    book.Mirror(Layer::Opening, PinRequest::Pin, Cuirass(), Hand::None, false, true);
+    REQUIRE(book.before.empty());
+    REQUIRE(book.opening.size() == 1);
     book.Mirror(Layer::Normal, PinRequest::Pin, Dagger(), Hand::Right, false, true);
     REQUIRE(book.before.size() == 1);
+    REQUIRE(book.opening.size() == 2);
+
     book.Release(Layer::Fight, Kind::Weapon, Hand::None, BodyPart::All);
     REQUIRE(book.before.size() == 1);
+    REQUIRE(book.opening.size() == 2);
+    book.Release(Layer::Opening, Kind::Weapon, Hand::None, BodyPart::All);
+    REQUIRE(book.before.size() == 1);
+    REQUIRE(book.opening.size() == 1);
+    book.Release(Layer::Normal, Kind::Armor, Hand::None, BodyPart::All);
+    REQUIRE(book.opening.empty());
     book.Release(Layer::Normal, Kind::Weapon, Hand::None, BodyPart::All);
     REQUIRE(book.before.empty());
+
+    // A thing no longer carried leaves both: nothing of it is to come
+    // back, when the fight ends or when a rule lets go.
+    book.Mirror(Layer::Normal, PinRequest::Pin, Dagger(), Hand::Right, false, true);
+    book.Forget(Dagger());
+    REQUIRE(book.before.empty());
+    REQUIRE(book.opening.empty());
+
+    // Out of a fight there is no opening to take anything, or to let go.
+    REQUIRE(book.Note(pins, false));
+    book.Mirror(Layer::Opening, PinRequest::Pin, Cuirass(), Hand::None, false, true);
+    book.Release(Layer::Normal, Kind::Armor, Hand::None, BodyPart::All);
+    REQUIRE(book.opening.empty());
+    REQUIRE(book.before.empty());
+}
+
+TEST_CASE("a Combat start pin lasts the fight, under the standing rules' pins and after them", "[watchdog]")
+{
+    // The player's cuirass; the fight opens with a dagger in the right
+    // hand, by a Combat start rule: into the book in force (the game does
+    // that) and into the opening.
+    FightBook book;
+    std::vector<Pin> pins{PinOf(Cuirass(), Hand::None)};
+    REQUIRE_FALSE(book.Note(pins, true));
+    pins.push_back(PinOf(Dagger(), Hand::Right));
+    book.Mirror(Layer::Opening, PinRequest::Pin, Dagger(), Hand::Right, false, true);
+
+    // A standing rule pins another dagger over it while its condition
+    // holds: the opening's gives way in the book in force, and is kept.
+    const Holdable other = Dagger(0x13989);
+    [[maybe_unused]] const auto displaced = ApplyRequest(pins, PinRequest::Pin, other, Hand::Right, false, true);
+    REQUIRE(FindPin(pins, Dagger()) == nullptr);
+    Wants holding;
+    holding.pins.push_back(PinOf(other, Hand::Right));
+    REQUIRE_FALSE(Lapse(pins, book.opening, holding, true).Changed());
+
+    // The rule no longer holds: its dagger makes way and the opening's
+    // comes back. Nothing else holds either, and the opening still stands.
+    const Settled lapsed = Lapse(pins, book.opening, {}, true);
+    REQUIRE(lapsed.released.size() == 1);
+    REQUIRE(lapsed.released[0].form == other.form);
+    REQUIRE(lapsed.released[0].takeOff);
+    REQUIRE(lapsed.restored.size() == 1);
+    REQUIRE(lapsed.restored[0].thing.form == Dagger().form);
+    REQUIRE_FALSE(Lapse(pins, book.opening, {}, true).Changed());
+    REQUIRE(pins.size() == 2);
+
+    // The fight ends: the opening goes with it, in place, and the player's
+    // cuirass is what is left.
+    const auto settled = book.Note(pins, false);
+    REQUIRE(settled);
+    REQUIRE(settled->released.size() == 1);
+    REQUIRE(settled->released[0].form == Dagger().form);
+    REQUIRE_FALSE(settled->released[0].takeOff);
+    REQUIRE(pins.size() == 1);
+    REQUIRE(pins[0].thing.form == Cuirass().form);
+    REQUIRE(book.opening.empty());
+}
+
+TEST_CASE("a standing rule's pin in a fight is let go in place when nothing was beneath it", "[watchdog]")
+{
+    // "Health below half: the shield." Health recovers, and the pin is
+    // forgotten with the thing still in hand: a lapse is not an unequip.
+    FightBook book;
+    std::vector<Pin> pins;
+    REQUIRE_FALSE(book.Note(pins, true));
+    pins.push_back(PinOf(Dagger(), Hand::Right));
+
+    const Settled lapsed = Lapse(pins, book.opening, {}, true);
+    REQUIRE(lapsed.released.size() == 1);
+    REQUIRE_FALSE(lapsed.released[0].takeOff);
+    REQUIRE(lapsed.restored.empty());
+    REQUIRE(pins.empty());
 }
 
 TEST_CASE("a pin is dropped with no copy left, put back when off, and left while a cast has the hand", "[watchdog]")

@@ -351,13 +351,18 @@ struct Pin
 // from the panel, and a Combat end rule's, which is no idle rule and whose
 // fight is over: it holds until it is changed, and it alone is saved. Idle
 // is an idle rule's and holds while that rule does (issue #21: a rule that
-// lit a torch at night pinned it through the day). Fight is a combat
-// rule's. In a fight the idle rules are not asked, so their pins stand as
-// the fight found them, under its own.
+// lit a torch at night pinned it through the day). Opening is a Combat
+// start rule's: its condition is true for one evaluation, and equipping
+// there means wanting the thing for the fight, so it holds until the fight
+// ends. Fight is any other combat rule's and holds while that rule does,
+// over the opening. In a fight the idle rules are not asked, so their pins
+// stand as the fight found them, under its own; out of one there is no
+// Opening and no Fight.
 enum class Layer : std::uint8_t
 {
     Normal,
     Idle,
+    Opening,
     Fight
 };
 

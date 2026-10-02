@@ -535,8 +535,10 @@ struct RuleSet
 };
 
 // The layer a rule's pin is made in (core/Loadout.h, Layer): the list's
-// own, but for a Combat end rule, which is the combat list's and acts with
-// the fight over, so its pin is Normal: it stays as the player's own would.
+// own, but for the fight's two edges. A Combat start rule's is the fight's
+// Opening, held to its end. A Combat end rule is the combat list's and acts
+// with the fight over, so its pin is Normal: it stays as the player's own
+// would.
 [[nodiscard]] Layer LayerOf(Moment list, PredicateKind predicate) noexcept;
 
 // What the idle list has no use for. Out of a fight there is no enemy:

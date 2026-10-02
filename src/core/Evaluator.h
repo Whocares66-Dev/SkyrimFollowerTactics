@@ -261,8 +261,9 @@ Decision Evaluate(const RuleSet &rs, const Snapshot &snap, EvalContext &ctx, Tra
 // whose condition holds, whether its thing is pinned already or still to
 // be, and every Unequip of one. A rule's pin lasts while it is among these
 // (core/Loadout.h, Lapse). Asked of the whole list, where Evaluate stops at
-// the first rule that acts, and of the list's own layer alone: a Combat end
-// rule's pin is not the combat list's to let go (LayerOf). Nothing changed.
+// the first rule that acts, and of the list's own layer alone: a Combat
+// start rule's pin lasts the fight and a Combat end rule's is the player's
+// own, neither the standing rules' to let go (LayerOf). Nothing changed.
 [[nodiscard]] Wants Standing(const RuleSet &rs, const Snapshot &snap, const EvalContext &ctx);
 
 // Start an action's cooldown again from `now`: the moment it is over. A

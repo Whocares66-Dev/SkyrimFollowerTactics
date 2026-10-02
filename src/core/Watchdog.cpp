@@ -11,6 +11,7 @@ std::optional<Settled> FightBook::Note(std::vector<Pin> &pins, bool fightingNow)
     {
         fighting = true;
         before = pins;
+        opening = pins;
         return std::nullopt;
     }
     if (!fightingNow && fighting)
@@ -19,6 +20,7 @@ std::optional<Settled> FightBook::Note(std::vector<Pin> &pins, bool fightingNow)
         Settled settled = Settle(pins, before);
         pins = std::move(before);
         before.clear();
+        opening.clear();
         return settled;
     }
     return std::nullopt;
@@ -34,21 +36,28 @@ void ForgetIn(std::vector<Pin> &pins, const Holdable &thing)
 
 void FightBook::Mirror(Layer layer, PinRequest request, const Holdable &thing, Hand hands, bool moving, bool dualWield)
 {
-    if (!fighting || layer != Layer::Normal)
+    if (!fighting)
         return;
-    [[maybe_unused]] const auto displaced = ApplyRequest(before, request, thing, hands, moving, dualWield);
+    if (layer == Layer::Normal) [[maybe_unused]]
+        const auto displaced = ApplyRequest(before, request, thing, hands, moving, dualWield);
+    if (layer == Layer::Normal || layer == Layer::Opening) [[maybe_unused]]
+        const auto displaced = ApplyRequest(opening, request, thing, hands, moving, dualWield);
 }
 
 void FightBook::Release(Layer layer, Kind kind, Hand hands, BodyPart part)
 {
-    if (!fighting || layer != Layer::Normal)
+    if (!fighting)
         return;
-    [[maybe_unused]] const auto taken = TakeReached(before, kind, hands, part);
+    if (layer == Layer::Normal) [[maybe_unused]]
+        const auto taken = TakeReached(before, kind, hands, part);
+    if (layer == Layer::Normal || layer == Layer::Opening) [[maybe_unused]]
+        const auto taken = TakeReached(opening, kind, hands, part);
 }
 
 void FightBook::Forget(const Holdable &thing)
 {
     ForgetIn(before, thing);
+    ForgetIn(opening, thing);
 }
 
 void IdleBook::Mirror(Layer layer, PinRequest request, const Holdable &thing, Hand hands, bool moving, bool dualWield)
@@ -75,6 +84,8 @@ const std::vector<Pin> *Layers::Beneath(Layer layer) const noexcept
     switch (layer)
     {
     case Layer::Fight:
+        return fight.fighting ? &fight.opening : nullptr;
+    case Layer::Opening:
         return fight.Remembered();
     case Layer::Idle:
         return &idle.normal;
@@ -103,9 +114,9 @@ std::vector<Pin> Layers::Release(std::vector<Pin> &pins, Layer layer, Kind kind,
 
 std::optional<Settled> Layers::Lapse(std::vector<Pin> &pins, bool combatList, const Wants &wants, bool dualWield)
 {
-    if (combatList || fight.fighting)
+    if (combatList != fight.fighting)
         return std::nullopt;
-    return ft::Lapse(pins, idle.normal, wants, dualWield);
+    return ft::Lapse(pins, fight.fighting ? fight.opening : idle.normal, wants, dualWield);
 }
 
 void Layers::Adopt(std::vector<Pin> &pins, const Holdable &thing, Hand hands)

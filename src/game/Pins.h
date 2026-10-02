@@ -54,10 +54,10 @@ namespace ft::game
 // it is found on. A ban lets go of any pin on the thing. Unban forgets
 // the ban; the thing stays off until something puts it on. Bans are not
 // a fight's business: the book of bans is one, before, during and after.
-// A rule's pin on a banned thing overrides the ban for the fight, and no
-// longer: the pin goes with the fight's others, and the watchdog's ban
-// pass, later in the same tick, finds the thing on and unpinned and takes
-// it off. What was pinned in its place before the fight comes back by the
+// A rule's pin on a banned thing overrides the ban while the pin lasts,
+// and no longer: when the pin goes -- its rule no longer holding, or the
+// fight ending -- the watchdog's ban pass finds the thing on and unpinned
+// and takes it off. What was pinned in its place beneath comes back by the
 // restore; anything else stays off, and a Combat end rule is how to want
 // it back at once.
 //
@@ -68,12 +68,14 @@ namespace ft::game
 // the player's pins are pinned again and put back on. A pin the player
 // makes in the panel mid-fight counts as the new normal and survives.
 //
-// Nor does an idle rule. Its pin lasts while the rule holds and is let go
-// the same way when it no longer does (core/Loadout.h, Layer and Lapse;
-// issue #21, the torch lit by a night rule and pinned through the day):
-// the player's own pins are kept beneath it and come back. Letting go is
-// not taking off. A Combat end rule's pin is the player's own in all but
-// who made it: it stays until changed.
+// Nor does a rule. Its pin lasts while the rule holds and is let go the
+// same way when it no longer does (core/Loadout.h, Layer and Lapse; issue
+// #21, the torch lit by a night rule and pinned through the day): what it
+// displaced is kept beneath it and comes back -- the player's own under an
+// idle rule, the fight's opening under a combat rule. Letting go is not
+// taking off. A Combat start rule's pin is the opening, and lasts the
+// fight. A Combat end rule's pin is the player's own in all but who made
+// it: it stays until changed.
 //
 // A pin or a ban names one VARIANT of an item where the bag holds several
 // rows of a form (Holdable::variant; dev/UNIQUE.md "The variant"), so the
@@ -148,8 +150,8 @@ void ReleaseKind(RE::Actor *actor, Kind kind, Layer layer, Hand hands = Hand::No
 // What the list's rules hold this turn (core's Standing): a pin of theirs
 // that none holds any more is let go, and what it displaced beneath is
 // pinned again and put back on. Nothing while the pins are not the list's
-// to let go: the idle list's in a fight. Game thread, from the tick, after
-// the turn's action.
+// to let go: the idle list's in a fight, the combat list's out of one.
+// Game thread, from the tick, after the turn's action.
 void LapsePins(RE::Actor *actor, ft::Moment list, const ft::Wants &wants);
 
 // One request against the book now, on the game thread, for the rules: the

@@ -24,7 +24,7 @@ Pins and bans apply to followers. The player's equipment uses ordinary equip / u
 
 ![Weapon pinning]({{ "/assets/img/panel/weapon_pinning.png" | relative_url }}){: .screenshot loading="lazy"}
 
-Pinned objects can be overridden by [tactics]({{ '/tactics/' | relative_url }}#actions), but are restored after combat ends, or when the idle rule that overrode them no longer applies.
+Pinned objects can be overridden by [tactics]({{ '/tactics/' | relative_url }}#actions), but are restored when the rule that overrode them no longer applies.
 {: .note }
 
 Pinning is motivated by the fact that something equipped normally can be overridden by the game. For example, if a follower is equipped with an Iron Sword, but is given a Steel Sword, they will automatically equip the Steel Sword, as it's evaluated to be better.

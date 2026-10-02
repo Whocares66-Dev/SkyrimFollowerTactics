@@ -115,11 +115,11 @@ Long menus are grouped: spells and scrolls by magic school, weapons by type, wit
 
 **Actions respect gameplay rules**. A follower who doesn't meet the skill requirement to cast a spell cannot equip it. Per the base game, this limitation does not apply to the player.
 
-**Equip actions override [equipment settings]({{ '/equip-states/' | relative_url }}) during combat**. If a follower has an Iron Dagger pinned to their right hand, but an action says to equip a Steel Sword, the action takes precedence for the duration of combat. [Pins]({{ '/equip-states/' | relative_url }}#pinned) and [bans]({{ '/equip-states/' | relative_url }}#banned) are restored after combat.
+**Equip actions [pin]({{ '/equip-states/' | relative_url }}#pinned) while their rule's condition holds**. An action that equips e.g. a Steel Sword in the right hand prevents the AI from equipping something else there. When the condition no longer holds, the pin is released: the sword stays equipped until the AI, another rule, or one of your own pins replaces it. `Unequip` likewise keeps the hand or slot empty while its condition holds.
 
-**Equip actions effectively [pin]({{ '/equip-states/' | relative_url }}#pinned) during combat**. An action that equips e.g. a Steel Sword in the right hand prevents the AI from equipping something else there. Only another rule can change the equipment.
+**Rules override [equipment settings]({{ '/equip-states/' | relative_url }})**. Combat rules take precedence over idle rules, and idle rules over your own [pins]({{ '/equip-states/' | relative_url }}#pinned) and [bans]({{ '/equip-states/' | relative_url }}#banned). Each comes back when the rule over it no longer applies.
 
-**Idle equip actions pin while their rule's condition holds**. A rule that equips a torch at night pins it through the night. When the condition no longer holds, the pin is released: the item stays equipped until the AI or another rule replaces it, and anything you pinned in that hand or slot yourself is restored. An idle `Unequip` works the same way, keeping the hand or slot empty while its condition holds. Pins from idle rules that still apply are restored after a fight.
+**`Combat start` equips last the whole fight; `Combat end` equips stay**, like pins you make yourself.
 
 Player equip actions are ordinary equips and never create pins.
 

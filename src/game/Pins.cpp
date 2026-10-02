@@ -681,9 +681,9 @@ void ReportEnforced(RE::Actor *actor, const Pin &pin, RE::TESForm *form, bool fi
 // read on the watchdog's tick, which already asks IsInCombat every half
 // second.
 // Each actor's books beneath the one in force (core/Watchdog.h, Layers):
-// the player's own, and across a fight what was pinned before it. Every
-// change to the book in force goes through these, which is where the
-// layers' order is kept.
+// the player's own, and across a fight what was pinned before it and its
+// opening. Every change to the book in force goes through these, which is
+// where the layers' order is kept.
 std::unordered_map<ft::ActorId, ft::Layers> g_layers;
 
 // A layer's pins have gone: what it pinned is let go, what it displaced is

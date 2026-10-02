@@ -253,11 +253,13 @@ TEST_CASE("the fight's edges through the whole turn, and a fresh session", "[coo
     REQUIRE(lydia.Tick(rules, Facts(true, false), 200.0).Fired());
 }
 
-TEST_CASE("the idle list's turn says what its rules hold; a fight's does not", "[coordinator]")
+TEST_CASE("a turn says what its list's rules hold: the idle list's out of a fight, the combat list's in one",
+          "[coordinator]")
 {
     // What the game lets go of by (game/Pins.h, LapsePins): asked on every
-    // idle turn, whether or not a rule acted, and not in a fight, where the
-    // idle rules' pins stand as they are.
+    // turn of the list whose pins they are, whether or not a rule acted.
+    // In a fight that is the combat list, and the idle rules' pins stand
+    // as they are; on the farewell evaluation and after it, nobody's.
     ActorRules rules = CombatOnly(CastHeal());
     Rule shield;
     shield.subject = SubjectKind::Self;
@@ -283,9 +285,19 @@ TEST_CASE("the idle list's turn says what its rules hold; a fight's does not", "
     REQUIRE(idle.holds->wants.pins.size() == 1);
     REQUIRE(idle.holds->wants.pins[0].hands == Hand::Left);
 
+    // The fight: the combat list's own, which equips nothing.
     const TickResult fight = lydia.Tick(rules, Facts(true, false, true), 100.5);
     REQUIRE(fight);
-    REQUIRE_FALSE(fight.holds);
+    REQUIRE(fight.plan.list == Moment::Combat);
+    REQUIRE(fight.holds);
+    REQUIRE(fight.holds->list == Moment::Combat);
+    REQUIRE(fight.holds->wants.pins.empty());
+
+    // The farewell evaluation is the combat list's, out of the fight: the
+    // fight's pins went with it, and there is nothing of its to keep.
+    const TickResult farewell = lydia.Tick(rules, Facts(false, false, true), 101.0);
+    REQUIRE(farewell.plan.ended);
+    REQUIRE_FALSE(farewell.holds);
 }
 
 TEST_CASE("a list with nothing to ask holds nothing, and says so; held, nothing is said", "[coordinator]")

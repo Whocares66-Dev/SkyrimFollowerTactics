@@ -4797,6 +4797,8 @@ TEST_CASE("a rule's pin is of its list's layer, and a Combat end rule's is the p
     REQUIRE(LayerOf(Moment::Idle, PredicateKind::Any) == Layer::Idle);
     REQUIRE(LayerOf(Moment::Combat, PredicateKind::Any) == Layer::Fight);
     REQUIRE(LayerOf(Moment::Combat, PredicateKind::HealthPctBelow) == Layer::Fight);
+    // Equipping at the start of a fight is wanting the thing for the fight.
+    REQUIRE(LayerOf(Moment::Combat, PredicateKind::CombatBegins) == Layer::Opening);
     // No idle rule, and no longer in a fight.
     REQUIRE(LayerOf(Moment::Combat, PredicateKind::CombatEnds) == Layer::Normal);
 
@@ -4810,5 +4812,34 @@ TEST_CASE("a rule's pin is of its list's layer, and a Combat end rule's is the p
     s.combatEnded = true;
     EvalContext ctx;
     REQUIRE(Evaluate(rs, s, ctx).Fired());
+    REQUIRE(Standing(rs, s, ctx).pins.empty());
+}
+
+TEST_CASE("in a fight the combat list holds its standing equips, and not the opening's", "[equip][standing]")
+{
+    // The bow at the start of the fight, the sword while the enemy is
+    // fresh. The Combat start rule's condition is true for one evaluation;
+    // its pin is the fight's opening and lasts it (LayerOf), so it is not
+    // among what the standing rules hold or let go.
+    Rule opening = Equip(ActionKind::EquipWeapon, kBow, Hand::Both);
+    opening.predicate = PredicateKind::CombatBegins;
+    Rule close = Equip(ActionKind::EquipWeapon, kSword, Hand::Right);
+    close.subject = SubjectKind::Enemy;
+    close.predicate = PredicateKind::HealthPctAbove;
+    close.conditionArg = 0.5f;
+    RuleSet rs;
+    rs.rules.push_back(opening);
+    rs.rules.push_back(close);
+    Snapshot s = Armed();
+    s.enemies.push_back({0x101, {100.0f, 100.0f}, 200.0f});
+    EvalContext ctx;
+
+    Wants wants = Standing(rs, s, ctx);
+    REQUIRE(wants.pins.size() == 1);
+    REQUIRE(wants.pins[0].thing.form == kSword);
+    REQUIRE(wants.pins[0].hands == Hand::Right);
+
+    // The enemy is hurt: the sword rule no longer holds, and nothing does.
+    s.enemies[0].health = {40.0f, 100.0f};
     REQUIRE(Standing(rs, s, ctx).pins.empty());
 }

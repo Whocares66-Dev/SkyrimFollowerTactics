@@ -61,11 +61,13 @@ struct TickResult
     bool completed{false}; // a request ended this turn and its cooldown restarted
     Snapshot snapshot;     // what the evaluation saw, for the log
     Decision decision;     // what it decided
-    // What the idle list's rules hold now (Standing), out of a fight. With
-    // no list to ask -- switched off, or without rules -- the moment's
-    // list holds nothing, and says so, so its pins go. None, and the pins
-    // stand as they are: the actor held, when nothing is asked and nothing
-    // changes, and the combat list, whose pins last the fight.
+    // What the rules of the moment's list hold now (Standing): the idle
+    // list's out of a fight, the combat list's in one. With no list to ask
+    // -- switched off, or without rules -- that list holds nothing, and
+    // says so, so its pins go. None, and the pins stand as they are: the
+    // actor held, when nothing is asked and nothing changes, and the
+    // combat list out of a fight, on its farewell evaluation or with a
+    // Combat end list running on.
     std::optional<ListHolds> holds;
     [[nodiscard]] bool Fired() const noexcept
     {

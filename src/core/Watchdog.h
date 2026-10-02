@@ -18,18 +18,23 @@
 namespace ft
 {
 
-// One actor's book across a fight. On entering a fight the pins are
-// remembered; a rule's pin during the fight goes over them for the fight
-// only, and a request of the Normal layer during it -- the panel's word,
-// the new normal -- goes into the remembered book as well; on leaving,
-// what the fight pinned is let go and what was there before comes back
-// (Settle), and the book is what it was. What was there before is the
-// player's own pins with the idle rules' over them: the idle rules are not
-// asked in a fight, and their pins stand as the fight found them.
+// One actor's books across a fight. On entering a fight the pins are
+// remembered, twice: `before`, what comes back when the fight ends, and
+// `opening`, what the fight's own rules pin over. The two differ by the
+// Combat start rules' pins, which go into `opening` and last the fight; a
+// request of the Normal layer during it -- the panel's word, the new
+// normal -- goes into both. Any other combat rule's pin goes over
+// `opening` in the book in force alone, and lasts while its rule holds
+// (Lapse, against `opening`). On leaving, what the fight pinned is let go
+// and what was there before comes back (Settle), and the book is what it
+// was. What was there before is the player's own pins with the idle rules'
+// over them: the idle rules are not asked in a fight, and their pins stand
+// as the fight found them.
 struct FightBook
 {
     bool fighting{false};
     std::vector<Pin> before;
+    std::vector<Pin> opening;
 
     // The tick's word on whether the actor is fighting. On the edge into
     // a fight the pins are remembered and nothing is returned; on the edge
@@ -37,11 +42,12 @@ struct FightBook
     // returned; between edges, nothing.
     [[nodiscard]] std::optional<Settled> Note(std::vector<Pin> &pins, bool fightingNow);
 
-    // A request of the Normal layer, mirrored into the remembered book
-    // while a fight is on; nothing otherwise, and nothing for a rule's.
+    // A request mirrored into the books that hold its layer while a
+    // fight is on: Normal into both, Opening into `opening`. Nothing
+    // otherwise, and nothing for a standing combat rule's.
     void Mirror(Layer layer, PinRequest request, const Holdable &thing, Hand hands, bool moving, bool dualWield);
-    // A Normal Unequip, the same: what it reaches leaves the remembered
-    // book too.
+    // An Unequip, the same: what it reaches leaves the books that hold its
+    // layer.
     void Release(Layer layer, Kind kind, Hand hands, BodyPart part);
     // A thing no longer carried, or no longer a form: its pin has nothing
     // to hold, here as in the book in force.
@@ -75,18 +81,19 @@ struct IdleBook
 // -- what the watchdog, the score hook and the equip detour read -- and one
 // of these beside it, and asks here for every change to either (game/
 // Pins.cpp), so which books a request is written into, and which book a
-// lapse falls back to, are decided where they are tested. A fight's pins
-// lie over the idle rules', and those over the player's own (Layer,
-// core/Loadout.h).
+// lapse falls back to, are decided where they are tested. In a fight the
+// order is fight over opening over idle over normal; out of one, idle over
+// normal (Layer, core/Loadout.h).
 struct Layers
 {
     IdleBook idle;
     FightBook fight;
 
     // The book a layer's pin lies over, where what it displaces is still
-    // held: the book from before the fight under a combat rule, the
-    // player's own under an idle rule. None for the Normal layer, which
-    // lies over nothing, and none for a fight's out of a fight.
+    // held: the fight's opening under a standing combat rule, the book
+    // from before the fight under a Combat start rule, the player's own
+    // under an idle rule. None for the Normal layer, which lies over
+    // nothing, and none for the fight's layers out of a fight.
     [[nodiscard]] const std::vector<Pin> *Beneath(Layer layer) const noexcept;
 
     // The tick's word on whether the actor is fighting (FightBook::Note).
@@ -109,8 +116,7 @@ struct Layers
     // A list's turn: what its rules hold now (the evaluator's Standing),
     // settled against the book beneath its pins. None when the pins are
     // not the list's to let go: the idle list's in a fight, where they
-    // stand under the fight's, and the combat list's, which last the
-    // fight.
+    // stand under the fight's, and the combat list's out of one.
     [[nodiscard]] std::optional<Settled> Lapse(std::vector<Pin> &pins, bool combatList, const Wants &wants,
                                                bool dualWield);
 
@@ -132,6 +138,7 @@ struct Layers
     {
         std::erase_if(idle.normal, gone);
         std::erase_if(fight.before, gone);
+        std::erase_if(fight.opening, gone);
     }
 };
 
