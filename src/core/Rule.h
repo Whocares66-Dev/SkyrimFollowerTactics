@@ -315,6 +315,14 @@ enum class ActionKind : std::uint8_t
     // A shout (Unrelenting Force): a TESShout record the follower has,
     // through the same Shout package with the shout itself in its input.
     Shout,
+    // A staff carried, named by actionForm as the weapon it is and cast
+    // from a hand it is lent to: its enchantment, paid for from its own
+    // charge. Known while carried, as a scroll is; one with no copy that
+    // can pay for a cast is carried and reported spent. Not through the
+    // UseMagic package, whose spell must be a magic item and whose hand
+    // must hold it (dev/MAGIC.md): begun on the hand's caster, as the
+    // combat AI begins one.
+    UseStaff,
     // A scroll carried, read from a hand through the UseMagic package with
     // the scroll as its spell: no magicka, and the scroll is spent. Named
     // by actionForm; carried scrolls are in the snapshot's known list, as
@@ -353,8 +361,8 @@ enum class ActionKind : std::uint8_t
 [[nodiscard]] bool IsArrowsPolicy(ActionKind action) noexcept;
 [[nodiscard]] ConsumableKind ConsumableOf(ActionKind action) noexcept;
 
-// The four actions that fire through a follower's cast packages: a spell and a
-// scroll from a hand, a power and a shout from the voice.
+// The five casts: a spell, a staff and a scroll from a hand, a power and a
+// shout from the voice.
 [[nodiscard]] bool IsCast(ActionKind action) noexcept;
 
 // The three blows sent to the animation graph: a power attack, a bash, a
@@ -656,8 +664,8 @@ struct RuleSet
 // And an action must make sense on its target: a potion and an equip are
 // the follower's own; Attack and the blows go at an enemy, so they take
 // Enemy or Attacker and nothing else. The casts are aimed anywhere but a
-// corpse (a spell may be); which spells suit which target is the menu's
-// business, since core does not know a spell's delivery.
+// corpse (a spell or a staff may be); which spells suit which target is
+// the menu's business, since core does not know a spell's delivery.
 [[nodiscard]] bool IsActionTargetValidFor(SubjectKind subject, ActionTargetKind target) noexcept;
 
 // Can this condition be negated at all? `Any` is the always-true condition

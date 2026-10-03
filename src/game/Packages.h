@@ -127,7 +127,8 @@ void ProvideCastForms(RE::Actor *actor);
 // type ask this so the power does not vanish from them meanwhile.
 [[nodiscard]] bool IsLeasedPower(std::uint32_t formID);
 
-// Is this follower holding a record right now? The rule engine treats
+// Is this follower mid-cast on one of ours: holding a record, or casting a
+// staff from their own hand (game/PlayerCast.h)? The rule engine treats
 // their cast rules as busy while they are, so a second request during a
 // cast is skipped for that turn without spending a cooldown.
 [[nodiscard]] bool IsMidCast(const RE::Actor *actor);
@@ -135,7 +136,8 @@ void ProvideCastForms(RE::Actor *actor);
 // Is this form what a record leased to the follower casts right now: a
 // cast slot's spell, a shout slot's shout, or the wrapper and the power
 // behind it? The package's own equip of it, on its way to casting, is
-// ours, and the equip detours let it through a ban or a pinned hand.
+// ours, and the equip detours let it through a ban or a pinned hand. The
+// same for a staff their hand was lent, and what the hand gets back.
 [[nodiscard]] bool IsOurCast(const RE::Actor *actor, std::uint32_t formID);
 
 enum class CastRequest : std::uint8_t

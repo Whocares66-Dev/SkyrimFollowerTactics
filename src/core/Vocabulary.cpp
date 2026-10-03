@@ -128,7 +128,7 @@ constexpr std::array<Entry<ActionTargetKind>, 7> kActionTargets{{
     {ActionTargetKind::Corpse, "corpse", N_("Corpse")},
 }};
 
-constexpr std::array<Entry<ActionKind>, 33> kActions{{
+constexpr std::array<Entry<ActionKind>, 34> kActions{{
     // The consumable slugs name the SELECTION POLICY, not just the item
     // type, because that is part of the behaviour a profile is asking for:
     // "drink-weakest" -- don't burn a strong potion on a scratch -- beside
@@ -165,6 +165,7 @@ constexpr std::array<Entry<ActionKind>, 33> kActions{{
     {ActionKind::CastSpell, "cast-spell", N_("Cast spell")},
     {ActionKind::UsePower, "use-power", N_("Use power")},
     {ActionKind::Shout, "shout", N_("Shout")},
+    {ActionKind::UseStaff, "use-staff", N_("Staff")},
     {ActionKind::UseScroll, "use-scroll", N_("Scroll")},
 }};
 

@@ -15,7 +15,7 @@ void Begin(CastState &run, CastStep step, double now) noexcept
 
 } // namespace
 
-std::vector<OwnFire> CastOwnFires(bool voice, Hand hand, std::uint32_t form)
+std::vector<OwnFire> CastOwnFires(bool voice, Hand hand, std::optional<std::uint32_t> form)
 {
     // The voice's fire says nothing of what went off; the run is the only
     // voice of the player's in flight.

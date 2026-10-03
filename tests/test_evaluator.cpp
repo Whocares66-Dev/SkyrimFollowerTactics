@@ -1871,6 +1871,54 @@ TEST_CASE("a power is used like a cast: known, not running, not mid-cast, free o
     REQUIRE(ConsumableOf(ActionKind::DrinkStrongest) == ConsumableKind::Potion);
 }
 
+TEST_CASE("a staff is cast while carried and charged, whatever magicka there is", "[spell]")
+{
+    constexpr std::uint32_t kStaffOfMagelight = 0x00029B94;
+
+    RuleSet rs;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Any;
+    r.actionTarget = ActionTargetKind::Player;
+    r.FirstAction().kind = ActionKind::UseStaff;
+    r.FirstAction().form = kStaffOfMagelight;
+    rs.rules.push_back(r);
+
+    Snapshot s = Healthy();
+    s.magicka.current = 0.0f; // a staff pays from its own charge
+    EvalContext ctx;
+
+    Trace trace;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::NoResource);
+    REQUIRE(std::string(Explain(Verdict::NoResource, ActionKind::UseStaff)) == "does not carry that staff");
+
+    // Carried with no copy that can pay: it waits on a soul gem, and says so
+    // rather than "not enough magicka".
+    s.spells.known.push_back(kStaffOfMagelight);
+    s.spells.spent.push_back(kStaffOfMagelight);
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::CannotAfford);
+    REQUIRE(std::string(Explain(Verdict::CannotAfford, ActionKind::UseStaff)) == "not enough charge");
+    REQUIRE(std::string(Explain(Verdict::CannotAfford, ActionKind::CastSpell)) == "not enough magicka");
+
+    s.spells.spent.clear();
+    REQUIRE(Evaluate(rs, s, ctx, &trace).ruleIndex == 0);
+
+    // Aimed wherever a spell is.
+    REQUIRE(IsCast(ActionKind::UseStaff));
+    REQUIRE(NamesForm(ActionKind::UseStaff));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Self, ActionKind::UseStaff));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Enemy, ActionKind::UseStaff));
+    REQUIRE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::UseStaff));
+
+    // The follower's own cast in progress is left to finish, as for a spell.
+    s.now += 10.0;
+    s.traits.status |= Bit(StatusKind::Casting);
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::Casting);
+}
+
 TEST_CASE("a spell the follower does not know is not castable", "[spell]")
 {
     // Distinct from EffectActive on purpose: "never learned it" and "learned
@@ -2963,12 +3011,30 @@ TEST_CASE("a corpse is bound by level, within what the rule's spell can raise", 
     REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
     REQUIRE(trace.at(0) == Verdict::Unsupported);
 
-    // The corpse's questions are its own, and only a spell goes at one.
+    // A staff that raises is aimed at a corpse as the spell is, bound the
+    // same way; one that does not is as unsupported there.
+    constexpr std::uint32_t kStaffOfZombies = 0x000BE121;
+    s.now += 10.0;
+    rs.rules[0].FirstAction().kind = ActionKind::UseStaff;
+    rs.rules[0].FirstAction().form = kStaffOfZombies;
+    s.spells.known.push_back(kStaffOfZombies);
+    REQUIRE_FALSE(Evaluate(rs, s, ctx, &trace).Fired());
+    REQUIRE(trace.at(0) == Verdict::Unsupported);
+    s.spells.casts.push_back({kStaffOfZombies, SpellState::Reach::Target, true});
+    Lands(s, kStaffOfZombies, kBandit, true);
+    Lands(s, kStaffOfZombies, kGiant, false);
+    const Decision raised = Evaluate(rs, s, ctx, &trace);
+    REQUIRE(raised.ruleIndex == 0);
+    REQUIRE(raised.step->target == kBandit);
+
+    // The corpse's questions are its own, and only a spell or a staff goes
+    // at one.
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Corpse, PredicateKind::HealthPctBelow));
     REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::LevelHighest));
     REQUIRE(IsActionTargetValidFor(SubjectKind::Corpse, ActionTargetKind::Corpse));
     REQUIRE_FALSE(IsActionTargetValidFor(SubjectKind::Enemy, ActionTargetKind::Corpse));
     REQUIRE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::CastSpell));
+    REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::UseScroll));
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::Shout));
     REQUIRE_FALSE(IsActionValidFor(ActionTargetKind::Corpse, ActionKind::Attack));
 }

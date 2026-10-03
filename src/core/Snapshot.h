@@ -518,6 +518,17 @@ struct SpellState
         return std::find(usedToday.begin(), usedToday.end(), form) != usedToday.end();
     }
 
+    // The staves carried that cannot pay for a cast: no copy holds the
+    // charge one use costs THEM. The game judges it, since the cost is the
+    // enchantment's with their perks and the charge is a copy's, or the
+    // hand's for one in hand (game/Bag.h, ChargeOf).
+    std::vector<std::uint32_t> spent;
+
+    [[nodiscard]] bool Spent(std::uint32_t form) const
+    {
+        return std::find(spent.begin(), spent.end(), form) != spent.end();
+    }
+
     // What each known spell costs THEM, in magicka, with their perks and skill
     // already applied. The game computes it; core only compares it against
     // the magicka they have, so a cast rule they cannot afford is reported as

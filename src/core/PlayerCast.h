@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -142,11 +143,12 @@ struct CastSeen
     int ownFires{0};              // our spell's fire events, or the voice's, the watch has heard
 };
 
-// The run's watch on the player's graph: the fires that are its own -- the
+// The run's watch on the caster's graph: the fires that are its own -- the
 // spell leaving a hand the run takes, or the voice going off, whatever it
 // was -- and what steps it: the lent hands' equip's end, while it waits
-// for one.
-[[nodiscard]] std::vector<OwnFire> CastOwnFires(bool voice, Hand hand, std::uint32_t form);
+// for one. No form is any fire from the hand: a staff's, whose hand the
+// run holds, and what its slot names as it fires is not yet seen in play.
+[[nodiscard]] std::vector<OwnFire> CastOwnFires(bool voice, Hand hand, std::optional<std::uint32_t> form);
 [[nodiscard]] GraphTags CastWakes(CastStep step) noexcept;
 void Hear(CastSeen &seen, const Heard &heard) noexcept;
 

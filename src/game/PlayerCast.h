@@ -39,6 +39,22 @@
 // A scroll is a spell record that is also an item: lent to the hand as the
 // item, cast by the same press, spent by the engine.
 //
+// A staff is a weapon whose cast is its enchantment's, made by the caster
+// of the hand that holds it as a spell's is: lent to the hand as the weapon,
+// the copy that can pay for the cast, begun and released as a spell, and
+// paid for from its own charge.
+//
+// A FOLLOWER'S STAFF is the same run on their body, lent and given back by
+// the same equips. Their UseMagic record takes no staff (dev/MAGIC.md, "A
+// staff"), so it is cast as their combat AI casts its own: where the
+// player's is pressed, the hand's caster is asked to begin, with the
+// enchantment and whom it is at (addr::kRequestCast, the handler's own
+// call beneath the press); where the player's is released, the hand's
+// release action goes, or the stream is ended. No package holds their AI
+// off meanwhile: its other casts stand down (game/AiScore.h) and its
+// equips into the hands are refused (game/Pins.h) for as long as the run
+// lasts.
+//
 // The player's own press of the same button lands in the same state machine
 // and stands: their release fires or cancels ours.
 
@@ -67,7 +83,7 @@ enum class PlayerCastRequest : std::uint8_t
 {
     Started,        // the first step has run; rule.resolved says what came of it
     AlreadyCasting, // one of ours is in flight; one at a time
-    SpellMissing    // the form is not a spell, power or shout
+    SpellMissing    // the form is not a spell, power or shout, or a staff carried with a use left
 };
 
 [[nodiscard]] const char *ToString(PlayerCastRequest r) noexcept;
@@ -84,21 +100,36 @@ enum class PlayerCastRequest : std::uint8_t
 [[nodiscard]] PlayerCastRequest RequestPlayerVoice(RE::Actor *player, std::uint32_t formID, int ruleIndex,
                                                    std::string_view ruleName);
 
+// A staff carried, from a hand: the one it is in, else the right, which
+// leaves a shield where it is. The player's by the press and aimed by
+// them; a follower's by their hand's caster at targetId, themself for one
+// cast on oneself. sustainSeconds as for a spell. Game thread.
+[[nodiscard]] PlayerCastRequest RequestStaffCast(RE::Actor *actor, std::uint32_t staffFormID, std::uint32_t targetId,
+                                                 float sustainSeconds, int ruleIndex, std::string_view ruleName);
+
 // Is one of ours in flight? The player's rules wait meanwhile. Game thread.
 [[nodiscard]] bool IsPlayerMidCast();
+
+// Is a cast from this actor's own hand in flight: the player's, or a
+// follower's staff? Any thread.
+[[nodiscard]] bool IsMidHandCast(const RE::Actor *actor);
+
+// Is this form the staff such a cast lent their hand, or what the hand
+// held before and gets back? Those equips are ours. Any thread.
+[[nodiscard]] bool IsHandCastEquip(const RE::Actor *actor, std::uint32_t formID);
 
 // Any thread: the pacing thread asks it to decide whether the fast tick is
 // wanted.
 [[nodiscard]] bool AnyPlayerCastInFlight() noexcept;
 
-// Advance the cast in flight by a step where it can go on. Game thread.
+// Advance each cast in flight by a step where it can go on. Game thread.
 void TickPlayerCasts(double now);
 
-// End the cast in flight now: a press not yet released is released, the
+// End every cast in flight now: a press not yet released is released, the
 // hands are given back. For the save message.
 void EndAllPlayerCasts(const char *why);
 
-// Forget the cast in flight. For a game load: nothing of the old game is
+// Forget the casts in flight. For a game load: nothing of the old game is
 // touched.
 void ResetPlayerCasts();
 

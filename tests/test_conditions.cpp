@@ -437,9 +437,9 @@ TEST_CASE("every verdict has a word, plain and for each action", "[vocabulary]")
         REQUIRE_FALSE(plain.empty());
         REQUIRE(plain != "?");
         for (const auto action :
-             {ActionKind::None, ActionKind::CastSpell, ActionKind::UseScroll, ActionKind::EquipArrows,
-              ActionKind::EquipArmor, ActionKind::PowerAttack, ActionKind::Bash, ActionKind::ApplyPoison,
-              ActionKind::ChargeSoulGem, ActionKind::DrinkStrongest})
+             {ActionKind::None, ActionKind::CastSpell, ActionKind::UseStaff, ActionKind::UseScroll,
+              ActionKind::EquipArrows, ActionKind::EquipArmor, ActionKind::PowerAttack, ActionKind::Bash,
+              ActionKind::ApplyPoison, ActionKind::ChargeSoulGem, ActionKind::DrinkStrongest})
         {
             const std::string worded = Explain(verdict, action);
             REQUIRE_FALSE(worded.empty());

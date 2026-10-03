@@ -304,11 +304,16 @@ void AddEffectPicks(std::vector<ft::EffectPick> &into, const std::vector<SpellOp
         if (option.kind == ft::ConsumableKind::Potion || option.kind == ft::ConsumableKind::Food)
             add(RE::TESForm::LookupByID<RE::AlchemyItem>(option.form));
     }
-    // A scroll is its spell's pick.
+    // A scroll is its spell's pick, a staff its enchantment's.
     for (const auto &option : spells)
     {
         if (option.kind == SpellOption::Kind::Spell || option.kind == SpellOption::Kind::Scroll)
             addAs(RE::TESForm::LookupByID<RE::MagicItem>(option.form), option.selfOnly);
+        else if (option.kind == SpellOption::Kind::Staff)
+        {
+            const auto *staff = RE::TESForm::LookupByID<RE::TESObjectWEAP>(option.form);
+            addAs(staff ? staff->formEnchanting : nullptr, option.selfOnly);
+        }
         else if (option.kind == SpellOption::Kind::Power)
             add(RE::TESForm::LookupByID<RE::SpellItem>(option.form));
         else if (option.kind == SpellOption::Kind::Shout)
@@ -433,13 +438,16 @@ namespace
 {
 
 // What a rule's cast of the form casts: a spell or a scroll itself, a shout
-// by the word its action shouts, the highest unlocked.
+// by the word its action shouts, the highest unlocked, a staff by its
+// enchantment.
 RE::MagicItem *CastItemOf(RE::TESForm *form)
 {
     RE::MagicItem *item = form ? form->As<RE::MagicItem>() : nullptr;
     if (auto *shout = form ? form->As<RE::TESShout>() : nullptr)
         if (const int word = HighestUnlockedWord(shout); word >= 0)
             item = shout->variations[word].spell;
+    if (auto *weapon = form ? form->As<RE::TESObjectWEAP>() : nullptr; weapon && weapon->IsStaff())
+        item = weapon->formEnchanting;
     return item;
 }
 
@@ -453,7 +461,7 @@ RE::MagicItem *CastItemOf(RE::TESForm *form)
 // alone; singly, and dual cast where they can. Each effect as the engine
 // lands it (LandsOn), which for a Reanimate is the corpse's fitness and its
 // level against the magnitude. Nothing for a form that is not a spell, a
-// scroll, a power or a shout: core then takes it to act.
+// scroll, a staff, a power or a shout: core then takes it to act.
 void AddLandings(RE::Actor *caster, std::uint32_t id, ft::Snapshot &s)
 {
     auto *form = RE::TESForm::LookupByID(id);
@@ -471,12 +479,15 @@ void AddLandings(RE::Actor *caster, std::uint32_t id, ft::Snapshot &s)
     const bool raises = std::ranges::any_of(ResolvedEffects(*item), IsReanimate);
     const bool concentration = item->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
     // What running there is this cast's: a shout's, from any of its words,
-    // an aspect shouted at word one being up all the same.
+    // an aspect shouted at word one being up all the same; a staff's, from
+    // its enchantment, the staff's own form being a weapon's.
     std::vector<std::uint32_t> from;
     if (auto *shout = form->As<RE::TESShout>())
         for (const auto &variation : shout->variations)
             if (variation.spell)
                 from.push_back(variation.spell->GetFormID());
+    if (form->Is(RE::FormType::Weapon))
+        from.push_back(item->GetFormID());
     s.spells.casts.push_back({id, reach, raises, area, concentration, std::move(from)});
     if (reach == Reach::Place)
         return;

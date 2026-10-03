@@ -293,14 +293,16 @@ const ActorView *Select(const std::vector<ActorView> &group, const Rule &r, cons
     return best;
 }
 
-// The rule's first cast of a spell that raises (SpellState::Cast::raises):
-// the corpses are those it would raise, as the engine judges each -- its
-// level against the magnitude, its fitness to rise (OutcomeOn). A
-// rule with none -- one that conjures, say -- sees every corpse.
+// The rule's first cast of a spell or a staff that raises
+// (SpellState::Cast::raises): the corpses are those it would raise, as the
+// engine judges each -- its level against the magnitude, its fitness to
+// rise (OutcomeOn). A rule with none -- one that conjures, say -- sees
+// every corpse.
 const Action *FirstRaise(const Rule &r, const Snapshot &s)
 {
     for (const auto &a : r.actions)
-        if (a.kind == ActionKind::CastSpell && a.form != 0 && s.spells.Raises(a.form))
+        if (a.form != 0 && IsCast(a.kind) && IsActionValidFor(ActionTargetKind::Corpse, a.kind) &&
+            s.spells.Raises(a.form))
             return &a;
     return nullptr;
 }
@@ -794,6 +796,8 @@ Verdict CastAvailability(const Action &a, const Snapshot &snap)
     }
     if (a.kind == ActionKind::UsePower && snap.spells.UsedToday(a.form))
         return Verdict::PowerUsed;
+    if (a.kind == ActionKind::UseStaff && snap.spells.Spent(a.form))
+        return Verdict::CannotAfford;
     if (snap.traits.Has(StatusKind::Casting))
         return Verdict::Casting;
     if (a.kind == ActionKind::Shout && snap.voiceRecovery > 0.0f)
@@ -862,11 +866,11 @@ Verdict Availability(const Action &a, const Snapshot &snap, const EvalContext &c
     // is as unfireable as an action this runtime cannot do.
     if (a.kind == ActionKind::None || !ctx.caps.Supports(a.kind) || !IsActionValidFor(aimedAt, a.kind))
         return Verdict::Unsupported;
-    // Only a Reanimate goes at a corpse: a spell with the Reanimate
-    // archetype, the record property the engine raises by. The menu offers
-    // nothing else there; a hand-edited profile that aims Firebolt at a
-    // corpse is as unfireable.
-    if (aimedAt == ActionTargetKind::Corpse && a.kind == ActionKind::CastSpell && !snap.spells.Raises(a.form))
+    // Only a Reanimate goes at a corpse: a spell or a staff with the
+    // Reanimate archetype, the record property the engine raises by. The
+    // menu offers nothing else there; a hand-edited profile that aims
+    // Firebolt at a corpse is as unfireable.
+    if (aimedAt == ActionTargetKind::Corpse && !snap.spells.Raises(a.form))
         return Verdict::Unsupported;
     if (ctx.caps.Busy(a.kind))
         return Verdict::Busy;
@@ -1271,6 +1275,8 @@ const char *Explain(Verdict v, ActionKind action) noexcept
             return N_("does not know that power");
         case ActionKind::Shout:
             return N_("does not know that shout");
+        case ActionKind::UseStaff:
+            return N_("does not carry that staff");
         case ActionKind::UseScroll:
             return N_("does not carry that scroll");
         case ActionKind::EquipWeapon:
@@ -1293,6 +1299,12 @@ const char *Explain(Verdict v, ActionKind action) noexcept
 
     case Verdict::NoMeleeWeapon:
         return action == ActionKind::PowerAttack ? N_("nothing to power attack with") : N_("nothing to bash with");
+
+    case Verdict::CannotAfford:
+        // A staff pays from its own charge, not from magicka.
+        if (action == ActionKind::UseStaff)
+            return N_("not enough charge");
+        return ToString(v);
 
     case Verdict::NothingToPoison:
         return N_("no weapon in hand can be poisoned");

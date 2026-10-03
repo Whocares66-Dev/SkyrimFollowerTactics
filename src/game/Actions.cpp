@@ -493,6 +493,41 @@ ActionResult CastByRecord(RE::Actor *actor, const ft::Action &action, ft::ActorI
     return ResultOf(request);
 }
 
+// A follower's staff, from their own hand (game/PlayerCast.h). Aimed as a
+// cast by record is: one cast on oneself at the follower; anything else at
+// whom the rule aimed it, and aimed at themself or at no one, at their own
+// feet for one that goes on a place and at the enemy they are engaging
+// otherwise.
+ActionResult StaffByHand(RE::Actor *actor, const ft::Action &action, ft::ActorId target, int ruleIndex,
+                         std::string_view ruleName)
+{
+    const auto *staff = RE::TESForm::LookupByID<RE::TESObjectWEAP>(action.form);
+    const auto *enchantment = staff && staff->IsStaff() ? staff->formEnchanting : nullptr;
+    if (!enchantment)
+        return ActionResult::MissingItem;
+    std::uint32_t targetId = actor->GetFormID();
+    if (enchantment->GetDelivery() != RE::MagicSystem::Delivery::kSelf)
+    {
+        const bool atOwnFeet =
+            target == actor->GetFormID() && enchantment->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation;
+        if (target != 0 && target != actor->GetFormID() && RE::TESForm::LookupByID<RE::Actor>(target))
+            targetId = target;
+        else if (!atOwnFeet)
+        {
+            auto enemy = actor->GetActorRuntimeData().currentCombatTarget.get();
+            if (!enemy)
+            {
+                log::actions.debug("staff: {} needs a target and the follower is fighting no one", log::NameOf(staff));
+                return ActionResult::NoTarget;
+            }
+            targetId = enemy->GetFormID();
+        }
+    }
+    const auto request = RequestStaffCast(actor, action.form, targetId, action.arg, ruleIndex, ruleName);
+    log::actions.debug("staff: {}", ToString(request));
+    return ResultOf(request);
+}
+
 // A pin, in the same book as the panel's, or the player's plain equip.
 // Naming nothing lets go of every pin of the kind -- in the hand named,
 // for a weapon or a spell -- and takes those things off, so the AI decides
@@ -568,12 +603,17 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
     case ft::Route::Charge:
         return ChargeWeapon(actor, action.form);
     case ft::Route::CastPress: {
-        const auto request = RequestPlayerCast(actor, action.form, action.arg, action.dual, ruleIndex, ruleName);
+        // The player aims for themself: a staff's target is not read.
+        const auto request = action.kind == ft::ActionKind::UseStaff
+                                 ? RequestStaffCast(actor, action.form, 0, action.arg, ruleIndex, ruleName)
+                                 : RequestPlayerCast(actor, action.form, action.arg, action.dual, ruleIndex, ruleName);
         log::actions.debug("cast on the player: {}", ToString(request));
         return ResultOf(request);
     }
     case ft::Route::CastRecord:
         return CastByRecord(actor, action, target, ruleIndex, ruleName);
+    case ft::Route::CastHand:
+        return StaffByHand(actor, action, target, ruleIndex, ruleName);
     case ft::Route::VoicePress:
     case ft::Route::VoiceRecord: {
         auto *form = VoiceForm(action);

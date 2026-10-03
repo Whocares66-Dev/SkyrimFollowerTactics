@@ -18,6 +18,14 @@ SpellsKnown ClassifySpells(std::span<const SpellSeen> seen)
             if (s.carried > 0)
                 out.known.push_back(s.id);
             break;
+        case SpellSeen::Kind::Staff:
+            if (s.carried > 0)
+            {
+                out.known.push_back(s.id);
+                if (!s.charged)
+                    out.spent.push_back(s.id);
+            }
+            break;
         case SpellSeen::Kind::Power:
             out.known.push_back(s.id);
             if (s.greater && s.usedToday)
@@ -33,6 +41,21 @@ SpellsKnown ClassifySpells(std::span<const SpellSeen> seen)
         }
     }
     return out;
+}
+
+std::optional<std::size_t> StaffCopyToCast(std::span<const StaffCopy> copies, float cost) noexcept
+{
+    std::optional<std::size_t> best;
+    for (std::size_t i = 0; i < copies.size(); ++i)
+    {
+        if (copies[i].charge < cost)
+            continue;
+        if (copies[i].inHand)
+            return i;
+        if (!best || copies[i].charge > copies[*best].charge)
+            best = i;
+    }
+    return best;
 }
 
 float RemainingOn(std::span<const EffectSeen> effects, std::span<const std::uint32_t> sources) noexcept

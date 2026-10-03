@@ -16,6 +16,7 @@
 #include "game/Sheet.h"
 
 #include "game/Packages.h"
+#include "game/PlayerCast.h"
 
 #include "game/Bag.h"
 #include "game/Tactics.h"
@@ -2041,6 +2042,19 @@ bool Refused(RE::Actor *actor, RE::TESForm *form, RE::ExtraDataList *&extra, con
     // dresses them as it likes until they rejoin (Pins.h).
     if (!actor->IsPlayerTeammate() || IsOurCast(actor, form->GetFormID()))
         return false;
+    // A staff a rule is casting holds the hands until it has gone off: a
+    // package's cast has the AI out of them (IgnoreCombat), and a hand's
+    // has only this. A bound weapon passes, as below.
+    if (IsMidHandCast(actor) && (form->IsWeapon() || form->Is(RE::FormType::Spell) || form->Is(RE::FormType::Light) ||
+                                 (form->IsArmor() && form->As<RE::TESObjectARMO>()->IsShield())))
+    {
+        if (const auto *weapon = form->As<RE::TESObjectWEAP>(); !weapon || !weapon->IsBound())
+        {
+            log::pins.debug("{} the engine equips {} while a staff is being cast -- refused", Describe(actor),
+                            log::NameOf(form));
+            return true;
+        }
+    }
     std::scoped_lock lock(g_pinMutex);
     static const std::vector<Pin> kNoPins;
     static const Bans kNoBans;

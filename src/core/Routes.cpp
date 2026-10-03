@@ -38,6 +38,9 @@ Route RouteOf(ActionKind kind, Performer performer) noexcept
     case ActionKind::CastSpell:
     case ActionKind::UseScroll:
         return player ? Route::CastPress : Route::CastRecord;
+    case ActionKind::UseStaff:
+        // The UseMagic record takes no staff (dev/MAGIC.md).
+        return player ? Route::CastPress : Route::CastHand;
     case ActionKind::UsePower:
     case ActionKind::Shout:
         return player ? Route::VoicePress : Route::VoiceRecord;

@@ -176,6 +176,15 @@ inline constexpr REL::RelocationID kMarkValueStale{37534, 38483};
 inline constexpr REL::RelocationID kHitHandler{37673, 38627};
 inline constexpr REL::VariantOffset kHitHandlerVictimCall{0x3C0, 0x4A8, 0};
 
+// MagicCaster's request to cast (caster, magic item, target reference,
+// a flag every caller read passes clear): prices the item for the caster's
+// actor, refuses a caster with a spell in flight, else sets the spell and
+// the desired target, state Start, and calls RequestCastImpl. What begins
+// every hand cast: the player's attack handler's (42417 on AE), the
+// UseMagic procedure's (29346) and the combat AI's own (49083), which is
+// how a follower's staff is begun (PlayerCast.cpp, dev/MAGIC.md "A staff").
+inline constexpr REL::RelocationID kRequestCast{33623, 34401};
+
 // The combat AI's item count and its rebuild (dev/COMBAT_AI.md 0): a staff
 // copy below its enchantment's cost counts as no copy, the cost asked of
 // MagicItem::CalculateMagickaCost with a null caster at one call in each --

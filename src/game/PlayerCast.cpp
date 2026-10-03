@@ -2,6 +2,7 @@
 
 #include "core/PlayerCast.h"
 #include "game/Actions.h"
+#include "game/Addresses.h"
 #include "game/Bag.h"
 #include "game/Graph.h"
 #include "game/Log.h"
@@ -11,8 +12,10 @@
 #include "game/Tactics.h"
 #include "game/Util.h"
 
+#include <algorithm>
 #include <atomic>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -22,8 +25,8 @@ namespace
 {
 
 // The steps, their windows and the run's standing are core's
-// (core/PlayerCast.h, AdvancePlayerCast); this reads the player and
-// sends the presses and the equips.
+// (core/PlayerCast.h, AdvancePlayerCast); this reads the caster and
+// sends the presses, or a follower's calls in their place, and the equips.
 // How long a concentration spell's stream is held with no time named by the
 // rule. The same default a follower's stream takes (game/Packages.cpp).
 constexpr float kDefaultSustainSeconds = 3.0f;
@@ -46,8 +49,15 @@ struct Run
 {
     // The run's standing: the step, the times, the outcome, the reason.
     ft::CastState state;
+    // Whose body: the player's, or a follower's for a staff.
+    std::uint32_t actor = 0;
     std::uint32_t form = 0;
-    RE::MagicItem *spell = nullptr; // the spell, or a power; a shout's first word
+    RE::MagicItem *spell = nullptr; // the spell, or a power; a shout's first word; a staff's enchantment
+    // A staff: what the hand is lent, where a spell is lent as itself.
+    RE::TESObjectWEAP *staff = nullptr;
+    // A follower's: whom it is aimed at. The player aims for themself.
+    std::uint32_t target = 0;
+    float chargeAtRequest = 0.0f; // a staff's
     RE::TESForm *voiceForm = nullptr;
     // The hand the cast is from -- Left, Right, or Both for a two-handed
     // spell -- and the caster asked about it: the left's for both, which is
@@ -66,10 +76,30 @@ struct Run
     ft::GraphWatch watch;
 };
 
-// One at a time: the player has one body. Game thread; the flag is the
-// pacing thread's.
-std::optional<Run> g_run;
+// One at a time on a body: the player's, and each follower's for a staff.
+// The game thread's, which reads them without the lock and takes it to add
+// or drop one; the equip detour and the AI's score ask whose hands a run
+// holds from the threads the engine calls them on, and take it shared. The
+// flag is the pacing thread's.
+std::vector<Run> g_runs;
+std::shared_mutex g_runsMutex;
 std::atomic<bool> g_inFlight{false};
+
+Run *RunOf(const RE::Actor *actor)
+{
+    if (!actor)
+        return nullptr;
+    const auto it = std::ranges::find(g_runs, actor->GetFormID(), &Run::actor);
+    return it != g_runs.end() ? &*it : nullptr;
+}
+
+// What the run casts, by the name the rule has for it.
+const RE::TESForm *Named(const Run &run)
+{
+    if (run.staff)
+        return run.staff;
+    return run.voiceForm ? run.voiceForm : run.spell;
+}
 
 // --- the handler ------------------------------------------------------------
 
@@ -254,11 +284,18 @@ Held HeldIn(RE::Actor *player, bool left)
     return held;
 }
 
-// Is the spell in the hands the run wants?
+// Is this hand holding what the run casts from it: the staff itself, or
+// the spell?
+bool PlacedIn(RE::Actor *player, const Run &run, bool left)
+{
+    return run.staff ? player->GetEquippedObject(left) == run.staff : SpellIn(player, left) == run.spell;
+}
+
+// Is it in the hands the run wants?
 bool SpellPlaced(RE::Actor *player, const Run &run)
 {
     for (const bool left : {true, false})
-        if (Takes(run.hand, left) && SpellIn(player, left) != run.spell)
+        if (Takes(run.hand, left) && !PlacedIn(player, run, left))
             return false;
     return true;
 }
@@ -268,11 +305,11 @@ void Lend(RE::Actor *player, Run &run)
 {
     auto *manager = RE::ActorEquipManager::GetSingleton();
     auto *spell = run.spell ? run.spell->As<RE::SpellItem>() : nullptr;
-    if (!manager || !spell)
+    if (!manager || (!spell && !run.staff))
         return;
     for (const bool left : {true, false})
     {
-        if (!Takes(run.hand, left) || SpellIn(player, left) == run.spell)
+        if (!Takes(run.hand, left) || PlacedIn(player, run, left))
             continue;
         run.before[left ? 0 : 1] = HeldIn(player, left);
         run.lent[left ? 0 : 1] = true;
@@ -284,11 +321,21 @@ void Lend(RE::Actor *player, Run &run)
                : h.item     ? log::NameOf(h.item)
                             : std::string("nothing");
     };
-    log::player.debug("{}: lending {} the {} hand (left held {}, right held {})", Describe(player), log::NameOf(spell),
+    log::player.debug("{}: lending {} the {} hand (left held {}, right held {})", Describe(player),
+                      log::NameOf(Named(run)),
                       run.hand == ft::Hand::Both   ? "both"
                       : run.hand == ft::Hand::Left ? "left"
                                                    : "right",
                       heldText(0), heldText(1));
+    // A staff goes into the hand as the weapon it is: the copy that can pay
+    // for the cast, by its list in the bag, now.
+    if (run.staff)
+    {
+        manager->EquipObject(player, run.staff, StaffCastOf(player, run.staff).list, 1,
+                             Slot(run.hand == ft::Hand::Right ? kRightHandSlot : kLeftHandSlot),
+                             /*queueEquip*/ false, /*forceEquip*/ false, /*playSounds*/ false, /*applyNow*/ false);
+        return;
+    }
     // A scroll goes into the hand as the item it is, one copy, now.
     if (spell->Is(RE::FormType::Scroll))
     {
@@ -368,7 +415,7 @@ void Restore(RE::Actor *player, Run &run)
             // chose, and a spell it has just cast is the least surprising thing
             // to find there.
             log::player.debug("{}: {} left in the {} hand, which held nothing", Describe(player),
-                              log::NameOf(run.spell), step.left ? "left" : "right");
+                              log::NameOf(Named(run)), step.left ? "left" : "right");
             break;
         }
     }
@@ -493,6 +540,44 @@ const char *Refused(RE::MagicCaster *caster, RE::MagicItem *spell)
     return CannotCastText(static_cast<std::uint32_t>(reason));
 }
 
+// --- a follower's hand ------------------------------------------------------
+
+// A follower's begin, where the player's is a press: the request the
+// handler makes of the hand's caster beneath that press, and the combat
+// AI's own casters make of it (addr::kRequestCast) -- the item, whom it is
+// at, and the charge started. With nothing set to skip the caster's checks,
+// so the staff pays as it does in the AI's hands.
+void BeginOnCaster(RE::Actor *actor, RE::MagicCaster *caster, const Run &run)
+{
+    auto *target = RE::TESForm::LookupByID<RE::TESObjectREFR>(run.target);
+    using Request = bool(RE::MagicCaster *, RE::MagicItem *, RE::TESObjectREFR *, bool);
+    static REL::Relocation<Request *> request{addr::kRequestCast};
+    const bool began = caster && run.spell && request(caster, run.spell, target ? target : actor, false);
+    log::player.debug("{}: asked the {} hand's caster for {} at {} -- {}", Describe(actor),
+                      run.hand == ft::Hand::Left ? "left" : "right", log::NameOf(Named(run)),
+                      log::NameOf(target ? target : actor), began ? "begun" : "turned away");
+}
+
+// A follower's release: the hand's release action at Ready, which the
+// UseMagic procedure sends to fire the cast it began (29346 on AE) and the
+// combat AI sends as a CombatAnimation; a stream is ended as the procedure
+// ends one. Also what cancels a cast begun and not yet released.
+void ReleaseOnCaster(RE::Actor *actor, RE::MagicCaster *caster, const Run &run, bool fire)
+{
+    if (!caster)
+        return;
+    if (!fire || run.state.sustained)
+    {
+        caster->InterruptCast(false);
+        return;
+    }
+    const bool taken = RE::CombatAnimation::Execute(actor, run.hand == ft::Hand::Left
+                                                               ? RE::CombatAnimation::ANIM::kActionLeftRelease
+                                                               : RE::CombatAnimation::ANIM::kActionRightRelease);
+    log::player.debug("{}: the {} hand's release{}", Describe(actor), run.hand == ft::Hand::Left ? "left" : "right",
+                      taken ? "" : " was turned away");
+}
+
 // --- the run ----------------------------------------------------------------
 
 const char *HandName(const Run &run)
@@ -508,7 +593,9 @@ void Report(const Run &run, RE::Actor *player, double now)
     const float magickaNow = player ? player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagicka) : -1.0f;
     std::vector<log::Field> fields{{"ruleIndex", run.ruleIndex},
                                    {"ruleName", run.ruleName},
-                                   {"kind", run.state.voice ? "voice" : "cast"},
+                                   {"kind", run.state.voice ? "voice"
+                                            : run.staff     ? "staff"
+                                                            : "cast"},
                                    {"outcome", run.state.fired ? "cast" : "not-cast"},
                                    {"reason", run.state.reason},
                                    {"durationS", now - run.state.requestedAt}};
@@ -530,17 +617,28 @@ void Report(const Run &run, RE::Actor *player, double now)
     }
     fields.emplace_back("magickaAtRequest", static_cast<double>(run.magickaAtRequest));
     fields.emplace_back("magickaAtEnd", static_cast<double>(magickaNow));
+    // A staff pays from its own charge: the copy's that the cast took, read
+    // again now, wherever it has gone.
+    const float chargeNow = run.staff && player ? StaffCastOf(player, run.staff).charge : -1.0f;
+    if (run.staff)
+    {
+        fields.emplace_back("chargeAtRequest", static_cast<double>(run.chargeAtRequest));
+        fields.emplace_back("chargeAtEnd", static_cast<double>(chargeNow));
+    }
     log::player.event(log::Level::Info, "rule.resolved", player, fields,
                       "{} rule {} \"{}\": {} {} -- {}, after {:.2f} s ({} hand{}{}; settled at {:.2f} s, pressed at "
                       "{:.2f} s, ready at {:.2f} s, released at {:.2f} s, fired at {:.2f} s; caster state reached {}; "
-                      "magicka {:.0f} -> {:.0f})",
-                      player ? log::NameOf(player) : "the player", run.ruleIndex, run.ruleName,
-                      run.state.voice ? "power or shout" : "cast", run.state.fired ? "cast" : "not cast",
-                      run.state.reason, now - run.state.requestedAt, HandName(run),
-                      run.state.drew ? ", drawn for it" : "",
+                      "{} {:.0f} -> {:.0f})",
+                      player ? log::NameOf(player) : "the caster", run.ruleIndex, run.ruleName,
+                      run.state.voice ? "power or shout"
+                      : run.staff     ? "staff"
+                                      : "cast",
+                      run.state.fired ? "cast" : "not cast", run.state.reason, now - run.state.requestedAt,
+                      HandName(run), run.state.drew ? ", drawn for it" : "",
                       (run.lent[0] || run.lent[1] || run.voiceLent) ? ", lent" : "", since(run.state.settledAt),
                       since(run.state.pressedAt), since(run.state.readyAt), since(run.state.releasedAt),
-                      since(run.state.firedAt), run.state.highestState, run.magickaAtRequest, magickaNow);
+                      since(run.state.firedAt), run.state.highestState, run.staff ? "charge" : "magicka",
+                      run.staff ? run.chargeAtRequest : run.magickaAtRequest, run.staff ? chargeNow : magickaNow);
 }
 
 // Let go of a press not yet released -- at Ready that fires, earlier it
@@ -549,13 +647,16 @@ void Finish(Run &run, RE::Actor *player, const char *reason, double now)
 {
     if (run.state.reason.empty())
         run.state.reason = reason;
-    log::player.debug("{}: over while {} -- {}", player ? Describe(player) : "the player", ft::ToString(run.state.step),
+    log::player.debug("{}: over while {} -- {}", player ? Describe(player) : "the caster", ft::ToString(run.state.step),
                       run.state.reason);
     if (player && run.state.pressed && !run.state.released)
     {
         run.state.released = true;
         run.state.releasedAt = now;
-        ReleaseFor(run, now);
+        if (player->IsPlayerRef())
+            ReleaseFor(run, now);
+        else if (auto *caster = CasterOf(player, run); !Idle(caster))
+            ReleaseOnCaster(player, caster, run, /*fire*/ false);
     }
     if (player)
     {
@@ -575,6 +676,10 @@ const char *Advance(Run &run, RE::Actor *player, double now)
     auto *state = player ? player->AsActorState() : nullptr;
     if (player && !state)
         return "no actor state";
+    // The presses are the player's; a follower's caster is asked itself.
+    const bool byPress = player && player->IsPlayerRef();
+    if (player && !byPress && (player->IsDead() || !player->Is3DLoaded()))
+        return "the caster is dead or gone";
     seen.player = player != nullptr;
     RE::MagicCaster *caster = nullptr;
     if (player)
@@ -599,7 +704,7 @@ const char *Advance(Run &run, RE::Actor *player, double now)
                           Idle(player->GetMagicCaster(RE::MagicSystem::CastingSource::kOther));
         seen.attacking = state->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone;
         seen.blocking = player->IsBlocking();
-        seen.buttonHeld = ButtonHeld(AttackHandler(), true) || ButtonHeld(AttackHandler(), false);
+        seen.buttonHeld = byPress && (ButtonHeld(AttackHandler(), true) || ButtonHeld(AttackHandler(), false));
         // Asked of the engine only where the step would press.
         if (run.state.step == ft::CastStep::Pressing)
             seen.refusal = Refused(caster, run.spell);
@@ -626,18 +731,32 @@ const char *Advance(Run &run, RE::Actor *player, double now)
             player->DrawWeaponMagicHands(true);
             break;
         case ft::CastCommand::Press:
+            if (!byPress)
+            {
+                BeginOnCaster(player, caster, run);
+                break;
+            }
             PressFor(run);
-            log::player.debug("{}: pressed for {} ({} hand{})", Describe(player),
-                              log::NameOf(run.voiceForm ? run.voiceForm : run.spell), HandName(run),
-                              run.state.dual ? ", dual" : "");
+            log::player.debug("{}: pressed for {} ({} hand{})", Describe(player), log::NameOf(Named(run)),
+                              HandName(run), run.state.dual ? ", dual" : "");
             break;
         case ft::CastCommand::HoldPress:
             SendButton(VoiceHandler(), ShoutControl(), 1.0f, static_cast<float>(now - run.state.pressedAt));
             break;
         case ft::CastCommand::ReplayPress:
-            SendHand(PressedHand(run), 1.0f, static_cast<float>(now - run.state.pressedAt));
+            // Sent while the caster has not begun: the player's held button,
+            // and a follower's request again where it was turned away.
+            if (byPress)
+                SendHand(PressedHand(run), 1.0f, static_cast<float>(now - run.state.pressedAt));
+            else
+                BeginOnCaster(player, caster, run);
             break;
         case ft::CastCommand::Release:
+            if (!byPress)
+            {
+                ReleaseOnCaster(player, caster, run, /*fire*/ true);
+                break;
+            }
             ReleaseFor(run, now);
             if (run.state.voice)
                 log::player.debug("{}: after the release: {}", Describe(player), VoiceText(player, caster, run.spell));
@@ -650,22 +769,49 @@ const char *Advance(Run &run, RE::Actor *player, double now)
     return ft::AdvancePlayerCast(run.state, seen, now, perform);
 }
 
+// One run's step; true when it is over, finished and reported.
+bool Step(Run &run, double now)
+{
+    auto *actor = RE::TESForm::LookupByID<RE::Actor>(run.actor);
+    if (const char *over = Advance(run, actor, now))
+    {
+        Finish(run, actor, over, now);
+        return true;
+    }
+    run.watch.SetWakes(ft::CastWakes(run.state.step));
+    return false;
+}
+
+void Drop(std::size_t index)
+{
+    std::unique_lock lock(g_runsMutex);
+    g_runs.erase(g_runs.begin() + static_cast<std::ptrdiff_t>(index));
+    g_inFlight.store(!g_runs.empty(), std::memory_order_relaxed);
+}
+
 PlayerCastRequest Start(RE::Actor *player, Run run)
 {
-    if (g_run)
+    if (RunOf(player))
         return PlayerCastRequest::AlreadyCasting;
+    run.actor = player->GetFormID();
     run.state.requestedAt = TacticsSeconds();
     run.state.stepAt = run.state.requestedAt;
     run.magickaAtRequest = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagicka);
-    run.watch =
-        WatchGraph(player, ft::CastWakes(run.state.step), ft::CastOwnFires(run.state.voice, run.hand, run.form));
-    g_run = std::move(run);
-    g_inFlight.store(true, std::memory_order_relaxed);
-    log::player.debug("{}: {} requested from the {} hand", Describe(player),
-                      log::NameOf(g_run->voiceForm ? g_run->voiceForm : g_run->spell), HandName(*g_run));
+    // A staff's fire is any from the hand it is in: what the hand's slot
+    // names as it fires is not yet seen in play, and the run holds the hand.
+    run.watch = WatchGraph(
+        player, ft::CastWakes(run.state.step),
+        ft::CastOwnFires(run.state.voice, run.hand, run.staff ? std::nullopt : std::optional<std::uint32_t>(run.form)));
+    log::player.debug("{}: {} requested from the {} hand", Describe(player), log::NameOf(Named(run)), HandName(run));
+    {
+        std::unique_lock lock(g_runsMutex);
+        g_runs.push_back(std::move(run));
+        g_inFlight.store(true, std::memory_order_relaxed);
+    }
     // The first step now rather than on the next fast tick: a spell already
     // in a drawn hand is pressed on this frame.
-    TickPlayerCasts(g_run->state.requestedAt);
+    if (Step(g_runs.back(), g_runs.back().state.requestedAt))
+        Drop(g_runs.size() - 1);
     return PlayerCastRequest::Started;
 }
 
@@ -707,7 +853,7 @@ const char *ToString(PlayerCastRequest r) noexcept
     case PlayerCastRequest::AlreadyCasting:
         return "a cast of ours is in flight";
     case PlayerCastRequest::SpellMissing:
-        return "not a spell, power or shout";
+        return "not a spell, power or shout, or a staff carried with a use left";
     }
     return "?";
 }
@@ -760,9 +906,59 @@ PlayerCastRequest RequestPlayerVoice(RE::Actor *player, std::uint32_t formID, in
     return Start(player, std::move(run));
 }
 
+PlayerCastRequest RequestStaffCast(RE::Actor *actor, std::uint32_t staffFormID, std::uint32_t targetId,
+                                   float sustainSeconds, int ruleIndex, std::string_view ruleName)
+{
+    if (!actor)
+        return PlayerCastRequest::SpellMissing;
+    auto *staff = RE::TESForm::LookupByID<RE::TESObjectWEAP>(staffFormID);
+    const StaffCast copy = StaffCastOf(actor, staff);
+    if (!copy.enchantment || !copy.canPay)
+        return PlayerCastRequest::SpellMissing;
+    Run run;
+    run.form = staffFormID;
+    run.staff = staff;
+    run.spell = copy.enchantment;
+    run.target = targetId;
+    run.chargeAtRequest = copy.charge;
+    // The hand it is in. One from the bag goes to the right, which leaves a
+    // shield where it is -- or to the left, where the right holds another
+    // copy of it, one that cannot pay.
+    run.hand = copy.hand != ft::Hand::None                ? copy.hand
+               : actor->GetEquippedObject(false) == staff ? ft::Hand::Left
+                                                          : ft::Hand::Right;
+    run.source = run.hand == ft::Hand::Right ? RE::MagicSystem::CastingSource::kRightHand
+                                             : RE::MagicSystem::CastingSource::kLeftHand;
+    run.state.sustained = copy.enchantment->GetCastingType() == RE::MagicSystem::CastingType::kConcentration;
+    run.state.sustain = sustainSeconds > 0.0f ? sustainSeconds : kDefaultSustainSeconds;
+    run.state.chargeTime = copy.enchantment->GetChargeTime();
+    run.ruleIndex = ruleIndex;
+    run.ruleName = ruleName;
+    return Start(actor, std::move(run));
+}
+
 bool IsPlayerMidCast()
 {
-    return g_run.has_value();
+    return RunOf(RE::PlayerCharacter::GetSingleton()) != nullptr;
+}
+
+bool IsMidHandCast(const RE::Actor *actor)
+{
+    std::shared_lock lock(g_runsMutex);
+    return RunOf(actor) != nullptr;
+}
+
+bool IsHandCastEquip(const RE::Actor *actor, std::uint32_t formID)
+{
+    std::shared_lock lock(g_runsMutex);
+    const Run *run = formID != 0 ? RunOf(actor) : nullptr;
+    if (!run)
+        return false;
+    if (run->staff && run->staff->GetFormID() == formID)
+        return true;
+    return std::ranges::any_of(run->before, [formID](const Held &held) {
+        return (held.spell && held.spell->GetFormID() == formID) || (held.item && held.item->GetFormID() == formID);
+    });
 }
 
 bool AnyPlayerCastInFlight() noexcept
@@ -772,31 +968,30 @@ bool AnyPlayerCastInFlight() noexcept
 
 void TickPlayerCasts(double now)
 {
-    if (!g_run)
-        return;
-    auto *player = RE::PlayerCharacter::GetSingleton();
-    if (const char *over = Advance(*g_run, player, now))
+    for (std::size_t i = 0; i < g_runs.size();)
     {
-        Finish(*g_run, player, over, now);
-        g_run.reset();
-        g_inFlight.store(false, std::memory_order_relaxed);
-        return;
+        if (Step(g_runs[i], now))
+            Drop(i);
+        else
+            ++i;
     }
-    g_run->watch.SetWakes(ft::CastWakes(g_run->state.step));
 }
 
 void EndAllPlayerCasts(const char *why)
 {
-    if (!g_run)
-        return;
-    Finish(*g_run, RE::PlayerCharacter::GetSingleton(), why, TacticsSeconds());
-    g_run.reset();
-    g_inFlight.store(false, std::memory_order_relaxed);
+    const double now = TacticsSeconds();
+    while (!g_runs.empty())
+    {
+        Run &run = g_runs.back();
+        Finish(run, RE::TESForm::LookupByID<RE::Actor>(run.actor), why, now);
+        Drop(g_runs.size() - 1);
+    }
 }
 
 void ResetPlayerCasts()
 {
-    g_run.reset();
+    std::unique_lock lock(g_runsMutex);
+    g_runs.clear();
     g_inFlight.store(false, std::memory_order_relaxed);
 }
 

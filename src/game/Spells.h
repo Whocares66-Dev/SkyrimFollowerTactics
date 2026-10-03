@@ -86,14 +86,15 @@ struct SpellOption
     bool reanimate{false};
     // CanDualCast's answer; the Dual Cast menu lists these and no other.
     bool dualCast{false};
-    // Which menu lists it: Cast spell, Use power, or Shout. One list
-    // because all three are found by the same walk of what they know.
+    // Which menu lists it: Cast, Staff, Scroll, Shout or Power. One list:
+    // the cast menus are drawn the same way, each over its own kind.
     enum class Kind : std::uint8_t
     {
         Spell,
         Power,
         Shout,
-        Scroll // carried, not known: read once and spent
+        Scroll, // carried, not known: read once and spent
+        Staff   // carried: the weapon's form, cast by its enchantment from its own charge
     };
     Kind kind{Kind::Spell};
     // Which school the spell and equip menus group it under, by the

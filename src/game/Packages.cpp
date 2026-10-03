@@ -6,6 +6,7 @@
 #include "game/Graph.h"
 #include "game/Log.h"
 #include "game/Magic.h"
+#include "game/PlayerCast.h"
 #include "game/Sheet.h"
 #include "game/Spells.h"
 #include "game/Tactics.h"
@@ -898,11 +899,13 @@ const char *ToString(CastRequest r) noexcept
 
 bool IsMidCast(const RE::Actor *actor)
 {
-    return g_available && actor && AlreadyCasting(SharedKitOf(actor->GetFormID()));
+    return IsMidHandCast(actor) || (g_available && actor && AlreadyCasting(SharedKitOf(actor->GetFormID())));
 }
 
 bool IsOurCast(const RE::Actor *actor, std::uint32_t formID)
 {
+    if (IsHandCastEquip(actor, formID))
+        return true;
     const Kit *kit = g_available && actor && formID != 0 ? SharedKitOf(actor->GetFormID()) : nullptr;
     if (!kit)
         return false;

@@ -166,6 +166,23 @@ struct WeaponCharge
 };
 [[nodiscard]] WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand);
 
+// The copy of a staff a cast takes (core/Spells.h, StaffCopyToCast): the
+// enchantment it casts, what one use costs this actor -- the enchantment's
+// cost with their perks, which is what the caster charges -- and where the
+// copy is: the hand it is in, or the bag, with its list there (null for a
+// listless copy, which has never been used and is full). `canPay` false is
+// a staff with no copy holding a use.
+struct StaffCast
+{
+    RE::EnchantmentItem *enchantment{nullptr};
+    float cost{0.0f};
+    bool canPay{false};
+    Hand hand{Hand::None};
+    RE::ExtraDataList *list{nullptr};
+    float charge{0.0f};
+};
+[[nodiscard]] StaffCast StaffCastOf(RE::Actor *actor, RE::TESObjectWEAP *staff);
+
 // The weapon in a hand, enchanted or not; null for no weapon there.
 [[nodiscard]] RE::TESObjectWEAP *WeaponIn(RE::Actor *actor, bool left);
 

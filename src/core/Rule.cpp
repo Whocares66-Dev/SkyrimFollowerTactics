@@ -154,7 +154,7 @@ ConsumableKind ConsumableOf(ActionKind action) noexcept
 bool IsCast(ActionKind action) noexcept
 {
     return action == ActionKind::CastSpell || action == ActionKind::UsePower || action == ActionKind::Shout ||
-           action == ActionKind::UseScroll;
+           action == ActionKind::UseStaff || action == ActionKind::UseScroll;
 }
 
 bool IsBlow(ActionKind action) noexcept
@@ -242,11 +242,15 @@ bool IsActionValidFor(ActionTargetKind target, ActionKind action) noexcept
     {
     case ActionKind::None:
     case ActionKind::CastSpell:
+    // A staff is aimed as a spell is, a corpse included: a Staff of Zombies
+    // raises as Raise Zombie does.
+    case ActionKind::UseStaff:
         return true;
     case ActionKind::UsePower:
     case ActionKind::Shout:
     case ActionKind::UseScroll:
-        // Aimed anywhere but at a corpse: a Reanimate is a spell.
+        // Aimed anywhere but at a corpse: a Reanimate is a spell or a
+        // staff's.
         return target != ActionTargetKind::Corpse;
     case ActionKind::Attack:
     case ActionKind::PowerAttack:

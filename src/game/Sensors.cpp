@@ -416,6 +416,25 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
         fact.carried = entry.first;
         seen.push_back(fact);
     }
+    // The staves carried, by the weapon's own form, which is what a Staff
+    // rule names. Whether a copy can pay is asked only of one a rule names
+    // (Sensors.h): it walks the staff's copies.
+    for (const auto &[object, entry] : actor->GetInventory([](RE::TESBoundObject &obj) {
+             const auto *weapon = obj.As<RE::TESObjectWEAP>();
+             return weapon && weapon->IsStaff();
+         }))
+    {
+        auto *staff = object ? object->As<RE::TESObjectWEAP>() : nullptr;
+        if (!staff)
+            continue;
+        ft::SpellSeen fact;
+        fact.id = staff->GetFormID();
+        fact.kind = ft::SpellSeen::Kind::Staff;
+        fact.carried = entry.first;
+        if (std::find(priced.begin(), priced.end(), fact.id) != priced.end())
+            fact.charged = StaffCastOf(actor, staff).canPay;
+        seen.push_back(fact);
+    }
     std::unordered_map<std::uint32_t, RE::SpellItem *> spellsById;
     ForEachSpell(actor, [&](RE::SpellItem *spell) {
         ft::SpellSeen fact;
@@ -436,6 +455,7 @@ ft::Snapshot BuildSnapshot(RE::Actor *actor, double now, const std::vector<std::
     const ft::SpellsKnown known = ft::ClassifySpells(seen);
     s.spells.known.insert(s.spells.known.end(), known.known.begin(), known.known.end());
     s.spells.usedToday.insert(s.spells.usedToday.end(), known.usedToday.begin(), known.usedToday.end());
+    s.spells.spent.insert(s.spells.spent.end(), known.spent.begin(), known.spent.end());
     for (const std::uint32_t id : known.castable)
     {
         RE::SpellItem *spell = spellsById[id];

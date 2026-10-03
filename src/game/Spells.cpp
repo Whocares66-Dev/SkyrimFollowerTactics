@@ -228,6 +228,27 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
                                   SpellOption::Kind::Scroll, SchoolOfSpell(scroll)});
     }
 
+    // The staves carried, by the enchantment's delivery. One out of charge
+    // is offered all the same: a soul gem is all its rule waits on.
+    for (const auto &[object, entry] : actor->GetInventory([](RE::TESBoundObject &obj) {
+             const auto *weapon = obj.As<RE::TESObjectWEAP>();
+             return weapon && weapon->IsStaff();
+         }))
+    {
+        auto *staff = object ? object->As<RE::TESObjectWEAP>() : nullptr;
+        const auto *enchantment = staff ? staff->formEnchanting : nullptr;
+        if (!enchantment || entry.first <= 0)
+            continue;
+        std::string name = NameOr(staff, "");
+        if (name.empty())
+            continue;
+        const bool reanimate = std::ranges::any_of(ResolvedEffects(*enchantment), IsReanimate);
+        out.push_back(SpellOption{staff->GetFormID(), std::move(name),
+                                  enchantment->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
+                                  enchantment->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
+                                  false, SpellOption::Kind::Staff, SchoolOfSpell(enchantment)});
+    }
+
     // The shouts on the base record. A shout's delivery is its first word's
     // spell's: Whirlwind Sprint and Become Ethereal are Self, the rest aimed.
     if (auto *npc = actor->GetActorBase())

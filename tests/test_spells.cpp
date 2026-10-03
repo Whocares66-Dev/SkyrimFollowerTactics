@@ -31,6 +31,16 @@ SpellSeen Scroll(std::uint32_t id, int carried)
     return s;
 }
 
+SpellSeen Staff(std::uint32_t id, int carried, bool charged)
+{
+    SpellSeen s;
+    s.id = id;
+    s.kind = SpellSeen::Kind::Staff;
+    s.carried = carried;
+    s.charged = charged;
+    return s;
+}
+
 SpellSeen Power(std::uint32_t id, bool greater, bool usedToday)
 {
     SpellSeen s;
@@ -64,6 +74,33 @@ TEST_CASE("known: a shout with a word, a scroll carried, a power, a castable spe
     REQUIRE(known.usedToday == std::vector<std::uint32_t>{0xE40C3});
     REQUIRE(known.castable == std::vector<std::uint32_t>{0x12FCD});
     REQUIRE(ClassifySpells({}).known.empty());
+}
+
+TEST_CASE("a staff is known while carried, and one that cannot pay for a cast is spent as well", "[spells]")
+{
+    const std::vector<SpellSeen> seen{Staff(0x29B73, 1, true), Staff(0x29B74, 2, false), Staff(0x29B75, 0, true),
+                                      Staff(0x29B76, 0, false)};
+    const SpellsKnown known = ClassifySpells(seen);
+    REQUIRE(known.known == std::vector<std::uint32_t>{0x29B73, 0x29B74});
+    // Not one no longer carried: its rule names nothing, and says that.
+    REQUIRE(known.spent == std::vector<std::uint32_t>{0x29B74});
+    REQUIRE(known.castable.empty());
+}
+
+TEST_CASE("a cast takes the staff in hand that can pay, else the fullest in the bag", "[spells]")
+{
+    using Copies = std::vector<StaffCopy>;
+    // In the bag: the fullest, the first of equals.
+    REQUIRE(StaffCopyToCast(Copies{{false, 100.0f}, {false, 400.0f}, {false, 400.0f}}, 50.0f) == 1);
+    // One in hand needs no equip, however much fuller the bag's.
+    REQUIRE(StaffCopyToCast(Copies{{false, 400.0f}, {true, 60.0f}}, 50.0f) == 1);
+    // Unless it cannot pay: then the bag's.
+    REQUIRE(StaffCopyToCast(Copies{{true, 40.0f}, {false, 400.0f}}, 50.0f) == 1);
+    // Exactly the cost pays.
+    REQUIRE(StaffCopyToCast(Copies{{false, 50.0f}}, 50.0f) == 0);
+    // None can: spent.
+    REQUIRE_FALSE(StaffCopyToCast(Copies{{true, 40.0f}, {false, 49.0f}}, 50.0f));
+    REQUIRE_FALSE(StaffCopyToCast(Copies{}, 50.0f));
 }
 
 TEST_CASE("the time left on a source's effect: the longest, none for an unrelated or instant one", "[spells]")

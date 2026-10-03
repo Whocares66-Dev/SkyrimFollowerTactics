@@ -42,6 +42,7 @@ TEST_CASE("the player does all but Attack, and only their casts and equips go an
         switch (Follower(kind))
         {
         case Route::CastRecord:
+        case Route::CastHand:
             REQUIRE(Player(kind) == Route::CastPress);
             break;
         case Route::VoiceRecord:
@@ -77,6 +78,8 @@ TEST_CASE("the kinds a policy resolves to one thing share their thing's route", 
         REQUIRE(Follower(kind) == Route::Pin);
     REQUIRE(Follower(ActionKind::CastSpell) == Route::CastRecord);
     REQUIRE(Follower(ActionKind::UseScroll) == Route::CastRecord);
+    // A staff is a hand's cast and not the record's, which takes none.
+    REQUIRE(Follower(ActionKind::UseStaff) == Route::CastHand);
     REQUIRE(Follower(ActionKind::UsePower) == Route::VoiceRecord);
     REQUIRE(Follower(ActionKind::Shout) == Route::VoiceRecord);
     REQUIRE(Follower(ActionKind::Attack) == Route::Target);

@@ -48,7 +48,8 @@ bool TakesSpell(ft::ActionKind action)
 }
 
 // Which of the spell menu's kinds an action picks from: a power for Use
-// power, a shout for Shout, a scroll for Scroll, a spell for the rest.
+// power, a shout for Shout, a staff for Staff, a scroll for Scroll, a spell
+// for the rest.
 SpellOption::Kind SpellKindOf(ft::ActionKind action)
 {
     switch (action)
@@ -57,6 +58,8 @@ SpellOption::Kind SpellKindOf(ft::ActionKind action)
         return SpellOption::Kind::Power;
     case ft::ActionKind::Shout:
         return SpellOption::Kind::Shout;
+    case ft::ActionKind::UseStaff:
+        return SpellOption::Kind::Staff;
     case ft::ActionKind::UseScroll:
         return SpellOption::Kind::Scroll;
     default:
@@ -785,6 +788,7 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
     for (const CastMenu menu :
          {CastMenu{Tr("Cast"), ft::ActionKind::CastSpell, false},
           CastMenu{Tr("Dual Cast"), ft::ActionKind::CastSpell, true},
+          CastMenu{Tr("Staff"), ft::ActionKind::UseStaff, false},
           CastMenu{Tr("Scroll"), ft::ActionKind::UseScroll, false}, CastMenu{Tr("Shout"), ft::ActionKind::Shout, false},
           CastMenu{Tr("Power"), ft::ActionKind::UsePower, false}})
     {
@@ -805,9 +809,9 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
         }
         if (suited.empty())
             continue;
-        // The hand's casts -- spells, scrolls -- then the voice's, a
-        // divider between.
-        if (!enter(action == ft::ActionKind::CastSpell || action == ft::ActionKind::UseScroll ? 2 : 3))
+        // The hand's casts -- spells, staves, scrolls -- then the voice's,
+        // a divider between.
+        if (!enter(action == ft::ActionKind::Shout || action == ft::ActionKind::UsePower ? 3 : 2))
             return true;
         if (!BeginCascade(menu.label))
             continue;

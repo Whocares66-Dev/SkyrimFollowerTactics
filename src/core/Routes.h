@@ -28,6 +28,7 @@ enum class Route : std::uint8_t
     Charge,      // a soul gem into the weapon in hand
     CastRecord,  // a follower's spell or scroll: their UseMagic record
     CastPress,   // the player's: a press of the hand's control
+    CastHand,    // a follower's staff: begun on the hand's caster, as their combat AI begins one
     VoiceRecord, // a follower's power or shout: their Shout record
     VoicePress,  // the player's: a press of the shout control
     Pin,         // a follower's equip, kept against their AI

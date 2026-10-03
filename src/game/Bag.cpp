@@ -316,39 +316,62 @@ RE::TESObjectWEAP *WeaponIn(RE::Actor *actor, bool left)
     return weapon;
 }
 
+namespace
+{
+
+// A copy's enchantment, full charge and what is left of it, as its list
+// has them: the record's enchantment and full charge, or a player-made
+// one's on the list (ExtraEnchantment carries both); what is left is
+// ExtraCharge, absent for a weapon never used. The same reading as the
+// engine's recharge routine. No list is the record's own, full.
+struct CopyCharge
+{
+    RE::EnchantmentItem *enchantment{nullptr};
+    float max{0.0f};
+    float charge{0.0f};
+};
+
+void ReadCharge(CopyCharge &copy, const RE::ExtraDataList *list)
+{
+    if (!list)
+        return;
+    if (auto *xEnch = list->GetByType<RE::ExtraEnchantment>(); xEnch && xEnch->enchantment)
+    {
+        copy.enchantment = xEnch->enchantment;
+        copy.max = static_cast<float>(xEnch->charge);
+        copy.charge = copy.max;
+    }
+    if (auto *xCharge = list->GetByType<RE::ExtraCharge>())
+        copy.charge = xCharge->charge;
+}
+
+CopyCharge RecordCharge(const RE::TESObjectWEAP *weapon)
+{
+    const auto max = static_cast<float>(weapon->amountofEnchantment);
+    return {weapon->formEnchanting, max, max};
+}
+
+} // namespace
+
 WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand)
 {
     WeaponCharge out;
     if (!actor || !weapon)
         return out;
 
-    // The record's enchantment and full charge, or a player-made one's on
-    // the copy's list (ExtraEnchantment carries both). What is left is
-    // ExtraCharge, absent for a weapon never used. The same reading as
-    // the engine's recharge routine. In a hand, that hand's copy; in the
-    // bag, whichever lists the entry has.
-    RE::EnchantmentItem *ench = weapon->formEnchanting;
-    float max = static_cast<float>(weapon->amountofEnchantment);
-    float charge = max;
-    const auto read = [&](const RE::ExtraDataList *list) {
-        if (!list)
-            return;
-        if (auto *xEnch = list->GetByType<RE::ExtraEnchantment>(); xEnch && xEnch->enchantment)
-        {
-            ench = xEnch->enchantment;
-            max = static_cast<float>(xEnch->charge);
-            charge = max;
-        }
-        if (auto *xCharge = list->GetByType<RE::ExtraCharge>())
-            charge = xCharge->charge;
-    };
+    // In a hand, that hand's copy; in the bag, whichever lists the entry
+    // has.
+    CopyCharge copy = RecordCharge(weapon);
     if (hand != Hand::None)
-        read(WornList(actor, weapon, hand));
+        ReadCharge(copy, WornList(actor, weapon, hand));
     else if (const Carried carried = CarriedOf(actor, weapon); carried.entry && carried.entry->extraLists)
     {
         for (auto *list : *carried.entry->extraLists)
-            read(list);
+            ReadCharge(copy, list);
     }
+    RE::EnchantmentItem *ench = copy.enchantment;
+    const float max = copy.max;
+    float charge = copy.charge;
     if (!ench || max <= 0.0f)
         return out;
     // In hand, the live charge is an ACTOR VALUE -- RightItemCharge or
@@ -371,6 +394,65 @@ WeaponCharge ChargeOf(RE::Actor *actor, RE::TESObjectWEAP *weapon, Hand hand)
     out.maxCharge = max;
     out.costPerHit = ench->CalculateMagickaCost(actor);
 
+    return out;
+}
+
+StaffCast StaffCastOf(RE::Actor *actor, RE::TESObjectWEAP *staff)
+{
+    StaffCast out;
+    if (!actor || !staff || !staff->IsStaff())
+        return out;
+    // Every copy: the hands' first, the right before the left, then the
+    // bag's rows and the listless remainder. Which is taken is core's.
+    struct Where
+    {
+        Hand hand{Hand::None};
+        RE::ExtraDataList *list{nullptr};
+        RE::EnchantmentItem *enchantment{nullptr};
+    };
+    std::vector<ft::StaffCopy> copies;
+    std::vector<Where> where;
+    for (const Hand hand : {Hand::Right, Hand::Left})
+    {
+        if (actor->GetEquippedObject(hand == Hand::Left) != staff)
+            continue;
+        CopyCharge copy = RecordCharge(staff);
+        ReadCharge(copy, WornList(actor, staff, hand));
+        // The live charge of a copy in hand is the hand's (ChargeOf).
+        copies.push_back({true, ChargeOf(actor, staff, hand).charge});
+        where.push_back({hand, nullptr, copy.enchantment});
+    }
+    const Bag bag = ViewBag(actor, staff);
+    for (std::size_t i = 0; i < bag.view.rows.size(); ++i)
+    {
+        if (bag.view.rows[i].wornRight || bag.view.rows[i].wornLeft)
+            continue;
+        CopyCharge copy = RecordCharge(staff);
+        ReadCharge(copy, bag.lists[i]);
+        copies.push_back({false, copy.charge});
+        where.push_back({Hand::None, bag.lists[i], copy.enchantment});
+    }
+    if (bag.view.HasListlessCopy())
+    {
+        const CopyCharge copy = RecordCharge(staff);
+        copies.push_back({false, copy.charge});
+        where.push_back({Hand::None, nullptr, copy.enchantment});
+    }
+    if (copies.empty())
+        return out;
+    // One enchantment prices them all: a staff's is its record's, and the
+    // copies of one record differ only in what is left.
+    out.enchantment = where.front().enchantment;
+    if (!out.enchantment)
+        return out;
+    out.cost = out.enchantment->CalculateMagickaCost(actor);
+    const auto pick = ft::StaffCopyToCast(copies, out.cost);
+    out.canPay = pick.has_value();
+    const std::size_t chosen = pick.value_or(0);
+    out.hand = where[chosen].hand;
+    out.list = where[chosen].list;
+    out.enchantment = where[chosen].enchantment ? where[chosen].enchantment : out.enchantment;
+    out.charge = copies[chosen].charge;
     return out;
 }
 

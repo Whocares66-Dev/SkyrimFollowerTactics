@@ -320,6 +320,11 @@ TEST_CASE("a player's cast's own fires: the hands it takes, or the voice", "[gra
     REQUIRE(voice.size() == 1);
     REQUIRE(has(voice, GraphTag::SpellFireVoice, std::nullopt));
     REQUIRE(CastOwnFires(false, Hand::None, kSpell).empty());
+    // A staff's: any fire from the hand it is in.
+    const auto staff = CastOwnFires(false, Hand::Right, std::nullopt);
+    REQUIRE(staff.size() == 1);
+    REQUIRE(staff[0].tag == GraphTag::SpellFireRight);
+    REQUIRE_FALSE(staff[0].form);
 }
 
 TEST_CASE("a follower's lease's own fires: its spell from either hand, and its shout from the voice", "[graph]")
