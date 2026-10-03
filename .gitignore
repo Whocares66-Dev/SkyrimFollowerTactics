@@ -73,3 +73,7 @@ CrashLogger/
 
 # A local scratchpad for review notes, not part of the tree.
 dev/REVIEW.md
+
+# The trailer's working files: Blender scenes, the storyboard, staging scripts.
+# Local, and not part of the tree; ignored, ruff leaves its scripts alone too.
+/youtube/
