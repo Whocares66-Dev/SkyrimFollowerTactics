@@ -207,6 +207,18 @@ const char *AdvancePlayerCast(CastState &run, const CastSeen &seen, double now,
             Begin(run, CastStep::Firing, now);
             return nullptr;
         }
+        // A fire with no release of ours: the cast went off without waiting
+        // on one -- the player's own letting go at Ready, or a cast that
+        // holds for none, which a staff's may be (not yet seen in play).
+        // Either way it is cast, and the caster idle after it is not a
+        // charge cut short.
+        if (!run.sustained && fireSeen)
+        {
+            run.fired = true;
+            run.firedAt = now;
+            Begin(run, CastStep::Restoring, now);
+            return nullptr;
+        }
         // With a spell in each hand the handler holds a single press back,
         // waiting for the other hand inside its pairing window, and replays
         // it as a plain press only once a hold outlasts the window

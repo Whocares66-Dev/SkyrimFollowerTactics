@@ -415,6 +415,26 @@ TEST_CASE("released and nothing fired: ended without firing, or never fired", "[
     REQUIRE(Over(AdvancePlayerCast(fired, gone, 103.0, sent.Fn())) == "player vanished");
 }
 
+TEST_CASE("a fire before the release is the cast gone off, not a charge cut short", "[playercast]")
+{
+    CastState run = Spell();
+    Sent sent;
+    REQUIRE_FALSE(AdvancePlayerCast(run, Free(), 100.0, sent.Fn()));
+    REQUIRE_FALSE(AdvancePlayerCast(run, Charging(), 100.1, sent.Fn()));
+    // Never seen at Ready: by the next reading it has fired and is idle.
+    CastSeen gone = Free();
+    gone.ownFires = 1;
+    REQUIRE_FALSE(AdvancePlayerCast(run, gone, 100.3, sent.Fn()));
+    REQUIRE(run.fired);
+    REQUIRE(run.firedAt == 100.3);
+    REQUIRE_FALSE(run.released);
+    REQUIRE(run.step == CastStep::Restoring);
+    REQUIRE(Over(AdvancePlayerCast(run, gone, 100.35, sent.Fn())) == "spell fired");
+    // Nothing was released by the run; the game lets go of the press as it
+    // ends any run that pressed and did not.
+    REQUIRE(sent.Last() != CastCommand::Release);
+}
+
 TEST_CASE("each step has a name for the log", "[playercast]")
 {
     REQUIRE(std::string(ToString(CastStep::Lending)) == "lending");
