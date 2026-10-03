@@ -267,9 +267,14 @@ void ReadPlaces(RE::Actor *actor, ft::Snapshot &s)
     s.places |= ft::PlacesUp(chain);
     // The weather out of doors only. Indoors the sky keeps the weather
     // outside, and a cell flagged to show the sky -- Breezehome, the inns,
-    // many caves -- is under a roof all the same.
+    // many caves -- is under a roof all the same. So is a cave built as a
+    // worldspace, whose cells are exteriors: one flagged No Sky (Blackreach,
+    // whose falling spores are Snow to the engine), or one with a lighting
+    // template, which the engine shows the sky dome and lets nothing fall in
+    // (Darkwater Pass, Labyrinthian's halls; dev/CONDITIONS.md 2d).
+    const bool roofed = world && (world->flags.any(RE::TESWorldSpace::Flag::kNoSky) || world->lightingTemplate);
     s.weather = 0;
-    if (const auto *sky = RE::Sky::GetSingleton(); sky && s.At(K::Exterior))
+    if (const auto *sky = RE::Sky::GetSingleton(); sky && outdoors && !roofed)
     {
         ft::Sky read;
         read.current = Blended(sky->currentWeather);
