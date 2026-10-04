@@ -128,12 +128,14 @@ TEST_CASE("Location is the idle list's alone", "[idle][validity]")
     REQUIRE(trace.at(0) == Verdict::InvalidCondition);
 }
 
-TEST_CASE("Time and Weather are the idle list's alone, as Location is", "[idle][validity]")
+TEST_CASE("Time, Weather and Brightness are the idle list's alone, as Location is", "[idle][validity]")
 {
     REQUIRE(IsPredicateValidIn(Moment::Idle, PredicateKind::Weather));
     REQUIRE_FALSE(IsPredicateValidIn(Moment::Combat, PredicateKind::Weather));
     REQUIRE(IsPredicateValidIn(Moment::Idle, PredicateKind::Time));
     REQUIRE_FALSE(IsPredicateValidIn(Moment::Combat, PredicateKind::Time));
+    REQUIRE(IsPredicateValidIn(Moment::Idle, PredicateKind::Brightness));
+    REQUIRE_FALSE(IsPredicateValidIn(Moment::Combat, PredicateKind::Brightness));
 
     // A hand-edited profile's, in the combat list: reported, never asked.
     Rule r = Always("Restore Health");

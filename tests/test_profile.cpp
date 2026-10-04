@@ -193,6 +193,7 @@ void RequireSame(const Rule &a, const Rule &b)
     REQUIRE(a.damageKind == b.damageKind);
     REQUIRE(a.locationKind == b.locationKind);
     REQUIRE(a.weatherKind == b.weatherKind);
+    REQUIRE(a.brightnessKind == b.brightnessKind);
     REQUIRE(a.timeKind == b.timeKind);
     REQUIRE(a.actionTarget == b.actionTarget);
     REQUIRE(a.actionTargetForm == b.actionTargetForm);
@@ -759,6 +760,37 @@ TEST_CASE("a location condition writes its place and reads it back", "[profile]"
     REQUIRE(unknown.profile->rules.rules.empty());
     REQUIRE(unknown.warnings.size() == 1);
     REQUIRE(unknown.warnings[0].find("tavern") != std::string::npos);
+}
+
+TEST_CASE("a brightness condition writes its side of dark and reads it back", "[profile]")
+{
+    Profile p;
+    Rule r;
+    r.predicate = PredicateKind::Brightness;
+    const auto kind = GENERATE(BrightnessKind::Dark, BrightnessKind::Bright);
+    r.brightnessKind = kind;
+    r.FirstAction().kind = ActionKind::DrinkAny;
+    p.rules.rules.push_back(r);
+    const auto j = nlohmann::json::parse(WriteProfile(p, kHex));
+    REQUIRE(j["rules"][0]["if"]["predicate"] == "brightness");
+    REQUIRE(j["rules"][0]["if"]["brightness"] == (kind == BrightnessKind::Dark ? "dark" : "bright"));
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules.size() == 1);
+    REQUIRE(read.profile->rules.rules[0].brightnessKind == kind);
+    // No other condition carries one.
+    p.rules.rules[0].predicate = PredicateKind::Weather;
+    REQUIRE_FALSE(nlohmann::json::parse(WriteProfile(p, kHex))["rules"][0]["if"].contains("brightness"));
+
+    // One from a newer build: the rule is dropped and said so, not read as
+    // another.
+    const std::string rule = R"({
+        "if": { "subject": "self", "predicate": "brightness", "brightness": "dim" },
+        "then": { "target": "self", "do": [ { "action": "drink-any" } ] }
+    })";
+    const auto unknown = ReadProfile(OneRuleFile(rule), kHex);
+    REQUIRE(unknown.warnings.size() == 1);
+    REQUIRE(unknown.warnings[0].find("dim") != std::string::npos);
 }
 
 TEST_CASE("a weather condition writes its weather and reads it back", "[profile]")

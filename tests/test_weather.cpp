@@ -148,3 +148,67 @@ TEST_CASE("ash falls through its precipitation window, separately from snow", "[
     sky.progress = 0.6f;
     REQUIRE(WeatherOf(sky) == Bit(WeatherKind::Snow));
 }
+
+TEST_CASE("under a roof it is dark below the engine's torch line, by the actor's own light", "[brightness]")
+{
+    const TorchLight torch;
+    LightRead light;
+    light.where = LightRead::Where::Roofed;
+    light.level = 12.0f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Dark));
+    light.level = 39.9f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Dark));
+    // At the line it is no longer dark, and never both.
+    light.level = 40.0f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Bright));
+    light.level = 260.0f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Bright));
+    // The sky's ambient and the hour are not asked under a roof.
+    light.level = 12.0f;
+    light.ambient = 3.0f;
+    light.hour = 12.0f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Dark));
+
+    // A setting above the engine's cap: the level counts to 100 at most, so
+    // everything is dark, as the engine's own test has it.
+    TorchLight high;
+    high.roofed = 120.0f;
+    light.level = 260.0f;
+    REQUIRE(BrightnessOf(light, high) == Bit(BrightnessKind::Dark));
+}
+
+TEST_CASE("under the sky it is dark by the sky's ambient, against the night's line or the day's", "[brightness]")
+{
+    const TorchLight torch;
+    LightRead light;
+    light.where = LightRead::Where::UnderSky;
+    // The actor's own level is not asked: the engine keeps none out here.
+    light.level = 0.0f;
+
+    // 20:00 to 06:00 is the night's line, 1.2; the rest the day's, 0.6.
+    light.ambient = 1.0f;
+    light.hour = 23.0f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Dark));
+    light.hour = 3.0f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Dark));
+    light.hour = 12.0f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Bright));
+    // The hours themselves are the day's.
+    light.hour = 20.0f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Bright));
+    light.hour = 6.0f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Bright));
+
+    // A black storm at noon is dark; a bright night is not.
+    light.hour = 12.0f;
+    light.ambient = 0.5f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Dark));
+    light.hour = 23.0f;
+    light.ambient = 1.2f;
+    REQUIRE(BrightnessOf(light, torch) == Bit(BrightnessKind::Bright));
+}
+
+TEST_CASE("with nothing read it is neither dark nor bright", "[brightness]")
+{
+    REQUIRE(BrightnessOf(LightRead{}, TorchLight{}) == 0);
+}

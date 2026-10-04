@@ -100,7 +100,7 @@ std::string SubjectText(const ft::Rule &r, const FollowerView &view)
 // fight's edges; the three stats; the enemy's relation to the party
 // (Attacking, Attacked by); the hits (Hit type, Hit by); Status; the
 // equipment -- weapon, armour, resistance; the summon; the time of day,
-// where one is and the weather there. (The corpse questions are a subject of their own and fall
+// where one is, the weather there and how bright it is. (The corpse questions are a subject of their own and fall
 // in one group.)
 int ConditionGroup(ft::PredicateKind p)
 {
@@ -133,6 +133,7 @@ int ConditionGroup(ft::PredicateKind p)
     case ft::PredicateKind::Time:
     case ft::PredicateKind::Location:
     case ft::PredicateKind::Weather:
+    case ft::PredicateKind::Brightness:
         return 9;
     default:
         return 7;
@@ -185,6 +186,9 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view)
         return TrFormat("{}: {}", subject, TrFormat("Time {}", ft::DisplayName(r.timeKind)));
     if (r.predicate == ft::PredicateKind::Weather)
         return TrFormat("{}: {}", subject, TrFormat("Weather {}", ft::DisplayName(r.weatherKind)));
+    // Dark and bright read by their names, as a status does: "Self: Dark".
+    if (r.predicate == ft::PredicateKind::Brightness)
+        return TrFormat("{}: {}", subject, ft::DisplayName(r.brightnessKind));
     // An effect reads by its name, as a status does: "Self: Oakflesh".
     if (r.predicate == ft::PredicateKind::EffectRunning)
         return TrFormat("{}: {}", subject, FormName(r.conditionForm));
@@ -314,6 +318,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             std::optional<ft::TypeKind> type;
             std::optional<ft::LocationKind> location;
             std::optional<ft::WeatherKind> weather;
+            std::optional<ft::BrightnessKind> brightness;
             std::optional<ft::TimeKind> time;
             std::optional<std::uint32_t> member;
             std::optional<std::uint32_t> conditionForm; // a family's keyword, an effect's source
@@ -325,6 +330,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                 (!x.damage || rule.damageKind == *x.damage) && (!x.status || rule.statusKind == *x.status) &&
                 (!x.type || rule.typeKind == *x.type) && (!x.location || rule.locationKind == *x.location) &&
                 (!x.weather || rule.weatherKind == *x.weather) && (!x.time || rule.timeKind == *x.time) &&
+                (!x.brightness || rule.brightnessKind == *x.brightness) &&
                 (!x.conditionForm || rule.conditionForm == *x.conditionForm) &&
                 (!x.arg || std::abs(rule.conditionArg - *x.arg) < 0.001f);
             if (CascadeItem(label, selected))
@@ -342,6 +348,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     rule.locationKind = *x.location;
                 if (x.weather)
                     rule.weatherKind = *x.weather;
+                if (x.brightness)
+                    rule.brightnessKind = *x.brightness;
                 if (x.time)
                     rule.timeKind = *x.time;
                 if (x.conditionForm)
@@ -735,6 +743,21 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
                     Extras x;
                     x.weather = kind;
                     pick(std::string(ft::DisplayName(*x.weather)).c_str(), predicate, x, false);
+                }
+                Im::EndMenu();
+                continue;
+            }
+
+            // Brightness: dark, then bright.
+            if (predicate == ft::PredicateKind::Brightness)
+            {
+                if (!BeginCascade(predicateName.c_str()))
+                    continue;
+                for (std::size_t bi = 0; bi < static_cast<std::size_t>(ft::BrightnessKind::COUNT); ++bi)
+                {
+                    Extras x;
+                    x.brightness = static_cast<ft::BrightnessKind>(bi);
+                    pick(std::string(ft::DisplayName(*x.brightness)).c_str(), predicate, x, false);
                 }
                 Im::EndMenu();
                 continue;

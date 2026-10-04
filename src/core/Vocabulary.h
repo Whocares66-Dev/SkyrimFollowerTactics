@@ -48,6 +48,7 @@ namespace ft
 [[nodiscard]] std::string_view WireName(DamageKind v) noexcept;
 [[nodiscard]] std::string_view WireName(LocationKind v) noexcept;
 [[nodiscard]] std::string_view WireName(WeatherKind v) noexcept;
+[[nodiscard]] std::string_view WireName(BrightnessKind v) noexcept;
 [[nodiscard]] std::string_view WireName(TimeKind v) noexcept;
 
 // Parsing is fallible on purpose. A profile written by a NEWER version of the
@@ -65,6 +66,7 @@ namespace ft
 [[nodiscard]] std::optional<DamageKind> DamageFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<LocationKind> LocationFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<WeatherKind> WeatherFromWireName(std::string_view s) noexcept;
+[[nodiscard]] std::optional<BrightnessKind> BrightnessFromWireName(std::string_view s) noexcept;
 [[nodiscard]] std::optional<TimeKind> TimeFromWireName(std::string_view s) noexcept;
 
 // A slug: lowercase ASCII letters and digits, hyphen-separated, no leading,
@@ -88,6 +90,7 @@ namespace ft
 [[nodiscard]] std::string_view DisplayName(LocationKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(LocationGroup v) noexcept;
 [[nodiscard]] std::string_view DisplayName(WeatherKind v) noexcept;
+[[nodiscard]] std::string_view DisplayName(BrightnessKind v) noexcept;
 [[nodiscard]] std::string_view DisplayName(TimeKind v) noexcept;
 
 // One line of help, for a tooltip. Kept beside the names so a new predicate

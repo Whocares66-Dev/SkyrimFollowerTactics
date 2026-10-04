@@ -2,8 +2,9 @@
 // Where an actor is, for the Location condition (dev/CONDITIONS.md 2c):
 // inside or out by the cell, the rest by the keywords of the location they
 // are in and the ones it lies in, and the hold. And the weather over them
-// out of doors, for the Weather condition (2d), and the part of the day,
-// for the Time condition (2e).
+// out of doors, for the Weather condition (2d), the part of the day, for
+// the Time condition (2e), and how bright it is where they stand, for the
+// Brightness condition (2f).
 
 #include "core/Snapshot.h"
 
@@ -19,8 +20,8 @@ class Actor;
 namespace ft::game
 {
 
-// The actor's places, hold, weather and part of the day, into the
-// snapshot.
+// The actor's places, hold, weather, part of the day and brightness, into
+// the snapshot.
 void ReadPlaces(RE::Actor *actor, ft::Snapshot &s);
 
 // The sun as the sky times it now: its climate's, or the last climate's

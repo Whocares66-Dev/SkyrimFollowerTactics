@@ -69,7 +69,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", N_("Corpse")},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 46> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 47> kPredicates{{
     {PredicateKind::Any, "any", N_("Any")}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::CombatBegins, "combat-begins", N_("Combat start")},
     {PredicateKind::CombatEnds, "combat-ends", N_("Combat end")},
@@ -105,6 +105,7 @@ constexpr std::array<Entry<PredicateKind>, 46> kPredicates{{
     {PredicateKind::Time, "time", N_("Time")},
     {PredicateKind::Location, "location", N_("Location")},
     {PredicateKind::Weather, "weather", N_("Weather")},
+    {PredicateKind::Brightness, "brightness", N_("Brightness")},
     {PredicateKind::CorpseNone, "corpse-none", N_("None")},
     {PredicateKind::LevelHighest, "level-highest", N_("Highest level")},
     {PredicateKind::LevelLowest, "level-lowest", N_("Lowest level")},
@@ -318,6 +319,12 @@ constexpr std::array<Entry<WeatherKind>, 5> kWeathers{{
     {WeatherKind::Ash, "ash", N_("Ash")},
 }};
 
+// A side of dark, as the rule names it and as the menu shows it.
+constexpr std::array<Entry<BrightnessKind>, 2> kBrightnesses{{
+    {BrightnessKind::Dark, "dark", N_("Dark")},
+    {BrightnessKind::Bright, "bright", N_("Bright")},
+}};
+
 constexpr std::array<Entry<DamageKind>, 8> kDamageKinds{{
     {DamageKind::Melee, "melee", N_("Melee")},
     {DamageKind::Ranged, "ranged", N_("Ranged")},
@@ -341,6 +348,7 @@ static_assert(kDamageKinds.size() == static_cast<std::size_t>(DamageKind::COUNT)
 static_assert(kLocations.size() == static_cast<std::size_t>(LocationKind::COUNT));
 static_assert(kLocationGroups.size() == static_cast<std::size_t>(LocationGroup::COUNT));
 static_assert(kWeathers.size() == static_cast<std::size_t>(WeatherKind::COUNT));
+static_assert(kBrightnesses.size() == static_cast<std::size_t>(BrightnessKind::COUNT));
 static_assert(kTimes.size() == static_cast<std::size_t>(TimeKind::COUNT));
 
 } // namespace
@@ -388,6 +396,10 @@ std::string_view WireName(LocationKind v) noexcept
 std::string_view WireName(WeatherKind v) noexcept
 {
     return LookupWire(kWeathers, v);
+}
+std::string_view WireName(BrightnessKind v) noexcept
+{
+    return LookupWire(kBrightnesses, v);
 }
 std::string_view WireName(TimeKind v) noexcept
 {
@@ -437,6 +449,10 @@ std::optional<LocationKind> LocationFromWireName(std::string_view s) noexcept
 std::optional<WeatherKind> WeatherFromWireName(std::string_view s) noexcept
 {
     return Parse(kWeathers, s);
+}
+std::optional<BrightnessKind> BrightnessFromWireName(std::string_view s) noexcept
+{
+    return Parse(kBrightnesses, s);
 }
 std::optional<TimeKind> TimeFromWireName(std::string_view s) noexcept
 {
@@ -520,6 +536,10 @@ std::string_view DisplayName(LocationKind v) noexcept
 std::string_view DisplayName(WeatherKind v) noexcept
 {
     return LookupDisplay(kWeathers, v);
+}
+std::string_view DisplayName(BrightnessKind v) noexcept
+{
+    return LookupDisplay(kBrightnesses, v);
 }
 std::string_view DisplayName(TimeKind v) noexcept
 {

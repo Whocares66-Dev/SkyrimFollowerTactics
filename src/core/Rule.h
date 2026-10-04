@@ -173,6 +173,10 @@ enum class PredicateKind : std::uint8_t
     // of doors only, so it never holds inside, whatever the sky outside is
     // doing.
     Weather,
+    // How bright it is where the follower stands: Rule::brightnessKind --
+    // dark or bright, by the line under which the engine has an NPC take out
+    // a torch. Self only and the idle list's alone, as Location is.
+    Brightness,
     // The corpses: none about, or the one of the highest or lowest level.
     // Corpse only. Not IsExtreme: they have no below-predicate to hang
     // under, and their measure is a level, not a fraction.
@@ -486,6 +490,9 @@ struct Rule
     // Which weather, for PredicateKind::Weather. Ignored by every other
     // predicate.
     WeatherKind weatherKind{WeatherKind::Rain};
+    // Which side of dark, for PredicateKind::Brightness. Ignored by every
+    // other predicate.
+    BrightnessKind brightnessKind{BrightnessKind::Dark};
     // Which base effect, for PredicateKind::EffectRunning; which hold's
     // location record, for Location's Hold. As opaque here as an action's
     // form is. Ignored by every other predicate.
@@ -558,8 +565,8 @@ struct RuleSet
 // and answers false -- so it is a menu question as much as an evaluator
 // one: the editor leaves them out, and the evaluator reports a rule of one
 // InvalidCondition, as it does a pair the subject cannot answer. The
-// combat list has three of its own: Time, Location and Weather, each asked
-// for the idle list alone.
+// combat list has four of its own: Time, Location, Weather and Brightness,
+// each asked for the idle list alone.
 [[nodiscard]] bool IsSubjectValidIn(Moment moment, SubjectKind subject) noexcept;
 [[nodiscard]] bool IsPredicateValidIn(Moment moment, PredicateKind predicate) noexcept;
 [[nodiscard]] bool IsStatusValidIn(Moment moment, StatusKind status) noexcept;

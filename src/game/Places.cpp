@@ -192,6 +192,7 @@ struct Seen
     std::uint32_t hold{0};
     std::uint8_t weather{0};
     ft::TimeKind time{ft::TimeKind::Morning};
+    std::uint8_t brightness{0};
     bool operator==(const Seen &) const = default;
 };
 
@@ -208,11 +209,13 @@ template <typename Kind, typename Bits> std::string Listed(Bits bits)
 }
 
 // With the log at debug, each change of where an actor is, of the weather
-// over them and of the part of the day, as the statuses' changes are:
-// without it a Location, Weather or Time rule that never holds cannot tell
-// a place not marked from one never reached, or the climate's sunset from
-// the one expected.
-void LogPlaceChanges(RE::Actor *actor, const Seen &seen)
+// over them, of the part of the day and of dark and bright, as the
+// statuses' changes are: without it a Location, Weather or Time rule that
+// never holds cannot tell a place not marked from one never reached, or the
+// climate's sunset from the one expected. The light is said with what was
+// read and the line it was held against, which is how the engine's line is
+// checked against a place that looks dark and reads bright.
+void LogPlaceChanges(RE::Actor *actor, const Seen &seen, const ft::LightRead &light, const ft::TorchLight &torch)
 {
     {
         std::scoped_lock lock(g_placesMutex);
@@ -224,9 +227,50 @@ void LogPlaceChanges(RE::Actor *actor, const Seen &seen)
     const std::string at = Listed<K>(seen.places);
     const std::string weather = Listed<ft::WeatherKind>(seen.weather);
     const auto *holdForm = seen.hold ? RE::TESForm::LookupByID(seen.hold) : nullptr;
-    log::sensors.debug("{}: now at {}; hold {}; weather {}; {}", Describe(actor), at.empty() ? "nowhere known" : at,
-                       holdForm ? log::NameOf(holdForm) : "none", weather.empty() ? "none" : weather,
-                       ft::WireName(seen.time));
+    const std::string brightness = Listed<ft::BrightnessKind>(seen.brightness);
+    using Where = ft::LightRead::Where;
+    const std::string read =
+        light.where == Where::Roofed     ? fmt::format("light level {:.0f} against {:.0f}", light.level, torch.roofed)
+        : light.where == Where::UnderSky ? fmt::format("sky ambient {:.2f} against {:.2f} by night, {:.2f} by day",
+                                                       light.ambient, torch.night, torch.day)
+                                         : std::string("no light read");
+    log::sensors.debug("{}: now at {}; hold {}; weather {}; {}; {} ({})", Describe(actor),
+                       at.empty() ? "nowhere known" : at, holdForm ? log::NameOf(holdForm) : "none",
+                       weather.empty() ? "none" : weather, ft::WireName(seen.time),
+                       brightness.empty() ? "neither dark nor bright" : brightness, read);
+}
+
+// The light on an actor, as the engine's torch test reads it (37567 on
+// 1.6.1170; dev/CONDITIONS.md 2f). Under the sky, the sky's ambient colour:
+// the engine keeps an actor no level of their own out there unless asked.
+// Under a roof, the level it keeps on their process. It works that out
+// unasked in an interior cell alone (39946, every fLightRecalcTimer); in a
+// cave built as a worldspace, whose cells are exteriors, only for an actor
+// someone asked about, by the flag its own GetLightLevel sets and the
+// update clears (39947). So the flag is set here for the next reading, and
+// the first in such a cave is whatever was last worked out.
+ft::LightRead ReadLight(RE::Actor *actor, bool indoors, bool roofed, float hour)
+{
+    ft::LightRead light;
+    light.hour = hour;
+    if (!indoors && !roofed)
+    {
+        if (const auto *sky = RE::Sky::GetSingleton())
+        {
+            const RE::NiColor &ambient = sky->skyColor[RE::TESWeather::ColorTypes::kAmbient];
+            light.where = ft::LightRead::Where::UnderSky;
+            light.ambient = ambient.red + ambient.green + ambient.blue;
+        }
+        return light;
+    }
+    auto *process = actor->GetActorRuntimeData().currentProcess;
+    if (!process || !process->high)
+        return light;
+    light.where = ft::LightRead::Where::Roofed;
+    light.level = process->high->lightLevel;
+    if (roofed && process->middleHigh)
+        process->middleHigh->unk328 = true;
+    return light;
 }
 
 } // namespace
@@ -283,9 +327,20 @@ void ReadPlaces(RE::Actor *actor, ft::Snapshot &s)
         s.weather = ft::WeatherOf(read);
     }
     // The part of the day by the climate's sun, indoors too.
-    if (const auto *calendar = RE::Calendar::GetSingleton())
-        s.timeOfDay = ft::TimeOfDay(calendar->GetHour(), SunNow());
-    LogPlaceChanges(actor, {s.places, s.hold, s.weather, s.timeOfDay});
+    const auto *calendar = RE::Calendar::GetSingleton();
+    const float hour = calendar ? calendar->GetHour() : 12.0f;
+    if (calendar)
+        s.timeOfDay = ft::TimeOfDay(hour, SunNow());
+    // Dark or bright by the engine's own lines, read live, so a mod that
+    // moves them is followed. An actor in no cell is under neither roof nor
+    // sky, and reads as neither.
+    const ft::TorchLight torch{GameSetting("fTorchLightLevelInterior", 40.0f),
+                               GameSetting("fTorchLightLevelNight", 1.2f),
+                               GameSetting("fTorchLightLevelMorning", 0.6f)};
+    const bool indoors = s.At(K::Interior);
+    const ft::LightRead light = indoors || outdoors ? ReadLight(actor, indoors, roofed, hour) : ft::LightRead{};
+    s.brightness = ft::BrightnessOf(light, torch);
+    LogPlaceChanges(actor, {s.places, s.hold, s.weather, s.timeOfDay, s.brightness}, light, torch);
 }
 
 ft::SunTimes SunNow()

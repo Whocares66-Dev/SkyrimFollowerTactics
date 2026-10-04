@@ -3300,6 +3300,46 @@ TEST_CASE("the time of day holds in its part of the day alone", "[evaluator]")
     REQUIRE(CanNegate(PredicateKind::Time));
 }
 
+TEST_CASE("brightness holds on its side of dark, and neither side where nothing was read", "[evaluator]")
+{
+    Snapshot s = Healthy();
+    s.inCombat = false;
+    Rule r;
+    r.subject = SubjectKind::Self;
+    r.predicate = PredicateKind::Brightness;
+    r.actionTarget = ActionTargetKind::Self;
+    r.FirstAction() = DrinkMagicka();
+    RuleSet rs;
+    rs.moment = Moment::Idle;
+    rs.rules.push_back(r);
+    const auto holds = [&](BrightnessKind kind, bool negated = false) {
+        EvalContext ctx;
+        rs.rules[0].brightnessKind = kind;
+        rs.rules[0].negated = negated;
+        return Evaluate(rs, s, ctx).Fired();
+    };
+
+    // No reading: neither holds, and Not either does.
+    REQUIRE_FALSE(holds(BrightnessKind::Dark));
+    REQUIRE_FALSE(holds(BrightnessKind::Bright));
+    REQUIRE(holds(BrightnessKind::Dark, true));
+    REQUIRE(holds(BrightnessKind::Bright, true));
+
+    s.brightness = Bit(BrightnessKind::Dark);
+    REQUIRE(holds(BrightnessKind::Dark));
+    REQUIRE_FALSE(holds(BrightnessKind::Bright));
+    REQUIRE(holds(BrightnessKind::Bright, true));
+    s.brightness = Bit(BrightnessKind::Bright);
+    REQUIRE(holds(BrightnessKind::Bright));
+    REQUIRE_FALSE(holds(BrightnessKind::Dark));
+
+    // The follower's own, as the weather is.
+    REQUIRE(IsPredicateValidFor(SubjectKind::Self, PredicateKind::Brightness));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Player, PredicateKind::Brightness));
+    REQUIRE_FALSE(IsPredicateValidFor(SubjectKind::Enemy, PredicateKind::Brightness));
+    REQUIRE(CanNegate(PredicateKind::Brightness));
+}
+
 TEST_CASE("the weather holds under that weather, and never where there is none", "[evaluator]")
 {
     Snapshot s = Healthy();

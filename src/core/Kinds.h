@@ -371,6 +371,74 @@ enum class WeatherKind : std::uint8_t
     return static_cast<std::uint8_t>(1u << static_cast<unsigned>(kind));
 }
 
+// How bright it is where an actor stands, for the Brightness condition
+// (dev/CONDITIONS.md 2f). Two kinds, on either side of the one line the
+// engine itself draws: the one under which an NPC takes out a torch. Two
+// rather than one and its Not, as Interior and Exterior are: an actor the
+// engine keeps no reading for is neither.
+enum class BrightnessKind : std::uint8_t
+{
+    Dark,
+    Bright,
+
+    COUNT
+};
+
+[[nodiscard]] constexpr std::uint8_t Bit(BrightnessKind kind) noexcept
+{
+    return static_cast<std::uint8_t>(1u << static_cast<unsigned>(kind));
+}
+
+// The engine's own thresholds for dark, by where the actor is: the three
+// fTorchLightLevel game settings, the executable's defaults by default.
+struct TorchLight
+{
+    float roofed{40.0f};
+    float night{1.2f};
+    float day{0.6f};
+};
+
+// What the game reads of the light on an actor (game/Places.cpp). Under a
+// roof -- an interior, or a cave built as a worldspace -- it is the actor's
+// own light level, the scene's lights where they stand; under the sky the
+// engine keeps no level for them and asks the sky's ambient colour, red,
+// green and blue summed, as its torch test does.
+struct LightRead
+{
+    enum class Where : std::uint8_t
+    {
+        Unknown, // no reading: not loaded, or no sky to ask
+        Roofed,
+        UnderSky
+    };
+    Where where{Where::Unknown};
+    float level{0.0f};
+    float ambient{0.0f};
+    float hour{12.0f};
+};
+
+// A bit per BrightnessKind: one of the two, or neither where nothing was
+// read. The engine's torch test (37567 on 1.6.1170): under a roof, the
+// level, counted to 100 at most, below the threshold; under the sky, the
+// ambient below the night's from 20:00 to 06:00 and below the day's
+// otherwise -- hours the routine has as numbers, not the climate's.
+[[nodiscard]] constexpr std::uint8_t BrightnessOf(const LightRead &light, const TorchLight &torch) noexcept
+{
+    bool dark = false;
+    switch (light.where)
+    {
+    case LightRead::Where::Unknown:
+        return 0;
+    case LightRead::Where::Roofed:
+        dark = (light.level < 100.0f ? light.level : 100.0f) < torch.roofed;
+        break;
+    case LightRead::Where::UnderSky:
+        dark = light.ambient < (light.hour > 20.0f || light.hour < 6.0f ? torch.night : torch.day);
+        break;
+    }
+    return Bit(dark ? BrightnessKind::Dark : BrightnessKind::Bright);
+}
+
 // Which consumable a consume action names, and which each carried one is.
 // The snapshot tags every carried consumable with one, so a hand-edited
 // profile cannot drink a cabbage: the form has to be carried AS that kind.

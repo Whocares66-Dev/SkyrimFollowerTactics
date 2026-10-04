@@ -714,6 +714,14 @@ struct Snapshot
     {
         return (weather & Bit(kind)) != 0;
     }
+    // How bright it is where the actor stands, for the Brightness condition:
+    // a bit per BrightnessKind, none where the engine has no reading
+    // (core/Kinds.h, BrightnessOf).
+    std::uint8_t brightness{0};
+    [[nodiscard]] constexpr bool In(BrightnessKind kind) const noexcept
+    {
+        return (brightness & Bit(kind)) != 0;
+    }
     // A blow the actor could strike with what is in the hands, priced on
     // the game side: whether it is possible at all, the stamina it costs,
     // and how far it reaches, held against an enemy's reachDistance. A
