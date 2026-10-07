@@ -3,4 +3,6 @@
 # (C:\project\SkyrimFollowerProgression); the perk trees the tests read are
 # tests/progression/data/vanilla-perks.json.
 *.json
+# Reviewed source records for the location classification table.
+!locations-gh25.json
 *.txt

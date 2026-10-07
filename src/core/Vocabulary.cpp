@@ -248,7 +248,7 @@ constexpr std::array<Entry<TypeKind>, 26> kTypes{{
 
 // A place, as the rule names it and as the menu shows it. Each name reads
 // alone after "In", as the condition does: "Self: In Draugr crypt".
-constexpr std::array<Entry<LocationKind>, 36> kLocations{{
+constexpr std::array<Entry<LocationKind>, 52> kLocations{{
     {LocationKind::Home, "home", N_("Home")},
     {LocationKind::Interior, "interior", N_("Interior")},
     {LocationKind::Exterior, "exterior", N_("Exterior")},
@@ -285,11 +285,27 @@ constexpr std::array<Entry<LocationKind>, 36> kLocations{{
     {LocationKind::City, "city", N_("City")},
     {LocationKind::Town, "town", N_("Town")},
     {LocationKind::OrcStronghold, "orc-stronghold", N_("Orc stronghold")},
+    {LocationKind::Camp, "camp", N_("Camp")},
+    {LocationKind::AnimalTerritory, "animal-territory", N_("Animal territory")},
+    {LocationKind::DragonRoost, "dragon-roost", N_("Dragon roost")},
+    {LocationKind::DragonPriestCamp, "dragon-priest-camp", N_("Dragon priest camp")},
+    {LocationKind::DraugrCamp, "draugr-camp", N_("Draugr camp")},
+    {LocationKind::FalmerCamp, "falmer-camp", N_("Falmer camp")},
+    {LocationKind::HagravenRoost, "hagraven-roost", N_("Hagraven roost")},
+    {LocationKind::VampireCamp, "vampire-camp", N_("Vampire camp")},
+    {LocationKind::WarlockCamp, "warlock-camp", N_("Warlock camp")},
+    {LocationKind::WerebearCamp, "werebear-camp", N_("Werebear camp")},
+    {LocationKind::WerewolfCamp, "werewolf-camp", N_("Werewolf camp")},
+    {LocationKind::BanditHideout, "bandit-hideout", N_("Bandit hideout")},
+    {LocationKind::ForswornHideout, "forsworn-hideout", N_("Forsworn hideout")},
+    {LocationKind::GiantDen, "giant-den", N_("Giant den")},
+    {LocationKind::RieklingDen, "riekling-den", N_("Riekling den")},
+    {LocationKind::SprigganDen, "spriggan-den", N_("Spriggan den")},
 }};
 
 // The Location menu's headings. No wire name: a rule names a kind, and the
 // group is the kind's.
-constexpr std::array<std::pair<LocationGroup, std::string_view>, 8> kLocationGroups{{
+constexpr std::array<std::pair<LocationGroup, std::string_view>, 9> kLocationGroups{{
     {LocationGroup::None, ""},
     {LocationGroup::Building, N_("Building")},
     {LocationGroup::Cave, N_("Cave")},
@@ -298,6 +314,7 @@ constexpr std::array<std::pair<LocationGroup, std::string_view>, 8> kLocationGro
     {LocationGroup::Hold, N_("Hold")},
     {LocationGroup::Ruin, N_("Ruin")},
     {LocationGroup::Settlement, N_("Settlement")},
+    {LocationGroup::Camp, N_("Camp")},
 }};
 
 // A part of the day, as the rule names it and as the menu shows it. Each

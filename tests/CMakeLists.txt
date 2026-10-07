@@ -58,6 +58,7 @@ add_executable(
     test_party.cpp
     test_perktree.cpp
     test_playercast.cpp
+    test_places.cpp
     test_pluginfile.cpp
     test_profile.cpp
     test_reach.cpp

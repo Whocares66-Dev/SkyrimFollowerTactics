@@ -1,5 +1,6 @@
 #include "game/Places.h"
 
+#include "core/Places.h"
 #include "core/Vocabulary.h"
 #include "core/Weather.h"
 #include "game/Log.h"
@@ -53,6 +54,7 @@ constexpr Source kSources[] = {
     {K::Cave, "LocSetCave"},
     {K::Cave, "LocSetCaveIce"},
     {K::Dungeon, "LocTypeDungeon"},
+    {K::Dungeon, "LocTypeMine"},
     {K::AnimalDen, "LocTypeAnimalDen"},
     {K::BanditCamp, "LocTypeBanditCamp"},
     {K::DragonLair, "LocTypeDragonLair"},
@@ -90,13 +92,14 @@ constexpr Source kSources[] = {
     {K::OrcStronghold, "LocTypeOrcStronghold"},
 };
 
-// Every kind is read somewhere: by the cell, as the hold, or by a keyword.
+// Every kind is read by the cell, as the hold, by a keyword, or derived
+// from the indoor/outdoor occupant pairs.
 constexpr bool EveryKindRead()
 {
     for (unsigned i = 0; i < static_cast<unsigned>(K::COUNT); ++i)
     {
         const auto kind = static_cast<K>(i);
-        bool read = kind == K::Interior || kind == K::Exterior || kind == K::Hold;
+        bool read = kind == K::Interior || kind == K::Exterior || kind == K::Hold || (ft::SiteBits() & ft::Bit(kind));
         for (const Source &source : kSources)
             read = read || source.kind == kind;
         if (!read)
@@ -108,8 +111,7 @@ static_assert(EveryKindRead());
 
 // A location dug into the ground, which a settlement it is filed under does
 // not reach down into (ft::PlacesUp). The mines in towns carry the last
-// only; the Midden, Cidhna Mine and Esbern's Vault carry none of them and
-// read as their city.
+// only; the reviewed location table supplies what missing tags cannot.
 constexpr std::string_view kDug[] = {"LocTypeDungeon", "LocTypeClearable", "LocTypeMine"};
 
 struct Marks
@@ -120,6 +122,8 @@ struct Marks
     // Every location with a worldspace of its own. Of the settlements, the
     // five walled cities: the worldspace is the town within the walls.
     std::vector<const RE::BGSLocation *> walled;
+    std::vector<std::pair<std::uint32_t, const ft::LocationCorrection *>> corrections;
+    std::vector<std::pair<std::uint32_t, bool>> enclosures;
 };
 
 // Looked up once: keywords and worldspaces are not made or unmade after the
@@ -149,9 +153,17 @@ const Marks &Resolved()
         }
         out.hold = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeHold");
         if (auto *data = RE::TESDataHandler::GetSingleton())
+        {
+            for (const auto &correction : ft::kLocationCorrections)
+                if (const auto *location = data->LookupForm<RE::BGSLocation>(correction.localForm, correction.plugin))
+                    out.corrections.emplace_back(location->GetFormID(), &correction);
+            for (const auto &enclosure : ft::kWorldEnclosures)
+                if (const auto *world = data->LookupForm<RE::TESWorldSpace>(enclosure.localForm, enclosure.plugin))
+                    out.enclosures.emplace_back(world->GetFormID(), enclosure.enclosed);
             for (const auto *world : data->GetFormArray<RE::TESWorldSpace>())
                 if (world && world->location)
                     out.walled.push_back(world->location);
+        }
         log::sensors.debug("location: {} worldspace(s) with a location of their own", out.walled.size());
         return out;
     }();
@@ -289,6 +301,17 @@ void ReadPlaces(RE::Actor *actor, ft::Snapshot &s)
     // Tamriel has no location, so before a gate this is nothing.
     const bool outdoors = s.At(K::Exterior);
     const RE::TESWorldSpace *world = outdoors ? actor->GetWorldspace() : nullptr;
+    const bool roofed = world && (world->flags.any(RE::TESWorldSpace::Flag::kNoSky) || world->lightingTemplate);
+    std::optional<bool> reviewedWorld;
+    if (world)
+        for (const auto &[form, enclosed] : k.enclosures)
+            if (world->GetFormID() == form)
+            {
+                reviewedWorld = enclosed;
+                break;
+            }
+    const ft::PlaceContext context = ft::PlaceContextOf(s.At(K::Interior), outdoors, roofed, reviewedWorld);
+    const bool enclosed = context == ft::PlaceContext::Enclosed;
     const RE::BGSLocation *worldAt = world ? world->location : nullptr;
     const auto within = [worldAt](const RE::BGSLocation *city) {
         for (const RE::BGSLocation *at = worldAt; at; at = at->parentLoc)
@@ -305,10 +328,17 @@ void ReadPlaces(RE::Actor *actor, ft::Snapshot &s)
                 link.kinds |= ft::Bit(kind);
         link.dug = std::ranges::any_of(k.dug, [at](const RE::BGSKeyword *dug) { return at->HasKeyword(dug); });
         link.outsideWalls = outdoors && std::ranges::find(k.walled, at) != k.walled.end() && !within(at);
+        for (const auto &[form, correction] : k.corrections)
+            if (at->GetFormID() == form)
+            {
+                link = ft::CorrectPlace(link, *correction);
+                break;
+            }
+        link.dug = link.dug || (enclosed && ft::IsDungeonSite(link.kinds));
         if (s.hold == 0 && k.hold && at->HasKeyword(k.hold))
             s.hold = at->GetFormID();
     }
-    s.places |= ft::PlacesUp(chain);
+    s.places |= ft::SitePlaces(ft::PlacesUp(chain), context);
     // The weather out of doors only. Indoors the sky keeps the weather
     // outside, and a cell flagged to show the sky -- Breezehome, the inns,
     // many caves -- is under a roof all the same. So is a cave built as a
@@ -316,7 +346,6 @@ void ReadPlaces(RE::Actor *actor, ft::Snapshot &s)
     // whose falling spores are Snow to the engine), or one with a lighting
     // template, which the engine shows the sky dome and lets nothing fall in
     // (Darkwater Pass, Labyrinthian's halls; dev/CONDITIONS.md 2d).
-    const bool roofed = world && (world->flags.any(RE::TESWorldSpace::Flag::kNoSky) || world->lightingTemplate);
     s.weather = 0;
     if (const auto *sky = RE::Sky::GetSingleton(); sky && outdoors && !roofed)
     {

@@ -752,6 +752,19 @@ TEST_CASE("a location condition writes its place and reads it back", "[profile]"
     p.rules.rules[0].locationKind = LocationKind::DraugrCrypt;
     REQUIRE_FALSE(nlohmann::json::parse(WriteProfile(p, kHex))["rules"][0]["if"].contains("hold"));
 
+    // Moved camp choices keep their old wire names; new indoor counterparts
+    // and outdoor occupant choices pass through the actual profile format.
+    for (const auto kind :
+         {LocationKind::BanditCamp, LocationKind::GiantCamp, LocationKind::SprigganGrove, LocationKind::Camp,
+          LocationKind::BanditHideout, LocationKind::ForswornHideout, LocationKind::RieklingDen,
+          LocationKind::SprigganDen, LocationKind::DragonRoost, LocationKind::WarlockCamp})
+    {
+        p.rules.rules[0].locationKind = kind;
+        const auto back = ReadProfile(WriteProfile(p, kHex), kHex);
+        REQUIRE(back.warnings.empty());
+        REQUIRE(back.profile->rules.rules[0].locationKind == kind);
+    }
+
     const std::string rule = R"({
         "if": { "subject": "self", "predicate": "location", "location": "tavern" },
         "then": { "target": "self", "do": [ { "action": "drink-any" } ] }

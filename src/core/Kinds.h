@@ -153,8 +153,9 @@ enum class DamageKind : std::uint8_t
 // Where an actor is, for the Location condition (dev/CONDITIONS.md 2c): in
 // a player home, inside or out -- the three first, in that order -- then
 // by group. Inside or out is the cell's; a hold is the location record the
-// rule names (Rule::conditionForm); every other kind is a keyword the
-// location or one it lies in carries (game/Places.cpp says which). One bit
+// rule names (Rule::conditionForm); other kinds use location keywords and
+// reviewed corrections. Dungeon/Camp also use physical enclosure
+// (core/Places.h, game/Places.cpp). One bit
 // each in Snapshot::places, Hold aside: Snapshot::hold. Exterior is not
 // read as Interior's opposite: an actor with no cell under them is
 // neither.
@@ -171,7 +172,9 @@ enum class LocationKind : std::uint8_t
     Store,
     Temple,
     Cave, // a group of one, as asked: which cave is which is who holds it
-    // Who holds a dungeon, indoors or out, apart from what it is built as.
+    // Who holds an enclosed dungeon. The camp-named kinds below belong to
+    // Camp; their enclosed counterparts are appended to preserve existing
+    // values and profile names.
     Dungeon, // the group's Any
     AnimalDen,
     BanditCamp,
@@ -198,6 +201,23 @@ enum class LocationKind : std::uint8_t
     Town,
     OrcStronghold,
 
+    Camp,
+    AnimalTerritory,
+    DragonRoost,
+    DragonPriestCamp,
+    DraugrCamp,
+    FalmerCamp,
+    HagravenRoost,
+    VampireCamp,
+    WarlockCamp,
+    WerebearCamp,
+    WerewolfCamp,
+    BanditHideout,
+    ForswornHideout,
+    GiantDen,
+    RieklingDen,
+    SprigganDen,
+
     COUNT
 };
 
@@ -220,6 +240,7 @@ enum class LocationGroup : std::uint8_t
     Hold,
     Ruin,
     Settlement,
+    Camp,
 
     COUNT
 };
@@ -228,6 +249,11 @@ enum class LocationGroup : std::uint8_t
 {
     using K = LocationKind;
     using G = LocationGroup;
+    if (kind >= K::BanditHideout)
+        return G::Dungeon;
+    if (kind >= K::Camp || kind == K::BanditCamp || kind == K::ForswornCamp || kind == K::GiantCamp ||
+        kind == K::RieklingCamp || kind == K::SprigganGrove)
+        return G::Camp;
     if (kind >= K::Settlement)
         return G::Settlement;
     if (kind >= K::Ruin)
@@ -245,13 +271,13 @@ enum class LocationGroup : std::uint8_t
     return G::None;
 }
 
-// The kind a group's Any is, its first; none for the first three, and for
-// Hold, whose kind is one hold named.
+// The kind a group's Any is; the menu puts it first independently of enum
+// order. None for the first three or Hold, whose kind is one hold named.
 [[nodiscard]] constexpr bool IsGroupAny(LocationKind kind) noexcept
 {
     using K = LocationKind;
     return kind == K::Building || kind == K::Cave || kind == K::Dungeon || kind == K::Fort || kind == K::Ruin ||
-           kind == K::Settlement;
+           kind == K::Settlement || kind == K::Camp;
 }
 
 // One location of the chain an actor is in, nearest first: the kinds its

@@ -1,0 +1,696 @@
+{
+  "job": "Issue 25 targeted location classification audit",
+  "scope": {
+    "type": "LCTN",
+    "plugins": [
+      "Skyrim.esm",
+      "Dawnguard.esm",
+      "Dragonborn.esm"
+    ],
+    "defined_in": true,
+    "winner_fields": true,
+    "formids": [
+      "0B712C:Skyrim.esm",
+      "10FE43:Skyrim.esm",
+      "03B871:Skyrim.esm",
+      "02BCEB:Skyrim.esm",
+      "0E2502:Skyrim.esm",
+      "022639:Skyrim.esm",
+      "018C91:Skyrim.esm",
+      "01914D:Skyrim.esm",
+      "016F85:Skyrim.esm",
+      "0192B9:Skyrim.esm",
+      "018EEB:Skyrim.esm",
+      "0C2EF8:Skyrim.esm",
+      "0B2395:Skyrim.esm",
+      "04787B:Skyrim.esm",
+      "018EE8:Skyrim.esm",
+      "004C20:Dawnguard.esm"
+    ]
+  },
+  "total": 16,
+  "complete": true,
+  "notes": [
+    "Targeted reads with houseCARL 1.9.0, MO2 Default, 2026-10-06. This is not a full catalog of the 757 locations.",
+    "Classification decisions and reasoning: dev/LOCATIONS.md. Raw link identities and winning source are retained."
+  ],
+  "records": [
+    {
+      "formid": "0B712C:Skyrim.esm",
+      "type": "Location",
+      "editorid": "EmbershardLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Embershard",
+      "fields": {
+        "Name": "Embershard",
+        "Keywords[0]": {
+          "formid": "0130DB:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeDungeon",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "0130DF:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeBanditCamp",
+          "name": null
+        },
+        "Keywords[2]": {
+          "formid": "0130EF:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocSetCave",
+          "name": null
+        },
+        "Keywords[3]": {
+          "formid": "0F5E80:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeClearable",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "01676F:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "FalkreathHoldLocation",
+          "name": "Falkreath"
+        }
+      }
+    },
+    {
+      "formid": "10FE43:Skyrim.esm",
+      "type": "Location",
+      "editorid": "DoomstoneGuardianStoneLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": null,
+      "fields": {
+        "ParentLocation": {
+          "formid": "01676F:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "FalkreathHoldLocation",
+          "name": "Falkreath"
+        }
+      }
+    },
+    {
+      "formid": "03B871:Skyrim.esm",
+      "type": "Location",
+      "editorid": "RiftenRatwayLocation",
+      "winner": "cceejsse003-hollow.esl",
+      "source": "cceejsse003-hollow.esl",
+      "override_depth": 2,
+      "name": "Riften Ratway",
+      "fields": {
+        "Name": "Riften Ratway",
+        "Keywords[0]": {
+          "formid": "004D57:HearthFires.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "BYOH_LocTypeHomestead",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "039793:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeHabitation",
+          "name": null
+        },
+        "Keywords[2]": {
+          "formid": "00308D:HearthFires.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "BYOHHouseLocationKeyword",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "018A58:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "RiftenLocation",
+          "name": "Riften"
+        }
+      }
+    },
+    {
+      "formid": "02BCEB:Skyrim.esm",
+      "type": "Location",
+      "editorid": "WinterholdCollegeMiddenLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "The Midden",
+      "fields": {
+        "Name": "The Midden",
+        "Keywords[0]": {
+          "formid": "0130DC:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeDwelling",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "01CD5A:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeGuild",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "018A51:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "WinterholdLocation",
+          "name": "Winterhold"
+        }
+      }
+    },
+    {
+      "formid": "0E2502:Skyrim.esm",
+      "type": "Location",
+      "editorid": "MarkarthRuinsLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Markarth Ruins",
+      "fields": {
+        "Name": "Markarth Ruins",
+        "ParentLocation": {
+          "formid": "018A59:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "MarkarthLocation",
+          "name": "Markarth"
+        }
+      }
+    },
+    {
+      "formid": "022639:Skyrim.esm",
+      "type": "Location",
+      "editorid": "RiftenEsbernsVaultLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Esbern's Vault",
+      "fields": {
+        "Name": "Esbern's Vault",
+        "ParentLocation": {
+          "formid": "018A58:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "RiftenLocation",
+          "name": "Riften"
+        }
+      }
+    },
+    {
+      "formid": "018C91:Skyrim.esm",
+      "type": "Location",
+      "editorid": "CidhnaMineLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Cidhna Mine",
+      "fields": {
+        "Name": "Cidhna Mine",
+        "Keywords[0]": {
+          "formid": "079AEC:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "WIDragonAttacked",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "01CD59:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeJail",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "018A59:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "MarkarthLocation",
+          "name": "Markarth"
+        }
+      }
+    },
+    {
+      "formid": "01914D:Skyrim.esm",
+      "type": "Location",
+      "editorid": "BrokenFangCaveLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Broken Fang Cave",
+      "fields": {
+        "Name": "Broken Fang Cave",
+        "Keywords[0]": {
+          "formid": "0130DB:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeDungeon",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "0130EB:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeVampireLair",
+          "name": null
+        },
+        "Keywords[2]": {
+          "formid": "0F5E80:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeClearable",
+          "name": null
+        },
+        "Keywords[3]": {
+          "formid": "0130EF:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocSetCave",
+          "name": null
+        },
+        "Keywords[4]": {
+          "formid": "0130E7:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeMilitaryFort",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "016772:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "WhiterunHoldLocation",
+          "name": "Whiterun"
+        }
+      }
+    },
+    {
+      "formid": "016F85:Skyrim.esm",
+      "type": "Location",
+      "editorid": "BloodletThroneLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Bloodlet Throne",
+      "fields": {
+        "Name": "Bloodlet Throne",
+        "Keywords[0]": {
+          "formid": "0130EB:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeVampireLair",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "0130E7:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeMilitaryFort",
+          "name": null
+        },
+        "Keywords[2]": {
+          "formid": "0130DB:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeDungeon",
+          "name": null
+        },
+        "Keywords[3]": {
+          "formid": "0F5E80:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeClearable",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "01676F:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "FalkreathHoldLocation",
+          "name": "Falkreath"
+        }
+      }
+    },
+    {
+      "formid": "0192B9:Skyrim.esm",
+      "type": "Location",
+      "editorid": "NightcallerTempleLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Nightcaller Temple",
+      "fields": {
+        "Name": "Nightcaller Temple",
+        "Keywords[0]": {
+          "formid": "0130DB:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeDungeon",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "0130EC:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeWarlockLair",
+          "name": null
+        },
+        "Keywords[2]": {
+          "formid": "0130E7:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeMilitaryFort",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "01676D:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "PaleHoldLocation",
+          "name": "the Pale"
+        }
+      }
+    },
+    {
+      "formid": "018EEB:Skyrim.esm",
+      "type": "Location",
+      "editorid": "BleakwindBasinLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Bleakwind Basin",
+      "fields": {
+        "Name": "Bleakwind Basin",
+        "Keywords[0]": {
+          "formid": "0130DB:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeDungeon",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "0130E5:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeGiantCamp",
+          "name": null
+        },
+        "Keywords[2]": {
+          "formid": "0F5E80:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeClearable",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "016772:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "WhiterunHoldLocation",
+          "name": "Whiterun"
+        }
+      }
+    },
+    {
+      "formid": "0C2EF8:Skyrim.esm",
+      "type": "Location",
+      "editorid": "SnowpointBeaconLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Snowpoint Beacon",
+      "fields": {
+        "Name": "Snowpoint Beacon",
+        "Keywords[0]": {
+          "formid": "0130DF:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeBanditCamp",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "0F5E80:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeClearable",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "01676B:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "WinterholdHoldLocation",
+          "name": "Winterhold"
+        }
+      }
+    },
+    {
+      "formid": "0B2395:Skyrim.esm",
+      "type": "Location",
+      "editorid": "DragonBridgeOverlookLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Dragon Bridge Overlook",
+      "fields": {
+        "Name": "Dragon Bridge Overlook",
+        "Keywords[0]": {
+          "formid": "0130EE:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeForswornCamp",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "0F5E80:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeClearable",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "016769:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "ReachHoldLocation",
+          "name": "the Reach"
+        }
+      }
+    },
+    {
+      "formid": "04787B:Skyrim.esm",
+      "type": "Location",
+      "editorid": "RoadsideRuinsLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Roadside Ruins",
+      "fields": {
+        "Name": "Roadside Ruins",
+        "Keywords[0]": {
+          "formid": "0130EA:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeSprigganGrove",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "0F5E80:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeClearable",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "01676F:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "FalkreathHoldLocation",
+          "name": "Falkreath"
+        }
+      }
+    },
+    {
+      "formid": "018EE8:Skyrim.esm",
+      "type": "Location",
+      "editorid": "BlackreachLocation",
+      "winner": "Skyrim.esm",
+      "source": "Skyrim.esm",
+      "override_depth": 1,
+      "name": "Blackreach",
+      "fields": {
+        "Name": "Blackreach",
+        "Keywords[0]": {
+          "formid": "0130EF:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocSetCave",
+          "name": null
+        },
+        "Keywords[1]": {
+          "formid": "0130DB:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeDungeon",
+          "name": null
+        },
+        "Keywords[2]": {
+          "formid": "0130E4:Skyrim.esm",
+          "resolved": true,
+          "type": "Keyword",
+          "editorid": "LocTypeFalmerHive",
+          "name": null
+        },
+        "ParentLocation": {
+          "formid": "01676B:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "WinterholdHoldLocation",
+          "name": "Winterhold"
+        }
+      }
+    },
+    {
+      "formid": "004C20:Dawnguard.esm",
+      "type": "Location",
+      "editorid": "DLC1VampireCastleLocation",
+      "winner": "Dawnguard.esm",
+      "source": "Dawnguard.esm",
+      "override_depth": 1,
+      "name": "Castle Volkihar",
+      "fields": {
+        "Name": "Castle Volkihar",
+        "ParentLocation": {
+          "formid": "0130FF:Skyrim.esm",
+          "resolved": true,
+          "type": "Location",
+          "editorid": "TamrielLocation",
+          "name": "Tamriel"
+        }
+      }
+    }
+  ],
+  "worldspaces": {
+    "scope": {
+      "type": "WRLD",
+      "formids": [
+        "01EE62:Skyrim.esm",
+        "02C965:Skyrim.esm",
+        "007202:Dawnguard.esm",
+        "001408:Dawnguard.esm"
+      ]
+    },
+    "total": 4,
+    "complete": true,
+    "records": [
+      {
+        "formid": "01EE62:Skyrim.esm",
+        "type": "Worldspace",
+        "editorid": "Blackreach",
+        "winner": "ccbgssse001-fish.esm",
+        "source": "ccbgssse001-fish.esm",
+        "override_depth": 4,
+        "name": "Blackreach",
+        "fields": {
+          "Name": "Blackreach",
+          "Flags": "SmallWorld, CannotFastTravel, NoSky",
+          "Location": {
+            "formid": "018EE8:Skyrim.esm",
+            "resolved": true,
+            "type": "Location",
+            "editorid": "BlackreachLocation",
+            "name": "Blackreach"
+          }
+        }
+      },
+      {
+        "formid": "02C965:Skyrim.esm",
+        "type": "Worldspace",
+        "editorid": "DarkwaterWorld",
+        "winner": "Skyrim.esm",
+        "source": "Skyrim.esm",
+        "override_depth": 1,
+        "name": "Darkwater Pass",
+        "fields": {
+          "Name": "Darkwater Pass",
+          "Flags": "SmallWorld, CannotFastTravel, FixedDimensions",
+          "InteriorLighting": {
+            "formid": "0C1301:Skyrim.esm",
+            "resolved": true,
+            "type": "LightingTemplate",
+            "editorid": "FalmerTemplateFar",
+            "name": null
+          },
+          "Location": {
+            "formid": "01915F:Skyrim.esm",
+            "resolved": true,
+            "type": "Location",
+            "editorid": "DarkwaterCavernLocation",
+            "name": "Darkwater Pass"
+          }
+        }
+      },
+      {
+        "formid": "007202:Dawnguard.esm",
+        "type": "Worldspace",
+        "editorid": "DLC1VampireCastleCourtyard",
+        "winner": "Dawnguard.esm",
+        "source": "Dawnguard.esm",
+        "override_depth": 1,
+        "name": "Volkihar Courtyard",
+        "fields": {
+          "Name": "Volkihar Courtyard",
+          "Flags": "SmallWorld, FixedDimensions, NoGrass",
+          "InteriorLighting": {
+            "formid": "014646:Dawnguard.esm",
+            "resolved": true,
+            "type": "LightingTemplate",
+            "editorid": "DLC1VCCourtyardLightingTemplate",
+            "name": null
+          },
+          "Location": {
+            "formid": "004C20:Dawnguard.esm",
+            "resolved": true,
+            "type": "Location",
+            "editorid": "DLC1VampireCastleLocation",
+            "name": "Castle Volkihar"
+          }
+        }
+      },
+      {
+        "formid": "001408:Dawnguard.esm",
+        "type": "Worldspace",
+        "editorid": "DLC01SoulCairn",
+        "winner": "ccrmssse001-necrohouse.esl",
+        "source": "ccrmssse001-necrohouse.esl",
+        "override_depth": 2,
+        "name": "Soul Cairn",
+        "fields": {
+          "Name": "Soul Cairn",
+          "Flags": "CannotFastTravel",
+          "Location": {
+            "formid": "003B8F:Dawnguard.esm",
+            "resolved": true,
+            "type": "Location",
+            "editorid": "DLC1SoulCairnLocation",
+            "name": "Soul Cairn"
+          }
+        }
+      }
+    ]
+  }
+}

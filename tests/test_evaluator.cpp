@@ -3385,7 +3385,7 @@ TEST_CASE("the weather holds under that weather, and never where there is none",
     REQUIRE(CanNegate(PredicateKind::Weather));
 }
 
-TEST_CASE("the places fall into the menu's groups, each Any first", "[evaluator]")
+TEST_CASE("the places fall into the menu's groups, each with at most one Any", "[evaluator]")
 {
     REQUIRE(GroupOf(LocationKind::Home) == LocationGroup::None);
     REQUIRE(GroupOf(LocationKind::Exterior) == LocationGroup::None);
@@ -3397,11 +3397,16 @@ TEST_CASE("the places fall into the menu's groups, each Any first", "[evaluator]
     REQUIRE(GroupOf(LocationKind::Hold) == LocationGroup::Hold);
     REQUIRE(GroupOf(LocationKind::NordicRuin) == LocationGroup::Ruin);
     REQUIRE(GroupOf(LocationKind::OrcStronghold) == LocationGroup::Settlement);
-    // One Any to a group at most, and it is the group's first kind.
+    REQUIRE(GroupOf(LocationKind::BanditCamp) == LocationGroup::Camp);
+    REQUIRE(GroupOf(LocationKind::GiantCamp) == LocationGroup::Camp);
+    REQUIRE(GroupOf(LocationKind::SprigganGrove) == LocationGroup::Camp);
+    REQUIRE(GroupOf(LocationKind::BanditHideout) == LocationGroup::Dungeon);
+    REQUIRE(GroupOf(LocationKind::Camp) == LocationGroup::Camp);
+    REQUIRE(IsGroupAny(LocationKind::Camp));
+    // The cascade puts Any first even when old kinds have moved groups.
     for (std::size_t g = 1; g < static_cast<std::size_t>(LocationGroup::COUNT); ++g)
     {
         int anys = 0;
-        bool first = true;
         for (std::size_t k = 0; k < static_cast<std::size_t>(LocationKind::COUNT); ++k)
         {
             const auto kind = static_cast<LocationKind>(k);
@@ -3410,9 +3415,7 @@ TEST_CASE("the places fall into the menu's groups, each Any first", "[evaluator]
             if (IsGroupAny(kind))
             {
                 ++anys;
-                REQUIRE(first);
             }
-            first = false;
         }
         REQUIRE(anys <= 1);
     }
