@@ -135,7 +135,7 @@ A named potion or food is skipped while its effects would add nothing, including
 
 Spells, scrolls, powers, and shouts check whether their effects can apply to the target. A lasting cast waits while that spell is already active there; dual casting does not replace its own single cast, and a scroll and a spell are checked separately. Area effects consider only targets within each effect's reach. Reanimation checks whether the particular corpse can be raised, including its level and the caster's perks.
 
-`Staff` casts a staff carried by the player or follower. It borrows a hand for the cast and restores what that hand held afterward. The staff needs enough charge for a cast; it uses that charge instead of magicka. Sustained staff casts, such as a Staff of Flames, are held for three seconds by default.
+`Staff` casts a staff carried by the player or follower. It borrows a hand for the cast and restores what that hand held afterward. The staff needs enough charge for a cast; it uses that charge instead of magicka. Sustained staff casts, such as a Staff of Flames, use the same duration as concentration spells: three seconds by default.
 
 For potions, food, and ingredients, `Strongest` and `Weakest` choose by effect. `Weakest` keeps stronger items in reserve: if the weakest item's effect is already covered, it waits instead of consuming a stronger one. `Strongest` can replace a weaker active effect.
 
