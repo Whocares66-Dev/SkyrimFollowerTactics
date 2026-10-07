@@ -77,6 +77,8 @@ Most conditions are self-explanatory. A few are worth highlighting.
 
 `Weather` checks the weather over the target: `Pleasant`, `Cloudy`, `Rain`, `Snow`, or `Ash`. It is offered in idle tactics, and only outdoors: indoors none of them is met, whatever the weather outside. Caves the game builds as outdoor spaces, such as Blackreach and Darkwater Pass, count as indoors here. `Pleasant` includes partly cloudy days; `Cloudy` is fog and overcast; `Rain`, `Snow`, and `Ash` are met while precipitation is falling. `Ash` means Solstheim's ash storm (`DLC02VolcanicAshStorm01`), which counts as Ash instead of Snow. Solstheim's other hazy ash weathers remain Cloudy.
 
+`Self` → `Brightness` → `Dark` or `Bright` is offered in idle tactics. For example, use `Self: Dark` to cast Candlelight. In interiors and enclosed cave worldspaces, Dark means the light reaching the character is below the game's torch threshold (normally 40). Outdoors it uses sky ambient light, with different day and night thresholds. These settings are read live, so changes from mods are followed. Display brightness and post-processing do not determine the condition.
+
 `Enemy` → `Rank` → `Boss`, just after `Type`, selects powerful enemies such as dragons, dragon priests, Harkon, Miraak, and enemies the game marks as a location's boss. An action aimed at `Enemy` targets the matching boss. This classification is automatic and has no settings.
 
 `Weapon` → `Bound` → `Active` means a conjured weapon is in either hand; `None` means neither hand holds one.
@@ -132,6 +134,8 @@ The `Any buff` action for `Potion` picks a random potion that adds or improves a
 A named potion or food is skipped while its effects would add nothing, including when its lasting effects are already covered by alchemy of equal or greater strength. Items whose effects cannot apply to the character are skipped too.
 
 Spells, scrolls, powers, and shouts check whether their effects can apply to the target. A lasting cast waits while that spell is already active there; dual casting does not replace its own single cast, and a scroll and a spell are checked separately. Area effects consider only targets within each effect's reach. Reanimation checks whether the particular corpse can be raised, including its level and the caster's perks.
+
+`Staff` casts a staff carried by the player or follower. It borrows a hand for the cast and restores what that hand held afterward. The staff needs enough charge for a cast; it uses that charge instead of magicka. Sustained staff casts, such as a Staff of Flames, are held for three seconds by default.
 
 For potions, food, and ingredients, `Strongest` and `Weakest` choose by effect. `Weakest` keeps stronger items in reserve: if the weakest item's effect is already covered, it waits instead of consuming a stronger one. `Strongest` can replace a weaker active effect.
 

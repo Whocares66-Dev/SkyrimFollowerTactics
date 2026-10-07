@@ -8,6 +8,16 @@ has_toc: false
 
 # Changelog
 
+## 0.5.2
+
+Changes since `v0.5.1`:
+
+- **Separate dungeons and camps:** `Location` → `Dungeon` matches enclosed sites, including caves built from exterior cells; outdoor sites are under `Camp`. Reviewed corrections cover misclassified locations such as the Ratway, Midden, and Guardian Stones. Existing Bandit camp, Forsworn camp, Giant camp, Riekling camp, and Spriggan grove rules now match outdoors only; use their Dungeon counterparts for interiors.
+- **Follower staff tactics:** the `Staff` action casts a carried staff, borrowing a hand and restoring its previous equipment afterward. Staff casts spend the staff's charge; sustained casts are held for three seconds by default.
+- **Brightness conditions:** `Self` → `Brightness` → `Dark` or `Bright` is available in idle tactics, for rules such as casting Candlelight when it is dark. It uses the game's light readings and live torch thresholds.
+- **Weather stays outside:** weather conditions no longer trigger in enclosed cave worldspaces such as Darkwater Pass, where the game's exterior cells can otherwise report snow.
+- **More reliable cast completion:** a cast that fires before tactics releases the hand counts as successful instead of being reported as an interrupted charge.
+
 ## 0.5.1
 
 Changes since `v0.5.0`:
