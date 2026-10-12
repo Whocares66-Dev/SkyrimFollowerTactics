@@ -131,16 +131,22 @@ ft::Stat ReadStat(RE::Actor *actor, RE::ActorValue av)
     auto *owner = actor->AsActorValueOwner();
     if (!owner)
         return {};
-    // Current is the damaged value. The maximum is the permanent value --
-    // base plus the permanent modifier -- plus the TEMPORARY modifier,
-    // where a follower's Fortify enchantment or potion lands (the player's
-    // goes in the permanent one, dev/MODIFIERS.md): a
-    // circlet of +50 magicka raises what the bar can show, and reading the
-    // permanent value alone put 346 over 246 (2026-09-09). Their ratio is
-    // what the rules read, so both are logged in Tactics.cpp to make a
-    // wrong reading visible rather than merely wrong.
-    const float temporary = actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kTemporary, av);
-    return ft::Stat{owner->GetActorValue(av), owner->GetPermanentActorValue(av) + temporary};
+    // Current is the damaged value. The maximum is that less the damage
+    // modifier, as the HUD's own meter fills (ActorValueMeter::GetFillPct,
+    // 51660 on 1.6.1170): the base and both other modifiers, so the
+    // TEMPORARY one a follower's Fortify enchantment or potion lands in
+    // counts (the player's goes in the permanent one, dev/MODIFIERS.md) --
+    // reading the permanent value alone put 346 over 246 (2026-09-09).
+    //
+    // Not the permanent value plus the temporary modifier, though it is
+    // the same sum: the engine adds the modifiers and then the base
+    // (38462), and the other order can land a rounding below it, a full
+    // bar that "< 100%" never sees as full. A restore clamps the damage
+    // modifier at exactly 0 (38468), so undamaged the two here are one
+    // number. Their ratio is what the rules read, so both are logged in
+    // Tactics.cpp to make a wrong reading visible rather than merely wrong.
+    const float current = owner->GetActorValue(av);
+    return ft::Stat{current, current - actor->GetActorValueModifier(RE::ACTOR_VALUE_MODIFIER::kDamage, av)};
 }
 
 namespace

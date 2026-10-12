@@ -2881,6 +2881,23 @@ TEST_CASE("nothing is on cooldown at the start of the game", "[cooldown]")
     REQUIRE(Evaluate(rs, s, ctx).Fired());
 }
 
+TEST_CASE("below 100% is anything short of full, and never a full bar", "[conditions]")
+{
+    // "Health < 100%" is how a follower heals all the way up: it holds a
+    // point short of full and stops at full, whatever the maximum is.
+    RuleSet rs;
+    rs.rules.push_back(HealBelow(1.0f));
+
+    Snapshot s = Healthy();
+    s.health = {345.9f, 346.7f};
+    EvalContext ctx;
+    REQUIRE(Evaluate(rs, s, ctx).Fired());
+
+    s.health = {346.7f, 346.7f};
+    s.now += 100.0;
+    REQUIRE_FALSE(Evaluate(rs, s, ctx).Fired());
+}
+
 TEST_CASE("Stat::Pct does not divide by zero", "[snapshot]")
 {
     REQUIRE(Stat{}.Pct() == 0.0f);

@@ -73,6 +73,13 @@ std::vector<float> PresetsFor(ft::PredicateKind predicate)
         // and armour never go below zero, so 0 would be a dead entry there.
         if (ft::IsResistance(predicate))
             return {0.0f, 0.25f, 0.50f, 0.75f};
+        // 100% is offered below a bar and nowhere else: "< 100%" is "not
+        // full", what healing all the way up asks. Above it would be a
+        // dead entry, since nothing is over a full bar, and armour's
+        // reduction is capped under it, so "< 100%" there is Any.
+        if (const ft::Grid grid = ft::GridOf(predicate);
+            grid.side == ft::Side::Below && grid.measure != ft::Measure::Armor)
+            return {0.25f, 0.50f, 0.75f, 1.0f};
         return {0.25f, 0.50f, 0.75f};
     case ft::ArgumentKind::None:
     default:

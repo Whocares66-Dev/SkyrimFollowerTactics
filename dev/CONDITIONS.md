@@ -25,6 +25,8 @@ conditions take a *kind* as well as, or instead of, a number:
 
 Every measure -- health, stamina, magicka, armour, a resistance -- is asked the same way: a percent below or above, or a group's lowest or highest of it (changed 2026-09-04 from named bands; the bands below are kept as reference values).
 
+**100% is offered below a bar and nowhere else (2026-10-11, issue #26).** "Health < 100%" is "not full", what healing all the way up asks, and the same for stamina and magicka. Above it would be a dead entry, since nothing is over a full bar; armour's reduction is capped under it; a resistance is left without it, the player's and the party's being capped under it. It holds only if a full bar reads as exactly full, so `ReadStat` takes the maximum as the current value less the damage modifier, as the HUD's meter does (`ActorValueMeter::GetFillPct`, 51660): a restore clamps that modifier at exactly 0 (38468), where the permanent value plus the temporary modifier is the same sum in another order than the engine's own (38462) and can land a rounding apart. Not yet verified in play.
+
 So `Rule` gains one field, `conditionKind`, an enum on the wire like
 everything else (`"poisoned"`, `"fire"`), read only by the predicates that
 take one. One predicate per condition, not one per kind: `status` with
