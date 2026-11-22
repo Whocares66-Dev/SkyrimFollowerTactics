@@ -119,6 +119,12 @@ void DrawSettings()
     CentredHeading(Tr("Requirements"));
     ft::Settings settings = CurrentSettings();
     const ft::Settings was = settings;
+    if (toggle("instantPlayerCasts", settings.instantPlayerCasts, Tr("Allow instant player casts"),
+               Tr("Instant cast every eligible spell without equipping it"), Tr("Use normal casting")))
+        settings.instantPlayerCasts = !settings.instantPlayerCasts;
+    if (toggle("instantFollowerCasts", settings.instantFollowerCasts, Tr("Allow instant follower casts"),
+               Tr("Instant cast every eligible spell without equipping it"), Tr("Use normal casting")))
+        settings.instantFollowerCasts = !settings.instantFollowerCasts;
     // Every one is followers' alone, and each says so: a combat style is a
     // thing only an NPC has, which not every player knows; the player's own
     // dual cast is paired by the engine behind its perk check
@@ -157,7 +163,8 @@ void DrawSettings()
     if (settings.requireDualWieldStyle != was.requireDualWieldStyle ||
         settings.requireDualCastPerks != was.requireDualCastPerks ||
         settings.requirePowerBashPerk != was.requirePowerBashPerk || settings.variedAiChoices != was.variedAiChoices ||
-        settings.selfDamageSpells != was.selfDamageSpells || settings.manageCombatStyle != was.manageCombatStyle)
+        settings.selfDamageSpells != was.selfDamageSpells || settings.manageCombatStyle != was.manageCombatStyle ||
+        settings.instantPlayerCasts != was.instantPlayerCasts || settings.instantFollowerCasts != was.instantFollowerCasts)
         SetSettings(settings);
 
     // Progression's switch, kept with the save. Off, every follower is as

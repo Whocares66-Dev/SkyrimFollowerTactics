@@ -8,7 +8,9 @@
 #include "game/Pins.h"
 #include "game/PlayerCast.h"
 #include "game/Sensors.h"
+#include "game/Settings.h"
 #include "game/Sheet.h"
+#include "game/Spells.h"
 #include "game/Tactics.h"
 #include "game/Util.h"
 
@@ -583,6 +585,41 @@ ActionResult Execute(const ft::Action &action, ft::ActorId target, RE::Actor *ac
 {
     if (!actor)
         return ActionResult::MissingItem;
+    if (action.kind == ft::ActionKind::CastSpell && !action.dual)
+    {
+        const auto settings = CurrentSettings();
+        const bool globalAllowed = actor->IsPlayerRef() ? settings.instantPlayerCasts : settings.instantFollowerCasts;
+        if (globalAllowed || action.instant)
+            log::actions.debug("instant cast: spell {:08X}, global {}, action {}", action.form, globalAllowed,
+                               action.instant);
+        if (ft::ShouldInstantCast(action, globalAllowed))
+        {
+            auto *spell = RE::TESForm::LookupByID<RE::SpellItem>(action.form);
+            if (!spell)
+                return ActionResult::MissingItem;
+            if (CanInstantCast(spell))
+            {
+                auto *caster = actor->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+                auto *recipient = spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf
+                                      ? actor
+                                      : RE::TESForm::LookupByID<RE::Actor>(target);
+                if (!recipient || !caster)
+                    return ActionResult::NoTarget;
+                auto *owner = actor->AsActorValueOwner();
+                const float cost = spell->CalculateMagickaCost(actor);
+                if (!owner || owner->GetActorValue(RE::ActorValue::kMagicka) < cost)
+                    return ActionResult::Busy;
+                caster->CastSpellImmediate(spell, false, recipient, 1.0f, false, 0.0f, actor);
+                owner->DamageActorValue(RE::ActorValue::kMagicka, cost);
+                log::actions.debug("instant cast: {} performed", log::NameOf(spell));
+                return ActionResult::Performed;
+            }
+            log::actions.debug("instant cast: {} falling back to normal casting (casting type {}, delivery {}, location-targeted {})",
+                               log::NameOf(spell), static_cast<int>(spell->GetCastingType()),
+                               static_cast<int>(spell->GetDelivery()),
+                               spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation);
+        }
+    }
     // Which way is core's (core/Routes.h, tested): the player's casts go by
     // a press of their own controls (game/PlayerCast.h), their equips are
     // plain, and they have no Attack; the rest is one way for both.

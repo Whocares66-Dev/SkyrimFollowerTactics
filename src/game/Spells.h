@@ -86,6 +86,11 @@ struct SpellOption
     bool reanimate{false};
     // CanDualCast's answer; the Dual Cast menu lists these and no other.
     bool dualCast{false};
+    // The instant caster can perform only fire-and-forget spells aimed at
+    // an actor (including the caster). Concentration and location-targeted
+    // spells must use their normal casting route, so their action editor
+    // does not offer an Instant cast switch.
+    bool instantCast{false};
     // Which menu lists it: Cast, Staff, Scroll, Shout or Power. One list:
     // the cast menus are drawn the same way, each over its own kind.
     enum class Kind : std::uint8_t
@@ -124,6 +129,11 @@ struct SpellOption
 // rule naming one could never fire.
 [[nodiscard]] bool IsCastable(const RE::SpellItem *spell);
 [[nodiscard]] bool IsPower(const RE::SpellItem *spell);
+
+// Exactly the restriction used by Execute before it invokes the engine's
+// instant caster. Kept here as one answer for both the spell-menu snapshot
+// and dispatch, so the editor never offers an option the action cannot use.
+[[nodiscard]] bool CanInstantCast(const RE::SpellItem *spell);
 
 // Walk every spell an actor has, through the engine's own walk
 // (Actor::VisitSpells, what HasSpell and the combat AI's inventory use), so a

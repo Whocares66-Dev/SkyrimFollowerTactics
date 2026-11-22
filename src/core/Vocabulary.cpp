@@ -69,7 +69,7 @@ constexpr std::array<Entry<SubjectKind>, 6> kSubjects{{
     {SubjectKind::Corpse, "corpse", N_("Corpse")},
 }};
 
-constexpr std::array<Entry<PredicateKind>, 47> kPredicates{{
+constexpr std::array<Entry<PredicateKind>, 49> kPredicates{{
     {PredicateKind::Any, "any", N_("Any")}, // Dragon Age's word: "Enemy: Any", "Self: Any"
     {PredicateKind::CombatBegins, "combat-begins", N_("Combat start")},
     {PredicateKind::CombatEnds, "combat-ends", N_("Combat end")},
@@ -102,6 +102,8 @@ constexpr std::array<Entry<PredicateKind>, 47> kPredicates{{
     {PredicateKind::ResistancePctAbove, "resistance-pct-above", N_("Resistance")},
     {PredicateKind::SummonNone, "summon-none", N_("Summon: none")},
     {PredicateKind::SummonActive, "summon-active", N_("Summon: active")},
+    {PredicateKind::SummonCountEqual, "summon-count-equal", N_("Summon count")},
+    {PredicateKind::SummonCountBelow, "summon-count-below", N_("Summon count")},
     {PredicateKind::Time, "time", N_("Time")},
     {PredicateKind::Location, "location", N_("Location")},
     {PredicateKind::Weather, "weather", N_("Weather")},
@@ -193,7 +195,7 @@ constexpr std::array<Entry<BodyPart>, 9> kBodyParts{{
 }};
 
 // A status, as the rule names it and as the menu shows it.
-constexpr std::array<Entry<StatusKind>, 19> kStatuses{{
+constexpr std::array<Entry<StatusKind>, 22> kStatuses{{
     {StatusKind::Poisoned, "poisoned", N_("Poisoned")},
     {StatusKind::Burning, "burning", N_("Burning")},
     {StatusKind::Frostbitten, "frostbitten", N_("Frostbitten")},
@@ -207,12 +209,15 @@ constexpr std::array<Entry<StatusKind>, 19> kStatuses{{
     {StatusKind::Blocking, "blocking", N_("Blocking")},
     {StatusKind::Casting, "casting", N_("Casting")},
     {StatusKind::Sneaking, "sneaking", N_("Sneaking")},
+    {StatusKind::Swimming, "swimming", N_("Swimming")},
     {StatusKind::Diseased, "diseased", N_("Diseased")},
     {StatusKind::Bleeding, "bleeding", N_("Bleeding")},
     {StatusKind::Rallied, "rallied", N_("Rallied")},
     {StatusKind::Calmed, "calmed", N_("Calmed")},
     {StatusKind::Feared, "feared", N_("Feared")},
     {StatusKind::Frenzied, "frenzied", N_("Frenzied")},
+    {StatusKind::Cold, "cold", N_("Cold")},
+    {StatusKind::Hot, "hot", N_("Hot")},
 }};
 
 // A kind of being, as the rule names it and as the menu shows it. A group's
@@ -571,6 +576,8 @@ std::string_view DisplayName(LocationGroup v) noexcept
 }
 ArgumentKind ArgumentFor(PredicateKind predicate) noexcept
 {
+    if (predicate == PredicateKind::SummonCountEqual || predicate == PredicateKind::SummonCountBelow)
+        return ArgumentKind::Count;
     // A threshold, on either side of the grid; the extremes and every
     // predicate off the grid carry nothing.
     const Side side = GridOf(predicate).side;
@@ -602,6 +609,8 @@ std::string_view Describe(PredicateKind v) noexcept
         return Tr("That party member's target is this enemy.");
     case PredicateKind::SummonNone:
     case PredicateKind::SummonActive:
+    case PredicateKind::SummonCountEqual:
+    case PredicateKind::SummonCountBelow:
         return Tr("A summon or a raised corpse.");
     case PredicateKind::EffectRunning:
         return Tr("Its effect is running now.");

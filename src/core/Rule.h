@@ -160,6 +160,8 @@ enum class PredicateKind : std::uint8_t
     // commanded-actor list per actor. Listed under one "Summon" heading.
     SummonNone,
     SummonActive,
+    SummonCountEqual,
+    SummonCountBelow,
     // The time of day: Rule::timeKind -- morning, afternoon, evening, night,
     // by the climate's sun. Self only and the idle list's alone, as Location
     // is.
@@ -438,6 +440,10 @@ struct Action // NOLINT(clang-analyzer-core.uninitialized.Assign)
     // dearer spell. Only a spell the snapshot marks dualable
     // (game/Spells.cpp CanDualCast), and the menu offers no other.
     bool dual{false};
+    // This spell casts immediately even when the global switch for its
+    // performer is off. The global switch itself makes every eligible
+    // single cast immediate.
+    bool instant{false};
 
     // Which effect, for the eight policies: the magic effect's name as the
     // game shows it -- "Restore Health", "Resist Fire", "Damage Stamina" --
@@ -449,10 +455,13 @@ struct Action // NOLINT(clang-analyzer-core.uninitialized.Assign)
     [[nodiscard]] bool operator==(const Action &) const = default;
 };
 
-struct Rule
+[[nodiscard]] inline bool ShouldInstantCast(const Action &action, bool globalAllowed)
 {
-    bool enabled{true};
+    return action.kind == ActionKind::CastSpell && !action.dual && (globalAllowed || action.instant);
+}
 
+struct Condition
+{
     // The condition negated: the Not column in the editor, ticked. Asked
     // of each actor the subject names, so it holds of one the plain
     // condition does not hold of: `NOT Enemy: Undead` is an enemy that is
@@ -497,6 +506,22 @@ struct Rule
     // location record, for Location's Hold. As opaque here as an action's
     // form is. Ignored by every other predicate.
     std::uint32_t conditionForm{0};
+
+    [[nodiscard]] bool operator==(const Condition &) const = default;
+};
+
+struct ConditionClause
+{
+    Condition condition;
+    bool either{false}; // OR starts another group of AND conditions.
+
+    [[nodiscard]] bool operator==(const ConditionClause &) const = default;
+};
+
+struct Rule : Condition
+{
+    bool enabled{true};
+    std::vector<ConditionClause> conditions;
 
     ActionTargetKind actionTarget{ActionTargetKind::Self};
     // Which follower, for ActionTargetKind::Follower.

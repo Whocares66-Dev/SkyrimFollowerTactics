@@ -22,7 +22,8 @@ std::string ConditionText(const ft::Rule &r, const FollowerView &view);
 std::vector<FollowerView::Peer> SortedPeers(const FollowerView &view);
 
 bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, ft::Moment moment,
-                      const std::string &setAside);
+                      const std::string &setAside, bool additional = false, bool *addAnother = nullptr,
+                      bool *either = nullptr, bool allowOr = true, bool *removeCondition = nullptr);
 
 // The name a form has in the load order, for an action naming a thing the
 // follower no longer has: the rule keeps the name of what it asked for.

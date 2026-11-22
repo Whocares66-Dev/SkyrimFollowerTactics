@@ -138,6 +138,8 @@ struct Settings
     // combatStyle). Off, every follower fights by their record's style and
     // the tuning is kept.
     bool manageCombatStyle{true};
+    bool instantPlayerCasts{false};
+    bool instantFollowerCasts{false};
 };
 
 [[nodiscard]] std::string WriteSettings(const Settings &settings);

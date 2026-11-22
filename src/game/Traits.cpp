@@ -55,6 +55,44 @@ namespace
 // either accessor shows up as a disagreement rather than a wrong percent.
 std::unordered_set<std::uint32_t> g_armorLogged;
 
+// Creation Club Survival Mode applies one of six ability spells to the player for its current accumulated-cold stage.
+// FormIDs are from ccQDRSSE001-SurvivalMode.esl; LookupForm keeps them independent of the light plugin's runtime load index.
+void ReadSurvivalTemperature(RE::Actor *actor, ft::ActorTraits &traits)
+{
+    if (!actor || !actor->IsPlayerRef())
+        return;
+    struct Forms
+    {
+        RE::TESGlobal *enabled{nullptr};
+        RE::SpellItem *warm{nullptr};
+        std::array<RE::SpellItem *, 5> cold{};
+    };
+    static const Forms forms = [] {
+        Forms found;
+        if (auto *data = RE::TESDataHandler::GetSingleton())
+        {
+            constexpr const char *plugin = "ccQDRSSE001-SurvivalMode.esl";
+            found.enabled = data->LookupForm<RE::TESGlobal>(0x826, plugin);          // Survival_ModeEnabled
+            found.warm = data->LookupForm<RE::SpellItem>(0x890, plugin);            // Survival_ColdStage0
+            found.cold = {data->LookupForm<RE::SpellItem>(0x86E, plugin),           // Survival_ColdStage1
+                          data->LookupForm<RE::SpellItem>(0x891, plugin),           // Survival_ColdStage2
+                          data->LookupForm<RE::SpellItem>(0x86D, plugin),           // Survival_ColdStage3
+                          data->LookupForm<RE::SpellItem>(0x870, plugin),           // Survival_ColdStage4
+                          data->LookupForm<RE::SpellItem>(0x871, plugin)};           // Survival_ColdStage5
+        }
+        return found;
+    }();
+    if (!forms.enabled || forms.enabled->value == 0.0f)
+        return;
+    if (forms.warm && actor->HasSpell(forms.warm))
+    {
+        traits.Set(ft::StatusKind::Hot);
+        return;
+    }
+    if (std::ranges::any_of(forms.cold, [actor](RE::SpellItem *stage) { return stage && actor->HasSpell(stage); }))
+        traits.Set(ft::StatusKind::Cold);
+}
+
 void LogArmorReadings(RE::Actor *actor)
 {
     if (!actor || !log::Enabled(log::Level::Debug) || !g_armorLogged.insert(actor->GetFormID()).second)
@@ -431,6 +469,7 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
     traits.hitBy = attacked.kinds;
     traits.attacker = attacked.attacker;
     ReadKinds(actor, traits);
+    ReadSurvivalTemperature(actor, traits);
     const std::string_view bossReason = BossReason(actor, traits);
     traits.boss = !bossReason.empty();
     LogBossChanges(actor, bossReason);
@@ -536,6 +575,8 @@ ft::ActorTraits ReadTraits(RE::Actor *actor)
             traits.Set(ft::StatusKind::Staggered);
         if (state->IsBleedingOut())
             traits.Set(ft::StatusKind::BleedingOut);
+        if (state->IsSwimming())
+            traits.Set(ft::StatusKind::Swimming);
     }
     if (runtime.combatController && runtime.combatController->IsFleeing())
         traits.Set(ft::StatusKind::Fleeing);

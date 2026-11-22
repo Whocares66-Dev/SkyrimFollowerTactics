@@ -20,6 +20,8 @@ std::atomic_bool g_requirePowerBashPerk{false};
 std::atomic_bool g_variedAiChoices{true};
 std::atomic_bool g_selfDamageSpells{true};
 std::atomic_bool g_manageCombatStyle{true};
+std::atomic_bool g_instantPlayerCasts{false};
+std::atomic_bool g_instantFollowerCasts{false};
 
 } // namespace
 
@@ -32,6 +34,8 @@ ft::Settings CurrentSettings()
     settings.variedAiChoices = g_variedAiChoices.load(std::memory_order_relaxed);
     settings.selfDamageSpells = g_selfDamageSpells.load(std::memory_order_relaxed);
     settings.manageCombatStyle = g_manageCombatStyle.load(std::memory_order_relaxed);
+    settings.instantPlayerCasts = g_instantPlayerCasts.load(std::memory_order_relaxed);
+    settings.instantFollowerCasts = g_instantFollowerCasts.load(std::memory_order_relaxed);
     return settings;
 }
 
@@ -44,13 +48,16 @@ void SetSettings(const ft::Settings &settings)
     g_variedAiChoices.store(settings.variedAiChoices, std::memory_order_relaxed);
     g_selfDamageSpells.store(settings.selfDamageSpells, std::memory_order_relaxed);
     g_manageCombatStyle.store(settings.manageCombatStyle, std::memory_order_relaxed);
+    g_instantPlayerCasts.store(settings.instantPlayerCasts, std::memory_order_relaxed);
+    g_instantFollowerCasts.store(settings.instantFollowerCasts, std::memory_order_relaxed);
     if (before.manageCombatStyle != settings.manageCombatStyle)
         RequestCombatStylesSynced();
     if (before.requireDualWieldStyle == settings.requireDualWieldStyle &&
         before.requireDualCastPerks == settings.requireDualCastPerks &&
         before.requirePowerBashPerk == settings.requirePowerBashPerk &&
         before.variedAiChoices == settings.variedAiChoices && before.selfDamageSpells == settings.selfDamageSpells &&
-        before.manageCombatStyle == settings.manageCombatStyle)
+        before.manageCombatStyle == settings.manageCombatStyle && before.instantPlayerCasts == settings.instantPlayerCasts &&
+        before.instantFollowerCasts == settings.instantFollowerCasts)
         return;
     log::tactics.event(log::Level::Info, "settings.changed",
                        {{"requireDualWieldStyle", settings.requireDualWieldStyle},
@@ -58,7 +65,9 @@ void SetSettings(const ft::Settings &settings)
                         {"requirePowerBashPerk", settings.requirePowerBashPerk},
                         {"variedAiChoices", settings.variedAiChoices},
                         {"selfDamageSpells", settings.selfDamageSpells},
-                        {"manageCombatStyle", settings.manageCombatStyle}},
+                        {"manageCombatStyle", settings.manageCombatStyle},
+                        {"instantPlayerCasts", settings.instantPlayerCasts},
+                        {"instantFollowerCasts", settings.instantFollowerCasts}},
                        "settings: dual wield combat style {}, dual casting perks {}, power bash perk {}, "
                        "varied AI choices {}, self-targeting damage spells {}, combat style tuning {}",
                        settings.requireDualWieldStyle ? "required" : "not required",

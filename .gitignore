@@ -5,6 +5,7 @@ dist/
 install/
 cmake-build*/
 vcpkg_installed/
+*.log
 *.dll
 *.pdb
 *.lib

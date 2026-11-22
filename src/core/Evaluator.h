@@ -64,6 +64,7 @@ struct Binding
 {
     ActorId id{0};
     bool ok{false};
+    std::size_t conditionIndex{0};
 
     [[nodiscard]] explicit operator bool() const noexcept
     {

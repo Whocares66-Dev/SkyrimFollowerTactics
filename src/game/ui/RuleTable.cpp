@@ -509,15 +509,28 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             // (ft::CanNegate), and their cell is dead and says why. On a
             // greyed rule the tick greys with the condition it negates and
             // stays live, as the condition does.
-            const bool can = ft::CanNegate(rule.predicate);
-            const std::string why = can ? std::string{} : std::string(Tr("Condition cannot be negated"));
             const DimText grey(!available);
-            if (SwitchCell("not" + rowId, rule.negated, why, can, Tr("Click to remove the NOT"),
-                           Tr("Click to negate condition")))
-            {
-                rule.negated = !rule.negated;
-                changed = true;
-            }
+            const auto drawNot = [&](ft::Condition &condition, const std::string &id) {
+                const bool can = ft::CanNegate(condition.predicate);
+                const std::string why = can ? std::string{} : std::string(Tr("Condition cannot be negated"));
+                const Im::ImVec2 pos = Im::GetCursorScreenPos();
+                const float width = Im::GetContentRegionAvail().x;
+                if (SwitchCell("not" + id, condition.negated, why, can, Tr("Click to remove the NOT"),
+                               Tr("Click to negate condition")))
+                {
+                    condition.negated = !condition.negated;
+                    changed = true;
+                }
+                // A compound rule has several switches in one cell. Strike
+                // out only the individual switch that cannot be negated.
+                if (!can && !rule.conditions.empty())
+                    if (auto *draw = Im::GetWindowDrawList())
+                        Im::ImDrawListManager::AddLine(draw, {pos.x, pos.y + row}, {pos.x + width, pos.y},
+                                                       Im::GetColorU32(Im::ImGuiCol_TableBorderStrong, 1.0f), 1.0f);
+            };
+            drawNot(rule, rowId);
+            for (std::size_t c = 0; c < rule.conditions.size(); ++c)
+                drawNot(rule.conditions[c].condition, rowId + "/" + std::to_string(c));
         }
 
         // The number is the handle a rule is dragged by: the whole cell, lit
@@ -556,8 +569,39 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
 
         Im::TableSetColumnIndex(3);
         columnX[2] = Im::GetCursorScreenPos().x;
-        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, rules.moment, setAside))
+        bool addCondition = false;
+        if (ConditionCascade(("##cond" + rowId).c_str(), rule, view, rules.moment, setAside, false, &addCondition))
             changed = true;
+        for (std::size_t c = 0; c < rule.conditions.size(); ++c)
+        {
+            auto &clause = rule.conditions[c];
+            const std::string id = rowId + "/" + std::to_string(c);
+            Im::AlignTextToFramePadding();
+            Im::TextUnformatted(clause.either ? Tr("OR") : Tr("AND"));
+            Im::SameLine(0.0f, -1.0f);
+            bool removeCondition = false;
+            ft::Rule condition;
+            static_cast<ft::Condition &>(condition) = clause.condition;
+            const bool allowOr = rule.predicate != ft::PredicateKind::CombatBegins &&
+                                 rule.predicate != ft::PredicateKind::CombatEnds;
+            if (ConditionCascade(("##cond" + id).c_str(), condition, view, rules.moment, setAside, true, nullptr,
+                                 &clause.either, allowOr, &removeCondition))
+            {
+                clause.condition = condition;
+                changed = true;
+            }
+            if (removeCondition)
+            {
+                rule.conditions.erase(rule.conditions.begin() + c);
+                changed = true;
+                break;
+            }
+        }
+        if (addCondition)
+        {
+            rule.conditions.emplace_back();
+            changed = true;
+        }
 
         Im::TableSetColumnIndex(4);
         // Where the Then column's border is, for the drawer's own left
@@ -666,7 +710,7 @@ bool DrawRuleTable(ft::RuleSet &rules, const FollowerView &view)
             Im::TableSetColumnIndex(0);
             SlashCell();
         }
-        if (!ft::CanNegate(rule.predicate))
+        if (rule.conditions.empty() && !ft::CanNegate(rule.predicate))
         {
             Im::TableSetColumnIndex(2);
             SlashCell();

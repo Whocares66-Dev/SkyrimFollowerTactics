@@ -67,6 +67,19 @@ SpellOption::Kind SpellKindOf(ft::ActionKind action)
     }
 }
 
+// The action editor's Instant cast switch exists only when the selected
+// spell can actually take the instant-caster route. `SpellOption` carries
+// the executor's exact answer from the actor scan.
+bool InstantCastAvailable(const ft::Action &action, const FollowerView &view)
+{
+    if (action.kind != ft::ActionKind::CastSpell || action.dual)
+        return false;
+    for (const auto &option : view.spells)
+        if (option.kind == SpellOption::Kind::Spell && option.form == action.form)
+            return option.instantCast;
+    return false;
+}
+
 // Could a thing with this grip be pinned in this hand, as the equip menu
 // asks it? Both means a two-hander, or a spell in each hand at once; one
 // weapon cannot be in both hands.
@@ -824,6 +837,8 @@ bool ActionItems(ft::Rule &rule, ft::Action &act, ft::ActionTargetKind target, s
             if (CascadeItem(option.name.c_str(), selected,
                             banned ? &Im::GetStyle()->Colors[Im::ImGuiCol_TextDisabled] : nullptr))
             {
+                act.instant = act.instant && act.kind == action && act.form == option.form && !menu.dual &&
+                              option.instantCast;
                 act.kind = action;
                 act.form = option.form;
                 act.name = option.name;
@@ -1035,24 +1050,26 @@ std::string ActionText(const ft::Action &act, const FollowerView &view)
     if (act.form == 0)
         return base + "...";
 
-    const auto verb = [&](const std::string &name) {
+    const auto verb = [&](const std::string &name, bool instantAvailable) {
         return act.kind == ft::ActionKind::UsePower    ? TrFormat("Use {}", name)
                : act.kind == ft::ActionKind::Shout     ? TrFormat("Shout {}", name)
                : act.kind == ft::ActionKind::UseScroll ? TrFormat("Read {}", name)
                : act.dual                              ? TrFormat("Dual cast {}", name)
-                                                       : TrFormat("Cast {}", name);
+               : act.kind == ft::ActionKind::CastSpell && act.instant && instantAvailable
+                   ? TrFormat("Instant cast {}", name)
+                   : TrFormat("Cast {}", name);
     };
     const auto kind = SpellKindOf(act.kind);
     for (const auto &option : view.spells)
         if (option.form == act.form && option.kind == kind)
-            return verb(option.name);
+            return verb(option.name, option.instantCast);
 
     // Named a spell this follower does not know, or a scroll not carried:
     // the name it was last seen with, the row set aside.
     const std::string name = LastName(act);
     if (name.empty())
         return base;
-    return verb(name);
+    return verb(name, false);
 }
 
 bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::Moment moment, bool *addAnother,
@@ -1107,6 +1124,17 @@ bool ActionMenu(const char *id, ft::Action &act, const FollowerView &view, ft::M
             *addAnother = true;
             changed = true;
         }
+        Im::Separator();
+    }
+    if (InstantCastAvailable(act, view))
+    {
+        if (CascadeItem(Tr("Instant cast"), act.instant))
+        {
+            act.instant = !act.instant;
+            changed = true;
+        }
+        if (Im::IsItemHovered(0))
+            Im::SetTooltip("%s", Tr("Instant cast this spell even if global instant casting is off"));
         Im::Separator();
     }
 

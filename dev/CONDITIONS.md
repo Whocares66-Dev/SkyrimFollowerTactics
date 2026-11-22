@@ -16,7 +16,7 @@ conditions take a *kind* as well as, or instead of, a number:
 | Condition | Kind | Number |
 |---|---|---|
 | Type | man: Breton, Imperial, Nord, Redguard; elf: Dark Elf, Falmer, High Elf, Snow Elf, Wood Elf; beast: Argonian, Khajiit, Orc; creature: Animal, Automaton, Daedra, Dragon, Giant, Spriggan, Troll, Undead, Vampire, Werewolf; or any of a group (see 2a) | none |
-| Status | poisoned, burning, frostbitten, shocked, paralyzed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking, diseased, bleeding (not all about everyone, see 9) | none |
+| Status | poisoned, burning, frostbitten, shocked, paralyzed, staggered, fleeing, bleeding out, invisible, ethereal, blocking, casting, sneaking, swimming, diseased, bleeding, cold, hot  | none |
 | Resistance | fire, frost, shock, magic, poison | a percent, below or above (0 included, see 4); or lowest / highest |
 | Hit by | any; melee, ranged, magic; fire, frost, shock, poison | none |
 | Attacks with (`hit-type`) | melee, ranged, magic; fire, frost, shock, poison -- no "any", see 9 | none |
@@ -57,6 +57,9 @@ All from the actor, per tick. "Effect" means a walk of
 | blocking | `Actor::IsBlocking()` | high |
 | casting | a `magicCasters[]` slot in `kCharging`/`kCasting` | medium |
 | sneaking | `Actor::IsSneaking()` | high, already read |
+| swimming | `ActorState::IsSwimming()` | high; this is the swimming locomotion state, not merely standing in water |
+| cold | Survival Mode is enabled and one of its `Survival_ColdStage1` through `Survival_ColdStage5` abilities is applied | high by the Creation records |
+| hot | Survival Mode is enabled and its warm `Survival_ColdStage0` ability is applied | high by the Creation records; Survival has no overheating meter, so Hot means its warm stage |
 | diseased | an effect whose `spell->GetSpellType()` is `kDisease` (added 2026-09-18) | medium: vanilla diseases are Disease-type spells and show as active effects; not yet seen in play |
 | bleeding | an effect whose base effect is a bleed: Skyrim.esm's `PerkBleedingDamage` 0x0C367A, any effect of its name, the Targe of the Blooded's 0x10582C, or any carrying the keyword `MAG_MagicDamageBleed` (added 2026-09-25, issue #1) | medium: seen in play 2026-09-25 for the Targe's (the player's bash, read by a follower's `Enemy: Bleeding`); the axes', by name and by keyword not yet; see below |
 | rallied | an effect of archetype `kRally` in a spell with no hostile or detrimental effect, or any effect of Skyrim.esm's Call to Arms (0x07E8DD) or its scroll (0x0A44BE) (added 2026-09-26 on `wip-influence-statuses`) | medium: read from the records, not yet seen in play; see below |
@@ -80,6 +83,8 @@ direct reads above are what they read, so they are kept as a debugging
 cross-check, not the hot path.
 
 Snapshot: a `status` bit set per actor view. With the log at debug, each change of an actor's statuses is a line of its own, `Cave Bear (FF000C1A): now bleeding; no longer staggered`, whoever's snapshot read it first (`LogStatusChanges` in `src/game/Traits.cpp`, since 2026-09-25): without it a Status rule that never holds cannot tell a status not detected from one that never happened.
+
+**Survival temperature.** Survival Mode keeps a cold stage for the player alone. Followers have no cold meter, and the Creation has no overheating stage. Cold is stages 1 through 5; Hot is the name used here for stage 0, the warm stage. Both are off unless Survival_ModeEnabled is set, and remain off if the Creation's records cannot be found.
 
 ## 2a. Type: what kind of being (built 2026-09-12)
 

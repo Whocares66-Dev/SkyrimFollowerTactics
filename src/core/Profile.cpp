@@ -101,18 +101,15 @@ json WriteAction(const Action &a, const FormCodec &codec)
         j["arg"] = a.arg;
     if (a.kind == ActionKind::CastSpell && a.dual)
         j["dual"] = true;
+    if (a.kind == ActionKind::CastSpell && a.instant)
+        j["instant"] = true;
     if (IsPolicy(a.kind))
         j["effect"] = a.effect;
     return j;
 }
 
-json WriteRule(const Rule &r, const FormCodec &codec)
+json WriteCondition(const Condition &r, const FormCodec &codec)
 {
-    json j;
-    j["enabled"] = r.enabled;
-    if (!r.label.empty())
-        j["label"] = r.label;
-
     json cond;
     cond["subject"] = WireName(r.subject);
     if (r.subject == SubjectKind::Follower)
@@ -150,7 +147,26 @@ json WriteRule(const Rule &r, const FormCodec &codec)
     // its own.
     if (r.predicate == PredicateKind::EffectRunning)
         cond["effect"] = codec.encode(r.conditionForm);
-    j["if"] = std::move(cond);
+    return cond;
+}
+
+json WriteRule(const Rule &r, const FormCodec &codec)
+{
+    json j;
+    j["enabled"] = r.enabled;
+    if (!r.label.empty())
+        j["label"] = r.label;
+    j["if"] = WriteCondition(r, codec);
+    if (!r.conditions.empty())
+    {
+        auto &conditions = j["conditions"] = json::array();
+        for (const auto &clause : r.conditions)
+        {
+            auto condition = WriteCondition(clause.condition, codec);
+            condition["join"] = clause.either ? "or" : "and";
+            conditions.push_back(std::move(condition));
+        }
+    }
 
     json then;
     then["target"] = WireName(r.actionTarget);
@@ -349,12 +365,19 @@ struct FormField
     if (const auto arg = Num(j, "arg"))
         a.arg = static_cast<float>(*arg);
     if (a.kind == ActionKind::CastSpell)
+    {
         a.dual = Bool(j, "dual").value_or(false);
+        // `instantOverride` was written by development builds before the
+        // global/per-action behavior was settled. Read it into the one
+        // per-action switch so those profiles keep their intent.
+        a.instant = !a.dual &&
+                    (Bool(j, "instant").value_or(false) || Bool(j, "instantOverride").value_or(false));
+    }
     return a;
 }
 
-[[nodiscard]] std::optional<Rule> ReadRule(const json &j, const FormCodec &codec, std::vector<std::string> &warnings,
-                                           const std::string &where)
+[[nodiscard]] std::optional<Condition> ReadCondition(const json *cond, const FormCodec &codec,
+                                                     std::vector<std::string> &warnings, const std::string &where)
 {
     // The rule is dropped by returning nullopt after one of these; the
     // action-level drops below only warn and carry on.
@@ -363,15 +386,8 @@ struct FormField
         return std::nullopt;
     };
 
-    if (!j.is_object())
-        return drop("not an object");
-
-    Rule r;
-    r.enabled = Bool(j, "enabled").value_or(true);
-    r.label = Str(j, "label").value_or("");
-
-    const json *cond = Obj(j, "if");
-    if (!cond)
+    Condition r;
+    if (!cond || !cond->is_object())
         return drop("no \"if\"");
     const auto subject = Str(*cond, "subject");
     if (!subject)
@@ -476,6 +492,41 @@ struct FormField
         r.conditionForm = f.id;
     }
 
+    return r;
+}
+
+[[nodiscard]] std::optional<Rule> ReadRule(const json &j, const FormCodec &codec, std::vector<std::string> &warnings,
+                                           const std::string &where)
+{
+    auto drop = [&](const std::string &why) {
+        warnings.push_back(where + ": " + why + " -- rule dropped");
+        return std::nullopt;
+    };
+    if (!j.is_object())
+        return drop("not an object");
+    Rule r;
+    r.enabled = Bool(j, "enabled").value_or(true);
+    r.label = Str(j, "label").value_or("");
+    const auto condition = ReadCondition(Obj(j, "if"), codec, warnings, where);
+    if (!condition)
+        return std::nullopt;
+    static_cast<Condition &>(r) = *condition;
+    if (const auto extra = j.find("conditions"); extra != j.end())
+    {
+        if (!extra->is_array())
+            return drop("invalid conditions");
+        for (const auto &item : *extra)
+        {
+            const auto clause = ReadCondition(&item, codec, warnings, where);
+            if (!clause)
+                return std::nullopt;
+            const auto join = Str(item, "join");
+            if (!join || (*join != "and" && *join != "or"))
+                return drop("invalid condition join");
+            r.conditions.push_back({*clause, *join == "or"});
+        }
+    }
+
     const json *then = Obj(j, "then");
     if (!then)
         return drop("no \"then\"");
@@ -549,6 +600,8 @@ std::string WriteSettings(const Settings &settings)
     j["variedAiChoices"] = settings.variedAiChoices;
     j["selfDamageSpells"] = settings.selfDamageSpells;
     j["manageCombatStyle"] = settings.manageCombatStyle;
+    j["instantPlayerCasts"] = settings.instantPlayerCasts;
+    j["instantFollowerCasts"] = settings.instantFollowerCasts;
     return j.dump(2);
 }
 
@@ -565,6 +618,8 @@ std::optional<Settings> ReadSettings(std::string_view text)
     s.variedAiChoices = Bool(j, "variedAiChoices").value_or(s.variedAiChoices);
     s.selfDamageSpells = Bool(j, "selfDamageSpells").value_or(s.selfDamageSpells);
     s.manageCombatStyle = Bool(j, "manageCombatStyle").value_or(s.manageCombatStyle);
+    s.instantPlayerCasts = Bool(j, "instantPlayerCasts").value_or(s.instantPlayerCasts);
+    s.instantFollowerCasts = Bool(j, "instantFollowerCasts").value_or(s.instantFollowerCasts);
     return s;
 }
 

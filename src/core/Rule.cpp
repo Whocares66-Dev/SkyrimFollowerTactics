@@ -485,7 +485,8 @@ bool IsPredicateValidFor(SubjectKind subject, PredicateKind predicate) noexcept
     if (predicate == PredicateKind::Status || predicate == PredicateKind::EffectRunning ||
         predicate == PredicateKind::ArmorPctBelow || predicate == PredicateKind::ResistancePctBelow ||
         predicate == PredicateKind::HitType || predicate == PredicateKind::HitBy ||
-        predicate == PredicateKind::SummonNone || predicate == PredicateKind::SummonActive)
+        predicate == PredicateKind::SummonNone || predicate == PredicateKind::SummonActive ||
+        predicate == PredicateKind::SummonCountEqual || predicate == PredicateKind::SummonCountBelow)
         return true;
     if (IsExtreme(predicate))
         return subject == SubjectKind::Ally || subject == SubjectKind::Enemy;

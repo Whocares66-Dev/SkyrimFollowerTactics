@@ -821,3 +821,107 @@ TEST_CASE("a negation is asked of every subject that is one actor", "[not]")
         REQUIRE(d.targetId() == kEnemy);
     }
 }
+
+TEST_CASE("swimming is a status of the actor the condition names", "[conditions][status]")
+{
+    Snapshot s = Party();
+    Rule r = About(SubjectKind::Player, PredicateKind::Status);
+    r.statusKind = StatusKind::Swimming;
+
+    REQUIRE_FALSE(EvaluateCondition(r, s));
+    Player(s).traits.Set(StatusKind::Swimming);
+    const Binding binding = EvaluateCondition(r, s);
+    REQUIRE(binding.id == kPlayerFormID);
+}
+
+TEST_CASE("Survival cold and hot are independent statuses of the player", "[conditions][status]")
+{
+    Snapshot s = Party();
+    Rule cold = About(SubjectKind::Player, PredicateKind::Status);
+    cold.statusKind = StatusKind::Cold;
+    Rule hot = cold;
+    hot.statusKind = StatusKind::Hot;
+
+    REQUIRE_FALSE(EvaluateCondition(cold, s));
+    REQUIRE_FALSE(EvaluateCondition(hot, s));
+    Player(s).traits.Set(StatusKind::Cold);
+    REQUIRE(EvaluateCondition(cold, s).id == kPlayerFormID);
+    REQUIRE_FALSE(EvaluateCondition(hot, s));
+    Player(s).traits.status = Bit(StatusKind::Hot);
+    REQUIRE_FALSE(EvaluateCondition(cold, s));
+    REQUIRE(EvaluateCondition(hot, s).id == kPlayerFormID);
+}
+
+TEST_CASE("compound conditions require all AND clauses or another complete OR group", "[conditions]")
+{
+    Snapshot s = Party();
+    Rule r = About(SubjectKind::Self, PredicateKind::HealthPctBelow);
+    r.conditionArg = 0.5f;
+    Condition magicka;
+    magicka.predicate = PredicateKind::MagickaPctBelow;
+    magicka.conditionArg = 0.5f;
+    Condition enemy;
+    enemy.subject = SubjectKind::Enemy;
+    enemy.predicate = PredicateKind::HealthPctBelow;
+    enemy.conditionArg = 0.5f;
+    r.conditions = {{magicka, false}, {enemy, true}, {magicka, false}};
+
+    REQUIRE_FALSE(EvaluateCondition(r, s));
+    s.health = {25.0f, 100.0f};
+    REQUIRE_FALSE(EvaluateCondition(r, s));
+    s.magicka = {25.0f, 100.0f};
+    REQUIRE(EvaluateCondition(r, s).id == kFollower);
+    s.health = {100.0f, 100.0f};
+    s.enemies[0].health = {25.0f, 100.0f};
+    const auto binding = EvaluateCondition(r, s);
+    REQUIRE(binding.id == kEnemy);
+    r.actionTarget = ActionTargetKind::Enemy;
+    bool ok = false;
+    REQUIRE(ResolveActionTarget(r, s, binding, &ok) == kEnemy);
+    REQUIRE(ok);
+    s.magicka = {100.0f, 100.0f};
+    REQUIRE_FALSE(EvaluateCondition(r, s));
+}
+
+TEST_CASE("low health and hit by fire or burning treats burning as an independent alternative", "[conditions]")
+{
+    Rule r = About(SubjectKind::Self, PredicateKind::HealthPctBelow);
+    r.conditionArg = 0.5f;
+    Condition fire;
+    fire.predicate = PredicateKind::HitBy;
+    fire.damageKind = DamageKind::Fire;
+    Condition burning;
+    burning.predicate = PredicateKind::Status;
+    burning.statusKind = StatusKind::Burning;
+    r.conditions = {{fire, false}, {burning, true}};
+
+    for (const bool low : {false, true})
+        for (const bool hit : {false, true})
+            for (const bool onFire : {false, true})
+            {
+                Snapshot s = Party();
+                s.health = {low ? 25.0f : 100.0f, 100.0f};
+                s.traits.hitBy = hit ? Bit(DamageKind::Fire) : 0;
+                s.traits.status = onFire ? Bit(StatusKind::Burning) : 0;
+                REQUIRE(EvaluateCondition(r, s).ok == ((low && hit) || onFire));
+            }
+}
+
+TEST_CASE("summon count can match exactly one or fewer than a desired maximum", "[conditions]")
+{
+    Snapshot s = Party();
+    Rule r = About(SubjectKind::Self, PredicateKind::SummonCountEqual);
+    r.conditionArg = 1.0f;
+    for (const int count : {0, 1, 2, 3})
+    {
+        s.traits.summons = count;
+        REQUIRE(EvaluateCondition(r, s).ok == (count == 1));
+    }
+    r.predicate = PredicateKind::SummonCountBelow;
+    r.conditionArg = 2.0f;
+    for (const int count : {0, 1, 2, 3})
+    {
+        s.traits.summons = count;
+        REQUIRE(EvaluateCondition(r, s).ok == (count < 2));
+    }
+}

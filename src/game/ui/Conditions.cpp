@@ -45,6 +45,8 @@ std::string ArgumentText(ft::PredicateKind predicate, float value)
     {
     case ft::ArgumentKind::Percent:
         return (ft::IsAbove(predicate) ? "> " : "< ") + std::to_string(std::lround(value * 100.0f)) + "%";
+    case ft::ArgumentKind::Count:
+        return (predicate == ft::PredicateKind::SummonCountBelow ? "< " : "= ") + std::to_string(std::lround(value));
     case ft::ArgumentKind::None:
     default:
         return {};
@@ -136,6 +138,8 @@ int ConditionGroup(ft::PredicateKind p)
         return 6;
     case ft::PredicateKind::SummonNone:
     case ft::PredicateKind::SummonActive:
+    case ft::PredicateKind::SummonCountEqual:
+    case ft::PredicateKind::SummonCountBelow:
         return 8;
     case ft::PredicateKind::Time:
     case ft::PredicateKind::Location:
@@ -156,6 +160,8 @@ bool DrawsHeading(ft::PredicateKind p)
     {
     case ft::PredicateKind::CombatEnds:
     case ft::PredicateKind::SummonActive:
+    case ft::PredicateKind::SummonCountEqual:
+    case ft::PredicateKind::SummonCountBelow:
     case ft::PredicateKind::LevelLowest:
     case ft::PredicateKind::WeaponPoisonNone:
     case ft::PredicateKind::WeaponPoisonActive:
@@ -251,9 +257,11 @@ std::vector<FollowerView::Peer> SortedPeers(const FollowerView &view)
 }
 
 bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, ft::Moment moment,
-                      const std::string &setAside)
+                      const std::string &setAside, bool additional, bool *addAnother, bool *either, bool allowOr,
+                      bool *removeCondition)
 {
     bool changed = false;
+    bool joinChanged = false;
 
     // A condition naming a follower who is away is greyed, with the reason
     // on it -- and still opens, so another can be named in its place. The
@@ -265,7 +273,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     bool elided = false;
     {
         const DimText grey(!setAside.empty() || !available);
-        cell = CellButtonOpensPopup(id, text, &elided);
+        cell = CellButtonOpensPopup(id, text, &elided, additional);
     }
     // The named follower being gone, which is about the condition itself,
     // else the whole of the condition where the cell had to cut it. Why the
@@ -280,6 +288,38 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     {
         Im::PopStyleVar(kPopupChromeVars);
         return false;
+    }
+
+    // Add multiple conditions by clicking "Add condition..."
+    if (addAnother)
+    {
+        if (CascadeItem(Tr("Add condition..."), false))
+            *addAnother = true;
+        Im::Separator();
+    }
+
+    // Add conditions that are mutually exclusive by clicking "OR"/"AND" ("AND" default)
+    if (either)
+    {
+        if (CascadeItem(Tr("AND"), !*either) && *either)
+        {
+            *either = false;
+            joinChanged = true;
+        }
+        if (allowOr && CascadeItem(Tr("OR"), *either) && !*either)
+        {
+            *either = true;
+            joinChanged = true;
+        }
+        Im::Separator();
+    }
+
+    // Remove a condition by clicking "Delete condition"
+    if (removeCondition)
+    {
+        if (CascadeItem(Tr("Delete condition"), false))
+            *removeCondition = true;
+        Im::Separator();
     }
 
     // Who first: the follower, the player by name, the other followers by
@@ -420,6 +460,8 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             const auto predicate = static_cast<ft::PredicateKind>(pi);
             if (!ft::IsPredicateValidFor(subject, predicate) || !ft::IsPredicateValidIn(moment, predicate))
                 continue;
+            if (additional && (predicate == ft::PredicateKind::CombatBegins || predicate == ft::PredicateKind::CombatEnds))
+                continue;
             // An above predicate is listed under its below counterpart's
             // heading, after a divider, not as a heading of its own; the
             // group's extremes likewise, first under theirs; and the rest
@@ -452,8 +494,26 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
             }
             if (predicate == ft::PredicateKind::SummonNone)
             {
-                submenu(Tr("Summon"),
-                        {{ft::PredicateKind::SummonNone, Tr("None")}, {ft::PredicateKind::SummonActive, Tr("Active")}});
+                // Summon: None, Active, Exactly, Fewer than
+                if (BeginCascade(Tr("Summon")))
+                {
+                    pick(Tr("None"), ft::PredicateKind::SummonNone);
+                    pick(Tr("Active"), ft::PredicateKind::SummonActive);
+                    Im::Separator();
+                    for (const auto countPredicate : {ft::PredicateKind::SummonCountEqual, ft::PredicateKind::SummonCountBelow})
+                    {
+                        if (!BeginCascade(countPredicate == ft::PredicateKind::SummonCountEqual ? Tr("Exactly") : Tr("Fewer than")))
+                            continue;
+                        for (int count = 1; count <= 10; ++count)
+                        {
+                            Extras x;
+                            x.arg = static_cast<float>(count);
+                            pick(std::to_string(count).c_str(), countPredicate, x);
+                        }
+                        Im::EndMenu();
+                    }
+                    Im::EndMenu();
+                }
                 continue;
             }
             if (predicate == ft::PredicateKind::LevelHighest)
@@ -816,7 +876,7 @@ bool ConditionCascade(const char *id, ft::Rule &rule, const FollowerView &view, 
     // that makes no sense there is blanked.
     if (changed)
         ft::Reconcile(rule);
-    return changed;
+    return changed || joinChanged;
 }
 
 } // namespace ft::game::ui

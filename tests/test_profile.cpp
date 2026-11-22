@@ -235,6 +235,8 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     s.variedAiChoices = false;
     s.selfDamageSpells = false;
     s.manageCombatStyle = false;
+    s.instantPlayerCasts = true;
+    s.instantFollowerCasts = true;
     const auto back = ReadSettings(WriteSettings(s));
     REQUIRE(back);
     REQUIRE_FALSE(back->tacticsEnabled);
@@ -244,6 +246,8 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     REQUIRE_FALSE(back->variedAiChoices);
     REQUIRE_FALSE(back->selfDamageSpells);
     REQUIRE_FALSE(back->manageCombatStyle);
+    REQUIRE(back->instantPlayerCasts);
+    REQUIRE(back->instantFollowerCasts);
 
     // A key this build does not know is ignored, and one it knows but the
     // document does not carry keeps its default.
@@ -256,6 +260,8 @@ TEST_CASE("the settings round-trip, and a document missing them keeps the defaul
     REQUIRE(partial->variedAiChoices);
     REQUIRE(partial->selfDamageSpells);
     REQUIRE(partial->manageCombatStyle);
+    REQUIRE_FALSE(partial->instantPlayerCasts);
+    REQUIRE_FALSE(partial->instantFollowerCasts);
 
     // Not a document at all: nothing read, and the caller keeps what it has.
     REQUIRE_FALSE(ReadSettings("{").has_value());
@@ -293,6 +299,73 @@ TEST_CASE("a profile round-trips through its file", "[profile]")
         REQUIRE(after.bans[i].variant.has_value() == before.bans[i].variant.has_value());
         REQUIRE(SameVariant(after.bans[i].variant, before.bans[i].variant));
     }
+}
+
+TEST_CASE("compound conditions and instant casts survive a profile round trip", "[profile]")
+{
+    Profile p;
+    Rule r;
+    Condition magicka;
+    magicka.predicate = PredicateKind::MagickaPctAbove;
+    magicka.conditionArg = 0.5f;
+    r.conditions = {{magicka, false}, {magicka, true}};
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = 0x1234;
+    r.FirstAction().instant = true;
+    p.rules.rules.push_back(r);
+
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.profile);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules.front() == r);
+}
+
+TEST_CASE("an instant cast override applies per action and survives saving", "[profile]")
+{
+    Action spell;
+    spell.kind = ActionKind::CastSpell;
+    spell.form = 0x1234;
+    REQUIRE_FALSE(ShouldInstantCast(spell, false));
+    REQUIRE(ShouldInstantCast(spell, true));
+
+    spell.instant = true;
+    REQUIRE(ShouldInstantCast(spell, false));
+    REQUIRE(ShouldInstantCast(spell, true));
+
+    Profile p;
+    Rule r;
+    r.FirstAction() = spell;
+    p.rules.rules.push_back(r);
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.profile);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules.front() == r);
+    REQUIRE(ShouldInstantCast(read.profile->rules.rules.front().actions.front(), false));
+
+    spell.dual = true;
+    REQUIRE_FALSE(ShouldInstantCast(spell, true));
+    spell.dual = false;
+    spell.kind = ActionKind::UseStaff;
+    REQUIRE_FALSE(ShouldInstantCast(spell, true));
+}
+
+TEST_CASE("summon count thresholds survive a profile round trip", "[profile]")
+{
+    Profile p;
+    Rule r;
+    r.predicate = PredicateKind::SummonCountBelow;
+    r.conditionArg = 2.0f;
+    Condition exactly;
+    exactly.predicate = PredicateKind::SummonCountEqual;
+    exactly.conditionArg = 1.0f;
+    r.conditions = {{exactly, false}};
+    r.FirstAction().kind = ActionKind::CastSpell;
+    r.FirstAction().form = 0x1234;
+    p.rules.rules.push_back(r);
+    const auto read = ReadProfile(WriteProfile(p, kHex), kHex);
+    REQUIRE(read.profile);
+    REQUIRE(read.warnings.empty());
+    REQUIRE(read.profile->rules.rules.front() == r);
 }
 
 TEST_CASE("every action that names a form keeps it through the file, and no other writes one", "[profile]")

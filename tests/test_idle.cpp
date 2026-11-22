@@ -175,6 +175,9 @@ TEST_CASE("what the idle list has no use for is invalid in it, and only in it", 
     REQUIRE_FALSE(IsStatusValidIn(Moment::Idle, StatusKind::Fleeing));
     REQUIRE(IsStatusValidIn(Moment::Idle, StatusKind::Diseased));
     REQUIRE(IsStatusValidIn(Moment::Idle, StatusKind::BleedingOut));
+    REQUIRE(IsStatusValidIn(Moment::Idle, StatusKind::Swimming));
+    REQUIRE(IsStatusValidIn(Moment::Idle, StatusKind::Cold));
+    REQUIRE(IsStatusValidIn(Moment::Idle, StatusKind::Hot));
     REQUIRE(IsStatusValidIn(Moment::Combat, StatusKind::Fleeing));
 
     REQUIRE_FALSE(IsActionTargetValidIn(Moment::Idle, ActionTargetKind::Enemy));

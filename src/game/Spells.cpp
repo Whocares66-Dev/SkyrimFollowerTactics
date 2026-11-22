@@ -183,6 +183,12 @@ ft::MagicCategory SchoolOfSpell(const RE::MagicItem *item)
 
 } // namespace
 
+bool CanInstantCast(const RE::SpellItem *spell)
+{
+    return spell && spell->GetCastingType() == RE::MagicSystem::CastingType::kFireAndForget &&
+           spell->GetDelivery() != RE::MagicSystem::Delivery::kTargetLocation;
+}
+
 std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
 {
     std::vector<SpellOption> out;
@@ -207,6 +213,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
                                   spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
                                   spell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
                                   !power && CanDualCast(actor, spell),
+                                  !power && CanInstantCast(spell),
                                   power ? SpellOption::Kind::Power : SpellOption::Kind::Spell, SchoolOfSpell(spell)});
     });
 
@@ -225,6 +232,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         out.push_back(SpellOption{scroll->GetFormID(), std::move(name),
                                   scroll->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
                                   scroll->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate, false,
+                                  false,
                                   SpellOption::Kind::Scroll, SchoolOfSpell(scroll)});
     }
 
@@ -246,7 +254,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
         out.push_back(SpellOption{staff->GetFormID(), std::move(name),
                                   enchantment->GetDelivery() == RE::MagicSystem::Delivery::kSelf,
                                   enchantment->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation, reanimate,
-                                  false, SpellOption::Kind::Staff, SchoolOfSpell(enchantment)});
+                                  false, false, SpellOption::Kind::Staff, SchoolOfSpell(enchantment)});
     }
 
     // The shouts on the base record. A shout's delivery is its first word's
@@ -265,7 +273,7 @@ std::vector<SpellOption> ScanCastableSpells(RE::Actor *actor)
                     continue;
                 const auto *word = shout->variations[0].spell;
                 const bool self = word && word->GetDelivery() == RE::MagicSystem::Delivery::kSelf;
-                out.push_back(SpellOption{shout->GetFormID(), shout->GetName(), self, false, false, false,
+                out.push_back(SpellOption{shout->GetFormID(), shout->GetName(), self, false, false, false, false,
                                           SpellOption::Kind::Shout});
             }
         }

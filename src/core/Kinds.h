@@ -26,6 +26,9 @@ enum class StatusKind : std::uint8_t
     Blocking,
     Casting,
     Sneaking,
+    // The actor state's swimming flag: moving through deep enough water
+    // to use the swimming locomotion state, not merely standing in water.
+    Swimming,
     // A disease running: an effect whose spell is of the Disease type.
     // About anyone; the idle list's cure rule is what it is for.
     Diseased,
@@ -39,6 +42,11 @@ enum class StatusKind : std::uint8_t
     Calmed,
     Feared,
     Frenzied,
+    // Survival Mode's own cold-stage abilities on the player. Hot is its
+    // warm stage (stage 0); Cold is any accumulated-cold stage (1-5).
+    // Both are absent when Survival Mode or its Creation is absent.
+    Cold,
+    Hot,
 
     COUNT
 };

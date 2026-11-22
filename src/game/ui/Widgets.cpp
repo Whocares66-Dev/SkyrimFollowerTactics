@@ -476,7 +476,7 @@ void PushPopupChrome()
     Im::PushStyleVar(Im::ImGuiStyleVar_ItemSpacing, Im::ImVec2(6.0f, 4.0f));
 }
 
-Im::ImRect CellButtonOpensPopup(const char *id, const std::string &label, bool *elided)
+Im::ImRect CellButtonOpensPopup(const char *id, const std::string &label, bool *elided, bool inlineItem)
 {
     // The highlight is the TABLE's, not the button's.
     //
@@ -489,8 +489,9 @@ Im::ImRect CellButtonOpensPopup(const char *id, const std::string &label, bool *
     //
     // The button is therefore painted with nothing at all: it survives purely
     // as the hit target and the popup anchor.
-    Im::SetCursorPosX(Im::GetCursorPosX() - kCellPadX);
-    const float width = Im::GetContentRegionAvail().x + kCellPadX;
+    if (!inlineItem)
+        Im::SetCursorPosX(Im::GetCursorPosX() - kCellPadX);
+    const float width = (std::max)(1.0f, Im::GetContentRegionAvail().x + (inlineItem ? 0.0f : kCellPadX));
 
     const Im::ImVec4 invisible{0.0f, 0.0f, 0.0f, 0.0f};
     Im::PushStyleColor(Im::ImGuiCol_Button, invisible);

@@ -86,6 +86,10 @@ std::optional<bool> Common(const Rule &r, const Facts &f)
         return f.traits.summons == 0;
     case PredicateKind::SummonActive:
         return f.traits.summons > 0;
+    case PredicateKind::SummonCountEqual:
+        return static_cast<float>(f.traits.summons) == r.conditionArg;
+    case PredicateKind::SummonCountBelow:
+        return static_cast<float>(f.traits.summons) < r.conditionArg;
     default:
         break;
     }
@@ -508,11 +512,35 @@ Binding EvaluateCondition(const Rule &r, const Snapshot &s)
         return NoMatch();
     if (s.combatEnded && r.predicate != PredicateKind::CombatEnds)
         return NoMatch();
-    return MatchSubject(r, s);
+    Binding group = MatchSubject(r, s);
+    for (std::size_t i = 0; i < r.conditions.size(); ++i)
+    {
+        const auto &clause = r.conditions[i];
+        if (clause.either && group)
+            return group;
+        if (!clause.either && !group)
+            continue;
+        Rule next;
+        static_cast<Condition &>(next) = clause.condition;
+        if (!IsPredicateValidFor(next.subject, next.predicate) || !IsDamageKindValidFor(next.predicate, next.damageKind))
+            return NoMatch();
+        if (clause.either)
+        {
+            next.actions = r.actions;
+            next.actionTarget = r.actionTarget;
+            group = MatchSubject(next, s);
+            group.conditionIndex = i + 1;
+        }
+        else if (!MatchSubject(next, s))
+            group = NoMatch();
+    }
+    return group;
 }
 
 ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, bool *ok)
 {
+    const Condition &condition = binding.conditionIndex == 0 ? static_cast<const Condition &>(r)
+                                                               : r.conditions[binding.conditionIndex - 1].condition;
     const auto yes = [&](ActorId id) {
         if (ok)
             *ok = true;
@@ -535,7 +563,7 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
         // whoever the follower is fighting; and with no one, the nearest
         // enemy sensed -- a cast has to go at someone, and nearest is what
         // the follower's own AI would pick.
-        if (r.subject == SubjectKind::Enemy)
+        if (condition.subject == SubjectKind::Enemy)
             return binding.ok ? yes(binding.id) : no();
         if (s.currentTarget != 0)
             return yes(s.currentTarget);
@@ -549,9 +577,9 @@ ActorId ResolveActionTarget(const Rule &r, const Snapshot &s, Binding binding, b
         // which IsActionTargetValidFor holds and Evaluate has checked. A
         // Corpse: None binds the follower, so a cast aimed at "the corpse"
         // under it has no one; the menu does not offer that pairing.
-        if (r.actionTarget == ActionTargetKind::Corpse && r.predicate == PredicateKind::CorpseNone)
+        if (r.actionTarget == ActionTargetKind::Corpse && condition.predicate == PredicateKind::CorpseNone)
             return no();
-        return binding.ok && IsActionTargetValidFor(r.subject, r.actionTarget) ? yes(binding.id) : no();
+        return binding.ok && IsActionTargetValidFor(condition.subject, r.actionTarget) ? yes(binding.id) : no();
     case ActionTargetKind::Follower:
         for (const auto &a : s.allies)
             if (a.id == r.actionTargetForm && a.id != kPlayerFormID)
@@ -1024,10 +1052,24 @@ Verdict Admit(const Rule &r, Moment moment, const Snapshot &snap, const EvalCont
         (r.predicate == PredicateKind::Status && !IsStatusValidIn(moment, r.statusKind)) ||
         !IsActionTargetValidIn(moment, r.actionTarget))
         return Verdict::InvalidCondition;
+    for (const auto &clause : r.conditions)
+    {
+        const auto &c = clause.condition;
+        if (!IsPredicateValidFor(c.subject, c.predicate) || !IsDamageKindValidFor(c.predicate, c.damageKind) ||
+            (c.negated && !CanNegate(c.predicate)) || !IsSubjectValidIn(moment, c.subject) ||
+            !IsPredicateValidIn(moment, c.predicate) ||
+            (c.predicate == PredicateKind::Status && !IsStatusValidIn(moment, c.statusKind)) ||
+            c.predicate == PredicateKind::CombatBegins || c.predicate == PredicateKind::CombatEnds ||
+            (clause.either && (!IsActionTargetValidFor(c.subject, r.actionTarget) ||
+                               r.predicate == PredicateKind::CombatBegins || r.predicate == PredicateKind::CombatEnds)))
+            return Verdict::InvalidCondition;
+    }
     const Binding binding = EvaluateCondition(r, snap);
     if (!binding)
         return Verdict::ConditionFalse;
-    subject = r.predicate == PredicateKind::CorpseNone ? 0 : binding.id;
+    const Condition &condition = binding.conditionIndex == 0 ? static_cast<const Condition &>(r)
+                                                               : r.conditions[binding.conditionIndex - 1].condition;
+    subject = condition.predicate == PredicateKind::CorpseNone ? 0 : binding.id;
     bool targetOk = false;
     target = ResolveActionTarget(r, snap, binding, &targetOk);
     return targetOk ? Verdict::Fired : Verdict::NoTarget;

@@ -292,7 +292,8 @@ inline constexpr int kPopupChromeVars = 4;
 // Returns the cell's rect, for the caller to place the popup by with
 // PlaceCellPopup just before BeginPopup: placed here, it would place whatever
 // window opens next instead, and a tooltip raised on the cell is one.
-Im::ImRect CellButtonOpensPopup(const char *id, const std::string &label, bool *elided = nullptr);
+Im::ImRect CellButtonOpensPopup(const char *id, const std::string &label, bool *elided = nullptr,
+                               bool inlineItem = false);
 
 // The popup hangs beneath its cell, unless that runs it off the foot of the
 // screen and there is room above, where it stands on the cell's top instead
